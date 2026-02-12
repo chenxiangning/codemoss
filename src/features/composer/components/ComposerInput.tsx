@@ -63,6 +63,7 @@ type ComposerInputProps = {
   onKeyDown: (event: KeyboardEvent<HTMLTextAreaElement>) => void;
   textareaHeight?: number;
   onHeightChange?: (height: number) => void;
+  onCollapseRequest?: () => void;
   textareaRef: RefObject<HTMLTextAreaElement | null>;
   suggestionsOpen: boolean;
   suggestions: AutocompleteItem[];
@@ -178,6 +179,7 @@ export function ComposerInput({
   onKeyDown,
   textareaHeight = 80,
   onHeightChange,
+  onCollapseRequest,
   textareaRef,
   suggestionsOpen,
   suggestions,
@@ -229,7 +231,8 @@ export function ComposerInput({
   const dragStartY = useRef(0);
   const dragStartHeight = useRef(0);
 
-  const MIN_HEIGHT = 60;
+  const MIN_HEIGHT = 20;
+  const COLLAPSE_TRIGGER_HEIGHT = 18;
   const MAX_HEIGHT = 400;
   const currentHeight = Math.max(MIN_HEIGHT, Math.min(textareaHeight, MAX_HEIGHT));
   const reviewPromptOpen = Boolean(reviewPrompt);
@@ -299,7 +302,14 @@ export function ComposerInput({
       const clientY = "touches" in event ? event.touches[0].clientY : event.clientY;
       // Dragging up (negative delta) should increase height
       const delta = dragStartY.current - clientY;
-      const newHeight = Math.max(MIN_HEIGHT, Math.min(dragStartHeight.current + delta, MAX_HEIGHT));
+      const rawHeight = dragStartHeight.current + delta;
+      if (rawHeight < COLLAPSE_TRIGGER_HEIGHT) {
+        setIsDragging(false);
+        onHeightChange?.(MIN_HEIGHT);
+        onCollapseRequest?.();
+        return;
+      }
+      const newHeight = Math.max(MIN_HEIGHT, Math.min(rawHeight, MAX_HEIGHT));
       onHeightChange?.(newHeight);
     };
 
@@ -318,7 +328,7 @@ export function ComposerInput({
       document.removeEventListener("touchmove", handleMouseMove);
       document.removeEventListener("touchend", handleMouseUp);
     };
-  }, [isDragging, onHeightChange]);
+  }, [isDragging, onCollapseRequest, onHeightChange]);
 
   const handleActionClick = useCallback(() => {
     if (canStop) {

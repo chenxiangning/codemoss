@@ -220,6 +220,11 @@ type LayoutNodesOptions = {
   mainHeaderActionsNode?: ReactNode;
   centerMode: "chat" | "diff" | "editor" | "memory";
   editorFilePath: string | null;
+  openEditorTabs: string[];
+  onActivateEditorTab: (path: string) => void;
+  onCloseEditorTab: (path: string) => void;
+  onCloseAllEditorTabs: () => void;
+  onActiveEditorLineRangeChange: (range: { startLine: number; endLine: number } | null) => void;
   onOpenFile: (path: string) => void;
   onExitEditor: () => void;
   onExitDiff: () => void;
@@ -433,6 +438,10 @@ type LayoutNodesOptions = {
   onSelectComposerKanbanPanel: (panelId: string | null) => void;
   onComposerKanbanContextModeChange: (mode: "new" | "inherit") => void;
   onOpenComposerKanbanPanel: (panelId: string) => void;
+  activeComposerFilePath: string | null;
+  activeComposerFileLineRange: { startLine: number; endLine: number } | null;
+  fileReferenceMode: "path" | "none";
+  onFileReferenceModeChange: (mode: "path" | "none") => void;
   plan: TurnPlan | null;
   debugEntries: DebugEntry[];
   debugOpen: boolean;
@@ -634,6 +643,9 @@ export function useLayoutNodes(options: LayoutNodesOptions): LayoutNodesResult {
       kanbanContextMode={options.composerKanbanContextMode}
       onKanbanContextModeChange={options.onComposerKanbanContextModeChange}
       onOpenLinkedKanbanPanel={options.onOpenComposerKanbanPanel}
+      activeFilePath={options.activeComposerFilePath}
+      activeFileLineRange={options.activeComposerFileLineRange}
+      fileReferenceMode={options.fileReferenceMode}
       reviewPrompt={options.reviewPrompt}
       onReviewPromptClose={options.onReviewPromptClose}
       onReviewPromptShowPreset={options.onReviewPromptShowPreset}
@@ -891,6 +903,15 @@ export function useLayoutNodes(options: LayoutNodesOptions): LayoutNodesResult {
         workspaceId={options.activeWorkspace.id}
         workspacePath={options.activeWorkspace.path}
         filePath={options.editorFilePath}
+        openTabs={options.openEditorTabs}
+        activeTabPath={options.editorFilePath}
+        onActivateTab={options.onActivateEditorTab}
+        onCloseTab={options.onCloseEditorTab}
+        onCloseAllTabs={options.onCloseAllEditorTabs}
+        fileReferenceMode={options.fileReferenceMode}
+        onFileReferenceModeChange={options.onFileReferenceModeChange}
+        activeFileLineRange={options.activeComposerFileLineRange}
+        onActiveFileLineRangeChange={options.onActiveEditorLineRangeChange}
         openTargets={options.openAppTargets}
         openAppIconById={options.openAppIconById}
         selectedOpenAppId={options.selectedOpenAppId}

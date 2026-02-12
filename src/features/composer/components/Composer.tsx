@@ -146,6 +146,9 @@ type ComposerProps = {
   selectedLinkedKanbanPanelId?: string | null;
   onSelectLinkedKanbanPanel?: (panelId: string | null) => void;
   onOpenLinkedKanbanPanel?: (panelId: string) => void;
+  activeFilePath?: string | null;
+  activeFileLineRange?: { startLine: number; endLine: number } | null;
+  fileReferenceMode?: "path" | "none";
 };
 
 const DEFAULT_EDITOR_SETTINGS: ComposerEditorSettings = {
@@ -161,6 +164,8 @@ const DEFAULT_EDITOR_SETTINGS: ComposerEditorSettings = {
 
 const EMPTY_ITEMS: ConversationItem[] = [];
 const COMPOSER_COMPACT_RESERVED_GAP = 24;
+const COMPOSER_MIN_HEIGHT = 20;
+const COMPOSER_EXPAND_HEIGHT = 80;
 
 type PrefixOption = {
   name: string;
@@ -319,6 +324,9 @@ export function Composer({
   selectedLinkedKanbanPanelId = null,
   onSelectLinkedKanbanPanel,
   onOpenLinkedKanbanPanel,
+  activeFilePath = null,
+  activeFileLineRange = null,
+  fileReferenceMode = "path",
 }: ComposerProps) {
   const { t } = useTranslation();
   const [text, setText] = useState(draftText);
@@ -327,6 +335,7 @@ export function Composer({
   const [isCompactLayout, setIsCompactLayout] = useState(false);
   const [selectedSkillNames, setSelectedSkillNames] = useState<string[]>([]);
   const [selectedCommonsNames, setSelectedCommonsNames] = useState<string[]>([]);
+  const [isComposerCollapsed, setIsComposerCollapsed] = useState(false);
   const [helpMenuOpen, setHelpMenuOpen] = useState(false);
   const [skillMenuOpen, setSkillMenuOpen] = useState(false);
   const [commonsMenuOpen, setCommonsMenuOpen] = useState(false);
@@ -340,11 +349,15 @@ export function Composer({
   const contextActionsRef = useRef<HTMLDivElement | null>(null);
   const managementToggleRef = useRef<HTMLButtonElement | null>(null);
   const previousCompactLayoutRef = useRef(false);
+  const lastExpandedHeightRef = useRef(
+    Math.max(textareaHeight, COMPOSER_EXPAND_HEIGHT),
+  );
   const internalRef = useRef<HTMLTextAreaElement | null>(null);
   const textareaRef = externalTextareaRef ?? internalRef;
   const editorSettings = editorSettingsProp ?? DEFAULT_EDITOR_SETTINGS;
   const isDictationBusy = dictationState !== "idle";
   const canSend = text.trim().length > 0 || attachedImages.length > 0;
+  const hasActiveFileReference = Boolean(activeFilePath);
   const {
     expandFenceOnSpace,
     expandFenceOnEnter,
@@ -396,6 +409,26 @@ export function Composer({
   const groupedCommonsOptions = groupOptionsByPrefix(filteredCommonsOptions);
   const [skillLeftColumn, skillRightColumn] = splitGroupsForColumns(groupedSkillOptions);
   const [commonsLeftColumn, commonsRightColumn] = splitGroupsForColumns(groupedCommonsOptions);
+
+  useEffect(() => {
+    if (textareaHeight > COMPOSER_MIN_HEIGHT) {
+      lastExpandedHeightRef.current = textareaHeight;
+    }
+  }, [textareaHeight]);
+
+  const handleCollapseComposer = useCallback(() => {
+    setIsComposerCollapsed(true);
+  }, []);
+
+  const handleExpandComposer = useCallback(() => {
+    setIsComposerCollapsed(false);
+    onTextareaHeightChange?.(
+      Math.max(lastExpandedHeightRef.current, COMPOSER_EXPAND_HEIGHT),
+    );
+    requestAnimationFrame(() => {
+      textareaRef.current?.focus();
+    });
+  }, [onTextareaHeightChange, textareaRef]);
 
   useEffect(() => {
     setText((prev) => (prev === draftText ? prev : draftText));
@@ -485,6 +518,20 @@ export function Composer({
     [handleHistoryTextChange, handleTextChange, suggestionsOpen, inlineCompletion],
   );
 
+  const applyActiveFileReference = useCallback(
+    (message: string) => {
+      if (!(hasActiveFileReference && fileReferenceMode === "path" && activeFilePath && activeFileLineRange)) {
+        return message;
+      }
+      const referenceTarget = `${activeFilePath}#L${activeFileLineRange.startLine}-L${activeFileLineRange.endLine}`;
+      if (message.includes(referenceTarget) || message.includes(activeFilePath)) {
+        return message;
+      }
+      return `@file \`${referenceTarget}\`\n${message}`.trim();
+    },
+    [activeFileLineRange, activeFilePath, fileReferenceMode, hasActiveFileReference],
+  );
+
   const handleSend = useCallback(() => {
     if (disabled) {
       return;
@@ -509,12 +556,15 @@ export function Composer({
           commons: selectedCommons.map((item) => ({ name: item.name })),
         })
       : trimmed;
-    onSend(finalText, attachedImages);
+    const finalTextWithReference = applyActiveFileReference(finalText);
+    onSend(finalTextWithReference, attachedImages);
     resetHistoryNavigation();
     setComposerText("");
   }, [
     attachedImages,
     disabled,
+    applyActiveFileReference,
+    inlineCompletion,
     selectedCommons,
     selectedSkills,
     onSend,
@@ -546,12 +596,14 @@ export function Composer({
           commons: selectedCommons.map((item) => ({ name: item.name })),
         })
       : trimmed;
-    onQueue(finalText, attachedImages);
+    const finalTextWithReference = applyActiveFileReference(finalText);
+    onQueue(finalTextWithReference, attachedImages);
     resetHistoryNavigation();
     setComposerText("");
   }, [
     attachedImages,
     disabled,
+    applyActiveFileReference,
     selectedCommons,
     selectedSkills,
     onQueue,
@@ -876,11 +928,30 @@ export function Composer({
         onEditQueued={onEditQueued}
         onDeleteQueued={onDeleteQueued}
       />
-      <div className="composer-shell">
-        <div
+      <div className={`composer-shell${isComposerCollapsed ? " is-collapsed" : ""}`}>
+        {isComposerCollapsed ? (
+          <button
+            type="button"
+            className={`composer-shell-collapsed-strip${isProcessing ? " is-processing" : ""}`}
+            onClick={handleExpandComposer}
+            aria-label={t("composer.expandInput")}
+            title={t("composer.expandInput")}
+          >
+            <span className="composer-shell-collapsed-rail" aria-hidden>
+              <span />
+              <span />
+              <span />
+            </span>
+            <span className="composer-shell-collapsed-text">
+              {isProcessing ? t("composer.collapsedProcessing") : t("composer.expandInput")}
+            </span>
+          </button>
+        ) : (
+          <>
+            <div
           ref={managementPanelRef}
           className={`composer-management-panel${isCompactLayout ? " is-compact" : ""}`}
-        >
+            >
           <div ref={managementHeaderRef} className="composer-management-header">
             <div ref={contextActionsRef} className="composer-context-actions">
               <div className="composer-context-menu">
@@ -1332,6 +1403,7 @@ export function Composer({
           onTextPaste={handleTextPaste}
           textareaHeight={textareaHeight}
           onHeightChange={onTextareaHeightChange}
+          onCollapseRequest={handleCollapseComposer}
           onKeyDown={(event) => {
             if (isComposingEvent(event)) {
               return;
@@ -1494,6 +1566,8 @@ export function Composer({
           accessMode={accessMode}
           onSelectAccessMode={onSelectAccessMode}
         />
+          </>
+        )}
       </div>
     </footer>
   );
