@@ -3,6 +3,6 @@
     "windows": []
   },
   "bundle": {
-    "createUpdaterArtifacts": true
+    "createUpdaterArtifacts": false
   }
 }
