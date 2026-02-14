@@ -333,6 +333,7 @@ export const Markdown = memo(function Markdown({
   const throttleTimerRef = useRef<number>(0);
   const mountedRef = useRef(true);
   const latestValueRef = useRef(value);
+  const mountedRef = useRef(true);
   latestValueRef.current = value;
 
   useEffect(() => {
@@ -355,7 +356,7 @@ export const Markdown = memo(function Markdown({
       typeof window !== "undefined" ? window.setTimeout : globalThis.setTimeout;
     throttleTimerRef.current = scheduleTimeout(() => {
       throttleTimerRef.current = 0;
-      if (!mountedRef.current) {
+      if (!mountedRef.current || typeof window === "undefined") {
         return;
       }
       setThrottledValue(latestValueRef.current);
@@ -365,6 +366,7 @@ export const Markdown = memo(function Markdown({
 
   // Clean up only on unmount
   useEffect(() => {
+    mountedRef.current = true;
     return () => {
       mountedRef.current = false;
       if (throttleTimerRef.current) {

@@ -6,6 +6,7 @@ import {
   archiveThread,
   forkClaudeSession,
   forkThread,
+  getOpenCodeSessionList,
   listClaudeSessions,
   loadClaudeSession,
   listThreadTitles,
@@ -30,6 +31,7 @@ vi.mock("../../../services/tauri", () => ({
   forkClaudeSession: vi.fn(),
   forkThread: vi.fn(),
   listClaudeSessions: vi.fn(),
+  getOpenCodeSessionList: vi.fn(),
   loadClaudeSession: vi.fn(),
   listThreadTitles: vi.fn(),
   renameThreadTitleKey: vi.fn(),
@@ -63,6 +65,7 @@ describe("useThreadActions", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(listThreadTitles).mockResolvedValue({});
+    vi.mocked(getOpenCodeSessionList).mockResolvedValue([]);
     vi.mocked(renameThreadTitleKey).mockResolvedValue(undefined);
     vi.mocked(setThreadTitle).mockResolvedValue("title");
   });
@@ -133,6 +136,32 @@ describe("useThreadActions", () => {
       threadId: "thread-1",
     });
     expect(loadedThreadsRef.current["thread-1"]).toBe(true);
+  });
+
+  it("starts an opencode pending thread locally", async () => {
+    const { result, dispatch, loadedThreadsRef } = renderActions();
+
+    let threadId: string | null = null;
+    await act(async () => {
+      threadId = await result.current.startThreadForWorkspace("ws-1", {
+        engine: "opencode",
+      });
+    });
+
+    expect(threadId).toMatch(/^opencode-pending-/);
+    expect(startThread).not.toHaveBeenCalled();
+    expect(dispatch).toHaveBeenCalledWith({
+      type: "ensureThread",
+      workspaceId: "ws-1",
+      threadId,
+      engine: "opencode",
+    });
+    expect(dispatch).toHaveBeenCalledWith({
+      type: "setActiveThreadId",
+      workspaceId: "ws-1",
+      threadId,
+    });
+    expect(threadId ? loadedThreadsRef.current[threadId] : false).toBe(true);
   });
 
   it("forks a thread and activates the fork", async () => {
@@ -423,6 +452,42 @@ describe("useThreadActions", () => {
     });
     expect(threadActivityRef.current).toEqual({
       "ws-1": { "thread-1": 5000 },
+    });
+  });
+
+  it("merges opencode sessions into thread list", async () => {
+    vi.mocked(listThreads).mockResolvedValue({
+      result: {
+        data: [],
+        nextCursor: null,
+      },
+    });
+    vi.mocked(listClaudeSessions).mockResolvedValue([]);
+    vi.mocked(getOpenCodeSessionList).mockResolvedValue([
+      {
+        sessionId: "ses_opc_1",
+        title: "OpenCode Hello",
+        updatedLabel: "3m ago",
+      },
+    ]);
+
+    const { result, dispatch } = renderActions();
+
+    await act(async () => {
+      await result.current.listThreadsForWorkspace(workspace);
+    });
+
+    expect(dispatch).toHaveBeenCalledWith({
+      type: "setThreads",
+      workspaceId: "ws-1",
+      threads: [
+        {
+          id: "opencode:ses_opc_1",
+          name: "OpenCode Hello",
+          updatedAt: 0,
+          engineSource: "opencode",
+        },
+      ],
     });
   });
 

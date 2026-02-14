@@ -464,7 +464,23 @@ export function upsertItem(list: ConversationItem[], item: ConversationItem) {
     return [...list, item];
   }
   const next = [...list];
-  next[index] = { ...next[index], ...item };
+  const existing = next[index];
+  if (existing.kind === "tool" && item.kind === "tool") {
+    const hasTitle = item.title.trim().length > 0;
+    const hasDetail = item.detail.trim().length > 0;
+    const hasOutput = typeof item.output === "string" && item.output.trim().length > 0;
+    const hasChanges = Array.isArray(item.changes) && item.changes.length > 0;
+    next[index] = {
+      ...existing,
+      ...item,
+      title: hasTitle ? item.title : existing.title,
+      detail: hasDetail ? item.detail : existing.detail,
+      output: hasOutput ? item.output : existing.output,
+      changes: hasChanges ? item.changes : existing.changes,
+    };
+    return next;
+  }
+  next[index] = { ...existing, ...item };
   return next;
 }
 

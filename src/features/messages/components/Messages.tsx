@@ -38,15 +38,18 @@ type MessagesProps = {
   isThinking: boolean;
   processingStartedAt?: number | null;
   lastDurationMs?: number | null;
+  heartbeatPulse?: number;
   workspacePath?: string | null;
   openTargets: OpenAppTarget[];
   selectedOpenAppId: string;
+  showMessageAnchors?: boolean;
   codeBlockCopyUseModifier?: boolean;
   userInputRequests?: RequestUserInputRequest[];
   onUserInputSubmit?: (
     request: RequestUserInputRequest,
     response: RequestUserInputResponse,
   ) => void;
+  activeEngine?: "claude" | "codex" | "gemini" | "opencode";
 };
 
 type StatusTone = "completed" | "processing" | "failed" | "unknown";
@@ -55,8 +58,12 @@ type WorkingIndicatorProps = {
   isThinking: boolean;
   processingStartedAt?: number | null;
   lastDurationMs?: number | null;
+  heartbeatPulse?: number;
   hasItems: boolean;
   reasoningLabel?: string | null;
+  activityLabel?: string | null;
+  activeEngine?: "claude" | "codex" | "gemini" | "opencode";
+  waitingForFirstChunk?: boolean;
 };
 
 type MessageRowProps = {
@@ -102,6 +109,14 @@ type MemoryContextSummary = {
 };
 
 const SCROLL_THRESHOLD_PX = 120;
+const OPENCODE_NON_STREAMING_HINT_DELAY_MS = 12_000;
+const OPENCODE_HEARTBEAT_HINTS = [
+  "正在读取工具输出并整理上下文。",
+  "模型仍在推理，正在等待下一段有效结果。",
+  "正在合并子任务结果，准备输出可读结论。",
+  "正在校验关键步骤，避免返回不完整内容。",
+  "正在持续请求响应数据，请稍候。",
+];
 
 function sanitizeReasoningTitle(title: string) {
   return title
@@ -314,12 +329,48 @@ function scrollKeyForItems(items: ConversationItem[]) {
   }
 }
 
+function resolveWorkingActivityLabel(item: ConversationItem) {
+  if (item.kind === "reasoning") {
+    const parsed = parseReasoning(item);
+    return parsed.workingLabel;
+  }
+  if (item.kind === "explore") {
+    const lastEntry = item.entries[item.entries.length - 1];
+    if (!lastEntry) {
+      return item.status === "exploring" ? "Exploring..." : "Explored";
+    }
+    return lastEntry.detail ? `${lastEntry.label} (${lastEntry.detail})` : lastEntry.label;
+  }
+  if (item.kind === "tool") {
+    const title = item.title?.trim();
+    const detail = item.detail?.trim();
+    if (!title) {
+      return null;
+    }
+    if (detail && item.toolType === "commandExecution") {
+      return `${title} @ ${detail}`;
+    }
+    return title;
+  }
+  if (item.kind === "diff") {
+    return item.title?.trim() || null;
+  }
+  if (item.kind === "review") {
+    return item.state === "started" ? "Review started" : "Review completed";
+  }
+  return null;
+}
+
 const WorkingIndicator = memo(function WorkingIndicator({
   isThinking,
   processingStartedAt = null,
   lastDurationMs = null,
+  heartbeatPulse = 0,
   hasItems,
   reasoningLabel = null,
+  activityLabel = null,
+  activeEngine = "claude",
+  waitingForFirstChunk = false,
 }: WorkingIndicatorProps) {
   const { t } = useTranslation();
   const [elapsedMs, setElapsedMs] = useState(0);
@@ -336,6 +387,40 @@ const WorkingIndicator = memo(function WorkingIndicator({
     return () => window.clearInterval(interval);
   }, [isThinking, processingStartedAt]);
 
+  const showNonStreamingHint =
+    activeEngine === "opencode" &&
+    isThinking &&
+    waitingForFirstChunk &&
+    elapsedMs >= OPENCODE_NON_STREAMING_HINT_DELAY_MS;
+  const nonStreamingHintText = t("messages.nonStreamingHint");
+  const resolvedNonStreamingHint =
+    nonStreamingHintText === "messages.nonStreamingHint"
+      ? "This model may return non-streaming output, or the network may be unreachable. Please wait..."
+      : nonStreamingHintText;
+  const [heartbeatHintText, setHeartbeatHintText] = useState("");
+  const heartbeatStateRef = useRef<{ lastPulse: number; lastIndex: number }>({
+    lastPulse: 0,
+    lastIndex: -1,
+  });
+
+  useEffect(() => {
+    if (!showNonStreamingHint) {
+      heartbeatStateRef.current = { lastPulse: 0, lastIndex: -1 };
+      setHeartbeatHintText("");
+      return;
+    }
+    if (heartbeatPulse <= 0 || heartbeatPulse === heartbeatStateRef.current.lastPulse) {
+      return;
+    }
+    heartbeatStateRef.current.lastPulse = heartbeatPulse;
+    let randomIndex = Math.floor(Math.random() * OPENCODE_HEARTBEAT_HINTS.length);
+    if (OPENCODE_HEARTBEAT_HINTS.length > 1 && randomIndex === heartbeatStateRef.current.lastIndex) {
+      randomIndex = (randomIndex + 1) % OPENCODE_HEARTBEAT_HINTS.length;
+    }
+    heartbeatStateRef.current.lastIndex = randomIndex;
+    setHeartbeatHintText(`心跳 ${heartbeatPulse}: ${OPENCODE_HEARTBEAT_HINTS[randomIndex]}`);
+  }, [heartbeatPulse, showNonStreamingHint]);
+
   return (
     <>
       {isThinking && (
@@ -345,6 +430,12 @@ const WorkingIndicator = memo(function WorkingIndicator({
             <span className="working-timer-clock">{formatDurationMs(elapsedMs)}</span>
           </div>
           <span className="working-text">{reasoningLabel || t("messages.generatingResponse")}</span>
+          {activityLabel && <span className="working-activity">{activityLabel}</span>}
+          {showNonStreamingHint && (
+            <span className="working-hint">
+              {heartbeatHintText || resolvedNonStreamingHint}
+            </span>
+          )}
         </div>
       )}
       {!isThinking && lastDurationMs !== null && hasItems && (
@@ -620,19 +711,24 @@ export const Messages = memo(function Messages({
   isThinking,
   processingStartedAt = null,
   lastDurationMs = null,
+  heartbeatPulse = 0,
   workspacePath = null,
   openTargets,
   selectedOpenAppId,
+  showMessageAnchors = true,
   codeBlockCopyUseModifier = false,
   userInputRequests = [],
   onUserInputSubmit,
+  activeEngine = "claude",
 }: MessagesProps) {
   const { t } = useTranslation();
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const messageNodeByIdRef = useRef<Map<string, HTMLDivElement>>(new Map());
   const autoScrollRef = useRef(true);
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
+  const [activeAnchorId, setActiveAnchorId] = useState<string | null>(null);
   const copyTimeoutRef = useRef<number | null>(null);
   const activeUserInputRequestId =
     threadId && userInputRequests.length
@@ -647,11 +743,21 @@ export const Messages = memo(function Messages({
   // with smooth-scroll animations that block keyboard input.
   const [scrollKey, setScrollKey] = useState(rawScrollKey);
   const scrollThrottleRef = useRef<number>(0);
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
   useEffect(() => {
     if (scrollThrottleRef.current) {
       window.clearTimeout(scrollThrottleRef.current);
     }
     scrollThrottleRef.current = window.setTimeout(() => {
+      if (!mountedRef.current) {
+        return;
+      }
       startTransition(() => {
         setScrollKey(rawScrollKey);
       });
@@ -674,12 +780,33 @@ export const Messages = memo(function Messages({
     [],
   );
 
-  const updateAutoScroll = () => {
+  const computeActiveAnchor = useCallback(() => {
+    const container = containerRef.current;
+    if (!container) {
+      return null;
+    }
+    const viewportAnchorY =
+      container.getBoundingClientRect().top + Math.min(96, container.clientHeight * 0.32);
+    let bestId: string | null = null;
+    let bestDistance = Number.POSITIVE_INFINITY;
+    for (const [messageId, node] of messageNodeByIdRef.current) {
+      const distance = Math.abs(node.getBoundingClientRect().top - viewportAnchorY);
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        bestId = messageId;
+      }
+    }
+    return bestId;
+  }, []);
+
+  const updateAutoScroll = useCallback(() => {
     if (!containerRef.current) {
       return;
     }
     autoScrollRef.current = isNearBottom(containerRef.current);
-  };
+    const nextActiveAnchor = computeActiveAnchor();
+    setActiveAnchorId((previous) => (previous === nextActiveAnchor ? previous : nextActiveAnchor));
+  }, [computeActiveAnchor, isNearBottom]);
 
   const requestAutoScroll = useCallback(() => {
     if (!bottomRef.current) {
@@ -738,6 +865,55 @@ export const Messages = memo(function Messages({
     return null;
   }, [items, reasoningMetaById]);
 
+  const latestWorkingActivityLabel = useMemo(() => {
+    let lastUserIndex = -1;
+    for (let index = items.length - 1; index >= 0; index -= 1) {
+      const item = items[index];
+      if (item.kind === "message" && item.role === "user") {
+        lastUserIndex = index;
+        break;
+      }
+    }
+    if (lastUserIndex < 0) {
+      return null;
+    }
+    for (let index = items.length - 1; index > lastUserIndex; index -= 1) {
+      const item = items[index];
+      if (item.kind === "message" && item.role === "assistant") {
+        break;
+      }
+      const label = resolveWorkingActivityLabel(item);
+      if (label) {
+        return label;
+      }
+    }
+    return null;
+  }, [items]);
+
+  const waitingForFirstChunk = useMemo(() => {
+    if (!isThinking || items.length === 0) {
+      return false;
+    }
+    let lastUserIndex = -1;
+    for (let index = items.length - 1; index >= 0; index -= 1) {
+      const item = items[index];
+      if (item.kind === "message" && item.role === "user") {
+        lastUserIndex = index;
+        break;
+      }
+    }
+    if (lastUserIndex < 0) {
+      return false;
+    }
+    for (let index = lastUserIndex + 1; index < items.length; index += 1) {
+      const item = items[index];
+      if (item.kind === "message" && item.role === "assistant") {
+        return false;
+      }
+    }
+    return true;
+  }, [isThinking, items]);
+
   const visibleItems = useMemo(
     () =>
       items.filter((item) => {
@@ -748,6 +924,25 @@ export const Messages = memo(function Messages({
       }),
     [items, reasoningMetaById],
   );
+  const messageAnchors = useMemo(() => {
+    const messageItems = visibleItems.filter(
+      (item): item is Extract<ConversationItem, { kind: "message" }> =>
+        item.kind === "message" && item.role === "user",
+    );
+    if (!messageItems.length) {
+      return [];
+    }
+    return messageItems.map((item, index) => {
+      const position =
+        messageItems.length === 1 ? 0.5 : 0.04 + (index / (messageItems.length - 1)) * 0.92;
+      return {
+        id: item.id,
+        role: item.role,
+        position,
+      };
+    });
+  }, [visibleItems]);
+  const hasAnchorRail = showMessageAnchors && messageAnchors.length > 1;
 
   useEffect(() => {
     return () => {
@@ -756,6 +951,21 @@ export const Messages = memo(function Messages({
       }
     };
   }, []);
+
+  useEffect(() => {
+    if (!hasAnchorRail) {
+      setActiveAnchorId(null);
+      return;
+    }
+    const rafId = window.requestAnimationFrame(() => {
+      const nextActiveAnchor =
+        computeActiveAnchor() ?? messageAnchors[messageAnchors.length - 1]?.id ?? null;
+      setActiveAnchorId((previous) => (previous === nextActiveAnchor ? previous : nextActiveAnchor));
+    });
+    return () => {
+      window.cancelAnimationFrame(rafId);
+    };
+  }, [computeActiveAnchor, hasAnchorRail, messageAnchors, scrollKey, threadId]);
 
   const handleCopyMessage = useCallback(
     async (item: Extract<ConversationItem, { kind: "message" }>) => {
@@ -817,16 +1027,24 @@ export const Messages = memo(function Messages({
   const renderSingleItem = (item: ConversationItem) => {
     if (item.kind === "message") {
       const isCopied = copiedMessageId === item.id;
+      const bindMessageNode = (node: HTMLDivElement | null) => {
+        if (item.role === "user" && node) {
+          messageNodeByIdRef.current.set(item.id, node);
+          return;
+        }
+        messageNodeByIdRef.current.delete(item.id);
+      };
       return (
-        <MessageRow
-          key={item.id}
-          item={item}
-          isCopied={isCopied}
-          onCopy={handleCopyMessage}
-          codeBlockCopyUseModifier={codeBlockCopyUseModifier}
-          onOpenFileLink={openFileLink}
-          onOpenFileLinkMenu={showFileLinkMenu}
-        />
+        <div key={item.id} ref={bindMessageNode} data-message-anchor-id={item.id}>
+          <MessageRow
+            item={item}
+            isCopied={isCopied}
+            onCopy={handleCopyMessage}
+            codeBlockCopyUseModifier={codeBlockCopyUseModifier}
+            onOpenFileLink={openFileLink}
+            onOpenFileLinkMenu={showFileLinkMenu}
+          />
+        </div>
       );
     }
     if (item.kind === "reasoning") {
@@ -897,27 +1115,77 @@ export const Messages = memo(function Messages({
     return renderSingleItem(entry.item);
   };
 
+  const scrollToAnchor = useCallback((messageId: string) => {
+    const node = messageNodeByIdRef.current.get(messageId);
+    const container = containerRef.current;
+    if (!node || !container) {
+      return;
+    }
+    const containerRect = container.getBoundingClientRect();
+    const nodeRect = node.getBoundingClientRect();
+    const targetTop =
+      container.scrollTop + (nodeRect.top - containerRect.top) - container.clientHeight * 0.28;
+    autoScrollRef.current = false;
+    container.scrollTo({
+      top: Math.max(0, targetTop),
+      behavior: "smooth",
+    });
+    setActiveAnchorId((previous) => (previous === messageId ? previous : messageId));
+  }, []);
+
   return (
-    <div
-      className="messages messages-full"
-      ref={containerRef}
-      onScroll={updateAutoScroll}
-    >
-      {groupedEntries.map(renderEntry)}
-      {userInputNode}
-      <WorkingIndicator
-        isThinking={isThinking}
-        processingStartedAt={processingStartedAt}
-        lastDurationMs={lastDurationMs}
-        hasItems={items.length > 0}
-        reasoningLabel={latestReasoningLabel}
-      />
-      {!items.length && !userInputNode && (
-        <div className="empty messages-empty">
-          {t("messages.emptyThread")}
+    <div className={`messages-shell${hasAnchorRail ? " has-anchor-rail" : ""}`}>
+      {hasAnchorRail && (
+        <div className="messages-anchor-rail" role="navigation" aria-label="Message anchors">
+          <div className="messages-anchor-track" aria-hidden />
+          {messageAnchors.map((anchor, index) => {
+            const isActive = activeAnchorId === anchor.id;
+            return (
+              <div
+                key={anchor.id}
+                role="button"
+                tabIndex={0}
+                className={`messages-anchor-dot${isActive ? " is-active" : ""}`}
+                style={{ top: `${anchor.position * 100}%` }}
+                onClick={() => scrollToAnchor(anchor.id)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    scrollToAnchor(anchor.id);
+                  }
+                }}
+                aria-label={`Go to user message ${index + 1}`}
+                title={`User #${index + 1}`}
+              />
+            );
+          })}
         </div>
       )}
-      <div ref={bottomRef} />
+      <div
+        className="messages messages-full"
+        ref={containerRef}
+        onScroll={updateAutoScroll}
+      >
+        {groupedEntries.map(renderEntry)}
+        {userInputNode}
+        <WorkingIndicator
+          isThinking={isThinking}
+          processingStartedAt={processingStartedAt}
+          lastDurationMs={lastDurationMs}
+          heartbeatPulse={heartbeatPulse}
+          hasItems={items.length > 0}
+          reasoningLabel={latestReasoningLabel}
+          activityLabel={latestWorkingActivityLabel}
+          activeEngine={activeEngine}
+          waitingForFirstChunk={waitingForFirstChunk}
+        />
+        {!items.length && !userInputNode && (
+          <div className="empty messages-empty">
+            {t("messages.emptyThread")}
+          </div>
+        )}
+        <div ref={bottomRef} />
+      </div>
     </div>
   );
 });

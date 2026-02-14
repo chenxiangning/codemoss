@@ -1401,6 +1401,31 @@ export function SettingsView({
                 </div>
                 <div className="settings-toggle-row">
                   <div>
+                    <div className="settings-toggle-title">
+                      {t("settings.showMessageAnchors")}
+                    </div>
+                    <div className="settings-toggle-subtitle">
+                      {t("settings.showMessageAnchorsDesc")}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    className={`settings-toggle ${
+                      appSettings.showMessageAnchors ? "on" : ""
+                    }`}
+                    onClick={() =>
+                      void onUpdateAppSettings({
+                        ...appSettings,
+                        showMessageAnchors: !appSettings.showMessageAnchors,
+                      })
+                    }
+                    aria-pressed={appSettings.showMessageAnchors}
+                  >
+                    <span className="settings-toggle-knob" />
+                  </button>
+                </div>
+                <div className="settings-toggle-row">
+                  <div>
                     <div className="settings-toggle-title">{t("settings.reduceTransparency")}</div>
                     <div className="settings-toggle-subtitle">
                       {t("settings.reduceTransparencyDesc")}

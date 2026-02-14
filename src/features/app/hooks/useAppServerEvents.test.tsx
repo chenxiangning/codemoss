@@ -359,4 +359,137 @@ describe("useAppServerEvents", () => {
       root.unmount();
     });
   });
+
+  it("passes engine hint when thread session id is updated", async () => {
+    const handlers: Handlers = {
+      onThreadSessionIdUpdated: vi.fn(),
+    };
+    const { root } = await mount(handlers);
+
+    act(() => {
+      listener?.({
+        workspace_id: "ws-opencode",
+        message: {
+          method: "thread/started",
+          params: {
+            threadId: "opencode-pending-1",
+            sessionId: "ses_1",
+            engine: "opencode",
+          },
+        },
+      });
+    });
+
+    expect(handlers.onThreadSessionIdUpdated).toHaveBeenCalledWith(
+      "ws-opencode",
+      "opencode-pending-1",
+      "ses_1",
+      "opencode",
+    );
+
+    await act(async () => {
+      root.unmount();
+    });
+  });
+
+  it("emits fallback assistant completion from turn/completed result text when no delta arrived", async () => {
+    const handlers: Handlers = {
+      onAgentMessageCompleted: vi.fn(),
+      onTurnCompleted: vi.fn(),
+    };
+    const { root } = await mount(handlers);
+
+    act(() => {
+      listener?.({
+        workspace_id: "ws-1",
+        message: {
+          method: "turn/completed",
+          params: {
+            threadId: "thread-1",
+            turnId: "turn-1",
+            result: { text: "final response from result" },
+          },
+        },
+      });
+    });
+
+    expect(handlers.onAgentMessageCompleted).toHaveBeenCalledWith({
+      workspaceId: "ws-1",
+      threadId: "thread-1",
+      itemId: "turn-1",
+      text: "final response from result",
+    });
+    expect(handlers.onTurnCompleted).toHaveBeenCalledWith("ws-1", "thread-1", "turn-1");
+
+    await act(async () => {
+      root.unmount();
+    });
+  });
+
+  it("does not emit fallback assistant completion when delta already arrived", async () => {
+    const handlers: Handlers = {
+      onAgentMessageDelta: vi.fn(),
+      onAgentMessageCompleted: vi.fn(),
+      onTurnCompleted: vi.fn(),
+    };
+    const { root } = await mount(handlers);
+
+    act(() => {
+      listener?.({
+        workspace_id: "ws-1",
+        message: {
+          method: "item/agentMessage/delta",
+          params: { threadId: "thread-1", itemId: "item-1", delta: "streaming..." },
+        },
+      });
+    });
+
+    act(() => {
+      listener?.({
+        workspace_id: "ws-1",
+        message: {
+          method: "turn/completed",
+          params: {
+            threadId: "thread-1",
+            turnId: "turn-1",
+            result: { text: "final response from result" },
+          },
+        },
+      });
+    });
+
+    expect(handlers.onAgentMessageCompleted).not.toHaveBeenCalled();
+    expect(handlers.onTurnCompleted).toHaveBeenCalledWith("ws-1", "thread-1", "turn-1");
+
+    await act(async () => {
+      root.unmount();
+    });
+  });
+
+  it("routes processing heartbeat events", async () => {
+    const handlers: Handlers = {
+      onProcessingHeartbeat: vi.fn(),
+    };
+    const { root } = await mount(handlers);
+
+    act(() => {
+      listener?.({
+        workspace_id: "ws-1",
+        message: {
+          method: "processing/heartbeat",
+          params: { threadId: "thread-1", pulse: 3 },
+        },
+      });
+    });
+
+    expect(handlers.onProcessingHeartbeat).toHaveBeenCalledWith(
+      "ws-1",
+      "thread-1",
+      3,
+    );
+
+    await act(async () => {
+      root.unmount();
+    });
+  });
 });

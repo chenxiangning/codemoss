@@ -7,6 +7,7 @@ import {
   mergeThreadItems,
   normalizeItem,
   prepareThreadItems,
+  upsertItem,
 } from "./threadItems";
 
 describe("threadItems", () => {
@@ -229,6 +230,36 @@ describe("threadItems", () => {
       const details = prepared[0].entries.map((entry) => entry.detail ?? entry.label);
       expect(details).toContain("src/a.ts");
       expect(details).toContain("src/b.ts");
+    }
+  });
+
+  it("keeps existing tool detail when completed payload omits arguments", () => {
+    const existing: ConversationItem = {
+      id: "tool-1",
+      kind: "tool",
+      toolType: "mcpToolCall",
+      title: "Tool: claude / read",
+      detail: JSON.stringify({ file_path: "src/index.js" }),
+      status: "started",
+      output: "",
+    };
+    const completed: ConversationItem = {
+      id: "tool-1",
+      kind: "tool",
+      toolType: "mcpToolCall",
+      title: "Tool: claude / read",
+      detail: "",
+      status: "completed",
+      output: "ok",
+    };
+
+    const merged = upsertItem([existing], completed);
+    expect(merged).toHaveLength(1);
+    expect(merged[0].kind).toBe("tool");
+    if (merged[0].kind === "tool") {
+      expect(merged[0].detail).toContain("src/index.js");
+      expect(merged[0].status).toBe("completed");
+      expect(merged[0].output).toBe("ok");
     }
   });
 

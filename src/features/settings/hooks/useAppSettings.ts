@@ -69,6 +69,7 @@ const defaultSettings: AppSettings = {
   uiScale: UI_SCALE_DEFAULT,
   theme: "system",
   usageShowRemaining: false,
+  showMessageAnchors: true,
   uiFontFamily: DEFAULT_UI_FONT_FAMILY,
   codeFontFamily: DEFAULT_CODE_FONT_FAMILY,
   codeFontSize: CODE_FONT_SIZE_DEFAULT,

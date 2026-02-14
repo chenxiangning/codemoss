@@ -1,15 +1,17 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type {
   ChangeEvent,
   ClipboardEvent,
   KeyboardEvent,
+  ReactNode,
   RefObject,
   SyntheticEvent,
 } from "react";
 import type { AutocompleteItem } from "../hooks/useComposerAutocomplete";
 import { formatCollaborationModeLabel } from "../../../utils/collaborationModes";
 import type { AccessMode, EngineType, ThreadTokenUsage } from "../../../types";
+import type { OpenCodeAgentOption } from "../../../types";
 import type { EngineDisplayInfo } from "../../engine/hooks/useEngineController";
 import ImagePlus from "lucide-react/dist/esm/icons/image-plus";
 import Mic from "lucide-react/dist/esm/icons/mic";
@@ -24,6 +26,7 @@ import Wrench from "lucide-react/dist/esm/icons/wrench";
 import FileText from "lucide-react/dist/esm/icons/file-text";
 import Plug from "lucide-react/dist/esm/icons/plug";
 import Lock from "lucide-react/dist/esm/icons/lock";
+import Cpu from "lucide-react/dist/esm/icons/cpu";
 import FileIcon from "../../../components/FileIcon";
 import { EngineSelector } from "../../engine/components/EngineSelector";
 import { useComposerImageDrop } from "../hooks/useComposerImageDrop";
@@ -95,6 +98,7 @@ type ComposerInputProps = {
   engines?: EngineDisplayInfo[];
   selectedEngine?: EngineType;
   onSelectEngine?: (engine: EngineType) => void;
+  opencodeProviderTone?: "is-ok" | "is-runtime" | "is-fail";
   // Model props
   models?: { id: string; displayName: string; model: string }[];
   selectedModelId?: string | null;
@@ -107,10 +111,17 @@ type ComposerInputProps = {
   selectedEffort?: string | null;
   onSelectEffort?: (effort: string) => void;
   reasoningSupported?: boolean;
+  opencodeAgents?: OpenCodeAgentOption[];
+  selectedOpenCodeAgent?: string | null;
+  onSelectOpenCodeAgent?: (agentId: string | null) => void;
+  opencodeVariantOptions?: string[];
+  selectedOpenCodeVariant?: string | null;
+  onSelectOpenCodeVariant?: (variant: string | null) => void;
   contextUsage?: ThreadTokenUsage | null;
   accessMode?: AccessMode;
   onSelectAccessMode?: (mode: AccessMode) => void;
   ghostTextSuffix?: string;
+  openCodeDock?: ReactNode;
 };
 
 const isFileSuggestion = (item: AutocompleteItem) =>
@@ -149,6 +160,24 @@ const fileTitle = (path: string) => {
   const parts = normalized.split("/").filter(Boolean);
   return parts.length ? parts[parts.length - 1] : path;
 };
+
+function resolveOpenCodeAgentToneClass(agentId: string | null | undefined) {
+  if (!agentId || !agentId.trim()) {
+    return "composer-agent-tone--default";
+  }
+  const normalized = agentId.trim().toLowerCase();
+  const hash = Array.from(normalized).reduce((total, char) => total + char.charCodeAt(0), 0);
+  return `composer-agent-tone--${hash % 8}`;
+}
+
+function resolveOpenCodeVariantToneClass(variant: string | null | undefined) {
+  if (!variant || !variant.trim()) {
+    return "composer-variant-tone--default";
+  }
+  const normalized = variant.trim().toLowerCase();
+  const hash = Array.from(normalized).reduce((total, char) => total + char.charCodeAt(0), 0);
+  return `composer-variant-tone--${hash % 6}`;
+}
 
 export function ComposerInput({
   text,
@@ -218,10 +247,18 @@ export function ComposerInput({
   selectedEffort,
   onSelectEffort,
   reasoningSupported = false,
+  opencodeAgents = [],
+  selectedOpenCodeAgent = null,
+  onSelectOpenCodeAgent,
+  opencodeVariantOptions = [],
+  selectedOpenCodeVariant = null,
+  onSelectOpenCodeVariant,
   contextUsage,
   accessMode,
   onSelectAccessMode,
   ghostTextSuffix,
+  openCodeDock,
+  opencodeProviderTone,
 }: ComposerInputProps) {
   const { t } = useTranslation();
   const suggestionListRef = useRef<HTMLDivElement | null>(null);
@@ -399,6 +436,17 @@ export function ComposerInput({
   );
 
   const selectedModel = models?.find((m) => m.id === selectedModelId);
+  const selectedModelLabelRaw =
+    selectedModel?.displayName || selectedModel?.model || selectedModelId || t("composer.noModels");
+  const selectedModelDisplay =
+    selectedEngine === "opencode"
+      ? selectedModelLabelRaw.split("/").pop() || selectedModelLabelRaw
+      : selectedModelLabelRaw;
+  const sortedOpenCodeAgents = useMemo(() => {
+    const primary = opencodeAgents.filter((agent) => agent.isPrimary);
+    const others = opencodeAgents.filter((agent) => !agent.isPrimary);
+    return [...primary, ...others];
+  }, [opencodeAgents]);
 
   return (
     <div className={`composer-input${isDragging ? " is-resizing" : ""}`}>
@@ -481,11 +529,26 @@ export function ComposerInput({
                 disabled={disabled}
                 showOnlyIfMultiple={true}
                 showLabel={true}
+                opencodeStatusTone={opencodeProviderTone}
               />
             )}
+
+            {openCodeDock}
+
+            {selectedEngine === "opencode" && (
+              <div className="composer-select-wrap composer-opencode-model-indicator" title={selectedModelLabelRaw}>
+                <span className="composer-icon" aria-hidden>
+                  <Cpu size={14} />
+                </span>
+                <span className="composer-select-value">{selectedModelDisplay}</span>
+              </div>
+            )}
             
-            {models && selectedModelId && onSelectModel && (
-              <div className="composer-select-wrap" title={selectedModel?.displayName || selectedModel?.model || selectedModelId}>
+            {models && onSelectModel && selectedEngine !== "opencode" && (
+              <div
+                className="composer-select-wrap"
+                title={selectedModelLabelRaw}
+              >
                 <span className="composer-icon" aria-hidden>
                   <svg viewBox="0 0 24 24" fill="none">
                     <path
@@ -514,7 +577,7 @@ export function ComposerInput({
                   </svg>
                 </span>
                 <span className="composer-select-value">
-                  {selectedModel?.displayName || selectedModel?.model || selectedModelId}
+                  {selectedModelLabelRaw}
                 </span>
                 <select
                   className="composer-select composer-select--model"
@@ -527,6 +590,73 @@ export function ComposerInput({
                   {models.map((model) => (
                     <option key={model.id} value={model.id}>
                       {model.displayName || model.model}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {selectedEngine === "opencode" && onSelectOpenCodeAgent && (
+              <div className="composer-select-wrap" title={selectedOpenCodeAgent || t("composer.agent")}>
+                <span className="composer-icon" aria-hidden>
+                  <svg viewBox="0 0 24 24" fill="none">
+                    <circle cx="12" cy="8" r="3.2" stroke="currentColor" strokeWidth="1.4" />
+                    <path
+                      d="M5 18.2c0-2.9 3.1-4.6 7-4.6s7 1.7 7 4.6"
+                      stroke="currentColor"
+                      strokeWidth="1.4"
+                      strokeLinecap="round"
+                    />
+                  </svg>
+                </span>
+                <span
+                  className={`composer-select-value composer-select-value--agent ${resolveOpenCodeAgentToneClass(selectedOpenCodeAgent)}`}
+                >
+                  {selectedOpenCodeAgent || t("composer.agent")}
+                </span>
+                <select
+                  className="composer-select composer-select--model"
+                  aria-label={t("composer.agent")}
+                  value={selectedOpenCodeAgent ?? ""}
+                  onChange={(event) => onSelectOpenCodeAgent(event.target.value || null)}
+                  disabled={disabled}
+                >
+                  <option value="">{t("composer.agentDefault")}</option>
+                  {opencodeAgents.length === 0 && (
+                    <option value="" disabled>
+                      {t("composer.noAgents")}
+                    </option>
+                  )}
+                  {sortedOpenCodeAgents.map((agent) => (
+                    <option key={agent.id} value={agent.id}>
+                      {agent.isPrimary ? `🔥 ${agent.id}` : agent.id}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {selectedEngine === "opencode" && onSelectOpenCodeVariant && (
+              <div className="composer-select-wrap" title={selectedOpenCodeVariant || t("composer.effortDefault")}>
+                <span className="composer-icon" aria-hidden>
+                  <Brain size={14} />
+                </span>
+                <span
+                  className={`composer-select-value composer-select-value--variant ${resolveOpenCodeVariantToneClass(selectedOpenCodeVariant)}`}
+                >
+                  {selectedOpenCodeVariant || t("composer.effortDefault")}
+                </span>
+                <select
+                  className="composer-select composer-select--effort"
+                  aria-label={t("composer.variant")}
+                  value={selectedOpenCodeVariant ?? ""}
+                  onChange={(event) => onSelectOpenCodeVariant(event.target.value || null)}
+                  disabled={disabled}
+                >
+                  <option value="">{t("composer.effortDefault")}</option>
+                  {opencodeVariantOptions.map((variant) => (
+                    <option key={variant} value={variant}>
+                      {variant}
                     </option>
                   ))}
                 </select>
@@ -698,7 +828,6 @@ export function ComposerInput({
             </button>
           </div>
         </div>
-
         {isDictationBusy && (
           <DictationWaveform
             active={isDictating}

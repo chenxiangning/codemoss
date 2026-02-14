@@ -12,8 +12,18 @@ const packageJson = JSON.parse(
 };
 
 // https://vite.dev/config/
-export default defineConfig(async () => ({
+export default defineConfig(async ({ mode }) => ({
   plugins: [react()],
+  resolve:
+    mode === "test"
+      ? {
+          alias: {
+            "@lobehub/fluent-emoji": "/src/test/mocks/fluentEmoji.ts",
+            "@lobehub/fluent-emoji/es": "/src/test/mocks/fluentEmoji.ts",
+            "@lobehub/fluent-emoji/es/index.js": "/src/test/mocks/fluentEmoji.ts",
+          },
+        }
+      : undefined,
   worker: {
     format: "es",
   },
@@ -24,10 +34,12 @@ export default defineConfig(async () => ({
     environment: "node",
     include: ["src/**/*.test.ts", "src/**/*.test.tsx"],
     setupFiles: ["src/test/vitest.setup.ts"],
+    maxWorkers: 2,
+    minWorkers: 1,
     deps: {
       optimizer: {
         web: {
-          include: ["react-i18next"],
+          include: ["react-i18next", "@lobehub/fluent-emoji"],
         },
       },
     },

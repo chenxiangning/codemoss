@@ -10,13 +10,14 @@ type EngineSelectorProps = {
   disabled?: boolean;
   showOnlyIfMultiple?: boolean;
   showAllEngines?: boolean;
+  opencodeStatusTone?: "is-ok" | "is-runtime" | "is-fail";
 };
 
 /** All supported engine types in display order */
 const ALL_ENGINE_TYPES: EngineType[] = ["claude", "codex", "gemini", "opencode"];
 
 /** Engines that are fully implemented (not installed just means CLI not found) */
-const IMPLEMENTED_ENGINES: EngineType[] = ["claude", "codex"];
+const IMPLEMENTED_ENGINES: EngineType[] = ["claude", "codex", "opencode"];
 
 /** Default display info for engines not detected */
 const DEFAULT_ENGINE_INFO: Record<EngineType, { displayName: string; shortName: string }> = {
@@ -37,6 +38,7 @@ export function EngineSelector({
   showOnlyIfMultiple = true,
   showLabel = false,
   showAllEngines = true,
+  opencodeStatusTone,
 }: EngineSelectorProps & { showLabel?: boolean }) {
   const { t } = useTranslation();
 
@@ -88,6 +90,19 @@ export function EngineSelector({
           {selectedEngineInfo.shortName}
         </span>
       )}
+      {selectedEngine === "opencode" && opencodeStatusTone && (
+        <span
+          className={`composer-engine-status-dot ${opencodeStatusTone}`}
+          aria-hidden
+          title={
+            opencodeStatusTone === "is-ok"
+              ? "Provider connected"
+              : opencodeStatusTone === "is-runtime"
+                ? "Session active"
+                : "Provider disconnected"
+          }
+        />
+      )}
       <select
         className="composer-select composer-select--engine"
         aria-label={t("composer.engine")}
@@ -100,8 +115,8 @@ export function EngineSelector({
           const isImplemented = IMPLEMENTED_ENGINES.includes(engine.type);
           const statusText = !engine.installed
             ? isImplemented
-              ? t("sidebar.cliNotInstalled")  // "未安装" for Claude/Codex
-              : t("sidebar.cliComingSoon")    // "即将推出" for Gemini/OpenCode
+              ? t("sidebar.cliNotInstalled")  // "未安装" for implemented engines
+              : t("sidebar.cliComingSoon")    // "即将推出" for future engines
             : "";
 
           return (

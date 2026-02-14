@@ -17,6 +17,11 @@ vi.mock("../../engine/components/EngineSelector", () => ({
   EngineSelector: () => null,
 }));
 
+vi.mock("../../opencode/components/OpenCodeControlPanel", () => ({
+  OpenCodeControlPanel: ({ visible }: { visible: boolean }) =>
+    visible ? <div data-testid="opencode-control-panel" /> : null,
+}));
+
 type HarnessProps = {
   initialText?: string;
   editorSettings: ComposerEditorSettings;
@@ -24,6 +29,9 @@ type HarnessProps = {
   selectedLinkedKanbanPanelId?: string | null;
   kanbanContextMode?: "new" | "inherit";
   onKanbanContextModeChange?: (mode: "new" | "inherit") => void;
+  selectedEngine?: "claude" | "codex" | "opencode";
+  commands?: { name: string; path: string; content: string }[];
+  onSend?: (text: string, images: string[]) => void;
 };
 
 function ComposerHarness({
@@ -33,13 +41,16 @@ function ComposerHarness({
   selectedLinkedKanbanPanelId = null,
   kanbanContextMode = "new",
   onKanbanContextModeChange,
+  selectedEngine = "claude",
+  commands = [],
+  onSend = () => {},
 }: HarnessProps) {
   const [draftText, setDraftText] = useState(initialText);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
   return (
     <Composer
-      onSend={() => {}}
+      onSend={onSend}
       onQueue={() => {}}
       onStop={() => {}}
       canStop={false}
@@ -48,6 +59,7 @@ function ComposerHarness({
       collaborationModes={[]}
       selectedCollaborationModeId={null}
       onSelectCollaborationMode={() => {}}
+      selectedEngine={selectedEngine}
       models={[]}
       selectedModelId={null}
       onSelectModel={() => {}}
@@ -59,6 +71,7 @@ function ComposerHarness({
       onSelectAccessMode={() => {}}
       skills={[]}
       prompts={[]}
+      commands={commands}
       files={[]}
       draftText={draftText}
       onDraftChange={setDraftText}
@@ -218,5 +231,48 @@ describe("Composer editor helpers", () => {
       noSelectionHarness.container.querySelector(".composer-kanban-context-mode"),
     ).toBeNull();
     noSelectionHarness.unmount();
+  });
+
+  it("sends selected opencode direct command chip on Enter without chat text", async () => {
+    const onSend = vi.fn();
+    const harness = renderComposerHarness({
+      initialText: "/export",
+      editorSettings: smartSettings,
+      selectedEngine: "opencode",
+      commands: [{ name: "export", path: "", content: "" }],
+      onSend,
+    });
+    const textarea = getTextarea(harness.container);
+    textarea.focus();
+    textarea.setSelectionRange(0, 0);
+
+    await act(async () => {
+      textarea.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Enter", bubbles: true }),
+      );
+    });
+
+    expect(onSend).toHaveBeenCalledWith("/export", []);
+    harness.unmount();
+  });
+
+  it("renders opencode panel only in opencode mode", () => {
+    const opencodeHarness = renderComposerHarness({
+      editorSettings: smartSettings,
+      selectedEngine: "opencode",
+    });
+    expect(
+      opencodeHarness.container.querySelector('[data-testid="opencode-control-panel"]'),
+    ).not.toBeNull();
+    opencodeHarness.unmount();
+
+    const codexHarness = renderComposerHarness({
+      editorSettings: smartSettings,
+      selectedEngine: "codex",
+    });
+    expect(
+      codexHarness.container.querySelector('[data-testid="opencode-control-panel"]'),
+    ).toBeNull();
+    codexHarness.unmount();
   });
 });

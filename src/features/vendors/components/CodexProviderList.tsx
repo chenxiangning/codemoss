@@ -19,6 +19,7 @@ export function CodexProviderList({
   onSwitch,
 }: CodexProviderListProps) {
   const { t } = useTranslation();
+  const providerList = Array.isArray(providers) ? providers : [];
 
   return (
     <div className="vendor-provider-list">
@@ -36,7 +37,7 @@ export function CodexProviderList({
       )}
 
       <div className="vendor-cards">
-        {providers.map((provider) => (
+        {providerList.map((provider) => (
           <div
             key={provider.id}
             className={`vendor-card ${provider.isActive ? "active" : ""}`}
@@ -89,7 +90,7 @@ export function CodexProviderList({
           </div>
         ))}
 
-        {!loading && providers.length === 0 && (
+        {!loading && providerList.length === 0 && (
           <div className="vendor-empty">
             {t("settings.vendor.emptyCodexState")}
           </div>

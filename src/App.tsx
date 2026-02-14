@@ -32,6 +32,7 @@ import "./styles/compact-phone.css";
 import "./styles/compact-tablet.css";
 import "./styles/tool-blocks.css";
 import "./styles/status-panel.css";
+import "./styles/opencode-panel.css";
 import "./styles/kanban.css";
 import "./styles/search-palette.css";
 import "./styles/panel-lock.css";
@@ -127,6 +128,7 @@ import { recordSearchResultOpen } from "./features/search/ranking/recencyStore";
 import type { SearchContentFilter, SearchResult, SearchScope } from "./features/search/types";
 import { toggleSearchContentFilters } from "./features/search/utils/contentFilters";
 import {
+  getOpenCodeAgentsList,
   getWorkspaceFiles,
   pickWorkspacePath,
   readPanelLockPasswordFile,
@@ -137,6 +139,7 @@ import type {
   ConversationItem,
   ComposerEditorSettings,
   EngineType,
+  OpenCodeAgentOption,
   WorkspaceInfo,
 } from "./types";
 import { writeClientStoreValue } from "./services/clientStorage";
@@ -167,6 +170,7 @@ const PANEL_LOCK_DEFAULT_PASSWORD = "123456";
 const LOCK_LIVE_SESSION_LIMIT = 12;
 const LOCK_LIVE_PREVIEW_MAX = 180;
 const THREAD_COMPLETION_NOTICE_LIMIT = 3;
+const OPENCODE_VARIANT_OPTIONS = ["minimal", "low", "medium", "high", "max"];
 
 type ThreadCompletionTracker = {
   isProcessing: boolean;
@@ -559,6 +563,58 @@ function MainApp() {
     engineModelsAsOptions,
     engineStatuses,
   } = useEngineController({ activeWorkspace, onDebug: addDebugEntry });
+  const [openCodeAgents, setOpenCodeAgents] = useState<OpenCodeAgentOption[]>([]);
+  const [openCodeAgentByThreadId, setOpenCodeAgentByThreadId] = useState<Record<string, string | null>>({});
+  const [openCodeVariantByThreadId, setOpenCodeVariantByThreadId] = useState<
+    Record<string, string | null>
+  >({});
+  const [openCodeDefaultAgentByWorkspace, setOpenCodeDefaultAgentByWorkspace] = useState<
+    Record<string, string | null>
+  >({});
+  const [openCodeDefaultVariantByWorkspace, setOpenCodeDefaultVariantByWorkspace] = useState<
+    Record<string, string | null>
+  >({});
+
+  useEffect(() => {
+    if (activeEngine !== "opencode") {
+      return;
+    }
+    let cancelled = false;
+    void getOpenCodeAgentsList()
+      .then((response) => {
+        if (cancelled) {
+          return;
+        }
+        const payload = Array.isArray(response)
+          ? response
+          : Array.isArray((response as any)?.result)
+            ? (response as any).result
+            : [];
+        const normalized = payload
+          .map((item: any) => ({
+            id: String(item.id ?? "").trim(),
+            description: item.description ? String(item.description) : undefined,
+            isPrimary: Boolean(item.isPrimary ?? item.is_primary),
+          }))
+          .filter((item: OpenCodeAgentOption) => item.id.length > 0)
+          .sort((a: OpenCodeAgentOption, b: OpenCodeAgentOption) =>
+            a.id.localeCompare(b.id),
+          );
+        setOpenCodeAgents(normalized);
+      })
+      .catch((error) => {
+        addDebugEntry({
+          id: `${Date.now()}-opencode-agents-list-error`,
+          timestamp: Date.now(),
+          source: "error",
+          label: "opencode/agents list error",
+          payload: error instanceof Error ? error.message : String(error),
+        });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeEngine, addDebugEntry]);
 
   // --- Kanban mode ---
   const [appMode, setAppMode] = useState<import("./types").AppMode>("chat");
@@ -709,7 +765,7 @@ function MainApp() {
     getWorkspacePromptsDir,
     getGlobalPromptsDir,
   } = useCustomPrompts({ activeWorkspace, onDebug: addDebugEntry });
-  const { commands } = useCustomCommands({ onDebug: addDebugEntry });
+  const { commands } = useCustomCommands({ onDebug: addDebugEntry, activeEngine });
   const { files, directories, gitignoredFiles, isLoading: isFilesLoading, refreshFiles } = useWorkspaceFiles({
     activeWorkspace,
     onDebug: addDebugEntry,
@@ -748,6 +804,30 @@ function MainApp() {
 
   const resolvedModel = effectiveSelectedModel?.model ?? null;
   const resolvedEffort = effectiveReasoningSupported ? selectedEffort : null;
+  const resolveOpenCodeAgentForThread = useCallback(
+    (threadId: string | null) => {
+      if (!activeWorkspaceId) {
+        return null;
+      }
+      if (threadId && threadId in openCodeAgentByThreadId) {
+        return openCodeAgentByThreadId[threadId] ?? null;
+      }
+      return openCodeDefaultAgentByWorkspace[activeWorkspaceId] ?? null;
+    },
+    [activeWorkspaceId, openCodeAgentByThreadId, openCodeDefaultAgentByWorkspace],
+  );
+  const resolveOpenCodeVariantForThread = useCallback(
+    (threadId: string | null) => {
+      if (!activeWorkspaceId) {
+        return null;
+      }
+      if (threadId && threadId in openCodeVariantByThreadId) {
+        return openCodeVariantByThreadId[threadId] ?? null;
+      }
+      return openCodeDefaultVariantByWorkspace[activeWorkspaceId] ?? null;
+    },
+    [activeWorkspaceId, openCodeVariantByThreadId, openCodeDefaultVariantByWorkspace],
+  );
   const activeGitRoot = activeWorkspace?.settings.gitRoot ?? null;
   const normalizePath = useCallback((value: string) => {
     return value.replace(/\\/g, "/").replace(/\/+$/, "");
@@ -889,6 +969,10 @@ function MainApp() {
     startResume,
     startMcp,
     startStatus,
+    startExport,
+    startImport,
+    startLsp,
+    startShare,
     reviewPrompt,
     closeReviewPrompt,
     showPresetStep,
@@ -925,6 +1009,8 @@ function MainApp() {
     customPrompts: prompts,
     onMessageActivity: queueGitStatusRefresh,
     activeEngine,
+    resolveOpenCodeAgent: resolveOpenCodeAgentForThread,
+    resolveOpenCodeVariant: resolveOpenCodeVariantForThread,
   });
   const {
     activeAccount,
@@ -943,6 +1029,82 @@ function MainApp() {
   useEffect(() => {
     activeThreadIdRef.current = activeThreadId ?? null;
   }, [activeThreadId]);
+  const previousThreadIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    const previous = previousThreadIdRef.current;
+    if (
+      previous &&
+      activeThreadId &&
+      previous !== activeThreadId &&
+      previous.startsWith("opencode-pending-") &&
+      activeThreadId.startsWith("opencode:")
+    ) {
+      setOpenCodeAgentByThreadId((prev) => {
+        if (!(previous in prev) || activeThreadId in prev) {
+          return prev;
+        }
+        return { ...prev, [activeThreadId]: prev[previous] ?? null };
+      });
+      setOpenCodeVariantByThreadId((prev) => {
+        if (!(previous in prev) || activeThreadId in prev) {
+          return prev;
+        }
+        return { ...prev, [activeThreadId]: prev[previous] ?? null };
+      });
+    }
+    previousThreadIdRef.current = activeThreadId ?? null;
+  }, [activeThreadId]);
+
+  const selectedOpenCodeAgent = useMemo(
+    () => resolveOpenCodeAgentForThread(activeThreadId),
+    [activeThreadId, resolveOpenCodeAgentForThread],
+  );
+  const selectedOpenCodeVariant = useMemo(
+    () => resolveOpenCodeVariantForThread(activeThreadId),
+    [activeThreadId, resolveOpenCodeVariantForThread],
+  );
+
+  const handleSelectOpenCodeAgent = useCallback(
+    (agentId: string | null) => {
+      if (!activeWorkspaceId) {
+        return;
+      }
+      const normalized = agentId && agentId.trim().length > 0 ? agentId : null;
+      setOpenCodeDefaultAgentByWorkspace((prev) => ({
+        ...prev,
+        [activeWorkspaceId]: normalized,
+      }));
+      if (!activeThreadId) {
+        return;
+      }
+      setOpenCodeAgentByThreadId((prev) => ({
+        ...prev,
+        [activeThreadId]: normalized,
+      }));
+    },
+    [activeThreadId, activeWorkspaceId],
+  );
+
+  const handleSelectOpenCodeVariant = useCallback(
+    (variant: string | null) => {
+      if (!activeWorkspaceId) {
+        return;
+      }
+      const normalized = variant && variant.trim().length > 0 ? variant : null;
+      setOpenCodeDefaultVariantByWorkspace((prev) => ({
+        ...prev,
+        [activeWorkspaceId]: normalized,
+      }));
+      if (!activeThreadId) {
+        return;
+      }
+      setOpenCodeVariantByThreadId((prev) => ({
+        ...prev,
+        [activeThreadId]: normalized,
+      }));
+    },
+    [activeThreadId, activeWorkspaceId],
+  );
 
   useAutoExitEmptyDiff({
     centerMode,
@@ -1357,6 +1519,10 @@ function MainApp() {
     startResume,
     startMcp,
     startStatus,
+    startExport,
+    startImport,
+    startLsp,
+    startShare,
   });
 
   const handleInsertComposerText = useComposerInsert({
@@ -2913,6 +3079,7 @@ function MainApp() {
     activeItems,
     activeRateLimits,
     usageShowRemaining: appSettings.usageShowRemaining,
+    showMessageAnchors: appSettings.showMessageAnchors,
     accountInfo: activeAccount,
     onSwitchAccount: handleSwitchAccount,
     onCancelSwitchAccount: handleCancelSwitchAccount,
@@ -3284,6 +3451,12 @@ function MainApp() {
     selectedEffort,
     onSelectEffort: setSelectedEffort,
     reasoningSupported: effectiveReasoningSupported,
+    opencodeAgents: openCodeAgents,
+    selectedOpenCodeAgent,
+    onSelectOpenCodeAgent: handleSelectOpenCodeAgent,
+    opencodeVariantOptions: OPENCODE_VARIANT_OPTIONS,
+    selectedOpenCodeVariant,
+    onSelectOpenCodeVariant: handleSelectOpenCodeVariant,
     accessMode,
     onSelectAccessMode: setAccessMode,
     skills,

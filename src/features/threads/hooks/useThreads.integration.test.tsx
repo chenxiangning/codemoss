@@ -56,7 +56,7 @@ describe("useThreads UX integration", () => {
     handlers = null;
     vi.clearAllMocks();
     now = 1000;
-    nowSpy = vi.spyOn(Date, "now").mockImplementation(() => now++);
+    nowSpy = vi.spyOn(Date, "now").mockImplementation(() => now);
   });
 
   afterEach(() => {
@@ -451,4 +451,5 @@ describe("useThreads UX integration", () => {
     ]);
     expect(unpinnedRows.map((row) => row.thread.id)).toEqual(["thread-b"]);
   });
+
 });

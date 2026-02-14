@@ -500,6 +500,196 @@ export async function getClaudeCommandsList() {
   return invoke<any>("claude_commands_list");
 }
 
+export async function getOpenCodeCommandsList(refresh = false) {
+  return invoke<any>("opencode_commands_list", { refresh });
+}
+
+export async function getOpenCodeAgentsList(refresh = false) {
+  return invoke<any>("opencode_agents_list", { refresh });
+}
+
+export async function getOpenCodeSessionList(workspaceId: string) {
+  return invoke<Array<{ sessionId: string; title: string; updatedLabel: string }>>(
+    "opencode_session_list",
+    { workspaceId },
+  );
+}
+
+export async function getOpenCodeStats(workspaceId: string, days?: number | null) {
+  return invoke<string>("opencode_stats", {
+    workspaceId,
+    days: days ?? null,
+  });
+}
+
+export async function exportOpenCodeSession(
+  workspaceId: string,
+  sessionId: string,
+  outputPath?: string | null,
+) {
+  return invoke<{ sessionId: string; filePath: string }>("opencode_export_session", {
+    workspaceId,
+    sessionId,
+    outputPath: outputPath ?? null,
+  });
+}
+
+export async function importOpenCodeSession(workspaceId: string, source: string) {
+  return invoke<{ sessionId?: string | null; source: string; output: string }>(
+    "opencode_import_session",
+    {
+      workspaceId,
+      source,
+    },
+  );
+}
+
+export async function shareOpenCodeSession(workspaceId: string, sessionId: string) {
+  return invoke<{ sessionId: string; url: string }>("opencode_share_session", {
+    workspaceId,
+    sessionId,
+  });
+}
+
+export async function getOpenCodeMcpStatus(workspaceId: string) {
+  return invoke<{ text: string }>("opencode_mcp_status", { workspaceId });
+}
+
+export async function getOpenCodeProviderHealth(
+  workspaceId: string,
+  provider?: string | null,
+) {
+  return invoke<{
+    provider: string;
+    connected: boolean;
+    credentialCount: number;
+    matched: boolean;
+    authenticatedProviders?: string[];
+    error?: string | null;
+  }>("opencode_provider_health", {
+    workspaceId,
+    provider: provider ?? null,
+  });
+}
+
+export async function getOpenCodeProviderCatalog(workspaceId: string) {
+  return invoke<
+    Array<{
+      id: string;
+      label: string;
+      description?: string | null;
+      category: "popular" | "other";
+      recommended: boolean;
+    }>
+  >("opencode_provider_catalog", { workspaceId });
+}
+
+export async function connectOpenCodeProvider(
+  workspaceId: string,
+  providerId?: string | null,
+) {
+  return invoke<{
+    started: boolean;
+    providerId?: string | null;
+    command?: string | null;
+  }>("opencode_provider_connect", {
+    workspaceId,
+    providerId: providerId ?? null,
+  });
+}
+
+export async function getOpenCodeStatusSnapshot(input: {
+  workspaceId: string;
+  threadId?: string | null;
+  model?: string | null;
+  agent?: string | null;
+  variant?: string | null;
+}) {
+  return invoke<{
+    sessionId?: string | null;
+    model?: string | null;
+    agent?: string | null;
+    variant?: string | null;
+    provider?: string | null;
+    providerHealth: {
+      provider: string;
+      connected: boolean;
+      credentialCount: number;
+      matched: boolean;
+      authenticatedProviders?: string[];
+      error?: string | null;
+    };
+    mcpEnabled: boolean;
+    mcpServers: Array<{
+      name: string;
+      enabled: boolean;
+      status?: string | null;
+      permissionHint?: string | null;
+    }>;
+    mcpRaw: string;
+    managedToggles: boolean;
+    tokenUsage?: number | null;
+    contextWindow?: number | null;
+  }>("opencode_status_snapshot", {
+    workspaceId: input.workspaceId,
+    threadId: input.threadId ?? null,
+    model: input.model ?? null,
+    agent: input.agent ?? null,
+    variant: input.variant ?? null,
+  });
+}
+
+export async function setOpenCodeMcpToggle(
+  workspaceId: string,
+  input: {
+    serverName?: string | null;
+    enabled?: boolean | null;
+    globalEnabled?: boolean | null;
+  },
+) {
+  return invoke<{
+    workspaceId: string;
+    mcpEnabled: boolean;
+    serverStates: Record<string, boolean>;
+    managedToggles: boolean;
+  }>("opencode_mcp_toggle", {
+    workspaceId,
+    serverName: input.serverName ?? null,
+    enabled: input.enabled ?? null,
+    globalEnabled: input.globalEnabled ?? null,
+  });
+}
+
+export async function getOpenCodeLspDiagnostics(
+  workspaceId: string,
+  filePath: string,
+) {
+  return invoke<{ filePath: string; result: unknown }>("opencode_lsp_diagnostics", {
+    workspaceId,
+    filePath,
+  });
+}
+
+export async function getOpenCodeLspSymbols(
+  workspaceId: string,
+  query: string,
+) {
+  return invoke<{ query: string; result: unknown }>("opencode_lsp_symbols", {
+    workspaceId,
+    query,
+  });
+}
+
+export async function getOpenCodeLspDocumentSymbols(
+  workspaceId: string,
+  fileUri: string,
+) {
+  return invoke<{ fileUri: string; result: unknown }>("opencode_lsp_document_symbols", {
+    workspaceId,
+    fileUri,
+  });
+}
+
 export async function getPromptsList(workspaceId: string) {
   return invoke<any>("prompts_list", { workspaceId });
 }
@@ -892,6 +1082,7 @@ export async function engineSendMessage(
   workspaceId: string,
   params: {
     text: string;
+    engine?: EngineType | null;
     model?: string | null;
     effort?: string | null;
     images?: string[] | null;
@@ -899,11 +1090,14 @@ export async function engineSendMessage(
     sessionId?: string | null;
     accessMode?: string | null;
     threadId?: string | null;
+    agent?: string | null;
+    variant?: string | null;
   },
 ): Promise<Record<string, unknown>> {
   return invoke<Record<string, unknown>>("engine_send_message", {
     workspaceId,
     text: params.text,
+    engine: params.engine ?? null,
     model: params.model ?? null,
     effort: params.effort ?? null,
     images: params.images ?? null,
@@ -911,6 +1105,8 @@ export async function engineSendMessage(
     accessMode: params.accessMode ?? null,
     threadId: params.threadId ?? null,
     sessionId: params.sessionId ?? null,
+    agent: params.agent ?? null,
+    variant: params.variant ?? null,
   });
 }
 

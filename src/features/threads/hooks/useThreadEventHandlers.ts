@@ -57,6 +57,10 @@ type ThreadEventHandlersOptions = {
     itemId: string;
     text: string;
   }) => void;
+  resolvePendingThreadForSession?: (
+    workspaceId: string,
+    engine: "claude" | "opencode",
+  ) => string | null;
 };
 
 export function useThreadEventHandlers({
@@ -82,6 +86,7 @@ export function useThreadEventHandlers({
   renameThreadTitleMapping,
   renamePendingMemoryCaptureKey,
   onAgentMessageCompletedExternal,
+  resolvePendingThreadForSession,
 }: ThreadEventHandlersOptions) {
   const onApprovalRequest = useThreadApprovalEvents({
     dispatch,
@@ -140,6 +145,8 @@ export function useThreadEventHandlers({
     renameAutoTitlePendingKey,
     renameThreadTitleMapping,
     renamePendingMemoryCaptureKey,
+    resolvePendingThreadForSession,
+    renamePendingMemoryCaptureKey,
   });
 
   const onBackgroundThreadAction = useCallback(
@@ -150,6 +157,17 @@ export function useThreadEventHandlers({
       dispatch({ type: "hideThread", workspaceId, threadId });
     },
     [dispatch],
+  );
+
+  const onProcessingHeartbeat = useCallback(
+    (_workspaceId: string, threadId: string, pulse: number) => {
+      if (!threadId || pulse <= 0) {
+        return;
+      }
+      dispatch({ type: "markHeartbeat", threadId, pulse });
+      safeMessageActivity();
+    },
+    [dispatch, safeMessageActivity],
   );
 
   /**
@@ -164,7 +182,9 @@ export function useThreadEventHandlers({
       if (
         activeThreadId &&
         !activeThreadId.startsWith("claude:") &&
-        !activeThreadId.startsWith("claude-pending-")
+        !activeThreadId.startsWith("claude-pending-") &&
+        !activeThreadId.startsWith("opencode:") &&
+        !activeThreadId.startsWith("opencode-pending-")
       ) {
         return activeThreadId;
       }
@@ -208,6 +228,7 @@ export function useThreadEventHandlers({
       onThreadStarted,
       onTurnStarted,
       onTurnCompleted,
+      onProcessingHeartbeat,
       onTurnPlanUpdated,
       onThreadTokenUsageUpdated,
       onAccountRateLimitsUpdated,
@@ -236,6 +257,7 @@ export function useThreadEventHandlers({
       onThreadStarted,
       onTurnStarted,
       onTurnCompleted,
+      onProcessingHeartbeat,
       onTurnPlanUpdated,
       onThreadTokenUsageUpdated,
       onAccountRateLimitsUpdated,

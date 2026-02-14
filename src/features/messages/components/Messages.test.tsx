@@ -128,6 +128,51 @@ describe("Messages", () => {
     expect(markdown?.textContent ?? "").toBe("你好啊");
   });
 
+  it("renders user-only anchors and scrolls on click", () => {
+    const scrollToMock = vi.fn();
+    HTMLElement.prototype.scrollTo = scrollToMock;
+
+    const items: ConversationItem[] = [
+      {
+        id: "anchor-u1",
+        kind: "message",
+        role: "user",
+        text: "first",
+      },
+      {
+        id: "anchor-a1",
+        kind: "message",
+        role: "assistant",
+        text: "second",
+      },
+      {
+        id: "anchor-u2",
+        kind: "message",
+        role: "user",
+        text: "third",
+      },
+    ];
+
+    render(
+      <Messages
+        items={items}
+        threadId="thread-1"
+        workspaceId="ws-1"
+        isThinking={false}
+        openTargets={[]}
+        selectedOpenAppId=""
+      />,
+    );
+    const rail = screen.getByRole("navigation", { name: "Message anchors" });
+    expect(rail).toBeTruthy();
+    const anchorButtons = screen.getAllByRole("button", { name: /Go to user message \d+/ });
+    expect(anchorButtons.length).toBe(2);
+    fireEvent.click(anchorButtons[0]);
+    expect(scrollToMock).toHaveBeenCalledWith(
+      expect.objectContaining({ behavior: "smooth" }),
+    );
+  });
+
   it("renders memory context summary as a separate collapsible card", async () => {
     const items: ConversationItem[] = [
       {
@@ -282,6 +327,190 @@ describe("Messages", () => {
     expect(label).toBeTruthy();
     expect(label).not.toContain("Old reasoning title");
     expect(label).toMatch(/Working|Generating response|messages\.generatingResponse/);
+  });
+
+  it("shows non-streaming hint for opencode when waiting long for first chunk", () => {
+    vi.useFakeTimers();
+    try {
+      const items: ConversationItem[] = [
+        {
+          id: "user-latest",
+          kind: "message",
+          role: "user",
+          text: "请解释一下",
+        },
+      ];
+
+      const { container } = render(
+        <Messages
+          items={items}
+          threadId="thread-1"
+          workspaceId="ws-1"
+          isThinking
+          processingStartedAt={Date.now() - 13_000}
+          heartbeatPulse={1}
+          activeEngine="opencode"
+          openTargets={[]}
+          selectedOpenAppId=""
+        />,
+      );
+
+      const hint = container.querySelector(".working-hint");
+      expect(hint).toBeTruthy();
+      const hintText = (hint?.textContent ?? "").trim();
+      expect(hintText.length).toBeGreaterThan(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("updates opencode waiting hint only when heartbeat pulse changes", () => {
+    const randomSpy = vi
+      .spyOn(Math, "random")
+      .mockReturnValueOnce(0.05)
+      .mockReturnValueOnce(0.85);
+    try {
+      const items: ConversationItem[] = [
+        {
+          id: "user-heartbeat",
+          kind: "message",
+          role: "user",
+          text: "继续",
+        },
+      ];
+      const { container, rerender } = render(
+        <Messages
+          items={items}
+          threadId="thread-1"
+          workspaceId="ws-1"
+          isThinking
+          processingStartedAt={Date.now() - 13_000}
+          heartbeatPulse={1}
+          activeEngine="opencode"
+          openTargets={[]}
+          selectedOpenAppId=""
+        />,
+      );
+
+      const hint1 = container.querySelector(".working-hint")?.textContent ?? "";
+      expect(hint1).toContain("心跳 1:");
+
+      rerender(
+        <Messages
+          items={items}
+          threadId="thread-1"
+          workspaceId="ws-1"
+          isThinking
+          processingStartedAt={Date.now() - 13_000}
+          heartbeatPulse={1}
+          activeEngine="opencode"
+          openTargets={[]}
+          selectedOpenAppId=""
+        />,
+      );
+      const hintStable = container.querySelector(".working-hint")?.textContent ?? "";
+      expect(hintStable).toBe(hint1);
+
+      rerender(
+        <Messages
+          items={items}
+          threadId="thread-1"
+          workspaceId="ws-1"
+          isThinking
+          processingStartedAt={Date.now() - 13_000}
+          heartbeatPulse={2}
+          activeEngine="opencode"
+          openTargets={[]}
+          selectedOpenAppId=""
+        />,
+      );
+      const hint2 = container.querySelector(".working-hint")?.textContent ?? "";
+      expect(hint2).toContain("心跳 2:");
+      expect(hint2).not.toBe(hint1);
+    } finally {
+      randomSpy.mockRestore();
+    }
+  });
+
+  it("shows latest backend activity while thinking", () => {
+    const items: ConversationItem[] = [
+      {
+        id: "user-latest-activity",
+        kind: "message",
+        role: "user",
+        text: "帮我检查项目",
+      },
+      {
+        id: "tool-running-activity",
+        kind: "tool",
+        toolType: "commandExecution",
+        title: "Command: rg -n TODO src",
+        detail: "/repo",
+        status: "running",
+        output: "",
+      },
+    ];
+
+    const { container } = render(
+      <Messages
+        items={items}
+        threadId="thread-1"
+        workspaceId="ws-1"
+        isThinking
+        processingStartedAt={Date.now() - 3_000}
+        openTargets={[]}
+        selectedOpenAppId=""
+      />,
+    );
+
+    const activity = container.querySelector(".working-activity");
+    expect(activity?.textContent ?? "").toContain("Command: rg -n TODO src @ /repo");
+  });
+
+  it("does not show stale backend activity from previous turns", () => {
+    const items: ConversationItem[] = [
+      {
+        id: "user-old",
+        kind: "message",
+        role: "user",
+        text: "上一轮",
+      },
+      {
+        id: "tool-old",
+        kind: "tool",
+        toolType: "commandExecution",
+        title: "Command: ls -la",
+        detail: "/old",
+        status: "completed",
+        output: "",
+      },
+      {
+        id: "assistant-old",
+        kind: "message",
+        role: "assistant",
+        text: "上一轮结果",
+      },
+      {
+        id: "user-new",
+        kind: "message",
+        role: "user",
+        text: "新一轮问题",
+      },
+    ];
+
+    const { container } = render(
+      <Messages
+        items={items}
+        threadId="thread-1"
+        workspaceId="ws-1"
+        isThinking
+        processingStartedAt={Date.now() - 2_000}
+        openTargets={[]}
+        selectedOpenAppId=""
+      />,
+    );
+
+    expect(container.querySelector(".working-activity")).toBeNull();
   });
 
   it("keeps the latest title-only reasoning label without rendering a reasoning row", () => {

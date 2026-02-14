@@ -103,7 +103,7 @@ export type ThreadSummary = {
   id: string;
   name: string;
   updatedAt: number;
-  engineSource?: "codex" | "claude";
+  engineSource?: "codex" | "claude" | "opencode";
 };
 
 export type ReviewTarget =
@@ -170,6 +170,7 @@ export type AppSettings = {
   uiScale: number;
   theme: ThemePreference;
   usageShowRemaining: boolean;
+  showMessageAnchors: boolean;
   uiFontFamily: string;
   codeFontFamily: string;
   codeFontSize: number;
@@ -498,6 +499,12 @@ export type CustomCommandOption = {
   content: string;
 };
 
+export type OpenCodeAgentOption = {
+  id: string;
+  description?: string;
+  isPrimary: boolean;
+};
+
 export type BranchInfo = {
   name: string;
   lastCommit: number;
@@ -602,6 +609,8 @@ export type EngineSendMessageParams = {
   continueSession: boolean;
   sessionId: string | null;
   accessMode: string | null;
+  agent?: string | null;
+  variant?: string | null;
 };
 
 /**

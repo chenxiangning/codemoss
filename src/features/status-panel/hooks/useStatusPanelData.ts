@@ -69,11 +69,27 @@ export function useStatusPanelData(items: ConversationItem[]): StatusPanelData {
         (args && typeof args.description === "string" ? args.description : "") ||
         (args && typeof args.prompt === "string"
           ? (args.prompt as string).slice(0, 60)
+          : "") ||
+        (args && typeof args.query === "string"
+          ? (args.query as string).slice(0, 60)
+          : "") ||
+        (args && typeof args.task === "string"
+          ? (args.task as string).slice(0, 60)
           : "");
-      const subagentType =
+      const rawSubagentType =
         args && typeof args.subagent_type === "string"
           ? (args.subagent_type as string)
-          : "unknown";
+          : args && typeof args.agent === "string"
+            ? (args.agent as string)
+            : args && typeof args.type === "string"
+              ? (args.type as string)
+              : args && typeof args.name === "string"
+                ? (args.name as string)
+                : args && typeof args.tool === "string"
+                  ? (args.tool as string)
+                  : "";
+      const normalizedType = rawSubagentType.trim();
+      const subagentType = normalizedType.length > 0 ? normalizedType : "task";
       const resolved = resolveToolStatus(
         item.status,
         Boolean(item.output),

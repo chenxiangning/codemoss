@@ -44,6 +44,7 @@ import type {
   GitHubPullRequest,
   GitLogEntry,
   ModelOption,
+  OpenCodeAgentOption,
   OpenAppTarget,
   QueuedMessage,
   RateLimitSnapshot,
@@ -67,6 +68,7 @@ type ThreadActivityStatus = {
   isReviewing: boolean;
   processingStartedAt?: number | null;
   lastDurationMs?: number | null;
+  heartbeatPulse?: number;
 };
 
 type GitDiffViewerItem = {
@@ -119,6 +121,7 @@ type LayoutNodesOptions = {
   activeItems: ConversationItem[];
   activeRateLimits: RateLimitSnapshot | null;
   usageShowRemaining: boolean;
+  showMessageAnchors: boolean;
   accountInfo: AccountSnapshot | null;
   onSwitchAccount: () => void;
   onCancelSwitchAccount: () => void;
@@ -404,6 +407,12 @@ type LayoutNodesOptions = {
   selectedEffort: string | null;
   onSelectEffort: (effort: string | null) => void;
   reasoningSupported: boolean;
+  opencodeAgents: OpenCodeAgentOption[];
+  selectedOpenCodeAgent: string | null;
+  onSelectOpenCodeAgent: (agentId: string | null) => void;
+  opencodeVariantOptions: string[];
+  selectedOpenCodeVariant: string | null;
+  onSelectOpenCodeVariant: (variant: string | null) => void;
   accessMode: AccessMode;
   onSelectAccessMode: (mode: AccessMode) => void;
   skills: SkillOption[];
@@ -562,9 +571,11 @@ export function useLayoutNodes(options: LayoutNodesOptions): LayoutNodesResult {
       workspacePath={options.activeWorkspace?.path ?? null}
       openTargets={options.openAppTargets}
       selectedOpenAppId={options.selectedOpenAppId}
+      showMessageAnchors={options.showMessageAnchors}
       codeBlockCopyUseModifier={options.codeBlockCopyUseModifier}
       userInputRequests={options.userInputRequests}
       onUserInputSubmit={options.handleUserInputSubmit}
+      activeEngine={options.selectedEngine}
       isThinking={
         options.activeThreadId
           ? options.threadStatusById[options.activeThreadId]?.isProcessing ?? false
@@ -572,6 +583,7 @@ export function useLayoutNodes(options: LayoutNodesOptions): LayoutNodesResult {
       }
       processingStartedAt={activeThreadStatus?.processingStartedAt ?? null}
       lastDurationMs={activeThreadStatus?.lastDurationMs ?? null}
+      heartbeatPulse={activeThreadStatus?.heartbeatPulse ?? 0}
     />
   );
 
@@ -616,6 +628,12 @@ export function useLayoutNodes(options: LayoutNodesOptions): LayoutNodesResult {
       selectedEffort={options.selectedEffort}
       onSelectEffort={options.onSelectEffort}
       reasoningSupported={options.reasoningSupported}
+      opencodeAgents={options.opencodeAgents}
+      selectedOpenCodeAgent={options.selectedOpenCodeAgent}
+      onSelectOpenCodeAgent={options.onSelectOpenCodeAgent}
+      opencodeVariantOptions={options.opencodeVariantOptions}
+      selectedOpenCodeVariant={options.selectedOpenCodeVariant}
+      onSelectOpenCodeVariant={options.onSelectOpenCodeVariant}
       accessMode={options.accessMode}
       onSelectAccessMode={options.onSelectAccessMode}
       skills={options.skills}
@@ -648,6 +666,8 @@ export function useLayoutNodes(options: LayoutNodesOptions): LayoutNodesResult {
       activeFilePath={options.activeComposerFilePath}
       activeFileLineRange={options.activeComposerFileLineRange}
       fileReferenceMode={options.fileReferenceMode}
+      activeWorkspaceId={options.activeWorkspaceId}
+      activeThreadId={options.activeThreadId}
       reviewPrompt={options.reviewPrompt}
       onReviewPromptClose={options.onReviewPromptClose}
       onReviewPromptShowPreset={options.onReviewPromptShowPreset}

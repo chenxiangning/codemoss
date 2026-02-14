@@ -374,6 +374,175 @@
   position: relative;
 }
 
+.composer-select-picker-trigger {
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 12px;
+  padding: 0 2px;
+}
+
+.composer-select-wrap.is-opencode-model-picker {
+  cursor: pointer;
+  flex: 0 1 220px;
+  max-width: 220px;
+  min-width: 120px;
+}
+
+.composer-select-wrap.is-opencode-model-picker:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--interactive-primary) 55%, transparent);
+  outline-offset: 1px;
+}
+
+.composer-select-wrap.is-opencode-model-picker .composer-select-value {
+  max-width: 150px;
+}
+
+.composer-select-wrap.is-opencode-model-picker .composer-opencode-model-badges {
+  display: none;
+}
+
+.composer-opencode-model-indicator {
+  cursor: default;
+  color: #1d4ed8;
+  background: color-mix(in srgb, #dbeafe 78%, transparent);
+  border: 1px solid #bfdbfe;
+}
+
+.composer-opencode-model-indicator:hover {
+  color: #1e40af;
+  background: color-mix(in srgb, #dbeafe 90%, transparent);
+}
+
+:root[data-theme="dark"] .composer-opencode-model-indicator,
+:root[data-theme="dim"] .composer-opencode-model-indicator {
+  color: #fff;
+}
+
+:root[data-theme="dark"] .composer-opencode-model-indicator:hover,
+:root[data-theme="dim"] .composer-opencode-model-indicator:hover {
+  color: #fff;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) .composer-opencode-model-indicator,
+  :root:not([data-theme]) .composer-opencode-model-indicator:hover {
+    color: #fff;
+  }
+}
+
+.composer-engine-status-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  margin-left: 2px;
+  flex: 0 0 10px;
+}
+
+.composer-engine-status-dot.is-ok {
+  background: #22c55e;
+}
+
+.composer-engine-status-dot.is-runtime {
+  background: #f59e0b;
+}
+
+.composer-engine-status-dot.is-fail {
+  background: #ef4444;
+}
+
+.composer-picker-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.22);
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.composer-picker-modal {
+  width: min(680px, calc(100vw - 24px));
+  max-height: min(76vh, 780px);
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+  background: var(--surface-panel, var(--surface-card));
+  box-shadow: 0 20px 60px rgba(15, 23, 42, 0.3);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+}
+
+.composer-picker-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 13px;
+}
+
+.composer-picker-close {
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.composer-picker-search {
+  width: 100%;
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  padding: 6px 8px;
+  font-size: 12px;
+  background: var(--surface-input, var(--surface-card));
+  color: var(--text-strong);
+}
+
+.composer-picker-list {
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  max-height: 46vh;
+  overflow: auto;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.composer-picker-item {
+  border: 0;
+  background: transparent;
+  border-radius: 8px;
+  text-align: left;
+  padding: 6px 8px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  color: var(--text-strong);
+}
+
+.composer-picker-item:hover {
+  background: color-mix(in srgb, var(--surface-control-hover) 80%, transparent);
+}
+
+.composer-picker-item.is-selected {
+  background: #2563eb;
+  color: #fff;
+}
+
+.composer-picker-item-meta {
+  font-size: 11px;
+  opacity: 0.8;
+}
+
+.composer-picker-empty {
+  font-size: 12px;
+  color: var(--text-muted);
+  padding: 10px 8px;
+}
+
 .composer-select-wrap:hover {
   background: var(--surface-item);
   color: var(--text-strong);
@@ -406,6 +575,40 @@
   overflow: hidden;
   text-overflow: ellipsis;
   max-width: 200px;
+}
+
+.composer-opencode-model-badges {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 8px;
+}
+
+.composer-opencode-model-badge {
+  display: inline-block;
+  border-radius: 999px;
+  padding: 0 6px;
+  line-height: 1.5;
+  font-size: 10px;
+  border: 1px solid transparent;
+}
+
+.composer-opencode-model-badge--good {
+  background: #dcfce7;
+  border-color: #86efac;
+  color: #166534;
+}
+
+.composer-opencode-model-badge--warn {
+  background: #fff7ed;
+  border-color: #fdba74;
+  color: #9a3412;
+}
+
+.composer-opencode-model-badge--neutral {
+  background: #eff6ff;
+  border-color: #bfdbfe;
+  color: #1d4ed8;
 }
 
 .composer-attachments {
@@ -1907,6 +2110,78 @@
   border-top: 1px solid color-mix(in srgb, var(--border-subtle) 75%, transparent);
   font-size: 11px;
   color: var(--text-faint);
+}
+
+.composer-select-value--agent {
+  font-weight: 600;
+}
+
+.composer-agent-tone--default {
+  color: var(--text-muted);
+}
+
+.composer-agent-tone--0 {
+  color: color-mix(in srgb, #60a5fa 70%, var(--text-strong));
+}
+
+.composer-agent-tone--1 {
+  color: color-mix(in srgb, #34d399 72%, var(--text-strong));
+}
+
+.composer-agent-tone--2 {
+  color: color-mix(in srgb, #f59e0b 70%, var(--text-strong));
+}
+
+.composer-agent-tone--3 {
+  color: color-mix(in srgb, #f472b6 68%, var(--text-strong));
+}
+
+.composer-agent-tone--4 {
+  color: color-mix(in srgb, #a78bfa 70%, var(--text-strong));
+}
+
+.composer-agent-tone--5 {
+  color: color-mix(in srgb, #22d3ee 68%, var(--text-strong));
+}
+
+.composer-agent-tone--6 {
+  color: color-mix(in srgb, #fb7185 68%, var(--text-strong));
+}
+
+.composer-agent-tone--7 {
+  color: color-mix(in srgb, #84cc16 72%, var(--text-strong));
+}
+
+.composer-select-value--variant {
+  font-weight: 600;
+}
+
+.composer-variant-tone--default {
+  color: var(--text-muted);
+}
+
+.composer-variant-tone--0 {
+  color: color-mix(in srgb, #a78bfa 70%, var(--text-strong));
+}
+
+.composer-variant-tone--1 {
+  color: color-mix(in srgb, #22d3ee 70%, var(--text-strong));
+}
+
+.composer-variant-tone--2 {
+  color: color-mix(in srgb, #34d399 70%, var(--text-strong));
+}
+
+.composer-variant-tone--3 {
+  color: color-mix(in srgb, #f59e0b 70%, var(--text-strong));
+}
+
+.composer-variant-tone--4 {
+  color: color-mix(in srgb, #f472b6 68%, var(--text-strong));
+}
+
+.composer-variant-tone--5 {
+  color: color-mix(in srgb, #60a5fa 70%, var(--text-strong));
 }
 
 @media (max-width: 1280px) {

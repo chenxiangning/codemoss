@@ -101,7 +101,93 @@ type UseThreadsOptions = {
   customPrompts?: CustomPromptOption[];
   onMessageActivity?: () => void;
   activeEngine?: "claude" | "codex" | "gemini" | "opencode";
+  resolveOpenCodeAgent?: (threadId: string | null) => string | null;
+  resolveOpenCodeVariant?: (threadId: string | null) => string | null;
 };
+
+type PendingResolutionInput = {
+  workspaceId: string;
+  engine: "claude" | "opencode";
+  threadsByWorkspace: Record<string, Array<{ id: string }>>;
+  activeThreadIdByWorkspace: Record<string, string | null>;
+  threadStatusById: Record<string, { isProcessing?: boolean } | undefined>;
+  activeTurnIdByThread: Record<string, string | null | undefined>;
+};
+
+export function resolvePendingThreadIdForSession({
+  workspaceId,
+  engine,
+  threadsByWorkspace,
+  activeThreadIdByWorkspace,
+  threadStatusById,
+  activeTurnIdByThread,
+}: PendingResolutionInput): string | null {
+  const prefix = `${engine}-pending-`;
+  const threads = threadsByWorkspace[workspaceId] ?? [];
+  const pendingThreads = threads.filter((thread) => thread.id.startsWith(prefix));
+  if (pendingThreads.length === 0) {
+    return null;
+  }
+
+  const parsePendingTimestamp = (threadId: string): number | null => {
+    const match = threadId.match(/^[a-z]+-pending-(\d+)-/);
+    if (!match) {
+      return null;
+    }
+    const parsed = Number(match[1]);
+    return Number.isFinite(parsed) ? parsed : null;
+  };
+
+  const pickNewestPending = (candidates: Array<{ id: string }>): string | null => {
+    let selected: string | null = null;
+    let maxTimestamp = -1;
+    for (const candidate of candidates) {
+      const timestamp = parsePendingTimestamp(candidate.id);
+      if (timestamp === null || timestamp <= maxTimestamp) {
+        continue;
+      }
+      maxTimestamp = timestamp;
+      selected = candidate.id;
+    }
+    return selected;
+  };
+
+  const activePendingId = activeThreadIdByWorkspace[workspaceId] ?? null;
+  const pickActivePending = (candidates: Array<{ id: string }>): string | null => {
+    if (!activePendingId || !activePendingId.startsWith(prefix)) {
+      return null;
+    }
+    return candidates.some((candidate) => candidate.id === activePendingId)
+      ? activePendingId
+      : null;
+  };
+
+  const processingPending = pendingThreads.filter((thread) =>
+    Boolean(threadStatusById[thread.id]?.isProcessing),
+  );
+  if (processingPending.length === 1) {
+    return processingPending[0].id;
+  }
+  if (processingPending.length > 1) {
+    return pickActivePending(processingPending) ?? pickNewestPending(processingPending);
+  }
+
+  const turnBoundPending = pendingThreads.filter(
+    (thread) => (activeTurnIdByThread[thread.id] ?? null) !== null,
+  );
+  if (turnBoundPending.length === 1) {
+    return turnBoundPending[0].id;
+  }
+  if (turnBoundPending.length > 1) {
+    return pickActivePending(turnBoundPending) ?? pickNewestPending(turnBoundPending);
+  }
+
+  if (pendingThreads.length === 1) {
+    return pendingThreads[0].id;
+  }
+
+  return pickActivePending(pendingThreads) ?? pickNewestPending(pendingThreads);
+}
 
 export function useThreads({
   activeWorkspace,
@@ -115,6 +201,8 @@ export function useThreads({
   customPrompts = [],
   onMessageActivity,
   activeEngine = "claude",
+  resolveOpenCodeAgent,
+  resolveOpenCodeVariant,
 }: UseThreadsOptions) {
   const [state, dispatch] = useReducer(threadReducer, initialState);
   const loadedThreadsRef = useRef<Record<string, boolean>>({});
@@ -212,12 +300,34 @@ export function useThreads({
   );
 
   const getThreadEngine = useCallback(
-    (workspaceId: string, threadId: string): "claude" | "codex" | undefined => {
+    (workspaceId: string, threadId: string): "claude" | "codex" | "opencode" | undefined => {
       const threads = state.threadsByWorkspace[workspaceId] ?? [];
       const thread = threads.find((t) => t.id === threadId);
       return thread?.engineSource;
     },
     [state.threadsByWorkspace],
+  );
+
+  const resolvePendingThreadForSession = useCallback(
+    (
+      workspaceId: string,
+      engine: "claude" | "opencode",
+    ): string | null => {
+      return resolvePendingThreadIdForSession({
+        workspaceId,
+        engine,
+        threadsByWorkspace: state.threadsByWorkspace,
+        activeThreadIdByWorkspace: state.activeThreadIdByWorkspace,
+        threadStatusById: state.threadStatusById,
+        activeTurnIdByThread: state.activeTurnIdByThread,
+      });
+    },
+    [
+      state.activeThreadIdByWorkspace,
+      state.activeTurnIdByThread,
+      state.threadStatusById,
+      state.threadsByWorkspace,
+    ],
   );
 
   const renameCustomNameKey = useCallback(
@@ -322,7 +432,12 @@ export function useThreads({
       return;
     }
     const currentEngine = getThreadEngine(activeWorkspaceId, activeThreadId);
-    const targetEngine = activeEngine === "claude" ? "claude" : "codex";
+    const targetEngine =
+      activeEngine === "claude"
+        ? "claude"
+        : activeEngine === "opencode"
+          ? "opencode"
+          : "codex";
     if (currentEngine === targetEngine) {
       return;
     }
@@ -937,6 +1052,10 @@ export function useThreads({
     startResume,
     startMcp,
     startStatus,
+    startExport,
+    startImport,
+    startLsp,
+    startShare,
     reviewPrompt,
     openReviewPrompt,
     closeReviewPrompt,
@@ -989,6 +1108,8 @@ export function useThreads({
     updateThreadParent,
     startThreadForWorkspace,
     autoNameThread,
+    resolveOpenCodeAgent,
+    resolveOpenCodeVariant,
     onInputMemoryCaptured: handleInputMemoryCaptured,
   });
 
@@ -1148,6 +1269,7 @@ export function useThreads({
     renameThreadTitleMapping,
     renamePendingMemoryCaptureKey,
     onAgentMessageCompletedExternal: handleAgentMessageCompletedForMemory,
+    resolvePendingThreadForSession,
   });
 
   useAppServerEvents(handlers);
@@ -1198,6 +1320,10 @@ export function useThreads({
     startResume,
     startMcp,
     startStatus,
+    startExport,
+    startImport,
+    startLsp,
+    startShare,
     reviewPrompt,
     openReviewPrompt,
     closeReviewPrompt,
