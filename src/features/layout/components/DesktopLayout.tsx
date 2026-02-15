@@ -93,6 +93,7 @@ export function DesktopLayout({
     return (
       <section className="main kanban-fullscreen">
         {kanbanNode}
+        {terminalDockNode}
       </section>
     );
   }

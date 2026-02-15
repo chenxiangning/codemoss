@@ -8,6 +8,8 @@ import {
   interruptTurn,
   listThreads,
   resumeThread,
+  sendUserMessage,
+  startThread,
 } from "../../../services/tauri";
 import { useThreads } from "./useThreads";
 
@@ -336,6 +338,48 @@ describe("useThreads UX integration", () => {
       explanation: "Thread 2 plan",
       steps: [{ step: "Step 2", status: "completed" }],
     });
+  });
+
+  it("creates a new Codex thread when active Claude thread metadata is missing", async () => {
+    const startThreadMock = vi.mocked(startThread);
+    const sendUserMessageMock = vi.mocked(sendUserMessage);
+    startThreadMock.mockResolvedValue({
+      result: {
+        thread: {
+          id: "codex-thread-1",
+        },
+      },
+    });
+    sendUserMessageMock.mockResolvedValue({
+      result: {
+        turn: {
+          id: "turn-1",
+        },
+      },
+    });
+
+    const { result } = renderHook(() =>
+      useThreads({
+        activeWorkspace: workspace,
+        onWorkspaceConnected: vi.fn(),
+        activeEngine: "codex",
+      }),
+    );
+
+    act(() => {
+      result.current.setActiveThreadId("claude-pending-stale");
+    });
+
+    await act(async () => {
+      await result.current.sendUserMessage("hello from codex");
+    });
+
+    expect(startThreadMock).toHaveBeenCalledWith("ws-1");
+    expect(sendUserMessageMock).toHaveBeenCalledTimes(1);
+    const sendArgs = sendUserMessageMock.mock.calls[0];
+    expect(sendArgs?.[0]).toBe("ws-1");
+    expect(sendArgs?.[1]).toBe("codex-thread-1");
+    expect(sendArgs?.[2]).toBe("hello from codex");
   });
 
   it("interrupts immediately even before a turn id is available", async () => {

@@ -548,24 +548,22 @@ impl ClaudeSession {
                 // Extract text content from the message
                 if let Some(message) = event.get("message") {
                     if let Some(content) = message.get("content").and_then(|c| c.as_array()) {
+                        if let Some(cumulative_text) = concat_text_blocks(content) {
+                            // assistant partial messages contain cumulative text.
+                            // Compute the true delta to avoid sending the full text
+                            // on every update, which causes excessive re-renders.
+                            let delta = self.compute_text_delta(&cumulative_text);
+                            if !delta.is_empty() {
+                                return Some(EngineEvent::TextDelta {
+                                    workspace_id: self.workspace_id.clone(),
+                                    text: delta,
+                                });
+                            }
+                        }
+
                         for block in content {
                             let block_type = block.get("type").and_then(|t| t.as_str());
                             match block_type {
-                                Some("text") => {
-                                    if let Some(text) = block.get("text").and_then(|t| t.as_str()) {
-                                        // assistant partial messages contain cumulative text.
-                                        // Compute the true delta to avoid sending the full text
-                                        // on every update, which causes excessive re-renders.
-                                        let delta = self.compute_text_delta(text);
-                                        if delta.is_empty() {
-                                            return None;
-                                        }
-                                        return Some(EngineEvent::TextDelta {
-                                            workspace_id: self.workspace_id.clone(),
-                                            text: delta,
-                                        });
-                                    }
-                                }
                                 Some("tool_use") => {
                                     let tool_name = block
                                         .get("name")
@@ -1131,6 +1129,56 @@ impl ClaudeSession {
     }
 }
 
+fn concat_text_blocks(blocks: &[Value]) -> Option<String> {
+    let mut combined = String::new();
+    for block in blocks {
+        let kind = block.get("type").and_then(|t| t.as_str());
+        if kind == Some("text") {
+            if let Some(text) = block.get("text").and_then(|t| t.as_str()) {
+                combined = merge_text_chunks(&combined, text);
+            }
+        }
+    }
+
+    if combined.trim().is_empty() {
+        return None;
+    }
+
+    Some(combined)
+}
+
+fn merge_text_chunks(existing: &str, incoming: &str) -> String {
+    if incoming.is_empty() {
+        return existing.to_string();
+    }
+    if existing.is_empty() {
+        return incoming.to_string();
+    }
+    if incoming == existing || existing.contains(incoming) {
+        return existing.to_string();
+    }
+    if incoming.starts_with(existing) || incoming.contains(existing) {
+        return incoming.to_string();
+    }
+    if existing.starts_with(incoming) {
+        return existing.to_string();
+    }
+
+    let mut boundaries: Vec<usize> = incoming.char_indices().map(|(idx, _)| idx).collect();
+    boundaries.push(incoming.len());
+    for boundary in boundaries.into_iter().rev() {
+        if boundary == 0 {
+            continue;
+        }
+        let prefix = &incoming[..boundary];
+        if existing.ends_with(prefix) {
+            return format!("{}{}", existing, &incoming[boundary..]);
+        }
+    }
+
+    format!("{}{}", existing, incoming)
+}
+
 fn extract_tool_result_text(value: &Value) -> Option<String> {
     if let Some(text) = value.as_str() {
         let trimmed = text.trim();
@@ -1212,23 +1260,7 @@ fn extract_text_from_content(value: &Value) -> Option<String> {
         }
     }
     if let Some(arr) = value.as_array() {
-        let parts: Vec<String> = arr
-            .iter()
-            .filter_map(|item| {
-                let kind = item.get("type").and_then(|t| t.as_str());
-                if kind == Some("text") {
-                    item.get("text")
-                        .and_then(|t| t.as_str())
-                        .map(|s| s.trim().to_string())
-                        .filter(|s| !s.is_empty())
-                } else {
-                    None
-                }
-            })
-            .collect();
-        if !parts.is_empty() {
-            return Some(parts.join("\n"));
-        }
+        return concat_text_blocks(arr);
     }
     None
 }
@@ -1402,6 +1434,7 @@ impl Default for ClaudeSessionManager {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
     use tokio::sync::broadcast::error::TryRecvError;
 
     #[test]
@@ -1448,5 +1481,83 @@ mod tests {
             other => panic!("unexpected event: {:?}", other),
         }
         assert!(matches!(receiver.try_recv(), Err(TryRecvError::Empty)));
+    }
+
+    #[test]
+    fn extract_text_from_content_concatenates_fragmented_blocks() {
+        let content = json!([
+            {"type": "text", "text": "你"},
+            {"type": "text", "text": "好！我"},
+            {"type": "text", "text": "是"},
+            {"type": "text", "text": "Antigravity"}
+        ]);
+
+        let text = extract_text_from_content(&content);
+        assert_eq!(text.as_deref(), Some("你好！我是Antigravity"));
+    }
+
+    #[test]
+    fn convert_event_prefers_combined_text_when_thinking_and_text_coexist() {
+        let session = ClaudeSession::new(
+            "test-workspace".to_string(),
+            PathBuf::from("/tmp/test"),
+            None,
+        );
+
+        let event = json!({
+            "type": "assistant",
+            "message": {
+                "content": [
+                    {"type": "thinking", "thinking": "先想一下"},
+                    {"type": "text", "text": "你"},
+                    {"type": "text", "text": "好"}
+                ]
+            }
+        });
+
+        let converted = session.convert_event("turn-a", &event);
+        match converted {
+            Some(EngineEvent::TextDelta { text, .. }) => assert_eq!(text, "你好"),
+            other => panic!("expected text delta, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn convert_event_avoids_duplicate_when_assistant_blocks_repeat_whole_message() {
+        let session = ClaudeSession::new(
+            "test-workspace".to_string(),
+            PathBuf::from("/tmp/test"),
+            None,
+        );
+
+        let first = json!({
+            "type": "assistant",
+            "message": {
+                "content": [
+                    {"type": "text", "text": "你好！很高兴见到你。\n\n有什么我可以帮你的吗"}
+                ]
+            }
+        });
+        let second = json!({
+            "type": "assistant",
+            "message": {
+                "content": [
+                    {"type": "text", "text": "有什么我可以帮你的吗？"},
+                    {"type": "text", "text": "你好！很高兴见到你。\n\n有什么我可以帮你的吗？"}
+                ]
+            }
+        });
+
+        match session.convert_event("turn-a", &first) {
+            Some(EngineEvent::TextDelta { text, .. }) => {
+                assert_eq!(text, "你好！很高兴见到你。\n\n有什么我可以帮你的吗")
+            }
+            other => panic!("expected first text delta, got {:?}", other),
+        }
+
+        match session.convert_event("turn-a", &second) {
+            Some(EngineEvent::TextDelta { text, .. }) => assert_eq!(text, "？"),
+            other => panic!("expected punctuation-only delta, got {:?}", other),
+        }
     }
 }

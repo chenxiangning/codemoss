@@ -744,12 +744,13 @@ export function useThreadMessaging({
       // Detect engine switch from the selected engine to thread ownership.
       const currentEngine = normalizeEngineSelection(activeEngine);
       if (activeThreadId) {
+        const storedThreadEngine = getThreadEngine(activeWorkspace.id, activeThreadId);
         const threadEngine = resolveThreadEngine(activeWorkspace.id, activeThreadId);
         const threadIdCompatible = isThreadIdCompatibleWithEngine(
           currentEngine,
           activeThreadId,
         );
-        // If thread has an engine set and it differs from current selection, create new thread
+        // If current thread differs from current selection, or threadId prefix is incompatible, create a new thread.
         if (threadEngine !== currentEngine || !threadIdCompatible) {
           onDebug?.({
             id: `${Date.now()}-client-engine-switch`,
@@ -759,6 +760,7 @@ export function useThreadMessaging({
             payload: {
               workspaceId: activeWorkspace.id,
               oldThreadId: activeThreadId,
+              oldEngineFromStore: storedThreadEngine ?? null,
               oldEngine: threadEngine,
               newEngine: currentEngine,
               threadIdCompatible,

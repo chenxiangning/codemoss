@@ -77,11 +77,11 @@ export function WorkspaceHome({
   const [copiedPath, setCopiedPath] = useState(false);
   const [isStartingConversation, setIsStartingConversation] = useState(false);
   const [pendingGuideId, setPendingGuideId] = useState<string | null>(null);
+  const [startConversationEngine, setStartConversationEngine] = useState<EngineType>("claude");
   const [isManagingThreads, setIsManagingThreads] = useState(false);
   const [selectedThreadIds, setSelectedThreadIds] = useState<Record<string, true>>({});
   const [isDeletingSelected, setIsDeletingSelected] = useState(false);
   const [isDeleteConfirmArmed, setIsDeleteConfirmArmed] = useState(false);
-  const [startConversationEngine, setStartConversationEngine] = useState<EngineType>("claude");
   const latestThread = recentThreads[0] ?? null;
   const selectedCount = useMemo(
     () => Object.keys(selectedThreadIds).length,

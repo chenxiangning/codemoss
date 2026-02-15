@@ -479,11 +479,6 @@
     grid-template-columns: 1fr;
   }
 
-  .workspace-home-thread-selected-count {
-    width: 100%;
-    margin-right: 0;
-  }
-
   .workspace-home-start-conversation-group {
     grid-template-columns: 1fr;
     align-items: stretch;
@@ -494,5 +489,10 @@
   .workspace-home-engine-select {
     width: 100%;
     min-width: 0;
+  }
+
+  .workspace-home-thread-selected-count {
+    width: 100%;
+    margin-right: 0;
   }
 }

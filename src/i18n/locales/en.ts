@@ -280,6 +280,8 @@ const en = {
 
     // Notification
     notificationSounds: "Notification Sounds",
+    systemNotification: "System Notifications",
+    systemNotificationDesc: "Send system-level notifications when sessions complete, even when the window is not in focus.",
     testSound: "Test",
 
     // Language
@@ -791,6 +793,9 @@ const en = {
     filesChanged_other: "{{count}} files changed",
     fileActions: "File actions",
     panelView: "Git panel view",
+    listView: "File list view",
+    listFlat: "Flat",
+    listTree: "Tree",
     // File operations
     stageChanges: "Stage Changes",
     stageFile: "Stage file",
@@ -870,6 +875,12 @@ const en = {
     diffView: "Diff view",
     dualPanelDiff: "Dual-panel diff",
     singleColumnDiff: "Single-column diff",
+    diffContentMode: "Diff content mode",
+    viewAllContent: "Full view",
+    viewFocusedContent: "Focused view",
+    selectFileToViewDiff: "Select a file from the tree to view its diff.",
+    fileContentMode: "File content mode",
+    openFileFullText: "Open full file",
   },
 
   // Terminal
@@ -1472,10 +1483,15 @@ const en = {
       start: "Start",
       menu: "Task menu",
       edit: "Edit",
+      editTitle: "Edit Task",
+      update: "Update",
+      dragToStart: "Please drag this task to \"In Progress\" to start",
       delete: "Delete",
       linked: "Linked",
       processing: "Processing...",
       generateTitle: "Generate title",
+      generateTitleFailed: "Failed to generate title",
+      generateTitleTimeout: "Title generation timed out, please try again",
     },
     conversation: {
       close: "Close",

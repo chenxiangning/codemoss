@@ -78,6 +78,8 @@ pub fn run() {
             {
                 app.handle()
                     .plugin(tauri_plugin_updater::Builder::new().build())?;
+                app.handle()
+                    .plugin(tauri_plugin_notification::init())?;
             }
 
             // Create the main window programmatically so we can register on_navigation
@@ -247,6 +249,7 @@ pub fn run() {
             git::get_git_status,
             git::list_git_roots,
             git::get_git_diffs,
+            git::get_git_file_full_diff,
             git::get_git_log,
             git::get_git_commit_diff,
             git::get_git_remote,

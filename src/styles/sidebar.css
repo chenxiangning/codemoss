@@ -1283,36 +1283,6 @@
   margin-bottom: 2px;
 }
 
-.workspace-session-section {
-  margin-top: 4px;
-  border-top: 1px solid var(--border-subtle);
-  border-radius: 0;
-  background: transparent;
-  overflow: hidden;
-}
-
-.sidebar-section-toggle {
-  width: 100%;
-  border: none;
-  background: transparent;
-  color: inherit;
-  cursor: pointer;
-  border-radius: 0;
-  margin-bottom: 0;
-  padding: 5px 8px;
-  transition: background-color 0.16s ease;
-}
-
-.sidebar-section-toggle:hover,
-.sidebar-section-toggle:focus-visible {
-  background: rgba(255, 255, 255, 0.04);
-}
-
-.sidebar-section-toggle:focus-visible {
-  outline: 1px solid var(--border-subtle);
-  outline-offset: -1px;
-}
-
 .sidebar-section-title {
   font-size: 11px;
   font-weight: 500;
@@ -1327,26 +1297,4 @@
 
 .sidebar-section-title:hover {
   color: var(--text-strong);
-}
-
-.sidebar-section-title-icon {
-  font-size: 12px;
-  opacity: 0.75;
-}
-
-.sidebar-section-chevron {
-  color: var(--text-faint);
-  font-size: 12px;
-  line-height: 1;
-  transform: rotate(90deg);
-  transition: transform 0.16s ease;
-}
-
-.sidebar-section-toggle.collapsed .sidebar-section-chevron {
-  transform: rotate(0deg);
-}
-
-.workspace-session-section .thread-list {
-  padding: 3px 6px 8px;
-  margin: 0;
 }

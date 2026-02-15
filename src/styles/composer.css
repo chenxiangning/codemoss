@@ -1628,22 +1628,6 @@
   background: transparent;
 }
 
-.composer-management-toggle {
-  border: none;
-  background: transparent;
-  color: var(--text-muted);
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-  padding: 4px 6px;
-  flex-shrink: 0;
-  margin-left: auto;
-}
-
-.composer-management-toggle:hover {
-  color: var(--text-strong);
-}
-
 .composer-management-body {
   margin-top: 8px;
   display: grid;
@@ -1653,10 +1637,6 @@
 .composer-management-panel.is-compact .composer-management-header {
   flex-wrap: wrap;
   row-gap: 6px;
-}
-
-.composer-management-panel.is-compact .composer-management-toggle {
-  margin-left: 0;
 }
 
 .composer-management-collapsed-row {
@@ -1669,23 +1649,9 @@
   padding: 0 2px;
 }
 
-.composer-management-collapsed-row.is-collapsed {
-  --composer-chip-max-width: clamp(112px, 12vw, 180px);
-  flex-wrap: nowrap;
-  flex-shrink: 0;
-}
-
 .composer-management-collapsed-row.is-expanded {
   --composer-chip-max-width: 190px;
   row-gap: 6px;
-}
-
-.composer-management-collapsed-row.is-collapsed .composer-collapsed-pill {
-  flex: 0 0 auto;
-}
-
-.composer-management-collapsed-row.is-collapsed .composer-kanban-strip {
-  flex-shrink: 0;
 }
 
 .composer-collapsed-pill {

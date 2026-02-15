@@ -147,6 +147,7 @@ import { useOpenAppIcons } from "./features/app/hooks/useOpenAppIcons";
 import { useCodeCssVars } from "./features/app/hooks/useCodeCssVars";
 import { useAccountSwitching } from "./features/app/hooks/useAccountSwitching";
 import { useMenuLocalization } from "./features/app/hooks/useMenuLocalization";
+import { sendSystemNotification, setNotificationActionHandler } from "./services/systemNotification";
 
 const AboutView = lazy(() =>
   import("./features/about/components/AboutView").then((module) => ({
@@ -445,6 +446,8 @@ function MainApp() {
     setGitPanelMode,
     gitDiffViewStyle,
     setGitDiffViewStyle,
+    gitDiffListView,
+    setGitDiffListView,
     filePanelMode,
     setFilePanelMode,
     selectedPullRequest,
@@ -1362,6 +1365,23 @@ function MainApp() {
     ],
   );
 
+  // Register system notification click handler to navigate to the completed thread
+  useEffect(() => {
+    setNotificationActionHandler((extra) => {
+      const workspaceId = typeof extra.workspaceId === "string" ? extra.workspaceId : undefined;
+      const threadId = typeof extra.threadId === "string" ? extra.threadId : undefined;
+      if (workspaceId && threadId) {
+        handleOpenThreadCompletionNotice({
+          id: `${workspaceId}:${threadId}`,
+          workspaceId,
+          threadId,
+          workspaceName: "",
+          threadName: "",
+          completedAt: Date.now(),
+        });
+      }
+    });
+  }, [handleOpenThreadCompletionNotice]);
   const openAppIconById = useOpenAppIcons(appSettings.openAppTargets);
 
   const persistProjectCopiesFolder = useCallback(
@@ -1789,7 +1809,10 @@ function MainApp() {
       return;
     }
 
-    const ordered = completed.sort((a, b) => b.completedAt - a.completedAt);
+    const ordered = [...completed].sort((a, b) => b.completedAt - a.completedAt);
+
+    // Always queue in-app bubble notifications regardless of window focus state.
+    // When the window is not focused, system notifications supplement these bubbles.
     setThreadCompletionNotices((current) => {
       let next = [...current];
       for (const notice of ordered) {
@@ -1798,7 +1821,23 @@ function MainApp() {
       }
       return next.slice(0, THREAD_COMPLETION_NOTICE_LIMIT);
     });
-  }, [lastAgentMessageByThread, t, threadStatusById, threadsByWorkspace, workspaces]);
+
+    // Send a single system notification for the most recent completion to avoid
+    // notification flooding when multiple sessions finish at the same time.
+    if (!document.hasFocus() && appSettings.systemNotificationEnabled) {
+      const latest = ordered[0];
+      if (latest) {
+        void sendSystemNotification({
+          title: t("threadCompletion.title"),
+          body: `${t("threadCompletion.project")}: ${latest.workspaceName}\n${t("threadCompletion.session")}: ${latest.threadName}`,
+          extra: {
+            workspaceId: latest.workspaceId,
+            threadId: latest.threadId,
+          },
+        });
+      }
+    }
+  }, [appSettings.systemNotificationEnabled, lastAgentMessageByThread, t, threadStatusById, threadsByWorkspace, workspaces]);
 
   const {
     commitMessage,
@@ -2971,6 +3010,16 @@ function MainApp() {
     : (isTablet ? tabletTab : activeTab) === "codex") && !showWorkspaceHome);
   const showGitDetail = Boolean(selectedDiffPath) && isPhone;
   const isThreadOpen = Boolean(activeThreadId && showComposer);
+  const handleSelectDiffForPanel = useCallback(
+    (path: string | null) => {
+      if (!path) {
+        setSelectedDiffPath(null);
+        return;
+      }
+      handleSelectDiff(path);
+    },
+    [handleSelectDiff, setSelectedDiffPath],
+  );
 
   useArchiveShortcut({
     isEnabled: isThreadOpen,
@@ -3263,9 +3312,6 @@ function MainApp() {
     launchScriptsState,
     mainHeaderActionsNode: (
       <MainHeaderActions
-        centerMode={centerMode}
-        gitDiffViewStyle={gitDiffViewStyle}
-        onSelectDiffViewStyle={setGitDiffViewStyle}
         isCompact={isCompact}
         rightPanelCollapsed={rightPanelCollapsed}
         sidebarToggleProps={sidebarToggleProps}
@@ -3294,6 +3340,8 @@ function MainApp() {
     gitPanelMode,
     onGitPanelModeChange: handleGitPanelModeChange,
     gitDiffViewStyle,
+    gitDiffListView,
+    onGitDiffListViewChange: setGitDiffListView,
     worktreeApplyLabel: t("git.applyWorktreeChangesAction"),
     worktreeApplyTitle: activeParentWorkspace?.name
       ? t("git.applyWorktreeChanges") + ` ${activeParentWorkspace.name}`
@@ -3308,7 +3356,7 @@ function MainApp() {
     fileStatus,
     selectedDiffPath,
     diffScrollRequestId,
-    onSelectDiff: handleSelectDiff,
+    onSelectDiff: handleSelectDiffForPanel,
     gitLogEntries,
     gitLogTotal,
     gitLogAhead,
@@ -3364,6 +3412,7 @@ function MainApp() {
     gitDiffLoading: activeDiffLoading,
     gitDiffError: activeDiffError,
     onDiffActivePathChange: handleActiveDiffPath,
+    onGitDiffViewStyleChange: setGitDiffViewStyle,
     commitMessage,
     commitMessageLoading,
     commitMessageError,
@@ -3626,6 +3675,8 @@ function MainApp() {
               kanbanConversationWidth={kanbanConversationWidth}
               onKanbanConversationResizeStart={onKanbanConversationResizeStart}
               gitPanelNode={gitDiffPanelNode}
+              terminalOpen={terminalOpen}
+              onToggleTerminal={handleToggleTerminal}
             />
           ) : null
         }

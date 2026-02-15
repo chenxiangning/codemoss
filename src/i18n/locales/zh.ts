@@ -279,6 +279,8 @@ const zh = {
 
     // 通知
     notificationSounds: "通知声音",
+    systemNotification: "系统通知",
+    systemNotificationDesc: "会话完成时发送系统级通知，即使窗口不在前台也能收到提醒。",
     testSound: "测试",
 
     // 语言
@@ -790,6 +792,9 @@ const zh = {
     filesChanged_other: "{{count}} 个文件已更改",
     fileActions: "文件操作",
     panelView: "Git 面板视图",
+    listView: "文件列表视图",
+    listFlat: "平铺",
+    listTree: "树形",
     // 文件操作
     stageChanges: "暂存更改",
     stageFile: "暂存文件",
@@ -869,6 +874,12 @@ const zh = {
     diffView: "差异视图",
     dualPanelDiff: "双栏差异",
     singleColumnDiff: "单栏差异",
+    diffContentMode: "差异内容模式",
+    viewAllContent: "全文查看",
+    viewFocusedContent: "区域查看",
+    selectFileToViewDiff: "请先在树形列表中选择一个文件查看差异。",
+    fileContentMode: "文件内容模式",
+    openFileFullText: "打开全文",
   },
 
   // 终端
@@ -1471,10 +1482,15 @@ const zh = {
       start: "开始",
       menu: "任务菜单",
       edit: "编辑",
+      editTitle: "编辑任务",
+      update: "更新",
+      dragToStart: "请将这个任务拖拽到「进行中」下面执行",
       delete: "删除",
       linked: "已关联",
       processing: "处理中...",
       generateTitle: "生成标题",
+      generateTitleFailed: "生成标题失败",
+      generateTitleTimeout: "生成标题超时，请稍后重试",
     },
     conversation: {
       close: "关闭",

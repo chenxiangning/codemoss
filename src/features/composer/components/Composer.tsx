@@ -357,7 +357,6 @@ export function Composer({
   const { t } = useTranslation();
   const [text, setText] = useState(draftText);
   const [selectionStart, setSelectionStart] = useState<number | null>(null);
-  const [manualContextCollapsed, setManualContextCollapsed] = useState(true);
   const [isCompactLayout, setIsCompactLayout] = useState(false);
   const [selectedSkillNames, setSelectedSkillNames] = useState<string[]>([]);
   const [selectedCommonsNames, setSelectedCommonsNames] = useState<string[]>([]);
@@ -377,8 +376,6 @@ export function Composer({
   const managementPanelRef = useRef<HTMLDivElement | null>(null);
   const managementHeaderRef = useRef<HTMLDivElement | null>(null);
   const contextActionsRef = useRef<HTMLDivElement | null>(null);
-  const managementToggleRef = useRef<HTMLButtonElement | null>(null);
-  const previousCompactLayoutRef = useRef(false);
   const lastExpandedHeightRef = useRef(
     Math.max(textareaHeight, COMPOSER_EXPAND_HEIGHT),
   );
@@ -502,26 +499,7 @@ export function Composer({
   const opencodeDisconnected =
     selectedEngine === "opencode" && openCodeProviderToneReady && openCodeProviderTone === "is-fail";
   const canSendEffective = canSend && !opencodeDisconnected;
-  const contextCollapsed = manualContextCollapsed;
   const showOpenCodeControlPanel = selectedEngine === "opencode";
-  const collapsedSkillPreview = selectedSkills.slice(0, 2);
-  const collapsedCommonsPreview = selectedCommons.slice(0, 2);
-  const collapsedKanbanPreview = (() => {
-    if (linkedKanbanPanels.length <= 2) {
-      return linkedKanbanPanels;
-    }
-    const base = linkedKanbanPanels.slice(0, 2);
-    if (!selectedLinkedKanbanPanelId) {
-      return base;
-    }
-    if (base.some((panel) => panel.id === selectedLinkedKanbanPanelId)) {
-      return base;
-    }
-    const selected = linkedKanbanPanels.find(
-      (panel) => panel.id === selectedLinkedKanbanPanelId,
-    );
-    return selected ? [base[0], selected] : base;
-  })();
   const availableSkills = skills.filter((skill) => !selectedSkillNames.includes(skill.name));
   const availableCommons = commands.filter((item) => !selectedCommonsNames.includes(item.name));
   const skillOptions = availableSkills.map((skill) => ({
@@ -562,10 +540,6 @@ export function Composer({
   useEffect(() => {
     setText((prev) => (prev === draftText ? prev : draftText));
   }, [draftText]);
-
-  useEffect(() => {
-    setManualContextCollapsed(true);
-  }, [historyKey]);
 
   const setComposerText = useCallback(
     (next: string) => {
@@ -711,9 +685,9 @@ export function Composer({
   }, [
     attachedImages,
     disabled,
+    applyActiveFileReference,
     opencodeDisconnected,
     selectedOpenCodeDirectCommand,
-    applyActiveFileReference,
     selectedCommons,
     selectedSkills,
     onSend,
@@ -899,26 +873,24 @@ export function Composer({
     const panelElement = managementPanelRef.current;
     const headerElement = managementHeaderRef.current;
     const actionsElement = contextActionsRef.current;
-    const toggleElement = managementToggleRef.current;
 
     const updateCompactLayout = () => {
       const panelWidth = panelElement?.getBoundingClientRect().width ?? 0;
       const headerWidth = headerElement?.getBoundingClientRect().width ?? panelWidth;
       const actionsWidth = actionsElement?.scrollWidth ?? 0;
-      const toggleWidth = toggleElement?.getBoundingClientRect().width ?? 0;
-      if (headerWidth <= 0 || actionsWidth <= 0 || toggleWidth <= 0) {
+      if (headerWidth <= 0 || actionsWidth <= 0) {
         setIsCompactLayout(false);
         return;
       }
       setIsCompactLayout(
-        actionsWidth + toggleWidth + COMPOSER_COMPACT_RESERVED_GAP > headerWidth,
+        actionsWidth + COMPOSER_COMPACT_RESERVED_GAP > headerWidth,
       );
     };
 
     updateCompactLayout();
     if (typeof ResizeObserver !== "undefined" && panelElement) {
       const observer = new ResizeObserver(() => updateCompactLayout());
-      for (const element of [panelElement, headerElement, actionsElement, toggleElement]) {
+      for (const element of [panelElement, headerElement, actionsElement]) {
         if (element) {
           observer.observe(element);
         }
@@ -932,13 +904,6 @@ export function Composer({
     }
     return undefined;
   }, []);
-
-  useEffect(() => {
-    if (isCompactLayout && !previousCompactLayoutRef.current) {
-      setManualContextCollapsed(false);
-    }
-    previousCompactLayoutRef.current = isCompactLayout;
-  }, [isCompactLayout]);
 
   useEffect(() => {
     if (!dictationTranscript) {
@@ -1326,15 +1291,9 @@ export function Composer({
                 </ComposerContextMenuPopover>
               </div>
             </div>
-            {(selectedSkills.length > 0 ||
-              selectedCommons.length > 0 ||
-              (contextCollapsed && collapsedKanbanPreview.length > 0)) && (
-                <div
-                  className={`composer-management-collapsed-row${
-                    contextCollapsed ? " is-collapsed" : " is-expanded"
-                  }`}
-                >
-                  {(contextCollapsed ? collapsedSkillPreview : selectedSkills).map((skill) => (
+            {(selectedSkills.length > 0 || selectedCommons.length > 0) && (
+                <div className="composer-management-collapsed-row is-expanded">
+                  {selectedSkills.map((skill) => (
                     <button
                       key={`collapsed-skill-${skill.name}`}
                       type="button"
@@ -1353,7 +1312,7 @@ export function Composer({
                       <span aria-hidden>×</span>
                     </button>
                   ))}
-                  {(contextCollapsed ? collapsedCommonsPreview : selectedCommons).map((item) => (
+                  {selectedCommons.map((item) => (
                     <button
                       key={`collapsed-commons-${item.name}`}
                       type="button"
@@ -1372,178 +1331,96 @@ export function Composer({
                       <span aria-hidden>×</span>
                     </button>
                   ))}
-                  {contextCollapsed && collapsedKanbanPreview.length > 0 && (
-                    <div
-                      className="composer-kanban-strip composer-kanban-strip--compact"
-                      role="tablist"
-                      aria-label={t("kanban.composer.relatedPanels")}
-                    >
-                      {collapsedKanbanPreview.map((panel) => {
-                        const isActive = selectedLinkedKanbanPanelId === panel.id;
-                        return (
-                          <div
-                            key={`collapsed-panel-${panel.id}`}
-                            className={`composer-kanban-strip-item${isActive ? " is-active" : ""}`}
-                          >
-                            <button
-                              type="button"
-                              className="composer-kanban-strip-main"
-                              onClick={() => handleSelectLinkedPanel(panel.id)}
-                            >
-                              <span className="composer-kanban-strip-kind" aria-hidden>
-                                <ClipboardList size={10} />
-                              </span>
-                              <span>{panel.name}</span>
-                            </button>
-                            <button
-                              type="button"
-                              className="composer-kanban-strip-link"
-                              onClick={() => onOpenLinkedKanbanPanel?.(panel.id)}
-                              aria-label={`${panel.name} ${t("kanban.composer.link")}`}
-                            >
-                              <ExternalLink size={12} />
-                            </button>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                  {contextCollapsed && selectedLinkedPanel ? (
-                    <div
-                      className="composer-kanban-context-mode composer-kanban-context-mode--compact"
-                      role="group"
-                      aria-label={t("kanban.composer.contextModeLabel")}
-                    >
-                      <button
-                        type="button"
-                        className={`composer-kanban-context-mode-btn${
-                          kanbanContextMode === "new" ? " is-active" : ""
-                        }`}
-                        onClick={() => onKanbanContextModeChange?.("new")}
-                      >
-                        {kanbanContextMode === "new" ? (
-                          <span className="composer-kanban-context-mode-check" aria-hidden>
-                            <Check size={10} />
-                          </span>
-                        ) : null}
-                        {t("kanban.composer.contextModeNew")}
-                      </button>
-                      <button
-                        type="button"
-                        className={`composer-kanban-context-mode-btn${
-                          kanbanContextMode === "inherit" ? " is-active" : ""
-                        }`}
-                        onClick={() => onKanbanContextModeChange?.("inherit")}
-                      >
-                        {kanbanContextMode === "inherit" ? (
-                          <span className="composer-kanban-context-mode-check" aria-hidden>
-                            <Check size={10} />
-                          </span>
-                        ) : null}
-                        {t("kanban.composer.contextModeInherit")}
-                      </button>
-                    </div>
-                  ) : null}
                 </div>
               )}
-            <button
-              ref={managementToggleRef}
-              type="button"
-              className="composer-management-toggle"
-              onClick={() => setManualContextCollapsed((prev) => !prev)}
-            >
-              {contextCollapsed ? "▶" : "▼"} 管理面板
-            </button>
           </div>
 
-          {!contextCollapsed && (
-            <div className="composer-management-body">
-              <div className="composer-management-divider" />
-              <div className="composer-kanban-toolbar">
-                <span className="composer-kanban-strip-title">
-                  {t("kanban.composer.relatedPanels")}
-                </span>
-                {linkedKanbanPanels.length > 0 ? (
-                  <div className="composer-kanban-strip" role="tablist" aria-label={t("kanban.composer.relatedPanels")}>
-                    {linkedKanbanPanels.map((panel) => {
-                      const isActive = selectedLinkedKanbanPanelId === panel.id;
-                      return (
-                        <div
-                          key={panel.id}
-                          className={`composer-kanban-strip-item${isActive ? " is-active" : ""}`}
-                        >
-                          <button
-                            type="button"
-                            className="composer-kanban-strip-main"
-                            onClick={() => handleSelectLinkedPanel(panel.id)}
-                          >
-                            <span className="composer-kanban-strip-kind" aria-hidden>
-                              <ClipboardList size={10} />
-                            </span>
-                            <span>{panel.name}</span>
-                          </button>
-                          <button
-                            type="button"
-                            className="composer-kanban-strip-link"
-                            onClick={() => onOpenLinkedKanbanPanel?.(panel.id)}
-                            aria-label={`${panel.name} ${t("kanban.composer.link")}`}
-                          >
-                            <ExternalLink size={12} />
-                          </button>
-                        </div>
-                      );
-                    })}
-                    {selectedLinkedPanel && (
-                      <button
-                        type="button"
-                        className="composer-kanban-strip-clear"
-                        onClick={() => handleSelectLinkedPanel(selectedLinkedPanel.id)}
+          <div className="composer-management-body">
+            <div className="composer-management-divider" />
+            <div className="composer-kanban-toolbar">
+              <span className="composer-kanban-strip-title">
+                {t("kanban.composer.relatedPanels")}
+              </span>
+              {linkedKanbanPanels.length > 0 ? (
+                <div className="composer-kanban-strip" role="tablist" aria-label={t("kanban.composer.relatedPanels")}>
+                  {linkedKanbanPanels.map((panel) => {
+                    const isActive = selectedLinkedKanbanPanelId === panel.id;
+                    return (
+                      <div
+                        key={panel.id}
+                        className={`composer-kanban-strip-item${isActive ? " is-active" : ""}`}
                       >
-                        {t("kanban.composer.clear")}
-                      </button>
-                    )}
-                  </div>
-                ) : (
-                  <span className="composer-kanban-strip-empty">{t("kanban.composer.empty")}</span>
-                )}
-                {selectedLinkedPanel ? (
-                  <div className="composer-kanban-context-mode" role="group" aria-label={t("kanban.composer.contextModeLabel")}>
-                    <span className="composer-kanban-context-mode-label">
-                      {t("kanban.composer.contextModeLabel")}
-                    </span>
+                        <button
+                          type="button"
+                          className="composer-kanban-strip-main"
+                          onClick={() => handleSelectLinkedPanel(panel.id)}
+                        >
+                          <span className="composer-kanban-strip-kind" aria-hidden>
+                            <ClipboardList size={10} />
+                          </span>
+                          <span>{panel.name}</span>
+                        </button>
+                        <button
+                          type="button"
+                          className="composer-kanban-strip-link"
+                          onClick={() => onOpenLinkedKanbanPanel?.(panel.id)}
+                          aria-label={`${panel.name} ${t("kanban.composer.link")}`}
+                        >
+                          <ExternalLink size={12} />
+                        </button>
+                      </div>
+                    );
+                  })}
+                  {selectedLinkedPanel && (
                     <button
                       type="button"
-                      className={`composer-kanban-context-mode-btn${
-                        kanbanContextMode === "new" ? " is-active" : ""
-                      }`}
-                      onClick={() => onKanbanContextModeChange?.("new")}
+                      className="composer-kanban-strip-clear"
+                      onClick={() => handleSelectLinkedPanel(selectedLinkedPanel.id)}
                     >
-                      {kanbanContextMode === "new" ? (
-                        <span className="composer-kanban-context-mode-check" aria-hidden>
-                          <Check size={10} />
-                        </span>
-                      ) : null}
-                      {t("kanban.composer.contextModeNew")}
+                      {t("kanban.composer.clear")}
                     </button>
-                    <button
-                      type="button"
-                      className={`composer-kanban-context-mode-btn${
-                        kanbanContextMode === "inherit" ? " is-active" : ""
-                      }`}
-                      onClick={() => onKanbanContextModeChange?.("inherit")}
-                    >
-                      {kanbanContextMode === "inherit" ? (
-                        <span className="composer-kanban-context-mode-check" aria-hidden>
-                          <Check size={10} />
-                        </span>
-                      ) : null}
-                      {t("kanban.composer.contextModeInherit")}
-                    </button>
-                  </div>
-                ) : null}
-              </div>
+                  )}
+                </div>
+              ) : (
+                <span className="composer-kanban-strip-empty">{t("kanban.composer.empty")}</span>
+              )}
+              {selectedLinkedPanel ? (
+                <div className="composer-kanban-context-mode" role="group" aria-label={t("kanban.composer.contextModeLabel")}>
+                  <span className="composer-kanban-context-mode-label">
+                    {t("kanban.composer.contextModeLabel")}
+                  </span>
+                  <button
+                    type="button"
+                    className={`composer-kanban-context-mode-btn${
+                      kanbanContextMode === "new" ? " is-active" : ""
+                    }`}
+                    onClick={() => onKanbanContextModeChange?.("new")}
+                  >
+                    {kanbanContextMode === "new" ? (
+                      <span className="composer-kanban-context-mode-check" aria-hidden>
+                        <Check size={10} />
+                      </span>
+                    ) : null}
+                    {t("kanban.composer.contextModeNew")}
+                  </button>
+                  <button
+                    type="button"
+                    className={`composer-kanban-context-mode-btn${
+                      kanbanContextMode === "inherit" ? " is-active" : ""
+                    }`}
+                    onClick={() => onKanbanContextModeChange?.("inherit")}
+                  >
+                    {kanbanContextMode === "inherit" ? (
+                      <span className="composer-kanban-context-mode-check" aria-hidden>
+                        <Check size={10} />
+                      </span>
+                    ) : null}
+                    {t("kanban.composer.contextModeInherit")}
+                  </button>
+                </div>
+              ) : null}
             </div>
-          )}
+          </div>
         </div>
 
         <ComposerInput
