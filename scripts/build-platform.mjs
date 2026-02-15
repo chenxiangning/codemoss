@@ -78,6 +78,16 @@ function exec(cmd, options = {}) {
   }
 }
 
+function hasCodesignIdentity(identity) {
+  if (!identity || process.platform !== "darwin") {
+    return false;
+  }
+  const escaped = identity.replace(/"/g, '\\"');
+  return exec(`security find-identity -v -p codesigning | grep -F "${escaped}"`, {
+    ignoreError: true,
+  });
+}
+
 // Check current platform
 function getCurrentPlatform() {
   const platform = process.platform;
@@ -245,7 +255,14 @@ async function buildMacOS(arch, options = {}) {
       exec(`codesign --force --options runtime --sign "${identity}" --entitlements "${entitlements}" --timestamp "${bundlePath}"`);
     } else {
       // Use existing script for single-arch builds
-      exec(`CODESIGN_IDENTITY="${CONFIG.codesignIdentity}" scripts/macos-fix-openssl.sh "${bundlePath}"`);
+      if (hasCodesignIdentity(CONFIG.codesignIdentity)) {
+        exec(`CODESIGN_IDENTITY="${CONFIG.codesignIdentity}" scripts/macos-fix-openssl.sh "${bundlePath}"`);
+      } else {
+        console.log(
+          `\nCodesign identity not found: ${CONFIG.codesignIdentity}\nFalling back to ad-hoc signing for local builds...`,
+        );
+        exec(`ADHOC_SIGN=1 scripts/macos-fix-openssl.sh "${bundlePath}"`);
+      }
     }
   }
 
