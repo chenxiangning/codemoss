@@ -68,7 +68,6 @@ const makeOptions = (overrides: SetupOverrides = {}) => {
       renameThreadTitleMapping,
       renamePendingMemoryCaptureKey,
       resolvePendingThreadForSession,
-      renamePendingMemoryCaptureKey,
     }),
   );
 
@@ -89,8 +88,6 @@ const makeOptions = (overrides: SetupOverrides = {}) => {
     renameThreadTitleMapping,
     renamePendingMemoryCaptureKey,
     resolvePendingThreadForSession,
-    resolvePendingThreadForSession,
-    renamePendingMemoryCaptureKey,
     pendingInterruptsRef,
     interruptedThreadsRef,
   };

@@ -81,7 +81,6 @@ export function useThreadTurnEvents({
   renameThreadTitleMapping,
   renamePendingMemoryCaptureKey,
   resolvePendingThreadForSession,
-  resolvePendingThreadForSession,
 }: UseThreadTurnEventsOptions) {
   const { t } = useTranslation();
   const resolvePendingAliasThread = useCallback(

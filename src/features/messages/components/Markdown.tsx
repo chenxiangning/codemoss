@@ -333,7 +333,6 @@ export const Markdown = memo(function Markdown({
   const throttleTimerRef = useRef<number>(0);
   const mountedRef = useRef(true);
   const latestValueRef = useRef(value);
-  const mountedRef = useRef(true);
   latestValueRef.current = value;
 
   useEffect(() => {

@@ -146,7 +146,6 @@ export function useThreadEventHandlers({
     renameThreadTitleMapping,
     renamePendingMemoryCaptureKey,
     resolvePendingThreadForSession,
-    renamePendingMemoryCaptureKey,
   });
 
   const onBackgroundThreadAction = useCallback(
