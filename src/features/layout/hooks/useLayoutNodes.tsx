@@ -462,6 +462,8 @@ type LayoutNodesOptions = {
   onFileReferenceModeChange: (mode: "path" | "none") => void;
   plan: TurnPlan | null;
   isPlanMode: boolean;
+  onOpenPlanPanel: () => void;
+  onClosePlanPanel: () => void;
   debugEntries: DebugEntry[];
   debugOpen: boolean;
   terminalOpen: boolean;
@@ -646,6 +648,7 @@ export function useLayoutNodes(options: LayoutNodesOptions): LayoutNodesResult {
       isPlanMode={options.isPlanMode}
       isPlanProcessing={options.isProcessing}
       onOpenDiffPath={handleOpenDiffPath}
+      onOpenPlanPanel={options.onOpenPlanPanel}
       isThinking={
         options.activeThreadId
           ? options.threadStatusById[options.activeThreadId]?.isProcessing ?? false
@@ -1049,6 +1052,8 @@ export function useLayoutNodes(options: LayoutNodesOptions): LayoutNodesResult {
       plan={options.plan}
       isProcessing={options.isProcessing}
       isPlanMode={options.isPlanMode}
+      isCodexEngine={options.selectedEngine === "codex"}
+      onClose={options.onClosePlanPanel}
     />
   );
 

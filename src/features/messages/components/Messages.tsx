@@ -30,6 +30,7 @@ import {
   SearchToolGroupBlock,
 } from "./toolBlocks";
 import { MEMORY_CONTEXT_SUMMARY_PREFIX } from "../../project-memory/utils/memoryMarkers";
+import { buildCommandSummary } from "./toolBlocks/toolConstants";
 
 
 type MessagesProps = {
@@ -56,6 +57,7 @@ type MessagesProps = {
   isPlanMode?: boolean;
   isPlanProcessing?: boolean;
   onOpenDiffPath?: (path: string) => void;
+  onOpenPlanPanel?: () => void;
 };
 
 type StatusTone = "completed" | "processing" | "failed" | "unknown";
@@ -358,7 +360,14 @@ function scrollKeyForItems(items: ConversationItem[]) {
   }
 }
 
-function resolveWorkingActivityLabel(item: ConversationItem) {
+function resolveCodexCommandActivityLabel(item: Extract<ConversationItem, { kind: "tool" }>) {
+  return buildCommandSummary(item, { includeDetail: false });
+}
+
+function resolveWorkingActivityLabel(
+  item: ConversationItem,
+  activeEngine: "claude" | "codex" | "gemini" | "opencode" = "claude",
+) {
   if (item.kind === "reasoning") {
     const parsed = parseReasoning(item);
     return parsed.workingLabel;
@@ -373,6 +382,12 @@ function resolveWorkingActivityLabel(item: ConversationItem) {
   if (item.kind === "tool") {
     const title = item.title?.trim();
     const detail = item.detail?.trim();
+    if (activeEngine === "codex") {
+      const codexCommand = resolveCodexCommandActivityLabel(item);
+      if (codexCommand) {
+        return codexCommand;
+      }
+    }
     if (!title) {
       return null;
     }
@@ -772,6 +787,7 @@ export const Messages = memo(function Messages({
   isPlanMode = false,
   isPlanProcessing = false,
   onOpenDiffPath,
+  onOpenPlanPanel,
 }: MessagesProps) {
   const { t } = useTranslation();
   const bottomRef = useRef<HTMLDivElement | null>(null);
@@ -947,13 +963,13 @@ export const Messages = memo(function Messages({
       if (item.kind === "message" && item.role === "assistant") {
         break;
       }
-      const label = resolveWorkingActivityLabel(item);
+      const label = resolveWorkingActivityLabel(item, activeEngine);
       if (label) {
         return label;
       }
     }
     return null;
-  }, [items]);
+  }, [activeEngine, items]);
 
   const waitingForFirstChunk = useMemo(() => {
     if (!isThinking || items.length === 0) {
@@ -1189,15 +1205,18 @@ export const Messages = memo(function Messages({
           isProcessing={isPlanProcessing}
           onOpenDiffPath={onOpenDiffPath}
           onOpenFullPlan={() => {
-            const planPanel = document.querySelector(".plan-panel");
-            if (!(planPanel instanceof HTMLElement)) {
-              return;
-            }
-            planPanel.scrollIntoView({ behavior: "smooth", block: "nearest" });
-            planPanel.classList.add("plan-panel-focus-ring");
-            window.setTimeout(() => {
-              planPanel.classList.remove("plan-panel-focus-ring");
-            }, 1400);
+            onOpenPlanPanel?.();
+            window.requestAnimationFrame(() => {
+              const planPanel = document.querySelector(".plan-panel");
+              if (!(planPanel instanceof HTMLElement)) {
+                return;
+              }
+              planPanel.scrollIntoView({ behavior: "smooth", block: "nearest" });
+              planPanel.classList.add("plan-panel-focus-ring");
+              window.setTimeout(() => {
+                planPanel.classList.remove("plan-panel-focus-ring");
+              }, 1400);
+            });
           }}
         />
       );
