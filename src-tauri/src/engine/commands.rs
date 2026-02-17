@@ -22,6 +22,10 @@ use super::status::detect_opencode_status;
 use super::{EngineConfig, EngineStatus, EngineType};
 use crate::backend::events::AppServerEvent;
 
+/// Maximum lifetime for an event forwarder task. Prevents orphaned tasks from
+/// leaking memory when the underlying process hangs or is killed externally.
+const EVENT_FORWARDER_TIMEOUT_SECS: u64 = 30 * 60;
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct OpenCodeCommandEntry {
@@ -1590,6 +1594,15 @@ async fn load_opencode_provider_health(
     })
 }
 
+/// Remove MCP toggle state for a workspace to free memory.
+pub(crate) fn clear_mcp_toggle_state(workspace_id: &str) {
+    if let Some(cache) = OPENCODE_MCP_TOGGLE_STATE.get() {
+        if let Ok(mut guard) = cache.lock() {
+            guard.remove(workspace_id);
+        }
+    }
+}
+
 #[tauri::command]
 pub async fn opencode_mcp_toggle(
     workspace_id: String,
@@ -1902,9 +1915,16 @@ pub async fn engine_send_message(
             let turn_id_for_forwarder = turn_id.clone();
             let mut accumulated_agent_text = String::new();
 
-            // Spawn event forwarder: reads from broadcast channel and emits Tauri events
+            // Spawn event forwarder: reads from broadcast channel and emits Tauri events.
             tokio::spawn(async move {
-                while let Ok(turn_event) = receiver.recv().await {
+                let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(EVENT_FORWARDER_TIMEOUT_SECS);
+                loop {
+                    let recv_result = tokio::time::timeout_at(deadline, receiver.recv()).await;
+                    let turn_event = match recv_result {
+                        Ok(Ok(event)) => event,
+                        Ok(Err(_)) => break,   // channel closed
+                        Err(_) => break,        // timeout reached
+                    };
                     if turn_event.turn_id != turn_id_for_forwarder {
                         continue;
                     }
@@ -2082,8 +2102,16 @@ pub async fn engine_send_message(
             let mut current_thread_id = thread_id.clone();
             let item_id_clone = item_id.clone();
             let turn_id_for_forwarder = turn_id.clone();
+            // Spawn event forwarder (same pattern as Claude forwarder above).
             tokio::spawn(async move {
-                while let Ok(turn_event) = receiver.recv().await {
+                let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(EVENT_FORWARDER_TIMEOUT_SECS);
+                loop {
+                    let recv_result = tokio::time::timeout_at(deadline, receiver.recv()).await;
+                    let turn_event = match recv_result {
+                        Ok(Ok(event)) => event,
+                        Ok(Err(_)) => break,
+                        Err(_) => break,
+                    };
                     if turn_event.turn_id != turn_id_for_forwarder {
                         continue;
                     }

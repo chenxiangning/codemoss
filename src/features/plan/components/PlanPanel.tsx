@@ -3,6 +3,7 @@ import type { TurnPlan } from "../../../types";
 type PlanPanelProps = {
   plan: TurnPlan | null;
   isProcessing: boolean;
+  isPlanMode: boolean;
 };
 
 function formatProgress(plan: TurnPlan) {
@@ -24,11 +25,15 @@ function statusLabel(status: TurnPlan["steps"][number]["status"]) {
   return "[ ]";
 }
 
-export function PlanPanel({ plan, isProcessing }: PlanPanelProps) {
+export function PlanPanel({ plan, isProcessing, isPlanMode }: PlanPanelProps) {
   const progress = plan ? formatProgress(plan) : "";
   const steps = plan?.steps ?? [];
   const showEmpty = !steps.length && !plan?.explanation;
-  const emptyLabel = isProcessing ? "Waiting on a plan..." : "No active plan.";
+  const emptyLabel = !isPlanMode
+    ? "Switch to Plan mode to enable planning"
+    : isProcessing
+      ? "Generating plan..."
+      : "No plan generated. Send a message to start.";
 
   return (
     <aside className="plan-panel">

@@ -61,7 +61,19 @@ impl WorkspaceSession {
         self.pending.lock().await.insert(id, tx);
         self.write_message(json!({ "id": id, "method": method, "params": params }))
             .await?;
-        rx.await.map_err(|_| "request canceled".to_string())
+        // Add a 5-minute timeout to prevent pending entries from leaking forever
+        // when the child process crashes without sending a response.
+        match timeout(Duration::from_secs(300), rx).await {
+            Ok(Ok(value)) => Ok(value),
+            Ok(Err(_)) => {
+                self.pending.lock().await.remove(&id);
+                Err("request canceled".to_string())
+            }
+            Err(_) => {
+                self.pending.lock().await.remove(&id);
+                Err("request timed out".to_string())
+            }
+        }
     }
 
     pub(crate) async fn send_notification(

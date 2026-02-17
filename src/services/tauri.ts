@@ -268,6 +268,7 @@ export async function sendUserMessage(
     accessMode?: "read-only" | "current" | "full-access";
     images?: string[];
     collaborationMode?: Record<string, unknown> | null;
+    preferredLanguage?: string | null;
   },
 ) {
   const payload: Record<string, unknown> = {
@@ -278,6 +279,7 @@ export async function sendUserMessage(
     effort: options?.effort ?? null,
     accessMode: options?.accessMode ?? null,
     images: options?.images ?? null,
+    preferredLanguage: options?.preferredLanguage ?? null,
   };
   if (options?.collaborationMode) {
     payload.collaborationMode = options.collaborationMode;

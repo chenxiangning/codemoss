@@ -101,7 +101,8 @@ pub fn run() {
             {
                 win_builder = win_builder
                     .title_bar_style(tauri::TitleBarStyle::Overlay)
-                    .hidden_title(true);
+                    .hidden_title(true)
+                    .transparent(false);
             }
 
             win_builder = win_builder.on_navigation(|url: &tauri::Url| {
@@ -146,7 +147,7 @@ pub fn run() {
     let builder = builder.plugin(tauri_plugin_window_state::Builder::default().build());
 
     let app = builder
-        .plugin(tauri_plugin_liquid_glass::init())
+        // .plugin(tauri_plugin_liquid_glass::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_process::init())

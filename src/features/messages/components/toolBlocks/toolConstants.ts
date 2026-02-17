@@ -85,6 +85,7 @@ export function getToolDisplayNames(t: (key: string) => string): Record<string, 
     // 其他
     task: t("tools.subtask"),
     todowrite: t("tools.todoList"),
+    askuserquestion: t("tools.userInputRequest"),
     diff: t("tools.diffCompare"),
     result: t("tools.result"),
   };
@@ -111,6 +112,7 @@ const TOOL_DISPLAY_NAMES_FALLBACK: Record<string, string> = {
   websearch: '网络搜索',
   task: '子任务',
   todowrite: '待办列表',
+  askuserquestion: '用户输入请求',
   diff: 'Diff对比',
   result: '结果',
 };

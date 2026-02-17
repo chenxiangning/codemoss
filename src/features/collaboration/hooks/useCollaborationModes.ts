@@ -171,6 +171,8 @@ export function useCollaborationModes({
 
   return {
     collaborationModes: modes,
+    collaborationModesAvailable: Boolean(activeWorkspace),
+    collaborationModesEnabled: enabled,
     selectedCollaborationMode: selectedMode,
     selectedCollaborationModeId: selectedModeId,
     setSelectedCollaborationModeId: setSelectedModeId,

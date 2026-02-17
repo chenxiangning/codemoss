@@ -124,80 +124,9 @@
   gap: 8px;
 }
 
-.composer-kanban-toolbar {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-width: 0;
-  padding-bottom: 2px;
-}
+/* Deleted .composer-kanban-toolbar */
 
-.composer-kanban-strip-title {
-  color: var(--text-muted);
-  font-size: 11px;
-  font-weight: 600;
-  flex-shrink: 0;
-}
-
-.composer-kanban-strip {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-  overflow-x: auto;
-  scrollbar-width: none;
-}
-
-.composer-kanban-strip::-webkit-scrollbar {
-  display: none;
-}
-
-.composer-kanban-strip-item {
-  display: inline-flex;
-  align-items: center;
-  border: 1px solid var(--border-subtle);
-  border-radius: 999px;
-  background: var(--surface-item);
-  overflow: hidden;
-  min-width: 0;
-  max-width: clamp(140px, 20vw, 280px);
-}
-
-.composer-kanban-strip-item.is-active {
-  border-color: var(--border-strong);
-  background: color-mix(in srgb, var(--surface-item) 86%, transparent);
-  box-shadow: none;
-}
-
-.composer-kanban-strip-main {
-  border: none;
-  background: transparent;
-  color: var(--text-muted);
-  padding: 2px 7px;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  cursor: pointer;
-  white-space: nowrap;
-  font-size: 12px;
-  min-width: 0;
-}
-
-.composer-kanban-strip-link {
-  border: none;
-  border-left: 1px solid var(--border-subtle);
-  background: transparent;
-  color: var(--text-faint);
-  font-size: 12px;
-  padding: 2px 0;
-  width: 24px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  white-space: nowrap;
-  flex-shrink: 0;
-}
+/* Deleted .composer-kanban-strip styles */
 
 .composer-kanban-strip-main span:last-child {
   min-width: 0;
@@ -548,6 +477,14 @@
   color: var(--text-strong);
 }
 
+.composer-select-wrap--settings-link {
+  border: 1px dashed color-mix(in srgb, var(--border-subtle) 80%, transparent);
+}
+
+.composer-select-wrap--settings-link:hover {
+  border-color: color-mix(in srgb, var(--text-subtle) 46%, transparent);
+}
+
 .composer-select {
   appearance: none;
   background: transparent;
@@ -557,6 +494,41 @@
   opacity: 0;
   cursor: pointer;
   width: 100%;
+}
+
+.composer-select:disabled {
+  cursor: default;
+}
+
+.composer-link-button {
+  border: 0;
+  background: transparent;
+  color: var(--text-subtle);
+  font-size: 11px;
+  padding: 0;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.composer-link-button:hover {
+  color: var(--text-strong);
+}
+
+.composer-collaboration-hint {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  max-width: min(42vw, 360px);
+  padding: 1px 8px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--border-subtle) 80%, transparent);
+  background: color-mix(in srgb, var(--surface-item) 74%, transparent);
+  color: var(--text-subtle);
+  font-size: 11px;
+  line-height: 1.35;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .composer-icon {
@@ -575,6 +547,20 @@
   overflow: hidden;
   text-overflow: ellipsis;
   max-width: 200px;
+}
+
+.composer-select-value--settings-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-subtle);
+  text-decoration: underline;
+  text-decoration-style: dashed;
+  text-underline-offset: 2px;
+}
+
+.composer-settings-link-icon {
+  flex: 0 0 auto;
 }
 
 .composer-opencode-model-badges {
@@ -1597,61 +1583,119 @@
   background: color-mix(in srgb, var(--surface-active) 72%, var(--surface-control));
 }
 
-.composer-management-panel {
+/* ==========================================
+ * composer-management-toolbar (New Compact Panel)
+ * ========================================== */
+.composer-management-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   border: 1px solid color-mix(in srgb, var(--border-subtle) 85%, transparent);
   border-radius: 12px;
   background: color-mix(in srgb, var(--surface-card) 74%, transparent);
-  padding: 8px;
+  padding: 4px 8px;
   min-width: 0;
+  min-height: 32px;
 }
 
-.composer-management-header {
+.composer-toolbar-left {
   display: flex;
   align-items: center;
   gap: 6px;
-  min-height: 30px;
+  flex: 1 1 auto;
   min-width: 0;
-  overflow: visible;
-  scrollbar-width: thin;
+  overflow: hidden;
 }
 
-.composer-management-header::-webkit-scrollbar {
-  height: 3px;
-}
-
-.composer-management-header::-webkit-scrollbar-thumb {
-  background: color-mix(in srgb, var(--text-muted) 30%, transparent);
-  border-radius: 3px;
-}
-
-.composer-management-header::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.composer-management-body {
-  margin-top: 8px;
-  display: grid;
-  gap: 8px;
-}
-
-.composer-management-panel.is-compact .composer-management-header {
-  flex-wrap: wrap;
-  row-gap: 6px;
-}
-
-.composer-management-collapsed-row {
-  --composer-chip-max-width: 190px;
+.composer-toolbar-pills {
   display: flex;
   align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
+  gap: 4px;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.composer-toolbar-overflow {
   flex-shrink: 0;
-  padding: 0 2px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 24px;
+  height: 20px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--border-subtle) 70%, transparent);
+  background: color-mix(in srgb, var(--surface-elevated) 80%, transparent);
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 700;
+  padding: 0 6px;
+  cursor: default;
 }
 
-.composer-management-collapsed-row.is-expanded {
-  --composer-chip-max-width: 190px;
-  row-gap: 6px;
+.composer-toolbar-right {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  margin-left: auto;
+  position: relative;
+}
+
+.composer-kanban-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface-card) 90%, transparent);
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 4px 8px;
+  cursor: pointer;
+  white-space: nowrap;
+  max-width: 200px;
+}
+
+.composer-kanban-trigger:hover {
+  border-color: var(--border-strong);
+  color: var(--text-strong);
+}
+
+.composer-kanban-trigger-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  color: var(--text-faint);
+  margin-left: 4px;
+  padding: 0;
+  cursor: pointer;
+}
+
+.composer-kanban-trigger-link:hover {
+  color: var(--text-strong);
+}
+
+/* Moved to end of file to fix width override */
+
+/* 窄屏模式 */
+@container composer-shell (max-width: 500px) {
+  .composer-toolbar-pills {
+    display: none;
+  }
+
+  .composer-toolbar-left::after {
+    content: attr(data-pill-count);
+    display: inline-flex;
+    align-items: center;
+    font-size: 10px;
+    color: var(--text-muted);
+    padding: 2px 6px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--surface-elevated) 80%, transparent);
+  }
 }
 
 .composer-collapsed-pill {
@@ -1773,10 +1817,7 @@
   padding: 2px 8px;
 }
 
-.composer-management-divider {
-  height: 1px;
-  background: color-mix(in srgb, var(--border-subtle) 70%, transparent);
-}
+/* Deleted .composer-management-divider */
 
 .composer-context-actions {
   display: flex;
@@ -2192,4 +2233,99 @@
   opacity: 0.5;
   white-space: pre-wrap;
   word-wrap: break-word;
+}
+
+/* ==========================================
+ * composer-kanban-popover (Fixed width override)
+ * ========================================== */
+.composer-context-menu-panel.composer-kanban-popover {
+  min-width: 220px;
+  width: 260px;
+  max-height: 300px;
+  display: flex;
+  flex-direction: column;
+  background: color-mix(in srgb, var(--surface-popover), var(--surface-messages));
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4), 0 0 0 1px var(--border-subtle);
+}
+
+.composer-kanban-popover-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-muted);
+  padding: 8px 10px 4px;
+  border-bottom: 1px solid color-mix(in srgb, var(--border-subtle) 60%, transparent);
+}
+
+.composer-kanban-popover-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  cursor: pointer;
+  border-radius: 6px;
+  background: transparent;
+  border: none;
+  width: 100%;
+  color: var(--text-primary);
+  font-size: 12px;
+}
+
+.composer-kanban-popover-item:hover {
+  background: color-mix(in srgb, var(--surface-active) 50%, transparent);
+}
+
+.composer-kanban-popover-item.is-active {
+  background: color-mix(in srgb, var(--accent-soft) 30%, transparent);
+}
+
+.composer-kanban-popover-mode {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px;
+  border-top: 1px solid color-mix(in srgb, var(--border-subtle) 60%, transparent);
+  margin-top: auto;
+}
+
+.composer-kanban-mode-label {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-muted);
+  padding-left: 2px;
+}
+
+.composer-kanban-mode-group {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  background: var(--surface-control);
+  padding: 3px;
+  border-radius: 8px;
+}
+
+.composer-kanban-mode-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  padding: 4px;
+  border-radius: 6px;
+  cursor: pointer;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  transition: all 0.15s;
+}
+
+.composer-kanban-mode-btn:hover {
+  color: var(--text-primary);
+}
+
+.composer-kanban-mode-btn.is-active {
+  background: var(--surface-card);
+  color: var(--text-strong);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+  font-weight: 500;
 }

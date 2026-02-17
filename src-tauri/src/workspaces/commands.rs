@@ -632,6 +632,9 @@ pub(crate) async fn remove_workspace(
         return Ok(());
     }
 
+    // Clean up MCP toggle state for this workspace to prevent unbounded growth
+    crate::engine::commands::clear_mcp_toggle_state(&id);
+
     workspaces_core::remove_workspace_core(
         id,
         &state.workspaces,

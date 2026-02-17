@@ -32,6 +32,7 @@ interface ParsedBashItem {
 const MAX_VISIBLE_ITEMS = 3.5;
 const ITEM_HEIGHT = 32;
 const MAX_OUTPUT_LINES = 100;
+const ERROR_LINE_PATTERN = /(?:\berror\b|\bfailed\b|\bexception\b)/i;
 
 function cleanCommand(text: string): string {
   if (!text) return '';
@@ -68,6 +69,7 @@ export const BashToolGroupBlock = memo(function BashToolGroupBlock({
   const { t } = useTranslation();
   const [isExpanded, setIsExpanded] = useState(true);
   const [expandedItemId, setExpandedItemId] = useState<string | null>(null);
+  const [copiedOutputId, setCopiedOutputId] = useState<string | null>(null);
   const timelineRef = useRef<HTMLDivElement | null>(null);
   const prevCountRef = useRef(items.length);
 
@@ -181,8 +183,35 @@ export const BashToolGroupBlock = memo(function BashToolGroupBlock({
                       )}
                       {outputLines.length > 0 && (
                         <div className="bash-output-block normal">
+                          <div className="bash-output-toolbar">
+                            <button
+                              type="button"
+                              className="bash-command-copy-btn"
+                              onClick={async (event) => {
+                                event.stopPropagation();
+                                try {
+                                  await navigator.clipboard.writeText(entry.output ?? "");
+                                  setCopiedOutputId(entry.id);
+                                  window.setTimeout(() => setCopiedOutputId((prev) => (prev === entry.id ? null : prev)), 1200);
+                                } catch {
+                                  setCopiedOutputId(null);
+                                }
+                              }}
+                            >
+                              {copiedOutputId === entry.id ? t("messages.copied") : t("messages.copy")}
+                            </button>
+                          </div>
                           {outputLines.map((line, i) => (
-                            <div key={`${i}-${line.slice(0, 20)}`}>{line || ' '}</div>
+                            <div
+                              key={`${i}-${line.slice(0, 20)}`}
+                              className="bash-output-line"
+                            >
+                              <span
+                                className={ERROR_LINE_PATTERN.test(line) ? 'bash-output-line-error' : undefined}
+                              >
+                                {line || ' '}
+                              </span>
+                            </div>
                           ))}
                         </div>
                       )}

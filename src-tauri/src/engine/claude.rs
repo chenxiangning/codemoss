@@ -500,6 +500,24 @@ impl ClaudeSession {
                 .map_err(|e| format!("Failed to kill process: {}", e))?;
         }
         active.clear();
+        // Clean up tool tracking state that would otherwise leak from interrupted turns.
+        // Use unwrap_or_else to still clear even if the mutex was poisoned by a panic.
+        self.tool_name_by_id
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clear();
+        self.tool_input_by_id
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clear();
+        self.tool_id_by_block_index
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clear();
+        self.last_emitted_text
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clear();
         Ok(())
     }
 

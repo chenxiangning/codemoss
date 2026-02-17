@@ -114,7 +114,7 @@ export type ReviewTarget =
 
 export type AccessMode = "read-only" | "current" | "full-access";
 export type BackendMode = "local" | "remote";
-export type ThemePreference = "system" | "light" | "dark" | "dim";
+export type ThemePreference = "system" | "light" | "dark";
 export type AppMode = "chat" | "kanban";
 
 
@@ -246,6 +246,7 @@ export type RequestUserInputQuestion = {
   header: string;
   question: string;
   isOther?: boolean;
+  isSecret?: boolean;
   options?: RequestUserInputOption[];
 };
 

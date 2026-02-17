@@ -281,7 +281,7 @@ const en = {
     // Notification
     notificationSounds: "Notification Sounds",
     systemNotification: "System Notifications",
-    systemNotificationDesc: "Send system-level notifications when sessions complete, even when the window is not in focus.",
+    systemNotificationDesc: "Send system-level notifications when sessions complete.",
     testSound: "Test",
 
     // Language
@@ -297,12 +297,16 @@ const en = {
     // Workspace groups
     workspaceGroups: "Workspace Groups",
     createGroup: "Create Group",
-    renameGroup: "Rename Group",
+    renameGroup: "Rename",
     deleteGroup: "Delete Group",
     ungrouped: "Ungrouped",
     moveUp: "Move Up",
     moveDown: "Move Down",
     assignToGroup: "Assign to Group",
+    groupMoreActions: "More Actions",
+    groupCopiesFolder: "Copies Folder",
+    selectCopiesFolder: "Select Path...",
+    clearCopiesFolder: "Clear",
 
     // Projects section
     projectsTitle: "Projects",
@@ -633,13 +637,16 @@ const en = {
     configFile: "Config file",
     configFileDesc: "Open the Codex config in Finder.",
     multiAgent: "Multi-agent",
-    multiAgentDesc: "Enable multi-agent collaboration tools in Codex.",
+    multiAgentDesc: "When enabled: split complex tasks across multiple agents in parallel.",
     collaborationModes: "Collaboration modes",
-    collaborationModesDesc: "Enable collaboration mode presets (Code, Plan).",
+    collaborationModesDesc:
+      "When enabled: switch between Code / Plan in composer; Plan supports interactive question cards.",
     backgroundTerminal: "Background terminal",
-    backgroundTerminalDesc: "Run long-running terminal commands in the background.",
+    backgroundTerminalDesc:
+      "When enabled: long-running terminal commands continue in background without blocking chat.",
     steerMode: "Steer mode",
-    steerModeDesc: "Send messages immediately. Use Tab to queue while a run is active.",
+    steerModeDesc:
+      "When enabled: keep sending messages during runs and queue them automatically.",
 
     // Error messages
     unableToOpenConfig: "Unable to open config.",
@@ -687,6 +694,13 @@ const en = {
     editQueued: "Edit",
     deleteQueued: "Delete",
     collaborationMode: "Collaboration mode",
+    collaborationCode: "Code",
+    collaborationPlan: "Plan",
+    collaborationModeDisabledHint: "Enable collaboration modes in Settings > Experimental",
+    collaborationPlanHint: "Plan mode: interactive questions (not update_plan).",
+    collaborationCodeInlineHint: "{{mode}} · directly implement code changes",
+    collaborationPlanInlineHint: "Plan · interactive Q&A",
+    collaborationOpenSettings: "Open Settings and enable collaboration mode",
     engine: "Engine",
     model: "Model",
     agent: "Agent",
@@ -1441,6 +1455,9 @@ const en = {
     typeAnswerOptional: "Type your answer (optional)",
     addNotesOptional: "Add notes (optional)",
     noQuestionsProvided: "No questions provided.",
+    showSecret: "Show",
+    hideSecret: "Hide",
+    submitFailed: "Submit failed. Please retry.",
     submit: "Submit",
   },
 
@@ -1517,6 +1534,7 @@ const en = {
     },
     composer: {
       relatedPanels: "Linked Project Panels",
+      openPanel: "Open linked panel",
       empty: "No linked panels",
       count: "{{count}} panels",
       clear: "Clear selection",
@@ -1628,8 +1646,6 @@ const en = {
 
   threadCompletion: {
     title: "Session Completed",
-    open: "Open Thread",
-    dismiss: "Dismiss",
     project: "Project",
     session: "Session",
   },
@@ -1638,11 +1654,18 @@ const en = {
   statusPanel: {
     tabTodos: "Tasks",
     tabSubagents: "Subagents",
+    tabAgents: "Agents",
     tabEdits: "Edits",
+    tabPlan: "Plan",
+    tabCommands: "Commands",
     files: "files",
     emptyTodos: "No tasks",
     emptySubagents: "No subagents",
     emptyFileChanges: "No file changes",
+    emptyCommands: "No commands",
+    emptyPlan: "No plan",
+    planGenerating: "Generating plan...",
+    planSwitchHint: "Switch to Plan mode to view plan",
   },
 
   // Tools
@@ -1661,6 +1684,7 @@ const en = {
     webSearch: "Web search",
     subtask: "Subtask",
     todoList: "Todo list",
+    userInputRequest: "User Input Request",
     diffCompare: "Diff",
     result: "Result",
     webRequest: "Web request",
@@ -1670,6 +1694,8 @@ const en = {
     batchSearch: "Batch search",
     batchSearchMatch: "Batch search/match",
     batchEditFile: "Batch edit files",
+    planQuickView: "Plan",
+    openFullPlanPanel: "Open full Plan panel",
     path: "Path",
     lineRange: "Line {{start}}-{{end}}",
     failedCount: "{{count}} failed",

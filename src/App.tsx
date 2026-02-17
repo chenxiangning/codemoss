@@ -1,5 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import "./styles/globals.css";
 import "./styles/base.css";
 import "./styles/buttons.css";
 import "./styles/sidebar.css";
@@ -36,17 +37,12 @@ import "./styles/opencode-panel.css";
 import "./styles/kanban.css";
 import "./styles/search-palette.css";
 import "./styles/panel-lock.css";
-import "./styles/thread-completion-bubble.css";
 import successSoundUrl from "./assets/success-notification.mp3";
 import errorSoundUrl from "./assets/error-notification.mp3";
 import { AppLayout } from "./features/app/components/AppLayout";
 import { AppModals } from "./features/app/components/AppModals";
 import { MainHeaderActions } from "./features/app/components/MainHeaderActions";
 import { LockScreenOverlay } from "./features/app/components/LockScreenOverlay";
-import {
-  ThreadCompletionBubble,
-  type ThreadCompletionNotice,
-} from "./features/notifications/components/ThreadCompletionBubble";
 import { useLayoutNodes } from "./features/layout/hooks/useLayoutNodes";
 import { useWorkspaceDropZone } from "./features/workspaces/hooks/useWorkspaceDropZone";
 import { useThreads } from "./features/threads/hooks/useThreads";
@@ -170,7 +166,6 @@ const GitHubPanelData = lazy(() =>
 const PANEL_LOCK_DEFAULT_PASSWORD = "123456";
 const LOCK_LIVE_SESSION_LIMIT = 12;
 const LOCK_LIVE_PREVIEW_MAX = 180;
-const THREAD_COMPLETION_NOTICE_LIMIT = 3;
 const OPENCODE_VARIANT_OPTIONS = ["minimal", "low", "medium", "high", "max"];
 
 type ThreadCompletionTracker = {
@@ -374,6 +369,7 @@ function MainApp() {
   const {
     settingsOpen,
     settingsSection,
+    settingsHighlightTarget,
     openSettings,
     closeSettings,
   } = useSettingsModalState();
@@ -387,9 +383,6 @@ function MainApp() {
     Record<string, string[]>
   >({});
   const [isPanelLocked, setIsPanelLocked] = useState(false);
-  const [threadCompletionNotices, setThreadCompletionNotices] = useState<ThreadCompletionNotice[]>(
-    [],
-  );
   const completionTrackerReadyRef = useRef(false);
   const completionTrackerBySessionRef = useRef<Record<string, ThreadCompletionTracker>>({});
   const composerInputRef = useRef<HTMLTextAreaElement | null>(null);
@@ -549,12 +542,13 @@ function MainApp() {
 
   const {
     collaborationModes,
+    collaborationModesEnabled,
     selectedCollaborationMode,
     selectedCollaborationModeId,
     setSelectedCollaborationModeId,
   } = useCollaborationModes({
     activeWorkspace,
-    enabled: appSettings.experimentalCollaborationModesEnabled,
+    enabled: true,
     onDebug: addDebugEntry,
   });
 
@@ -726,9 +720,7 @@ function MainApp() {
     modelShortcut: appSettings.composerModelShortcut,
     accessShortcut: appSettings.composerAccessShortcut,
     reasoningShortcut: appSettings.composerReasoningShortcut,
-    collaborationShortcut: appSettings.experimentalCollaborationModesEnabled
-      ? appSettings.composerCollaborationShortcut
-      : null,
+    collaborationShortcut: appSettings.composerCollaborationShortcut,
     models: effectiveModels,
     collaborationModes,
     selectedModelId: effectiveSelectedModelId,
@@ -1329,30 +1321,22 @@ function MainApp() {
     }
   }, []);
 
-  const handleDismissThreadCompletionNotice = useCallback((noticeId: string) => {
-    setThreadCompletionNotices((current) =>
-      current.filter((notice) => notice.id !== noticeId),
-    );
-  }, []);
 
-  const handleOpenThreadCompletionNotice = useCallback(
-    (notice: ThreadCompletionNotice) => {
+  const navigateToThread = useCallback(
+    (workspaceId: string, threadId: string) => {
       exitDiffView();
       setAppMode("chat");
       setSelectedKanbanTaskId(null);
-      selectWorkspace(notice.workspaceId);
-      setActiveThreadId(notice.threadId, notice.workspaceId);
+      selectWorkspace(workspaceId);
+      setActiveThreadId(threadId, workspaceId);
       if (isCompact) {
         setActiveTab("codex");
       }
-      const threads = threadsByWorkspace[notice.workspaceId] ?? [];
-      const targetThread = threads.find((entry) => entry.id === notice.threadId);
+      const threads = threadsByWorkspace[workspaceId] ?? [];
+      const targetThread = threads.find((entry) => entry.id === threadId);
       if (targetThread?.engineSource) {
         setActiveEngine(targetThread.engineSource);
       }
-      setThreadCompletionNotices((current) =>
-        current.filter((item) => item.id !== notice.id),
-      );
     },
     [
       exitDiffView,
@@ -1371,17 +1355,10 @@ function MainApp() {
       const workspaceId = typeof extra.workspaceId === "string" ? extra.workspaceId : undefined;
       const threadId = typeof extra.threadId === "string" ? extra.threadId : undefined;
       if (workspaceId && threadId) {
-        handleOpenThreadCompletionNotice({
-          id: `${workspaceId}:${threadId}`,
-          workspaceId,
-          threadId,
-          workspaceName: "",
-          threadName: "",
-          completedAt: Date.now(),
-        });
+        navigateToThread(workspaceId, threadId);
       }
     });
-  }, [handleOpenThreadCompletionNotice]);
+  }, [navigateToThread]);
   const openAppIconById = useOpenAppIcons(appSettings.openAppTargets);
 
   const persistProjectCopiesFolder = useCallback(
@@ -1486,6 +1463,7 @@ function MainApp() {
   const activePlan = activeThreadId
     ? planByThread[activeThreadId] ?? null
     : null;
+  const isPlanMode = selectedCollaborationMode?.mode === "plan";
   const hasActivePlan = Boolean(
     activePlan && (activePlan.steps.length > 0 || activePlan.explanation)
   );
@@ -1750,7 +1728,7 @@ function MainApp() {
   useEffect(() => {
     const previous = completionTrackerBySessionRef.current;
     const next: Record<string, ThreadCompletionTracker> = {};
-    const completed: ThreadCompletionNotice[] = [];
+    const completed: { workspaceId: string; workspaceName: string; threadId: string; threadName: string }[] = [];
 
     for (const workspace of workspaces) {
       const threads = threadsByWorkspace[workspace.id] ?? [];
@@ -1774,19 +1752,16 @@ function MainApp() {
           (wasProcessing || previousDurationMs !== null);
 
         if ((wasProcessing && !isProcessingNow) || finishedByDuration || finishedByAgentUpdate) {
-          const completedAt = Date.now();
           const lastAgent = lastAgentMessageByThread[thread.id];
           const latestSnippet =
             resolveLockLivePreview(threadItemsByThread[thread.id], lastAgent?.text) ||
             thread.name?.trim() ||
             t("threads.untitledThread");
           completed.push({
-            id: key,
             workspaceId: workspace.id,
             workspaceName: workspace.name,
             threadId: thread.id,
             threadName: latestSnippet,
-            completedAt,
           });
         }
 
@@ -1809,30 +1784,15 @@ function MainApp() {
       return;
     }
 
-    const ordered = [...completed].sort((a, b) => b.completedAt - a.completedAt);
-
-    // Always queue in-app bubble notifications regardless of window focus state.
-    // When the window is not focused, system notifications supplement these bubbles.
-    setThreadCompletionNotices((current) => {
-      let next = [...current];
-      for (const notice of ordered) {
-        // One bubble per session: newer completion replaces existing bubble.
-        next = [notice, ...next.filter((item) => item.id !== notice.id)];
-      }
-      return next.slice(0, THREAD_COMPLETION_NOTICE_LIMIT);
-    });
-
-    // Send a single system notification for the most recent completion to avoid
-    // notification flooding when multiple sessions finish at the same time.
-    if (!document.hasFocus() && appSettings.systemNotificationEnabled) {
-      const latest = ordered[0];
-      if (latest) {
+    // Send a system notification for each completed session.
+    if (appSettings.systemNotificationEnabled) {
+      for (const entry of completed) {
         void sendSystemNotification({
           title: t("threadCompletion.title"),
-          body: `${t("threadCompletion.project")}: ${latest.workspaceName}\n${t("threadCompletion.session")}: ${latest.threadName}`,
+          body: `${t("threadCompletion.project")}: ${entry.workspaceName}\n${t("threadCompletion.session")}: ${entry.threadName}`,
           extra: {
-            workspaceId: latest.workspaceId,
-            threadId: latest.threadId,
+            workspaceId: entry.workspaceId,
+            threadId: entry.threadId,
           },
         });
       }
@@ -3488,6 +3448,7 @@ function MainApp() {
     onEditQueued: handleEditQueued,
     onDeleteQueued: handleDeleteQueued,
     collaborationModes,
+    collaborationModesEnabled,
     selectedCollaborationModeId,
     onSelectCollaborationMode: setSelectedCollaborationModeId,
     engines: installedEngines,
@@ -3531,6 +3492,8 @@ function MainApp() {
     onDismissDictationError: clearDictationError,
     dictationHint,
     onDismissDictationHint: clearDictationHint,
+    onOpenExperimentalSettings: () =>
+      openSettings("experimental", "experimental-collaboration-modes"),
     composerSendLabel,
     composerLinkedKanbanPanels,
     selectedComposerKanbanPanelId,
@@ -3544,6 +3507,7 @@ function MainApp() {
     onFileReferenceModeChange: setFileReferenceMode,
     showComposer,
     plan: activePlan,
+    isPlanMode,
     debugEntries,
     debugOpen,
     terminalOpen,
@@ -3707,15 +3671,54 @@ function MainApp() {
         compactEmptyCodexNode={compactEmptyCodexNode}
         compactEmptyGitNode={compactEmptyGitNode}
         compactGitBackNode={compactGitBackNode}
+        settingsOpen={settingsOpen}
+        settingsNode={
+          settingsOpen ? (
+            <Suspense fallback={null}>
+              <SettingsView
+                workspaceGroups={workspaceGroups}
+                groupedWorkspaces={groupedWorkspaces}
+                ungroupedLabel={ungroupedLabel}
+                onMoveWorkspace={handleMoveWorkspace}
+                onDeleteWorkspace={(workspaceId) => {
+                  void removeWorkspace(workspaceId);
+                }}
+                onCreateWorkspaceGroup={createWorkspaceGroup}
+                onRenameWorkspaceGroup={renameWorkspaceGroup}
+                onMoveWorkspaceGroup={moveWorkspaceGroup}
+                onDeleteWorkspaceGroup={deleteWorkspaceGroup}
+                onAssignWorkspaceGroup={assignWorkspaceGroup}
+                reduceTransparency={reduceTransparency}
+                onToggleTransparency={setReduceTransparency}
+                appSettings={appSettings}
+                openAppIconById={openAppIconById}
+                onUpdateAppSettings={async (next) => {
+                  await queueSaveSettings(next);
+                }}
+                onRunDoctor={doctor}
+                onUpdateWorkspaceCodexBin={async (id, codexBin) => {
+                  await updateWorkspaceCodexBin(id, codexBin);
+                }}
+                onUpdateWorkspaceSettings={async (id, settings) => {
+                  await updateWorkspaceSettings(id, settings);
+                }}
+                scaleShortcutTitle={scaleShortcutTitle}
+                scaleShortcutText={scaleShortcutText}
+                onTestNotificationSound={handleTestNotificationSound}
+                dictationModelStatus={dictationModel.status}
+                onDownloadDictationModel={dictationModel.download}
+                onCancelDictationDownload={dictationModel.cancel}
+                onRemoveDictationModel={dictationModel.remove}
+                onClose={closeSettings}
+                initialSection={settingsSection ?? undefined}
+                initialHighlightTarget={settingsHighlightTarget ?? undefined}
+              />
+            </Suspense>
+          ) : null
+        }
         onSidebarResizeStart={onSidebarResizeStart}
         onRightPanelResizeStart={onRightPanelResizeStart}
         onPlanPanelResizeStart={onPlanPanelResizeStart}
-      />
-      <ThreadCompletionBubble
-        notices={threadCompletionNotices}
-        avoidBottomOffset={updaterState.stage !== "idle"}
-        onDismiss={handleDismissThreadCompletionNotice}
-        onOpen={handleOpenThreadCompletionNotice}
       />
       <LockScreenOverlay
         isOpen={isPanelLocked}
@@ -3763,45 +3766,6 @@ function MainApp() {
         onClonePromptClearCopiesFolder={clearCloneCopiesFolder}
         onClonePromptCancel={cancelClonePrompt}
         onClonePromptConfirm={confirmClonePrompt}
-        settingsOpen={settingsOpen}
-        settingsSection={settingsSection ?? undefined}
-        onCloseSettings={closeSettings}
-        SettingsViewComponent={SettingsView}
-        settingsProps={{
-          workspaceGroups,
-          groupedWorkspaces,
-          ungroupedLabel,
-          onMoveWorkspace: handleMoveWorkspace,
-          onDeleteWorkspace: (workspaceId) => {
-            void removeWorkspace(workspaceId);
-          },
-          onCreateWorkspaceGroup: createWorkspaceGroup,
-          onRenameWorkspaceGroup: renameWorkspaceGroup,
-          onMoveWorkspaceGroup: moveWorkspaceGroup,
-          onDeleteWorkspaceGroup: deleteWorkspaceGroup,
-          onAssignWorkspaceGroup: assignWorkspaceGroup,
-          reduceTransparency,
-          onToggleTransparency: setReduceTransparency,
-          appSettings,
-          openAppIconById,
-          onUpdateAppSettings: async (next) => {
-            await queueSaveSettings(next);
-          },
-          onRunDoctor: doctor,
-          onUpdateWorkspaceCodexBin: async (id, codexBin) => {
-            await updateWorkspaceCodexBin(id, codexBin);
-          },
-          onUpdateWorkspaceSettings: async (id, settings) => {
-            await updateWorkspaceSettings(id, settings);
-          },
-          scaleShortcutTitle,
-          scaleShortcutText,
-          onTestNotificationSound: handleTestNotificationSound,
-          dictationModelStatus: dictationModel.status,
-          onDownloadDictationModel: dictationModel.download,
-          onCancelDictationDownload: dictationModel.cancel,
-          onRemoveDictationModel: dictationModel.remove,
-        }}
       />
     </div>
   );

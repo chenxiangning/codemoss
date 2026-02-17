@@ -280,7 +280,7 @@ const zh = {
     // 通知
     notificationSounds: "通知声音",
     systemNotification: "系统通知",
-    systemNotificationDesc: "会话完成时发送系统级通知，即使窗口不在前台也能收到提醒。",
+    systemNotificationDesc: "会话完成时发送系统级通知。",
     testSound: "测试",
 
     // 语言
@@ -296,12 +296,16 @@ const zh = {
     // 工作区组
     workspaceGroups: "工作区分组",
     createGroup: "创建分组",
-    renameGroup: "重命名分组",
+    renameGroup: "重命名",
     deleteGroup: "删除分组",
     ungrouped: "未分组",
     moveUp: "上移",
     moveDown: "下移",
     assignToGroup: "分配到组",
+    groupMoreActions: "更多操作",
+    groupCopiesFolder: "副本文件夹",
+    selectCopiesFolder: "选择路径...",
+    clearCopiesFolder: "清除",
 
     // 项目部分
     projectsTitle: "项目",
@@ -632,13 +636,13 @@ const zh = {
     configFile: "配置文件",
     configFileDesc: "在访达中打开 Codex 配置。",
     multiAgent: "多代理",
-    multiAgentDesc: "启用 Codex 中的多代理协作工具。",
+    multiAgentDesc: "开启后：可将复杂任务拆分给多个代理并行执行。",
     collaborationModes: "协作模式",
-    collaborationModesDesc: "启用协作模式预设（代码、计划）。",
+    collaborationModesDesc: "开启后：输入框可切换 Code / Plan；Plan 下支持交互提问卡片。",
     backgroundTerminal: "后台终端",
-    backgroundTerminalDesc: "在后台运行长时间运行的终端命令。",
+    backgroundTerminalDesc: "开启后：长时间命令可在后台持续运行，不阻塞对话。",
     steerMode: "引导模式",
-    steerModeDesc: "立即发送消息。在运行活动时使用 Tab 排队。",
+    steerModeDesc: "开启后：可在运行中继续发消息，系统会自动排队处理。",
 
     // 错误消息
     unableToOpenConfig: "无法打开配置。",
@@ -686,6 +690,13 @@ const zh = {
     editQueued: "编辑",
     deleteQueued: "删除",
     collaborationMode: "协作模式",
+    collaborationCode: "Code",
+    collaborationPlan: "Plan",
+    collaborationModeDisabledHint: "在 设置 > Experimental 中启用协作模式",
+    collaborationPlanHint: "Plan mode：交互提问（非 update_plan）。",
+    collaborationCodeInlineHint: "{{mode}} · 直接执行改代码",
+    collaborationPlanInlineHint: "Plan · 交互提问",
+    collaborationOpenSettings: "打开设置并启用协作模式",
     engine: "引擎",
     model: "模型",
     agent: "Agent",
@@ -1440,6 +1451,9 @@ const zh = {
     typeAnswerOptional: "输入你的回答（可选）",
     addNotesOptional: "添加备注（可选）",
     noQuestionsProvided: "未提供问题。",
+    showSecret: "显示",
+    hideSecret: "隐藏",
+    submitFailed: "提交失败，请重试。",
     submit: "提交",
   },
 
@@ -1516,6 +1530,7 @@ const zh = {
     },
     composer: {
       relatedPanels: "关联项目看板",
+      openPanel: "打开关联看板",
       empty: "暂无关联看板",
       count: "{{count}} 个看板",
       clear: "取消选择",
@@ -1627,8 +1642,6 @@ const zh = {
 
   threadCompletion: {
     title: "会话执行完成",
-    open: "打开会话",
-    dismiss: "关闭",
     project: "项目",
     session: "会话",
   },
@@ -1637,11 +1650,18 @@ const zh = {
   statusPanel: {
     tabTodos: "任务",
     tabSubagents: "子代理",
+    tabAgents: "Agent",
     tabEdits: "编辑",
+    tabPlan: "Plan",
+    tabCommands: "命令",
     files: "文件",
     emptyTodos: "暂无任务",
     emptySubagents: "暂无子代理",
     emptyFileChanges: "暂无文件变更",
+    emptyCommands: "暂无命令",
+    emptyPlan: "暂无计划",
+    planGenerating: "正在生成计划...",
+    planSwitchHint: "切换到 Plan 模式后可查看计划",
   },
 
   // 工具
@@ -1660,6 +1680,7 @@ const zh = {
     webSearch: "网络搜索",
     subtask: "子任务",
     todoList: "待办列表",
+    userInputRequest: "用户输入请求",
     diffCompare: "Diff对比",
     result: "结果",
     webRequest: "网络请求",
@@ -1669,6 +1690,8 @@ const zh = {
     batchSearch: "批量搜索",
     batchSearchMatch: "批量搜索/匹配",
     batchEditFile: "批量编辑文件",
+    planQuickView: "Plan",
+    openFullPlanPanel: "查看完整 Plan 面板",
     path: "路径",
     lineRange: "第 {{start}}-{{end}} 行",
     failedCount: "{{count}} 个失败",

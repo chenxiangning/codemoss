@@ -9,8 +9,10 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use tokio::fs;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use tokio::sync::Semaphore;
 
 /// Summary of a Claude Code session for sidebar display
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -282,10 +284,17 @@ pub async fn list_claude_sessions(
         return Ok(Vec::new());
     }
 
-    // Scan all session files concurrently (with a concurrency limit)
+    // Scan all session files concurrently with a concurrency limit to prevent
+    // memory exhaustion from spawning too many parallel file reads.
+    const MAX_CONCURRENT_SCANS: usize = 10;
+    let semaphore = Arc::new(Semaphore::new(MAX_CONCURRENT_SCANS));
     let mut handles = Vec::new();
     for path in jsonl_paths {
-        handles.push(tokio::spawn(async move { scan_session_file(&path).await }));
+        let permit = semaphore.clone();
+        handles.push(tokio::spawn(async move {
+            let _permit = permit.acquire().await;
+            scan_session_file(&path).await
+        }));
     }
 
     let mut sessions: Vec<ClaudeSessionSummary> = Vec::new();

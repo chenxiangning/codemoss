@@ -57,6 +57,8 @@ export const BashToolBlock = memo(function BashToolBlock({
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [isPinned, setIsPinned] = useState(true);
   const [showLiveOutput, setShowLiveOutput] = useState(false);
+  const [copiedCommand, setCopiedCommand] = useState(false);
+  const [copiedOutput, setCopiedOutput] = useState(false);
 
   const args = useMemo(() => parseToolArgs(item.detail), [item.detail]);
 
@@ -116,9 +118,10 @@ export const BashToolBlock = memo(function BashToolBlock({
     }
   }, [isRunning, showLiveOutput, onRequestAutoScroll]);
 
-  const showOutput = isExpanded || (isRunning && showLiveOutput) || isLongRunning;
   const isError = status === 'failed';
   const isCompleted = status === 'completed';
+  const showOutput = isExpanded || (isRunning && showLiveOutput) || isLongRunning || isError;
+  const isErrorLine = (line: string) => /(?:\berror\b|\bfailed\b|\bexception\b)/i.test(line);
 
   return (
     <div className="task-container">
@@ -148,8 +151,27 @@ export const BashToolBlock = memo(function BashToolBlock({
       {showOutput && (
         <div className="task-details" style={{ padding: 0, border: 'none' }}>
           {isExpanded && command && (
-            <div className="bash-command-block">
-              {command}
+            <div className="bash-command-shell">
+              <div className="bash-command-shell-head">
+                <span className="bash-command-shell-title">{t("tools.executeCommand")}</span>
+                <button
+                  type="button"
+                  className="bash-command-copy-btn"
+                  onClick={async (event) => {
+                    event.stopPropagation();
+                    try {
+                      await navigator.clipboard.writeText(command);
+                      setCopiedCommand(true);
+                      window.setTimeout(() => setCopiedCommand(false), 1200);
+                    } catch {
+                      setCopiedCommand(false);
+                    }
+                  }}
+                >
+                  {copiedCommand ? t("messages.copied") : t("messages.copy")}
+                </button>
+              </div>
+              <div className="bash-command-block">{command}</div>
             </div>
           )}
           {cwd && isExpanded && (
@@ -164,11 +186,31 @@ export const BashToolBlock = memo(function BashToolBlock({
               onScroll={handleScroll}
               role="log"
               aria-live="polite"
-              style={{ maxHeight: '300px', overflowY: 'auto' }}
+              style={{ maxHeight: '300px', overflowY: 'auto', overflowX: 'auto' }}
             >
+              <div className="bash-output-toolbar">
+                <button
+                  type="button"
+                  className="bash-command-copy-btn"
+                  onClick={async (event) => {
+                    event.stopPropagation();
+                    try {
+                      await navigator.clipboard.writeText(item.output ?? "");
+                      setCopiedOutput(true);
+                      window.setTimeout(() => setCopiedOutput(false), 1200);
+                    } catch {
+                      setCopiedOutput(false);
+                    }
+                  }}
+                >
+                  {copiedOutput ? t("messages.copied") : t("messages.copy")}
+                </button>
+              </div>
               {outputLines.map((line, index) => (
-                <div key={`${index}-${line.slice(0, 20)}`}>
-                  {line || ' '}
+                <div key={`${index}-${line.slice(0, 20)}`} className="bash-output-line">
+                  <span className={isErrorLine(line) ? 'bash-output-line-error' : undefined}>
+                    {line || ' '}
+                  </span>
                 </div>
               ))}
             </div>

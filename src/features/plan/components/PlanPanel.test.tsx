@@ -4,15 +4,23 @@ import { describe, expect, it } from "vitest";
 import { PlanPanel } from "./PlanPanel";
 
 describe("PlanPanel", () => {
-  it("shows a waiting label while processing without a plan", () => {
-    render(<PlanPanel plan={null} isProcessing />);
+  it("shows mode guidance when not in plan mode", () => {
+    render(<PlanPanel plan={null} isProcessing={false} isPlanMode={false} />);
 
-    expect(screen.getByText("Waiting on a plan...")).toBeTruthy();
+    expect(screen.getByText("Switch to Plan mode to enable planning")).toBeTruthy();
   });
 
-  it("shows an empty label when idle without a plan", () => {
-    render(<PlanPanel plan={null} isProcessing={false} />);
+  it("shows waiting label while processing in plan mode", () => {
+    render(<PlanPanel plan={null} isProcessing isPlanMode />);
 
-    expect(screen.getByText("No active plan.")).toBeTruthy();
+    expect(screen.getByText("Generating plan...")).toBeTruthy();
+  });
+
+  it("shows idle empty label in plan mode", () => {
+    render(<PlanPanel plan={null} isProcessing={false} isPlanMode />);
+
+    expect(
+      screen.getByText("No plan generated. Send a message to start."),
+    ).toBeTruthy();
   });
 });

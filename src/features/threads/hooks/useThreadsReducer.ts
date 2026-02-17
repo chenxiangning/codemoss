@@ -680,11 +680,14 @@ export function threadReducer(state: ThreadState, action: ThreadAction): ThreadS
         state.activeThreadIdByWorkspace[action.workspaceId] === action.threadId
           ? filtered[0]?.id ?? null
           : state.activeThreadIdByWorkspace[action.workspaceId] ?? null;
-      const { [action.threadId]: _, ...restItems } = state.itemsByThread;
-      const { [action.threadId]: __, ...restStatus } = state.threadStatusById;
-      const { [action.threadId]: ___, ...restTurns } = state.activeTurnIdByThread;
-      const { [action.threadId]: ____, ...restPlans } = state.planByThread;
-      const { [action.threadId]: _____, ...restParents } = state.threadParentById;
+      const { [action.threadId]: _items, ...restItems } = state.itemsByThread;
+      const { [action.threadId]: _status, ...restStatus } = state.threadStatusById;
+      const { [action.threadId]: _turns, ...restTurns } = state.activeTurnIdByThread;
+      const { [action.threadId]: _plans, ...restPlans } = state.planByThread;
+      const { [action.threadId]: _parents, ...restParents } = state.threadParentById;
+      const { [action.threadId]: _tokenUsage, ...restTokenUsage } = state.tokenUsageByThread;
+      const { [action.threadId]: _lastAgent, ...restLastAgent } = state.lastAgentMessageByThread;
+      const { [action.threadId]: _segments, ...restSegments } = state.agentSegmentByThread;
       return {
         ...state,
         threadsByWorkspace: {
@@ -696,6 +699,9 @@ export function threadReducer(state: ThreadState, action: ThreadAction): ThreadS
         activeTurnIdByThread: restTurns,
         planByThread: restPlans,
         threadParentById: restParents,
+        tokenUsageByThread: restTokenUsage,
+        lastAgentMessageByThread: restLastAgent,
+        agentSegmentByThread: restSegments,
         activeThreadIdByWorkspace: {
           ...state.activeThreadIdByWorkspace,
           [action.workspaceId]: nextActive,

@@ -61,6 +61,7 @@ export function useThreadItemEvents({
       threadId: string,
       item: Record<string, unknown>,
       shouldMarkProcessing: boolean,
+      shouldIncrementAgentSegment: boolean,
     ) => {
       dispatch({ type: "ensureThread", workspaceId, threadId, engine: inferEngineFromThreadId(threadId) });
       if (shouldMarkProcessing) {
@@ -86,7 +87,7 @@ export function useThreadItemEvents({
         "webSearch",
         "imageView",
       ].includes(itemType);
-      if (shouldMarkProcessing && isToolItem) {
+      if (shouldMarkProcessing && shouldIncrementAgentSegment && isToolItem) {
         dispatch({ type: "incrementAgentSegment", threadId });
       }
 
@@ -218,14 +219,21 @@ export function useThreadItemEvents({
 
   const onItemStarted = useCallback(
     (workspaceId: string, threadId: string, item: Record<string, unknown>) => {
-      handleItemUpdate(workspaceId, threadId, item, true);
+      handleItemUpdate(workspaceId, threadId, item, true, true);
+    },
+    [handleItemUpdate],
+  );
+
+  const onItemUpdated = useCallback(
+    (workspaceId: string, threadId: string, item: Record<string, unknown>) => {
+      handleItemUpdate(workspaceId, threadId, item, true, false);
     },
     [handleItemUpdate],
   );
 
   const onItemCompleted = useCallback(
     (workspaceId: string, threadId: string, item: Record<string, unknown>) => {
-      handleItemUpdate(workspaceId, threadId, item, false);
+      handleItemUpdate(workspaceId, threadId, item, false, false);
     },
     [handleItemUpdate],
   );
@@ -276,6 +284,7 @@ export function useThreadItemEvents({
     onAgentMessageDelta,
     onAgentMessageCompleted,
     onItemStarted,
+    onItemUpdated,
     onItemCompleted,
     onReasoningSummaryDelta,
     onReasoningSummaryBoundary,

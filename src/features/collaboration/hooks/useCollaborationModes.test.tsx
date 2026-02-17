@@ -93,6 +93,7 @@ describe("useCollaborationModes", () => {
 
     expect(result.current.selectedCollaborationModeId).toBeNull();
     expect(result.current.collaborationModes).toEqual([]);
+    expect(result.current.collaborationModesEnabled).toBe(false);
+    expect(result.current.collaborationModesAvailable).toBe(true);
   });
 });
-

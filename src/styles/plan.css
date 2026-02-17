@@ -12,6 +12,12 @@
   min-height: 0;
 }
 
+.plan-panel.plan-panel-focus-ring {
+  outline: 1px solid color-mix(in srgb, var(--accent) 70%, transparent);
+  outline-offset: 4px;
+  border-radius: 8px;
+}
+
 .plan-header {
   display: flex;
   justify-content: space-between;

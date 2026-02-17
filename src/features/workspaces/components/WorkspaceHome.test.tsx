@@ -65,6 +65,10 @@ vi.mock("react-i18next", () => ({
   }),
 }));
 
+vi.mock("../../engine/components/EngineIcon", () => ({
+  EngineIcon: () => <span data-testid="engine-icon" />,
+}));
+
 const workspace = {
   id: "ws-1",
   name: "hnms-openspec",

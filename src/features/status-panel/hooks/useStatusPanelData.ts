@@ -1,9 +1,16 @@
 import { useMemo } from "react";
 import type { ConversationItem } from "../../../types";
-import type { TodoItem, SubagentInfo, FileChangeSummary } from "../types";
+import type {
+  TodoItem,
+  SubagentInfo,
+  FileChangeSummary,
+  CommandSummary,
+} from "../types";
 import {
   extractToolName,
+  isBashTool,
   parseToolArgs,
+  getFirstStringField,
   getFileName,
   resolveToolStatus,
 } from "../../messages/components/toolBlocks/toolConstants";
@@ -12,14 +19,44 @@ interface StatusPanelData {
   todos: TodoItem[];
   subagents: SubagentInfo[];
   fileChanges: FileChangeSummary[];
+  commands: CommandSummary[];
   todoCompleted: number;
   todoTotal: number;
   hasInProgressTodo: boolean;
   subagentCompleted: number;
   subagentTotal: number;
   hasRunningSubagent: boolean;
+  commandCompleted: number;
+  commandTotal: number;
+  hasRunningCommand: boolean;
   totalAdditions: number;
   totalDeletions: number;
+}
+
+interface StatusPanelDataOptions {
+  isCodexEngine?: boolean;
+}
+
+function extractCommandFromTitle(title: string): string {
+  const trimmed = title.trim();
+  if (!trimmed) {
+    return "";
+  }
+  const match = trimmed.match(/^Command:\s*(.+)$/i);
+  return match?.[1]?.trim() ?? "";
+}
+
+function looksLikePathOnlyValue(value: string): boolean {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return false;
+  }
+  return (
+    trimmed.startsWith("/") ||
+    trimmed.startsWith("./") ||
+    trimmed.startsWith("../") ||
+    /^[A-Za-z]:[\\/]/.test(trimmed)
+  );
 }
 
 /**
@@ -29,7 +66,11 @@ interface StatusPanelData {
  * - subagents: 取所有 Task 工具调用
  * - fileChanges: 取所有有 changes 字段的 Edit/Write 工具
  */
-export function useStatusPanelData(items: ConversationItem[]): StatusPanelData {
+export function useStatusPanelData(
+  items: ConversationItem[],
+  options: StatusPanelDataOptions = {},
+): StatusPanelData {
+  const { isCodexEngine = false } = options;
   const todos = useMemo(() => {
     let lastTodos: TodoItem[] = [];
     for (const item of items) {
@@ -135,6 +176,45 @@ export function useStatusPanelData(items: ConversationItem[]): StatusPanelData {
     return Array.from(seen.values());
   }, [items]);
 
+  const commands = useMemo(() => {
+    const result: CommandSummary[] = [];
+    for (const item of items) {
+      if (item.kind !== "tool") continue;
+      const toolName = extractToolName(item.title);
+      if (item.toolType !== "commandExecution" && !isBashTool(toolName)) {
+        continue;
+      }
+      const args = parseToolArgs(item.detail);
+      const titleCommand = extractCommandFromTitle(item.title);
+      const argsCommand = getFirstStringField(args, [
+        "command",
+        "cmd",
+        "script",
+        "shell_command",
+        "bash",
+      ]);
+      const detailCommand = item.detail.trim();
+      const command = isCodexEngine
+        ? titleCommand ||
+          argsCommand ||
+          (looksLikePathOnlyValue(detailCommand) ? "" : detailCommand)
+        : argsCommand || detailCommand;
+      const resolved = resolveToolStatus(item.status, Boolean(item.output));
+      const status: CommandSummary["status"] =
+        resolved === "failed"
+          ? "error"
+          : resolved === "completed"
+            ? "completed"
+            : "running";
+      result.push({
+        id: item.id,
+        command,
+        status,
+      });
+    }
+    return result;
+  }, [items, isCodexEngine]);
+
   const todoStats = useMemo(() => {
     const completed = todos.filter((t) => t.status === "completed").length;
     const hasInProgress = todos.some((t) => t.status === "in_progress");
@@ -155,6 +235,16 @@ export function useStatusPanelData(items: ConversationItem[]): StatusPanelData {
     };
   }, [subagents]);
 
+  const commandStats = useMemo(() => {
+    const completed = commands.filter((c) => c.status === "completed").length;
+    const hasRunning = commands.some((c) => c.status === "running");
+    return {
+      commandCompleted: completed,
+      commandTotal: commands.length,
+      hasRunningCommand: hasRunning,
+    };
+  }, [commands]);
+
   const fileStats = useMemo(() => {
     // 无法精确获取 additions/deletions（需要 diff），使用文件数作为近似
     return {
@@ -167,8 +257,10 @@ export function useStatusPanelData(items: ConversationItem[]): StatusPanelData {
     todos,
     subagents,
     fileChanges,
+    commands,
     ...todoStats,
     ...subagentStats,
+    ...commandStats,
     ...fileStats,
   };
 }
