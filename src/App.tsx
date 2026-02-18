@@ -1,4 +1,14 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  cloneElement,
+  isValidElement,
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useTranslation } from "react-i18next";
 import "./styles/globals.css";
 import "./styles/base.css";
@@ -558,6 +568,7 @@ function MainApp() {
   const { skills } = useSkills({ activeWorkspace, onDebug: addDebugEntry });
   const {
     activeEngine,
+    availableEngines,
     installedEngines,
     setActiveEngine,
     engineModelsAsOptions,
@@ -3115,13 +3126,18 @@ function MainApp() {
   useMenuLocalization();
   const dropOverlayActive = isWorkspaceDropActive;
   const dropOverlayText = "Drop Project Here";
+  const showWorkspaceView = Boolean(activeWorkspace && !showHome && !showKanban);
+  const shouldShowSidebarTopbarContent =
+    !isCompact && !sidebarCollapsed && showWorkspaceView;
   const appClassName = `app ${isCompact ? "layout-compact" : "layout-desktop"}${
     isPhone ? " layout-phone" : ""
   }${isTablet ? " layout-tablet" : ""}${
     reduceTransparency ? " reduced-transparency" : ""
   }${!isCompact && sidebarCollapsed ? " sidebar-collapsed" : ""}${
     !isCompact && rightPanelCollapsed ? " right-panel-collapsed" : ""
-  }${showKanban ? " kanban-active" : ""}`;
+  }${shouldShowSidebarTopbarContent ? " sidebar-title-relocated" : ""}${
+    showKanban ? " kanban-active" : ""
+  }`;
   const {
     sidebarNode,
     messagesNode,
@@ -3619,6 +3635,7 @@ function MainApp() {
   const workspaceHomeNode = activeWorkspace ? (
     <WorkspaceHome
       workspace={activeWorkspace}
+      engines={availableEngines}
       currentBranch={gitStatus.branchName || null}
       recentThreads={recentThreads}
       onSelectConversation={handleSelectWorkspaceInstance}
@@ -3647,6 +3664,13 @@ function MainApp() {
   ) : (
     desktopTopbarLeftNode
   );
+  const sidebarNodeWithTopbar = shouldShowSidebarTopbarContent &&
+    isValidElement(sidebarNode)
+    ? cloneElement(
+        sidebarNode as React.ReactElement<{ topbarNode?: React.ReactNode }>,
+        { topbarNode: desktopTopbarLeftNodeWithToggle },
+      )
+    : sidebarNode;
 
   return (
     <div
@@ -3728,7 +3752,7 @@ function MainApp() {
         centerMode={centerMode}
         hasActivePlan={hasActivePlan}
         activeWorkspace={Boolean(activeWorkspace)}
-        sidebarNode={sidebarNode}
+        sidebarNode={sidebarNodeWithTopbar}
         messagesNode={mainMessagesNode}
         composerNode={composerNode}
         approvalToastsNode={approvalToastsNode}

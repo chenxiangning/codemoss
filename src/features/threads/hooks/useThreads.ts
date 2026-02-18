@@ -482,8 +482,7 @@ export function useThreads({
     resetWorkspaceThreads,
     listThreadsForWorkspace,
     loadOlderThreadsForWorkspace,
-    archiveThread,
-    archiveClaudeThread,
+    deleteThreadForWorkspace,
     renameThreadTitleMapping,
   } = useThreadActions({
     dispatch,
@@ -1146,6 +1145,9 @@ export function useThreads({
     async (workspaceId: string, threadId: string): Promise<ThreadDeleteResult> => {
       const mapDeleteErrorCode = (errorMessage: string): ThreadDeleteErrorCode => {
         const normalized = errorMessage.toLowerCase();
+        if (normalized.includes("[engine_unsupported]")) {
+          return "ENGINE_UNSUPPORTED";
+        }
         if (normalized.includes("workspace not connected")) {
           return "WORKSPACE_NOT_CONNECTED";
         }
@@ -1169,11 +1171,7 @@ export function useThreads({
       };
 
       try {
-        if (threadId.startsWith("claude:")) {
-          await archiveClaudeThread(workspaceId, threadId);
-        } else {
-          await archiveThread(workspaceId, threadId);
-        }
+        await deleteThreadForWorkspace(workspaceId, threadId);
         unpinThread(workspaceId, threadId);
         dispatch({ type: "removeThread", workspaceId, threadId });
         return {
@@ -1192,7 +1190,7 @@ export function useThreads({
         };
       }
     },
-    [archiveClaudeThread, archiveThread, unpinThread],
+    [deleteThreadForWorkspace, unpinThread],
   );
 
   const renameThread = useCallback(
