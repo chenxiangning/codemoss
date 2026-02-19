@@ -62,35 +62,58 @@ cp -f "${libcrypto}" "${frameworks_dir}/"
 
 install_name_tool -id "@rpath/libssl.3.dylib" "${frameworks_dir}/libssl.3.dylib"
 install_name_tool -id "@rpath/libcrypto.3.dylib" "${frameworks_dir}/libcrypto.3.dylib"
-for candidate in \
-  "${libcrypto}" \
-  "/opt/homebrew/opt/openssl@3/lib/libcrypto.3.dylib" \
-  "/usr/local/opt/openssl@3/lib/libcrypto.3.dylib" \
-  "/opt/homebrew/Cellar/openssl@3/3.6.0/lib/libcrypto.3.dylib" \
-  "/usr/local/Cellar/openssl@3/3.6.0/lib/libcrypto.3.dylib"
-do
-  install_name_tool -change "${candidate}" "@rpath/libcrypto.3.dylib" "${frameworks_dir}/libssl.3.dylib" 2>/dev/null || true
-done
 
-for candidate in \
-  "${libssl}" \
-  "/opt/homebrew/opt/openssl@3/lib/libssl.3.dylib" \
-  "/usr/local/opt/openssl@3/lib/libssl.3.dylib"
-do
-  install_name_tool -change "${candidate}" "@rpath/libssl.3.dylib" "${bin_path}" 2>/dev/null || true
-done
-
-for candidate in \
-  "${libcrypto}" \
-  "/opt/homebrew/opt/openssl@3/lib/libcrypto.3.dylib" \
-  "/usr/local/opt/openssl@3/lib/libcrypto.3.dylib"
-do
-  install_name_tool -change "${candidate}" "@rpath/libcrypto.3.dylib" "${bin_path}" 2>/dev/null || true
-done
-
-if ! otool -l "${bin_path}" | { command -v rg >/dev/null 2>&1 && rg -q "@executable_path/../Frameworks" || grep -q "@executable_path/../Frameworks"; }; then
-  install_name_tool -add_rpath "@executable_path/../Frameworks" "${bin_path}"
+# Dynamically discover and fix libssl's reference to libcrypto
+crypto_ref=$(otool -L "${frameworks_dir}/libssl.3.dylib" | grep 'libcrypto' | awk '{print $1}')
+if [[ -n "${crypto_ref}" && "${crypto_ref}" != "@rpath/libcrypto.3.dylib" ]]; then
+  echo "Fixing libssl -> libcrypto reference: ${crypto_ref}"
+  install_name_tool -change "${crypto_ref}" "@rpath/libcrypto.3.dylib" "${frameworks_dir}/libssl.3.dylib"
 fi
+
+# Fix binary references dynamically
+for bin in "${bin_path}" "${daemon_path}"; do
+  [[ -f "${bin}" ]] || continue
+
+  ssl_ref=$(otool -L "${bin}" | grep 'libssl' | awk '{print $1}')
+  if [[ -n "${ssl_ref}" && "${ssl_ref}" != "@rpath/libssl.3.dylib" ]]; then
+    echo "Fixing $(basename "${bin}") -> libssl reference: ${ssl_ref}"
+    install_name_tool -change "${ssl_ref}" "@rpath/libssl.3.dylib" "${bin}"
+  fi
+
+  crypto_ref=$(otool -L "${bin}" | grep 'libcrypto' | awk '{print $1}')
+  if [[ -n "${crypto_ref}" && "${crypto_ref}" != "@rpath/libcrypto.3.dylib" ]]; then
+    echo "Fixing $(basename "${bin}") -> libcrypto reference: ${crypto_ref}"
+    install_name_tool -change "${crypto_ref}" "@rpath/libcrypto.3.dylib" "${bin}"
+  fi
+
+  if ! otool -l "${bin}" | grep -q "@executable_path/../Frameworks"; then
+    install_name_tool -add_rpath "@executable_path/../Frameworks" "${bin}"
+  fi
+done
+
+# Verify all references are fixed
+echo "Verifying library references..."
+verify_failed=0
+for lib in "${frameworks_dir}/libssl.3.dylib" "${frameworks_dir}/libcrypto.3.dylib"; do
+  if otool -L "${lib}" | grep -v '@rpath' | grep -q '/opt/\|/usr/local/'; then
+    echo "ERROR: ${lib} still has absolute references:"
+    otool -L "${lib}" | grep '/opt/\|/usr/local/'
+    verify_failed=1
+  fi
+done
+for bin in "${bin_path}" "${daemon_path}"; do
+  [[ -f "${bin}" ]] || continue
+  if otool -L "${bin}" | grep -E 'libssl|libcrypto' | grep -v '@rpath' | grep -q '/opt/\|/usr/local/'; then
+    echo "ERROR: ${bin} still has absolute references:"
+    otool -L "${bin}" | grep -E 'libssl|libcrypto' | grep '/opt/\|/usr/local/'
+    verify_failed=1
+  fi
+done
+if [[ ${verify_failed} -eq 1 ]]; then
+  echo "ERROR: Library reference fixup incomplete. Aborting."
+  exit 1
+fi
+echo "All library references verified OK."
 
 codesign "${codesign_base_args[@]}" "${frameworks_dir}/libcrypto.3.dylib"
 codesign "${codesign_base_args[@]}" "${frameworks_dir}/libssl.3.dylib"
