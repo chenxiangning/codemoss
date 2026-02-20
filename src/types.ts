@@ -45,6 +45,9 @@ export type WorkspaceKind = "main" | "worktree";
 
 export type WorktreeInfo = {
   branch: string;
+  baseRef?: string | null;
+  baseCommit?: string | null;
+  tracking?: string | null;
 };
 
 export type WorkspaceInfo = {
@@ -339,6 +342,11 @@ export type GitHistoryResponse = {
   commits: GitHistoryCommit[];
 };
 
+export type GitBranchCompareCommitSets = {
+  targetOnlyCommits: GitHistoryCommit[];
+  currentOnlyCommits: GitHistoryCommit[];
+};
+
 export type GitCommitFileChange = {
   path: string;
   oldPath?: string | null;
@@ -373,7 +381,9 @@ export type GitBranchListItem = {
   isCurrent: boolean;
   isRemote: boolean;
   remote?: string | null;
+  upstream?: string | null;
   lastCommit: number;
+  headSha?: string | null;
   ahead: number;
   behind: number;
 };
