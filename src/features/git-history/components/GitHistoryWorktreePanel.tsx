@@ -1,4 +1,3 @@
-import { ask } from "@tauri-apps/plugin-dialog";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import Check from "lucide-react/dist/esm/icons/check";
@@ -7,8 +6,8 @@ import ChevronRight from "lucide-react/dist/esm/icons/chevron-right";
 import Folder from "lucide-react/dist/esm/icons/folder";
 import Minus from "lucide-react/dist/esm/icons/minus";
 import Plus from "lucide-react/dist/esm/icons/plus";
-import RotateCcw from "lucide-react/dist/esm/icons/rotate-ccw";
 import Sparkles from "lucide-react/dist/esm/icons/sparkles";
+import Undo2 from "lucide-react/dist/esm/icons/undo-2";
 import FileIcon from "../../../components/FileIcon";
 import {
   commitGit,
@@ -166,6 +165,8 @@ export function GitHistoryWorktreePanel({
 
   const [operationLoading, setOperationLoading] = useState(false);
   const [operationError, setOperationError] = useState<string | null>(null);
+  const [discardDialogPaths, setDiscardDialogPaths] = useState<string[] | null>(null);
+  const [discardAllDialogOpen, setDiscardAllDialogOpen] = useState(false);
 
   const [commitMessage, setCommitMessage] = useState("");
   const [commitMessageLoading, setCommitMessageLoading] = useState(false);
@@ -211,7 +212,9 @@ export function GitHistoryWorktreePanel({
     setStatusError(null);
     setOperationError(null);
     setCommitMessageError(null);
+    setDiscardDialogPaths(null);
     setCollapsedFolders(new Set());
+    setDiscardAllDialogOpen(false);
     void refreshStatus();
     const timer = window.setInterval(() => {
       void refreshStatus();
@@ -244,41 +247,41 @@ export function GitHistoryWorktreePanel({
       if (!paths.length) {
         return;
       }
-      const single = paths.length === 1;
-      const previewLimit = 6;
-      const preview = paths.slice(0, previewLimit).join("\n");
-      const remaining = paths.length - previewLimit;
-      const more =
-        paths.length > previewLimit ? `\n… ${t("git.andMore", { count: remaining })}` : "";
-      const message = single
-        ? t("git.discardConfirmSingle", { path: paths[0] })
-        : t("git.discardConfirmMultiple", { preview, more });
-      const confirmed = await ask(message, {
-        title: t("git.discardConfirmTitle"),
-        kind: "warning",
-      });
-      if (!confirmed) {
+      if (operationLoading) {
         return;
       }
-      await handleMutation(async () => {
-        for (const path of paths) {
-          await revertGitFile(workspaceId, path);
-        }
-      });
+      setDiscardDialogPaths(paths);
     },
-    [handleMutation, t, workspaceId],
+    [operationLoading],
   );
 
-  const handleDiscardAll = useCallback(async () => {
-    const confirmed = await ask(`${t("git.revertAllConfirm")}\n\n${t("git.revertAllMessage")}`, {
-      title: t("git.revertAllTitle"),
-      kind: "warning",
-    });
-    if (!confirmed) {
+  const handleConfirmDiscardFiles = useCallback(async () => {
+    if (operationLoading || !discardDialogPaths || discardDialogPaths.length === 0) {
       return;
     }
+    const targetPaths = [...discardDialogPaths];
+    setDiscardDialogPaths(null);
+    await handleMutation(async () => {
+      for (const path of targetPaths) {
+        await revertGitFile(workspaceId, path);
+      }
+    });
+  }, [discardDialogPaths, handleMutation, operationLoading, workspaceId]);
+
+  const handleDiscardAll = useCallback(() => {
+    if (operationLoading || status.unstagedFiles.length === 0) {
+      return;
+    }
+    setDiscardAllDialogOpen(true);
+  }, [operationLoading, status.unstagedFiles.length]);
+
+  const handleConfirmDiscardAll = useCallback(async () => {
+    if (operationLoading) {
+      return;
+    }
+    setDiscardAllDialogOpen(false);
     await handleMutation(() => revertGitAll(workspaceId));
-  }, [handleMutation, t, workspaceId]);
+  }, [handleMutation, operationLoading, workspaceId]);
 
   const handleGenerateCommitMessage = useCallback(async () => {
     if (commitMessageLoading || commitLoading) {
@@ -337,6 +340,10 @@ export function GitHistoryWorktreePanel({
   const unstagedFiles = useMemo(
     () => status.unstagedFiles.slice().sort((left, right) => left.path.localeCompare(right.path)),
     [status.unstagedFiles],
+  );
+  const revertAllPreviewPaths = useMemo(
+    () => status.files.map((file) => file.path).slice().sort((left, right) => left.localeCompare(right)),
+    [status.files],
   );
 
   const statusErrorText = normalizeErrorMessage(statusError, t);
@@ -441,7 +448,7 @@ export function GitHistoryWorktreePanel({
                 title={t("git.discardFile")}
                 aria-label={t("git.discardFile")}
               >
-                <RotateCcw size={12} aria-hidden />
+                <Undo2 size={12} aria-hidden />
               </button>
             ) : null}
           </span>
@@ -611,13 +618,13 @@ export function GitHistoryWorktreePanel({
                     type="button"
                     className="git-history-worktree-action git-history-worktree-action-discard diff-row-action diff-row-action--discard"
                     onClick={() => {
-                      void handleDiscardAll();
+                      handleDiscardAll();
                     }}
                     disabled={operationLoading}
                     title={t("git.discardAllChangesAction")}
                     aria-label={t("git.discardAllChangesAction")}
                   >
-                    <RotateCcw size={12} aria-hidden />
+                    <Undo2 size={12} aria-hidden />
                   </button>
                 </>
               ) : null}
@@ -626,6 +633,130 @@ export function GitHistoryWorktreePanel({
           <div className="git-history-worktree-section-list">{renderSectionRows(unstagedFiles, "unstaged")}</div>
         </div>
       </div>
+      {discardAllDialogOpen ? (
+        <div
+          className="git-history-create-branch-backdrop"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget && !operationLoading) {
+              setDiscardAllDialogOpen(false);
+            }
+          }}
+        >
+          <div
+            className="git-history-worktree-danger-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-label={t("git.revertAllTitle")}
+          >
+            <div className="git-history-create-branch-title">{t("git.revertAllTitle")}</div>
+            <div className="git-history-worktree-danger-copy">
+              <p>{t("git.revertAllBeginnerLead")}</p>
+              <div className="git-history-worktree-danger-list">
+                <div className="git-history-worktree-danger-list-title">{t("git.revertAllAffectsLabel")}</div>
+                <ul>
+                  <li>
+                    <span className="git-history-danger-keyword">{t("git.revertAllKeywordStaged")}</span>
+                  </li>
+                  <li>
+                    <span className="git-history-danger-keyword">{t("git.revertAllKeywordUnstaged")}</span>
+                  </li>
+                  <li>
+                    <span className="git-history-danger-keyword">{t("git.revertAllKeywordUntracked")}</span>
+                  </li>
+                </ul>
+              </div>
+              <div className="git-history-worktree-danger-list">
+                <div className="git-history-worktree-danger-list-title">
+                  {t("git.revertAllFilesPreviewLabel", { count: revertAllPreviewPaths.length })}
+                </div>
+                <ul>
+                  {revertAllPreviewPaths.map((path) => (
+                    <li key={path}>
+                      <code className="git-history-worktree-danger-file">{path}</code>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+              <div className="git-history-worktree-danger-note">
+                <span className="git-history-danger-keyword">{t("git.revertAllKeywordIrreversible")}</span>
+                <span>{t("git.revertAllBeginnerHint")}</span>
+              </div>
+            </div>
+            <div className="git-history-create-branch-actions">
+              <button
+                type="button"
+                className="git-history-create-branch-btn is-cancel"
+                disabled={operationLoading}
+                onClick={() => setDiscardAllDialogOpen(false)}
+              >
+                {t("common.cancel")}
+              </button>
+              <button
+                type="button"
+                className="git-history-create-branch-btn is-danger"
+                disabled={operationLoading}
+                onClick={() => void handleConfirmDiscardAll()}
+              >
+                {operationLoading ? t("common.loading") : t("git.revertAllConfirmAction")}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+      {discardDialogPaths ? (
+        <div
+          className="git-history-create-branch-backdrop"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget && !operationLoading) {
+              setDiscardDialogPaths(null);
+            }
+          }}
+        >
+          <div
+            className="git-history-worktree-danger-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-label={t("git.discardConfirmTitle")}
+          >
+            <div className="git-history-create-branch-title">{t("git.discardConfirmTitle")}</div>
+            <div className="git-history-worktree-danger-copy">
+              <p>{t("git.discardDialogBeginnerLead")}</p>
+              <div className="git-history-worktree-danger-list">
+                <div className="git-history-worktree-danger-list-title">{t("git.discardDialogAffectsLabel")}</div>
+                <ul>
+                  {discardDialogPaths.map((path) => (
+                    <li key={path}>
+                      <code className="git-history-worktree-danger-file">{path}</code>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+              <div className="git-history-worktree-danger-note">
+                <span className="git-history-danger-keyword">{t("git.revertAllKeywordIrreversible")}</span>
+                <span>{t("git.discardDialogBeginnerHint")}</span>
+              </div>
+            </div>
+            <div className="git-history-create-branch-actions">
+              <button
+                type="button"
+                className="git-history-create-branch-btn is-cancel"
+                disabled={operationLoading}
+                onClick={() => setDiscardDialogPaths(null)}
+              >
+                {t("common.cancel")}
+              </button>
+              <button
+                type="button"
+                className="git-history-create-branch-btn is-danger"
+                disabled={operationLoading}
+                onClick={() => void handleConfirmDiscardFiles()}
+              >
+                {operationLoading ? t("common.loading") : t("git.discardDialogConfirmAction")}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

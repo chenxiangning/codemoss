@@ -25,6 +25,7 @@ import type {
   GitHubPullRequestDiff,
   GitHubPullRequestsResponse,
   GitLogResponse,
+  GitPushPreviewResponse,
   ReviewTarget,
 } from "../types";
 
@@ -416,6 +417,22 @@ export async function getGitCommitHistory(
   });
 }
 
+export async function getGitPushPreview(
+  workspace_id: string,
+  options: {
+    remote: string;
+    branch: string;
+    limit?: number;
+  },
+): Promise<GitPushPreviewResponse> {
+  return invoke("get_git_push_preview", {
+    workspaceId: workspace_id,
+    remote: options.remote,
+    branch: options.branch,
+    limit: options.limit ?? 120,
+  });
+}
+
 export async function resolveGitCommitRef(
   workspace_id: string,
   target: string,
@@ -441,8 +458,17 @@ export async function getGitCommitDetails(
 export async function getGitCommitDiff(
   workspace_id: string,
   sha: string,
+  options?: {
+    path?: string | null;
+    contextLines?: number;
+  },
 ): Promise<GitCommitDiff[]> {
-  return invoke("get_git_commit_diff", { workspaceId: workspace_id, sha });
+  return invoke("get_git_commit_diff", {
+    workspaceId: workspace_id,
+    sha,
+    path: options?.path ?? null,
+    contextLines: options?.contextLines ?? null,
+  });
 }
 
 export async function getGitRemote(workspace_id: string): Promise<string | null> {
@@ -476,8 +502,34 @@ export async function commitGit(
   return invoke("commit_git", { workspaceId, message });
 }
 
-export async function pushGit(workspaceId: string): Promise<void> {
-  return invoke("push_git", { workspaceId });
+export type GitPushOptions = {
+  remote?: string | null;
+  branch?: string | null;
+  forceWithLease?: boolean;
+  pushTags?: boolean;
+  runHooks?: boolean;
+  pushToGerrit?: boolean;
+  topic?: string | null;
+  reviewers?: string | null;
+  cc?: string | null;
+};
+
+export async function pushGit(
+  workspaceId: string,
+  options?: GitPushOptions,
+): Promise<void> {
+  return invoke("push_git", {
+    workspaceId,
+    remote: options?.remote ?? null,
+    branch: options?.branch ?? null,
+    forceWithLease: options?.forceWithLease ?? null,
+    pushTags: options?.pushTags ?? null,
+    runHooks: options?.runHooks ?? null,
+    pushToGerrit: options?.pushToGerrit ?? null,
+    topic: options?.topic ?? null,
+    reviewers: options?.reviewers ?? null,
+    cc: options?.cc ?? null,
+  });
 }
 
 export async function pullGit(workspaceId: string): Promise<void> {
@@ -507,6 +559,16 @@ export async function revertCommit(
   commitHash: string,
 ): Promise<void> {
   return invoke("revert_commit", { workspaceId, commitHash });
+}
+
+export type GitResetMode = "soft" | "mixed" | "hard" | "keep";
+
+export async function resetGitCommit(
+  workspaceId: string,
+  commitHash: string,
+  mode: GitResetMode,
+): Promise<void> {
+  return invoke("reset_git_commit", { workspaceId, commitHash, mode });
 }
 
 export async function getGitHubIssues(

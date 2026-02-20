@@ -59,7 +59,7 @@ export function useGitPanelController({
   );
   const [filePanelMode, setFilePanelMode] = useState<
     "git" | "files" | "prompts" | "memory"
-  >("git");
+  >("files");
   const [selectedPullRequest, setSelectedPullRequest] =
     useState<GitHubPullRequest | null>(null);
   const [selectedCommitSha, setSelectedCommitSha] = useState<string | null>(
