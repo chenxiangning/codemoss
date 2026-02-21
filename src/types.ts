@@ -359,6 +359,56 @@ export type GitBranchCompareCommitSets = {
   currentOnlyCommits: GitHistoryCommit[];
 };
 
+export type GitPrWorkflowDefaults = {
+  upstreamRepo: string;
+  baseBranch: string;
+  headOwner: string;
+  headBranch: string;
+  title: string;
+  body: string;
+  commentBody: string;
+  canCreate: boolean;
+  disabledReason?: string | null;
+};
+
+export type GitPrWorkflowStageStatus =
+  | "pending"
+  | "running"
+  | "success"
+  | "failed"
+  | "skipped";
+
+export type GitPrWorkflowStage = {
+  key: string;
+  status: GitPrWorkflowStageStatus | string;
+  detail: string;
+  command?: string | null;
+  stdout?: string | null;
+  stderr?: string | null;
+};
+
+export type GitPrExistingPullRequest = {
+  number: number;
+  title: string;
+  url: string;
+  state: string;
+  headRefName: string;
+  baseRefName: string;
+};
+
+export type GitPrWorkflowResult = {
+  ok: boolean;
+  status: "success" | "failed" | "existing";
+  message: string;
+  errorCategory?: string | null;
+  nextActionHint?: string | null;
+  prUrl?: string | null;
+  prNumber?: number | null;
+  existingPr?: GitPrExistingPullRequest | null;
+  retryCommand?: string | null;
+  stages: GitPrWorkflowStage[];
+};
+
 export type GitCommitFileChange = {
   path: string;
   oldPath?: string | null;

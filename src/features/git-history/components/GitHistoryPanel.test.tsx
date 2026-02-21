@@ -76,10 +76,38 @@ vi.mock("../../../services/clientStorage", () => ({
 vi.mock("../../../services/tauri", () => ({
   checkoutGitBranch: vi.fn(async () => undefined),
   cherryPickCommit: vi.fn(async () => undefined),
+  createGitPrWorkflow: vi.fn(async () => ({
+    ok: true,
+    status: "success",
+    message: "created",
+    errorCategory: null,
+    nextActionHint: null,
+    prUrl: "https://github.com/example/repo/pull/12",
+    prNumber: 12,
+    existingPr: null,
+    retryCommand: null,
+    stages: [
+      { key: "precheck", status: "success", detail: "precheck ok" },
+      { key: "push", status: "success", detail: "push ok" },
+      { key: "create", status: "success", detail: "create ok" },
+      { key: "comment", status: "skipped", detail: "skipped" },
+    ],
+  })),
   createGitBranchFromBranch: vi.fn(async () => undefined),
   createGitBranchFromCommit: vi.fn(async () => undefined),
   deleteGitBranch: vi.fn(async () => undefined),
   fetchGit: vi.fn(async () => undefined),
+  getGitPrWorkflowDefaults: vi.fn(async () => ({
+    upstreamRepo: "chenxiangning/codemoss",
+    baseBranch: "main",
+    headOwner: "chenxiangning",
+    headBranch: "codex/feat-gitv9-v0.1.8",
+    title: "fix(git): stabilize",
+    body: "body",
+    commentBody: "@maintainer please review",
+    canCreate: true,
+    disabledReason: null,
+  })),
   getGitBranchCompareCommits: vi.fn(async () => ({
     targetOnlyCommits: [],
     currentOnlyCommits: [],
@@ -246,6 +274,63 @@ describe("GitHistoryPanel helpers", () => {
 });
 
 describe("GitHistoryPanel interactions", () => {
+  it("renders create-pr action before pull and runs workflow after confirm", async () => {
+    render(<GitHistoryPanel workspace={workspace as never} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("git.historyCreatePr")).toBeTruthy();
+      expect(screen.getByText("git.pull")).toBeTruthy();
+    });
+
+    const actionLabels = Array.from(
+      document.querySelectorAll(".git-history-toolbar-action-group .git-history-chip span"),
+    ).map((node) => node.textContent?.trim() ?? "");
+    expect(actionLabels[0]).toBe("git.historyCreatePr");
+    expect(actionLabels[1]).toBe("git.pull");
+
+    fireEvent.click(screen.getByText("git.historyCreatePr"));
+    expect(screen.getByRole("dialog", { name: "git.historyCreatePrDialogTitle" })).toBeTruthy();
+
+    await waitFor(() => {
+      expect(tauriService.getGitPrWorkflowDefaults).toHaveBeenCalledWith("w1");
+      const baseRepoInput = screen.getByLabelText(
+        "git.historyCreatePrCompareBaseRepo",
+      ) as HTMLButtonElement;
+      const headRepoInput = screen.getByLabelText(
+        "git.historyCreatePrCompareHeadRepo",
+      ) as HTMLButtonElement;
+      expect(baseRepoInput.textContent ?? "").toContain("chenxiangning/codemoss");
+      expect(headRepoInput.textContent ?? "").toContain("chenxiangning/codemoss");
+    });
+
+    fireEvent.change(screen.getByDisplayValue("fix(git): stabilize"), {
+      target: { value: "fix(git): create pr button" },
+    });
+
+    const confirmButton = screen.getByText("git.historyCreatePrAction").closest("button");
+    expect(confirmButton).toBeTruthy();
+    await waitFor(() => {
+      expect(confirmButton?.disabled).toBe(false);
+    });
+    fireEvent.click(confirmButton as HTMLElement);
+
+    await waitFor(() => {
+      expect(tauriService.createGitPrWorkflow).toHaveBeenCalledWith(
+        "w1",
+        expect.objectContaining({
+          upstreamRepo: "chenxiangning/codemoss",
+          baseBranch: "main",
+          headOwner: "chenxiangning",
+          headBranch: "codex/feat-gitv9-v0.1.8",
+          title: "fix(git): create pr button",
+          commentAfterCreate: true,
+        }),
+      );
+      expect(screen.getByText("git.historyCreatePrResultSuccess")).toBeTruthy();
+      expect(screen.getByText("git.historyCreatePrOpenLink")).toBeTruthy();
+    });
+  });
+
   it("opens pull dialog and runs pull only after confirm", async () => {
     render(<GitHistoryPanel workspace={workspace as never} />);
 

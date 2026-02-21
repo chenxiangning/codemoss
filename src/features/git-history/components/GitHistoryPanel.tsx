@@ -15,11 +15,15 @@ import { useTranslation } from "react-i18next";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import Download from "lucide-react/dist/esm/icons/download";
 import ChevronDown from "lucide-react/dist/esm/icons/chevron-down";
+import ChevronLeft from "lucide-react/dist/esm/icons/chevron-left";
 import ChevronRight from "lucide-react/dist/esm/icons/chevron-right";
 import Cherry from "lucide-react/dist/esm/icons/cherry";
+import CircleAlert from "lucide-react/dist/esm/icons/circle-alert";
+import CircleCheck from "lucide-react/dist/esm/icons/circle-check";
 import Cloud from "lucide-react/dist/esm/icons/cloud";
 import CloudDownload from "lucide-react/dist/esm/icons/cloud-download";
 import Copy from "lucide-react/dist/esm/icons/copy";
+import ExternalLink from "lucide-react/dist/esm/icons/external-link";
 import FileText from "lucide-react/dist/esm/icons/file-text";
 import Folder from "lucide-react/dist/esm/icons/folder";
 import FolderOpen from "lucide-react/dist/esm/icons/folder-open";
@@ -28,8 +32,10 @@ import GitBranch from "lucide-react/dist/esm/icons/git-branch";
 import GitBranchPlus from "lucide-react/dist/esm/icons/git-branch-plus";
 import GitCommit from "lucide-react/dist/esm/icons/git-commit-horizontal";
 import GitMerge from "lucide-react/dist/esm/icons/git-merge";
+import GitPullRequestCreate from "lucide-react/dist/esm/icons/git-pull-request-create";
 import HardDrive from "lucide-react/dist/esm/icons/hard-drive";
 import LayoutGrid from "lucide-react/dist/esm/icons/layout-grid";
+import LoaderCircle from "lucide-react/dist/esm/icons/loader-circle";
 import MessageSquareText from "lucide-react/dist/esm/icons/message-square-text";
 import Pencil from "lucide-react/dist/esm/icons/pencil";
 import Plus from "lucide-react/dist/esm/icons/plus";
@@ -37,6 +43,7 @@ import RefreshCw from "lucide-react/dist/esm/icons/refresh-cw";
 import Repeat from "lucide-react/dist/esm/icons/repeat";
 import RotateCcw from "lucide-react/dist/esm/icons/rotate-ccw";
 import Search from "lucide-react/dist/esm/icons/search";
+import ShieldAlert from "lucide-react/dist/esm/icons/shield-alert";
 import Trash2 from "lucide-react/dist/esm/icons/trash-2";
 import Undo2 from "lucide-react/dist/esm/icons/undo-2";
 import Upload from "lucide-react/dist/esm/icons/upload";
@@ -48,15 +55,20 @@ import type {
   GitCommitFileChange,
   GitFileDiff,
   GitHistoryCommit,
+  GitPrWorkflowDefaults,
+  GitPrWorkflowResult,
+  GitPrWorkflowStage,
   WorkspaceInfo,
 } from "../../../types";
 import {
   checkoutGitBranch,
   cherryPickCommit,
+  createGitPrWorkflow,
   createGitBranchFromBranch,
   createGitBranchFromCommit,
   deleteGitBranch,
   fetchGit,
+  getGitPrWorkflowDefaults,
   type GitPullStrategyOption,
   getGitBranchCompareCommits,
   getGitCommitDiff,
@@ -165,6 +177,14 @@ type GitOperationNoticeState = {
   debugMessage?: string;
 };
 
+type ForceDeleteDialogMode = "notMerged" | "worktreeOccupied";
+
+type ForceDeleteDialogState = {
+  mode: ForceDeleteDialogMode;
+  branch: string;
+  worktreePath: string | null;
+};
+
 type GitResetMode = "soft" | "mixed" | "hard" | "keep";
 
 type BranchMenuSource = "local" | "remote";
@@ -253,6 +273,24 @@ type WorktreePreviewFile = GitFileDiff & {
   deletions: number;
 };
 
+type CreatePrFormState = {
+  upstreamRepo: string;
+  baseBranch: string;
+  headOwner: string;
+  headBranch: string;
+  title: string;
+  body: string;
+  commentAfterCreate: boolean;
+  commentBody: string;
+};
+
+type CreatePrStageView = {
+  key: "precheck" | "push" | "create" | "comment";
+  label: string;
+  status: "pending" | "running" | "success" | "failed" | "skipped";
+  detail: string;
+};
+
 const PAGE_SIZE = 100;
 const DEFAULT_DETAILS_SPLIT = 42;
 const DETAILS_SPLIT_MIN = 24;
@@ -323,6 +361,106 @@ function getCommitActionIcon(actionId: CommitActionId, size: number): ReactNode 
     case "revert":
       return <Undo2 size={size} strokeWidth={strokeWidth} />;
   }
+}
+
+function buildCreatePrInitialStages(t: (key: string) => string): CreatePrStageView[] {
+  return [
+    {
+      key: "precheck",
+      label: t("git.historyCreatePrStagePrecheck"),
+      status: "pending",
+      detail: t("git.historyCreatePrStageWaiting"),
+    },
+    {
+      key: "push",
+      label: t("git.historyCreatePrStagePush"),
+      status: "pending",
+      detail: t("git.historyCreatePrStageWaiting"),
+    },
+    {
+      key: "create",
+      label: t("git.historyCreatePrStageCreate"),
+      status: "pending",
+      detail: t("git.historyCreatePrStageWaiting"),
+    },
+    {
+      key: "comment",
+      label: t("git.historyCreatePrStageComment"),
+      status: "pending",
+      detail: t("git.historyCreatePrStageWaiting"),
+    },
+  ];
+}
+
+function mapCreatePrStagesFromResult(
+  t: (key: string) => string,
+  stages: GitPrWorkflowStage[],
+): CreatePrStageView[] {
+  const defaults = buildCreatePrInitialStages(t);
+  return defaults.map((defaultStage) => {
+    const backendStage = stages.find((entry) => entry.key === defaultStage.key);
+    if (!backendStage) {
+      return defaultStage;
+    }
+    const status = (() => {
+      switch (backendStage.status) {
+        case "running":
+        case "success":
+        case "failed":
+        case "skipped":
+          return backendStage.status;
+        default:
+          return "pending";
+      }
+    })();
+    return {
+      ...defaultStage,
+      status,
+      detail: backendStage.detail?.trim() || defaultStage.detail,
+    };
+  });
+}
+
+function splitGitHubRepo(value: string): { owner: string; repo: string } {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return { owner: "", repo: "" };
+  }
+  const [owner, ...rest] = trimmed.split("/");
+  return {
+    owner: owner?.trim() ?? "",
+    repo: rest.join("/").trim(),
+  };
+}
+
+function uniqueNonEmpty(values: string[]): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const value of values) {
+    const trimmed = value.trim();
+    if (!trimmed || seen.has(trimmed)) {
+      continue;
+    }
+    seen.add(trimmed);
+    result.push(trimmed);
+  }
+  return result;
+}
+
+function sortOptionsWithPriority(values: string[], priorityValues: string[]): string[] {
+  const uniqueValues = uniqueNonEmpty(values);
+  const priority = uniqueNonEmpty(priorityValues);
+  const valueSet = new Set(uniqueValues);
+  const prioritized = priority.filter((entry) => valueSet.has(entry));
+  const prioritizedSet = new Set(prioritized);
+  const rest = uniqueValues
+    .filter((entry) => !prioritizedSet.has(entry))
+    .sort((left, right) =>
+      left.localeCompare(right, undefined, {
+        numeric: true,
+        sensitivity: "base",
+      }));
+  return [...prioritized, ...rest];
 }
 
 export function getDefaultColumnWidths(containerWidth: number): {
@@ -674,6 +812,16 @@ type GitHistoryProjectPickerProps = {
   onSelect: (id: string) => void;
 };
 
+type GitHistoryInlinePickerProps = {
+  label: string;
+  value: string;
+  options: string[];
+  disabled?: boolean;
+  searchPlaceholder: string;
+  emptyText: string;
+  onSelect: (value: string) => void;
+};
+
 function GitHistoryProjectPicker({
   sections,
   selectedId,
@@ -847,6 +995,145 @@ function GitHistoryProjectPicker({
   );
 }
 
+function GitHistoryInlinePicker({
+  label,
+  value,
+  options,
+  disabled = false,
+  searchPlaceholder,
+  emptyText,
+  onSelect,
+}: GitHistoryInlinePickerProps) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const pickerRef = useRef<HTMLDivElement | null>(null);
+  const inputRef = useRef<HTMLInputElement | null>(null);
+
+  const trimmedValue = value.trim();
+  const filteredOptions = useMemo(() => {
+    const keyword = query.trim().toLowerCase();
+    if (!keyword) {
+      return options;
+    }
+    return options.filter((entry) => entry.toLowerCase().includes(keyword));
+  }, [options, query]);
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (!(target instanceof Node)) {
+        return;
+      }
+      if (!pickerRef.current?.contains(target)) {
+        setOpen(false);
+        setQuery("");
+      }
+    };
+    const handleKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setOpen(false);
+        setQuery("");
+      }
+    };
+    window.addEventListener("pointerdown", handlePointerDown);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("pointerdown", handlePointerDown);
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      inputRef.current?.focus();
+      inputRef.current?.select();
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [open]);
+
+  useEffect(() => {
+    if (disabled && open) {
+      setOpen(false);
+      setQuery("");
+    }
+  }, [disabled, open]);
+
+  return (
+    <div
+      className={`git-history-create-pr-picker${open ? " is-open" : ""}${disabled ? " is-disabled" : ""}`}
+      ref={pickerRef}
+    >
+      <button
+        type="button"
+        className="git-history-create-pr-picker-trigger"
+        aria-label={label}
+        title={trimmedValue}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        disabled={disabled}
+        onClick={() => {
+          if (disabled) {
+            return;
+          }
+          setOpen((previous) => !previous);
+        }}
+      >
+        <span className="git-history-create-pr-picker-value">{trimmedValue || "-"}</span>
+        <ChevronDown size={12} className="git-history-create-pr-picker-caret" />
+      </button>
+
+      {open ? (
+        <div className="git-history-create-pr-picker-dropdown popover-surface" role="listbox" aria-label={label}>
+          <label className="git-history-create-pr-picker-search">
+            <Search size={12} />
+            <input
+              ref={inputRef}
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder={searchPlaceholder}
+              aria-label={searchPlaceholder}
+            />
+          </label>
+          <div className="git-history-create-pr-picker-list">
+            {filteredOptions.map((option) => {
+              const selected = option === trimmedValue;
+              return (
+                <button
+                  key={option}
+                  type="button"
+                  className={`git-history-create-pr-picker-item${selected ? " is-active" : ""}`}
+                  role="option"
+                  aria-selected={selected}
+                  title={option}
+                  onClick={() => {
+                    onSelect(option);
+                    setOpen(false);
+                    setQuery("");
+                  }}
+                >
+                  <span className="git-history-create-pr-picker-item-check" aria-hidden>
+                    {selected ? "✓" : ""}
+                  </span>
+                  <span className="git-history-create-pr-picker-item-label">{option}</span>
+                </button>
+              );
+            })}
+            {filteredOptions.length === 0 ? (
+              <div className="git-history-create-pr-picker-empty">{emptyText}</div>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 export function GitHistoryPanel({
   workspace,
   workspaces = [],
@@ -954,6 +1241,31 @@ export function GitHistoryPanel({
   const [operationLoading, setOperationLoading] = useState<string | null>(null);
   const [operationNotice, setOperationNotice] = useState<GitOperationNoticeState | null>(null);
   const operationNoticeTimerRef = useRef<number | null>(null);
+  const createPrProgressTimerRef = useRef<number | null>(null);
+  const [forceDeleteDialogState, setForceDeleteDialogState] = useState<ForceDeleteDialogState | null>(null);
+  const forceDeleteDialogResolverRef = useRef<((confirmed: boolean) => void) | null>(null);
+  const [forceDeleteCountdown, setForceDeleteCountdown] = useState(0);
+  const [forceDeleteCopiedPath, setForceDeleteCopiedPath] = useState(false);
+  const [createPrDialogOpen, setCreatePrDialogOpen] = useState(false);
+  const [createPrDefaultsLoading, setCreatePrDefaultsLoading] = useState(false);
+  const [createPrDefaultsError, setCreatePrDefaultsError] = useState<string | null>(null);
+  const [createPrDefaults, setCreatePrDefaults] = useState<GitPrWorkflowDefaults | null>(null);
+  const [createPrForm, setCreatePrForm] = useState<CreatePrFormState>({
+    upstreamRepo: "",
+    baseBranch: "",
+    headOwner: "",
+    headBranch: "",
+    title: "",
+    body: "",
+    commentAfterCreate: true,
+    commentBody: "",
+  });
+  const [createPrStages, setCreatePrStages] = useState<CreatePrStageView[]>(() =>
+    buildCreatePrInitialStages((key) => key),
+  );
+  const [createPrResult, setCreatePrResult] = useState<GitPrWorkflowResult | null>(null);
+  const [createPrCopiedPrUrl, setCreatePrCopiedPrUrl] = useState(false);
+  const [createPrCopiedRetryCommand, setCreatePrCopiedRetryCommand] = useState(false);
   const [pushDialogOpen, setPushDialogOpen] = useState(false);
   const [pullDialogOpen, setPullDialogOpen] = useState(false);
   const [pullRemote, setPullRemote] = useState("origin");
@@ -2014,6 +2326,7 @@ export function GitHistoryPanel({
       const nameMap: Record<string, string> = {
         pull: t("git.pull"),
         push: t("git.push"),
+        createPr: t("git.historyOperationCreatePr"),
         sync: t("git.sync"),
         fetch: t("git.fetch"),
         refresh: t("git.refresh"),
@@ -2045,18 +2358,28 @@ export function GitHistoryPanel({
   const showOperationNotice = useCallback((notice: GitOperationNoticeState) => {
     if (operationNoticeTimerRef.current !== null) {
       window.clearTimeout(operationNoticeTimerRef.current);
+      operationNoticeTimerRef.current = null;
     }
     setOperationNotice(notice);
-    operationNoticeTimerRef.current = window.setTimeout(() => {
-      setOperationNotice(null);
-      operationNoticeTimerRef.current = null;
-    }, 5000);
+    if (notice.kind === "success") {
+      operationNoticeTimerRef.current = window.setTimeout(() => {
+        setOperationNotice(null);
+        operationNoticeTimerRef.current = null;
+      }, 5000);
+    }
   }, []);
 
   useEffect(() => {
     return () => {
       if (operationNoticeTimerRef.current !== null) {
         window.clearTimeout(operationNoticeTimerRef.current);
+      }
+      if (createPrProgressTimerRef.current !== null) {
+        window.clearInterval(createPrProgressTimerRef.current);
+      }
+      if (forceDeleteDialogResolverRef.current) {
+        forceDeleteDialogResolverRef.current(false);
+        forceDeleteDialogResolverRef.current = null;
       }
     };
   }, []);
@@ -2100,6 +2423,73 @@ export function GitHistoryPanel({
     },
     [localizeKnownGitError, t],
   );
+
+  const isBranchDeleteNotFullyMergedError = useCallback((rawMessage: string): boolean => {
+    const normalized = rawMessage.toLowerCase();
+    return normalized.includes("is not fully merged");
+  }, []);
+
+  const isBranchDeleteUsedByWorktreeError = useCallback((rawMessage: string): boolean => {
+    const normalized = rawMessage.toLowerCase();
+    return (
+      normalized.includes("cannot delete branch") &&
+      normalized.includes("used by worktree")
+    );
+  }, []);
+
+  const extractWorktreePathFromDeleteError = useCallback((rawMessage: string): string | null => {
+    const matched = rawMessage.match(/used by worktree at ['"]?([^'"\n]+)['"]?/i);
+    const path = matched?.[1]?.trim();
+    return path ? path : null;
+  }, []);
+
+  const promptForceDeleteDialog = useCallback(
+    (
+      mode: ForceDeleteDialogMode,
+      branch: string,
+      worktreePath: string | null,
+    ) =>
+      new Promise<boolean>((resolve) => {
+        forceDeleteDialogResolverRef.current = resolve;
+        setForceDeleteDialogState({ mode, branch, worktreePath });
+      }),
+    [],
+  );
+
+  const closeForceDeleteDialog = useCallback((confirmed: boolean) => {
+    setForceDeleteDialogState(null);
+    const resolver = forceDeleteDialogResolverRef.current;
+    forceDeleteDialogResolverRef.current = null;
+    resolver?.(confirmed);
+  }, []);
+
+  useEffect(() => {
+    if (!forceDeleteDialogState) {
+      setForceDeleteCountdown(0);
+      setForceDeleteCopiedPath(false);
+      return;
+    }
+    setForceDeleteCountdown(2);
+    setForceDeleteCopiedPath(false);
+    const timer = window.setInterval(() => {
+      setForceDeleteCountdown((previous) => (previous > 0 ? previous - 1 : 0));
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [forceDeleteDialogState]);
+
+  const handleCopyForceDeleteWorktreePath = useCallback(async () => {
+    const path = forceDeleteDialogState?.worktreePath;
+    if (!path) {
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(path);
+      setForceDeleteCopiedPath(true);
+      window.setTimeout(() => setForceDeleteCopiedPath(false), 1200);
+    } catch {
+      setForceDeleteCopiedPath(false);
+    }
+  }, [forceDeleteDialogState?.worktreePath]);
 
   const runOperation = useCallback(
     async (name: string, action: () => Promise<void>) => {
@@ -2148,6 +2538,133 @@ export function GitHistoryPanel({
       createBranchSource.trim() &&
       createBranchNameTrimmed,
   );
+  const createPrSubmitting = operationLoading === "createPr";
+  const createPrToolbarDisabledReason = !currentBranch
+    ? t("git.historyCreatePrUnavailableNoBranch")
+    : null;
+  const createPrCanOpen = Boolean(
+    workspaceId &&
+      !operationLoading &&
+      currentBranch &&
+      !repositoryUnavailable,
+  );
+  const createPrUpstreamParts = useMemo(
+    () => splitGitHubRepo(createPrForm.upstreamRepo),
+    [createPrForm.upstreamRepo],
+  );
+  const createPrHeadRepositoryValue = useMemo(() => {
+    const owner = createPrForm.headOwner.trim();
+    if (!owner) {
+      return "";
+    }
+    if (!createPrUpstreamParts.repo) {
+      return owner;
+    }
+    return `${owner}/${createPrUpstreamParts.repo}`;
+  }, [createPrForm.headOwner, createPrUpstreamParts.repo]);
+  const createPrBaseRepoOptions = useMemo(
+    () =>
+      uniqueNonEmpty([
+        createPrForm.upstreamRepo,
+        createPrDefaults?.upstreamRepo ?? "",
+      ]),
+    [createPrDefaults?.upstreamRepo, createPrForm.upstreamRepo],
+  );
+  const createPrHeadRepoOptions = useMemo(() => {
+    const upstreamOwner = createPrUpstreamParts.owner;
+    const repoName = createPrUpstreamParts.repo;
+    const ownerCandidates = uniqueNonEmpty([
+      createPrForm.headOwner,
+      createPrDefaults?.headOwner ?? "",
+      upstreamOwner,
+    ]);
+    return ownerCandidates.map((owner) => (repoName ? `${owner}/${repoName}` : owner));
+  }, [
+    createPrDefaults?.headOwner,
+    createPrForm.headOwner,
+    createPrUpstreamParts.owner,
+    createPrUpstreamParts.repo,
+  ]);
+  const createPrUpstreamRemoteName = useMemo(() => {
+    const remoteNames = uniqueNonEmpty(
+      remoteBranches
+        .map((entry) => entry.remote?.trim() ?? "")
+        .filter((name) => name.length > 0),
+    );
+    const explicitUpstream = remoteNames.find((name) => name.toLowerCase() === "upstream");
+    return explicitUpstream ?? null;
+  }, [remoteBranches]);
+  const createPrBaseBranchOptions = useMemo(() => {
+    const remoteBranchLeaves = remoteBranches
+      .filter((entry) => {
+        if (!createPrUpstreamRemoteName) {
+          return true;
+        }
+        return (entry.remote?.trim() ?? "") === createPrUpstreamRemoteName;
+      })
+      .map((entry) => {
+        const remoteName = entry.remote?.trim();
+        if (remoteName && entry.name.startsWith(`${remoteName}/`)) {
+          return entry.name.slice(remoteName.length + 1);
+        }
+        const slashIndex = entry.name.indexOf("/");
+        return slashIndex >= 0 ? entry.name.slice(slashIndex + 1) : entry.name;
+      });
+    return sortOptionsWithPriority(
+      uniqueNonEmpty([
+        ...remoteBranchLeaves,
+        createPrForm.baseBranch,
+        createPrDefaults?.baseBranch ?? "",
+      ]),
+      [
+        createPrForm.baseBranch,
+        createPrDefaults?.baseBranch ?? "",
+        "main",
+        "master",
+        "develop",
+      ],
+    );
+  }, [
+    createPrDefaults?.baseBranch,
+    createPrForm.baseBranch,
+    createPrUpstreamRemoteName,
+    remoteBranches,
+  ]);
+  const createPrCompareBranchOptions = useMemo(
+    () => sortOptionsWithPriority(
+      uniqueNonEmpty([
+        ...localBranches.map((entry) => entry.name),
+        createPrForm.headBranch,
+        currentBranch ?? "",
+      ]),
+      [createPrForm.headBranch, currentBranch ?? ""],
+    ),
+    [createPrForm.headBranch, currentBranch, localBranches],
+  );
+  const createPrCanConfirm = Boolean(
+    workspaceId &&
+      !createPrSubmitting &&
+      !createPrDefaultsLoading &&
+      !createPrDefaultsError &&
+      (createPrDefaults?.canCreate ?? true) &&
+      createPrForm.upstreamRepo.trim() &&
+      createPrForm.baseBranch.trim() &&
+      createPrForm.headOwner.trim() &&
+      createPrForm.headBranch.trim() &&
+      createPrForm.title.trim(),
+  );
+  const createPrResultHeadline = useMemo(() => {
+    if (!createPrResult) {
+      return "";
+    }
+    if (createPrResult.status === "existing") {
+      return t("git.historyCreatePrResultExisting");
+    }
+    if (createPrResult.ok) {
+      return t("git.historyCreatePrResultSuccess");
+    }
+    return t("git.historyCreatePrResultFailed");
+  }, [createPrResult, t]);
   const pullSubmitting = operationLoading === "pull";
   const syncSubmitting = operationLoading === "sync";
   const fetchSubmitting = operationLoading === "fetch";
@@ -2637,6 +3154,221 @@ export function GitHistoryPanel({
     });
   }, [createBranchName, createBranchSource, operationLoading, runOperation, workspaceId]);
 
+  const applyCreatePrDefaults = useCallback((defaults: GitPrWorkflowDefaults) => {
+    setCreatePrDefaults(defaults);
+    setCreatePrForm({
+      upstreamRepo: defaults.upstreamRepo,
+      baseBranch: defaults.baseBranch,
+      headOwner: defaults.headOwner,
+      headBranch: defaults.headBranch,
+      title: defaults.title,
+      body: defaults.body,
+      commentAfterCreate: true,
+      commentBody: defaults.commentBody,
+    });
+  }, []);
+
+  const handleCreatePrHeadRepositoryChange = useCallback((nextRepository: string) => {
+    const { owner } = splitGitHubRepo(nextRepository);
+    setCreatePrForm((previous) => ({
+      ...previous,
+      headOwner: owner || nextRepository.trim(),
+    }));
+  }, []);
+
+  const handleOpenCreatePrDialog = useCallback(() => {
+    if (!workspaceId || !createPrCanOpen) {
+      return;
+    }
+    setCreatePrDialogOpen(true);
+    setCreatePrDefaultsLoading(true);
+    setCreatePrDefaultsError(null);
+    setCreatePrDefaults(null);
+    setCreatePrResult(null);
+    setCreatePrCopiedPrUrl(false);
+    setCreatePrCopiedRetryCommand(false);
+    setCreatePrStages(buildCreatePrInitialStages(t));
+    void getGitPrWorkflowDefaults(workspaceId)
+      .then((defaults) => {
+        applyCreatePrDefaults(defaults);
+        if (!defaults.canCreate && defaults.disabledReason) {
+          setCreatePrDefaultsError(defaults.disabledReason);
+        }
+      })
+      .catch((error) => {
+        setCreatePrDefaultsError(error instanceof Error ? error.message : String(error));
+      })
+      .finally(() => {
+        setCreatePrDefaultsLoading(false);
+      });
+  }, [applyCreatePrDefaults, createPrCanOpen, t, workspaceId]);
+
+  const closeCreatePrDialog = useCallback(() => {
+    if (createPrSubmitting || createPrDefaultsLoading) {
+      return;
+    }
+    if (createPrProgressTimerRef.current !== null) {
+      window.clearInterval(createPrProgressTimerRef.current);
+      createPrProgressTimerRef.current = null;
+    }
+    setCreatePrDialogOpen(false);
+  }, [createPrDefaultsLoading, createPrSubmitting]);
+
+  const handleCopyCreatePrUrl = useCallback(async () => {
+    const url = createPrResult?.prUrl?.trim();
+    if (!url) {
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(url);
+      setCreatePrCopiedPrUrl(true);
+      window.setTimeout(() => setCreatePrCopiedPrUrl(false), 1200);
+    } catch {
+      setCreatePrCopiedPrUrl(false);
+    }
+  }, [createPrResult?.prUrl]);
+
+  const handleCopyCreatePrRetryCommand = useCallback(async () => {
+    const retryCommand = createPrResult?.retryCommand?.trim();
+    if (!retryCommand) {
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(retryCommand);
+      setCreatePrCopiedRetryCommand(true);
+      window.setTimeout(() => setCreatePrCopiedRetryCommand(false), 1200);
+    } catch {
+      setCreatePrCopiedRetryCommand(false);
+    }
+  }, [createPrResult?.retryCommand]);
+
+  const handleOpenCreatePrLink = useCallback(() => {
+    const url = createPrResult?.prUrl?.trim();
+    if (!url) {
+      return;
+    }
+    window.open(url, "_blank", "noopener,noreferrer");
+  }, [createPrResult?.prUrl]);
+
+  const handleConfirmCreatePr = useCallback(async () => {
+    if (!workspaceId || !createPrCanConfirm || createPrSubmitting) {
+      return;
+    }
+    const initialStages = buildCreatePrInitialStages(t);
+    setCreatePrResult(null);
+    setCreatePrCopiedPrUrl(false);
+    setCreatePrCopiedRetryCommand(false);
+    setCreatePrStages(
+      initialStages.map((stage, index) =>
+        index === 0
+          ? { ...stage, status: "running", detail: t("git.historyCreatePrStageRunning") }
+          : stage,
+      ),
+    );
+    if (createPrProgressTimerRef.current !== null) {
+      window.clearInterval(createPrProgressTimerRef.current);
+    }
+    createPrProgressTimerRef.current = window.setInterval(() => {
+      setCreatePrStages((previous) => {
+        const runningIndex = previous.findIndex((stage) => stage.status === "running");
+        if (runningIndex < 0 || runningIndex >= previous.length - 1) {
+          return previous;
+        }
+        const next = [...previous];
+        const current = next[runningIndex];
+        const following = next[runningIndex + 1];
+        if (following.status !== "pending") {
+          return previous;
+        }
+        next[runningIndex] = { ...current, status: "success", detail: t("git.historyCreatePrStagePending") };
+        next[runningIndex + 1] = {
+          ...following,
+          status: "running",
+          detail: t("git.historyCreatePrStageRunning"),
+        };
+        return next;
+      });
+    }, 800);
+
+    clearOperationNotice();
+    setOperationLoading("createPr");
+    try {
+      const workflowResult = await createGitPrWorkflow(workspaceId, {
+        upstreamRepo: createPrForm.upstreamRepo.trim(),
+        baseBranch: createPrForm.baseBranch.trim(),
+        headOwner: createPrForm.headOwner.trim(),
+        headBranch: createPrForm.headBranch.trim(),
+        title: createPrForm.title.trim(),
+        body: createPrForm.body.trim(),
+        commentAfterCreate: createPrForm.commentAfterCreate,
+        commentBody: createPrForm.commentBody.trim(),
+      });
+      setCreatePrResult(workflowResult);
+      setCreatePrStages(mapCreatePrStagesFromResult(t, workflowResult.stages));
+      if (workflowResult.ok) {
+        showOperationNotice({
+          kind: "success",
+          message: t("git.historyOperationSucceeded", {
+            operation: t("git.historyOperationCreatePr"),
+          }),
+        });
+      } else {
+        showOperationNotice({
+          kind: "error",
+          message: `${t("git.historyOperationFailed", {
+            operation: t("git.historyOperationCreatePr"),
+          })} ${workflowResult.message} ${t("git.historyOperationRetryHint")}`,
+          debugMessage: workflowResult.message,
+        });
+      }
+    } catch (error) {
+      const rawMessage = error instanceof Error ? error.message : String(error);
+      setCreatePrResult({
+        ok: false,
+        status: "failed",
+        message: rawMessage,
+        stages: [],
+      });
+      setCreatePrStages((previous) =>
+        previous.map((stage, index) =>
+          index === 0
+            ? { ...stage, status: "failed", detail: rawMessage }
+            : stage.status === "running"
+              ? { ...stage, status: "failed", detail: rawMessage }
+              : stage,
+        ),
+      );
+      showOperationNotice({
+        kind: "error",
+        message: `${t("git.historyOperationFailed", {
+          operation: t("git.historyOperationCreatePr"),
+        })} ${rawMessage} ${t("git.historyOperationRetryHint")}`,
+        debugMessage: rawMessage,
+      });
+    } finally {
+      if (createPrProgressTimerRef.current !== null) {
+        window.clearInterval(createPrProgressTimerRef.current);
+        createPrProgressTimerRef.current = null;
+      }
+      setOperationLoading(null);
+    }
+  }, [
+    clearOperationNotice,
+    createPrCanConfirm,
+    createPrForm.baseBranch,
+    createPrForm.body,
+    createPrForm.commentAfterCreate,
+    createPrForm.commentBody,
+    createPrForm.headBranch,
+    createPrForm.headOwner,
+    createPrForm.title,
+    createPrForm.upstreamRepo,
+    createPrSubmitting,
+    showOperationNotice,
+    t,
+    workspaceId,
+  ]);
+
   const handleOpenPullDialog = useCallback(() => {
     if (operationLoading) {
       return;
@@ -3026,11 +3758,102 @@ export function GitHistoryPanel({
       return;
     }
     closeBranchContextMenu();
-    await runOperation("deleteBranch", async () => {
-      await deleteGitBranch(workspaceId, branchName, false);
+    const operationName = "deleteBranch";
+    const showDeleteFailure = (rawMessage: string) => {
+      const operationState = createOperationErrorState(rawMessage);
+      showOperationNotice({
+        kind: "error",
+        message: `${t("git.historyOperationFailed", {
+          operation: getOperationDisplayName(operationName),
+        })} ${operationState.userMessage}${
+          operationState.retryable ? ` ${t("git.historyOperationRetryHint")}` : ""
+        }`,
+        debugMessage: operationState.debugMessage,
+      });
+    };
+    const runForceDelete = async () => {
+      await deleteGitBranch(workspaceId, branchName, {
+        force: true,
+        removeOccupiedWorktree: true,
+      });
       setSelectedBranch(currentBranch ?? "all");
-    });
-  }, [closeBranchContextMenu, currentBranch, runOperation, selectedBranch, t, workspaceId]);
+      await refreshAll();
+      showOperationNotice({
+        kind: "success",
+        message: t("git.historyOperationSucceeded", {
+          operation: getOperationDisplayName(operationName),
+        }),
+      });
+    };
+    clearOperationNotice();
+    setOperationLoading(operationName);
+    try {
+      await deleteGitBranch(workspaceId, branchName);
+      setSelectedBranch(currentBranch ?? "all");
+      await refreshAll();
+      showOperationNotice({
+        kind: "success",
+        message: t("git.historyOperationSucceeded", {
+          operation: getOperationDisplayName(operationName),
+        }),
+      });
+    } catch (error) {
+      const rawMessage = error instanceof Error ? error.message : String(error);
+      if (isBranchDeleteNotFullyMergedError(rawMessage)) {
+        const forceConfirmed = await promptForceDeleteDialog(
+          "notMerged",
+          branchName,
+          null,
+        );
+        if (forceConfirmed) {
+          try {
+            await runForceDelete();
+            return;
+          } catch (forceError) {
+            showDeleteFailure(
+              forceError instanceof Error ? forceError.message : String(forceError),
+            );
+            return;
+          }
+        }
+      } else if (isBranchDeleteUsedByWorktreeError(rawMessage)) {
+        const forceConfirmed = await promptForceDeleteDialog(
+          "worktreeOccupied",
+          branchName,
+          extractWorktreePathFromDeleteError(rawMessage),
+        );
+        if (forceConfirmed) {
+          try {
+            await runForceDelete();
+            return;
+          } catch (forceError) {
+            showDeleteFailure(
+              forceError instanceof Error ? forceError.message : String(forceError),
+            );
+            return;
+          }
+        }
+      }
+      showDeleteFailure(rawMessage);
+    } finally {
+      setOperationLoading(null);
+    }
+  }, [
+    clearOperationNotice,
+    closeBranchContextMenu,
+    createOperationErrorState,
+    currentBranch,
+    getOperationDisplayName,
+    isBranchDeleteNotFullyMergedError,
+    isBranchDeleteUsedByWorktreeError,
+    extractWorktreePathFromDeleteError,
+    promptForceDeleteDialog,
+    refreshAll,
+    selectedBranch,
+    showOperationNotice,
+    t,
+    workspaceId,
+  ]);
 
   const handleRenameBranch = useCallback(async (targetBranch?: string | null) => {
     const branchName = targetBranch ?? selectedBranch;
@@ -4501,6 +5324,11 @@ export function GitHistoryPanel({
           }
           return;
         }
+        if (createPrDialogOpen && event.key === "Escape") {
+          event.preventDefault();
+          closeCreatePrDialog();
+          return;
+        }
         if (pullDialogOpen && event.key === "Escape") {
           event.preventDefault();
           if (!pullSubmitting) {
@@ -4545,6 +5373,7 @@ export function GitHistoryPanel({
           createBranchDialogOpen ||
           resetDialogOpen ||
           pushDialogOpen ||
+          createPrDialogOpen ||
           pullDialogOpen ||
           syncDialogOpen ||
           fetchDialogOpen ||
@@ -4564,7 +5393,7 @@ export function GitHistoryPanel({
         if (isTypingTarget) {
           return;
         }
-        if (!commits.length) {
+          if (!commits.length) {
           return;
         }
         const currentIndex = commits.findIndex((entry) => entry.sha === selectedCommitSha);
@@ -4622,6 +5451,15 @@ export function GitHistoryPanel({
         </div>
         <div className="git-history-toolbar-actions">
           <div className="git-history-toolbar-action-group">
+            <ActionSurface
+              className="git-history-chip git-history-chip-pr"
+              onActivate={handleOpenCreatePrDialog}
+              disabled={!createPrCanOpen}
+              title={createPrToolbarDisabledReason ?? t("git.historyCreatePr")}
+            >
+              <GitPullRequestCreate size={13} />
+              <span>{t("git.historyCreatePr")}</span>
+            </ActionSurface>
             <ActionSurface
               className="git-history-chip"
               onActivate={handleOpenPullDialog}
@@ -4683,7 +5521,18 @@ export function GitHistoryPanel({
           className={operationNotice.kind === "error" ? "git-history-error" : "git-history-success"}
           title={operationNotice.debugMessage}
         >
-          {operationNotice.message}
+          <span>{operationNotice.message}</span>
+          {operationNotice.kind === "error" ? (
+            <button
+              type="button"
+              className="git-history-notice-close"
+              onClick={clearOperationNotice}
+              aria-label={t("common.close")}
+              title={t("common.close")}
+            >
+              <X size={12} />
+            </button>
+          ) : null}
         </div>
       )}
       {localizedOperationName && (
@@ -5921,6 +6770,316 @@ export function GitHistoryPanel({
             ) : null}
           </div>
         ) : null}
+        {createPrDialogOpen ? (
+          <div
+            className="git-history-create-branch-backdrop"
+            onMouseDown={(event) => {
+              if (event.target === event.currentTarget) {
+                closeCreatePrDialog();
+              }
+            }}
+          >
+            <section
+              className="git-history-create-pr-dialog"
+              role="dialog"
+              aria-modal="true"
+              aria-label={t("git.historyCreatePrDialogTitle")}
+            >
+              <div className="git-history-create-pr-header">
+                <div className="git-history-create-pr-title-wrap">
+                  <span className="git-history-create-pr-title-icon">
+                    <GitPullRequestCreate size={16} />
+                  </span>
+                  <div className="git-history-create-pr-title-copy">
+                    <strong>{t("git.historyCreatePrDialogTitle")}</strong>
+                    <p>{t("git.historyCreatePrDialogSubtitle")}</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  className="git-history-force-delete-close"
+                  onClick={closeCreatePrDialog}
+                  aria-label={t("common.close")}
+                  title={t("common.close")}
+                  disabled={createPrSubmitting || createPrDefaultsLoading}
+                >
+                  <X size={14} />
+                </button>
+              </div>
+
+              {createPrDefaultsLoading ? (
+                <div className="git-history-create-pr-inline-hint">
+                  {t("git.historyCreatePrLoadingDefaults")}
+                </div>
+              ) : null}
+              {createPrDefaultsError ? (
+                <div className="git-history-create-pr-warning">
+                  <CircleAlert size={14} />
+                  <span>
+                    {t("git.historyCreatePrLoadDefaultsFailed")}{" "}
+                    {localizeKnownGitError(createPrDefaultsError) ?? createPrDefaultsError}
+                  </span>
+                </div>
+              ) : null}
+
+              <section className="git-history-create-pr-compare-card">
+                <div className="git-history-create-pr-compare-bar">
+                  <span className="git-history-create-pr-compare-icon" aria-hidden>
+                    <GitPullRequestCreate size={14} />
+                  </span>
+                  <label className="git-history-create-pr-compare-field">
+                    <span>{t("git.historyCreatePrCompareBaseRepo")}</span>
+                    <GitHistoryInlinePicker
+                      label={t("git.historyCreatePrCompareBaseRepo")}
+                      value={createPrForm.upstreamRepo}
+                      options={createPrBaseRepoOptions}
+                      disabled={createPrSubmitting || createPrDefaultsLoading}
+                      searchPlaceholder={t("workspace.searchProjects")}
+                      emptyText={t("workspace.noProjectsFound")}
+                      onSelect={(nextValue) =>
+                        setCreatePrForm((previous) => ({
+                          ...previous,
+                          upstreamRepo: nextValue,
+                        }))}
+                    />
+                  </label>
+                  <label className="git-history-create-pr-compare-field">
+                    <span>{t("git.historyCreatePrCompareBase")}</span>
+                    <GitHistoryInlinePicker
+                      label={t("git.historyCreatePrCompareBase")}
+                      value={createPrForm.baseBranch}
+                      options={createPrBaseBranchOptions}
+                      disabled={createPrSubmitting || createPrDefaultsLoading}
+                      searchPlaceholder={t("git.historySearchBranches")}
+                      emptyText={t("git.historyNoBranchesFound")}
+                      onSelect={(nextValue) =>
+                        setCreatePrForm((previous) => ({
+                          ...previous,
+                          baseBranch: nextValue,
+                        }))}
+                    />
+                  </label>
+                  <span className="git-history-create-pr-compare-separator" aria-hidden>
+                    <ChevronLeft size={14} />
+                  </span>
+                  <label className="git-history-create-pr-compare-field">
+                    <span>{t("git.historyCreatePrCompareHeadRepo")}</span>
+                    <GitHistoryInlinePicker
+                      label={t("git.historyCreatePrCompareHeadRepo")}
+                      value={createPrHeadRepositoryValue}
+                      options={createPrHeadRepoOptions}
+                      disabled={createPrSubmitting || createPrDefaultsLoading}
+                      searchPlaceholder={t("workspace.searchProjects")}
+                      emptyText={t("workspace.noProjectsFound")}
+                      onSelect={handleCreatePrHeadRepositoryChange}
+                    />
+                  </label>
+                  <label className="git-history-create-pr-compare-field">
+                    <span>{t("git.historyCreatePrCompare")}</span>
+                    <GitHistoryInlinePicker
+                      label={t("git.historyCreatePrCompare")}
+                      value={createPrForm.headBranch}
+                      options={createPrCompareBranchOptions}
+                      disabled={createPrSubmitting || createPrDefaultsLoading}
+                      searchPlaceholder={t("git.historySearchBranches")}
+                      emptyText={t("git.historyNoBranchesFound")}
+                      onSelect={(nextValue) =>
+                        setCreatePrForm((previous) => ({
+                          ...previous,
+                          headBranch: nextValue,
+                        }))}
+                    />
+                  </label>
+                </div>
+              </section>
+
+              <label className="git-history-create-branch-field">
+                <span>{t("git.historyCreatePrFieldTitle")}</span>
+                <input
+                  value={createPrForm.title}
+                  disabled={createPrSubmitting || createPrDefaultsLoading}
+                  onChange={(event) =>
+                    setCreatePrForm((previous) => ({
+                      ...previous,
+                      title: event.target.value,
+                    }))}
+                  placeholder={t("git.historyCreatePrTitlePlaceholder")}
+                />
+              </label>
+              <label className="git-history-create-branch-field">
+                <span>{t("git.historyCreatePrFieldBody")}</span>
+                <textarea
+                  className="git-history-create-pr-textarea"
+                  value={createPrForm.body}
+                  disabled={createPrSubmitting || createPrDefaultsLoading}
+                  onChange={(event) =>
+                    setCreatePrForm((previous) => ({
+                      ...previous,
+                      body: event.target.value,
+                    }))}
+                />
+              </label>
+              <button
+                type="button"
+                className={`git-history-push-toggle${createPrForm.commentAfterCreate ? " is-active" : ""}`}
+                aria-pressed={createPrForm.commentAfterCreate}
+                disabled={createPrSubmitting || createPrDefaultsLoading}
+                onClick={() =>
+                  setCreatePrForm((previous) => ({
+                    ...previous,
+                    commentAfterCreate: !previous.commentAfterCreate,
+                  }))}
+              >
+                <span className="git-history-push-toggle-indicator" aria-hidden>
+                  {createPrForm.commentAfterCreate ? "✓" : ""}
+                </span>
+                <MessageSquareText size={12} className="git-history-push-toggle-icon" />
+                <span>{t("git.historyCreatePrCommentAfterCreate")}</span>
+              </button>
+              {createPrForm.commentAfterCreate ? (
+                <label className="git-history-create-branch-field">
+                  <span>{t("git.historyCreatePrCommentBody")}</span>
+                  <textarea
+                    className="git-history-create-pr-textarea is-compact"
+                    value={createPrForm.commentBody}
+                    disabled={createPrSubmitting || createPrDefaultsLoading}
+                    onChange={(event) =>
+                      setCreatePrForm((previous) => ({
+                        ...previous,
+                        commentBody: event.target.value,
+                      }))}
+                  />
+                </label>
+              ) : null}
+
+              <div className="git-history-create-pr-stage-card">
+                <div className="git-history-create-pr-stage-title">{t("git.historyCreatePrStageProgress")}</div>
+                <div className="git-history-create-pr-stage-list">
+                  {createPrStages.map((stage) => {
+                    const statusLabel =
+                      stage.status === "running"
+                        ? t("git.historyCreatePrStageRunning")
+                        : stage.status === "success"
+                          ? t("git.historyCreatePrStageSuccess")
+                          : stage.status === "failed"
+                            ? t("git.historyCreatePrStageFailed")
+                            : stage.status === "skipped"
+                              ? t("git.historyCreatePrStageSkipped")
+                              : t("git.historyCreatePrStagePending");
+                    return (
+                      <div
+                        key={stage.key}
+                        className={`git-history-create-pr-stage-item is-${stage.status}`}
+                      >
+                        <span className="git-history-create-pr-stage-icon" aria-hidden>
+                          {stage.status === "success" ? (
+                            <CircleCheck size={14} />
+                          ) : stage.status === "failed" ? (
+                            <CircleAlert size={14} />
+                          ) : stage.status === "running" ? (
+                            <LoaderCircle size={14} />
+                          ) : (
+                            <span className="git-history-create-pr-stage-dot" />
+                          )}
+                        </span>
+                        <span className="git-history-create-pr-stage-main">
+                          <span className="git-history-create-pr-stage-label">{stage.label}</span>
+                          <span className="git-history-create-pr-stage-detail">{stage.detail}</span>
+                        </span>
+                        <span className="git-history-create-pr-stage-status">{statusLabel}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {createPrResult ? (
+                <div
+                  className={`git-history-create-pr-result ${
+                    createPrResult.ok ? "is-success" : "is-failed"
+                  }`}
+                >
+                  <div className="git-history-create-pr-result-head">
+                    <span className="git-history-create-pr-result-title">{createPrResultHeadline}</span>
+                    {createPrResult.prNumber ? (
+                      <code>#{createPrResult.prNumber}</code>
+                    ) : null}
+                  </div>
+                  <div className="git-history-create-pr-result-message">{createPrResult.message}</div>
+                  {createPrResult.nextActionHint ? (
+                    <div className="git-history-create-pr-result-hint">
+                      {createPrResult.nextActionHint}
+                    </div>
+                  ) : null}
+                  {createPrResult.prUrl ? (
+                    <div className="git-history-create-pr-result-actions">
+                      <button
+                        type="button"
+                        className="git-history-create-pr-mini-btn"
+                        onClick={handleOpenCreatePrLink}
+                      >
+                        <ExternalLink size={13} />
+                        <span>{t("git.historyCreatePrOpenLink")}</span>
+                      </button>
+                      <button
+                        type="button"
+                        className="git-history-create-pr-mini-btn"
+                        onClick={() => void handleCopyCreatePrUrl()}
+                      >
+                        <Copy size={13} />
+                        <span>
+                          {createPrCopiedPrUrl ? t("git.historyCreatePrCopied") : t("git.historyCreatePrCopyLink")}
+                        </span>
+                      </button>
+                    </div>
+                  ) : null}
+                  {createPrResult.retryCommand ? (
+                    <div className="git-history-create-pr-retry-command">
+                      <span>{t("git.historyCreatePrRetryCommand")}</span>
+                      <code>{createPrResult.retryCommand}</code>
+                      <button
+                        type="button"
+                        className="git-history-create-pr-mini-btn"
+                        onClick={() => void handleCopyCreatePrRetryCommand()}
+                      >
+                        <Copy size={13} />
+                        <span>
+                          {createPrCopiedRetryCommand
+                            ? t("git.historyCreatePrCopied")
+                            : t("git.historyCreatePrCopyCommand")}
+                        </span>
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+
+              <div className="git-history-create-branch-actions">
+                <button
+                  type="button"
+                  className="git-history-create-branch-btn is-cancel"
+                  disabled={createPrSubmitting || createPrDefaultsLoading}
+                  onClick={closeCreatePrDialog}
+                >
+                  {t("common.cancel")}
+                </button>
+                <button
+                  type="button"
+                  className="git-history-create-branch-btn is-confirm"
+                  disabled={!createPrCanConfirm}
+                  onClick={() => void handleConfirmCreatePr()}
+                  title={!createPrCanConfirm ? t("git.historyCreatePrFormIncomplete") : undefined}
+                >
+                  {createPrSubmitting
+                    ? t("common.loading")
+                    : createPrResult && !createPrResult.ok
+                      ? t("common.retry")
+                      : t("git.historyCreatePrAction")}
+                </button>
+              </div>
+            </section>
+          </div>
+        ) : null}
         {pullDialogOpen ? (
           <div
             className="git-history-create-branch-backdrop"
@@ -6926,6 +8085,115 @@ export function GitHistoryPanel({
                 </button>
               </div>
             </div>
+          </div>
+        ) : null}
+        {forceDeleteDialogState ? (
+          <div
+            className="git-history-create-branch-backdrop"
+            onMouseDown={(event) => {
+              if (event.target === event.currentTarget) {
+                closeForceDeleteDialog(false);
+              }
+            }}
+          >
+            <section
+              className="git-history-force-delete-dialog"
+              role="dialog"
+              aria-modal="true"
+              aria-label={t("git.historyTitleForceDeleteBranch")}
+            >
+              <div className="git-history-force-delete-header">
+                <span className="git-history-force-delete-title">
+                  <ShieldAlert size={16} />
+                  {t("git.historyTitleForceDeleteBranch")}
+                </span>
+                <button
+                  type="button"
+                  className="git-history-force-delete-close"
+                  onClick={() => closeForceDeleteDialog(false)}
+                  aria-label={t("common.close")}
+                  title={t("common.close")}
+                >
+                  <X size={14} />
+                </button>
+              </div>
+
+              <div className="git-history-force-delete-summary">
+                {forceDeleteDialogState.mode === "worktreeOccupied"
+                  ? t("git.historyForceDeleteDialogSubtitleWithWorktree", {
+                      branch: forceDeleteDialogState.branch,
+                    })
+                  : t("git.historyForceDeleteDialogSubtitleNotMerged", {
+                      branch: forceDeleteDialogState.branch,
+                    })}
+              </div>
+
+              <div className="git-history-force-delete-risk">
+                <strong>{t("git.historyForceDeleteDialogRiskTitle")}</strong>
+                <p>
+                  {forceDeleteDialogState.mode === "worktreeOccupied"
+                    ? t("git.historyForceDeleteDialogRiskWithWorktree")
+                    : t("git.historyForceDeleteDialogRiskNotMerged")}
+                </p>
+              </div>
+
+              <dl className="git-history-force-delete-facts">
+                <div>
+                  <dt>{t("git.historyForceDeleteDialogBranchLabel")}</dt>
+                  <dd>
+                    <code>{forceDeleteDialogState.branch}</code>
+                  </dd>
+                </div>
+                {forceDeleteDialogState.worktreePath ? (
+                  <div>
+                    <dt>{t("git.historyForceDeleteDialogWorktreeLabel")}</dt>
+                    <dd>
+                      <span className="git-history-force-delete-worktree-row">
+                        <code>{forceDeleteDialogState.worktreePath}</code>
+                        <button
+                          type="button"
+                          className="git-history-force-delete-copy"
+                          onClick={() => void handleCopyForceDeleteWorktreePath()}
+                        >
+                          {forceDeleteCopiedPath
+                            ? t("git.historyForceDeleteDialogCopied")
+                            : t("git.historyForceDeleteDialogCopyPath")}
+                        </button>
+                      </span>
+                    </dd>
+                  </div>
+                ) : null}
+              </dl>
+
+              <p className="git-history-force-delete-tip">
+                {t("git.historyForceDeleteDialogTip")}
+              </p>
+
+              <div className="git-history-create-branch-actions">
+                <button
+                  type="button"
+                  className="git-history-create-branch-btn is-cancel"
+                  onClick={() => closeForceDeleteDialog(false)}
+                >
+                  {t("common.cancel")}
+                </button>
+                <button
+                  type="button"
+                  className="git-history-create-branch-btn is-danger"
+                  disabled={forceDeleteCountdown > 0}
+                  onClick={() => closeForceDeleteDialog(true)}
+                >
+                  {(forceDeleteDialogState.mode === "worktreeOccupied"
+                    ? t("git.historyForceDeleteDialogConfirmWithWorktree")
+                    : t("git.historyForceDeleteDialogConfirm")) +
+                    (forceDeleteCountdown > 0
+                      ? ` (${t("git.historyForceDeleteDialogUnlockCountdown", {
+                          count: forceDeleteCountdown,
+                        })})`
+                      : "")}
+                </button>
+              </div>
+            </section>
           </div>
         ) : null}
         {createBranchDialogOpen ? (

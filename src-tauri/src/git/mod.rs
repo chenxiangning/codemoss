@@ -5,6 +5,7 @@ use std::process::Stdio;
 
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use git2::{BranchType, DiffOptions, Oid, Repository, Sort, Status, StatusOptions};
+use serde::Deserialize;
 use serde_json::json;
 use tauri::State;
 use tokio::time::{timeout, Duration};
@@ -17,8 +18,9 @@ use crate::state::AppState;
 use crate::types::{
     BranchInfo, GitBranchCompareCommitSets, GitBranchListItem, GitCommitDetails, GitCommitDiff,
     GitCommitFileChange, GitFileDiff, GitFileStatus, GitHistoryCommit, GitHistoryResponse,
-    GitHubIssue, GitHubIssuesResponse, GitHubPullRequest, GitHubPullRequestComment,
-    GitHubPullRequestDiff, GitHubPullRequestsResponse, GitLogResponse, GitPushPreviewResponse,
+    GitHubIssue, GitHubIssuesResponse, GitHubPullRequest, GitHubPullRequestComment, GitHubPullRequestDiff,
+    GitHubPullRequestsResponse, GitLogResponse, GitPrExistingPullRequest, GitPrWorkflowDefaults,
+    GitPrWorkflowResult, GitPrWorkflowStage, GitPushPreviewResponse,
 };
 use crate::utils::{git_env_path, normalize_git_path, resolve_git_binary};
 use validation::validate_local_branch_name;
@@ -29,6 +31,8 @@ const INDEX_SKIP_WORKTREE_FLAG: u16 = 0x4000;
 const MAX_IMAGE_BYTES: usize = 10 * 1024 * 1024;
 const MAX_COMMIT_DIFF_LINES: usize = 10_000;
 const GIT_COMMAND_TIMEOUT_SECS: u64 = 120;
+const PR_RANGE_MAX_CHANGED_FILES: usize = 240;
+const PR_RANGE_SUSPICIOUS_THRESHOLD: usize = 32;
 
 fn trim_lowercase(input: Option<String>) -> Option<String> {
     input
@@ -41,6 +45,35 @@ fn trim_optional(input: Option<String>) -> Option<String> {
     input
         .map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty())
+}
+
+fn is_branch_used_by_worktree_error(raw: &str) -> bool {
+    let message = raw.to_lowercase();
+    message.contains("cannot delete branch")
+        && message.contains("used by worktree at")
+}
+
+fn extract_worktree_path_from_delete_error(raw: &str) -> Option<String> {
+    let marker = "used by worktree at '";
+    let start = raw.find(marker)?;
+    let tail = &raw[start + marker.len()..];
+    let end = tail.find('\'')?;
+    let path = tail[..end].trim();
+    if path.is_empty() {
+        return None;
+    }
+    Some(path.to_string())
+}
+
+fn build_delete_branch_worktree_error(branch_name: &str, raw: &str) -> String {
+    if let Some(path) = extract_worktree_path_from_delete_error(raw) {
+        return format!(
+            "Cannot delete branch '{branch_name}' because it is currently used by worktree at '{path}'. Switch that worktree to another branch or remove that worktree, then retry."
+        );
+    }
+    format!(
+        "Cannot delete branch '{branch_name}' because it is currently used by another worktree. Switch that worktree to another branch or remove that worktree, then retry."
+    )
 }
 
 fn truncate_diff_lines(content: &str, max_lines: usize) -> (String, usize, bool) {
@@ -757,6 +790,419 @@ fn parse_pr_diff(diff: &str) -> Vec<GitHubPullRequestDiff> {
             diff: entry.diff,
         })
         .collect()
+}
+
+#[derive(Debug)]
+struct TokenIsolatedCommandOutput {
+    success: bool,
+    command: String,
+    stdout: String,
+    stderr: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct GhExistingPrEntry {
+    number: u64,
+    title: String,
+    url: String,
+    state: String,
+    #[serde(rename = "headRefName")]
+    head_ref_name: String,
+    #[serde(rename = "baseRefName")]
+    base_ref_name: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum PrRangeGateDecision {
+    Pass { changed_files: usize },
+    Blocked { category: String, reason: String },
+}
+
+fn shell_escape_for_display(value: &str) -> String {
+    if value.is_empty() {
+        return "''".to_string();
+    }
+    if value
+        .chars()
+        .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '/' | '_' | '-' | '.' | ':' | '@' | '='))
+    {
+        return value.to_string();
+    }
+    format!("'{}'", value.replace('\'', "'\\''"))
+}
+
+fn build_token_isolated_command_display(program: &str, args: &[String]) -> String {
+    let mut rendered = vec!["env -u GH_TOKEN -u GITHUB_TOKEN".to_string()];
+    rendered.push(shell_escape_for_display(program));
+    rendered.extend(args.iter().map(|value| shell_escape_for_display(value)));
+    rendered.join(" ")
+}
+
+fn summarize_command_failure(output: &TokenIsolatedCommandOutput) -> String {
+    let stderr = output.stderr.trim();
+    if !stderr.is_empty() {
+        return stderr.to_string();
+    }
+    let stdout = output.stdout.trim();
+    if !stdout.is_empty() {
+        return stdout.to_string();
+    }
+    "Command failed without stderr/stdout output.".to_string()
+}
+
+fn truncate_debug_text(raw: &str, max_len: usize) -> String {
+    if raw.chars().count() <= max_len {
+        return raw.to_string();
+    }
+    raw.chars().take(max_len).collect::<String>() + " ...[truncated]"
+}
+
+async fn run_token_isolated_command(
+    repo_root: &Path,
+    program: &str,
+    args: &[String],
+    extra_env: &[(&str, &str)],
+) -> Result<TokenIsolatedCommandOutput, String> {
+    let mut command = if program == "git" {
+        crate::utils::async_command(resolve_git_binary().map_err(|e| format!("Failed to run git: {e}"))?)
+    } else {
+        crate::utils::async_command(program)
+    };
+    command
+        .args(args)
+        .current_dir(repo_root)
+        .env("PATH", git_env_path())
+        .env_remove("GH_TOKEN")
+        .env_remove("GITHUB_TOKEN")
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .env("GCM_INTERACTIVE", "never")
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    for (key, value) in extra_env {
+        command.env(key, value);
+    }
+
+    let output = match timeout(
+        Duration::from_secs(GIT_COMMAND_TIMEOUT_SECS),
+        command.output(),
+    )
+    .await
+    {
+        Ok(result) => result.map_err(|error| {
+            if program == "gh" {
+                format!("Failed to run gh command: {error}. Ensure GitHub CLI (gh) is installed.")
+            } else {
+                format!("Failed to run {program} command: {error}")
+            }
+        })?,
+        Err(_) => {
+            return Err(format!(
+                "Command timed out after {GIT_COMMAND_TIMEOUT_SECS}s: {}",
+                build_token_isolated_command_display(program, args)
+            ));
+        }
+    };
+
+    Ok(TokenIsolatedCommandOutput {
+        success: output.status.success(),
+        command: build_token_isolated_command_display(program, args),
+        stdout: String::from_utf8_lossy(&output.stdout).trim().to_string(),
+        stderr: String::from_utf8_lossy(&output.stderr).trim().to_string(),
+    })
+}
+
+fn is_http2_transport_error(raw: &str) -> bool {
+    let normalized = raw.to_lowercase();
+    normalized.contains("http2 framing layer")
+        || normalized.contains("http/2 stream")
+        || normalized.contains("stream 0 was not closed cleanly")
+}
+
+fn is_auth_related_error(raw: &str) -> bool {
+    let normalized = raw.to_lowercase();
+    normalized.contains("403")
+        || normalized.contains("authentication failed")
+        || normalized.contains("permission denied")
+        || normalized.contains("resource not accessible by personal access token")
+        || normalized.contains("requires authentication")
+        || normalized.contains("not logged into any github hosts")
+}
+
+fn is_network_related_error(raw: &str) -> bool {
+    let normalized = raw.to_lowercase();
+    normalized.contains("failed to connect")
+        || normalized.contains("could not resolve host")
+        || normalized.contains("timed out")
+        || normalized.contains("connection reset")
+        || normalized.contains("network is unreachable")
+}
+
+fn parse_repo_owner(repo: &str) -> Option<String> {
+    repo.split('/').next().map(str::trim).filter(|value| !value.is_empty()).map(ToOwned::to_owned)
+}
+
+fn resolve_remote_repo(repo: &Repository, remote_name: &str) -> Option<String> {
+    let remote = repo.find_remote(remote_name).ok()?;
+    let remote_url = remote.url()?;
+    parse_github_repo(remote_url)
+}
+
+fn infer_remote_head_branch(repo: &Repository, remote_name: &str) -> Option<String> {
+    let head_ref = format!("refs/remotes/{remote_name}/HEAD");
+    let reference = repo.find_reference(&head_ref).ok()?;
+    let symbolic_target = reference.symbolic_target()?;
+    let prefix = format!("refs/remotes/{remote_name}/");
+    symbolic_target
+        .strip_prefix(prefix.as_str())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned)
+}
+
+fn default_pr_description(base_branch: &str, head_branch: &str) -> String {
+    format!(
+        "## 背景\n- 从 `{base_branch}` 合并到 `{head_branch}`。\n\n## 改动点\n- \n\n## 验证\n- [ ] npm run typecheck\n- [ ] npm run lint"
+    )
+}
+
+fn build_workflow_stages() -> Vec<GitPrWorkflowStage> {
+    vec![
+        GitPrWorkflowStage {
+            key: "precheck".to_string(),
+            status: "pending".to_string(),
+            detail: "Waiting for precheck.".to_string(),
+            command: None,
+            stdout: None,
+            stderr: None,
+        },
+        GitPrWorkflowStage {
+            key: "push".to_string(),
+            status: "pending".to_string(),
+            detail: "Waiting for push.".to_string(),
+            command: None,
+            stdout: None,
+            stderr: None,
+        },
+        GitPrWorkflowStage {
+            key: "create".to_string(),
+            status: "pending".to_string(),
+            detail: "Waiting for PR creation.".to_string(),
+            command: None,
+            stdout: None,
+            stderr: None,
+        },
+        GitPrWorkflowStage {
+            key: "comment".to_string(),
+            status: "pending".to_string(),
+            detail: "Waiting for optional comment.".to_string(),
+            command: None,
+            stdout: None,
+            stderr: None,
+        },
+    ]
+}
+
+fn update_workflow_stage(
+    stages: &mut [GitPrWorkflowStage],
+    key: &str,
+    status: &str,
+    detail: String,
+    command: Option<String>,
+    stdout: Option<String>,
+    stderr: Option<String>,
+) {
+    if let Some(stage) = stages.iter_mut().find(|entry| entry.key == key) {
+        stage.status = status.to_string();
+        stage.detail = detail;
+        stage.command = command;
+        stage.stdout = stdout;
+        stage.stderr = stderr;
+    }
+}
+
+fn stage_error_category_and_hint(stage_key: &str, raw: &str) -> (String, String) {
+    if stage_key == "precheck" {
+        if raw.to_lowercase().contains("gh") && raw.to_lowercase().contains("not found") {
+            return (
+                "gh-not-installed".to_string(),
+                "Install GitHub CLI and run `gh auth login` first.".to_string(),
+            );
+        }
+        if is_auth_related_error(raw) {
+            return (
+                "gh-auth-missing".to_string(),
+                "Run `env -u GH_TOKEN -u GITHUB_TOKEN gh auth status -h github.com` and finish login.".to_string(),
+            );
+        }
+        if raw.to_lowercase().contains("range gate") {
+            return (
+                "range-abnormal".to_string(),
+                "Review changed files against upstream base, then re-run after rebasing/fixing scope.".to_string(),
+            );
+        }
+    }
+    if stage_key == "push" {
+        if is_http2_transport_error(raw) {
+            return (
+                "push-http2".to_string(),
+                "Retry with HTTP/1.1 fallback: `git -c http.version=HTTP/1.1 push ...`.".to_string(),
+            );
+        }
+        if is_auth_related_error(raw) {
+            return (
+                "push-auth".to_string(),
+                "Verify fork push permission and run with token-isolated env (`env -u GH_TOKEN -u GITHUB_TOKEN`).".to_string(),
+            );
+        }
+        if is_network_related_error(raw) {
+            return (
+                "push-network".to_string(),
+                "Check network/proxy connectivity to github.com:443, then retry.".to_string(),
+            );
+        }
+    }
+    if stage_key == "create" {
+        if is_auth_related_error(raw) {
+            return (
+                "create-pr-auth".to_string(),
+                "Use `env -u GH_TOKEN -u GITHUB_TOKEN` and ensure `gh auth status` is healthy.".to_string(),
+            );
+        }
+        if is_network_related_error(raw) {
+            return (
+                "create-pr-network".to_string(),
+                "Network seems unstable. Retry once after validating GitHub connectivity.".to_string(),
+            );
+        }
+    }
+    ("unknown".to_string(), "Check stage stderr and retry.".to_string())
+}
+
+fn extract_pr_url(raw: &str) -> Option<String> {
+    raw.split_whitespace()
+        .find(|token| token.starts_with("https://") && token.contains("/pull/"))
+        .map(|token| {
+            token
+                .trim()
+                .trim_matches('\'')
+                .trim_matches('"')
+                .trim_end_matches('.')
+                .to_string()
+        })
+}
+
+fn extract_pr_number_from_url(url: &str) -> Option<u64> {
+    let pull_segment = url.split("/pull/").nth(1)?;
+    let number_text = pull_segment
+        .split(['/', '?', '#'])
+        .next()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())?;
+    number_text.parse::<u64>().ok()
+}
+
+fn is_suspicious_range_path(path: &str) -> bool {
+    let normalized = normalize_git_path(path).to_lowercase();
+    normalized == "readme.md" || normalized == "readme.zh-cn.md" || normalized == "license"
+}
+
+fn evaluate_pr_range_gate(changed_paths: &[String]) -> PrRangeGateDecision {
+    if changed_paths.is_empty() {
+        return PrRangeGateDecision::Blocked {
+            category: "range-empty".to_string(),
+            reason: "Range gate blocked: `upstream/<base>...HEAD` has no changed files.".to_string(),
+        };
+    }
+    if changed_paths.len() > PR_RANGE_MAX_CHANGED_FILES {
+        return PrRangeGateDecision::Blocked {
+            category: "range-too-large".to_string(),
+            reason: format!(
+                "Range gate blocked: {} changed files exceed threshold {}.",
+                changed_paths.len(),
+                PR_RANGE_MAX_CHANGED_FILES
+            ),
+        };
+    }
+    let suspicious_files = changed_paths
+        .iter()
+        .filter(|path| is_suspicious_range_path(path))
+        .cloned()
+        .collect::<Vec<_>>();
+    if !suspicious_files.is_empty() && changed_paths.len() >= PR_RANGE_SUSPICIOUS_THRESHOLD {
+        return PrRangeGateDecision::Blocked {
+            category: "range-suspicious".to_string(),
+            reason: format!(
+                "Range gate blocked: suspicious root files detected ({}). Re-check branch base before creating PR.",
+                suspicious_files.join(", ")
+            ),
+        };
+    }
+    PrRangeGateDecision::Pass {
+        changed_files: changed_paths.len(),
+    }
+}
+
+fn build_failed_pr_workflow_result(
+    stages: Vec<GitPrWorkflowStage>,
+    stage_key: &str,
+    raw_error: String,
+    retry_command: Option<String>,
+) -> GitPrWorkflowResult {
+    let (category, hint) = stage_error_category_and_hint(stage_key, &raw_error);
+    GitPrWorkflowResult {
+        ok: false,
+        status: "failed".to_string(),
+        message: raw_error,
+        error_category: Some(category),
+        next_action_hint: Some(hint),
+        pr_url: None,
+        pr_number: None,
+        existing_pr: None,
+        retry_command,
+        stages,
+    }
+}
+
+fn build_existing_pr_workflow_result(
+    stages: Vec<GitPrWorkflowStage>,
+    existing_pr: GitPrExistingPullRequest,
+) -> GitPrWorkflowResult {
+    GitPrWorkflowResult {
+        ok: true,
+        status: "existing".to_string(),
+        message: format!(
+            "Existing PR detected: #{} {}",
+            existing_pr.number, existing_pr.title
+        ),
+        error_category: None,
+        next_action_hint: Some("Open the existing PR and continue updates on the same branch.".to_string()),
+        pr_url: Some(existing_pr.url.clone()),
+        pr_number: Some(existing_pr.number),
+        existing_pr: Some(existing_pr),
+        retry_command: None,
+        stages,
+    }
+}
+
+fn build_success_pr_workflow_result(
+    stages: Vec<GitPrWorkflowStage>,
+    pr_url: String,
+    pr_number: Option<u64>,
+    message: String,
+) -> GitPrWorkflowResult {
+    GitPrWorkflowResult {
+        ok: true,
+        status: "success".to_string(),
+        message,
+        error_category: None,
+        next_action_hint: None,
+        pr_url: Some(pr_url),
+        pr_number,
+        existing_pr: None,
+        retry_command: None,
+        stages,
+    }
 }
 #[tauri::command]
 pub(crate) async fn get_git_status(
@@ -2125,6 +2571,815 @@ pub(crate) async fn get_git_remote(
 }
 
 #[tauri::command]
+pub(crate) async fn get_git_pr_workflow_defaults(
+    workspace_id: String,
+    state: State<'_, AppState>,
+) -> Result<GitPrWorkflowDefaults, String> {
+    let workspaces = state.workspaces.lock().await;
+    let entry = workspaces
+        .get(&workspace_id)
+        .ok_or("workspace not found")?
+        .clone();
+    drop(workspaces);
+
+    let repo_root = resolve_git_root(&entry)?;
+    let repo = open_repository_at_root(&repo_root)?;
+    let head_branch = current_local_branch(&repo_root)?.unwrap_or_default();
+    let upstream_repo = resolve_remote_repo(&repo, "upstream")
+        .or_else(|| resolve_remote_repo(&repo, "origin"))
+        .unwrap_or_default();
+    let origin_repo = resolve_remote_repo(&repo, "origin");
+    let tracked_upstream = upstream_remote_and_branch(&repo_root)?
+        .filter(|(remote, _)| remote == "upstream" || remote == "origin")
+        .map(|(_, branch)| branch);
+    let base_branch = infer_remote_head_branch(&repo, "upstream")
+        .or(tracked_upstream)
+        .or_else(|| infer_remote_head_branch(&repo, "origin"))
+        .unwrap_or_else(|| "main".to_string());
+    let head_owner = origin_repo
+        .as_ref()
+        .and_then(|repo_name| parse_repo_owner(repo_name))
+        .or_else(|| parse_repo_owner(&upstream_repo))
+        .unwrap_or_default();
+    let title = repo
+        .head()
+        .ok()
+        .and_then(|head| head.peel_to_commit().ok())
+        .and_then(|commit| {
+            commit
+                .summary()
+                .map(str::trim)
+                .filter(|summary| !summary.is_empty())
+                .map(ToOwned::to_owned)
+        })
+        .unwrap_or_else(|| format!("chore(git): create pr for {head_branch}"));
+    let body = default_pr_description(
+        if base_branch.trim().is_empty() {
+            "main"
+        } else {
+            &base_branch
+        },
+        if head_branch.trim().is_empty() {
+            "HEAD"
+        } else {
+            &head_branch
+        },
+    );
+    let comment_body = parse_repo_owner(&upstream_repo)
+        .map(|owner| format!("@{owner} 麻烦审批，已完成验证。"))
+        .unwrap_or_else(|| "@maintainer 麻烦审批，已完成验证。".to_string());
+
+    let disabled_reason = if head_branch.trim().is_empty() {
+        Some("Current branch is unavailable (detached HEAD or no local branch).".to_string())
+    } else if upstream_repo.trim().is_empty() {
+        Some("No GitHub remote detected. Configure upstream/origin remote first.".to_string())
+    } else if head_owner.trim().is_empty() {
+        Some("Cannot infer fork owner from origin remote URL.".to_string())
+    } else {
+        None
+    };
+
+    Ok(GitPrWorkflowDefaults {
+        upstream_repo,
+        base_branch,
+        head_owner,
+        head_branch,
+        title,
+        body,
+        comment_body,
+        can_create: disabled_reason.is_none(),
+        disabled_reason,
+    })
+}
+
+#[tauri::command]
+pub(crate) async fn create_git_pr_workflow(
+    workspace_id: String,
+    upstream_repo: String,
+    base_branch: String,
+    head_owner: String,
+    head_branch: String,
+    title: String,
+    body: Option<String>,
+    comment_after_create: Option<bool>,
+    comment_body: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<GitPrWorkflowResult, String> {
+    let workspaces = state.workspaces.lock().await;
+    let entry = workspaces
+        .get(&workspace_id)
+        .ok_or("workspace not found")?
+        .clone();
+    drop(workspaces);
+
+    let repo_root = resolve_git_root(&entry)?;
+    let upstream_repo = upstream_repo.trim().to_string();
+    let base_branch = base_branch.trim().to_string();
+    let head_owner = head_owner.trim().to_string();
+    let head_branch = head_branch.trim().to_string();
+    let title = title.trim().to_string();
+    let body = body.unwrap_or_default();
+    let comment_enabled = comment_after_create.unwrap_or(false);
+    let comment_text = comment_body.unwrap_or_default();
+    let mut stages = build_workflow_stages();
+
+    if upstream_repo.is_empty()
+        || base_branch.is_empty()
+        || head_owner.is_empty()
+        || head_branch.is_empty()
+        || title.is_empty()
+    {
+        let reason = "Missing required PR parameters (upstream/base/head/title).".to_string();
+        update_workflow_stage(
+            &mut stages,
+            "precheck",
+            "failed",
+            reason.clone(),
+            None,
+            None,
+            None,
+        );
+        return Ok(build_failed_pr_workflow_result(
+            stages,
+            "precheck",
+            reason,
+            None,
+        ));
+    }
+
+    update_workflow_stage(
+        &mut stages,
+        "precheck",
+        "running",
+        "Checking GitHub CLI readiness and PR range gate.".to_string(),
+        None,
+        None,
+        None,
+    );
+    let gh_version_args = vec!["--version".to_string()];
+    let gh_version_output = match run_token_isolated_command(&repo_root, "gh", &gh_version_args, &[]).await
+    {
+        Ok(output) => output,
+        Err(error) => {
+            update_workflow_stage(
+                &mut stages,
+                "precheck",
+                "failed",
+                error.clone(),
+                None,
+                None,
+                None,
+            );
+            return Ok(build_failed_pr_workflow_result(stages, "precheck", error, None));
+        }
+    };
+    if !gh_version_output.success {
+        let raw = summarize_command_failure(&gh_version_output);
+        update_workflow_stage(
+            &mut stages,
+            "precheck",
+            "failed",
+            raw.clone(),
+            Some(gh_version_output.command),
+            Some(truncate_debug_text(&gh_version_output.stdout, 1200)),
+            Some(truncate_debug_text(&gh_version_output.stderr, 1200)),
+        );
+        return Ok(build_failed_pr_workflow_result(stages, "precheck", raw, None));
+    }
+
+    let gh_auth_args = vec![
+        "auth".to_string(),
+        "status".to_string(),
+        "-h".to_string(),
+        "github.com".to_string(),
+    ];
+    let gh_auth_output = match run_token_isolated_command(&repo_root, "gh", &gh_auth_args, &[]).await {
+        Ok(output) => output,
+        Err(error) => {
+            update_workflow_stage(
+                &mut stages,
+                "precheck",
+                "failed",
+                error.clone(),
+                None,
+                None,
+                None,
+            );
+            return Ok(build_failed_pr_workflow_result(stages, "precheck", error, None));
+        }
+    };
+    if !gh_auth_output.success {
+        let raw = summarize_command_failure(&gh_auth_output);
+        update_workflow_stage(
+            &mut stages,
+            "precheck",
+            "failed",
+            raw.clone(),
+            Some(gh_auth_output.command),
+            Some(truncate_debug_text(&gh_auth_output.stdout, 1200)),
+            Some(truncate_debug_text(&gh_auth_output.stderr, 1200)),
+        );
+        return Ok(build_failed_pr_workflow_result(stages, "precheck", raw, None));
+    }
+
+    let repo = open_repository_at_root(&repo_root)?;
+    if repo.find_remote("upstream").is_err() {
+        let raw =
+            "Range gate requires remote `upstream`. Add it first, then retry PR workflow."
+                .to_string();
+        update_workflow_stage(
+            &mut stages,
+            "precheck",
+            "failed",
+            raw.clone(),
+            None,
+            None,
+            None,
+        );
+        return Ok(build_failed_pr_workflow_result(stages, "precheck", raw, None));
+    }
+
+    let fetch_args = vec![
+        "fetch".to_string(),
+        "upstream".to_string(),
+        base_branch.clone(),
+    ];
+    let fetch_output = match run_token_isolated_command(&repo_root, "git", &fetch_args, &[]).await {
+        Ok(output) => output,
+        Err(error) => {
+            update_workflow_stage(
+                &mut stages,
+                "precheck",
+                "failed",
+                error.clone(),
+                None,
+                None,
+                None,
+            );
+            return Ok(build_failed_pr_workflow_result(stages, "precheck", error, None));
+        }
+    };
+    if !fetch_output.success {
+        let raw = summarize_command_failure(&fetch_output);
+        update_workflow_stage(
+            &mut stages,
+            "precheck",
+            "failed",
+            raw.clone(),
+            Some(fetch_output.command),
+            Some(truncate_debug_text(&fetch_output.stdout, 1500)),
+            Some(truncate_debug_text(&fetch_output.stderr, 1500)),
+        );
+        return Ok(build_failed_pr_workflow_result(stages, "precheck", raw, None));
+    }
+
+    let range_ref = format!("upstream/{base_branch}...HEAD");
+    let range_args = vec![
+        "diff".to_string(),
+        "--name-only".to_string(),
+        range_ref.clone(),
+    ];
+    let range_output = match run_token_isolated_command(&repo_root, "git", &range_args, &[]).await {
+        Ok(output) => output,
+        Err(error) => {
+            update_workflow_stage(
+                &mut stages,
+                "precheck",
+                "failed",
+                error.clone(),
+                None,
+                None,
+                None,
+            );
+            return Ok(build_failed_pr_workflow_result(stages, "precheck", error, None));
+        }
+    };
+    if !range_output.success {
+        let raw = summarize_command_failure(&range_output);
+        update_workflow_stage(
+            &mut stages,
+            "precheck",
+            "failed",
+            raw.clone(),
+            Some(range_output.command),
+            Some(truncate_debug_text(&range_output.stdout, 1500)),
+            Some(truncate_debug_text(&range_output.stderr, 1500)),
+        );
+        return Ok(build_failed_pr_workflow_result(stages, "precheck", raw, None));
+    }
+    let changed_paths = range_output
+        .stdout
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .map(ToOwned::to_owned)
+        .collect::<Vec<_>>();
+    match evaluate_pr_range_gate(&changed_paths) {
+        PrRangeGateDecision::Pass { changed_files } => {
+            update_workflow_stage(
+                &mut stages,
+                "precheck",
+                "success",
+                format!("Precheck passed. Range gate changed files: {changed_files}."),
+                Some(range_output.command),
+                Some(truncate_debug_text(&range_output.stdout, 1600)),
+                Some(truncate_debug_text(&range_output.stderr, 1200)),
+            );
+        }
+        PrRangeGateDecision::Blocked { category, reason } => {
+            update_workflow_stage(
+                &mut stages,
+                "precheck",
+                "failed",
+                reason.clone(),
+                Some(range_output.command),
+                Some(truncate_debug_text(&range_output.stdout, 1600)),
+                Some(truncate_debug_text(&range_output.stderr, 1200)),
+            );
+            return Ok(GitPrWorkflowResult {
+                ok: false,
+                status: "failed".to_string(),
+                message: reason,
+                error_category: Some(category),
+                next_action_hint: Some(
+                    "Fix branch base/range first, then retry workflow to avoid oversized PR.".to_string(),
+                ),
+                pr_url: None,
+                pr_number: None,
+                existing_pr: None,
+                retry_command: None,
+                stages,
+            });
+        }
+    }
+
+    update_workflow_stage(
+        &mut stages,
+        "push",
+        "running",
+        "Pushing branch to fork remote.".to_string(),
+        None,
+        None,
+        None,
+    );
+    let push_target = format!("HEAD:{head_branch}");
+    let push_args = vec![
+        "push".to_string(),
+        "-u".to_string(),
+        "origin".to_string(),
+        push_target.clone(),
+    ];
+    let push_output = match run_token_isolated_command(&repo_root, "git", &push_args, &[]).await {
+        Ok(output) => output,
+        Err(error) => {
+            update_workflow_stage(
+                &mut stages,
+                "push",
+                "failed",
+                error.clone(),
+                None,
+                None,
+                None,
+            );
+            return Ok(build_failed_pr_workflow_result(
+                stages,
+                "push",
+                error,
+                Some(format!(
+                    "env -u GH_TOKEN -u GITHUB_TOKEN git -c http.version=HTTP/1.1 push -u origin HEAD:{head_branch}"
+                )),
+            ));
+        }
+    };
+
+    if !push_output.success {
+        let first_error = summarize_command_failure(&push_output);
+        if is_http2_transport_error(&first_error) {
+            let push_http1_args = vec![
+                "-c".to_string(),
+                "http.version=HTTP/1.1".to_string(),
+                "push".to_string(),
+                "-u".to_string(),
+                "origin".to_string(),
+                push_target.clone(),
+            ];
+            let retry_output =
+                match run_token_isolated_command(&repo_root, "git", &push_http1_args, &[]).await {
+                    Ok(output) => output,
+                    Err(error) => {
+                        update_workflow_stage(
+                            &mut stages,
+                            "push",
+                            "failed",
+                            error.clone(),
+                            None,
+                            None,
+                            None,
+                        );
+                        return Ok(build_failed_pr_workflow_result(
+                            stages,
+                            "push",
+                            error,
+                            Some(format!(
+                                "env -u GH_TOKEN -u GITHUB_TOKEN git -c http.version=HTTP/1.1 push -u origin HEAD:{head_branch}"
+                            )),
+                        ));
+                    }
+                };
+            if !retry_output.success {
+                let retry_error = summarize_command_failure(&retry_output);
+                update_workflow_stage(
+                    &mut stages,
+                    "push",
+                    "failed",
+                    retry_error.clone(),
+                    Some(retry_output.command),
+                    Some(truncate_debug_text(&retry_output.stdout, 1600)),
+                    Some(truncate_debug_text(&retry_output.stderr, 1600)),
+                );
+                return Ok(build_failed_pr_workflow_result(
+                    stages,
+                    "push",
+                    retry_error,
+                    Some(format!(
+                        "env -u GH_TOKEN -u GITHUB_TOKEN git -c http.version=HTTP/1.1 push -u origin HEAD:{head_branch}"
+                    )),
+                ));
+            }
+            update_workflow_stage(
+                &mut stages,
+                "push",
+                "success",
+                "Push succeeded after HTTP/1.1 fallback retry.".to_string(),
+                Some(retry_output.command),
+                Some(truncate_debug_text(&retry_output.stdout, 1600)),
+                Some(truncate_debug_text(&retry_output.stderr, 1200)),
+            );
+        } else {
+            update_workflow_stage(
+                &mut stages,
+                "push",
+                "failed",
+                first_error.clone(),
+                Some(push_output.command),
+                Some(truncate_debug_text(&push_output.stdout, 1600)),
+                Some(truncate_debug_text(&push_output.stderr, 1600)),
+            );
+            return Ok(build_failed_pr_workflow_result(
+                stages,
+                "push",
+                first_error,
+                Some(format!(
+                    "env -u GH_TOKEN -u GITHUB_TOKEN git -c http.version=HTTP/1.1 push -u origin HEAD:{head_branch}"
+                )),
+            ));
+        }
+    } else {
+        update_workflow_stage(
+            &mut stages,
+            "push",
+            "success",
+            "Branch push completed.".to_string(),
+            Some(push_output.command),
+            Some(truncate_debug_text(&push_output.stdout, 1600)),
+            Some(truncate_debug_text(&push_output.stderr, 1200)),
+        );
+    }
+
+    update_workflow_stage(
+        &mut stages,
+        "create",
+        "running",
+        "Detecting existing PR and creating a new PR when needed.".to_string(),
+        None,
+        None,
+        None,
+    );
+    let head_spec = format!("{head_owner}:{head_branch}");
+    let existing_pr_args = vec![
+        "pr".to_string(),
+        "list".to_string(),
+        "--repo".to_string(),
+        upstream_repo.clone(),
+        "--state".to_string(),
+        "all".to_string(),
+        "--head".to_string(),
+        head_spec.clone(),
+        "--json".to_string(),
+        "number,title,url,state,headRefName,baseRefName".to_string(),
+        "--limit".to_string(),
+        "5".to_string(),
+    ];
+    let existing_pr_output =
+        match run_token_isolated_command(&repo_root, "gh", &existing_pr_args, &[]).await {
+            Ok(output) => output,
+            Err(error) => {
+                update_workflow_stage(
+                    &mut stages,
+                    "create",
+                    "failed",
+                    error.clone(),
+                    None,
+                    None,
+                    None,
+                );
+                return Ok(build_failed_pr_workflow_result(stages, "create", error, None));
+            }
+        };
+    if !existing_pr_output.success {
+        let raw = summarize_command_failure(&existing_pr_output);
+        update_workflow_stage(
+            &mut stages,
+            "create",
+            "failed",
+            raw.clone(),
+            Some(existing_pr_output.command),
+            Some(truncate_debug_text(&existing_pr_output.stdout, 1600)),
+            Some(truncate_debug_text(&existing_pr_output.stderr, 1600)),
+        );
+        return Ok(build_failed_pr_workflow_result(stages, "create", raw, None));
+    }
+    let existing_items: Vec<GhExistingPrEntry> = match serde_json::from_str(&existing_pr_output.stdout) {
+        Ok(items) => items,
+        Err(error) => {
+            let raw = format!("Failed to parse existing PR metadata: {error}");
+            update_workflow_stage(
+                &mut stages,
+                "create",
+                "failed",
+                raw.clone(),
+                Some(existing_pr_output.command),
+                Some(truncate_debug_text(&existing_pr_output.stdout, 1600)),
+                Some(truncate_debug_text(&existing_pr_output.stderr, 1200)),
+            );
+            return Ok(build_failed_pr_workflow_result(stages, "create", raw, None));
+        }
+    };
+    if let Some(existing) = existing_items.first() {
+        let existing_pr = GitPrExistingPullRequest {
+            number: existing.number,
+            title: existing.title.clone(),
+            url: existing.url.clone(),
+            state: existing.state.clone(),
+            head_ref_name: existing.head_ref_name.clone(),
+            base_ref_name: existing.base_ref_name.clone(),
+        };
+        update_workflow_stage(
+            &mut stages,
+            "create",
+            "success",
+            format!("Existing PR found: #{} {}", existing.number, existing.title),
+            Some(existing_pr_output.command),
+            Some(truncate_debug_text(&existing_pr_output.stdout, 1200)),
+            Some(truncate_debug_text(&existing_pr_output.stderr, 600)),
+        );
+        update_workflow_stage(
+            &mut stages,
+            "comment",
+            "skipped",
+            "Skipped because workflow reused existing PR.".to_string(),
+            None,
+            None,
+            None,
+        );
+        return Ok(build_existing_pr_workflow_result(stages, existing_pr));
+    }
+
+    let body_value = if body.trim().is_empty() {
+        default_pr_description(&base_branch, &head_branch)
+    } else {
+        body
+    };
+    let create_pr_args = vec![
+        "pr".to_string(),
+        "create".to_string(),
+        "--repo".to_string(),
+        upstream_repo.clone(),
+        "--base".to_string(),
+        base_branch.clone(),
+        "--head".to_string(),
+        head_spec.clone(),
+        "--title".to_string(),
+        title.clone(),
+        "--body".to_string(),
+        body_value,
+    ];
+    let create_output = match run_token_isolated_command(&repo_root, "gh", &create_pr_args, &[]).await {
+        Ok(output) => output,
+        Err(error) => {
+            update_workflow_stage(
+                &mut stages,
+                "create",
+                "failed",
+                error.clone(),
+                None,
+                None,
+                None,
+            );
+            return Ok(build_failed_pr_workflow_result(stages, "create", error, None));
+        }
+    };
+    if !create_output.success {
+        let raw = summarize_command_failure(&create_output);
+        update_workflow_stage(
+            &mut stages,
+            "create",
+            "failed",
+            raw.clone(),
+            Some(create_output.command),
+            Some(truncate_debug_text(&create_output.stdout, 1600)),
+            Some(truncate_debug_text(&create_output.stderr, 1600)),
+        );
+        return Ok(build_failed_pr_workflow_result(stages, "create", raw, None));
+    }
+
+    let merged_create_output = if create_output.stdout.trim().is_empty() {
+        create_output.stderr.as_str()
+    } else {
+        create_output.stdout.as_str()
+    };
+    let mut pr_url = extract_pr_url(merged_create_output).unwrap_or_default();
+    if pr_url.is_empty() {
+        pr_url = extract_pr_url(&create_output.stdout)
+            .or_else(|| extract_pr_url(&create_output.stderr))
+            .unwrap_or_default();
+    }
+    let mut pr_number = extract_pr_number_from_url(&pr_url);
+    if pr_number.is_none() {
+        let pr_view_args = vec![
+            "pr".to_string(),
+            "list".to_string(),
+            "--repo".to_string(),
+            upstream_repo.clone(),
+            "--state".to_string(),
+            "open".to_string(),
+            "--head".to_string(),
+            head_spec.clone(),
+            "--json".to_string(),
+            "number,url".to_string(),
+            "--limit".to_string(),
+            "1".to_string(),
+        ];
+        if let Ok(view_output) = run_token_isolated_command(&repo_root, "gh", &pr_view_args, &[]).await {
+            if view_output.success {
+                let parsed: serde_json::Value =
+                    serde_json::from_str(&view_output.stdout).unwrap_or_else(|_| json!([]));
+                if let Some(item) = parsed.as_array().and_then(|items| items.first()) {
+                    if pr_url.is_empty() {
+                        pr_url = item
+                            .get("url")
+                            .and_then(|value| value.as_str())
+                            .unwrap_or("")
+                            .to_string();
+                    }
+                    pr_number = item.get("number").and_then(|value| value.as_u64());
+                }
+            }
+        }
+    }
+    update_workflow_stage(
+        &mut stages,
+        "create",
+        "success",
+        if pr_url.is_empty() {
+            "PR created successfully.".to_string()
+        } else {
+            format!("PR created: {pr_url}")
+        },
+        Some(create_output.command),
+        Some(truncate_debug_text(&create_output.stdout, 1600)),
+        Some(truncate_debug_text(&create_output.stderr, 1200)),
+    );
+
+    if !comment_enabled {
+        update_workflow_stage(
+            &mut stages,
+            "comment",
+            "skipped",
+            "Comment step disabled.".to_string(),
+            None,
+            None,
+            None,
+        );
+        return Ok(build_success_pr_workflow_result(
+            stages,
+            pr_url,
+            pr_number,
+            "PR workflow completed.".to_string(),
+        ));
+    }
+
+    let effective_pr_number = pr_number;
+    let comment_text = comment_text.trim().to_string();
+    if comment_text.is_empty() {
+        update_workflow_stage(
+            &mut stages,
+            "comment",
+            "skipped",
+            "Comment step skipped because body is empty.".to_string(),
+            None,
+            None,
+            None,
+        );
+        return Ok(build_success_pr_workflow_result(
+            stages,
+            pr_url,
+            effective_pr_number,
+            "PR created (comment skipped).".to_string(),
+        ));
+    }
+    let Some(comment_pr_number) = effective_pr_number else {
+        update_workflow_stage(
+            &mut stages,
+            "comment",
+            "skipped",
+            "Comment step skipped because PR number is unavailable.".to_string(),
+            None,
+            None,
+            None,
+        );
+        return Ok(build_success_pr_workflow_result(
+            stages,
+            pr_url,
+            None,
+            "PR created (comment skipped).".to_string(),
+        ));
+    };
+
+    update_workflow_stage(
+        &mut stages,
+        "comment",
+        "running",
+        "Posting optional approval comment.".to_string(),
+        None,
+        None,
+        None,
+    );
+    let comment_args = vec![
+        "pr".to_string(),
+        "comment".to_string(),
+        comment_pr_number.to_string(),
+        "--repo".to_string(),
+        upstream_repo.clone(),
+        "--body".to_string(),
+        comment_text,
+    ];
+    let comment_output = match run_token_isolated_command(&repo_root, "gh", &comment_args, &[]).await {
+        Ok(output) => output,
+        Err(error) => {
+            update_workflow_stage(
+                &mut stages,
+                "comment",
+                "failed",
+                error,
+                None,
+                None,
+                None,
+            );
+            return Ok(build_success_pr_workflow_result(
+                stages,
+                pr_url,
+                Some(comment_pr_number),
+                "PR created, but comment step failed.".to_string(),
+            ));
+        }
+    };
+    if !comment_output.success {
+        let raw = summarize_command_failure(&comment_output);
+        update_workflow_stage(
+            &mut stages,
+            "comment",
+            "failed",
+            raw,
+            Some(comment_output.command),
+            Some(truncate_debug_text(&comment_output.stdout, 1200)),
+            Some(truncate_debug_text(&comment_output.stderr, 1200)),
+        );
+        return Ok(build_success_pr_workflow_result(
+            stages,
+            pr_url,
+            Some(comment_pr_number),
+            "PR created, but comment step failed.".to_string(),
+        ));
+    }
+    update_workflow_stage(
+        &mut stages,
+        "comment",
+        "success",
+        format!("Comment posted on PR #{comment_pr_number}."),
+        Some(comment_output.command),
+        Some(truncate_debug_text(&comment_output.stdout, 1200)),
+        Some(truncate_debug_text(&comment_output.stderr, 600)),
+    );
+    Ok(build_success_pr_workflow_result(
+        stages,
+        pr_url,
+        Some(comment_pr_number),
+        "PR workflow completed.".to_string(),
+    ))
+}
+
+#[tauri::command]
 pub(crate) async fn get_github_issues(
     workspace_id: String,
     state: State<'_, AppState>,
@@ -2634,6 +3889,7 @@ pub(crate) async fn delete_git_branch(
     workspace_id: String,
     name: String,
     force: Option<bool>,
+    remove_occupied_worktree: Option<bool>,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
     let workspaces = state.workspaces.lock().await;
@@ -2646,8 +3902,49 @@ pub(crate) async fn delete_git_branch(
     if branch_name.is_empty() {
         return Err("Branch name cannot be empty.".to_string());
     }
-    let flag = if force.unwrap_or(false) { "-D" } else { "-d" };
-    run_git_command(&repo_root, &["branch", flag, branch_name]).await
+    let force_delete = force.unwrap_or(false);
+    let remove_worktree_on_force = remove_occupied_worktree.unwrap_or(false);
+    let flag = if force_delete { "-D" } else { "-d" };
+    match run_git_command(&repo_root, &["branch", flag, branch_name]).await {
+        Ok(()) => Ok(()),
+        Err(delete_error) => {
+            if !is_branch_used_by_worktree_error(&delete_error) {
+                return Err(delete_error);
+            }
+            // Try once to clean stale worktree metadata, then retry delete.
+            let _ = run_git_command(&repo_root, &["worktree", "prune"]).await;
+            match run_git_command(&repo_root, &["branch", flag, branch_name]).await {
+                Ok(()) => Ok(()),
+                Err(retry_error) => {
+                    if force_delete && remove_worktree_on_force {
+                        if let Some(occupied_path) =
+                            extract_worktree_path_from_delete_error(&retry_error)
+                        {
+                            let _ = run_git_command(
+                                &repo_root,
+                                &["worktree", "remove", "--force", occupied_path.as_str()],
+                            )
+                            .await;
+                            if run_git_command(&repo_root, &["branch", flag, branch_name])
+                                .await
+                                .is_ok()
+                            {
+                                return Ok(());
+                            }
+                        }
+                    }
+                    if is_branch_used_by_worktree_error(&retry_error) {
+                        Err(build_delete_branch_worktree_error(
+                            branch_name,
+                            &retry_error,
+                        ))
+                    } else {
+                        Err(retry_error)
+                    }
+                }
+            }
+        }
+    }
 }
 
 #[tauri::command]
@@ -3205,5 +4502,84 @@ mod tests {
             "feature/git-log".to_string()
         );
         assert!(validate_local_branch_name("feature..broken").is_err());
+    }
+
+    #[test]
+    fn detect_used_by_worktree_delete_error() {
+        let message =
+            "error: cannot delete branch 'feature/test' used by worktree at '/tmp/worktree'";
+        assert!(is_branch_used_by_worktree_error(message));
+        assert_eq!(
+            extract_worktree_path_from_delete_error(message).as_deref(),
+            Some("/tmp/worktree")
+        );
+    }
+
+    #[test]
+    fn build_actionable_used_by_worktree_error_with_path() {
+        let message =
+            "error: cannot delete branch 'feature/test' used by worktree at '/tmp/worktree'";
+        let friendly = build_delete_branch_worktree_error("feature/test", message);
+        assert!(friendly.contains("Switch that worktree to another branch"));
+        assert!(friendly.contains("/tmp/worktree"));
+    }
+
+    #[test]
+    fn token_isolated_command_display_includes_env_unset_prefix() {
+        let rendered = build_token_isolated_command_display(
+            "git",
+            &[
+                "push".to_string(),
+                "-u".to_string(),
+                "origin".to_string(),
+                "HEAD:feature/a".to_string(),
+            ],
+        );
+        assert!(rendered.starts_with("env -u GH_TOKEN -u GITHUB_TOKEN"));
+        assert!(rendered.contains("git push -u origin HEAD:feature/a"));
+    }
+
+    #[test]
+    fn detect_http2_transport_error_signature() {
+        let message = "error: RPC failed; curl 16 Error in the HTTP2 framing layer";
+        assert!(is_http2_transport_error(message));
+    }
+
+    #[test]
+    fn parse_pr_number_from_url_works() {
+        assert_eq!(
+            extract_pr_number_from_url("https://github.com/a/b/pull/123"),
+            Some(123)
+        );
+        assert_eq!(
+            extract_pr_number_from_url("https://github.com/a/b/pull/456/files"),
+            Some(456)
+        );
+        assert_eq!(extract_pr_number_from_url("https://github.com/a/b/issues/1"), None);
+    }
+
+    #[test]
+    fn range_gate_blocks_oversized_changeset() {
+        let paths = (0..(PR_RANGE_MAX_CHANGED_FILES + 1))
+            .map(|index| format!("src/file-{index}.ts"))
+            .collect::<Vec<_>>();
+        let decision = evaluate_pr_range_gate(&paths);
+        assert!(matches!(
+            decision,
+            PrRangeGateDecision::Blocked { category, .. } if category == "range-too-large"
+        ));
+    }
+
+    #[test]
+    fn range_gate_blocks_suspicious_root_files_when_scope_is_large() {
+        let mut paths = (0..PR_RANGE_SUSPICIOUS_THRESHOLD)
+            .map(|index| format!("src/file-{index}.ts"))
+            .collect::<Vec<_>>();
+        paths.push("README.md".to_string());
+        let decision = evaluate_pr_range_gate(&paths);
+        assert!(matches!(
+            decision,
+            PrRangeGateDecision::Blocked { category, .. } if category == "range-suspicious"
+        ));
     }
 }

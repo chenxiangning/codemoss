@@ -258,6 +258,8 @@ pub fn run() {
             git::resolve_git_commit_ref,
             git::get_git_commit_diff,
             git::get_git_remote,
+            git::get_git_pr_workflow_defaults,
+            git::create_git_pr_workflow,
             git::stage_git_file,
             git::stage_git_all,
             git::unstage_git_file,

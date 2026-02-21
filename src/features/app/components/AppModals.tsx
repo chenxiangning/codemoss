@@ -13,6 +13,11 @@ const WorktreePrompt = lazy(() =>
     default: module.WorktreePrompt,
   })),
 );
+const WorktreeCreateResultDialog = lazy(() =>
+  import("../../workspaces/components/WorktreeCreateResultDialog").then((module) => ({
+    default: module.WorktreeCreateResultDialog,
+  })),
+);
 const ClonePrompt = lazy(() =>
   import("../../workspaces/components/ClonePrompt").then((module) => ({
     default: module.ClonePrompt,
@@ -22,6 +27,7 @@ const ClonePrompt = lazy(() =>
 type RenamePromptState = ReturnType<typeof useRenameThreadPrompt>["renamePrompt"];
 
 type WorktreePromptState = ReturnType<typeof useWorktreePrompt>["worktreePrompt"];
+type WorktreeCreateResultState = ReturnType<typeof useWorktreePrompt>["worktreeCreateResult"];
 
 type ClonePromptState = ReturnType<typeof useClonePrompt>["clonePrompt"];
 
@@ -37,6 +43,8 @@ type AppModalsProps = {
   onWorktreeSetupScriptChange: (value: string) => void;
   onWorktreePromptCancel: () => void;
   onWorktreePromptConfirm: () => void;
+  worktreeCreateResult: WorktreeCreateResultState;
+  onWorktreeCreateResultClose: () => void;
   clonePrompt: ClonePromptState;
   onClonePromptCopyNameChange: (value: string) => void;
   onClonePromptChooseCopiesFolder: () => void;
@@ -58,6 +66,8 @@ export const AppModals = memo(function AppModals({
   onWorktreeSetupScriptChange,
   onWorktreePromptCancel,
   onWorktreePromptConfirm,
+  worktreeCreateResult,
+  onWorktreeCreateResultClose,
   clonePrompt,
   onClonePromptCopyNameChange,
   onClonePromptChooseCopiesFolder,
@@ -103,6 +113,14 @@ export const AppModals = memo(function AppModals({
             onSetupScriptChange={onWorktreeSetupScriptChange}
             onCancel={onWorktreePromptCancel}
             onConfirm={onWorktreePromptConfirm}
+          />
+        </Suspense>
+      )}
+      {worktreeCreateResult && (
+        <Suspense fallback={null}>
+          <WorktreeCreateResultDialog
+            result={worktreeCreateResult}
+            onClose={onWorktreeCreateResultClose}
           />
         </Suspense>
       )}

@@ -713,6 +713,201 @@
   color: #eef4ff;
 }
 
+.worktree-result-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 44;
+}
+
+.worktree-result-modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(8, 12, 20, 0.66);
+  backdrop-filter: blur(6px);
+}
+
+.worktree-result-modal-card {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: min(560px, calc(100vw - 24px));
+  border-radius: 20px;
+  border: 1px solid color-mix(in srgb, var(--border-stronger), transparent 26%);
+  background:
+    radial-gradient(120% 140% at -16% -22%, rgba(37, 99, 235, 0.18) 0%, rgba(37, 99, 235, 0) 52%),
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--surface-card-strong), #0f172a 4%) 0%,
+      color-mix(in srgb, var(--surface-card), #0b1320 2%) 100%
+    );
+  box-shadow: 0 22px 56px rgba(0, 0, 0, 0.36);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.worktree-result-modal-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.worktree-result-modal-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+}
+
+.worktree-result-modal-icon.is-success {
+  color: #22c55e;
+  border: 1px solid color-mix(in srgb, #22c55e, transparent 28%);
+  background: linear-gradient(180deg, rgba(34, 197, 94, 0.2), rgba(34, 197, 94, 0.1));
+}
+
+.worktree-result-modal-icon.is-warning {
+  color: #ef4444;
+  border: 1px solid color-mix(in srgb, #ef4444, transparent 26%);
+  background: linear-gradient(180deg, rgba(239, 68, 68, 0.24), rgba(239, 68, 68, 0.12));
+}
+
+.worktree-result-modal-header-main {
+  min-width: 0;
+}
+
+.worktree-result-modal-header-main h3 {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 800;
+  line-height: 1.08;
+  color: var(--text-strong);
+}
+
+.worktree-result-modal-header-main p {
+  margin: 5px 0 0;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--text-subtle);
+}
+
+.worktree-result-modal-success {
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, #22c55e, transparent 46%);
+  background: linear-gradient(180deg, rgba(34, 197, 94, 0.16), rgba(34, 197, 94, 0.08));
+  color: color-mix(in srgb, var(--text-strong), #22c55e 18%);
+  padding: 10px 11px;
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.worktree-result-modal-warning {
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, #ef4444, transparent 28%);
+  background:
+    linear-gradient(180deg, rgba(239, 68, 68, 0.24), rgba(239, 68, 68, 0.14)),
+    color-mix(in srgb, var(--surface-card-muted), transparent 18%);
+  color: color-mix(in srgb, var(--text-strong), #ef4444 24%);
+  padding: 11px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.worktree-result-modal-warning-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
+
+.worktree-result-modal-warning p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.worktree-result-modal-status {
+  margin: 0;
+  border-radius: 11px;
+  border: 1px solid color-mix(in srgb, var(--border-subtle), transparent 16%);
+  background: color-mix(in srgb, var(--surface-card-muted), transparent 14%);
+  color: var(--text-strong);
+  font-size: 13px;
+  line-height: 1.45;
+  padding: 10px 11px;
+}
+
+.worktree-result-modal-retry {
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--border-accent), transparent 34%);
+  background: color-mix(in srgb, var(--surface-card-muted), transparent 14%);
+  padding: 10px 11px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.worktree-result-modal-retry-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.worktree-result-modal-retry-head span {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-subtle);
+}
+
+.worktree-result-copy-button {
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 9px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.worktree-result-copy-button.is-copied {
+  border-color: color-mix(in srgb, #22c55e, transparent 38%);
+  color: #22c55e;
+}
+
+.worktree-result-modal-retry code {
+  border-radius: 10px;
+  border: 1px solid color-mix(in srgb, var(--border-subtle), transparent 14%);
+  background: color-mix(in srgb, var(--surface-card), transparent 4%);
+  padding: 9px 10px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--text-strong);
+  font-family: var(--code-font-family, Menlo, Monaco, "Courier New", monospace);
+  overflow-wrap: anywhere;
+}
+
+.worktree-result-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.worktree-result-ok-button {
+  min-width: 110px;
+  height: 36px;
+  border-radius: 11px;
+}
+
 :root[data-theme="light"] .worktree-modal-error {
   color: rgba(125, 30, 30, 0.96);
   border-color: rgba(184, 63, 63, 0.58);
@@ -866,5 +1061,30 @@
     min-width: 70px;
     height: 32px;
     padding: 0 11px;
+  }
+
+  .worktree-result-modal-card {
+    width: calc(100vw - 14px);
+    border-radius: 16px;
+    padding: 12px;
+    gap: 10px;
+  }
+
+  .worktree-result-modal-header-main h3 {
+    font-size: 20px;
+  }
+
+  .worktree-result-modal-retry-head {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .worktree-result-copy-button {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .worktree-result-ok-button {
+    width: 100%;
   }
 }

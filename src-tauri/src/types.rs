@@ -123,6 +123,68 @@ pub(crate) struct GitBranchCompareCommitSets {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+pub(crate) struct GitPrWorkflowDefaults {
+    #[serde(rename = "upstreamRepo")]
+    pub(crate) upstream_repo: String,
+    #[serde(rename = "baseBranch")]
+    pub(crate) base_branch: String,
+    #[serde(rename = "headOwner")]
+    pub(crate) head_owner: String,
+    #[serde(rename = "headBranch")]
+    pub(crate) head_branch: String,
+    pub(crate) title: String,
+    pub(crate) body: String,
+    #[serde(rename = "commentBody")]
+    pub(crate) comment_body: String,
+    #[serde(rename = "canCreate")]
+    pub(crate) can_create: bool,
+    #[serde(rename = "disabledReason")]
+    pub(crate) disabled_reason: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub(crate) struct GitPrWorkflowStage {
+    pub(crate) key: String,
+    pub(crate) status: String,
+    pub(crate) detail: String,
+    pub(crate) command: Option<String>,
+    pub(crate) stdout: Option<String>,
+    pub(crate) stderr: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub(crate) struct GitPrExistingPullRequest {
+    pub(crate) number: u64,
+    pub(crate) title: String,
+    pub(crate) url: String,
+    pub(crate) state: String,
+    #[serde(rename = "headRefName")]
+    pub(crate) head_ref_name: String,
+    #[serde(rename = "baseRefName")]
+    pub(crate) base_ref_name: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub(crate) struct GitPrWorkflowResult {
+    pub(crate) ok: bool,
+    pub(crate) status: String,
+    pub(crate) message: String,
+    #[serde(rename = "errorCategory")]
+    pub(crate) error_category: Option<String>,
+    #[serde(rename = "nextActionHint")]
+    pub(crate) next_action_hint: Option<String>,
+    #[serde(rename = "prUrl")]
+    pub(crate) pr_url: Option<String>,
+    #[serde(rename = "prNumber")]
+    pub(crate) pr_number: Option<u64>,
+    #[serde(rename = "existingPr")]
+    pub(crate) existing_pr: Option<GitPrExistingPullRequest>,
+    #[serde(rename = "retryCommand")]
+    pub(crate) retry_command: Option<String>,
+    pub(crate) stages: Vec<GitPrWorkflowStage>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub(crate) struct GitCommitFileChange {
     pub(crate) path: String,
     #[serde(rename = "oldPath")]

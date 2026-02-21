@@ -13,6 +13,7 @@ const en = {
     close: "Close",
     restore: "Restore",
     confirm: "Confirm",
+    ok: "OK",
     edit: "Edit",
     refresh: "Refresh",
     retry: "Retry",
@@ -938,6 +939,47 @@ const en = {
     historyPushDialogPushTags: "Push tags",
     historyPushDialogRunHooks: "Run Git hooks",
     historyPushDialogForceWithLease: "Force with lease",
+    historyCreatePr: "PR",
+    historyCreatePrDialogTitle: "Create Pull Request",
+    historyCreatePrDialogSubtitle:
+      "Confirm parameters, then run precheck, push, PR create, and optional approval comment.",
+    historyCreatePrUnavailableNoBranch: "No valid local branch is available",
+    historyCreatePrLoadingDefaults: "Detecting PR defaults...",
+    historyCreatePrLoadDefaultsFailed: "Prefill failed:",
+    historyCreatePrCompareBaseRepo: "base repository",
+    historyCreatePrCompareBase: "base",
+    historyCreatePrCompareHeadRepo: "head repository",
+    historyCreatePrCompare: "compare",
+    historyCreatePrFieldUpstreamRepo: "upstream repo",
+    historyCreatePrFieldBaseBranch: "base branch",
+    historyCreatePrFieldHeadOwner: "head owner",
+    historyCreatePrFieldHeadBranch: "head branch",
+    historyCreatePrFieldTitle: "PR title",
+    historyCreatePrFieldBody: "PR body",
+    historyCreatePrTitlePlaceholder: "fix(git): describe change",
+    historyCreatePrCommentAfterCreate: "Comment after create (@review)",
+    historyCreatePrCommentBody: "Comment body",
+    historyCreatePrStageProgress: "Workflow progress",
+    historyCreatePrStagePrecheck: "Precheck",
+    historyCreatePrStagePush: "Push",
+    historyCreatePrStageCreate: "Create PR",
+    historyCreatePrStageComment: "Comment",
+    historyCreatePrStageWaiting: "Waiting",
+    historyCreatePrStageRunning: "Running",
+    historyCreatePrStagePending: "Queued",
+    historyCreatePrStageSuccess: "Success",
+    historyCreatePrStageFailed: "Failed",
+    historyCreatePrStageSkipped: "Skipped",
+    historyCreatePrResultSuccess: "PR created successfully",
+    historyCreatePrResultExisting: "Existing PR reused",
+    historyCreatePrResultFailed: "PR workflow failed",
+    historyCreatePrOpenLink: "Open PR",
+    historyCreatePrCopyLink: "Copy link",
+    historyCreatePrCopyCommand: "Copy command",
+    historyCreatePrRetryCommand: "Retry command",
+    historyCreatePrCopied: "Copied",
+    historyCreatePrFormIncomplete: "Fill required fields first",
+    historyCreatePrAction: "Create PR",
     historyPullDialogTitle: "Pull Changes",
     historyPullDialogRemoteLabel: "Remote",
     historyPullDialogTargetBranchLabel: "Target Remote Branch",
@@ -1054,6 +1096,10 @@ const en = {
       "Git command timed out. Check network, proxy, or credentials and retry.",
     historyErrorAuthRequired:
       "Git authentication is required or failed. Complete repository auth and retry.",
+    historyErrorBranchUsedByWorktree:
+      "This branch is currently used by another worktree. Switch or remove that worktree first, then retry.",
+    historyErrorBranchUsedByWorktreeAt:
+      "This branch is currently used by worktree at {{path}}. Switch that worktree to another branch or remove it, then retry.",
     historyWorkingTreeDirtySummary:
       "Working tree has {{count}} file changes.",
     historyChangedFilesCount:
@@ -1073,6 +1119,30 @@ const en = {
     historyPromptRenameBranch: "Rename branch",
     historyConfirmDeleteBranch: "Delete branch {{branch}}?",
     historyTitleDeleteBranch: "Delete branch",
+    historyConfirmForceDeleteBranch:
+      "Branch {{branch}} is not fully merged. Force delete it?",
+    historyConfirmForceDeleteBranchWithWorktree:
+      "Branch {{branch}} is used by a worktree. Force remove the occupying worktree and delete this branch?",
+    historyTitleForceDeleteBranch: "Force delete branch",
+    historyForceDeleteDialogSubtitleNotMerged:
+      "The branch {{branch}} still has unmerged commits.",
+    historyForceDeleteDialogSubtitleWithWorktree:
+      "The branch {{branch}} is currently occupied by a linked worktree.",
+    historyForceDeleteDialogRiskTitle: "High-risk action",
+    historyForceDeleteDialogRiskNotMerged:
+      "Force delete will permanently remove this branch reference. Unmerged commits may become harder to recover if not referenced elsewhere.",
+    historyForceDeleteDialogRiskWithWorktree:
+      "Force delete will remove the occupying worktree first, then remove branch reference. Ensure no unsaved work remains in that worktree.",
+    historyForceDeleteDialogBranchLabel: "Target branch",
+    historyForceDeleteDialogWorktreeLabel: "Occupying worktree",
+    historyForceDeleteDialogTip:
+      "If unsure, cancel and back up the branch first (for example, create a temporary tag).",
+    historyForceDeleteDialogConfirm: "Force delete branch",
+    historyForceDeleteDialogConfirmWithWorktree:
+      "Force remove worktree and delete branch",
+    historyForceDeleteDialogCopyPath: "Copy path",
+    historyForceDeleteDialogCopied: "Copied",
+    historyForceDeleteDialogUnlockCountdown: "{{count}}s",
     historyConfirmMergeBranchIntoCurrent:
       "Merge {{branch}} into current branch?",
     historyTitleMergeBranch: "Merge branch",
@@ -1115,6 +1185,7 @@ const en = {
     historyOperationRevertCommit: "revert commit",
     historyOperationCherryPick: "cherry-pick commit",
     historyOperationReset: "reset commit",
+    historyOperationCreatePr: "create PR",
     historyOperationSucceeded: "{{operation}} succeeded.",
     historyOperationFailed: "{{operation}} failed.",
     historyOperationRetryHint: "You can retry this operation.",
@@ -1582,6 +1653,10 @@ const en = {
     publishToOriginHint:
       "When enabled, example command: `git push -u origin feat/login-page` right after creation.",
     worktreeCreateResultTitle: "Worktree Creation Result",
+    worktreeResultSuccessSubtitle: "Local and remote status are summarized for quick confirmation.",
+    worktreeResultWarningSubtitle:
+      "Local creation succeeded, but remote publish needs manual follow-up.",
+    worktreeResultErrorTitle: "Critical Warning",
     worktreeCreateSuccess: "Worktree created locally: {{branch}}",
     worktreePublishStatusCreatedTracking: "Remote publish succeeded. Tracking set to {{tracking}}.",
     worktreePublishStatusCreatedNoTracking:

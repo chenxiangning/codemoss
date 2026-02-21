@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { message } from "@tauri-apps/plugin-dialog";
 import type { WorkspaceInfo, WorkspaceSettings } from "../../../types";
 import { listGitBranches } from "../../../services/tauri";
 
@@ -30,6 +29,14 @@ type WorktreePromptState = {
   scriptError: string | null;
 } | null;
 
+type WorktreeCreateResultState = {
+  kind: "info" | "warning";
+  createdMessage: string;
+  statusMessage: string | null;
+  errorMessage: string | null;
+  retryCommand: string | null;
+} | null;
+
 type UseWorktreePromptOptions = {
   addWorktreeAgent: (
     workspace: WorkspaceInfo,
@@ -52,9 +59,11 @@ type UseWorktreePromptOptions = {
 
 type UseWorktreePromptResult = {
   worktreePrompt: WorktreePromptState;
+  worktreeCreateResult: WorktreeCreateResultState;
   openPrompt: (workspace: WorkspaceInfo) => void;
   confirmPrompt: () => Promise<void>;
   cancelPrompt: () => void;
+  closeWorktreeCreateResult: () => void;
   updateBranch: (value: string) => void;
   updateBaseRef: (value: string) => void;
   updatePublishToOrigin: (value: boolean) => void;
@@ -218,6 +227,8 @@ export function useWorktreePrompt({
 }: UseWorktreePromptOptions): UseWorktreePromptResult {
   const { t } = useTranslation();
   const [worktreePrompt, setWorktreePrompt] = useState<WorktreePromptState>(null);
+  const [worktreeCreateResult, setWorktreeCreateResult] =
+    useState<WorktreeCreateResultState>(null);
 
   const promptWorkspaceId = worktreePrompt?.workspace.id ?? null;
 
@@ -332,6 +343,7 @@ export function useWorktreePrompt({
       errorRetryCommand: null,
       scriptError: null,
     });
+    setWorktreeCreateResult(null);
   }, []);
 
   const updateBranch = useCallback((value: string) => {
@@ -393,6 +405,10 @@ export function useWorktreePrompt({
 
   const cancelPrompt = useCallback(() => {
     setWorktreePrompt(null);
+  }, []);
+
+  const closeWorktreeCreateResult = useCallback(() => {
+    setWorktreeCreateResult(null);
   }, []);
 
   const baseRefLookup = useMemo(() => {
@@ -512,22 +528,17 @@ export function useWorktreePrompt({
       const tracking = worktreeWorkspace.worktree?.tracking?.trim() || null;
       const publishError = worktreeWorkspace.worktree?.publishError?.trim() || null;
       const publishRetryCommand = worktreeWorkspace.worktree?.publishRetryCommand?.trim() || null;
+      const createdMessage = t("workspace.worktreeCreateSuccess", { branch: createdBranch });
 
       if (publishError) {
-        const lines = [
-          t("workspace.worktreeCreateSuccess", { branch: createdBranch }),
-          t("workspace.worktreePublishFailedRecoverable", {
+        setWorktreeCreateResult({
+          kind: "warning",
+          createdMessage,
+          statusMessage: null,
+          errorMessage: t("workspace.worktreePublishFailedRecoverable", {
             reason: publishError || t("workspace.worktreePublishFailedReasonUnknown"),
           }),
-        ];
-        if (publishRetryCommand) {
-          lines.push(
-            `${t("workspace.worktreePublishRetryCommandLabel")}:\n${publishRetryCommand}`,
-          );
-        }
-        void message(lines.join("\n\n"), {
-          title: t("workspace.worktreeCreateResultTitle"),
-          kind: "warning",
+          retryCommand: publishRetryCommand,
         });
       } else {
         const publishStatus = snapshot.publishToOrigin
@@ -537,13 +548,13 @@ export function useWorktreePrompt({
           : tracking
             ? t("workspace.worktreePublishStatusSkippedTracking", { tracking })
             : t("workspace.worktreePublishStatusSkipped");
-        void message(
-          `${t("workspace.worktreeCreateSuccess", { branch: createdBranch })}\n${publishStatus}`,
-          {
-            title: t("workspace.worktreeCreateResultTitle"),
-            kind: "info",
-          },
-        );
+        setWorktreeCreateResult({
+          kind: "info",
+          createdMessage,
+          statusMessage: publishStatus,
+          errorMessage: null,
+          retryCommand: null,
+        });
       }
       onSelectWorkspace(worktreeWorkspace.id);
       if (!worktreeWorkspace.connected) {
@@ -553,10 +564,12 @@ export function useWorktreePrompt({
       setWorktreePrompt(null);
       // Do not block modal close/interaction on post-create hooks like setup scripts.
       if (onWorktreeCreated) {
-        void onWorktreeCreated(worktreeWorkspace, parentWorkspace).catch((error) => {
-          const message = error instanceof Error ? error.message : String(error);
-          onError?.(message);
-        });
+        void Promise.resolve(onWorktreeCreated(worktreeWorkspace, parentWorkspace)).catch(
+          (error: unknown) => {
+            const message = error instanceof Error ? error.message : String(error);
+            onError?.(message);
+          },
+        );
       }
     } catch (error) {
       const rawMessage = normalizeErrorMessage(error);
@@ -590,9 +603,11 @@ export function useWorktreePrompt({
 
   return {
     worktreePrompt,
+    worktreeCreateResult,
     openPrompt,
     confirmPrompt,
     cancelPrompt,
+    closeWorktreeCreateResult,
     updateBranch,
     updateBaseRef,
     updatePublishToOrigin,

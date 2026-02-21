@@ -1348,9 +1348,11 @@ function MainApp() {
   });
   const {
     worktreePrompt,
+    worktreeCreateResult,
     openPrompt: openWorktreePrompt,
     confirmPrompt: confirmWorktreePrompt,
     cancelPrompt: cancelWorktreePrompt,
+    closeWorktreeCreateResult,
     updateBranch: updateWorktreeBranch,
     updateBaseRef: updateWorktreeBaseRef,
     updatePublishToOrigin: updateWorktreePublishToOrigin,
@@ -4035,6 +4037,8 @@ function MainApp() {
         onWorktreeSetupScriptChange={updateWorktreeSetupScript}
         onWorktreePromptCancel={cancelWorktreePrompt}
         onWorktreePromptConfirm={confirmWorktreePrompt}
+        worktreeCreateResult={worktreeCreateResult}
+        onWorktreeCreateResultClose={closeWorktreeCreateResult}
         clonePrompt={clonePrompt}
         onClonePromptCopyNameChange={updateCloneCopyName}
         onClonePromptChooseCopiesFolder={chooseCloneCopiesFolder}

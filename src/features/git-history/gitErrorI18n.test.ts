@@ -5,7 +5,12 @@ import {
   type GitTranslate,
 } from "./gitErrorI18n";
 
-const t: GitTranslate = (key) => key;
+const t: GitTranslate = (key, options) => {
+  if (key === "git.historyErrorBranchUsedByWorktreeAt" && options?.path) {
+    return `${key}:${String(options.path)}`;
+  }
+  return key;
+};
 
 describe("gitErrorI18n", () => {
   it("localizes overwrite-by-revert errors as working tree dirty", () => {
@@ -54,5 +59,13 @@ describe("gitErrorI18n", () => {
         t,
       ),
     ).toBe("git.historyErrorAuthRequired");
+  });
+  it("localizes delete-branch used-by-worktree errors", () => {
+    expect(
+      localizeGitErrorMessage(
+        "Cannot delete branch 'feature/test' because it is currently used by worktree at '/tmp/worktree'.",
+        t,
+      ),
+    ).toBe("git.historyErrorBranchUsedByWorktreeAt:/tmp/worktree");
   });
 });

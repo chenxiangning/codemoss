@@ -5,14 +5,9 @@ import type { WorkspaceInfo } from "../../../types";
 import { useWorktreePrompt } from "./useWorktreePrompt";
 
 const listGitBranchesMock = vi.fn();
-const messageMock = vi.fn();
 
 vi.mock("../../../services/tauri", () => ({
   listGitBranches: (...args: unknown[]) => listGitBranchesMock(...args),
-}));
-
-vi.mock("@tauri-apps/plugin-dialog", () => ({
-  message: (...args: unknown[]) => messageMock(...args),
 }));
 
 function interpolate(template: string, vars?: Record<string, unknown>): string {
@@ -73,8 +68,6 @@ const workspace: WorkspaceInfo = {
 describe("useWorktreePrompt", () => {
   beforeEach(() => {
     listGitBranchesMock.mockReset();
-    messageMock.mockReset();
-    messageMock.mockResolvedValue(undefined);
   });
 
   it("loads base refs and passes baseRef/publishToOrigin when creating", async () => {
@@ -137,15 +130,13 @@ describe("useWorktreePrompt", () => {
         publishToOrigin: true,
       }),
     );
-    await waitFor(() => {
-      expect(messageMock).toHaveBeenCalledWith(
-        expect.stringContaining("Worktree created locally: feat/demo"),
-        expect.objectContaining({
-          title: "Worktree Creation Result",
-          kind: "info",
-        }),
-      );
-    });
+    expect(result.current.worktreeCreateResult?.kind).toBe("info");
+    expect(result.current.worktreeCreateResult?.createdMessage).toBe(
+      "Worktree created locally: feat/demo",
+    );
+    expect(result.current.worktreeCreateResult?.statusMessage).toBe(
+      "Remote publish succeeded. Tracking set to origin/feat/demo.",
+    );
   });
 
   it("blocks create when base ref is not selected", async () => {
@@ -314,19 +305,12 @@ describe("useWorktreePrompt", () => {
     });
 
     expect(onSelectWorkspace).toHaveBeenCalledWith("wt-push-failed");
-    expect(messageMock).toHaveBeenCalledWith(
-      expect.stringContaining("Local worktree was created, but remote publish failed"),
-      expect.objectContaining({
-        title: "Worktree Creation Result",
-        kind: "warning",
-      }),
+    expect(result.current.worktreeCreateResult?.kind).toBe("warning");
+    expect(result.current.worktreeCreateResult?.errorMessage).toContain(
+      "Local worktree was created, but remote publish failed",
     );
-    expect(messageMock).toHaveBeenCalledWith(
-      expect.stringContaining("git -C /tmp/repo push -u origin feat/demo"),
-      expect.objectContaining({
-        title: "Worktree Creation Result",
-        kind: "warning",
-      }),
+    expect(result.current.worktreeCreateResult?.retryCommand).toBe(
+      "git -C /tmp/repo push -u origin feat/demo",
     );
     expect(result.current.worktreePrompt).toBeNull();
   });
@@ -377,6 +361,6 @@ describe("useWorktreePrompt", () => {
     expect(result.current.worktreePrompt?.errorRetryCommand).toBe(
       "git -C /tmp/repo push -u origin feat/demo",
     );
-    expect(messageMock).not.toHaveBeenCalled();
+    expect(result.current.worktreeCreateResult).toBeNull();
   });
 });
