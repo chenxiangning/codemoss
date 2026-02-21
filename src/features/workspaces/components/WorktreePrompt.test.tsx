@@ -71,6 +71,7 @@ vi.mock("react-i18next", () => ({
           "Tip: Cancel makes no changes. Create runs with your selected branch and base branch.",
         "common.cancel": "Cancel",
         "common.create": "Create",
+        "common.creating": "Creating...",
       };
       return dict[key] ?? key;
     },
@@ -166,5 +167,29 @@ describe("WorktreePrompt", () => {
     expect(
       screen.getByText("git -C /tmp/repo push -u origin feat/demo"),
     ).toBeTruthy();
+  });
+
+  it("shows creating state on submit button when busy", () => {
+    render(
+      <WorktreePrompt
+        workspaceName="codemoss"
+        branch="feat/demo"
+        baseRef="upstream/main"
+        baseRefOptions={[{ name: "upstream/main", group: "upstream", shortSha: "0c098bb3" }]}
+        publishToOrigin
+        setupScript=""
+        isBusy
+        onChange={() => {}}
+        onBaseRefChange={() => {}}
+        onPublishToOriginChange={() => {}}
+        onSetupScriptChange={() => {}}
+        onCancel={() => {}}
+        onConfirm={() => {}}
+      />,
+    );
+
+    const createButton = screen.getByRole("button", { name: "Creating..." });
+    expect((createButton as HTMLButtonElement).disabled).toBe(true);
+    expect(createButton.getAttribute("aria-busy")).toBe("true");
   });
 });

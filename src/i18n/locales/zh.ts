@@ -3,6 +3,7 @@ const zh = {
   common: {
     loading: "加载中…",
     saving: "保存中…",
+    creating: "创建中…",
     save: "保存",
     create: "创建",
     cancel: "取消",
@@ -1032,6 +1033,8 @@ const zh = {
     historyErrorCherryPickFailed: "拣选失败。请先处理本地改动或冲突后重试。",
     historyErrorMergeFailed: "合并失败。请先处理本地改动或冲突后重试。",
     historyErrorResetFailed: "重置失败。请先处理本地改动或冲突后重试。",
+    historyErrorCommandTimeout: "Git 命令执行超时。请检查网络、代理或凭据后重试。",
+    historyErrorAuthRequired: "Git 认证失败或需要凭据。请先完成仓库认证后重试。",
     historyWorkingTreeDirtySummary:
       "工作区有 {{count}} 个文件存在未提交改动。",
     historyChangedFilesCount: "检测到 {{count}} 个变更文件。",

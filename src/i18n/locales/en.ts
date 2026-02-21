@@ -3,6 +3,7 @@ const en = {
   common: {
     loading: "Loading…",
     saving: "Saving…",
+    creating: "Creating…",
     save: "Save",
     create: "Create",
     cancel: "Cancel",
@@ -1047,6 +1048,10 @@ const en = {
       "Merge failed. Resolve local changes or conflicts, then retry.",
     historyErrorResetFailed:
       "Reset failed. Resolve local changes or conflicts, then retry.",
+    historyErrorCommandTimeout:
+      "Git command timed out. Check network, proxy, or credentials and retry.",
+    historyErrorAuthRequired:
+      "Git authentication is required or failed. Complete repository auth and retry.",
     historyWorkingTreeDirtySummary:
       "Working tree has {{count}} file changes.",
     historyChangedFilesCount:

@@ -227,7 +227,7 @@ describe("useWorktreePrompt", () => {
       remoteBranches: [],
     });
     const addWorktreeAgent = vi.fn().mockRejectedValue(
-      new Error("WORKTREE_VALIDATION_ERROR: Worktree path conflict: /tmp/repo/.worktrees/demo"),
+      new Error("VALIDATION_ERROR: Worktree path conflict: /tmp/repo/.worktrees/demo"),
     );
     const updateWorkspaceSettings = vi.fn().mockResolvedValue(workspace);
     const connectWorkspace = vi.fn().mockResolvedValue(undefined);

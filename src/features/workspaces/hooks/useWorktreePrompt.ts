@@ -109,7 +109,7 @@ function isNonGitRepositoryError(message: string): boolean {
   );
 }
 
-const WORKTREE_VALIDATION_ERROR_PREFIX = "WORKTREE_VALIDATION_ERROR:";
+const WORKTREE_VALIDATION_ERROR_PREFIX = "VALIDATION_ERROR:";
 const WORKTREE_PUSH_FAILED_PREFIX = "Worktree created locally, but push failed:";
 
 type ParsedWorktreeError = {
@@ -528,14 +528,15 @@ export function useWorktreePrompt({
       if (!worktreeWorkspace.connected) {
         await connectWorkspace(worktreeWorkspace);
       }
-      try {
-        await onWorktreeCreated?.(worktreeWorkspace, parentWorkspace);
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        onError?.(message);
-      }
       onCompactActivate?.();
       setWorktreePrompt(null);
+      // Do not block modal close/interaction on post-create hooks like setup scripts.
+      if (onWorktreeCreated) {
+        void onWorktreeCreated(worktreeWorkspace, parentWorkspace).catch((error) => {
+          const message = error instanceof Error ? error.message : String(error);
+          onError?.(message);
+        });
+      }
     } catch (error) {
       const rawMessage = normalizeErrorMessage(error);
       const parsed = parseWorktreeError(rawMessage, t);

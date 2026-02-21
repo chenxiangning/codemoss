@@ -1,11 +1,13 @@
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::process::Stdio;
 
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use git2::{BranchType, DiffOptions, Oid, Repository, Sort, Status, StatusOptions};
 use serde_json::json;
 use tauri::State;
+use tokio::time::{timeout, Duration};
 
 use crate::git_utils::{
     checkout_branch, commit_to_entry, diff_patch_to_string, diff_stats_for_path, image_mime_type,
@@ -26,6 +28,7 @@ mod validation;
 const INDEX_SKIP_WORKTREE_FLAG: u16 = 0x4000;
 const MAX_IMAGE_BYTES: usize = 10 * 1024 * 1024;
 const MAX_COMMIT_DIFF_LINES: usize = 10_000;
+const GIT_COMMAND_TIMEOUT_SECS: u64 = 120;
 
 fn trim_lowercase(input: Option<String>) -> Option<String> {
     input
@@ -223,13 +226,32 @@ fn read_image_base64(path: &Path) -> Option<String> {
 
 async fn run_git_command(repo_root: &Path, args: &[&str]) -> Result<(), String> {
     let git_bin = resolve_git_binary().map_err(|e| format!("Failed to run git: {e}"))?;
-    let output = crate::utils::async_command(git_bin)
+    let mut command = crate::utils::async_command(git_bin);
+    command
         .args(args)
         .current_dir(repo_root)
         .env("PATH", git_env_path())
-        .output()
-        .await
-        .map_err(|e| format!("Failed to run git: {e}"))?;
+        // Force non-interactive git in GUI context so pull/fetch does not hang on hidden prompts.
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .env("GCM_INTERACTIVE", "never")
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+
+    let output = match timeout(
+        Duration::from_secs(GIT_COMMAND_TIMEOUT_SECS),
+        command.output(),
+    )
+    .await
+    {
+        Ok(result) => result.map_err(|e| format!("Failed to run git: {e}"))?,
+        Err(_) => {
+            let command_name = args.join(" ");
+            return Err(format!(
+                "Git command timed out after {GIT_COMMAND_TIMEOUT_SECS}s: git {command_name}. Check network/authentication and retry."
+            ));
+        }
+    };
 
     if output.status.success() {
         return Ok(());
@@ -1123,6 +1145,7 @@ pub(crate) async fn pull_git(
         .get(&workspace_id)
         .ok_or("workspace not found")?
         .clone();
+    drop(workspaces);
 
     let repo_root = resolve_git_root(&entry)?;
     let mut args = vec!["pull".to_string()];
@@ -1161,6 +1184,7 @@ pub(crate) async fn sync_git(
         .get(&workspace_id)
         .ok_or("workspace not found")?
         .clone();
+    drop(workspaces);
 
     let repo_root = resolve_git_root(&entry)?;
     // Pull first, then push (like VSCode sync)
@@ -1216,6 +1240,7 @@ pub(crate) async fn git_fetch(
         .get(&workspace_id)
         .ok_or("workspace not found")?
         .clone();
+    drop(workspaces);
 
     let repo_root = resolve_git_root(&entry)?;
     if let Some(remote_name) = remote
