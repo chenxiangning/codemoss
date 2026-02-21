@@ -48,6 +48,8 @@ export type WorktreeInfo = {
   baseRef?: string | null;
   baseCommit?: string | null;
   tracking?: string | null;
+  publishError?: string | null;
+  publishRetryCommand?: string | null;
 };
 
 export type WorkspaceInfo = {

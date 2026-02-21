@@ -27,6 +27,8 @@ fn workspace_with_id_and_kind(
                 base_ref: None,
                 base_commit: None,
                 tracking: None,
+                publish_error: None,
+                publish_retry_command: None,
             }),
         )
     } else {

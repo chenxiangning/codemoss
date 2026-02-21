@@ -510,20 +510,41 @@ export function useWorktreePrompt({
       }
       const createdBranch = worktreeWorkspace.worktree?.branch || worktreeWorkspace.name;
       const tracking = worktreeWorkspace.worktree?.tracking?.trim() || null;
-      const publishStatus = snapshot.publishToOrigin
-        ? tracking
-          ? t("workspace.worktreePublishStatusCreatedTracking", { tracking })
-          : t("workspace.worktreePublishStatusCreatedNoTracking")
-        : tracking
-          ? t("workspace.worktreePublishStatusSkippedTracking", { tracking })
-          : t("workspace.worktreePublishStatusSkipped");
-      void message(
-        `${t("workspace.worktreeCreateSuccess", { branch: createdBranch })}\n${publishStatus}`,
-        {
+      const publishError = worktreeWorkspace.worktree?.publishError?.trim() || null;
+      const publishRetryCommand = worktreeWorkspace.worktree?.publishRetryCommand?.trim() || null;
+
+      if (publishError) {
+        const lines = [
+          t("workspace.worktreeCreateSuccess", { branch: createdBranch }),
+          t("workspace.worktreePublishFailedRecoverable", {
+            reason: publishError || t("workspace.worktreePublishFailedReasonUnknown"),
+          }),
+        ];
+        if (publishRetryCommand) {
+          lines.push(
+            `${t("workspace.worktreePublishRetryCommandLabel")}:\n${publishRetryCommand}`,
+          );
+        }
+        void message(lines.join("\n\n"), {
           title: t("workspace.worktreeCreateResultTitle"),
-          kind: "info",
-        },
-      );
+          kind: "warning",
+        });
+      } else {
+        const publishStatus = snapshot.publishToOrigin
+          ? tracking
+            ? t("workspace.worktreePublishStatusCreatedTracking", { tracking })
+            : t("workspace.worktreePublishStatusCreatedNoTracking")
+          : tracking
+            ? t("workspace.worktreePublishStatusSkippedTracking", { tracking })
+            : t("workspace.worktreePublishStatusSkipped");
+        void message(
+          `${t("workspace.worktreeCreateSuccess", { branch: createdBranch })}\n${publishStatus}`,
+          {
+            title: t("workspace.worktreeCreateResultTitle"),
+            kind: "info",
+          },
+        );
+      }
       onSelectWorkspace(worktreeWorkspace.id);
       if (!worktreeWorkspace.connected) {
         await connectWorkspace(worktreeWorkspace);

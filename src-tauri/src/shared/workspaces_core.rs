@@ -401,15 +401,19 @@ where
     }
 
     let mut tracking: Option<String> = None;
+    let mut publish_error: Option<String> = None;
+    let mut publish_retry_command: Option<String> = None;
     if publish_to_origin {
         if let Err(error) = run_git_command(&repo_path, &["push", "-u", "origin", &branch]).await {
-            return Err(format!(
-                "Worktree created locally, but push failed: {error}\nRetry with: git -C \"{}\" push -u origin {}",
+            publish_error = Some(error);
+            publish_retry_command = Some(format!(
+                "git -C \"{}\" push -u origin {}",
                 repo_path.display(),
                 branch
             ));
+        } else {
+            tracking = Some(format!("origin/{branch}"));
         }
-        tracking = Some(format!("origin/{branch}"));
     } else if let Some(find_remote_tracking) = git_find_remote_tracking_branch {
         tracking = find_remote_tracking(&repo_path, &branch).await?;
     }
@@ -426,6 +430,8 @@ where
             base_ref: Some(base_ref),
             base_commit: Some(base_commit),
             tracking,
+            publish_error,
+            publish_retry_command,
         }),
         settings: WorkspaceSettings {
             worktree_setup_script: normalize_setup_script(
@@ -784,6 +790,8 @@ where
                     base_ref: None,
                     base_commit: None,
                     tracking: None,
+                    publish_error: None,
+                    publish_retry_command: None,
                 });
             }
         }
