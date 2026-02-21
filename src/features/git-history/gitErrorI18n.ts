@@ -45,5 +45,15 @@ export function localizeGitErrorMessage(
   if (message.includes("reset failed")) {
     return t("git.historyErrorResetFailed");
   }
+  if (message.includes("git command timed out after")) {
+    return t("git.historyErrorCommandTimeout");
+  }
+  if (
+    message.includes("terminal prompts disabled") ||
+    message.includes("authentication failed") ||
+    message.includes("could not read username")
+  ) {
+    return t("git.historyErrorAuthRequired");
+  }
   return raw;
 }

@@ -268,8 +268,8 @@ fn validate_local_branch_name_for_worktree(name: &str) -> Result<(), String> {
 }
 
 fn resolve_base_ref_to_commit(repo_path: &PathBuf, base_ref: &str) -> Result<String, String> {
-    let repo =
-        git2::Repository::open(repo_path).map_err(|err| format!("Failed to open repository: {err}"))?;
+    let repo = git2::Repository::open(repo_path)
+        .map_err(|err| format!("Failed to open repository: {err}"))?;
     let object = repo
         .revparse_single(base_ref)
         .map_err(|_| format!("Base ref not found: {base_ref}"))?;
@@ -401,15 +401,19 @@ where
     }
 
     let mut tracking: Option<String> = None;
+    let mut publish_error: Option<String> = None;
+    let mut publish_retry_command: Option<String> = None;
     if publish_to_origin {
         if let Err(error) = run_git_command(&repo_path, &["push", "-u", "origin", &branch]).await {
-            return Err(format!(
-                "Worktree created locally, but push failed: {error}\nRetry with: git -C \"{}\" push -u origin {}",
+            publish_error = Some(error);
+            publish_retry_command = Some(format!(
+                "git -C \"{}\" push -u origin {}",
                 repo_path.display(),
                 branch
             ));
+        } else {
+            tracking = Some(format!("origin/{branch}"));
         }
-        tracking = Some(format!("origin/{branch}"));
     } else if let Some(find_remote_tracking) = git_find_remote_tracking_branch {
         tracking = find_remote_tracking(&repo_path, &branch).await?;
     }
@@ -426,6 +430,8 @@ where
             base_ref: Some(base_ref),
             base_commit: Some(base_commit),
             tracking,
+            publish_error,
+            publish_retry_command,
         }),
         settings: WorkspaceSettings {
             worktree_setup_script: normalize_setup_script(
@@ -784,6 +790,8 @@ where
                     base_ref: None,
                     base_commit: None,
                     tracking: None,
+                    publish_error: None,
+                    publish_retry_command: None,
                 });
             }
         }
@@ -1266,7 +1274,8 @@ mod tests {
             .commit(Some("HEAD"), &signature, &signature, "initial", &tree, &[])
             .expect("commit initial tree");
         let commit = repo.find_commit(commit_id).expect("find committed object");
-        repo.branch("main", &commit, true).expect("create main branch");
+        repo.branch("main", &commit, true)
+            .expect("create main branch");
         repo.set_head("refs/heads/main").expect("set head to main");
         repo_path
     }

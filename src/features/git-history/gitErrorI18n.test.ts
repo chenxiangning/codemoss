@@ -40,4 +40,19 @@ describe("gitErrorI18n", () => {
       "git.historyErrorResetFailed",
     );
   });
+
+  it("localizes git timeout and auth prompt errors", () => {
+    expect(
+      localizeGitErrorMessage(
+        "Git command timed out after 120s: git pull. Check network/authentication and retry.",
+        t,
+      ),
+    ).toBe("git.historyErrorCommandTimeout");
+    expect(
+      localizeGitErrorMessage(
+        "fatal: could not read Username for 'https://github.com': terminal prompts disabled",
+        t,
+      ),
+    ).toBe("git.historyErrorAuthRequired");
+  });
 });

@@ -1,11 +1,13 @@
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::process::Stdio;
 
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use git2::{BranchType, DiffOptions, Oid, Repository, Sort, Status, StatusOptions};
 use serde_json::json;
 use tauri::State;
+use tokio::time::{timeout, Duration};
 
 use crate::git_utils::{
     checkout_branch, commit_to_entry, diff_patch_to_string, diff_stats_for_path, image_mime_type,
@@ -14,9 +16,9 @@ use crate::git_utils::{
 use crate::state::AppState;
 use crate::types::{
     BranchInfo, GitBranchCompareCommitSets, GitBranchListItem, GitCommitDetails, GitCommitDiff,
-    GitCommitFileChange, GitFileDiff, GitFileStatus, GitHistoryCommit, GitHistoryResponse, GitHubIssue,
-    GitHubIssuesResponse, GitHubPullRequest, GitHubPullRequestComment, GitHubPullRequestDiff,
-    GitHubPullRequestsResponse, GitLogResponse, GitPushPreviewResponse,
+    GitCommitFileChange, GitFileDiff, GitFileStatus, GitHistoryCommit, GitHistoryResponse,
+    GitHubIssue, GitHubIssuesResponse, GitHubPullRequest, GitHubPullRequestComment,
+    GitHubPullRequestDiff, GitHubPullRequestsResponse, GitLogResponse, GitPushPreviewResponse,
 };
 use crate::utils::{git_env_path, normalize_git_path, resolve_git_binary};
 use validation::validate_local_branch_name;
@@ -26,6 +28,7 @@ mod validation;
 const INDEX_SKIP_WORKTREE_FLAG: u16 = 0x4000;
 const MAX_IMAGE_BYTES: usize = 10 * 1024 * 1024;
 const MAX_COMMIT_DIFF_LINES: usize = 10_000;
+const GIT_COMMAND_TIMEOUT_SECS: u64 = 120;
 
 fn trim_lowercase(input: Option<String>) -> Option<String> {
     input
@@ -56,11 +59,7 @@ fn truncate_diff_lines(content: &str, max_lines: usize) -> (String, usize, bool)
             truncated = true;
         }
     }
-    (
-        kept.join("\n"),
-        total,
-        truncated || total > max_lines,
-    )
+    (kept.join("\n"), total, truncated || total > max_lines)
 }
 
 fn collect_commit_refs_map(repo: &Repository) -> HashMap<Oid, Vec<String>> {
@@ -141,7 +140,10 @@ fn commit_to_history_commit(
     let author = commit.author().name().unwrap_or("").to_string();
     let author_email = commit.author().email().unwrap_or("").to_string();
     let timestamp = commit.time().seconds();
-    let parents = commit.parents().map(|parent| parent.id().to_string()).collect();
+    let parents = commit
+        .parents()
+        .map(|parent| parent.id().to_string())
+        .collect();
     let refs = refs_map.get(&oid).cloned().unwrap_or_default();
     GitHistoryCommit {
         sha,
@@ -224,13 +226,32 @@ fn read_image_base64(path: &Path) -> Option<String> {
 
 async fn run_git_command(repo_root: &Path, args: &[&str]) -> Result<(), String> {
     let git_bin = resolve_git_binary().map_err(|e| format!("Failed to run git: {e}"))?;
-    let output = crate::utils::async_command(git_bin)
+    let mut command = crate::utils::async_command(git_bin);
+    command
         .args(args)
         .current_dir(repo_root)
         .env("PATH", git_env_path())
-        .output()
-        .await
-        .map_err(|e| format!("Failed to run git: {e}"))?;
+        // Force non-interactive git in GUI context so pull/fetch does not hang on hidden prompts.
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .env("GCM_INTERACTIVE", "never")
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+
+    let output = match timeout(
+        Duration::from_secs(GIT_COMMAND_TIMEOUT_SECS),
+        command.output(),
+    )
+    .await
+    {
+        Ok(result) => result.map_err(|e| format!("Failed to run git: {e}"))?,
+        Err(_) => {
+            let command_name = args.join(" ");
+            return Err(format!(
+                "Git command timed out after {GIT_COMMAND_TIMEOUT_SECS}s: git {command_name}. Check network/authentication and retry."
+            ));
+        }
+    };
 
     if output.status.success() {
         return Ok(());
@@ -455,7 +476,12 @@ async fn push_with_options(
 
     if push_to_gerrit {
         let target_remote = explicit_remote
-            .or_else(|| upstream_remote_and_branch(repo_root).ok().flatten().map(|(name, _)| name))
+            .or_else(|| {
+                upstream_remote_and_branch(repo_root)
+                    .ok()
+                    .flatten()
+                    .map(|(name, _)| name)
+            })
             .unwrap_or_else(|| "origin".to_string());
         let target_branch =
             target_branch.ok_or_else(|| "Branch is required for Gerrit push.".to_string())?;
@@ -481,7 +507,12 @@ async fn push_with_options(
     }
 
     let target_remote = explicit_remote
-        .or_else(|| upstream_remote_and_branch(repo_root).ok().flatten().map(|(name, _)| name))
+        .or_else(|| {
+            upstream_remote_and_branch(repo_root)
+                .ok()
+                .flatten()
+                .map(|(name, _)| name)
+        })
         .unwrap_or_else(|| "origin".to_string());
     args.push(target_remote);
     if let Some(target_branch) = target_branch {
@@ -1080,7 +1111,10 @@ pub(crate) async fn get_git_push_preview(
             author: commit.author().name().unwrap_or("").to_string(),
             author_email: commit.author().email().unwrap_or("").to_string(),
             timestamp: commit.time().seconds(),
-            parents: commit.parents().map(|parent| parent.id().to_string()).collect(),
+            parents: commit
+                .parents()
+                .map(|parent| parent.id().to_string())
+                .collect(),
             refs: refs_map.get(&oid).cloned().unwrap_or_default(),
         });
     }
@@ -1099,6 +1133,11 @@ pub(crate) async fn get_git_push_preview(
 #[tauri::command]
 pub(crate) async fn pull_git(
     workspace_id: String,
+    remote: Option<String>,
+    branch: Option<String>,
+    strategy: Option<String>,
+    no_commit: Option<bool>,
+    no_verify: Option<bool>,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
     let workspaces = state.workspaces.lock().await;
@@ -1106,9 +1145,33 @@ pub(crate) async fn pull_git(
         .get(&workspace_id)
         .ok_or("workspace not found")?
         .clone();
+    drop(workspaces);
 
     let repo_root = resolve_git_root(&entry)?;
-    run_git_command(&repo_root, &["pull"]).await
+    let mut args = vec!["pull".to_string()];
+    if let Some(strategy_flag) = trim_optional(strategy) {
+        match strategy_flag.as_str() {
+            "--rebase" | "--ff-only" | "--no-ff" | "--squash" => args.push(strategy_flag),
+            _ => return Err("Unsupported pull strategy option.".to_string()),
+        }
+    }
+    if no_commit.unwrap_or(false) {
+        args.push("--no-commit".to_string());
+    }
+    if no_verify.unwrap_or(false) {
+        args.push("--no-verify".to_string());
+    }
+    if let Some(remote_name) = trim_optional(remote) {
+        args.push(remote_name);
+        if let Some(branch_name) = trim_optional(branch) {
+            args.push(normalize_local_branch_ref(&branch_name));
+        }
+    } else if let Some(branch_name) = trim_optional(branch) {
+        args.push("origin".to_string());
+        args.push(normalize_local_branch_ref(&branch_name));
+    }
+    let command: Vec<&str> = args.iter().map(String::as_str).collect();
+    run_git_command(&repo_root, &command).await
 }
 
 #[tauri::command]
@@ -1121,6 +1184,7 @@ pub(crate) async fn sync_git(
         .get(&workspace_id)
         .ok_or("workspace not found")?
         .clone();
+    drop(workspaces);
 
     let repo_root = resolve_git_root(&entry)?;
     // Pull first, then push (like VSCode sync)
@@ -1133,7 +1197,7 @@ pub(crate) async fn git_pull(
     workspace_id: String,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    pull_git(workspace_id, state).await
+    pull_git(workspace_id, None, None, None, None, None, state).await
 }
 
 #[tauri::command]
@@ -1176,6 +1240,7 @@ pub(crate) async fn git_fetch(
         .get(&workspace_id)
         .ok_or("workspace not found")?
         .clone();
+    drop(workspaces);
 
     let repo_root = resolve_git_root(&entry)?;
     if let Some(remote_name) = remote
@@ -1444,10 +1509,7 @@ pub(crate) async fn get_git_file_full_diff(
 
     tokio::task::spawn_blocking(move || {
         let repo = open_repository_at_root(&repo_root)?;
-        let head_tree = repo
-            .head()
-            .ok()
-            .and_then(|head| head.peel_to_tree().ok());
+        let head_tree = repo.head().ok().and_then(|head| head.peel_to_tree().ok());
 
         let mut options = DiffOptions::new();
         options
@@ -1724,7 +1786,10 @@ pub(crate) async fn get_git_commit_history(
         }
 
         let short_sha: String = sha.chars().take(7).collect();
-        let parents = commit.parents().map(|parent| parent.id().to_string()).collect();
+        let parents = commit
+            .parents()
+            .map(|parent| parent.id().to_string())
+            .collect();
         let refs = refs_map.get(&oid).cloned().unwrap_or_default();
         filtered.push(GitHistoryCommit {
             sha,
@@ -1905,7 +1970,10 @@ pub(crate) async fn get_git_commit_details(
         committer_email,
         author_time,
         commit_time,
-        parents: commit.parents().map(|parent| parent.id().to_string()).collect(),
+        parents: commit
+            .parents()
+            .map(|parent| parent.id().to_string())
+            .collect(),
         files,
         total_additions,
         total_deletions,
@@ -2340,7 +2408,9 @@ pub(crate) async fn list_git_branches(
                 .map(|name| name.to_string())
                 .or_else(|| upstream_ref.name().map(|name| name.to_string()));
             if let (Some(local_oid), Some(upstream_oid)) = (local_oid, upstream_ref.target()) {
-                if let Ok((ahead_count, behind_count)) = repo.graph_ahead_behind(local_oid, upstream_oid) {
+                if let Ok((ahead_count, behind_count)) =
+                    repo.graph_ahead_behind(local_oid, upstream_oid)
+                {
                     ahead = ahead_count;
                     behind = behind_count;
                 }
@@ -2375,7 +2445,8 @@ pub(crate) async fn list_git_branches(
         if name.is_empty() || name.ends_with("/HEAD") {
             continue;
         }
-        let (remote, _) = parse_remote_branch(&name).unwrap_or_else(|| ("origin".to_string(), name.clone()));
+        let (remote, _) =
+            parse_remote_branch(&name).unwrap_or_else(|| ("origin".to_string(), name.clone()));
         let last_commit = branch
             .get()
             .target()
@@ -2445,10 +2516,7 @@ pub(crate) async fn checkout_git_branch(
 
         let remote_ref = format!("refs/remotes/{trimmed_name}");
         if repo.refname_to_id(&remote_ref).is_ok() {
-            let local_name = trimmed_name
-                .split('/')
-                .next_back()
-                .unwrap_or(trimmed_name);
+            let local_name = trimmed_name.split('/').next_back().unwrap_or(trimmed_name);
             let valid_local_name = validate_local_branch_name(local_name)?;
             Some(valid_local_name)
         } else {
@@ -2531,8 +2599,8 @@ pub(crate) async fn create_git_branch_from_branch(
             break;
         }
     }
-    let target_commit = target_commit
-        .ok_or_else(|| format!("Source branch not found: {source_name}"))?;
+    let target_commit =
+        target_commit.ok_or_else(|| format!("Source branch not found: {source_name}"))?;
 
     repo.branch(&valid_name, &target_commit, false)
         .map_err(|e| e.to_string())?;
@@ -2894,7 +2962,12 @@ pub(crate) async fn get_git_worktree_diff_against_branch(
 
     let git_bin = resolve_git_binary().map_err(|e| format!("Failed to run git: {e}"))?;
     let output = crate::utils::async_command(git_bin)
-        .args(["diff", "--name-status", "--find-renames", branch_name.as_str()])
+        .args([
+            "diff",
+            "--name-status",
+            "--find-renames",
+            branch_name.as_str(),
+        ])
         .current_dir(&repo_root)
         .env("PATH", git_env_path())
         .output()

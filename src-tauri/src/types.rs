@@ -358,6 +358,10 @@ pub(crate) struct WorktreeInfo {
     pub(crate) base_commit: Option<String>,
     #[serde(default)]
     pub(crate) tracking: Option<String>,
+    #[serde(default, rename = "publishError")]
+    pub(crate) publish_error: Option<String>,
+    #[serde(default, rename = "publishRetryCommand")]
+    pub(crate) publish_retry_command: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

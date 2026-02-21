@@ -367,8 +367,9 @@ export function WorktreePrompt({
               onClick={onConfirm}
               type="button"
               disabled={isBusy || !canSubmit}
+              aria-busy={isBusy}
             >
-              {t("common.create")}
+              {isBusy ? t("common.creating") : t("common.create")}
             </button>
           </div>
         </section>

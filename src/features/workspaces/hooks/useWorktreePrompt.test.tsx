@@ -227,7 +227,7 @@ describe("useWorktreePrompt", () => {
       remoteBranches: [],
     });
     const addWorktreeAgent = vi.fn().mockRejectedValue(
-      new Error("WORKTREE_VALIDATION_ERROR: Worktree path conflict: /tmp/repo/.worktrees/demo"),
+      new Error("VALIDATION_ERROR: Worktree path conflict: /tmp/repo/.worktrees/demo"),
     );
     const updateWorkspaceSettings = vi.fn().mockResolvedValue(workspace);
     const connectWorkspace = vi.fn().mockResolvedValue(undefined);
@@ -265,6 +265,73 @@ describe("useWorktreePrompt", () => {
   });
 
   it("exposes retry command when local create succeeds but publish fails", async () => {
+    listGitBranchesMock.mockResolvedValueOnce({
+      currentBranch: "main",
+      localBranches: [{ name: "main", headSha: "11111111" }],
+      remoteBranches: [],
+    });
+    const addWorktreeAgent = vi.fn().mockResolvedValue({
+      ...workspace,
+      id: "wt-push-failed",
+      kind: "worktree",
+      parentId: workspace.id,
+      worktree: {
+        branch: "feat/demo",
+        baseRef: "main",
+        baseCommit: "11111111",
+        tracking: null,
+        publishError: "authentication failed",
+        publishRetryCommand: "git -C /tmp/repo push -u origin feat/demo",
+      },
+    });
+    const updateWorkspaceSettings = vi.fn().mockResolvedValue(workspace);
+    const connectWorkspace = vi.fn().mockResolvedValue(undefined);
+    const onSelectWorkspace = vi.fn();
+
+    const { result } = renderHook(() =>
+      useWorktreePrompt({
+        addWorktreeAgent,
+        updateWorkspaceSettings,
+        connectWorkspace,
+        onSelectWorkspace,
+      }),
+    );
+
+    act(() => {
+      result.current.openPrompt(workspace);
+    });
+
+    await waitFor(() => {
+      expect(result.current.worktreePrompt?.baseRefOptions.length).toBeGreaterThan(0);
+    });
+
+    act(() => {
+      result.current.updateBaseRef("main");
+    });
+
+    await act(async () => {
+      await result.current.confirmPrompt();
+    });
+
+    expect(onSelectWorkspace).toHaveBeenCalledWith("wt-push-failed");
+    expect(messageMock).toHaveBeenCalledWith(
+      expect.stringContaining("Local worktree was created, but remote publish failed"),
+      expect.objectContaining({
+        title: "Worktree Creation Result",
+        kind: "warning",
+      }),
+    );
+    expect(messageMock).toHaveBeenCalledWith(
+      expect.stringContaining("git -C /tmp/repo push -u origin feat/demo"),
+      expect.objectContaining({
+        title: "Worktree Creation Result",
+        kind: "warning",
+      }),
+    );
+    expect(result.current.worktreePrompt).toBeNull();
+  });
+
+  it("parses retry command when legacy backend still throws push-failed error", async () => {
     listGitBranchesMock.mockResolvedValueOnce({
       currentBranch: "main",
       localBranches: [{ name: "main", headSha: "11111111" }],
