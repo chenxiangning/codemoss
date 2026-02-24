@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Multi-platform build script for CodeMoss
+ * Multi-platform build script for MossX
  *
  * Usage:
  *   node scripts/build-platform.mjs <platform>
@@ -34,7 +34,7 @@ const CONFIG = {
   codesignIdentity:
     process.env.CODESIGN_IDENTITY ||
     "Developer ID Application: kunpeng zhu (RLHBM56QRH)",
-  notaryProfile: process.env.NOTARY_PROFILE || "CodeMoss-Notarize",
+  notaryProfile: process.env.NOTARY_PROFILE || "MossX-Notarize",
   entitlements: join(TAURI_DIR, "Entitlements.plist"),
   openssl: {
     arm64: "/opt/homebrew/opt/openssl@3",
@@ -136,16 +136,16 @@ async function buildMacOS(arch, options = {}) {
     target = "aarch64-apple-darwin";
     bundlePath = join(
       TAURI_DIR,
-      "target/aarch64-apple-darwin/release/bundle/macos/CodeMoss.app",
+      "target/aarch64-apple-darwin/release/bundle/macos/MossX.app",
     );
-    dmgName = `CodeMoss_${version}_aarch64.dmg`;
+    dmgName = `MossX_${version}_aarch64.dmg`;
   } else if (arch === "x64") {
     target = "x86_64-apple-darwin";
     bundlePath = join(
       TAURI_DIR,
-      "target/x86_64-apple-darwin/release/bundle/macos/CodeMoss.app",
+      "target/x86_64-apple-darwin/release/bundle/macos/MossX.app",
     );
-    dmgName = `CodeMoss_${version}_x86_64.dmg`;
+    dmgName = `MossX_${version}_x86_64.dmg`;
 
     // Check x86_64 OpenSSL
     if (!existsSync(CONFIG.openssl.x64)) {
@@ -163,9 +163,9 @@ async function buildMacOS(arch, options = {}) {
     target = "universal-apple-darwin";
     bundlePath = join(
       TAURI_DIR,
-      "target/universal-apple-darwin/release/bundle/macos/CodeMoss.app",
+      "target/universal-apple-darwin/release/bundle/macos/MossX.app",
     );
-    dmgName = `CodeMoss_${version}_universal.dmg`;
+    dmgName = `MossX_${version}_universal.dmg`;
 
     // Check x86_64 OpenSSL for universal builds
     if (!existsSync(CONFIG.openssl.x64)) {
@@ -194,7 +194,7 @@ async function buildMacOS(arch, options = {}) {
   // Tauri embeds frontend resources in the binary, so we need to force recompilation
   console.log("\nCleaning Rust build cache to embed latest frontend...");
   exec(`rm -rf ${TAURI_DIR}/target/${target}/release/.fingerprint`, { ignoreError: true });
-  exec(`rm -f ${TAURI_DIR}/target/${target}/release/code-moss`, { ignoreError: true });
+  exec(`rm -f ${TAURI_DIR}/target/${target}/release/moss-x`, { ignoreError: true });
   exec(`rm -rf ${TAURI_DIR}/target/${target}/release/bundle`, { ignoreError: true });
 
   // Build the app
@@ -205,9 +205,9 @@ async function buildMacOS(arch, options = {}) {
   if (arch === "universal") {
     console.log("\nMerging daemon binary for universal build...");
     exec(`lipo -create \\
-      ${TAURI_DIR}/target/aarch64-apple-darwin/release/code_moss_daemon \\
-      ${TAURI_DIR}/target/x86_64-apple-darwin/release/code_moss_daemon \\
-      -output ${TAURI_DIR}/target/universal-apple-darwin/release/code_moss_daemon`);
+      ${TAURI_DIR}/target/aarch64-apple-darwin/release/moss_x_daemon \\
+      ${TAURI_DIR}/target/x86_64-apple-darwin/release/moss_x_daemon \\
+      -output ${TAURI_DIR}/target/universal-apple-darwin/release/moss_x_daemon`);
 
     // Rebuild bundle
     exec(`${buildEnv}npm run tauri -- build --target ${target} --bundles app`);
@@ -238,7 +238,7 @@ async function buildMacOS(arch, options = {}) {
       exec(`install_name_tool -change ${CONFIG.openssl.arm64}/lib/libcrypto.3.dylib @rpath/libcrypto.3.dylib "${frameworksPath}/libssl.3.dylib"`, { ignoreError: true });
 
       // Fix binary paths
-      for (const bin of ["code-moss", "code_moss_daemon"]) {
+      for (const bin of ["moss-x", "moss_x_daemon"]) {
         const binPath = join(bundlePath, "Contents/MacOS", bin);
         exec(`install_name_tool -add_rpath "@executable_path/../Frameworks" "${binPath}"`, { ignoreError: true });
         exec(`install_name_tool -change ${CONFIG.openssl.arm64}/lib/libssl.3.dylib @rpath/libssl.3.dylib "${binPath}"`, { ignoreError: true });
@@ -250,8 +250,8 @@ async function buildMacOS(arch, options = {}) {
       const entitlements = CONFIG.entitlements;
       exec(`codesign --force --options runtime --sign "${identity}" --entitlements "${entitlements}" --timestamp "${frameworksPath}/libcrypto.3.dylib"`);
       exec(`codesign --force --options runtime --sign "${identity}" --entitlements "${entitlements}" --timestamp "${frameworksPath}/libssl.3.dylib"`);
-      exec(`codesign --force --options runtime --sign "${identity}" --entitlements "${entitlements}" --timestamp "${bundlePath}/Contents/MacOS/code-moss"`);
-      exec(`codesign --force --options runtime --sign "${identity}" --entitlements "${entitlements}" --timestamp "${bundlePath}/Contents/MacOS/code_moss_daemon"`);
+      exec(`codesign --force --options runtime --sign "${identity}" --entitlements "${entitlements}" --timestamp "${bundlePath}/Contents/MacOS/moss-x"`);
+      exec(`codesign --force --options runtime --sign "${identity}" --entitlements "${entitlements}" --timestamp "${bundlePath}/Contents/MacOS/moss_x_daemon"`);
       exec(`codesign --force --options runtime --sign "${identity}" --entitlements "${entitlements}" --timestamp "${bundlePath}"`);
     } else {
       // Use existing script for single-arch builds
@@ -269,7 +269,7 @@ async function buildMacOS(arch, options = {}) {
   // Create DMG with drag-to-install panel
   ensureReleaseDir();
   const createDmgScript = join(ROOT_DIR, "scripts", "create-dmg.sh");
-  exec(`bash "${createDmgScript}" "${bundlePath}" "${RELEASE_DIR}/${dmgName}" "CodeMoss-Install"`);
+  exec(`bash "${createDmgScript}" "${bundlePath}" "${RELEASE_DIR}/${dmgName}" "MossX-Install"`);
 
   // Notarize
   if (!skipNotarize && !skipSign) {
@@ -314,7 +314,7 @@ async function buildWindows(arch, options = {}) {
 
   const installerPath = join(
     TAURI_DIR,
-    `target/release/bundle/nsis/CodeMoss_${version}_x64-setup.exe`,
+    `target/release/bundle/nsis/MossX_${version}_x64-setup.exe`,
   );
 
   console.log(`\n========================================`);
@@ -362,7 +362,7 @@ async function buildLinux(arch, options = {}) {
 
   const appImagePath = join(
     TAURI_DIR,
-    `target/release/bundle/appimage/CodeMoss_${version}_${arch === "arm64" ? "aarch64" : "amd64"}.AppImage`,
+    `target/release/bundle/appimage/MossX_${version}_${arch === "arm64" ? "aarch64" : "amd64"}.AppImage`,
   );
 
   console.log(`\n========================================`);
@@ -412,7 +412,7 @@ const options = {
 
 if (!platform) {
   console.log(`
-CodeMoss Multi-Platform Build Script
+MossX Multi-Platform Build Script
 
 Usage:
   node scripts/build-platform.mjs <platform> [options]

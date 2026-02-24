@@ -39,7 +39,7 @@ const en = {
 
   // App
   app: {
-    title: "CodeMoss",
+    title: "MossX",
     subtitle: "Orchestrate agents across your local projects.",
   },
 
@@ -593,7 +593,7 @@ const en = {
 
     // Codex section
     codexTitle: "Codex",
-    codexDescription: "Configure the Codex CLI used by CodeMoss and validate the install.",
+    codexDescription: "Configure the Codex CLI used by MossX and validate the install.",
     defaultCodexPath: "Default Codex path",
     codexPlaceholder: "codex",
     usePath: "Use PATH",
@@ -627,7 +627,7 @@ const en = {
     remoteBackendToken: "Token (optional)",
     remoteBackendHostAriaLabel: "Remote backend host",
     remoteBackendTokenAriaLabel: "Remote backend token",
-    remoteBackendDesc: "Start the daemon separately and point CodeMoss to it (host:port + token).",
+    remoteBackendDesc: "Start the daemon separately and point MossX to it (host:port + token).",
     globalAgentsMdPlaceholder: "Add global instructions for Codex agents…",
     storedAt: "Stored at",
     globalConfigTomlPlaceholder: "Edit the global Codex config.toml…",
@@ -765,6 +765,18 @@ const en = {
     fileReferenceHint: "Toggle injecting active file path into message",
     fileReferencePathOn: "Path linked",
     fileReferencePathOff: "Path off",
+    manualMemorySelection: "{{count}} memory item(s) linked for this send",
+    manualMemorySelectionHint: "Click × to remove. Selection clears after send.",
+    manualMemoryRemove: "Remove memory: {{title}}",
+    manualMemoryPickerTitle: "User input info",
+    manualMemoryPickerInputTitle: "User input: {{query}}",
+    manualMemoryPickerSelectedCount: "{{count}} selected",
+    manualMemoryPickerShortcutSelect: "Press Enter/Space to select",
+    manualMemoryPickerShortcutUnselect: "Press Enter/Space to unselect",
+    manualMemoryPickerPreviewEmpty: "No additional detail is available for this memory.",
+    manualMemoryPickerPreviewFallback: "Move highlight to preview memory details.",
+    manualMemoryPreviewExpand: "Expand detail",
+    manualMemoryPreviewCollapse: "Collapse detail",
   },
 
   // Git
@@ -1312,6 +1324,11 @@ const en = {
     searchPlaceholder: "Search memory...",
     autoCaptureWorkspace: "Enable auto capture for this workspace",
     contextInjectionEnabled: "Enable memory context injection for chat",
+    contextInjectionManualHint: "Switched to manual memory linking with @@ in chat (one-shot injection).",
+    manualInjectionMode: "Manual injection strategy",
+    manualInjectionModeDetail: "Detail mode (detail)",
+    manualInjectionModeSummary: "Summary mode (summary)",
+    manualInjectionModeHint: "Default is detail mode: inject memory detail, while canvas still shows summary only.",
     cleanupTitle: "Polluted memory cleanup",
     cleanupScan: "Scan polluted memory",
     cleanupScanning: "Scanning...",
@@ -1333,6 +1350,8 @@ const en = {
     newTitle: "Title (optional)",
     newDetail: "Memory detail",
     detailTagsPlaceholder: "Tags (comma separated)",
+    detailPreviewTitle: "Formatted preview",
+    detailPreviewEmpty: "No content to preview.",
     helpTitle: "Panel Guide",
     helpButtons: "Top buttons: 🔄 Refresh memory list · ⚙️ Open settings (auto-capture, context injection) · ❓ Open help · ✕ Close panel",
     helpFilters: "Toolbar: Search keywords · Filter by kind · Filter by priority · Filter by tag",
@@ -1749,13 +1768,13 @@ const en = {
     // Delete dialogs
     deleteWorkspaceTitle: "Remove Workspace",
     deleteWorkspaceConfirm: "Are you sure you want to remove \"{{name}}\"?",
-    deleteWorkspaceMessage: "This will remove the workspace from CodeMoss.",
+    deleteWorkspaceMessage: "This will remove the workspace from MossX.",
     deleteWorkspaceWorktreeWarning: "This will also delete {{count}} worktree on disk.",
     deleteWorkspaceWorktreeWarning_other: "This will also delete {{count}} worktrees on disk.",
     deleteWorkspaceBeforeYouConfirm: "Before you continue:",
     deleteWorkspaceWillHappenTitle: "What will happen:",
     deleteWorkspaceWillNotHappenTitle: "What will not happen:",
-    deleteWorkspaceEffectListOnly: "The workspace will be removed from the CodeMoss list only.",
+    deleteWorkspaceEffectListOnly: "The workspace will be removed from the MossX list only.",
     deleteWorkspaceEffectSessions:
       "Active sessions under this workspace (and linked worktrees) will be closed.",
     deleteWorkspaceEffectDeleteWorktrees:
@@ -1780,7 +1799,7 @@ const en = {
       "Not run checkout/merge/rebase or any other Git write operation.",
     deleteWorktreeTitle: "Delete Worktree",
     deleteWorktreeConfirm: "Are you sure you want to delete \"{{name}}\"?",
-    deleteWorktreeMessage: "This will close the agent, remove its worktree, and delete it from CodeMoss.",
+    deleteWorktreeMessage: "This will close the agent, remove its worktree, and delete it from MossX.",
     deleteWorktreeFailed: "Delete worktree failed",
   },
 
@@ -2020,8 +2039,8 @@ const en = {
     lock: "Lock Screen",
     locked: "Locked",
     brandKicker: "Codemoss Product Atlas",
-    title: "CodeMoss Secure Lock · Engineering Capability Overview",
-    description: "Threads and tasks keep running in the background. Use this lock screen to review the full CodeMoss delivery loop: planning, execution orchestration, review, and shipping.",
+    title: "MossX Secure Lock · Engineering Capability Overview",
+    description: "Threads and tasks keep running in the background. Use this lock screen to review the full MossX delivery loop: planning, execution orchestration, review, and shipping.",
     tabLabel: "Lock screen tab navigation",
     tabs: {
       live: "Live Sessions",
@@ -2034,9 +2053,9 @@ const en = {
     liveEmpty: "No running session output right now.",
     liveRunning: "Running",
     capabilityTitle: "Capability Atlas",
-    capabilityDesc: "CodeMoss is not just a chat shell. It is a local-first engineering workspace designed for production flow.",
+    capabilityDesc: "MossX is not just a chat shell. It is a local-first engineering workspace designed for production flow.",
     journeyTitle: "Typical Delivery Journey",
-    journeyDesc: "Most changes move through this sequence in CodeMoss:",
+    journeyDesc: "Most changes move through this sequence in MossX:",
     elementsTitle: "Element Guide",
     elementsDesc: "Use this page to quickly review each core module and its responsibility.",
     unlockTitle: "Unlock Panel",

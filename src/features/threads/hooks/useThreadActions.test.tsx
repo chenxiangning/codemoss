@@ -60,7 +60,7 @@ vi.mock("../utils/threadStorage", () => ({
 describe("useThreadActions", () => {
   const workspace: WorkspaceInfo = {
     id: "ws-1",
-    name: "CodeMoss",
+    name: "MossX",
     path: "/tmp/codex",
     connected: true,
     settings: { sidebarCollapsed: false },

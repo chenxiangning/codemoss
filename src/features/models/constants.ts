@@ -26,7 +26,7 @@ export interface ModelMapping {
  */
 export const STORAGE_KEYS = {
   /** Storage key for Claude model name mapping */
-  CLAUDE_MODEL_MAPPING: "codemoss-claude-model-mapping",
+  CLAUDE_MODEL_MAPPING: "mossx-claude-model-mapping",
 } as const;
 
 /**

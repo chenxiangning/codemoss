@@ -3298,7 +3298,7 @@ export function SettingsView({
             {activeSection === "about" && (
               <section className="settings-section settings-about-section">
                 <div className="settings-about-name">
-                  CodeMoss
+                  MossX
                   {appVersion && (
                     <span className="settings-about-version">{appVersion}</span>
                   )}
@@ -3310,7 +3310,7 @@ export function SettingsView({
                   <button
                     type="button"
                     className="ghost"
-                    onClick={() => void openUrl("https://github.com/zhukunpenglinyutong/codemoss")}
+                    onClick={() => void openUrl("https://github.com/zhukunpenglinyutong/mossx")}
                   >
                     {t("about.github")}
                   </button>

@@ -53,14 +53,14 @@ type UseThreadTurnEventsOptions = {
     oldThreadId: string,
     newThreadId: string,
   ) => Promise<void>;
-  renamePendingMemoryCaptureKey: (
-    oldThreadId: string,
-    newThreadId: string,
-  ) => void;
   resolvePendingThreadForSession?: (
     workspaceId: string,
     engine: "claude" | "opencode",
   ) => string | null;
+  renamePendingMemoryCaptureKey: (
+    oldThreadId: string,
+    newThreadId: string,
+  ) => void;
 };
 
 export function useThreadTurnEvents({
@@ -79,8 +79,8 @@ export function useThreadTurnEvents({
   renameCustomNameKey,
   renameAutoTitlePendingKey,
   renameThreadTitleMapping,
-  renamePendingMemoryCaptureKey,
   resolvePendingThreadForSession,
+  renamePendingMemoryCaptureKey,
 }: UseThreadTurnEventsOptions) {
   const { t } = useTranslation();
   const resolvePendingAliasThread = useCallback(

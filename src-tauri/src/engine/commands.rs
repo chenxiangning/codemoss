@@ -2959,7 +2959,7 @@ ses_3aaf6e47cffesEP8ro2EePcJAQ  New session - 2026-02-13T02:24:24.582Z          
     #[test]
     fn delete_opencode_session_files_removes_workspace_fallback_path() {
         let base = std::env::temp_dir().join(format!(
-            "code-moss-opencode-delete-{}",
+            "moss-x-opencode-delete-{}",
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .map(|duration| duration.as_nanos())
@@ -3000,7 +3000,7 @@ ses_3aaf6e47cffesEP8ro2EePcJAQ  New session - 2026-02-13T02:24:24.582Z          
     #[test]
     fn delete_opencode_session_from_datastore_removes_session_and_storage_json() {
         let base = std::env::temp_dir().join(format!(
-            "code-moss-opencode-datastore-delete-{}",
+            "moss-x-opencode-datastore-delete-{}",
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .map(|duration| duration.as_nanos())

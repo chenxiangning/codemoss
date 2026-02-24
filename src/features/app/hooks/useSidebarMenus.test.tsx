@@ -26,8 +26,8 @@ vi.mock("react-i18next", () => ({
 
 const workspace: WorkspaceInfo = {
   id: "ws-1",
-  name: "codemoss",
-  path: "/tmp/codemoss",
+  name: "mossx",
+  path: "/tmp/mossx",
   connected: true,
   kind: "main",
   settings: {

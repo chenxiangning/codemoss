@@ -34,8 +34,8 @@ vi.mock("../../../services/tauri", () => ({
 describe("useThreadMessaging", () => {
   const workspace: WorkspaceInfo = {
     id: "ws-1",
-    name: "CodeMoss",
-    path: "/tmp/codemoss",
+    name: "MossX",
+    path: "/tmp/mossx",
     connected: true,
     settings: { sidebarCollapsed: false },
   };

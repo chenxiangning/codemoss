@@ -40,8 +40,8 @@ const makeOptions = (overrides: SetupOverrides = {}) => {
   const renameCustomNameKey = vi.fn();
   const renameAutoTitlePendingKey = vi.fn();
   const renameThreadTitleMapping = vi.fn();
-  const renamePendingMemoryCaptureKey = vi.fn();
   const resolvePendingThreadForSession = vi.fn();
+  const renamePendingMemoryCaptureKey = vi.fn();
   const pendingInterruptsRef = {
     current: new Set(overrides.pendingInterrupts ?? []),
   };
@@ -66,8 +66,8 @@ const makeOptions = (overrides: SetupOverrides = {}) => {
       renameCustomNameKey,
       renameAutoTitlePendingKey,
       renameThreadTitleMapping,
-      renamePendingMemoryCaptureKey,
       resolvePendingThreadForSession,
+      renamePendingMemoryCaptureKey,
     }),
   );
 
@@ -86,8 +86,8 @@ const makeOptions = (overrides: SetupOverrides = {}) => {
     renameCustomNameKey,
     renameAutoTitlePendingKey,
     renameThreadTitleMapping,
-    renamePendingMemoryCaptureKey,
     resolvePendingThreadForSession,
+    renamePendingMemoryCaptureKey,
     pendingInterruptsRef,
     interruptedThreadsRef,
   };

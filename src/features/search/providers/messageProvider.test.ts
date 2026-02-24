@@ -11,7 +11,7 @@ describe("searchMessages", () => {
         { id: "t-2", name: "Ops", updatedAt: 1 },
       ],
       threadItemsByThread: {
-        "t-1": [{ id: "m1", kind: "message", role: "user", text: "hello codemoss" }],
+        "t-1": [{ id: "m1", kind: "message", role: "user", text: "hello mossx" }],
         "t-2": [{ id: "m2", kind: "message", role: "assistant", text: "no hit" }],
         "t-x": [{ id: "m3", kind: "message", role: "assistant", text: "hello from other ws" }],
       },

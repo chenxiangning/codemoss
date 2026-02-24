@@ -13,7 +13,7 @@ import Code from "lucide-react/dist/esm/icons/code";
 import Save from "lucide-react/dist/esm/icons/save";
 import X from "lucide-react/dist/esm/icons/x";
 import CodeMirror, { type ReactCodeMirrorRef } from "@uiw/react-codemirror";
-import { keymap, type ViewUpdate } from "@codemirror/view";
+import { keymap } from "@codemirror/view";
 import { javascript } from "@codemirror/lang-javascript";
 import { json } from "@codemirror/lang-json";
 import { html } from "@codemirror/lang-html";
@@ -684,7 +684,7 @@ export function FileViewPanel({
                 ref={cmRef}
                 value={content}
                 onChange={setContent}
-                onUpdate={(update: ViewUpdate) => {
+                onUpdate={(update) => {
                   if (!update.selectionSet) {
                     return;
                   }
@@ -732,7 +732,7 @@ export function FileViewPanel({
             ref={cmRef}
             value={content}
             onChange={setContent}
-            onUpdate={(update: ViewUpdate) => {
+            onUpdate={(update) => {
               if (!update.selectionSet) {
                 return;
               }

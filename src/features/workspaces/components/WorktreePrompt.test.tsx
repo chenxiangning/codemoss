@@ -82,7 +82,7 @@ describe("WorktreePrompt", () => {
   it("renders dropdown-only base branch with placeholder and beginner guide", () => {
     render(
       <WorktreePrompt
-        workspaceName="codemoss"
+        workspaceName="mossx"
         branch="feat/demo"
         baseRef=""
         baseRefOptions={[
@@ -117,7 +117,7 @@ describe("WorktreePrompt", () => {
   it("shows non-git repository guidance when workspace is not a git repo", () => {
     render(
       <WorktreePrompt
-        workspaceName="codemoss"
+        workspaceName="mossx"
         workspacePath="/tmp/repo"
         branch="feat/demo"
         baseRef=""
@@ -146,7 +146,7 @@ describe("WorktreePrompt", () => {
   it("shows retry command for recoverable publish failure", () => {
     render(
       <WorktreePrompt
-        workspaceName="codemoss"
+        workspaceName="mossx"
         branch="feat/demo"
         baseRef="upstream/main"
         baseRefOptions={[{ name: "upstream/main", group: "upstream", shortSha: "0c098bb3" }]}
@@ -172,7 +172,7 @@ describe("WorktreePrompt", () => {
   it("shows creating state on submit button when busy", () => {
     render(
       <WorktreePrompt
-        workspaceName="codemoss"
+        workspaceName="mossx"
         branch="feat/demo"
         baseRef="upstream/main"
         baseRefOptions={[{ name: "upstream/main", group: "upstream", shortSha: "0c098bb3" }]}

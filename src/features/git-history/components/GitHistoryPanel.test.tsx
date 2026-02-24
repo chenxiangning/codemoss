@@ -98,7 +98,7 @@ vi.mock("../../../services/tauri", () => ({
   deleteGitBranch: vi.fn(async () => undefined),
   fetchGit: vi.fn(async () => undefined),
   getGitPrWorkflowDefaults: vi.fn(async () => ({
-    upstreamRepo: "chenxiangning/codemoss",
+    upstreamRepo: "chenxiangning/mossx",
     baseBranch: "main",
     headOwner: "chenxiangning",
     headBranch: "codex/feat-gitv9-v0.1.8",
@@ -316,8 +316,8 @@ describe("GitHistoryPanel interactions", () => {
       const headRepoInput = screen.getByLabelText(
         "git.historyCreatePrCompareHeadRepo",
       ) as HTMLButtonElement;
-      expect(baseRepoInput.textContent ?? "").toContain("chenxiangning/codemoss");
-      expect(headRepoInput.textContent ?? "").toContain("chenxiangning/codemoss");
+      expect(baseRepoInput.textContent ?? "").toContain("chenxiangning/mossx");
+      expect(headRepoInput.textContent ?? "").toContain("chenxiangning/mossx");
     });
     await waitFor(() => {
       expect(tauriService.getGitBranchCompareCommits).toHaveBeenCalledWith(
@@ -348,7 +348,7 @@ describe("GitHistoryPanel interactions", () => {
         expect(tauriService.createGitPrWorkflow).toHaveBeenCalledWith(
           "w1",
           expect.objectContaining({
-            upstreamRepo: "chenxiangning/codemoss",
+            upstreamRepo: "chenxiangning/mossx",
           baseBranch: "main",
           headOwner: "chenxiangning",
           headBranch: "codex/feat-gitv9-v0.1.8",

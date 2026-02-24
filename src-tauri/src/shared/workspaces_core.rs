@@ -1259,7 +1259,7 @@ mod tests {
     use uuid::Uuid;
 
     fn init_git_repo() -> PathBuf {
-        let repo_path = std::env::temp_dir().join(format!("codemoss-ws-core-{}", Uuid::new_v4()));
+        let repo_path = std::env::temp_dir().join(format!("mossx-ws-core-{}", Uuid::new_v4()));
         std::fs::create_dir_all(&repo_path).expect("create temp repo path");
         let repo = Repository::init(&repo_path).expect("init git repo");
         std::fs::write(repo_path.join("README.md"), "hello\n").expect("write fixture file");
@@ -1269,7 +1269,7 @@ mod tests {
             .expect("add file to git index");
         let tree_id = index.write_tree().expect("write git tree");
         let tree = repo.find_tree(tree_id).expect("find git tree");
-        let signature = Signature::now("CodeMoss", "test@codemoss.dev").expect("create signature");
+        let signature = Signature::now("MossX", "test@mossx.dev").expect("create signature");
         let commit_id = repo
             .commit(Some("HEAD"), &signature, &signature, "initial", &tree, &[])
             .expect("commit initial tree");

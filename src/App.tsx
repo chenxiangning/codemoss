@@ -153,6 +153,7 @@ import type {
   ConversationItem,
   ComposerEditorSettings,
   EngineType,
+  MessageSendOptions,
   OpenCodeAgentOption,
   WorkspaceInfo,
 } from "./types";
@@ -2148,8 +2149,8 @@ function MainApp() {
   useEffect(() => {
     try {
       const title = activeWorkspace
-        ? `CodeMoss - ${activeWorkspace.name}`
-        : "CodeMoss";
+        ? `MossX - ${activeWorkspace.name}`
+        : "MossX";
       void getCurrentWindow().setTitle(title);
     } catch {
       // Non-Tauri environment, ignore.
@@ -2523,7 +2524,11 @@ function MainApp() {
   );
 
   const handleComposerSendWithKanban = useCallback(
-    async (text: string, images: string[]) => {
+    async (
+      text: string,
+      images: string[],
+      options?: MessageSendOptions,
+    ) => {
       const trimmedOriginalText = text.trim();
       const { panelId, cleanText } = resolveComposerKanbanPanel(trimmedOriginalText);
       const textForSending = cleanText;
@@ -2531,7 +2536,7 @@ function MainApp() {
       if (!panelId || !activeWorkspaceId || isPullRequestComposer) {
         const fallbackText =
           textForSending.length > 0 ? textForSending : trimmedOriginalText;
-        await handleComposerSend(fallbackText, images);
+        await handleComposerSend(fallbackText, images, options);
         return;
       }
 
@@ -2540,6 +2545,7 @@ function MainApp() {
         await handleComposerSend(
           textForSending.length > 0 ? textForSending : trimmedOriginalText,
           images,
+          options,
         );
         return;
       }
@@ -2599,7 +2605,13 @@ function MainApp() {
       }
 
       if (textForSending.length > 0 || images.length > 0) {
-        await sendUserMessageToThread(workspace, resolvedThreadId, textForSending, images);
+        await sendUserMessageToThread(
+          workspace,
+          resolvedThreadId,
+          textForSending,
+          images,
+          options,
+        );
       }
 
       const taskDescription = textForSending.length > 0 ? textForSending : trimmedOriginalText;
@@ -2647,8 +2659,12 @@ function MainApp() {
   );
 
   const handleComposerSendWithEditorFallback = useCallback(
-    async (text: string, images: string[]) => {
-      await handleComposerSendWithKanban(text, images);
+    async (
+      text: string,
+      images: string[],
+      options?: MessageSendOptions,
+    ) => {
+      await handleComposerSendWithKanban(text, images, options);
       if (!isCompact && centerMode === "editor") {
         setCenterMode("chat");
       }
@@ -2657,8 +2673,12 @@ function MainApp() {
   );
 
   const handleComposerQueueWithEditorFallback = useCallback(
-    async (text: string, images: string[]) => {
-      await handleComposerQueue(text, images);
+    async (
+      text: string,
+      images: string[],
+      options?: MessageSendOptions,
+    ) => {
+      await handleComposerQueue(text, images, options);
       if (!isCompact && centerMode === "editor") {
         setCenterMode("chat");
       }
@@ -3798,6 +3818,15 @@ function MainApp() {
     appMode,
     onAppModeChange: handleAppModeChange,
     onOpenMemory: () => setCenterMode("memory"),
+    onOpenProjectMemory: () => {
+      setAppMode("chat");
+      setCenterMode("chat");
+      setFilePanelMode("memory");
+      expandRightPanel();
+      if (isCompact) {
+        setActiveTab("git");
+      }
+    },
   });
 
   const workspaceHomeNode = activeWorkspace ? (

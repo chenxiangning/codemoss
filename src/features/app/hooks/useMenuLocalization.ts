@@ -2,7 +2,7 @@ import { useEffect, useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import { updateMenuLabels } from "../../../services/tauri";
 
-const APP_NAME = "CodeMoss";
+const APP_NAME = "MossX";
 
 type MenuLabelUpdate = {
   id: string;

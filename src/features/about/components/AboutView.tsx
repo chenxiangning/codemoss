@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import { getVersion } from "@tauri-apps/api/app";
 import { openUrl } from "@tauri-apps/plugin-opener";
 
-const GITHUB_URL = "https://github.com/zhukunpenglinyutong/codemoss";
+const GITHUB_URL = "https://github.com/zhukunpenglinyutong/mossx";
 
 export function AboutView() {
   const { t } = useTranslation();
@@ -41,9 +41,9 @@ export function AboutView() {
           <img
             className="about-icon"
             src="/app-icon.png"
-            alt="CodeMoss icon"
+            alt="MossX icon"
           />
-          <div className="about-title">CodeMoss</div>
+          <div className="about-title">MossX</div>
         </div>
         <div className="about-version">
           {version ? `${t("about.version")} ${version}` : `${t("about.version")} —`}

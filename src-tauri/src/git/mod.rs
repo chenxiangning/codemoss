@@ -4404,7 +4404,7 @@ mod tests {
     use validation::validate_local_branch_name;
 
     fn create_temp_repo() -> (PathBuf, Repository) {
-        let root = std::env::temp_dir().join(format!("code-moss-test-{}", uuid::Uuid::new_v4()));
+        let root = std::env::temp_dir().join(format!("moss-x-test-{}", uuid::Uuid::new_v4()));
         fs::create_dir_all(&root).expect("create temp repo root");
         let repo = Repository::init(&root).expect("init repo");
         (root, repo)

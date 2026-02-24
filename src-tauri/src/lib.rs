@@ -86,7 +86,7 @@ pub fn run() {
             // in the system browser instead of navigating the webview.
             let mut win_builder =
                 WebviewWindowBuilder::new(app, "main", tauri::WebviewUrl::App("index.html".into()))
-                    .title("CodeMoss")
+                    .title("MossX")
                     .inner_size(1200.0, 700.0)
                     .min_inner_size(360.0, 600.0)
                     .devtools(true);

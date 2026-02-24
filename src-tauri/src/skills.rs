@@ -355,7 +355,7 @@ mod tests {
             .duration_since(UNIX_EPOCH)
             .expect("system time is before unix epoch")
             .as_nanos();
-        let dir = env::temp_dir().join(format!("codemoss-{prefix}-{nonce}"));
+        let dir = env::temp_dir().join(format!("mossx-{prefix}-{nonce}"));
         fs::create_dir_all(&dir).expect("create temp dir");
         dir
     }

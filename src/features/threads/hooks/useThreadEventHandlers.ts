@@ -47,6 +47,10 @@ type ThreadEventHandlersOptions = {
     oldThreadId: string,
     newThreadId: string,
   ) => Promise<void>;
+  resolvePendingThreadForSession?: (
+    workspaceId: string,
+    engine: "claude" | "opencode",
+  ) => string | null;
   renamePendingMemoryCaptureKey: (
     oldThreadId: string,
     newThreadId: string,
@@ -57,10 +61,6 @@ type ThreadEventHandlersOptions = {
     itemId: string;
     text: string;
   }) => void;
-  resolvePendingThreadForSession?: (
-    workspaceId: string,
-    engine: "claude" | "opencode",
-  ) => string | null;
 };
 
 export function useThreadEventHandlers({
@@ -84,14 +84,14 @@ export function useThreadEventHandlers({
   renameCustomNameKey,
   renameAutoTitlePendingKey,
   renameThreadTitleMapping,
+  resolvePendingThreadForSession,
   renamePendingMemoryCaptureKey,
   onAgentMessageCompletedExternal,
-  resolvePendingThreadForSession,
 }: ThreadEventHandlersOptions) {
   const isReasoningRawDebugEnabled = () => {
     if (import.meta.env?.DEV) {
       try {
-        const value = window.localStorage.getItem("codemoss.debug.reasoning.raw");
+        const value = window.localStorage.getItem("mossx.debug.reasoning.raw");
         if (!value) {
           return true;
         }
@@ -105,7 +105,7 @@ export function useThreadEventHandlers({
       return false;
     }
     try {
-      const value = window.localStorage.getItem("codemoss.debug.reasoning.raw");
+      const value = window.localStorage.getItem("mossx.debug.reasoning.raw");
       if (!value) {
         return false;
       }
@@ -173,8 +173,8 @@ export function useThreadEventHandlers({
     renameCustomNameKey,
     renameAutoTitlePendingKey,
     renameThreadTitleMapping,
-    renamePendingMemoryCaptureKey,
     resolvePendingThreadForSession,
+    renamePendingMemoryCaptureKey,
   });
 
   const onBackgroundThreadAction = useCallback(
@@ -240,12 +240,38 @@ export function useThreadEventHandlers({
       if (
         method !== "item/started" &&
         method !== "item/updated" &&
-        method !== "item/completed"
+        method !== "item/completed" &&
+        method !== "item/reasoning/summaryTextDelta" &&
+        method !== "item/reasoning/summaryPartAdded" &&
+        method !== "item/reasoning/textDelta" &&
+        method !== "item/reasoning/delta"
       ) {
         return;
       }
 
       const params = (event.message?.params as Record<string, unknown> | undefined) ?? {};
+      if (
+        method === "item/reasoning/summaryTextDelta" ||
+        method === "item/reasoning/summaryPartAdded" ||
+        method === "item/reasoning/textDelta" ||
+        method === "item/reasoning/delta"
+      ) {
+        onDebug({
+          id: `${Date.now()}-reasoning-raw`,
+          timestamp: Date.now(),
+          source: "event",
+          label: `reasoning/raw:${method}`,
+          payload: {
+            workspaceId: event.workspace_id,
+            threadId: String(params.threadId ?? params.thread_id ?? ""),
+            itemId: String(params.itemId ?? params.item_id ?? ""),
+            delta: params.delta ?? null,
+            summaryIndex: params.summaryIndex ?? params.summary_index ?? null,
+            params,
+          },
+        });
+        return;
+      }
       const item = (params.item as Record<string, unknown> | undefined) ?? {};
       if (String(item.type ?? "") !== "reasoning") {
         return;

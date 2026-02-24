@@ -2,7 +2,7 @@
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
-**Goal:** 在 CodeMoss 中实现统一搜索面板（Cmd/Ctrl+P），仅搜索当前选中 workspace 的文件、Kanban 任务、线程标题、消息内容、输入历史。
+**Goal:** 在 MossX 中实现统一搜索面板（Cmd/Ctrl+P），仅搜索当前选中 workspace 的文件、Kanban 任务、线程标题、消息内容、输入历史。
 
 **Architecture:** 前端以 `SearchPalette` 统一承载搜索 UI，按 provider 聚合结果（files/kanban/threads/messages/history）。数据域默认限制在 active workspace，避免全局扫描导致 UI 卡顿。消息内容采用渐进式索引与增量更新，保证首次可用与后续性能。
 

@@ -1,11 +1,11 @@
 #!/bin/bash
-# Generate GitHub Secrets for CodeMoss release workflow
+# Generate GitHub Secrets for MossX release workflow
 # Run this script and it will output the values you need to add to GitHub Secrets
 
 set -e
 
 echo "=========================================="
-echo "CodeMoss GitHub Secrets Generator"
+echo "MossX GitHub Secrets Generator"
 echo "=========================================="
 echo ""
 
@@ -104,7 +104,7 @@ echo "CODESIGN_IDENTITY:"
 echo "Developer ID Application: kunpeng zhu (RLHBM56QRH)"
 echo ""
 echo "NOTARY_PROFILE_NAME:"
-echo "CodeMoss-Notarize"
+echo "MossX-Notarize"
 echo ""
 echo "APPLE_TEAM_ID:"
 echo "RLHBM56QRH"
