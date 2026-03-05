@@ -155,15 +155,7 @@ jobs:
             $env:TAURI_SIGNING_PRIVATE_KEY = $env:TAURI_SIGNING_PRIVATE_KEY_B64
           } else {
             Write-Host "TAURI_SIGNING_PRIVATE_KEY_B64 is empty, disable updater artifacts for CI package build."
-            $disableUpdaterScript = @"
-const fs = require('node:fs');
-const inputPath = 'src-tauri/tauri.windows.conf.json';
-const outputPath = 'src-tauri/tauri.windows.ci.conf.json';
-const config = JSON.parse(fs.readFileSync(inputPath, 'utf8'));
-config.bundle = { ...(config.bundle ?? {}), createUpdaterArtifacts: false };
-fs.writeFileSync(outputPath, JSON.stringify(config, null, 2));
-"@
-            node -e $disableUpdaterScript
+            node -e "const fs = require('node:fs'); const inputPath='src-tauri/tauri.windows.conf.json'; const outputPath='src-tauri/tauri.windows.ci.conf.json'; const config = JSON.parse(fs.readFileSync(inputPath, 'utf8')); config.bundle = { ...(config.bundle ?? {}), createUpdaterArtifacts: false }; fs.writeFileSync(outputPath, JSON.stringify(config, null, 2));"
             $tauriConfig = "src-tauri/tauri.windows.ci.conf.json"
           }
           npm run tauri -- build --config $tauriConfig --bundles nsis
