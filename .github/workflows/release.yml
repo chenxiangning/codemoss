@@ -2,6 +2,15 @@ name: Release
 
 on:
   workflow_dispatch:
+    inputs:
+      target:
+        description: "Release target"
+        required: true
+        default: windows
+        type: choice
+        options:
+          - windows
+          - all
 
 permissions:
   contents: write
@@ -9,6 +18,7 @@ permissions:
 
 jobs:
   build_macos:
+    if: ${{ github.event.inputs.target == 'all' }}
     name: macos (${{ matrix.arch }})
     runs-on: ${{ matrix.platform }}
     environment: release
@@ -176,6 +186,7 @@ jobs:
             release-artifacts/CodeMoss_${{ matrix.arch }}.app.tar.gz.sig
 
   build_linux:
+    if: ${{ github.event.inputs.target == 'all' }}
     name: appimage (x86_64)
     runs-on: ubuntu-24.04
     environment: release
@@ -223,11 +234,13 @@ jobs:
           path: src-tauri/target/release/bundle/appimage/*.AppImage*
 
   build_windows:
+    if: ${{ github.event.inputs.target == 'windows' || github.event.inputs.target == 'all' }}
     name: windows (x64)
     runs-on: windows-latest
     environment: release
     env:
       TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
       TAURI_SIGNING_PRIVATE_KEY_B64: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_B64 }}
     steps:
       - uses: actions/checkout@v4
@@ -249,14 +262,43 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Prepare Windows build config
+        shell: pwsh
+        run: |
+          $privateKey = ""
+          if (-not [string]::IsNullOrWhiteSpace($env:TAURI_SIGNING_PRIVATE_KEY)) {
+            $privateKey = $env:TAURI_SIGNING_PRIVATE_KEY
+          } elseif (-not [string]::IsNullOrWhiteSpace($env:TAURI_SIGNING_PRIVATE_KEY_B64)) {
+            $privateKey = $env:TAURI_SIGNING_PRIVATE_KEY_B64
+          }
+
+          if ([string]::IsNullOrWhiteSpace($privateKey)) {
+            Write-Host "No signing private key found. Build NSIS installer without updater artifacts."
+            @'
+          {
+            "bundle": {
+              "createUpdaterArtifacts": false
+            },
+            "plugins": {
+              "updater": {
+                "active": false,
+                "endpoints": []
+              }
+            }
+          }
+          '@ | Set-Content -Path src-tauri/tauri.windows.nosign.conf.json -Encoding utf8
+            echo "TAURI_WINDOWS_CONFIG=src-tauri/tauri.windows.nosign.conf.json" >> $env:GITHUB_ENV
+          } else {
+            echo "TAURI_WINDOWS_CONFIG=src-tauri/tauri.windows.conf.json" >> $env:GITHUB_ENV
+            echo "TAURI_SIGNING_PRIVATE_KEY=$privateKey" >> $env:GITHUB_ENV
+          }
+
       - name: Build Windows installer
         shell: pwsh
         env:
           NODE_OPTIONS: "--max-old-space-size=8192"
         run: |
-          # TAURI_SIGNING_PRIVATE_KEY expects base64-encoded minisign key
-          $env:TAURI_SIGNING_PRIVATE_KEY = $env:TAURI_SIGNING_PRIVATE_KEY_B64
-          npm run tauri -- build --config src-tauri/tauri.windows.conf.json --bundles nsis
+          npm run tauri -- build --config $env:TAURI_WINDOWS_CONFIG --bundles nsis
 
       - name: Get version
         id: version
@@ -274,6 +316,7 @@ jobs:
             src-tauri/target/release/bundle/nsis/*.exe.sig
 
   release:
+    if: ${{ github.event.inputs.target == 'all' }}
     runs-on: ubuntu-latest
     environment: release
     needs:
