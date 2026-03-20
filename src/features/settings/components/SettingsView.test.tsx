@@ -226,12 +226,12 @@ const renderComposerSection = (
 };
 
 describe("SettingsView Display", () => {
-  it("keeps codex, dictation, git, and experimental sidebar entries hidden", () => {
+  it("shows codex while keeping dictation, git, and experimental sidebar entries hidden", () => {
     renderDisplaySection();
 
     expect(screen.queryByRole("button", { name: "Dictation" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Git" })).toBeNull();
-    expect(screen.queryByRole("button", { name: "Codex" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Codex" })).not.toBeNull();
     expect(screen.queryByRole("button", { name: "Experimental" })).toBeNull();
   });
 

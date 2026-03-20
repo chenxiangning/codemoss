@@ -134,7 +134,7 @@ import { CodexSection } from "./settings-view/sections/CodexSection";
 // Feature flags to show/hide settings sidebar entries
 const SHOW_DICTATION_ENTRY = false;
 const SHOW_GIT_ENTRY = false;
-const SHOW_CODEX_ENTRY = false;
+const SHOW_CODEX_ENTRY = true;
 const SHOW_EXPERIMENTAL_ENTRY = false;
 const SHOW_COMMIT_ENTRY = false;
 const SHOW_COMPOSER_ENTRY = false;
