@@ -3,6 +3,11 @@
     "windows": []
   },
   "bundle": {
-    "createUpdaterArtifacts": true
+    "createUpdaterArtifacts": false
+  },
+  "plugins": {
+    "updater": {
+      "active": false
+    }
   }
 }
