@@ -12,6 +12,8 @@ English:
 - Improve recent-completion readability with compact copy and clearer project identity cues
 - Support opening absolute paths outside project root from session activity file-change entries
 - Add shell-script group rendering and edge-case compatibility in file views
+- Add persistent UI scale slider settings and unify supported zoom range to 80%-260%
+- Improve Session Activity real-time follow guidance overlay and robot-entry discoverability
 
 🔧 Improvements
 - Introduce locked + atomic client-store write path and key-level patch updates to reduce stale overwrite risk across concurrent clients
@@ -26,6 +28,7 @@ English:
 - Fix large-file governance regression by replacing line-compression workaround with structural module splitting
 - Fix ChatInputBox undo/redo behavior and align shortcuts (`Ctrl+Z`/`Ctrl+Shift+Z`, `Cmd+Z`/`Cmd+Shift+Z`) across platforms
 - Remove redundant bottom border on unselected Git view-switch buttons
+- Fix dirty-worktree branch-switch validation regressions in Git workflows
 
 中文：
 
@@ -36,6 +39,8 @@ English:
 - 精简最近完成卡片文案并强化项目标识，提升扫读效率
 - 支持从会话活动文件变更中打开项目外绝对路径文件
 - 补齐文件视图中 shell 脚本分组渲染并增强边界兼容性
+- 新增 UI 缩放滑条设置持久化，并统一缩放范围为 80%-260%
+- 优化 Session Activity 实时跟随引导浮层和机器人入口可发现性
 
 🔧 Improvements
 - 客户端存储写入链路增加加锁与原子写，并支持按 key 的 patch 更新，降低多客户端并发下旧数据覆盖风险
@@ -50,6 +55,7 @@ English:
 - 修复大文件治理回归，移除“压缩换行”临时方案并改为结构化拆分
 - 修复 ChatInputBox 撤销重做行为，并统一跨平台快捷键（`Ctrl+Z`/`Ctrl+Shift+Z`、`Cmd+Z`/`Cmd+Shift+Z`）
 - 修复 Git 视图切换中未选中按钮残留底部边线问题
+- 修复 Git 在 dirty worktree 场景下分支切换校验回归问题
 
 ---
 
