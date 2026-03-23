@@ -44,24 +44,18 @@ jobs:
       - name: Windows doctor checks
         run: npm run doctor:win
 
-      - name: Build unsigned Windows installers
+      - name: Build unsigned Windows NSIS installer
         shell: pwsh
         env:
           NODE_OPTIONS: "--max-old-space-size=8192"
         run: |
           # Keep Windows CI artifacts unsigned by using tauri.windows.conf.json
           # (updater disabled, createUpdaterArtifacts=false, no code-signing config)
-          npm run tauri -- build --config src-tauri/tauri.windows.conf.json --bundles nsis,msi
+          # MSI bundling is temporarily disabled in CI because wix light.exe fails on hosted runners.
+          npm run tauri -- build --config src-tauri/tauri.windows.conf.json --bundles nsis
 
       - name: Upload NSIS installer
         uses: actions/upload-artifact@v4
         with:
           name: windows-x64-nsis
           path: src-tauri/target/release/bundle/nsis/*.exe
-
-      - name: Upload MSI installer
-        uses: actions/upload-artifact@v4
-        with:
-          name: windows-x64-msi
-          path: src-tauri/target/release/bundle/msi/*.msi
-          if-no-files-found: warn
