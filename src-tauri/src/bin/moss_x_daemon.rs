@@ -2196,7 +2196,9 @@ async fn handle_rpc_request(
         "read_external_absolute_file" => {
             let workspace_id = parse_string(&params, "workspaceId")?;
             let path = parse_string(&params, "path")?;
-            let response = state.read_external_absolute_file(workspace_id, path).await?;
+            let response = state
+                .read_external_absolute_file(workspace_id, path)
+                .await?;
             serde_json::to_value(response).map_err(|err| err.to_string())
         }
         "write_external_spec_file" => {

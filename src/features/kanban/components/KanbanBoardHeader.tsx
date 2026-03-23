@@ -35,6 +35,8 @@ export function KanbanBoardHeader({
   onToggleGitPanel,
 }: KanbanBoardHeaderProps) {
   const { t } = useTranslation();
+  const [backMenuOpen, setBackMenuOpen] = useState(false);
+  const backMenuRef = useRef<HTMLDivElement | null>(null);
   const [panelMenuOpen, setPanelMenuOpen] = useState(false);
   const [panelQuery, setPanelQuery] = useState("");
   const panelMenuRef = useRef<HTMLDivElement | null>(null);
@@ -74,6 +76,29 @@ export function KanbanBoardHeader({
     setWsQuery("");
   };
 
+  const handleBackToPanels = () => {
+    setBackMenuOpen(false);
+    onBack();
+  };
+
+  const handleBackToChat = () => {
+    setBackMenuOpen(false);
+    onAppModeChange("chat");
+  };
+
+  useEffect(() => {
+    if (!backMenuOpen) return;
+    const handleClick = (event: Event) => {
+      const target = event.target as Node;
+      if (!(backMenuRef.current?.contains(target) ?? false)) {
+        setBackMenuOpen(false);
+      }
+    };
+    const outsidePressEvent = "PointerEvent" in window ? "pointerdown" : "mousedown";
+    window.addEventListener(outsidePressEvent, handleClick);
+    return () => window.removeEventListener(outsidePressEvent, handleClick);
+  }, [backMenuOpen]);
+
   useEffect(() => {
     if (!panelMenuOpen) return;
     const handleClick = (event: MouseEvent) => {
@@ -104,22 +129,41 @@ export function KanbanBoardHeader({
     <div className="kanban-board-header">
       <div className="kanban-board-header-left">
         <KanbanModeToggle appMode="kanban" onAppModeChange={onAppModeChange} />
-        <button
-          className="kanban-icon-btn"
-          onClick={onBack}
-          aria-label={t("kanban.board.back")}
-        >
-          <ArrowLeft size={18} />
-        </button>
-        <button
-          type="button"
-          className="kanban-return-chat-link"
-          onClick={() => onAppModeChange("chat")}
-          aria-label={t("kanban.board.backToChat")}
-        >
-          <CornerUpLeft size={14} />
-          <span>{t("kanban.board.backToChat")}</span>
-        </button>
+        <div className="kanban-back-menu" ref={backMenuRef}>
+          <button
+            type="button"
+            className="kanban-back-menu-trigger"
+            onClick={() => setBackMenuOpen((prev) => !prev)}
+            aria-haspopup="menu"
+            aria-expanded={backMenuOpen}
+            aria-label={t("kanban.board.backActions")}
+          >
+            <ArrowLeft size={16} />
+            <span>{t("kanban.board.back")}</span>
+          </button>
+          {backMenuOpen && (
+            <div className="kanban-back-menu-list popover-surface" role="menu">
+              <button
+                type="button"
+                className="kanban-back-menu-item"
+                onClick={handleBackToPanels}
+                role="menuitem"
+              >
+                <ArrowLeft size={14} />
+                <span>{t("kanban.board.backToPanels")}</span>
+              </button>
+              <button
+                type="button"
+                className="kanban-back-menu-item"
+                onClick={handleBackToChat}
+                role="menuitem"
+              >
+                <CornerUpLeft size={14} />
+                <span>{t("kanban.board.backToChat")}</span>
+              </button>
+            </div>
+          )}
+        </div>
         {showWsMenu ? (
           <div className="kanban-project-menu" ref={wsMenuRef}>
             <button

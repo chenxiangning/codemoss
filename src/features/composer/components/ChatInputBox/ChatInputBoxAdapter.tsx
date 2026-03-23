@@ -785,6 +785,7 @@ export const ChatInputBoxAdapter = forwardRef<ChatInputBoxHandle, ChatInputBoxAd
         { id: 'clear', label: '/clear', description: t('chat.commands.clear'), category: 'system' },
         { id: 'new', label: '/new', description: t('chat.commands.new'), category: 'system' },
         { id: 'status', label: '/status', description: t('chat.commands.status'), category: 'session' },
+        { id: 'context', label: '/context', description: t('chat.commands.context'), category: 'session' },
         { id: 'resume', label: '/resume', description: t('chat.commands.resume'), category: 'session' },
         { id: 'review', label: '/review', description: t('chat.commands.review'), category: 'workflow' },
         { id: 'fork', label: '/fork', description: t('chat.commands.fork'), category: 'workflow' },

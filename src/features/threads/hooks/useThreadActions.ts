@@ -47,6 +47,7 @@ import type { ThreadAction, ThreadState } from "./useThreadsReducer";
 type UseThreadActionsOptions = {
   dispatch: Dispatch<ThreadAction>;
   itemsByThread: ThreadState["itemsByThread"];
+  userInputRequests: ThreadState["userInputRequests"];
   threadsByWorkspace: ThreadState["threadsByWorkspace"];
   activeThreadIdByWorkspace: ThreadState["activeThreadIdByWorkspace"];
   threadListCursorByWorkspace: ThreadState["threadListCursorByWorkspace"];
@@ -258,9 +259,60 @@ function collectRelatedThreadIdsFromSnapshot(threadId: string, items: Conversati
   return Array.from(relatedThreadIds);
 }
 
+function isAskUserQuestionToolItem(
+  item: ConversationItem,
+): item is Extract<ConversationItem, { kind: "tool" }> {
+  if (item.kind !== "tool") {
+    return false;
+  }
+  const normalizedToolType = item.toolType.trim().toLowerCase();
+  if (
+    normalizedToolType === "askuserquestion" ||
+    normalizedToolType === "ask_user_question"
+  ) {
+    return true;
+  }
+  const normalizedTitle = item.title.trim().toLowerCase();
+  return (
+    normalizedTitle.includes("askuserquestion") ||
+    normalizedTitle.includes("ask_user_question")
+  );
+}
+
+function isTerminalToolStatus(status?: string) {
+  if (!status) {
+    return false;
+  }
+  const normalized = status.trim().toLowerCase();
+  return /(complete|completed|success|succeed(?:ed)?|done|finish(?:ed)?|fail|error|cancel(?:led)?|abort|timeout|timed[_ -]?out)/.test(
+    normalized,
+  );
+}
+
+function shouldReplaceUserInputQueueFromSnapshot(
+  items: ConversationItem[],
+  queueLength: number,
+  hasLocalPendingQueue: boolean,
+) {
+  if (queueLength > 0) {
+    return true;
+  }
+  const hasSubmittedRecord = items.some(
+    (item) => item.kind === "tool" && item.toolType === "requestUserInputSubmitted",
+  );
+  if (hasSubmittedRecord) {
+    return true;
+  }
+  if (hasLocalPendingQueue) {
+    return false;
+  }
+  return true;
+}
+
 export function useThreadActions({
   dispatch,
   itemsByThread,
+  userInputRequests,
   threadsByWorkspace,
   activeThreadIdByWorkspace,
   threadListCursorByWorkspace,
@@ -420,11 +472,29 @@ export function useThreadActions({
             dispatch({ type: "setThreadItems", threadId, items: snapshot.items });
           }
           dispatch({ type: "setThreadPlan", threadId, plan: snapshot.plan });
-          dispatch({
-            type: "clearUserInputRequestsForThread",
-            workspaceId,
-            threadId,
-          });
+          const hasLocalPendingQueue = userInputRequests.some(
+            (request) =>
+              request.workspace_id === workspaceId &&
+              request.params.thread_id === threadId,
+          );
+          const hasLocalPendingAskTool = localItems.some(
+            (item) =>
+              isAskUserQuestionToolItem(item) &&
+              !isTerminalToolStatus(item.status),
+          );
+          if (
+            shouldReplaceUserInputQueueFromSnapshot(
+              snapshot.items,
+              snapshot.userInputQueue.length,
+              hasLocalPendingQueue || hasLocalPendingAskTool,
+            )
+          ) {
+            dispatch({
+              type: "clearUserInputRequestsForThread",
+              workspaceId,
+              threadId,
+            });
+          }
           restoreThreadParentLinksFromSnapshot(
             threadId,
             snapshot.items,
@@ -702,6 +772,7 @@ export function useThreadActions({
       onDebug,
       replaceOnResumeRef,
       threadStatusById,
+      userInputRequests,
       useUnifiedHistoryLoader,
     ],
   );

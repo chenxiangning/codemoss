@@ -146,8 +146,17 @@ export function WorktreeSection({
       <button
         type="button"
         className={`worktree-header ${isSectionCollapsed ? "collapsed" : "expanded"}`}
-        onClick={() => {
+        onDoubleClick={(event) => {
+          if (event.button !== 0) {
+            return;
+          }
           onToggleSectionCollapse(parentWorkspaceId);
+        }}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            onToggleSectionCollapse(parentWorkspaceId);
+          }
         }}
         aria-expanded={!isSectionCollapsed}
         aria-label={isSectionCollapsed ? "Expand worktrees" : "Collapse worktrees"}

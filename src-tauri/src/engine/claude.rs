@@ -17,6 +17,18 @@ use tokio::sync::{broadcast, Mutex, Notify, RwLock};
 use super::claude_message_content::{build_message_content, format_ask_user_answer};
 use super::events::EngineEvent;
 use super::{EngineConfig, EngineType, SendMessageParams};
+mod lifecycle;
+#[path = "claude_stream_helpers.rs"]
+mod stream_helpers;
+#[cfg(test)]
+use stream_helpers::extract_text_from_content;
+use stream_helpers::{
+    concat_reasoning_blocks, concat_text_blocks, extract_claude_tool_input,
+    extract_claude_tool_name, extract_delta_text_from_event, extract_reasoning_fragment,
+    extract_result_text, extract_string_field, extract_tool_result_output,
+    extract_tool_result_text, is_claude_stream_control_line, looks_like_claude_runtime_error,
+    parse_claude_stream_json_line, tool_input_signature,
+};
 
 #[derive(Debug, Clone)]
 pub struct ClaudeTurnEvent {
@@ -31,6 +43,9 @@ struct PendingClaudeTool {
     tool_name: String,
     input_signature: Option<String>,
 }
+
+const RETRYABLE_PROMPT_TOO_LONG_PREFIX: &str = "__claude_retryable_prompt_too_long__:";
+const AUTO_COMPACT_SIGNAL_SOURCE: &str = "auto_compact_retry";
 
 /// Claude Code session for a workspace
 pub struct ClaudeSession {
@@ -62,19 +77,30 @@ pub struct ClaudeSession {
     tool_id_by_block_index: StdMutex<HashMap<(String, i64), String>>,
     /// Track unresolved tools so transcript-style tool_result payloads can be paired back
     pending_tools: StdMutex<Vec<PendingClaudeTool>>,
-    /// Last emitted text for assistant partial messages (used to compute true delta)
-    last_emitted_text: StdMutex<String>,
+    /// Last emitted text for assistant partial messages, isolated per turn
+    last_emitted_text_by_turn: StdMutex<HashMap<String, String>>,
     /// Stdin handles per turn for AskUserQuestion responses
     stdin_by_turn: Mutex<HashMap<String, ChildStdin>>,
-    /// Pending AskUserQuestion requests: request_id_hash -> turn_id
-    pending_user_inputs: StdMutex<HashMap<i64, String>>,
-    /// Signal to resume stdout processing after user responds to AskUserQuestion
-    user_input_notify: Arc<Notify>,
-    /// Stores user's formatted AskUserQuestion answer for the kill+resume mechanism
-    user_input_answer: StdMutex<Option<String>>,
+    /// Pending AskUserQuestion requests: request_id -> turn_id
+    pending_user_inputs: StdMutex<HashMap<String, String>>,
+    /// Per-turn signal to resume stdout processing after AskUserQuestion response
+    user_input_notify_by_turn: StdMutex<HashMap<String, Arc<Notify>>>,
+    /// Per-turn formatted AskUserQuestion answer for kill+resume mechanism
+    user_input_answer_by_turn: StdMutex<HashMap<String, String>>,
 }
 
 impl ClaudeSession {
+    fn should_use_stream_json_input(params: &SendMessageParams) -> bool {
+        let has_images = params
+            .images
+            .as_ref()
+            .map_or(false, |imgs| imgs.iter().any(|s| !s.trim().is_empty()));
+        if has_images {
+            return true;
+        }
+        params.text.contains('\n') || params.text.contains('\r')
+    }
+
     /// Create a new Claude session for a workspace
     pub fn new(
         workspace_id: String,
@@ -99,11 +125,11 @@ impl ClaudeSession {
             tool_input_value_by_id: StdMutex::new(HashMap::new()),
             tool_id_by_block_index: StdMutex::new(HashMap::new()),
             pending_tools: StdMutex::new(Vec::new()),
-            last_emitted_text: StdMutex::new(String::new()),
+            last_emitted_text_by_turn: StdMutex::new(HashMap::new()),
             stdin_by_turn: Mutex::new(HashMap::new()),
             pending_user_inputs: StdMutex::new(HashMap::new()),
-            user_input_notify: Arc::new(Notify::new()),
-            user_input_answer: StdMutex::new(None),
+            user_input_notify_by_turn: StdMutex::new(HashMap::new()),
+            user_input_answer_by_turn: StdMutex::new(HashMap::new()),
         }
     }
 
@@ -143,7 +169,7 @@ impl ClaudeSession {
     }
 
     /// Build the Claude CLI command
-    fn build_command(&self, params: &SendMessageParams, has_images: bool) -> Command {
+    fn build_command(&self, params: &SendMessageParams, use_stream_json_input: bool) -> Command {
         // Resolve the Claude CLI binary path:
         // 1. Use custom bin_path if configured
         // 2. Otherwise use find_cli_binary() to search npm global, cargo, etc.
@@ -165,9 +191,9 @@ impl ClaudeSession {
         // Print mode (non-interactive)
         cmd.arg("-p");
 
-        if has_images {
-            // When images are present, use stream-json input format
-            // The actual content will be sent via stdin
+        if use_stream_json_input {
+            // Use stream-json input format for image payloads and multiline text.
+            // The actual content will be sent via stdin.
             cmd.arg(""); // Empty string as placeholder, real content via stdin
             cmd.arg("--input-format");
             cmd.arg("stream-json");
@@ -272,26 +298,36 @@ impl ClaudeSession {
         params: SendMessageParams,
         turn_id: &str,
     ) -> Result<String, String> {
-        // Reset cumulative text tracker for the new turn
-        if let Ok(mut last) = self.last_emitted_text.lock() {
-            last.clear();
+        // Reset cumulative text tracker for the new turn only.
+        if let Ok(mut map) = self.last_emitted_text_by_turn.lock() {
+            map.remove(turn_id);
         }
 
-        // Detect if there are images
-        let has_images = params
-            .images
-            .as_ref()
-            .map_or(false, |imgs| imgs.iter().any(|s| !s.trim().is_empty()));
+        let use_stream_json_input = Self::should_use_stream_json_input(&params);
 
-        let mut cmd = self.build_command(&params, has_images);
+        let mut cmd = self.build_command(&params, use_stream_json_input);
 
         // Spawn the process
-        let mut child = cmd
-            .spawn()
-            .map_err(|e| format!("Failed to spawn claude: {}", e))?;
+        let mut child = match cmd.spawn() {
+            Ok(child) => child,
+            Err(e) => {
+                let error_msg = format!("Failed to spawn claude: {}", e);
+                self.emit_turn_event(
+                    turn_id,
+                    EngineEvent::TurnError {
+                        workspace_id: self.workspace_id.clone(),
+                        error: error_msg.clone(),
+                        code: None,
+                    },
+                );
+                self.clear_turn_ephemeral_state(turn_id);
+                return Err(error_msg);
+            }
+        };
 
-        // If there are images, write the message content to stdin
-        if has_images {
+        // If stream-json input is enabled, write the message content to stdin.
+        // This path is required for image payloads and multiline text prompts.
+        if use_stream_json_input {
             if let Some(mut stdin) = child.stdin.take() {
                 let message = build_message_content(&params)?;
                 let message_str = serde_json::to_string(&message)
@@ -431,6 +467,9 @@ impl ClaudeSession {
                             if stream_runtime_error.is_none() {
                                 stream_runtime_error = Some(error.clone());
                             }
+                            if Self::is_prompt_too_long_error(error) {
+                                continue;
+                            }
                             stream_error_event_emitted = true;
                         }
 
@@ -512,6 +551,11 @@ impl ClaudeSession {
 
                 log::error!("Claude process failed: {}", error_msg);
 
+                if Self::is_prompt_too_long_error(&error_msg) {
+                    self.clear_turn_ephemeral_state(turn_id);
+                    return Err(Self::mark_retryable_prompt_too_long_error(&error_msg));
+                }
+
                 self.emit_turn_event(
                     turn_id,
                     EngineEvent::TurnError {
@@ -521,6 +565,7 @@ impl ClaudeSession {
                     },
                 );
 
+                self.clear_turn_ephemeral_state(turn_id);
                 return Err(error_msg);
             }
         } else {
@@ -538,6 +583,7 @@ impl ClaudeSession {
                         code: None,
                     },
                 );
+                self.clear_turn_ephemeral_state(turn_id);
                 return Err("Session stopped.".to_string());
             }
             // Not a user interrupt — treat as unexpected termination
@@ -552,6 +598,7 @@ impl ClaudeSession {
                         code: None,
                     },
                 );
+                self.clear_turn_ephemeral_state(turn_id);
                 return Err(error_msg);
             }
         }
@@ -566,6 +613,10 @@ impl ClaudeSession {
                 stream_error
             };
             log::error!("Claude stream reported runtime error: {}", error_msg);
+            if Self::is_prompt_too_long_error(&error_msg) {
+                self.clear_turn_ephemeral_state(turn_id);
+                return Err(Self::mark_retryable_prompt_too_long_error(&error_msg));
+            }
             if !stream_error_event_emitted {
                 self.emit_turn_event(
                     turn_id,
@@ -576,6 +627,7 @@ impl ClaudeSession {
                     },
                 );
             }
+            self.clear_turn_ephemeral_state(turn_id);
             return Err(error_msg);
         }
 
@@ -590,6 +642,7 @@ impl ClaudeSession {
             },
         );
 
+        self.clear_turn_ephemeral_state(turn_id);
         Ok(response_text)
     }
 
@@ -623,7 +676,19 @@ impl ClaudeSession {
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .clear();
-        self.last_emitted_text
+        self.last_emitted_text_by_turn
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clear();
+        self.user_input_notify_by_turn
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clear();
+        self.user_input_answer_by_turn
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clear();
+        self.pending_user_inputs
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .clear();
@@ -667,6 +732,13 @@ impl ClaudeSession {
                         });
                     }
                 }
+                if Self::has_compaction_system_signal(event) {
+                    return Some(EngineEvent::Raw {
+                        workspace_id: self.workspace_id.clone(),
+                        engine: EngineType::Claude,
+                        data: event.clone(),
+                    });
+                }
                 None
             }
 
@@ -681,7 +753,7 @@ impl ClaudeSession {
                             // assistant partial messages contain cumulative text.
                             // Compute the true delta to avoid sending the full text
                             // on every update, which causes excessive re-renders.
-                            let delta = self.compute_text_delta(&cumulative_text);
+                            let delta = self.compute_text_delta(turn_id, &cumulative_text);
                             if !delta.is_empty() {
                                 if let Some(reasoning) = reasoning_text.as_deref() {
                                     self.emit_turn_event(
@@ -729,7 +801,7 @@ impl ClaudeSession {
                                     if tool_name == "AskUserQuestion" {
                                         if let Some(ref input_val) = input {
                                             return self.convert_ask_user_question_to_request(
-                                                &tool_id, input_val,
+                                                &tool_id, input_val, turn_id,
                                             );
                                         }
                                     }
@@ -807,7 +879,7 @@ impl ClaudeSession {
                     return None;
                 }
                 if let Some(cumulative_text) = extract_result_text(event) {
-                    let delta = self.compute_text_delta(&cumulative_text);
+                    let delta = self.compute_text_delta(turn_id, &cumulative_text);
                     if !delta.is_empty() {
                         return Some(EngineEvent::TextDelta {
                             workspace_id: self.workspace_id.clone(),
@@ -918,7 +990,8 @@ impl ClaudeSession {
                 // Intercept AskUserQuestion tool to emit a RequestUserInput event
                 if tool_name == "AskUserQuestion" {
                     if let Some(ref input_val) = input {
-                        return self.convert_ask_user_question_to_request(&tool_id, input_val);
+                        return self
+                            .convert_ask_user_question_to_request(&tool_id, input_val, turn_id);
                     }
                 }
 
@@ -958,120 +1031,6 @@ impl ClaudeSession {
                 })
             }
         }
-    }
-
-    /// Try to extract context window usage from any event
-    /// Claude CLI may provide usage data in multiple locations:
-    /// 1. context_window.current_usage (statusline/hooks - most accurate)
-    /// 2. message.usage (assistant events)
-    /// 3. usage (top-level usage field)
-    fn try_extract_context_window_usage(&self, turn_id: &str, event: &Value) {
-        // Try to find usage data from multiple sources
-        let (usage, model_context_window) = self.find_usage_data(event);
-
-        if let Some(usage) = usage {
-            // Extract token counts
-            let input_tokens = usage
-                .get("input_tokens")
-                .or_else(|| usage.get("inputTokens"))
-                .and_then(|v| v.as_i64());
-
-            let output_tokens = usage
-                .get("output_tokens")
-                .or_else(|| usage.get("outputTokens"))
-                .and_then(|v| v.as_i64());
-
-            // Claude provides separate cache_creation and cache_read tokens
-            // Sum them for the total cached tokens (both occupy context window)
-            let cache_creation = usage
-                .get("cache_creation_input_tokens")
-                .or_else(|| usage.get("cacheCreationInputTokens"))
-                .or_else(|| usage.get("cache_creation_tokens"))
-                .and_then(|v| v.as_i64())
-                .unwrap_or(0);
-
-            let cache_read = usage
-                .get("cache_read_input_tokens")
-                .or_else(|| usage.get("cacheReadInputTokens"))
-                .or_else(|| usage.get("cache_read_tokens"))
-                .and_then(|v| v.as_i64())
-                .unwrap_or(0);
-
-            let cached_tokens = if cache_creation > 0 || cache_read > 0 {
-                Some(cache_creation + cache_read)
-            } else {
-                None
-            };
-
-            // Only emit if we have at least input_tokens
-            if input_tokens.is_some() {
-                log::debug!(
-                    "[claude] Emitting UsageUpdate: input={:?}, output={:?}, cached={:?}, window={:?}",
-                    input_tokens, output_tokens, cached_tokens, model_context_window
-                );
-                self.emit_turn_event(
-                    turn_id,
-                    EngineEvent::UsageUpdate {
-                        workspace_id: self.workspace_id.clone(),
-                        input_tokens,
-                        output_tokens,
-                        cached_tokens,
-                        model_context_window,
-                    },
-                );
-            }
-        }
-    }
-
-    /// Find usage data from various locations in the event
-    /// Returns (usage_data, model_context_window)
-    fn find_usage_data<'a>(&self, event: &'a Value) -> (Option<&'a Value>, Option<i64>) {
-        // 1. First priority: context_window.current_usage (most accurate snapshot)
-        if let Some(context_window) = event.get("context_window") {
-            log::debug!(
-                "[claude] Found context_window field: {}",
-                serde_json::to_string_pretty(context_window)
-                    .unwrap_or_else(|_| context_window.to_string())
-            );
-
-            let model_context_window = context_window
-                .get("context_window_size")
-                .or_else(|| context_window.get("contextWindowSize"))
-                .and_then(|v| v.as_i64());
-
-            if let Some(current_usage) = context_window
-                .get("current_usage")
-                .or_else(|| context_window.get("currentUsage"))
-            {
-                return (Some(current_usage), model_context_window);
-            }
-        }
-
-        // 2. Second priority: message.usage (assistant events)
-        if let Some(message) = event.get("message") {
-            if let Some(usage) = message.get("usage") {
-                log::debug!(
-                    "[claude] Found message.usage field: {}",
-                    serde_json::to_string_pretty(usage).unwrap_or_else(|_| usage.to_string())
-                );
-                return (Some(usage), None);
-            }
-        }
-
-        // 3. Third priority: top-level usage field
-        if let Some(usage) = event.get("usage") {
-            log::debug!(
-                "[claude] Found top-level usage field: {}",
-                serde_json::to_string_pretty(usage).unwrap_or_else(|_| usage.to_string())
-            );
-            return (Some(usage), None);
-        }
-
-        log::debug!(
-            "[claude] No usage data found in event type: {:?}",
-            event.get("type").and_then(|v| v.as_str())
-        );
-        (None, None)
     }
 
     /// Convert stream_event type
@@ -1405,8 +1364,9 @@ impl ClaudeSession {
     /// If the cumulative text starts with the previously emitted text,
     /// return only the new portion. Otherwise return the full text
     /// (this handles edge cases like context compaction).
-    fn compute_text_delta(&self, cumulative: &str) -> String {
-        if let Ok(mut last) = self.last_emitted_text.lock() {
+    fn compute_text_delta(&self, turn_id: &str, cumulative: &str) -> String {
+        if let Ok(mut map) = self.last_emitted_text_by_turn.lock() {
+            let last = map.entry(turn_id.to_string()).or_default();
             if cumulative.starts_with(last.as_str()) {
                 let delta = cumulative[last.len()..].to_string();
                 *last = cumulative.to_string();
@@ -1416,6 +1376,37 @@ impl ClaudeSession {
             *last = cumulative.to_string();
         }
         cumulative.to_string()
+    }
+
+    fn get_or_create_user_input_notify(&self, turn_id: &str) -> Arc<Notify> {
+        if let Ok(mut map) = self.user_input_notify_by_turn.lock() {
+            if let Some(existing) = map.get(turn_id) {
+                return existing.clone();
+            }
+            let notify = Arc::new(Notify::new());
+            map.insert(turn_id.to_string(), notify.clone());
+            return notify;
+        }
+        Arc::new(Notify::new())
+    }
+
+    fn clear_pending_user_inputs_for_turn(&self, turn_id: &str) {
+        if let Ok(mut pending) = self.pending_user_inputs.lock() {
+            pending.retain(|_, value| value != turn_id);
+        }
+        if let Ok(mut notifies) = self.user_input_notify_by_turn.lock() {
+            notifies.remove(turn_id);
+        }
+        if let Ok(mut answers) = self.user_input_answer_by_turn.lock() {
+            answers.remove(turn_id);
+        }
+    }
+
+    fn clear_turn_ephemeral_state(&self, turn_id: &str) {
+        if let Ok(mut map) = self.last_emitted_text_by_turn.lock() {
+            map.remove(turn_id);
+        }
+        self.clear_pending_user_inputs_for_turn(turn_id);
     }
 
     fn append_tool_input(&self, tool_id: &str, partial: &str) -> Option<Value> {
@@ -1471,12 +1462,18 @@ impl ClaudeSession {
         &self,
         tool_id: &str,
         input: &Value,
+        turn_id: &str,
     ) -> Option<EngineEvent> {
         let raw_questions = input.get("questions").and_then(|q| q.as_array())?;
         let mut questions = Vec::new();
         for (idx, raw_q) in raw_questions.iter().enumerate() {
             let question_text = raw_q.get("question").and_then(|v| v.as_str()).unwrap_or("");
             let header = raw_q.get("header").and_then(|v| v.as_str()).unwrap_or("");
+            let multi_select = raw_q
+                .get("multiSelect")
+                .or_else(|| raw_q.get("multi_select"))
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
             // AskUserQuestion always allows a free-text "Other" option
             let is_other = true;
             let raw_options = raw_q
@@ -1505,6 +1502,7 @@ impl ClaudeSession {
                 "question": question_text,
                 "isOther": is_other,
                 "isSecret": false,
+                "multiSelect": multi_select,
                 "options": if options.is_empty() { Value::Null } else { Value::Array(options) },
             }));
         }
@@ -1513,20 +1511,60 @@ impl ClaudeSession {
             return None;
         }
 
-        // Use a numeric request_id derived from the tool_id via DefaultHasher
-        // for better distribution and lower collision probability.
+        // Use a string request_id derived from the tool_id via DefaultHasher.
+        // A numeric i64 can lose precision when transported through JS.
         use std::hash::{Hash, Hasher};
-        let request_id: i64 = {
+        let request_id = {
             let mut hasher = std::collections::hash_map::DefaultHasher::new();
             tool_id.hash(&mut hasher);
-            (hasher.finish() as i64).abs()
+            format!("ask-{:016x}", hasher.finish())
         };
+
+        if let Ok(mut pending) = self.pending_user_inputs.lock() {
+            pending.insert(request_id.clone(), turn_id.to_string());
+        }
 
         Some(EngineEvent::RequestUserInput {
             workspace_id: self.workspace_id.clone(),
-            request_id: json!(request_id),
+            request_id: Value::String(request_id),
             questions: Value::Array(questions),
         })
+    }
+
+    fn normalize_request_id_key(request_id: &Value) -> Option<String> {
+        if let Some(text) = request_id.as_str() {
+            let normalized = text.trim();
+            if !normalized.is_empty() {
+                return Some(normalized.to_string());
+            }
+        }
+        if let Some(value) = request_id.as_i64() {
+            return Some(value.to_string());
+        }
+        if let Some(value) = request_id.as_u64() {
+            return Some(value.to_string());
+        }
+        None
+    }
+
+    pub fn has_pending_user_input(&self, request_id: &Value) -> bool {
+        let request_id_key = match Self::normalize_request_id_key(request_id) {
+            Some(value) => value,
+            None => return false,
+        };
+        self.pending_user_inputs
+            .lock()
+            .ok()
+            .map(|pending| pending.contains_key(&request_id_key))
+            .unwrap_or(false)
+    }
+
+    pub fn has_any_pending_user_input(&self) -> bool {
+        self.pending_user_inputs
+            .lock()
+            .ok()
+            .map(|pending| !pending.is_empty())
+            .unwrap_or(false)
     }
 
     /// Handle the AskUserQuestion flow: wait for user response, then kill the
@@ -1541,25 +1579,27 @@ impl ClaudeSession {
         params: &SendMessageParams,
         new_session_id: &Option<String>,
     ) -> Option<tokio::io::Lines<BufReader<tokio::process::ChildStdout>>> {
+        let notify = self.get_or_create_user_input_notify(turn_id);
         log::info!("AskUserQuestion detected, waiting for user (up to 5 min)…");
         let user_answered = tokio::select! {
-            _ = self.user_input_notify.notified() => true,
+            _ = notify.notified() => true,
             _ = tokio::time::sleep(
                 std::time::Duration::from_secs(300)
             ) => false,
         };
 
-        // Grab the formatted answer (if any)
-        let answer_text = self
-            .user_input_answer
-            .lock()
-            .ok()
-            .and_then(|mut slot| slot.take());
-
         if !user_answered {
             log::info!("AskUserQuestion timed out (5 min), resuming original");
+            self.clear_pending_user_inputs_for_turn(turn_id);
             return None;
         }
+
+        // Grab the formatted answer for this turn only.
+        let answer_text = self
+            .user_input_answer_by_turn
+            .lock()
+            .ok()
+            .and_then(|mut map| map.remove(turn_id));
 
         let answer = match answer_text {
             Some(a) => a,
@@ -1598,12 +1638,41 @@ impl ClaudeSession {
         resume_params.continue_session = true;
         resume_params.session_id = Some(sid);
         resume_params.images = None;
+        let use_stream_json_input = Self::should_use_stream_json_input(&resume_params);
 
-        let mut cmd = self.build_command(&resume_params, false);
+        let mut cmd = self.build_command(&resume_params, use_stream_json_input);
         match cmd.spawn() {
             Ok(mut new_child) => {
-                // Drop stdin immediately for the resume
-                drop(new_child.stdin.take());
+                if use_stream_json_input {
+                    if let Some(mut stdin) = new_child.stdin.take() {
+                        let message = match build_message_content(&resume_params) {
+                            Ok(value) => value,
+                            Err(error) => {
+                                log::error!("Failed to build resume message content: {}", error);
+                                return None;
+                            }
+                        };
+                        let message_str = match serde_json::to_string(&message) {
+                            Ok(value) => value,
+                            Err(error) => {
+                                log::error!("Failed to serialize resume message: {}", error);
+                                return None;
+                            }
+                        };
+                        if let Err(error) = stdin.write_all(message_str.as_bytes()).await {
+                            log::error!("Failed to write resume message to stdin: {}", error);
+                            return None;
+                        }
+                        if let Err(error) = stdin.write_all(b"\n").await {
+                            log::error!("Failed to write resume newline to stdin: {}", error);
+                            return None;
+                        }
+                        drop(stdin);
+                    }
+                } else {
+                    // Drop stdin immediately for non-stream-json resume requests.
+                    drop(new_child.stdin.take());
+                }
 
                 let new_lines = new_child
                     .stdout
@@ -1648,27 +1717,38 @@ impl ClaudeSession {
         request_id: Value,
         result: Value,
     ) -> Result<(), String> {
-        let request_id_num = request_id.as_i64().unwrap_or(0);
-
-        // Remove from pending tracking
-        if let Ok(mut pending) = self.pending_user_inputs.lock() {
-            pending.remove(&request_id_num);
+        let normalized_request_id = Self::normalize_request_id_key(&request_id);
+        if normalized_request_id.is_none() {
+            return Err("invalid request_id for AskUserQuestion".to_string());
         }
 
-        // Format the answer and store it for the stdout loop to pick up
+        // Strict request_id matching prevents cross-turn answer routing
+        // when multiple AskUserQuestion prompts are pending.
+        let request_id_key = normalized_request_id.unwrap_or_default();
+        let turn_id = {
+            let mut pending = self
+                .pending_user_inputs
+                .lock()
+                .map_err(|_| "pending_user_inputs lock poisoned".to_string())?;
+            pending.remove(&request_id_key).ok_or_else(|| {
+                format!("unknown request_id for AskUserQuestion: {}", request_id_key)
+            })?
+        };
+
+        // Format the answer and store it for the target turn only.
         let answer_text = format_ask_user_answer(&result);
         log::info!(
-            "Claude engine: AskUserQuestion response (request_id={}): {}",
-            request_id_num,
+            "Claude engine: AskUserQuestion response (request_id={}, turn_id={}): {}",
+            request_id_key,
+            turn_id,
             answer_text
         );
-        if let Ok(mut slot) = self.user_input_answer.lock() {
-            *slot = Some(answer_text);
+        if let Ok(mut map) = self.user_input_answer_by_turn.lock() {
+            map.insert(turn_id.clone(), answer_text);
         }
 
-        // Signal the stdout reading loop to resume — it will kill the
-        // current process and restart with --resume + the answer.
-        self.user_input_notify.notify_one();
+        // Signal only the matching turn's stdout loop to resume.
+        self.get_or_create_user_input_notify(&turn_id).notify_one();
 
         Ok(())
     }
@@ -1726,286 +1806,6 @@ impl ClaudeSession {
             delta: trimmed.to_string(),
         })
     }
-}
-
-fn concat_text_blocks(blocks: &[Value]) -> Option<String> {
-    let mut combined = String::new();
-    for block in blocks {
-        let kind = block.get("type").and_then(|t| t.as_str());
-        if kind == Some("text") {
-            if let Some(text) = block.get("text").and_then(|t| t.as_str()) {
-                combined = merge_text_chunks(&combined, text);
-            }
-        }
-    }
-
-    if combined.trim().is_empty() {
-        return None;
-    }
-
-    Some(combined)
-}
-
-fn extract_reasoning_fragment(block: &Value) -> Option<&str> {
-    block
-        .get("thinking")
-        .and_then(|t| t.as_str())
-        .or_else(|| block.get("reasoning").and_then(|t| t.as_str()))
-        .or_else(|| block.get("text").and_then(|t| t.as_str()))
-}
-
-fn concat_reasoning_blocks(blocks: &[Value]) -> Option<String> {
-    let mut combined = String::new();
-    for block in blocks {
-        let kind = block.get("type").and_then(|t| t.as_str());
-        if kind == Some("thinking") || kind == Some("reasoning") {
-            if let Some(text) = extract_reasoning_fragment(block) {
-                combined = merge_text_chunks(&combined, text);
-            }
-        }
-    }
-
-    if combined.trim().is_empty() {
-        return None;
-    }
-
-    Some(combined)
-}
-
-fn merge_text_chunks(existing: &str, incoming: &str) -> String {
-    if incoming.is_empty() {
-        return existing.to_string();
-    }
-    if existing.is_empty() {
-        return incoming.to_string();
-    }
-    if incoming == existing || existing.contains(incoming) {
-        return existing.to_string();
-    }
-    if incoming.starts_with(existing) || incoming.contains(existing) {
-        return incoming.to_string();
-    }
-    if existing.starts_with(incoming) {
-        return existing.to_string();
-    }
-
-    let mut boundaries: Vec<usize> = incoming.char_indices().map(|(idx, _)| idx).collect();
-    boundaries.push(incoming.len());
-    for boundary in boundaries.into_iter().rev() {
-        if boundary == 0 {
-            continue;
-        }
-        let prefix = &incoming[..boundary];
-        if existing.ends_with(prefix) {
-            return format!("{}{}", existing, &incoming[boundary..]);
-        }
-    }
-
-    format!("{}{}", existing, incoming)
-}
-
-fn parse_claude_stream_json_line(line: &str) -> Result<Value, serde_json::Error> {
-    let trimmed = line.trim();
-    if let Some(payload) = trimmed.strip_prefix("data:") {
-        return serde_json::from_str(payload.trim());
-    }
-    serde_json::from_str(trimmed)
-}
-
-fn is_claude_stream_control_line(line: &str) -> bool {
-    let trimmed = line.trim();
-    trimmed == "[DONE]"
-        || trimmed.eq_ignore_ascii_case("data: [DONE]")
-        || trimmed.starts_with("event:")
-}
-
-fn extract_delta_text_from_event(event: &Value) -> Option<String> {
-    let part = event.get("part");
-    for value in [
-        event.get("delta").and_then(|value| value.as_str()),
-        event.get("text").and_then(|value| value.as_str()),
-        part.and_then(|value| value.get("delta"))
-            .and_then(|value| value.as_str()),
-        part.and_then(|value| value.get("text"))
-            .and_then(|value| value.as_str()),
-        part.and_then(|value| value.get("content"))
-            .and_then(|value| value.as_str()),
-    ] {
-        if let Some(text) = value {
-            if !text.is_empty() {
-                return Some(text.to_string());
-            }
-        }
-    }
-    None
-}
-
-fn extract_tool_result_text(value: &Value) -> Option<String> {
-    if let Some(text) = value.as_str() {
-        let trimmed = text.trim();
-        if !trimmed.is_empty() {
-            return Some(trimmed.to_string());
-        }
-        return None;
-    }
-    if let Some(obj) = value.as_object() {
-        for key in [
-            "output",
-            "stdout",
-            "stderr",
-            "text",
-            "preview",
-            "message",
-            "response",
-            "result",
-            "content",
-            "tool_output",
-            "file",
-            "loaded",
-            "todos",
-        ] {
-            if let Some(nested) = obj.get(key).and_then(extract_tool_result_text) {
-                return Some(nested);
-            }
-        }
-        if obj
-            .get("type")
-            .and_then(|t| t.as_str())
-            .map(|t| t == "text")
-            .unwrap_or(false)
-        {
-            if let Some(text) = obj.get("text").and_then(|t| t.as_str()) {
-                let trimmed = text.trim();
-                if !trimmed.is_empty() {
-                    return Some(trimmed.to_string());
-                }
-            }
-        }
-        if !obj.is_empty() {
-            let rendered = serde_json::to_string_pretty(obj).ok()?;
-            if !rendered.trim().is_empty() {
-                return Some(rendered);
-            }
-        }
-    }
-    if let Some(arr) = value.as_array() {
-        let parts: Vec<String> = arr
-            .iter()
-            .filter_map(extract_tool_result_text)
-            .filter(|text| !text.trim().is_empty())
-            .collect();
-        if !parts.is_empty() {
-            return Some(parts.join("\n"));
-        }
-    }
-    None
-}
-
-fn extract_tool_result_output(block: &Value, event: &Value) -> Option<String> {
-    block
-        .get("content")
-        .or_else(|| block.get("tool_output"))
-        .or_else(|| block.get("output"))
-        .or_else(|| block.get("result"))
-        .and_then(extract_tool_result_text)
-        .or_else(|| {
-            event
-                .get("toolUseResult")
-                .and_then(extract_tool_result_text)
-        })
-        .or_else(|| {
-            event
-                .get("tool_use_result")
-                .and_then(extract_tool_result_text)
-        })
-}
-
-fn tool_input_signature(value: &Value) -> Option<String> {
-    serde_json::to_string(value).ok()
-}
-
-fn extract_claude_tool_name(value: &Value) -> Option<String> {
-    value
-        .get("name")
-        .or_else(|| value.get("tool_name"))
-        .and_then(|field| field.as_str())
-        .map(str::trim)
-        .filter(|field| !field.is_empty())
-        .map(ToString::to_string)
-}
-
-fn extract_claude_tool_input(value: &Value) -> Option<Value> {
-    value
-        .get("input")
-        .cloned()
-        .or_else(|| value.get("tool_input").cloned())
-}
-
-fn extract_string_field(value: &Value, keys: &[&str]) -> Option<String> {
-    for key in keys {
-        if let Some(raw) = value.get(*key).and_then(|v| v.as_str()) {
-            let trimmed = raw.trim();
-            if !trimmed.is_empty() {
-                return Some(trimmed.to_string());
-            }
-        }
-    }
-    None
-}
-
-fn extract_text_from_content(value: &Value) -> Option<String> {
-    if let Some(text) = value.as_str() {
-        let trimmed = text.trim();
-        if !trimmed.is_empty() {
-            return Some(trimmed.to_string());
-        }
-        return None;
-    }
-    if let Some(obj) = value.as_object() {
-        if obj
-            .get("type")
-            .and_then(|t| t.as_str())
-            .map(|t| t == "text")
-            .unwrap_or(false)
-        {
-            if let Some(text) = obj.get("text").and_then(|t| t.as_str()) {
-                let trimmed = text.trim();
-                if !trimmed.is_empty() {
-                    return Some(trimmed.to_string());
-                }
-            }
-        }
-    }
-    if let Some(arr) = value.as_array() {
-        return concat_text_blocks(arr);
-    }
-    None
-}
-
-fn extract_result_text(event: &Value) -> Option<String> {
-    let content = event
-        .get("message")
-        .and_then(|m| m.get("content"))
-        .or_else(|| event.get("content"))
-        .or_else(|| {
-            event
-                .get("result")
-                .and_then(|r| r.get("message"))
-                .and_then(|m| m.get("content"))
-        })
-        .or_else(|| event.get("result").and_then(|r| r.get("content")));
-    content.and_then(extract_text_from_content)
-}
-
-fn looks_like_claude_runtime_error(line: &str) -> bool {
-    let text = line.trim();
-    if text.is_empty() {
-        return false;
-    }
-    let lower = text.to_ascii_lowercase();
-    lower.starts_with("api error:")
-        || lower.contains("unexpected end of json input")
-        || lower.starts_with("error:")
 }
 
 /// Claude session manager for all workspaces
@@ -2094,6 +1894,137 @@ mod tests {
         assert_eq!(session.workspace_id, "test-workspace");
     }
 
+    #[tokio::test]
+    async fn ask_user_question_registers_and_clears_pending_request() {
+        let session = ClaudeSession::new(
+            "test-workspace".to_string(),
+            PathBuf::from("/tmp/test"),
+            None,
+        );
+        let input = json!({
+            "questions": [
+                {
+                    "header": "确认",
+                    "question": "继续吗？",
+                    "options": [{ "label": "继续", "description": "继续执行" }]
+                }
+            ]
+        });
+
+        let event = session
+            .convert_ask_user_question_to_request("tool-ask-1", &input, "turn-1")
+            .expect("request user input event");
+
+        let request_id = match event {
+            EngineEvent::RequestUserInput { request_id, .. } => request_id,
+            other => panic!("unexpected event: {:?}", other),
+        };
+
+        assert!(session.has_pending_user_input(&request_id));
+
+        let result = json!({
+            "answers": {
+                "q-0": {
+                    "answers": ["继续"]
+                }
+            }
+        });
+        session
+            .respond_to_user_input(request_id.clone(), result)
+            .await
+            .expect("respond success");
+
+        assert!(!session.has_pending_user_input(&request_id));
+    }
+
+    #[test]
+    fn ask_user_question_preserves_multi_select_flag() {
+        let session = ClaudeSession::new(
+            "test-workspace".to_string(),
+            PathBuf::from("/tmp/test"),
+            None,
+        );
+        let input = json!({
+            "questions": [
+                {
+                    "header": "关注点",
+                    "question": "可多选",
+                    "multiSelect": true,
+                    "options": [{ "label": "性能", "description": "" }]
+                }
+            ]
+        });
+
+        let event = session
+            .convert_ask_user_question_to_request("tool-ask-multi", &input, "turn-1")
+            .expect("request user input event");
+
+        let questions = match event {
+            EngineEvent::RequestUserInput { questions, .. } => questions,
+            other => panic!("unexpected event: {:?}", other),
+        };
+        let question = questions
+            .as_array()
+            .and_then(|arr| arr.first())
+            .expect("first question");
+        assert_eq!(question["multiSelect"], json!(true));
+    }
+
+    #[test]
+    fn has_pending_user_input_accepts_numeric_id_for_backward_compat() {
+        let session = ClaudeSession::new(
+            "test-workspace".to_string(),
+            PathBuf::from("/tmp/test"),
+            None,
+        );
+        if let Ok(mut pending) = session.pending_user_inputs.lock() {
+            pending.insert("42".to_string(), "turn-42".to_string());
+        }
+        assert!(session.has_pending_user_input(&json!(42)));
+        assert!(session.has_pending_user_input(&json!("42")));
+    }
+
+    #[test]
+    fn has_any_pending_user_input_reports_presence() {
+        let session = ClaudeSession::new(
+            "test-workspace".to_string(),
+            PathBuf::from("/tmp/test"),
+            None,
+        );
+        assert!(!session.has_any_pending_user_input());
+        if let Ok(mut pending) = session.pending_user_inputs.lock() {
+            pending.insert("ask-1".to_string(), "turn-1".to_string());
+        }
+        assert!(session.has_any_pending_user_input());
+    }
+
+    #[tokio::test]
+    async fn respond_to_user_input_rejects_mismatched_request_id() {
+        let session = ClaudeSession::new(
+            "test-workspace".to_string(),
+            PathBuf::from("/tmp/test"),
+            None,
+        );
+        if let Ok(mut pending) = session.pending_user_inputs.lock() {
+            pending.insert("ask-fallback".to_string(), "turn-1".to_string());
+        }
+
+        let result = json!({
+            "answers": {
+                "q-0": {
+                    "answers": ["继续"]
+                }
+            }
+        });
+        let err = session
+            .respond_to_user_input(json!(999), result)
+            .await
+            .expect_err("mismatched request_id should fail");
+
+        assert!(err.contains("unknown request_id"));
+        assert!(session.has_any_pending_user_input());
+    }
+
     #[test]
     fn build_command_adds_external_spec_root_when_configured() {
         let session = ClaudeSession::new(
@@ -2119,6 +2050,74 @@ mod tests {
         assert!(args.windows(2).any(|window| {
             window[0] == "--add-dir" && window[1] == params.custom_spec_root.clone().unwrap()
         }));
+    }
+
+    #[test]
+    fn should_use_stream_json_input_for_multiline_text_without_images() {
+        let mut params = SendMessageParams::default();
+        params.text = "line1\nline2".to_string();
+        assert!(ClaudeSession::should_use_stream_json_input(&params));
+    }
+
+    #[test]
+    fn should_not_use_stream_json_input_for_single_line_text_without_images() {
+        let mut params = SendMessageParams::default();
+        params.text = "single line".to_string();
+        assert!(!ClaudeSession::should_use_stream_json_input(&params));
+    }
+
+    #[test]
+    fn build_command_uses_stream_json_for_multiline_text() {
+        let session = ClaudeSession::new(
+            "test-workspace".to_string(),
+            PathBuf::from("/tmp/test"),
+            None,
+        );
+        let mut params = SendMessageParams::default();
+        params.text = "line1\nline2".to_string();
+
+        let use_stream_json_input = ClaudeSession::should_use_stream_json_input(&params);
+        let command = session.build_command(&params, use_stream_json_input);
+        let args: Vec<String> = command
+            .as_std()
+            .get_args()
+            .map(|arg| arg.to_string_lossy().to_string())
+            .collect();
+
+        assert!(args
+            .windows(2)
+            .any(|window| { window[0] == "--input-format" && window[1] == "stream-json" }));
+        assert!(args.iter().all(|arg| arg != "line1\nline2"));
+    }
+
+    #[test]
+    fn build_resume_command_uses_stream_json_for_multiline_answer() {
+        let session = ClaudeSession::new(
+            "test-workspace".to_string(),
+            PathBuf::from("/tmp/test"),
+            None,
+        );
+        let mut params = SendMessageParams::default();
+        params.text = "line1\r\nline2".to_string();
+        params.continue_session = true;
+        params.session_id = Some("33333333-3333-4333-8333-333333333333".to_string());
+        params.images = None;
+
+        let use_stream_json_input = ClaudeSession::should_use_stream_json_input(&params);
+        let command = session.build_command(&params, use_stream_json_input);
+        let args: Vec<String> = command
+            .as_std()
+            .get_args()
+            .map(|arg| arg.to_string_lossy().to_string())
+            .collect();
+
+        assert!(args
+            .windows(2)
+            .any(|window| { window[0] == "--resume" && window[1] == "33333333-3333-4333-8333-333333333333" }));
+        assert!(args
+            .windows(2)
+            .any(|window| { window[0] == "--input-format" && window[1] == "stream-json" }));
+        assert!(args.iter().all(|arg| arg != "line1\r\nline2"));
     }
 
     #[test]
@@ -2206,6 +2205,33 @@ mod tests {
             other => panic!("unexpected event: {:?}", other),
         }
         assert!(matches!(receiver.try_recv(), Err(TryRecvError::Empty)));
+    }
+
+    #[test]
+    fn prompt_too_long_detection_matches_common_variants() {
+        assert!(ClaudeSession::is_prompt_too_long_error(
+            "Prompt is too long"
+        ));
+        assert!(ClaudeSession::is_prompt_too_long_error(
+            "Maximum context length exceeded for this model"
+        ));
+        assert!(!ClaudeSession::is_prompt_too_long_error(
+            "API Error: All providers unavailable"
+        ));
+    }
+
+    #[test]
+    fn prompt_too_long_marker_roundtrip() {
+        let marked = ClaudeSession::mark_retryable_prompt_too_long_error("Prompt is too long");
+        assert!(marked.starts_with(RETRYABLE_PROMPT_TOO_LONG_PREFIX));
+        assert_eq!(
+            ClaudeSession::extract_retryable_prompt_too_long_error(&marked),
+            Some("Prompt is too long".to_string())
+        );
+        assert_eq!(
+            ClaudeSession::clear_retryable_prompt_too_long_marker(marked),
+            "Prompt is too long".to_string()
+        );
     }
 
     #[test]
@@ -2301,6 +2327,51 @@ mod tests {
         match converted {
             Some(EngineEvent::TextDelta { text, .. }) => assert_eq!(text, "stream chunk"),
             other => panic!("expected text delta, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn convert_event_maps_system_compacting_to_raw() {
+        let session = ClaudeSession::new(
+            "test-workspace".to_string(),
+            PathBuf::from("/tmp/test"),
+            None,
+        );
+        let event = json!({
+            "type": "system",
+            "subtype": "compacting",
+            "usage_percent": 95,
+        });
+
+        let converted = session.convert_event("turn-a", &event);
+        match converted {
+            Some(EngineEvent::Raw { engine, data, .. }) => {
+                assert!(matches!(engine, EngineType::Claude));
+                assert_eq!(data["subtype"], Value::String("compacting".to_string()));
+            }
+            other => panic!("expected raw compaction signal, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn convert_event_maps_system_compact_boundary_to_raw() {
+        let session = ClaudeSession::new(
+            "test-workspace".to_string(),
+            PathBuf::from("/tmp/test"),
+            None,
+        );
+        let event = json!({
+            "type": "system",
+            "event": "compact_boundary",
+        });
+
+        let converted = session.convert_event("turn-a", &event);
+        match converted {
+            Some(EngineEvent::Raw { engine, data, .. }) => {
+                assert!(matches!(engine, EngineType::Claude));
+                assert_eq!(data["event"], Value::String("compact_boundary".to_string()));
+            }
+            other => panic!("expected raw compact boundary signal, got {:?}", other),
         }
     }
 

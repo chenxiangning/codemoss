@@ -47,7 +47,15 @@ describe("useThreadUserInput", () => {
       });
     });
 
-    expect(dispatch).toHaveBeenCalledWith(
+    expect(dispatch).toHaveBeenNthCalledWith(1, {
+      type: "markProcessing",
+      threadId: "thread-1",
+      isProcessing: true,
+      timestamp: expect.any(Number),
+    });
+
+    expect(dispatch).toHaveBeenNthCalledWith(
+      2,
       expect.objectContaining({
         type: "upsertItem",
         workspaceId: "ws-1",
@@ -56,13 +64,13 @@ describe("useThreadUserInput", () => {
           id: "user-input-answer-req-1",
           kind: "tool",
           toolType: "requestUserInputSubmitted",
-          title: "请求输入",
+          title: "18-25岁 (Recommended)",
           status: "completed",
         }),
         hasCustomName: true,
       }),
     );
-    const upsertAction = dispatch.mock.calls[0]?.[0];
+    const upsertAction = dispatch.mock.calls[1]?.[0];
     expect(typeof upsertAction.item.detail).toBe("string");
     const payload = JSON.parse(upsertAction.item.detail);
     expect(payload.schema).toBe("requestUserInputSubmitted/v1");
@@ -80,7 +88,7 @@ describe("useThreadUserInput", () => {
       },
     ]);
     expect(upsertAction.item.output).toContain("[用户输入已提交]");
-    expect(dispatch).toHaveBeenNthCalledWith(2, {
+    expect(dispatch).toHaveBeenNthCalledWith(3, {
       type: "removeUserInputRequest",
       requestId: "req-1",
       workspaceId: "ws-1",
@@ -97,6 +105,17 @@ describe("useThreadUserInput", () => {
       result.current.handleUserInputSubmit(request, { answers: {} }),
     ).rejects.toThrow("failed");
 
-    expect(dispatch).not.toHaveBeenCalled();
+    expect(dispatch).toHaveBeenNthCalledWith(1, {
+      type: "markProcessing",
+      threadId: "thread-1",
+      isProcessing: true,
+      timestamp: expect.any(Number),
+    });
+    expect(dispatch).toHaveBeenNthCalledWith(2, {
+      type: "markProcessing",
+      threadId: "thread-1",
+      isProcessing: false,
+      timestamp: expect.any(Number),
+    });
   });
 });

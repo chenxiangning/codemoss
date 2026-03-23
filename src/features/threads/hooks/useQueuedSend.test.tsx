@@ -30,6 +30,7 @@ const makeOptions = (
   startMcp: vi.fn().mockResolvedValue(undefined),
   startSpecRoot: vi.fn().mockResolvedValue(undefined),
   startStatus: vi.fn().mockResolvedValue(undefined),
+  startContext: vi.fn().mockResolvedValue(undefined),
   startExport: vi.fn().mockResolvedValue(undefined),
   startImport: vi.fn().mockResolvedValue(undefined),
   startLsp: vi.fn().mockResolvedValue(undefined),
@@ -347,6 +348,21 @@ describe("useQueuedSend", () => {
 
     expect(setCodexCollaborationMode).toHaveBeenNthCalledWith(1, "code");
     expect(setCodexCollaborationMode).toHaveBeenNthCalledWith(2, "code");
+    expect(options.sendUserMessage).not.toHaveBeenCalled();
+  });
+
+  it("routes /context to the local context handler", async () => {
+    const startContext = vi.fn().mockResolvedValue(undefined);
+    const options = makeOptions({ startContext });
+    const { result } = renderHook((props) => useQueuedSend(props), {
+      initialProps: options,
+    });
+
+    await act(async () => {
+      await result.current.handleSend("/context", ["img-1"]);
+    });
+
+    expect(startContext).toHaveBeenCalledWith("/context");
     expect(options.sendUserMessage).not.toHaveBeenCalled();
   });
 

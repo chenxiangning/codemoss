@@ -82,6 +82,9 @@ function normalizeUserInputQuestion(
     question,
     isOther: asBoolean(input.isOther ?? input.is_other),
     isSecret: asBoolean(input.isSecret ?? input.is_secret),
+    ...(asBoolean(input.multiSelect ?? input.multi_select)
+      ? { multiSelect: true }
+      : {}),
     options: options.length > 0 ? options : undefined,
   };
 }

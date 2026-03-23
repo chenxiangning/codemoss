@@ -282,6 +282,7 @@ export type RequestUserInputQuestion = {
   question: string;
   isOther?: boolean;
   isSecret?: boolean;
+  multiSelect?: boolean;
   options?: RequestUserInputOption[];
 };
 

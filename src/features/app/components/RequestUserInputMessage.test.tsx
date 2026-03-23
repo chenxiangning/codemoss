@@ -246,7 +246,7 @@ describe("RequestUserInputMessage", () => {
     expect(option.classList.contains("is-selected")).toBe(false);
   });
 
-  it("clears option highlight when custom input is entered", async () => {
+  it("keeps selected option when notes are entered", async () => {
     const onSubmit = vi.fn().mockResolvedValue(undefined);
     const request: RequestUserInputRequest = {
       ...baseRequest,
@@ -281,16 +281,65 @@ describe("RequestUserInputMessage", () => {
 
     const textarea = screen.getByPlaceholderText("approval.addNotesOptional");
     fireEvent.change(textarea, { target: { value: "再说吧" } });
-    expect(option.classList.contains("is-selected")).toBe(false);
-    fireEvent.click(option);
-    expect(option.classList.contains("is-selected")).toBe(false);
+    expect(option.classList.contains("is-selected")).toBe(true);
 
     fireEvent.click(screen.getByRole("button", { name: "approval.submit" }));
     await waitFor(() => {
       expect(onSubmit).toHaveBeenCalledWith(request, {
         answers: {
           "q-opt": {
-            answers: ["user_note: 再说吧"],
+            answers: ["18-25", "user_note: 再说吧"],
+          },
+        },
+      });
+    });
+  });
+
+  it("supports selecting multiple options when question is multiSelect", async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    const request: RequestUserInputRequest = {
+      ...baseRequest,
+      params: {
+        ...baseRequest.params,
+        questions: [
+          {
+            id: "q-opt",
+            header: "Focus",
+            question: "Choose multiple",
+            multiSelect: true,
+            options: [
+              { label: "性能优化", description: "" },
+              { label: "代码质量", description: "" },
+              { label: "安全性", description: "" },
+            ],
+          },
+        ],
+      },
+    };
+
+    render(
+      <RequestUserInputMessage
+        requests={[request]}
+        activeThreadId="thread-1"
+        activeWorkspaceId="ws-1"
+        onSubmit={onSubmit}
+      />,
+    );
+
+    const optionA = screen.getByRole("button", { name: "性能优化" });
+    const optionB = screen.getByRole("button", { name: "代码质量" });
+    fireEvent.click(optionA);
+    fireEvent.click(optionB);
+
+    expect(optionA.classList.contains("is-selected")).toBe(true);
+    expect(optionB.classList.contains("is-selected")).toBe(true);
+
+    fireEvent.click(screen.getByRole("button", { name: "approval.submit" }));
+    await waitFor(() => {
+      expect(onSubmit).toHaveBeenCalledWith(request, {
+        answers: {
+          "q-opt": {
+            answers: ["性能优化", "代码质量"],
           },
         },
       });

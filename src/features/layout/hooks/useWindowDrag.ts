@@ -160,7 +160,18 @@ export function useWindowDrag(targetId: string) {
       if (event.detail > 1) {
         return;
       }
-      getCurrentWindow().startDragging();
+      void (async () => {
+        try {
+          const windowHandle = getCurrentWindow();
+          const fullscreen = await windowHandle.isFullscreen();
+          if (fullscreen) {
+            return;
+          }
+          await windowHandle.startDragging();
+        } catch {
+          // Ignore in non-Tauri test/runtime cases.
+        }
+      })();
     };
 
     el.addEventListener("mousedown", handler);

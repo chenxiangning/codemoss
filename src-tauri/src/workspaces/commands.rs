@@ -1787,7 +1787,8 @@ mod tests {
 
     #[test]
     fn prepare_spec_command_workdir_accepts_project_root_with_openspec_child() {
-        let project_root = std::env::temp_dir().join(format!("mossx-spec-project-{}", Uuid::new_v4()));
+        let project_root =
+            std::env::temp_dir().join(format!("mossx-spec-project-{}", Uuid::new_v4()));
         std::fs::create_dir_all(project_root.join("openspec")).expect("create openspec dir");
         let workspace_root = project_root.join("workspace");
         std::fs::create_dir_all(&workspace_root).expect("create workspace root");
@@ -1798,7 +1799,10 @@ mod tests {
         )
         .expect("prepare spec workdir");
 
-        assert_eq!(exec_dir, project_root.canonicalize().expect("canonical project root"));
+        assert_eq!(
+            exec_dir,
+            project_root.canonicalize().expect("canonical project root")
+        );
         assert_eq!(cleanup_dir, None);
 
         std::fs::remove_dir_all(&project_root).expect("cleanup");
@@ -1818,7 +1822,10 @@ mod tests {
         )
         .expect("prepare spec workdir");
 
-        assert_eq!(exec_dir, project_root.canonicalize().expect("canonical project root"));
+        assert_eq!(
+            exec_dir,
+            project_root.canonicalize().expect("canonical project root")
+        );
         assert_eq!(cleanup_dir, None);
 
         std::fs::remove_dir_all(&project_root).expect("cleanup");
@@ -1826,7 +1833,8 @@ mod tests {
 
     #[test]
     fn prepare_spec_command_workdir_supports_direct_openspec_root_input() {
-        let project_root = std::env::temp_dir().join(format!("mossx-spec-direct-{}", Uuid::new_v4()));
+        let project_root =
+            std::env::temp_dir().join(format!("mossx-spec-direct-{}", Uuid::new_v4()));
         let openspec_root = project_root.join("openspec");
         std::fs::create_dir_all(&openspec_root).expect("create openspec dir");
         let workspace_root = project_root.join("workspace");
@@ -1838,7 +1846,10 @@ mod tests {
         )
         .expect("prepare spec workdir");
 
-        assert_eq!(exec_dir, project_root.canonicalize().expect("canonical project root"));
+        assert_eq!(
+            exec_dir,
+            project_root.canonicalize().expect("canonical project root")
+        );
         assert_eq!(cleanup_dir, None);
 
         std::fs::remove_dir_all(&project_root).expect("cleanup");

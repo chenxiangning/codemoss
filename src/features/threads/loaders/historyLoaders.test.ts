@@ -844,6 +844,63 @@ describe("history loaders", () => {
     }
   });
 
+  it("hydrates claude pending askuserquestion into snapshot userInputQueue", async () => {
+    const loader = createClaudeHistoryLoader({
+      workspaceId: "ws-claude-ask",
+      workspacePath: "/tmp/ws-claude-ask",
+      loadClaudeSession: vi.fn().mockResolvedValue({
+        messages: [
+          {
+            kind: "tool",
+            id: "tool-ask-pending-1",
+            tool_name: "AskUserQuestion",
+            tool_input: {
+              questions: [
+                {
+                  id: "project-type",
+                  header: "项目类型",
+                  question: "请选择项目类型",
+                  multiSelect: false,
+                  options: [
+                    { label: "Web应用", description: "前端应用" },
+                    { label: "服务端", description: "后端服务" },
+                  ],
+                },
+              ],
+            },
+          },
+        ],
+      }),
+    });
+
+    const snapshot = await loader.load("claude:session-ask-pending");
+    expect(snapshot.engine).toBe("claude");
+    expect(snapshot.userInputQueue).toEqual([
+      {
+        workspace_id: "ws-claude-ask",
+        request_id: "tool-ask-pending-1",
+        params: {
+          thread_id: "claude:session-ask-pending",
+          turn_id: "",
+          item_id: "tool-ask-pending-1",
+          questions: [
+            {
+              id: "project-type",
+              header: "项目类型",
+              question: "请选择项目类型",
+              isOther: true,
+              isSecret: false,
+              options: [
+                { label: "Web应用", description: "前端应用" },
+                { label: "服务端", description: "后端服务" },
+              ],
+            },
+          ],
+        },
+      },
+    ]);
+  });
+
   it("merges Claude tool result by tool_use_id and avoids duplicate tool rows", () => {
     const items = parseClaudeHistoryMessages([
       {

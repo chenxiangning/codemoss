@@ -285,6 +285,110 @@ describe("threadReducer", () => {
     ]);
   });
 
+  it("preserves local requestUserInputSubmitted record while thread is processing", () => {
+    const base: ThreadState = {
+      ...initialState,
+      itemsByThread: {
+        "thread-1": [
+          {
+            id: "assistant-1",
+            kind: "message",
+            role: "assistant",
+            text: "请先回答一个问题。",
+          },
+          {
+            id: "user-input-answer-req-1",
+            kind: "tool",
+            toolType: "requestUserInputSubmitted",
+            title: "请求输入",
+            detail: "{\"schema\":\"requestUserInputSubmitted/v1\"}",
+            status: "completed",
+            output: "[用户输入已提交]\n问题A\n选项1",
+          },
+        ],
+      },
+      threadStatusById: {
+        "thread-1": {
+          isProcessing: true,
+          hasUnread: false,
+          isReviewing: false,
+          isContextCompacting: false,
+          processingStartedAt: Date.now(),
+          lastDurationMs: null,
+          heartbeatPulse: 1,
+        },
+      },
+    };
+
+    const next = threadReducer(base, {
+      type: "setThreadItems",
+      threadId: "thread-1",
+      items: [
+        {
+          id: "assistant-1",
+          kind: "message",
+          role: "assistant",
+          text: "请先回答一个问题。",
+        },
+      ],
+    });
+
+    const items = next.itemsByThread["thread-1"] ?? [];
+    expect(items.some((item) => item.id === "user-input-answer-req-1")).toBe(true);
+  });
+
+  it("does not preserve local requestUserInputSubmitted record for settled history snapshot", () => {
+    const base: ThreadState = {
+      ...initialState,
+      itemsByThread: {
+        "thread-1": [
+          {
+            id: "assistant-1",
+            kind: "message",
+            role: "assistant",
+            text: "请先回答一个问题。",
+          },
+          {
+            id: "user-input-answer-req-1",
+            kind: "tool",
+            toolType: "requestUserInputSubmitted",
+            title: "请求输入",
+            detail: "{\"schema\":\"requestUserInputSubmitted/v1\"}",
+            status: "completed",
+            output: "[用户输入已提交]\n问题A\n选项1",
+          },
+        ],
+      },
+      threadStatusById: {
+        "thread-1": {
+          isProcessing: false,
+          hasUnread: false,
+          isReviewing: false,
+          isContextCompacting: false,
+          processingStartedAt: null,
+          lastDurationMs: null,
+          heartbeatPulse: 0,
+        },
+      },
+    };
+
+    const next = threadReducer(base, {
+      type: "setThreadItems",
+      threadId: "thread-1",
+      items: [
+        {
+          id: "assistant-1",
+          kind: "message",
+          role: "assistant",
+          text: "请先回答一个问题。",
+        },
+      ],
+    });
+
+    const items = next.itemsByThread["thread-1"] ?? [];
+    expect(items.some((item) => item.id === "user-input-answer-req-1")).toBe(false);
+  });
+
   it("renames auto-generated thread from assistant output when no user message", () => {
     const threads: ThreadSummary[] = [
       { id: "thread-1", name: "Agent 1", updatedAt: 1 },
@@ -774,6 +878,63 @@ describe("threadReducer", () => {
     expect(messages[0]?.text).toBe("第一段");
     expect(messages[1]?.id).toBe("assistant-2-seg-1");
     expect(messages[1]?.text).toBe("第二段（完整）");
+  });
+
+  it("reconciles legacy text-delta id with later canonical assistant id", () => {
+    const first = threadReducer(initialState, {
+      type: "appendAgentDelta",
+      workspaceId: "ws-1",
+      threadId: "claude:session-1",
+      itemId: "claude:session-1:text-delta",
+      delta: "你好！我看到你列出了三个饮料品牌。",
+      hasCustomName: false,
+    });
+    const second = threadReducer(first, {
+      type: "appendAgentDelta",
+      workspaceId: "ws-1",
+      threadId: "claude:session-1",
+      itemId: "assistant-msg-1",
+      delta: "你好！我看到你列出了三个饮料品牌。请问你需要什么帮助呢？",
+      hasCustomName: false,
+    });
+
+    const messages = (second.itemsByThread["claude:session-1"] ?? []).filter(
+      (item): item is Extract<ConversationItem, { kind: "message" }> =>
+        item.kind === "message" && item.role === "assistant",
+    );
+    expect(messages).toHaveLength(1);
+    expect(messages[0]?.id).toBe("assistant-msg-1");
+    expect(messages[0]?.text).toBe(
+      "你好！我看到你列出了三个饮料品牌。请问你需要什么帮助呢？",
+    );
+  });
+
+  it("reconciles legacy text-delta id when completed assistant id arrives", () => {
+    const streamed = "你好！我看到你列出了三个饮料品牌。";
+    const first = threadReducer(initialState, {
+      type: "appendAgentDelta",
+      workspaceId: "ws-1",
+      threadId: "claude:session-1",
+      itemId: "claude:session-1:text-delta",
+      delta: streamed,
+      hasCustomName: false,
+    });
+    const completed = threadReducer(first, {
+      type: "completeAgentMessage",
+      workspaceId: "ws-1",
+      threadId: "claude:session-1",
+      itemId: "assistant-msg-1",
+      text: `${streamed}请问你需要什么帮助呢？`,
+      hasCustomName: false,
+    });
+
+    const messages = (completed.itemsByThread["claude:session-1"] ?? []).filter(
+      (item): item is Extract<ConversationItem, { kind: "message" }> =>
+        item.kind === "message" && item.role === "assistant",
+    );
+    expect(messages).toHaveLength(1);
+    expect(messages[0]?.id).toBe("assistant-msg-1");
+    expect(messages[0]?.text).toBe("你好！我看到你列出了三个饮料品牌。请问你需要什么帮助呢？");
   });
 
   it("updates thread timestamp when newer activity arrives", () => {

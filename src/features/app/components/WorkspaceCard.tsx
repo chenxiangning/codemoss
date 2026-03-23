@@ -35,9 +35,17 @@ export function WorkspaceCard({
   const { t } = useTranslation();
   const isDefaultWorkspace = isDefaultWorkspacePath(workspace.path);
 
-  const handleRowClick = () => {
+  const handleSelectWorkspace = () => {
     onSelectWorkspace(workspace.id);
+  };
+
+  const handleToggleCollapse = () => {
     onToggleWorkspaceCollapse(workspace.id, !isCollapsed);
+  };
+
+  const handleKeyboardToggle = () => {
+    onSelectWorkspace(workspace.id);
+    handleToggleCollapse();
   };
 
   return (
@@ -52,12 +60,18 @@ export function WorkspaceCard({
         }`}
         role="button"
         tabIndex={0}
-        onClick={handleRowClick}
+        onClick={handleSelectWorkspace}
+        onDoubleClick={(event) => {
+          if (event.button !== 0) {
+            return;
+          }
+          handleToggleCollapse();
+        }}
         onContextMenu={(event) => onShowWorkspaceMenu(event, workspace)}
         onKeyDown={(event) => {
           if (event.key === "Enter" || event.key === " ") {
             event.preventDefault();
-            handleRowClick();
+            handleKeyboardToggle();
           }
         }}
       >
@@ -104,6 +118,9 @@ export function WorkspaceCard({
             <button
               className="workspace-action-btn"
               onClick={(event) => onShowWorkspaceMenu(event, workspace)}
+              onDoubleClick={(event) => {
+                event.stopPropagation();
+              }}
               aria-label="Workspace Actions"
               title="Workspace Actions"
             >

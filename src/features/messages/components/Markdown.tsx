@@ -546,6 +546,77 @@ function normalizeOutsideCodeFences(
   return changed ? normalized : value;
 }
 
+function escapeHtmlAttribute(value: string) {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+function parseImageAttributes(raw: string) {
+  const attributes: Record<string, string> = {};
+  const pattern = /([a-zA-Z_:][-\w.:]*)\s*=\s*("([^"]*)"|'([^']*)'|([^\s"'>]+))/g;
+  let match: RegExpExecArray | null = null;
+  while ((match = pattern.exec(raw)) !== null) {
+    const key = match[1]?.toLowerCase();
+    if (!key) {
+      continue;
+    }
+    const value = match[3] ?? match[4] ?? match[5] ?? "";
+    attributes[key] = value;
+  }
+  return attributes;
+}
+
+function toHtmlImageTag(src: string, alt?: string, title?: string) {
+  const safeSrc = escapeHtmlAttribute(src.trim());
+  if (!safeSrc) {
+    return "";
+  }
+  const safeAlt = escapeHtmlAttribute((alt ?? "image").trim() || "image");
+  const titlePart = title && title.trim()
+    ? ` title="${escapeHtmlAttribute(title.trim())}"`
+    : "";
+  return `<img src="${safeSrc}" alt="${safeAlt}" loading="lazy"${titlePart} />`;
+}
+
+function normalizeImageTags(value: string) {
+  let changed = false;
+
+  const withBlockTags = value.replace(
+    /<image>\s*([\s\S]*?)\s*<\/image>/gi,
+    (_match, body: string) => {
+      const src = body.trim();
+      const next = toHtmlImageTag(src);
+      if (!next) {
+        return _match;
+      }
+      changed = true;
+      return next;
+    },
+  );
+
+  const withSelfClosingTags = withBlockTags.replace(
+    /<image\b([^>]*)\/?>/gi,
+    (match, rawAttrs: string) => {
+      const attrs = parseImageAttributes(rawAttrs ?? "");
+      const src = attrs.src?.trim();
+      if (!src) {
+        return match;
+      }
+      const next = toHtmlImageTag(src, attrs.alt, attrs.title);
+      if (!next) {
+        return match;
+      }
+      changed = true;
+      return next;
+    },
+  );
+
+  return changed ? withSelfClosingTags : value;
+}
+
 function safeDecodeUrl(value: string) {
   try {
     return decodeURIComponent(value);
@@ -838,9 +909,11 @@ export const Markdown = memo(function Markdown({
       return `\`\`\`\n${renderValue}\n\`\`\``;
     }
     const normalizeDisplayText = (text: string) =>
-      normalizeListIndentation(
-        normalizeInlineOrderedListBreaks(
-          normalizeFragmentedLineBreaks(normalizeFragmentedParagraphBreaks(text)),
+      normalizeImageTags(
+        normalizeListIndentation(
+          normalizeInlineOrderedListBreaks(
+            normalizeFragmentedLineBreaks(normalizeFragmentedParagraphBreaks(text)),
+          ),
         ),
       );
     return normalizeOutsideCodeFences(renderValue, normalizeDisplayText);

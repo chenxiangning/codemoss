@@ -162,6 +162,7 @@ describe("useThreadMessaging", () => {
         threadStatusById: {},
         itemsByThread: overrides.itemsByThread ?? {},
         activeTurnIdByThread: overrides.activeTurnIdByThread ?? {},
+        tokenUsageByThread: {},
         rateLimitsByWorkspace: {},
         pendingInterruptsRef: { current: new Set<string>() },
         interruptedThreadsRef: { current: new Set<string>() },
@@ -684,6 +685,7 @@ describe("useThreadMessaging", () => {
         threadStatusById: {},
         itemsByThread: {},
         activeTurnIdByThread: {},
+        tokenUsageByThread: {},
         rateLimitsByWorkspace: {},
         pendingInterruptsRef: { current: new Set<string>() },
         interruptedThreadsRef: { current: new Set<string>() },
@@ -1174,6 +1176,7 @@ describe("useThreadMessaging", () => {
         threadStatusById: {},
         itemsByThread: {},
         activeTurnIdByThread: {},
+        tokenUsageByThread: {},
         rateLimitsByWorkspace: {
           [workspace.id]: {
             primary: { usedPercent: 15, windowDurationMins: 300, resetsAt: null },

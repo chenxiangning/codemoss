@@ -679,6 +679,53 @@ go lang`,
     }
   });
 
+  it("unwraps powershell -Command rg commands on windows", () => {
+    const items: ConversationItem[] = [
+      {
+        id: "cmd-win-ps-1",
+        kind: "tool",
+        toolType: "commandExecution",
+        title:
+          'Command: C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe -NoProfile -Command "rg -n RouterDestination src"',
+        detail: "",
+        status: "completed",
+        output: "",
+      },
+    ];
+
+    const prepared = prepareThreadItems(items);
+    expect(prepared).toHaveLength(1);
+    expect(prepared[0].kind).toBe("explore");
+    if (prepared[0].kind === "explore") {
+      expect(prepared[0].entries).toHaveLength(1);
+      expect(prepared[0].entries[0].kind).toBe("search");
+      expect(prepared[0].entries[0].label).toBe("RouterDestination in src");
+    }
+  });
+
+  it("unwraps cmd /c rg commands on windows", () => {
+    const items: ConversationItem[] = [
+      {
+        id: "cmd-win-cmd-1",
+        kind: "tool",
+        toolType: "commandExecution",
+        title: 'Command: cmd /c "rg -n RouterDestination src"',
+        detail: "",
+        status: "completed",
+        output: "",
+      },
+    ];
+
+    const prepared = prepareThreadItems(items);
+    expect(prepared).toHaveLength(1);
+    expect(prepared[0].kind).toBe("explore");
+    if (prepared[0].kind === "explore") {
+      expect(prepared[0].entries).toHaveLength(1);
+      expect(prepared[0].entries[0].kind).toBe("search");
+      expect(prepared[0].entries[0].label).toBe("RouterDestination in src");
+    }
+  });
+
   it("treats nl -ba as a read command", () => {
     const items: ConversationItem[] = [
       {
@@ -1455,6 +1502,106 @@ go lang`,
       expect(item.detail).toContain("thread-b, thread-c");
       expect(item.output).toBe("Coordinate work\n\nagent-1: running");
     }
+  });
+
+  it("normalizes AskUserQuestion answer echo into submitted history card", () => {
+    const items: ConversationItem[] = [
+      {
+        id: "ask-tool-1",
+        kind: "tool",
+        toolType: "askuserquestion",
+        title: "Tool: askuserquestion",
+        detail: JSON.stringify({
+          questions: [
+            {
+              id: "q-0",
+              header: "编程语言",
+              question: "你最喜欢的编程语言是什么？",
+              options: [
+                { label: "Python", description: "简洁优雅" },
+                { label: "TypeScript", description: "类型安全" },
+              ],
+            },
+          ],
+        }),
+        status: "started",
+      },
+      {
+        id: "user-answer-1",
+        kind: "message",
+        role: "user",
+        text: "The user answered the AskUserQuestion: Python. Please continue based on this selection.",
+      },
+    ];
+
+    const prepared = prepareThreadItems(items);
+    expect(prepared).toHaveLength(2);
+    expect(prepared[0]).toMatchObject({
+      id: "ask-tool-1",
+      kind: "tool",
+      status: "completed",
+      output: "Python",
+    });
+    expect(prepared[1]).toMatchObject({
+      id: "request-user-input-submitted-ask-tool-1",
+      kind: "tool",
+      toolType: "requestUserInputSubmitted",
+      status: "completed",
+      output: "Python",
+    });
+    if (prepared[1]?.kind === "tool") {
+      const payload = JSON.parse(prepared[1].detail);
+      expect(payload.schema).toBe("requestUserInputSubmitted/v1");
+      expect(payload.questions[0].question).toBe("你最喜欢的编程语言是什么？");
+      expect(payload.questions[0].selectedOptions).toEqual(["Python"]);
+    }
+  });
+
+  it("normalizes mcp askuserquestion answer echo into submitted history card", () => {
+    const items: ConversationItem[] = [
+      {
+        id: "mcp-ask-1",
+        kind: "tool",
+        toolType: "mcpToolCall",
+        title: "Tool: Claude / askuserquestion",
+        detail: JSON.stringify({
+          questions: [
+            {
+              id: "q-0",
+              header: "框架",
+              question: "偏好哪个框架？",
+              options: [
+                { label: "React", description: "生态完整" },
+                { label: "Vue", description: "易上手" },
+              ],
+            },
+          ],
+        }),
+        status: "running",
+      },
+      {
+        id: "user-answer-2",
+        kind: "message",
+        role: "user",
+        text: "The user answered the AskUserQuestion: React. Please continue based on this selection.",
+      },
+    ];
+
+    const prepared = prepareThreadItems(items);
+    expect(prepared).toHaveLength(2);
+    expect(prepared[0]).toMatchObject({
+      id: "mcp-ask-1",
+      kind: "tool",
+      status: "completed",
+      output: "React",
+    });
+    expect(prepared[1]).toMatchObject({
+      id: "request-user-input-submitted-mcp-ask-1",
+      kind: "tool",
+      toolType: "requestUserInputSubmitted",
+      status: "completed",
+      output: "React",
+    });
   });
 
   it("parses ISO timestamps for thread updates", () => {

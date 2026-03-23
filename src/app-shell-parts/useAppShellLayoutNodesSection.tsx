@@ -142,6 +142,8 @@ export function useAppShellLayoutNodesSection(ctx: any) {
     threadListCursorByWorkspace,
     activeWorkspaceId,
     activeThreadId,
+    isPhone,
+    isTablet,
     systemProxyEnabled: appSettings.systemProxyEnabled,
     systemProxyUrl: appSettings.systemProxyUrl,
     activeItems,
@@ -185,7 +187,10 @@ export function useAppShellLayoutNodesSection(ctx: any) {
       resetPullRequestSelection();
       setWorkspaceHomeWorkspaceId(null);
       setCenterMode("chat");
-      selectWorkspace(workspaceId);
+      setActiveWorkspaceId(workspaceId);
+      if (isCompact) {
+        setActiveTab("codex");
+      }
       ensureWorkspaceThreadListLoaded(workspaceId);
       setActiveThreadId(null, workspaceId);
     },

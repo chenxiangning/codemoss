@@ -43,6 +43,8 @@ interface GenericToolBlockProps {
   isExpanded: boolean;
   onToggle: (id: string) => void;
   activeCollaborationModeId?: string | null;
+  activeEngine?: "claude" | "codex" | "gemini" | "opencode";
+  hasPendingUserInputRequest?: boolean;
   onOpenDiffPath?: (path: string) => void;
 }
 
@@ -292,6 +294,8 @@ export const GenericToolBlock = memo(function GenericToolBlock({
   isExpanded: externalExpanded,
   onToggle,
   activeCollaborationModeId = null,
+  activeEngine,
+  hasPendingUserInputRequest = false,
   onOpenDiffPath,
 }: GenericToolBlockProps) {
   const { t } = useTranslation();
@@ -343,9 +347,16 @@ export const GenericToolBlock = memo(function GenericToolBlock({
   }, [parsedArgs, omitFields]);
 
   const shouldShowDetails = otherParams.length > 0 && isExpanded;
+  const isAskUserQuestionTool = toolName.toLowerCase() === "askuserquestion";
+  const suppressPlanModeHintForClaude =
+    isAskUserQuestionTool &&
+    activeEngine === "claude" &&
+    hasPendingUserInputRequest;
   const showPlanModeHint =
-    toolName.toLowerCase() === "askuserquestion" &&
-    activeCollaborationModeId === "code";
+    isAskUserQuestionTool &&
+    activeCollaborationModeId === "code" &&
+    activeEngine !== "claude" &&
+    !suppressPlanModeHintForClaude;
 
   const handleClick = () => {
     if (isCollapsible) {

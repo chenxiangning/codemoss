@@ -77,6 +77,7 @@ function buildHook(engine: "claude" | "codex") {
       threadStatusById: {},
       itemsByThread: {},
       activeTurnIdByThread: {},
+      tokenUsageByThread: {},
       rateLimitsByWorkspace: {},
       pendingInterruptsRef: { current: new Set<string>() },
       interruptedThreadsRef: { current: new Set<string>() },

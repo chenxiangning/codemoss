@@ -1679,6 +1679,13 @@
   color: var(--text-strong);
 }
 
+.markdown img {
+  display: block;
+  max-width: min(100%, 720px);
+  height: auto;
+  border-radius: 8px;
+}
+
 .markdown ul,
 .markdown ol {
   margin: 10px 0;

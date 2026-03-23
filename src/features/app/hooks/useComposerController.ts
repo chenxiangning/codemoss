@@ -26,6 +26,7 @@ export function useComposerController({
   startMcp,
   startSpecRoot,
   startStatus,
+  startContext,
   startExport,
   startImport,
   startLsp,
@@ -65,6 +66,7 @@ export function useComposerController({
   startMcp: (text: string) => Promise<void>;
   startSpecRoot: (text: string) => Promise<void>;
   startStatus: (text: string) => Promise<void>;
+  startContext: (text: string) => Promise<void>;
   startExport: (text: string) => Promise<void>;
   startImport: (text: string) => Promise<void>;
   startLsp: (text: string) => Promise<void>;
@@ -115,6 +117,7 @@ export function useComposerController({
     startMcp,
     startSpecRoot,
     startStatus,
+    startContext,
     startExport,
     startImport,
     startLsp,

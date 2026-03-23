@@ -26,6 +26,8 @@ interface ToolBlockRendererProps {
   onToggle: (id: string) => void;
   onRequestAutoScroll?: () => void;
   activeCollaborationModeId?: string | null;
+  activeEngine?: "claude" | "codex" | "gemini" | "opencode";
+  hasPendingUserInputRequest?: boolean;
   onOpenDiffPath?: (path: string) => void;
 }
 
@@ -39,6 +41,8 @@ export const ToolBlockRenderer = memo(function ToolBlockRenderer({
   onToggle,
   onRequestAutoScroll,
   activeCollaborationModeId,
+  activeEngine,
+  hasPendingUserInputRequest = false,
   onOpenDiffPath,
 }: ToolBlockRendererProps) {
   const toolName = extractToolName(item.title);
@@ -110,6 +114,8 @@ export const ToolBlockRenderer = memo(function ToolBlockRenderer({
       isExpanded={isExpanded}
       onToggle={onToggle}
       activeCollaborationModeId={activeCollaborationModeId}
+      activeEngine={activeEngine}
+      hasPendingUserInputRequest={hasPendingUserInputRequest}
       onOpenDiffPath={onOpenDiffPath}
     />
   );

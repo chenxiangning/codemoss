@@ -90,6 +90,35 @@ describe("GenericToolBlock", () => {
     expect(screen.queryByText("This feature requires Plan mode")).toBeNull();
   });
 
+  it("hides plan-mode hint for claude askuserquestion when pending user input exists", () => {
+    render(
+      <GenericToolBlock
+        item={askUserItem}
+        isExpanded={false}
+        onToggle={vi.fn()}
+        activeCollaborationModeId="code"
+        activeEngine="claude"
+        hasPendingUserInputRequest
+      />,
+    );
+
+    expect(screen.queryByText("This feature requires Plan mode")).toBeNull();
+  });
+
+  it("hides plan-mode hint for claude askuserquestion in history without pending request", () => {
+    render(
+      <GenericToolBlock
+        item={askUserItem}
+        isExpanded={false}
+        onToggle={vi.fn()}
+        activeCollaborationModeId="code"
+        activeEngine="claude"
+      />,
+    );
+
+    expect(screen.queryByText("This feature requires Plan mode")).toBeNull();
+  });
+
   it("shows blocked suggestion for modeBlocked askuserquestion item", () => {
     const view = render(
       <GenericToolBlock

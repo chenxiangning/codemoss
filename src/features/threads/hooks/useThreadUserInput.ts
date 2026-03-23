@@ -96,15 +96,53 @@ function buildSubmittedFallbackOutput(payload: SubmittedUserInputPayload) {
   return lines.join("\n");
 }
 
+function buildSubmittedTitle(payload: SubmittedUserInputPayload) {
+  for (const question of payload.questions) {
+    const firstSelected = question.selectedOptions.find(
+      (value) => value.trim().length > 0,
+    );
+    if (firstSelected) {
+      return firstSelected;
+    }
+    const note = question.note.trim();
+    if (note) {
+      return note;
+    }
+  }
+  return "请求输入";
+}
+
 export function useThreadUserInput({ dispatch }: UseThreadUserInputOptions) {
   const handleUserInputSubmit = useCallback(
     async (request: RequestUserInputRequest, response: RequestUserInputResponse) => {
-      await respondToUserInputRequest(
-        request.workspace_id,
-        request.request_id,
-        response.answers,
-      );
       const threadId = request.params.thread_id;
+      if (threadId) {
+        // After user confirms AskUserQuestion, Claude may take a few seconds to resume.
+        // Mark thread as processing immediately to avoid a "stopped" visual gap.
+        dispatch({
+          type: "markProcessing",
+          threadId,
+          isProcessing: true,
+          timestamp: Date.now(),
+        });
+      }
+      try {
+        await respondToUserInputRequest(
+          request.workspace_id,
+          request.request_id,
+          response.answers,
+        );
+      } catch (error) {
+        if (threadId) {
+          dispatch({
+            type: "markProcessing",
+            threadId,
+            isProcessing: false,
+            timestamp: Date.now(),
+          });
+        }
+        throw error;
+      }
       if (threadId) {
         const payload = buildSubmittedPayload(request, response);
         dispatch({
@@ -115,7 +153,7 @@ export function useThreadUserInput({ dispatch }: UseThreadUserInputOptions) {
             id: `user-input-answer-${String(request.request_id)}`,
             kind: "tool",
             toolType: "requestUserInputSubmitted",
-            title: "请求输入",
+            title: buildSubmittedTitle(payload),
             detail: JSON.stringify(payload),
             status: "completed",
             output: buildSubmittedFallbackOutput(payload),

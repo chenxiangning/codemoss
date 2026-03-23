@@ -2340,8 +2340,11 @@ export const Messages = memo(function Messages({
 
   const groupedEntries = useMemo(() => groupToolItems(renderedItems), [renderedItems]);
 
+  const shouldRenderUserInputNode =
+    (activeEngine === "codex" || activeEngine === "claude") &&
+    Boolean(legacyOnUserInputSubmit);
   const userInputNode =
-    activeEngine === "codex" && legacyOnUserInputSubmit
+    shouldRenderUserInputNode && legacyOnUserInputSubmit
       ? (
         <RequestUserInputMessage
           requests={userInputRequests}
@@ -2429,6 +2432,8 @@ export const Messages = memo(function Messages({
           onToggle={toggleExpanded}
           onRequestAutoScroll={requestAutoScroll}
           activeCollaborationModeId={activeCollaborationModeId}
+          activeEngine={activeEngine}
+          hasPendingUserInputRequest={activeUserInputRequestId !== null}
           onOpenDiffPath={onOpenDiffPath}
         />
       );

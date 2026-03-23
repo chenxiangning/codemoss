@@ -358,12 +358,14 @@ describe("FileViewPanel navigation", () => {
     );
 
     await screen.findByTestId("mock-codemirror");
-    expect(getGitFileFullDiff).not.toHaveBeenCalled();
-    expect(mockCodeMirrorDispatch).toHaveBeenCalledWith(
-      expect.objectContaining({
-        effects: expect.anything(),
-      }),
-    );
+    await waitFor(() => {
+      expect(getGitFileFullDiff).not.toHaveBeenCalled();
+      expect(mockCodeMirrorDispatch).toHaveBeenCalledWith(
+        expect.objectContaining({
+          effects: expect.anything(),
+        }),
+      );
+    });
   });
 
   it("falls back to workspace git diff fetch when provided highlight markers are empty", async () => {

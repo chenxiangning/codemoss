@@ -102,6 +102,12 @@ export const RequestUserInputSubmittedBlock = memo(
               const questionId = question.id || `submitted-question-${index}`;
               const selectedSet = new Set(question.selectedOptions);
               const hasOptions = Array.isArray(question.options) && question.options.length > 0;
+              const optionLabelSet = new Set(
+                (question.options ?? []).map((option) => option.label).filter(Boolean),
+              );
+              const unmatchedSelectedOptions = question.selectedOptions.filter(
+                (value) => !optionLabelSet.has(value),
+              );
               const hasSelectedOptions = question.selectedOptions.length > 0;
               const hasNote = question.note.trim().length > 0;
               const hasAnswer = hasSelectedOptions || hasNote;
@@ -137,6 +143,18 @@ export const RequestUserInputSubmittedBlock = memo(
                       {question.selectedOptions.map((answer, answerIndex) => (
                         <div
                           key={`${questionId}-answer-${answerIndex}`}
+                          className="request-user-input-submitted-answer-chip"
+                        >
+                          {answer}
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+                  {hasOptions && unmatchedSelectedOptions.length > 0 ? (
+                    <div className="request-user-input-submitted-answer-list">
+                      {unmatchedSelectedOptions.map((answer, answerIndex) => (
+                        <div
+                          key={`${questionId}-unmatched-${answerIndex}`}
                           className="request-user-input-submitted-answer-chip"
                         >
                           {answer}

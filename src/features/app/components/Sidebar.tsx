@@ -935,7 +935,12 @@ export function Sidebar({
                 <path d="M13 15.25H17.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
                 <path d="M15.25 17.5V13" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
               </svg>
-              <span className="sidebar-primary-nav-text">{t("sidebar.quickAutomation")}</span>
+              <span className="sidebar-primary-nav-text-with-badge">
+                <span className="sidebar-primary-nav-text">{t("sidebar.quickAutomation")}</span>
+                <span className="sidebar-primary-nav-badge" aria-hidden>
+                  {t("sidebar.quickAutomationBadge")}
+                </span>
+              </span>
             </button>
             <button
               type="button"

@@ -1257,10 +1257,10 @@ mod tests {
     use super::{
         compile_search_regex, create_workspace_directory_inner, is_special_directory_path,
         list_external_spec_tree_inner, list_workspace_directory_children_inner,
-        list_workspace_files_inner,
-        normalize_workspace_relative_path, read_external_spec_file_inner,
-        read_external_absolute_file_inner, read_workspace_file_inner, search_workspace_text_inner,
-        sort_and_truncate_named_entries, WorkspaceTextSearchOptions,
+        list_workspace_files_inner, normalize_workspace_relative_path,
+        read_external_absolute_file_inner, read_external_spec_file_inner,
+        read_workspace_file_inner, search_workspace_text_inner, sort_and_truncate_named_entries,
+        WorkspaceTextSearchOptions,
     };
     use std::path::PathBuf;
     use std::time::{SystemTime, UNIX_EPOCH};

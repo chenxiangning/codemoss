@@ -1,4 +1,4 @@
-import type { ConversationItem } from "../../../types";
+import type { ConversationItem, RequestUserInputRequest } from "../../../types";
 import type { HistoryLoader } from "../contracts/conversationCurtainContracts";
 import { normalizeHistorySnapshot } from "../contracts/conversationCurtainContracts";
 import { computeDiff } from "../../messages/utils/diffUtils";
@@ -12,6 +12,50 @@ type ClaudeHistoryLoaderOptions = {
     sessionId: string,
   ) => Promise<unknown>;
 };
+
+type AskUserQuestionOption = {
+  label: string;
+  description: string;
+};
+
+type AskUserQuestionTemplate = {
+  id: string;
+  header: string;
+  question: string;
+  isOther: boolean;
+  multiSelect: boolean;
+  options?: AskUserQuestionOption[];
+};
+
+type AskUserQuestionAnswer = {
+  selectedOptions: string[];
+  note: string;
+};
+
+type AskUserQuestionAnswerParseResult = {
+  rawSelectionText: string;
+  answers: AskUserQuestionAnswer[];
+};
+
+type RequestUserInputSubmittedPayload = {
+  schema: "requestUserInputSubmitted/v1";
+  submittedAt: number;
+  questions: Array<{
+    id: string;
+    header: string;
+    question: string;
+    options?: AskUserQuestionOption[];
+    selectedOptions: string[];
+    note: string;
+  }>;
+};
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  return value as Record<string, unknown>;
+}
 
 function compactComparableReasoningText(value: string) {
   return value
@@ -67,6 +111,26 @@ function getClaudeToolOutputText(message: Record<string, unknown>) {
       message.text ??
       "",
   );
+}
+
+function parseToolRecordCandidate(value: unknown): Record<string, unknown> | null {
+  const direct = asRecord(value);
+  if (direct) {
+    return direct;
+  }
+  if (typeof value !== "string") {
+    return null;
+  }
+  const trimmed = value.trim();
+  if (!trimmed.startsWith("{") || !trimmed.endsWith("}")) {
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(trimmed) as unknown;
+    return asRecord(parsed);
+  } catch {
+    return null;
+  }
 }
 
 function getClaudeSourceToolId(message: Record<string, unknown>) {
@@ -140,17 +204,203 @@ function getClaudeSourceToolId(message: Record<string, unknown>) {
 }
 
 function getClaudeToolInputRecord(message: Record<string, unknown>) {
-  const toolInput = message.toolInput ?? message.tool_input;
-  return toolInput && typeof toolInput === "object"
-    ? (toolInput as Record<string, unknown>)
-    : null;
+  const candidates = [
+    message.toolInput,
+    message.tool_input,
+    message.input,
+    message.arguments,
+    message.params,
+    asRecord(message.meta)?.input,
+    asRecord(message.metadata)?.input,
+  ];
+  for (const candidate of candidates) {
+    const record = parseToolRecordCandidate(candidate);
+    if (record && Object.keys(record).length > 0) {
+      return record;
+    }
+  }
+  return null;
 }
 
 function getClaudeToolOutputRecord(message: Record<string, unknown>) {
-  const toolOutput = message.toolOutput ?? message.tool_output;
-  return toolOutput && typeof toolOutput === "object"
-    ? (toolOutput as Record<string, unknown>)
-    : null;
+  const candidates = [
+    message.toolOutput,
+    message.tool_output,
+    message.output,
+    message.result,
+    asRecord(message.meta)?.output,
+    asRecord(message.metadata)?.output,
+  ];
+  for (const candidate of candidates) {
+    const record = parseToolRecordCandidate(candidate);
+    if (record && Object.keys(record).length > 0) {
+      return record;
+    }
+  }
+  return null;
+}
+
+function parseAskUserQuestionTemplates(
+  toolInput: Record<string, unknown> | null,
+): AskUserQuestionTemplate[] {
+  if (!toolInput) {
+    return [];
+  }
+  const hasSingleQuestionShape =
+    "question" in toolInput ||
+    "prompt" in toolInput ||
+    "header" in toolInput ||
+    "title" in toolInput ||
+    "options" in toolInput;
+  const rawQuestions = Array.isArray(toolInput.questions)
+    ? toolInput.questions
+    : hasSingleQuestionShape
+      ? [toolInput]
+      : [];
+  const templates: AskUserQuestionTemplate[] = [];
+  rawQuestions.forEach((entry, index) => {
+    const question = asRecord(entry);
+    if (!question) {
+      return;
+    }
+    const id = asString(question.id ?? `q-${index}`).trim() || `q-${index}`;
+    const header = asString(question.header ?? question.title ?? "").trim();
+    const questionText = asString(question.question ?? question.prompt ?? "").trim();
+    const isOther =
+      question.isOther === undefined && question.is_other === undefined
+        ? true
+        : Boolean(question.isOther ?? question.is_other);
+    const multiSelect = Boolean(question.multiSelect ?? question.multi_select);
+    const rawOptions = Array.isArray(question.options) ? question.options : [];
+    const options = rawOptions
+      .map((rawOption) => {
+        const option = asRecord(rawOption);
+        if (!option) {
+          return null;
+        }
+        const label = asString(option.label ?? "").trim();
+        const description = asString(option.description ?? "").trim();
+        if (!label && !description) {
+          return null;
+        }
+        return { label, description };
+      })
+      .filter((option): option is AskUserQuestionOption => option !== null);
+    if (!questionText && options.length === 0) {
+      return;
+    }
+    templates.push({
+      id,
+      header,
+      question: questionText,
+      isOther,
+      multiSelect,
+      options: options.length > 0 ? options : undefined,
+    });
+  });
+  return templates;
+}
+
+function parseAskUserAnswerParts(raw: string): AskUserQuestionAnswer {
+  const segments = raw
+    .split(/[,，、]/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+  const selectedOptions: string[] = [];
+  let note = "";
+  for (const segment of segments) {
+    if (/^user_note\s*:/i.test(segment)) {
+      const parsedNote = segment.replace(/^user_note\s*:/i, "").trim();
+      if (parsedNote) {
+        note = parsedNote;
+      }
+      continue;
+    }
+    selectedOptions.push(segment);
+  }
+  return { selectedOptions, note };
+}
+
+function parseAskUserQuestionAnswerText(
+  text: string,
+  questionCount: number,
+): AskUserQuestionAnswerParseResult | null {
+  const trimmed = text.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  const dismissedRegex =
+    /^The user dismissed the question without selecting an option\.?$/i;
+  if (dismissedRegex.test(trimmed)) {
+    return {
+      rawSelectionText: "",
+      answers: Array.from({ length: Math.max(questionCount, 1) }, () => ({
+        selectedOptions: [],
+        note: "",
+      })),
+    };
+  }
+
+  const answeredMatch = trimmed.match(
+    /^The user answered the AskUserQuestion:\s*([\s\S]*?)(?:[。.]?\s*Please continue based on this selection\.?)$/i,
+  );
+  if (!answeredMatch) {
+    return null;
+  }
+  const rawSelectionText = (answeredMatch[1] ?? "").trim();
+  if (!rawSelectionText) {
+    return null;
+  }
+
+  const baseSegments = rawSelectionText
+    .split(/[;；]/)
+    .map((segment) => segment.trim())
+    .filter(Boolean);
+  if (baseSegments.length === 0) {
+    return null;
+  }
+  if (questionCount <= 1) {
+    return {
+      rawSelectionText,
+      answers: [parseAskUserAnswerParts(rawSelectionText)],
+    };
+  }
+
+  const normalizedSegments = [...baseSegments];
+  if (normalizedSegments.length > questionCount) {
+    const remaining = normalizedSegments
+      .splice(questionCount - 1)
+      .join("; ")
+      .trim();
+    normalizedSegments.push(remaining);
+  }
+  while (normalizedSegments.length < questionCount) {
+    normalizedSegments.push("");
+  }
+
+  return {
+    rawSelectionText,
+    answers: normalizedSegments.map((segment) => parseAskUserAnswerParts(segment)),
+  };
+}
+
+function buildRequestUserInputSubmittedPayload(
+  templates: AskUserQuestionTemplate[],
+  answers: AskUserQuestionAnswer[],
+): RequestUserInputSubmittedPayload {
+  return {
+    schema: "requestUserInputSubmitted/v1",
+    submittedAt: Date.now(),
+    questions: templates.map((template, index) => ({
+      id: template.id || `q-${index}`,
+      header: template.header,
+      question: template.question,
+      options: template.options,
+      selectedOptions: answers[index]?.selectedOptions ?? [],
+      note: answers[index]?.note ?? "",
+    })),
+  };
 }
 
 function normalizeClaudeToolName(toolName: string) {
@@ -286,17 +536,99 @@ function mergeReasoningSnapshot(
 export function parseClaudeHistoryMessages(messagesData: unknown): ConversationItem[] {
   const items: ConversationItem[] = [];
   const toolIndexById = new Map<string, number>();
+  const pendingAskToolIds: string[] = [];
+  const askTemplatesByToolId = new Map<string, AskUserQuestionTemplate[]>();
+
+  const appendSubmittedAskUserInput = (
+    toolId: string,
+    parseResult: AskUserQuestionAnswerParseResult,
+  ) => {
+    const templates = askTemplatesByToolId.get(toolId) ?? [];
+    if (templates.length === 0) {
+      return;
+    }
+    const detail = JSON.stringify(
+      buildRequestUserInputSubmittedPayload(templates, parseResult.answers),
+    );
+    const submittedItemId = `request-user-input-submitted-${toolId}`;
+    if (items.some((item) => item.id === submittedItemId)) {
+      return;
+    }
+    items.push({
+      id: submittedItemId,
+      kind: "tool",
+      toolType: "requestUserInputSubmitted",
+      title: "请求输入",
+      detail,
+      status: "completed",
+      output: parseResult.rawSelectionText,
+    });
+  };
+
+  const markAskToolCompleted = (toolId: string, output?: string) => {
+    const index = toolIndexById.get(toolId);
+    if (index === undefined) {
+      return;
+    }
+    const existing = items[index];
+    if (!existing || existing.kind !== "tool") {
+      return;
+    }
+    items[index] = {
+      ...existing,
+      status: "completed",
+      output: output || existing.output,
+    };
+  };
+
+  const removePendingAskTool = (toolId: string) => {
+    if (!toolId) {
+      return;
+    }
+    const index = pendingAskToolIds.findIndex((candidate) => candidate === toolId);
+    if (index >= 0) {
+      pendingAskToolIds.splice(index, 1);
+    }
+  };
+
+  const peekPendingAskTool = () => {
+    while (pendingAskToolIds.length > 0) {
+      const toolId = pendingAskToolIds[0] ?? "";
+      if (!toolId || !askTemplatesByToolId.has(toolId)) {
+        pendingAskToolIds.shift();
+        continue;
+      }
+      return toolId;
+    }
+    return "";
+  };
+
   const messages = Array.isArray(messagesData)
     ? (messagesData as Array<Record<string, unknown>>)
     : [];
   for (const message of messages) {
     const kind = asString(message.kind ?? "");
     if (kind === "message") {
+      const role = asString(message.role) === "user" ? "user" : "assistant";
+      const text = asString(message.text ?? "");
+      if (role === "user") {
+        const pendingAskToolId = peekPendingAskTool();
+        if (pendingAskToolId) {
+          const templates = askTemplatesByToolId.get(pendingAskToolId) ?? [];
+          const parsedAnswer = parseAskUserQuestionAnswerText(text, templates.length);
+          if (parsedAnswer) {
+            pendingAskToolIds.shift();
+            markAskToolCompleted(pendingAskToolId, parsedAnswer.rawSelectionText);
+            appendSubmittedAskUserInput(pendingAskToolId, parsedAnswer);
+            continue;
+          }
+        }
+      }
       items.push({
         id: asString(message.id ?? `claude-message-${items.length + 1}`),
         kind: "message",
-        role: asString(message.role) === "user" ? "user" : "assistant",
-        text: asString(message.text ?? ""),
+        role,
+        text,
       });
       continue;
     }
@@ -324,14 +656,24 @@ export function parseClaudeHistoryMessages(messagesData: unknown): ConversationI
         : toolId
           ? toolIndexById.get(toolId)
           : undefined;
+      const outputText = getClaudeToolOutputText(message);
       if (sourceIndex !== undefined) {
         const existing = items[sourceIndex];
         if (existing?.kind === "tool") {
           items[sourceIndex] = {
             ...existing,
             status,
-            output: getClaudeToolOutputText(message) || existing.output,
+            output: outputText || existing.output,
           };
+          const sourceToolType = normalizeClaudeToolName(existing.toolType);
+          if (sourceToolType === "askuserquestion" || sourceToolType === "ask_user_question") {
+            removePendingAskTool(existing.id);
+            const templates = askTemplatesByToolId.get(existing.id) ?? [];
+            const parsedAnswer = parseAskUserQuestionAnswerText(outputText, templates.length);
+            if (parsedAnswer) {
+              appendSubmittedAskUserInput(existing.id, parsedAnswer);
+            }
+          }
         }
         continue;
       }
@@ -342,7 +684,7 @@ export function parseClaudeHistoryMessages(messagesData: unknown): ConversationI
           items[pendingToolIndex] = {
             ...existing,
             status,
-            output: getClaudeToolOutputText(message) || existing.output,
+            output: outputText || existing.output,
           };
           continue;
         }
@@ -355,25 +697,115 @@ export function parseClaudeHistoryMessages(messagesData: unknown): ConversationI
         title: getClaudeToolName(message),
         detail: "",
         status,
-        output: getClaudeToolOutputText(message),
+        output: outputText,
       });
       continue;
     }
 
+    const toolName = getClaudeToolName(message);
+    const normalizedToolName = normalizeClaudeToolName(toolName);
+    const normalizedToolType = normalizeClaudeToolName(toolType);
+    const isAskUserQuestion =
+      normalizedToolName === "askuserquestion" ||
+      normalizedToolType === "askuserquestion" ||
+      normalizedToolType === "ask_user_question";
+    const resolvedToolId = toolId || `claude-tool-${items.length + 1}`;
+    const parsedFileChange = inferClaudeFileChange(toolName, message);
     items.push({
-      id: toolId || `claude-tool-${items.length + 1}`,
+      id: resolvedToolId,
       kind: "tool",
-      toolType: inferClaudeFileChange(getClaudeToolName(message), message)?.toolType ?? toolType,
-      title: getClaudeToolName(message),
+      toolType: parsedFileChange?.toolType ?? toolType,
+      title: toolName,
       detail: getClaudeToolInputText(message) || asString(message.text ?? ""),
       status: "started",
-      changes: inferClaudeFileChange(getClaudeToolName(message), message)?.changes,
+      changes: parsedFileChange?.changes,
     });
-    if (toolId) {
-      toolIndexById.set(toolId, items.length - 1);
+    if (resolvedToolId) {
+      toolIndexById.set(resolvedToolId, items.length - 1);
+    }
+    if (isAskUserQuestion) {
+      pendingAskToolIds.push(resolvedToolId);
+      askTemplatesByToolId.set(
+        resolvedToolId,
+        parseAskUserQuestionTemplates(getClaudeToolInputRecord(message)),
+      );
     }
   }
+
+  for (const pendingToolId of pendingAskToolIds) {
+    const index = toolIndexById.get(pendingToolId);
+    if (index === undefined || index >= items.length - 1) {
+      continue;
+    }
+    const existing = items[index];
+    if (!existing || existing.kind !== "tool") {
+      continue;
+    }
+    if (existing.status === "completed" || existing.status === "failed") {
+      continue;
+    }
+    items[index] = {
+      ...existing,
+      status: "completed",
+    };
+  }
+
   return items;
+}
+
+function extractPendingUserInputQueueFromClaudeItems(
+  items: ConversationItem[],
+  workspaceId: string,
+  threadId: string,
+): RequestUserInputRequest[] {
+  const queue: RequestUserInputRequest[] = [];
+  const seen = new Set<string>();
+
+  for (const item of items) {
+    if (item.kind !== "tool") {
+      continue;
+    }
+    const normalizedToolType = normalizeClaudeToolName(item.toolType);
+    if (
+      normalizedToolType !== "askuserquestion" &&
+      normalizedToolType !== "ask_user_question"
+    ) {
+      continue;
+    }
+    if (item.status === "completed" || item.status === "failed") {
+      continue;
+    }
+    const templates = parseAskUserQuestionTemplates(parseToolRecordCandidate(item.detail));
+    if (templates.length === 0) {
+      continue;
+    }
+    const requestId = item.id.trim() || `claude-ask-${queue.length + 1}`;
+    const dedupeKey = `${workspaceId}:${requestId}`;
+    if (seen.has(dedupeKey)) {
+      continue;
+    }
+    seen.add(dedupeKey);
+    queue.push({
+      workspace_id: workspaceId,
+      request_id: requestId,
+      params: {
+        thread_id: threadId,
+        turn_id: "",
+        item_id: item.id.trim() || `request-${requestId}`,
+        questions: templates.map((template, index) => ({
+          id: template.id || `q-${index}`,
+          header: template.header,
+          question: template.question,
+          isOther: template.isOther,
+          isSecret: false,
+          ...(template.multiSelect ? { multiSelect: true } : {}),
+          options: template.options,
+        })),
+      },
+    });
+  }
+
+  return queue;
 }
 
 export function createClaudeHistoryLoader({
@@ -406,13 +838,19 @@ export function createClaudeHistoryLoader({
       const result = await loadClaudeSession(workspacePath, sessionId);
       const record = result as { messages?: unknown };
       const messagesData = record.messages ?? result;
+      const parsedItems = parseClaudeHistoryMessages(messagesData);
+      const userInputQueue = extractPendingUserInputQueueFromClaudeItems(
+        parsedItems,
+        workspaceId,
+        threadId,
+      );
       return normalizeHistorySnapshot({
         engine: "claude",
         workspaceId,
         threadId,
-        items: parseClaudeHistoryMessages(messagesData),
+        items: parsedItems,
         plan: null,
-        userInputQueue: [],
+        userInputQueue,
         meta: {
           workspaceId,
           threadId,

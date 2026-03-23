@@ -38,6 +38,7 @@ type UseQueuedSendOptions = {
   startMcp: (text: string) => Promise<void>;
   startSpecRoot: (text: string) => Promise<void>;
   startStatus: (text: string) => Promise<void>;
+  startContext: (text: string) => Promise<void>;
   startExport: (text: string) => Promise<void>;
   startImport: (text: string) => Promise<void>;
   startLsp: (text: string) => Promise<void>;
@@ -74,6 +75,7 @@ type SlashCommandKind =
   | "specRoot"
   | "review"
   | "status"
+  | "context"
   | "export"
   | "import"
   | "lsp"
@@ -132,6 +134,9 @@ function parseSlashCommand(text: string): SlashCommandKind | null {
   }
   if (/^\/status\b/i.test(text)) {
     return "status";
+  }
+  if (/^\/context\b/i.test(text)) {
+    return "context";
   }
   if (/^\/export\b/i.test(text)) {
     return "export";
@@ -200,6 +205,7 @@ export function useQueuedSend({
   startMcp,
   startSpecRoot,
   startStatus,
+  startContext,
   startExport,
   startImport,
   startLsp,
@@ -342,6 +348,10 @@ export function useQueuedSend({
         await startStatus(trimmed);
         return true;
       }
+      if (command === "context") {
+        await startContext(trimmed);
+        return true;
+      }
       if (command === "export") {
         await startExport(trimmed);
         return true;
@@ -385,6 +395,7 @@ export function useQueuedSend({
       startMcp,
       startSpecRoot,
       startStatus,
+      startContext,
       startExport,
       startImport,
       startLsp,

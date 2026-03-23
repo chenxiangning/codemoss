@@ -160,7 +160,7 @@ export function AskUserQuestionDialog({
   const qKey = currentQ.id || `q-${safeIndex}`;
   const options = currentQ.options ?? [];
   const hasOptions = options.length > 0;
-  const isMultiSelect = false; // Current type system doesn't have multiSelect per question
+  const isMultiSelect = currentQ.multiSelect === true;
   const isLastQuestion = safeIndex === questions.length - 1;
   const currentSelections = selections[qKey] ?? new Set();
   const currentCustom = customInputs[qKey] ?? "";

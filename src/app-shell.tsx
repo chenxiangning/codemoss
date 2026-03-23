@@ -170,7 +170,8 @@ import {
   SESSION_RADAR_RECENT_STORAGE_KEY,
   type PersistedRadarRecentEntry,
   buildRadarCompletionId,
-  parsePersistedRadarRecentEntry,
+  dispatchSessionRadarHistoryUpdatedEvent,
+  mergePersistedRadarRecentEntries,
   resolveLatestUserMessage,
 } from "./features/session-activity/utils/sessionRadarPersistence";
 
@@ -1302,12 +1303,14 @@ export function AppShell() {
     startMcp,
     startSpecRoot,
     startStatus,
+    startContext,
     startFast,
     startMode,
     startExport,
     startImport,
     startLsp,
     startShare,
+    resolveCanonicalThreadId,
     reviewPrompt,
     closeReviewPrompt,
     showPresetStep,
@@ -2098,6 +2101,7 @@ export function AppShell() {
     startMcp,
     startSpecRoot,
     startStatus,
+    startContext,
     startFast,
     startMode,
     startExport,
@@ -2433,27 +2437,9 @@ export function AppShell() {
       return;
     }
 
-    const rawPersistedRecent = getClientStoreSync<unknown>(
-      RADAR_STORE_NAME,
-      SESSION_RADAR_RECENT_STORAGE_KEY,
-    );
-    const persistedRecentList = Array.isArray(rawPersistedRecent)
-      ? rawPersistedRecent
-          .map(parsePersistedRadarRecentEntry)
-          .filter((entry): entry is PersistedRadarRecentEntry => Boolean(entry))
-      : [];
-    const mergedById = new Map<string, PersistedRadarRecentEntry>();
-    for (const entry of persistedRecentList) {
-      mergedById.set(entry.id, entry);
-    }
-    for (const entry of completed) {
-      const previous = mergedById.get(entry.id);
-      if (!previous || previous.completedAt <= entry.completedAt) {
-        mergedById.set(entry.id, entry);
-      }
-    }
-    const nextPersistedRecent = Array.from(mergedById.values()).sort(
-      (left, right) => right.completedAt - left.completedAt,
+    const nextPersistedRecent = mergePersistedRadarRecentEntries(
+      getClientStoreSync<unknown>(RADAR_STORE_NAME, SESSION_RADAR_RECENT_STORAGE_KEY),
+      completed,
     );
     writeClientStoreValue(
       RADAR_STORE_NAME,
@@ -2461,6 +2447,7 @@ export function AppShell() {
       nextPersistedRecent,
       { immediate: true },
     );
+    dispatchSessionRadarHistoryUpdatedEvent();
 
     // Send a system notification for each completed session.
     if (appSettings.systemNotificationEnabled) {
@@ -2929,7 +2916,7 @@ export function AppShell() {
     releaseNotesEntries, releaseNotesError, releaseNotesLoading, releaseNotesOpen, reloadSelectedAgent, removeImage, removeImagesForThread, removeThread,
     removeWorkspace, removeWorktree, renamePrompt, renameThread, renameWorkspaceGroup, renameWorktree, renameWorktreeNotice, renameWorktreePrompt,
     renameWorktreeUpstream, renameWorktreeUpstreamPrompt, requestId, requestThreadId, resetGitHubPanelState, resetSoloSplitToHalf, resetWorkspaceThreads, resolveCloneProjectContext,
-    resolveCollaborationRuntimeMode, resolveCollaborationUiMode, resolveOpenCodeAgentForThread, resolveOpenCodeVariantForThread, resolvedEffort, resolvedModel, response, restartTerminalSession,
+    resolveCanonicalThreadId, resolveCollaborationRuntimeMode, resolveCollaborationUiMode, resolveOpenCodeAgentForThread, resolveOpenCodeVariantForThread, resolvedEffort, resolvedModel, response, restartTerminalSession,
     result, resumePrompt, retryReleaseNotesLoad, reviewPrompt, rightPanelCollapsed, rightPanelWidth, runtimeMode, runtimeRunState,
     scaleShortcutText, scaleShortcutTitle, scanGitRoots, scheduleDraggedHeightFlush, scopedKanbanTasks, searchContentFilters, searchPaletteQuery, searchPaletteSelectedIndex,
     searchResults, searchScope, selectBranch, selectBranchAtIndex, selectCommit, selectCommitAtIndex, selectHome, selectWorkspace,

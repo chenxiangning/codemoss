@@ -96,6 +96,7 @@ describe("useThreadActions", () => {
     const args: Parameters<typeof useThreadActions>[0] = {
       dispatch,
       itemsByThread: {},
+      userInputRequests: [],
       threadsByWorkspace: {},
       activeThreadIdByWorkspace: {},
       threadListCursorByWorkspace: {},
@@ -590,6 +591,83 @@ describe("useThreadActions", () => {
         },
       },
     });
+  });
+
+  it("keeps local pending user input queue when unified snapshot has pending ask tool but empty queue", async () => {
+    vi.mocked(buildItemsFromThread).mockImplementation(() => [
+      {
+        id: "ask-tool-1",
+        kind: "tool",
+        toolType: "askuserquestion",
+        title: "Tool: askuserquestion",
+        detail: "",
+        status: "started",
+      },
+      {
+        id: "assistant-after-ask",
+        kind: "message",
+        role: "assistant",
+        text: "请先选择一个选项。",
+      },
+    ]);
+    vi.mocked(loadCodexSession).mockResolvedValue(undefined);
+    vi.mocked(mergeThreadItems).mockImplementation(
+      (baseItems) => baseItems as ConversationItem[],
+    );
+    vi.mocked(resumeThread).mockResolvedValue({
+      result: {
+        thread: {
+          user_input_queue: [],
+          turns: [{ id: "turn-ask", items: [] }],
+        },
+      },
+    });
+
+    const { result, dispatch } = renderActions({
+      useUnifiedHistoryLoader: true,
+      itemsByThread: {
+        "thread-ask-pending": [
+          {
+            id: "ask-tool-local",
+            kind: "tool",
+            toolType: "askuserquestion",
+            title: "Tool: askuserquestion",
+            detail: "",
+            status: "started",
+          },
+        ],
+      },
+      userInputRequests: [
+        {
+          workspace_id: "ws-1",
+          request_id: "req-local-pending-1",
+          params: {
+            thread_id: "thread-ask-pending",
+            turn_id: "turn-local",
+            item_id: "ask-tool-local",
+            questions: [
+              {
+                id: "q-1",
+                header: "技术兴趣",
+                question: "你对哪些技术领域感兴趣？",
+                isOther: false,
+                isSecret: false,
+                multiSelect: true,
+                options: [{ label: "前端开发", description: "React/Vue" }],
+              },
+            ],
+          },
+        },
+      ],
+    });
+
+    await act(async () => {
+      await result.current.resumeThreadForWorkspace("ws-1", "thread-ask-pending");
+    });
+
+    const dispatchedTypes = dispatch.mock.calls.map((entry) => entry[0]?.type);
+    expect(dispatchedTypes).not.toContain("clearUserInputRequestsForThread");
+    expect(dispatchedTypes).not.toContain("addUserInputRequest");
   });
 
   it("restores collab parent links from unified codex history snapshots", async () => {

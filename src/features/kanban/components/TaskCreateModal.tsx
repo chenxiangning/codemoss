@@ -1,14 +1,37 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { X, ImagePlus, Sparkles, Loader2 } from "lucide-react";
+import {
+  X,
+  ImagePlus,
+  Sparkles,
+  Loader2,
+  Calendar,
+  Clock3,
+  Repeat,
+  Settings2,
+  Hash,
+  GitBranch,
+  Link2,
+} from "lucide-react";
 import type { EngineStatus, EngineType } from "../../../types";
-import type { KanbanTask, KanbanTaskStatus } from "../types";
+import type {
+  KanbanNewThreadResultMode,
+  KanbanRecurringUnit,
+  KanbanRecurringExecutionMode,
+  KanbanScheduleMode,
+  KanbanTask,
+  KanbanTaskChain,
+  KanbanTaskSchedule,
+  KanbanTaskStatus,
+} from "../types";
 import { pickImageFiles, generateThreadTitle } from "../../../services/tauri";
 import { pushErrorToast } from "../../../services/toasts";
 import { RichTextInput } from "../../../components/common/RichTextInput";
 import { useInlineHistoryCompletion } from "../../composer/hooks/useInlineHistoryCompletion";
 import { recordHistory as recordInputHistory } from "../../composer/hooks/useInputHistoryStore";
 import { loadTaskDraft, saveTaskDraft, clearTaskDraft } from "../utils/kanbanStorage";
+import { buildTaskChain, validateChainSelection } from "../utils/chaining";
+import { buildTaskScheduleFromForm } from "../utils/scheduling";
 
 type CreateTaskInput = {
   workspaceId: string;
@@ -20,6 +43,8 @@ type CreateTaskInput = {
   branchName: string;
   images: string[];
   autoStart: boolean;
+  schedule?: KanbanTaskSchedule;
+  chain?: KanbanTaskChain;
 };
 
 type TaskCreateModalProps = {
@@ -31,9 +56,26 @@ type TaskCreateModalProps = {
   engineStatuses: EngineStatus[];
   onSubmit: (input: CreateTaskInput) => void;
   onCancel: () => void;
+  availableTasks: KanbanTask[];
   editingTask?: KanbanTask;
   onUpdate?: (taskId: string, changes: Partial<KanbanTask>) => void;
 };
+
+function pad2(value: number): string {
+  return value.toString().padStart(2, "0");
+}
+
+function toDateTimeLocalInput(timestamp: number | null | undefined): string {
+  if (typeof timestamp !== "number" || !Number.isFinite(timestamp)) {
+    return "";
+  }
+  const date = new Date(timestamp);
+  return [
+    date.getFullYear(),
+    pad2(date.getMonth() + 1),
+    pad2(date.getDate()),
+  ].join("-") + `T${pad2(date.getHours())}:${pad2(date.getMinutes())}`;
+}
 
 export function TaskCreateModal({
   isOpen,
@@ -44,6 +86,7 @@ export function TaskCreateModal({
   engineStatuses,
   onSubmit,
   onCancel,
+  availableTasks,
   editingTask,
   onUpdate,
 }: TaskCreateModalProps) {
@@ -59,6 +102,30 @@ export function TaskCreateModal({
   const [images, setImages] = useState<string[]>([]);
   const [autoStart, setAutoStart] = useState(false);
   const [isGeneratingTitle, setIsGeneratingTitle] = useState(false);
+  const [scheduleMode, setScheduleMode] = useState<"manual" | "once" | "recurring">("manual");
+  const [runAtText, setRunAtText] = useState("");
+  const [recurringInterval, setRecurringInterval] = useState(1);
+  const [recurringUnit, setRecurringUnit] = useState<KanbanRecurringUnit>("days");
+  const [recurringExecutionMode, setRecurringExecutionMode] =
+    useState<KanbanRecurringExecutionMode>("same_thread");
+  const [newThreadResultMode, setNewThreadResultMode] =
+    useState<KanbanNewThreadResultMode>("pass");
+  const [maxRounds, setMaxRounds] = useState(10);
+  const [previousTaskId, setPreviousTaskId] = useState("");
+  const [formError, setFormError] = useState<string | null>(null);
+  const scheduleModeOptions: Array<{
+    value: KanbanScheduleMode;
+    icon: typeof Calendar;
+    label: string;
+  }> = [
+    { value: "manual", icon: Calendar, label: t("kanban.task.schedule.manual") },
+    { value: "once", icon: Clock3, label: t("kanban.task.schedule.once") },
+    { value: "recurring", icon: Repeat, label: t("kanban.task.schedule.recurring") },
+  ];
+  const scheduleModeIndex = Math.max(
+    0,
+    scheduleModeOptions.findIndex((option) => option.value === scheduleMode),
+  );
 
   // branchName is always "main" - no UI control needed
   const branchName = "main";
@@ -68,6 +135,28 @@ export function TaskCreateModal({
     (e) => e.engineType === engineType
   );
   const availableModels = selectedEngine?.models ?? [];
+  const chainCandidates = availableTasks.filter(
+    (task) => task.id !== editingTask?.id && task.status === "todo",
+  );
+
+  const resolveValidationMessage = useCallback(
+    (reason: string): string => {
+      const keyMap: Record<string, string> = {
+        invalid_once_time: "kanban.task.validation.invalidOnceTime",
+        invalid_recurring_interval: "kanban.task.validation.invalidRecurringInterval",
+        invalid_recurring_rule: "kanban.task.validation.invalidRecurringRule",
+        chain_requires_todo_task: "kanban.task.validation.chainRequiresTodoTask",
+        downstream_cannot_be_scheduled: "kanban.task.validation.downstreamCannotBeScheduled",
+        chain_self_cycle: "kanban.task.validation.chainSelfCycle",
+        chain_previous_not_found: "kanban.task.validation.chainPreviousNotFound",
+        chain_requires_todo_upstream: "kanban.task.validation.chainRequiresTodoUpstream",
+        chain_multi_downstream: "kanban.task.validation.chainMultiDownstream",
+        chain_cycle_detected: "kanban.task.validation.chainCycleDetected",
+      };
+      return t(keyMap[reason] ?? "kanban.task.validation.generic");
+    },
+    [t],
+  );
 
   const handlePickImages = async () => {
     try {
@@ -91,6 +180,27 @@ export function TaskCreateModal({
     }
   };
 
+  const resolveTaskScheduleModeLabel = useCallback(
+    (mode: KanbanScheduleMode): string => {
+      if (mode === "once") {
+        return t("kanban.task.schedule.once");
+      }
+      if (mode === "recurring") {
+        return t("kanban.task.schedule.recurring");
+      }
+      return t("kanban.task.schedule.manual");
+    },
+    [t],
+  );
+
+  const formatUpstreamTaskLabel = useCallback(
+    (task: KanbanTask): string => {
+      const mode = task.schedule?.mode ?? "manual";
+      return `[${resolveTaskScheduleModeLabel(mode)}] ${task.title}`;
+    },
+    [resolveTaskScheduleModeLabel],
+  );
+
   useEffect(() => {
     if (isOpen) {
       if (editingTask) {
@@ -100,6 +210,14 @@ export function TaskCreateModal({
         setModelId(editingTask.modelId);
         setImages(editingTask.images);
         setAutoStart(editingTask.autoStart);
+        setScheduleMode(editingTask.schedule?.mode ?? "manual");
+        setRunAtText(toDateTimeLocalInput(editingTask.schedule?.runAt ?? null));
+        setRecurringInterval(editingTask.schedule?.interval ?? 1);
+        setRecurringUnit(editingTask.schedule?.unit ?? "days");
+        setRecurringExecutionMode(editingTask.schedule?.recurringExecutionMode ?? "same_thread");
+        setNewThreadResultMode(editingTask.schedule?.newThreadResultMode ?? "pass");
+        setMaxRounds(Math.min(50, Math.max(1, editingTask.schedule?.maxRounds ?? 10)));
+        setPreviousTaskId(editingTask.chain?.previousTaskId ?? "");
       } else {
         const draft = loadTaskDraft(panelId);
         if (draft && (draft.title || draft.description)) {
@@ -114,7 +232,16 @@ export function TaskCreateModal({
           setImages([]);
         }
         setAutoStart(defaultStatus !== "todo");
+        setScheduleMode("manual");
+        setRunAtText("");
+        setRecurringInterval(1);
+        setRecurringUnit("days");
+        setRecurringExecutionMode("same_thread");
+        setNewThreadResultMode("pass");
+        setMaxRounds(10);
+        setPreviousTaskId("");
       }
+      setFormError(null);
       inlineCompletion.clear();
       if (availableEngines.length > 0 && !availableEngines.find((e) => e.engineType === engineType)) {
         setEngineType(availableEngines[0].engineType);
@@ -133,8 +260,15 @@ export function TaskCreateModal({
     }
   }, [engineType, engineStatuses]);
 
+  useEffect(() => {
+    if (scheduleMode !== "manual" && previousTaskId) {
+      setPreviousTaskId("");
+    }
+  }, [scheduleMode, previousTaskId]);
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    setFormError(null);
     const trimmedTitle = title.trim();
     if (!trimmedTitle) return;
     const trimmedDesc = description.trim();
@@ -142,6 +276,49 @@ export function TaskCreateModal({
       recordInputHistory(trimmedDesc);
     }
     inlineCompletion.clear();
+
+    const nextStatus = editingTask?.status ?? (autoStart ? "inprogress" : "todo");
+    if (nextStatus !== "todo" && scheduleMode !== "manual") {
+      setFormError(t("kanban.task.validation.scheduleTodoOnly"));
+      return;
+    }
+
+    const builtSchedule = buildTaskScheduleFromForm({
+      mode: scheduleMode,
+      runAtText,
+      interval: recurringInterval,
+      unit: recurringUnit,
+      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      recurringExecutionMode,
+      newThreadResultMode,
+      maxRounds,
+    });
+    if (!builtSchedule.ok) {
+      setFormError(resolveValidationMessage(builtSchedule.reason));
+      return;
+    }
+
+    const chainValidation = validateChainSelection({
+      tasks: availableTasks,
+      taskId: editingTask?.id,
+      status: nextStatus,
+      previousTaskId: previousTaskId || null,
+      scheduleMode,
+    });
+    if (!chainValidation.ok) {
+      setFormError(resolveValidationMessage(chainValidation.reason));
+      return;
+    }
+
+    const chain = buildTaskChain(availableTasks, previousTaskId || null);
+    const normalizedSchedule =
+      builtSchedule.schedule?.mode === "recurring" &&
+      builtSchedule.schedule.recurringExecutionMode === "new_thread"
+        ? {
+            ...builtSchedule.schedule,
+            seriesId: editingTask?.schedule?.seriesId ?? editingTask?.id ?? null,
+          }
+        : builtSchedule.schedule;
 
     if (editingTask && onUpdate) {
       onUpdate(editingTask.id, {
@@ -151,6 +328,12 @@ export function TaskCreateModal({
         modelId,
         images,
         autoStart,
+        schedule: normalizedSchedule,
+        chain,
+        execution: {
+          ...(editingTask.execution ?? {}),
+          blockedReason: null,
+        },
       });
     } else {
       clearTaskDraft(panelId);
@@ -164,6 +347,8 @@ export function TaskCreateModal({
         branchName: branchName.trim() || "main",
         images,
         autoStart,
+        schedule: normalizedSchedule,
+        chain,
       });
     }
   };
@@ -347,6 +532,182 @@ export function TaskCreateModal({
                 </>
               }
             />
+
+            <div className="kanban-task-config-block is-compact">
+              <div className="kanban-task-config-row">
+                <span className="kanban-task-config-label">
+                  <Calendar size={13} className="kanban-task-config-label-icon" />
+                  {t("kanban.task.schedule.modeLabel")}
+                </span>
+                <div
+                  className="kanban-task-mode-segmented"
+                  role="radiogroup"
+                  aria-label={t("kanban.task.schedule.modeLabel")}
+                >
+                  <span
+                    className="kanban-task-mode-segmented-thumb"
+                    aria-hidden
+                    style={{
+                      transform: `translateX(${scheduleModeIndex * 100}%)`,
+                    }}
+                  />
+                  {scheduleModeOptions.map((option) => {
+                    const Icon = option.icon;
+                    const isActive = scheduleMode === option.value;
+                    return (
+                      <button
+                        key={option.value}
+                        type="button"
+                        role="radio"
+                        aria-checked={isActive}
+                        className={`kanban-task-mode-segmented-btn${isActive ? " is-active" : ""}`}
+                        onClick={() => setScheduleMode(option.value)}
+                      >
+                        <Icon size={13} className="kanban-task-mode-segmented-icon" />
+                        <span>{option.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {scheduleMode === "once" && (
+                <div className="kanban-task-config-row">
+                  <span className="kanban-task-config-label">
+                    <Clock3 size={13} className="kanban-task-config-label-icon" />
+                    {t("kanban.task.schedule.runAt")}
+                  </span>
+                  <input
+                    className="kanban-input kanban-task-date-input"
+                    type="datetime-local"
+                    value={runAtText}
+                    onChange={(e) => setRunAtText(e.target.value)}
+                  />
+                </div>
+              )}
+
+              {scheduleMode === "recurring" && (
+                <>
+                  <div className="kanban-task-config-row">
+                    <span className="kanban-task-config-label">
+                      <Repeat size={13} className="kanban-task-config-label-icon" />
+                      {t("kanban.task.schedule.every")}
+                    </span>
+                    <div className="kanban-task-config-inline">
+                      <input
+                        className="kanban-input kanban-task-recurring-interval-input"
+                        type="number"
+                        min={1}
+                        value={recurringInterval}
+                        onChange={(e) => setRecurringInterval(Math.max(1, Number(e.target.value) || 1))}
+                      />
+                      <select
+                        className="kanban-select"
+                        value={recurringUnit}
+                        onChange={(e) => setRecurringUnit(e.target.value as KanbanRecurringUnit)}
+                      >
+                        <option value="minutes">{t("kanban.task.schedule.minutes")}</option>
+                        <option value="hours">{t("kanban.task.schedule.hours")}</option>
+                        <option value="days">{t("kanban.task.schedule.days")}</option>
+                        <option value="weeks">{t("kanban.task.schedule.weeks")}</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="kanban-task-config-row">
+                    <span className="kanban-task-config-label">
+                      <Settings2 size={13} className="kanban-task-config-label-icon" />
+                      {t("kanban.task.schedule.executionModeLabel")}
+                    </span>
+                    <select
+                      className="kanban-select"
+                      value={recurringExecutionMode}
+                      onChange={(e) =>
+                        setRecurringExecutionMode(e.target.value as KanbanRecurringExecutionMode)
+                      }
+                    >
+                      <option value="same_thread">
+                        {t("kanban.task.schedule.sameThread")}
+                      </option>
+                      <option value="new_thread">
+                        {t("kanban.task.schedule.newThread")}
+                      </option>
+                    </select>
+                  </div>
+
+                  {recurringExecutionMode === "same_thread" && (
+                    <div className="kanban-task-config-row">
+                      <span className="kanban-task-config-label">
+                        <Hash size={13} className="kanban-task-config-label-icon" />
+                        {t("kanban.task.schedule.maxRounds")}
+                      </span>
+                      <input
+                        className="kanban-input kanban-task-rounds-input"
+                        type="number"
+                        min={1}
+                        max={50}
+                        value={maxRounds}
+                        onChange={(e) =>
+                          setMaxRounds(
+                            Math.min(50, Math.max(1, Number(e.target.value) || 1)),
+                          )
+                        }
+                      />
+                    </div>
+                  )}
+
+                  {recurringExecutionMode === "new_thread" && (
+                    <div className="kanban-task-config-row">
+                      <span className="kanban-task-config-label">
+                        <GitBranch size={13} className="kanban-task-config-label-icon" />
+                        {t("kanban.task.schedule.resultPassing")}
+                      </span>
+                      <select
+                        className="kanban-select"
+                        value={newThreadResultMode}
+                        onChange={(e) =>
+                          setNewThreadResultMode(e.target.value as KanbanNewThreadResultMode)
+                        }
+                      >
+                        <option value="pass">
+                          {t("kanban.task.schedule.passResult")}
+                        </option>
+                        <option value="none">
+                          {t("kanban.task.schedule.blockResult")}
+                        </option>
+                      </select>
+                    </div>
+                  )}
+                </>
+              )}
+
+              {scheduleMode === "manual" && (
+                <div className="kanban-task-config-row">
+                  <span className="kanban-task-config-label">
+                    <Link2 size={13} className="kanban-task-config-label-icon" />
+                    {t("kanban.task.chain.upstreamLabel")}
+                  </span>
+                  <select
+                    className="kanban-select"
+                    value={previousTaskId}
+                    onChange={(e) => setPreviousTaskId(e.target.value)}
+                  >
+                    <option value="">{t("kanban.task.chain.none")}</option>
+                    {chainCandidates.map((task) => (
+                      <option key={task.id} value={task.id}>
+                        {formatUpstreamTaskLabel(task)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+            </div>
+
+            {formError && (
+              <div className="kanban-task-form-error" role="alert">
+                {formError}
+              </div>
+            )}
           </div>
 
           <div className="kanban-modal-footer">

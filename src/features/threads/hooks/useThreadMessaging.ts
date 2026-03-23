@@ -6,6 +6,7 @@ import type {
   AccessMode,
   MemoryContextInjectionMode,
   RateLimitSnapshot,
+  ThreadTokenUsage,
   CustomPromptOption,
   DebugEntry,
   EngineType,
@@ -368,6 +369,7 @@ type UseThreadMessagingOptions = {
   threadStatusById: ThreadState["threadStatusById"];
   itemsByThread: ThreadState["itemsByThread"];
   activeTurnIdByThread: ThreadState["activeTurnIdByThread"];
+  tokenUsageByThread: Record<string, ThreadTokenUsage>;
   rateLimitsByWorkspace: Record<string, RateLimitSnapshot | null>;
   pendingInterruptsRef: MutableRefObject<Set<string>>;
   interruptedThreadsRef: MutableRefObject<Set<string>>;
@@ -431,6 +433,7 @@ export function useThreadMessaging({
   threadStatusById,
   itemsByThread,
   activeTurnIdByThread,
+  tokenUsageByThread,
   rateLimitsByWorkspace,
   pendingInterruptsRef,
   interruptedThreadsRef,
@@ -1643,6 +1646,98 @@ export function useThreadMessaging({
     ],
   );
 
+  const startContext = useCallback(
+    async (_text: string) => {
+      if (!activeWorkspace) {
+        return;
+      }
+      const threadId = await ensureThreadForActiveWorkspace();
+      if (!threadId) {
+        return;
+      }
+
+      const usage = tokenUsageByThread[threadId] ?? null;
+      const formatTokenCount = (value: number) =>
+        Math.max(0, Math.round(value)).toLocaleString("en-US");
+
+      const noUsageLines = [
+        "Context Usage",
+        "",
+        "No context usage telemetry yet for this thread.",
+        "Send at least one turn, then run /context again.",
+      ];
+
+      if (!usage) {
+        const timestamp = Date.now();
+        recordThreadActivity(activeWorkspace.id, threadId, timestamp);
+        dispatch({
+          type: "addAssistantMessage",
+          threadId,
+          text: ["```text", ...noUsageLines, "```"].join("\n"),
+        });
+        safeMessageActivity();
+        return;
+      }
+
+      const inputTokens = usage.last.inputTokens ?? 0;
+      const cachedInputTokens = usage.last.cachedInputTokens ?? 0;
+      const outputTokens = usage.last.outputTokens ?? 0;
+      const reasoningOutputTokens = usage.last.reasoningOutputTokens ?? 0;
+      const usedTokens = inputTokens + cachedInputTokens;
+      const contextWindow = usage.modelContextWindow ?? null;
+      const usedPercent = contextWindow && contextWindow > 0
+        ? Math.min(Math.max((usedTokens / contextWindow) * 100, 0), 100)
+        : null;
+      const remainingPercent =
+        usedPercent === null ? null : Math.max(0, 100 - usedPercent);
+
+      const lines = [
+        "Context Usage",
+        "",
+        `Thread:             ${threadId}`,
+        `Used:               ${formatTokenCount(usedTokens)} tokens`,
+        contextWindow && contextWindow > 0
+          ? `Context window:     ${formatTokenCount(contextWindow)} tokens`
+          : "Context window:     n/a",
+        usedPercent === null
+          ? "Used percent:       n/a"
+          : `Used percent:       ${usedPercent.toFixed(1)}%`,
+        remainingPercent === null
+          ? "Remaining:          n/a"
+          : `Remaining:          ${remainingPercent.toFixed(1)}%`,
+        "",
+        "Last turn breakdown:",
+        `- Input:            ${formatTokenCount(inputTokens)}`,
+        `- Cached input:     ${formatTokenCount(cachedInputTokens)}`,
+        `- Output:           ${formatTokenCount(outputTokens)}`,
+        `- Reasoning output: ${formatTokenCount(reasoningOutputTokens)}`,
+        "",
+        "Session totals:",
+        `- Total tokens:     ${formatTokenCount(usage.total.totalTokens ?? 0)}`,
+        `- Input tokens:     ${formatTokenCount(usage.total.inputTokens ?? 0)}`,
+        `- Cached input:     ${formatTokenCount(usage.total.cachedInputTokens ?? 0)}`,
+        `- Output tokens:    ${formatTokenCount(usage.total.outputTokens ?? 0)}`,
+      ];
+
+      const timestamp = Date.now();
+      recordThreadActivity(activeWorkspace.id, threadId, timestamp);
+      dispatch({
+        type: "addAssistantMessage",
+        threadId,
+        text: ["```text", ...lines, "```"].join("\n"),
+      });
+      safeMessageActivity();
+    },
+    [
+      activeWorkspace,
+      dispatch,
+      ensureThreadForActiveWorkspace,
+      recordThreadActivity,
+      safeMessageActivity,
+      tokenUsageByThread,
+    ],
+  );
+
   const startStatus = useCallback(
     async (text: string) => {
       if (!activeWorkspace) {
@@ -2511,6 +2606,7 @@ export function useThreadMessaging({
     startMcp,
     startSpecRoot,
     startStatus,
+    startContext,
     startFast,
     startMode,
     startExport,
