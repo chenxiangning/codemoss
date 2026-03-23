@@ -246,12 +246,13 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Build Windows installer
+      - name: Build unsigned Windows installer
         shell: pwsh
         env:
           NODE_OPTIONS: "--max-old-space-size=8192"
         run: |
-          # Unsigned build for Windows CI packaging
+          # Keep Windows release artifacts unsigned by using tauri.windows.conf.json
+          # (updater disabled, createUpdaterArtifacts=false, no code-signing config)
           npm run tauri -- build --config src-tauri/tauri.windows.conf.json --bundles nsis
 
       - name: Get version
