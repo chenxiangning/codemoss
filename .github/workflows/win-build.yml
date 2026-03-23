@@ -1,6 +1,9 @@
 name: Build Windows Package
 
 on:
+  push:
+    branches:
+      - codex/2026-03-20-local
   workflow_dispatch:
     inputs:
       ref:
