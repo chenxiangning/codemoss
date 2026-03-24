@@ -1,6 +1,6 @@
 import type { HistoryLoader } from "../contracts/conversationCurtainContracts";
 import { normalizeHistorySnapshot } from "../contracts/conversationCurtainContracts";
-import { parseClaudeHistoryMessages } from "./claudeHistoryLoader";
+import { parseGeminiHistoryMessages } from "./geminiHistoryParser";
 
 type GeminiHistoryLoaderOptions = {
   workspaceId: string;
@@ -42,7 +42,7 @@ export function createGeminiHistoryLoader({
       const result = await loadGeminiSession(workspacePath, sessionId);
       const record = result as { messages?: unknown };
       const messagesData = record.messages ?? result;
-      const items = parseClaudeHistoryMessages(messagesData);
+      const items = parseGeminiHistoryMessages(messagesData);
 
       return normalizeHistorySnapshot({
         engine: "gemini",

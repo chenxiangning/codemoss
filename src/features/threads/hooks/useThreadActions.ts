@@ -39,6 +39,7 @@ import {
 } from "../loaders/claudeHistoryLoader";
 import { createCodexHistoryLoader } from "../loaders/codexHistoryLoader";
 import { createGeminiHistoryLoader } from "../loaders/geminiHistoryLoader";
+import { parseGeminiHistoryMessages } from "../loaders/geminiHistoryParser";
 import { createOpenCodeHistoryLoader } from "../loaders/opencodeHistoryLoader";
 import {
   asString,
@@ -757,7 +758,7 @@ export function useThreadActions({
               realSessionId,
             );
             const messagesData = (result as { messages?: unknown }).messages ?? result;
-            const items = parseClaudeHistoryMessages(messagesData);
+            const items = parseGeminiHistoryMessages(messagesData);
             if (items.length > 0) {
               dispatch({ type: "setThreadItems", threadId, items });
             }

@@ -1681,14 +1681,7 @@ export const Messages = memo(function Messages({
   const userInputRequests = effectiveState.userInputQueue;
   const workspaceId = effectiveState.meta.workspaceId || legacyWorkspaceId;
   const threadId = effectiveState.meta.threadId || legacyThreadId;
-  const activeEngine =
-    effectiveState.meta.engine === "claude"
-      ? "claude"
-      : effectiveState.meta.engine === "opencode"
-        ? "opencode"
-        : legacyActiveEngine === "gemini"
-          ? "gemini"
-          : "codex";
+  const activeEngine = toConversationEngine(effectiveState.meta.engine);
   const isThinking = conversationState
     ? effectiveState.meta.isThinking
     : legacyIsThinking;
@@ -2095,13 +2088,13 @@ export const Messages = memo(function Messages({
           : activeEngine === "codex";
         return keepTitleOnlyReasoning || item.id === latestTitleOnlyReasoningId;
       });
-    const appendReasoningRuns = activeEngine === "claude";
+    const appendReasoningRuns = activeEngine === "claude" || activeEngine === "gemini";
     const deduped = dedupeAdjacentReasoningItems(
       filtered,
       reasoningMetaById,
       appendReasoningRuns,
     );
-    const collapseReasoningRuns = activeEngine !== "codex" && activeEngine !== "gemini";
+    const collapseReasoningRuns = activeEngine !== "codex";
     return collapseConsecutiveReasoningRuns(
       deduped,
       collapseReasoningRuns,

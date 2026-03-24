@@ -215,7 +215,7 @@ export function useGeminiVendorManagement() {
       const importantValues = extractGeminiImportantValues(envMap);
       const authMode = normalizeGeminiAuthMode(settings?.authMode, importantValues);
       setDraft({
-        enabled: true,
+        enabled: settings?.enabled ?? true,
         envText: envMapToText(envMap),
         authMode,
         ...importantValues,
@@ -248,7 +248,7 @@ export function useGeminiVendorManagement() {
 
   const persist = useCallback(async (nextDraft: GeminiVendorDraft) => {
     await saveGeminiVendorSettings({
-      enabled: true,
+      enabled: nextDraft.enabled,
       authMode: nextDraft.authMode,
       env: parseEnvText(nextDraft.envText),
     });
@@ -284,6 +284,10 @@ export function useGeminiVendorManagement() {
 
   const handleGeminiAuthModeChange = (mode: GeminiAuthMode) => {
     setDraft((current) => patchGeminiAuthMode(current, mode));
+  };
+
+  const handleEnabledChange = (enabled: boolean) => {
+    setDraft((current) => ({ ...current, enabled }));
   };
 
   const handleGeminiFieldChange = (field: GeminiFieldKey, value: string) => {
@@ -330,6 +334,7 @@ export function useGeminiVendorManagement() {
     refreshPreflight,
     handleDraftEnvTextChange,
     handleSaveEnv,
+    handleEnabledChange,
     handleGeminiAuthModeChange,
     handleGeminiFieldChange,
     handleSaveConfig,

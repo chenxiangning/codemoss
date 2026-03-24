@@ -371,6 +371,58 @@ describe("buildWorkspaceSessionActivity", () => {
     expect(commandEvents).toHaveLength(1);
   });
 
+  it("merges gemini reasoning nodes into the first timeline node per turn", () => {
+    const threadId = "gemini:session-merge-first-node";
+    const threads: ThreadSummary[] = [{ id: threadId, name: "Gemini", updatedAt: 1000 }];
+    const itemsByThread = {
+      [threadId]: [
+        {
+          id: "reason-gemini-first-node-1",
+          kind: "reasoning" as const,
+          summary: "先看项目结构",
+          content: "先读取 README 和 docs 目录",
+        } satisfies ConversationItem,
+        toolItem("cmd-gemini-first-node-1", {
+          toolType: "commandExecution",
+          title: "Command: ls -la",
+          status: "completed",
+          output: "total 8",
+        }),
+        {
+          id: "reason-gemini-first-node-2",
+          kind: "reasoning" as const,
+          summary: "再看配置",
+          content: "再检查 package.json 和脚本入口",
+        } satisfies ConversationItem,
+        {
+          id: "reason-gemini-first-node-3",
+          kind: "reasoning" as const,
+          summary: "最后看源码",
+          content: "最后阅读关键 TypeScript 文件",
+        } satisfies ConversationItem,
+      ],
+    };
+
+    const result = buildWorkspaceSessionActivity({
+      activeThreadId: threadId,
+      threads,
+      itemsByThread,
+      threadParentById: {},
+      threadStatusById: { [threadId]: { isProcessing: true } },
+    });
+
+    const reasoningEvents = result.timeline.filter((event) => event.kind === "reasoning");
+    expect(reasoningEvents).toHaveLength(1);
+    const mergedReasoning = reasoningEvents[0];
+    expect(mergedReasoning?.eventId).toBe("reasoning:reason-gemini-first-node-1");
+    expect(mergedReasoning?.reasoningPreview).toContain("先读取 README 和 docs 目录");
+    expect(mergedReasoning?.reasoningPreview).toContain("再检查 package.json 和脚本入口");
+    expect(mergedReasoning?.reasoningPreview).toContain("最后阅读关键 TypeScript 文件");
+
+    const commandEvents = result.timeline.filter((event) => event.kind === "command");
+    expect(commandEvents).toHaveLength(1);
+  });
+
   it("keeps non-claude multiline reasoning summary as a single activity event", () => {
     const threads: ThreadSummary[] = [{ id: "root", name: "Root", updatedAt: 1000 }];
     const itemsByThread = {

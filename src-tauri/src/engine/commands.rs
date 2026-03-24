@@ -2318,9 +2318,19 @@ pub async fn engine_send_message(
             let item_id_clone = item_id.clone();
             let turn_id_for_forwarder = turn_id.clone();
             let mut accumulated_agent_text = String::new();
+            #[derive(Clone, Copy, PartialEq, Eq)]
+            enum GeminiRenderLane {
+                Text,
+                Reasoning,
+                Tool,
+                Other,
+            }
             tokio::spawn(async move {
                 let deadline = tokio::time::Instant::now()
                     + std::time::Duration::from_secs(EVENT_FORWARDER_TIMEOUT_SECS);
+                let mut last_render_lane = GeminiRenderLane::Other;
+                let mut reasoning_run_index = 0usize;
+                let mut active_reasoning_item_id: Option<String> = None;
                 loop {
                     let recv_result = tokio::time::timeout_at(deadline, receiver.recv()).await;
                     let turn_event = match recv_result {
@@ -2342,6 +2352,32 @@ pub async fn engine_send_message(
 
                     let event = turn_event.event;
                     let is_terminal = event.is_terminal();
+                    let render_lane = match &event {
+                        EngineEvent::TextDelta { .. } => GeminiRenderLane::Text,
+                        EngineEvent::ReasoningDelta { .. } => GeminiRenderLane::Reasoning,
+                        EngineEvent::ToolStarted { .. }
+                        | EngineEvent::ToolCompleted { .. }
+                        | EngineEvent::ToolInputUpdated { .. }
+                        | EngineEvent::ToolOutputDelta { .. } => GeminiRenderLane::Tool,
+                        _ => GeminiRenderLane::Other,
+                    };
+                    if matches!(render_lane, GeminiRenderLane::Reasoning)
+                        && (last_render_lane != GeminiRenderLane::Reasoning
+                            || active_reasoning_item_id.is_none())
+                    {
+                        reasoning_run_index += 1;
+                        active_reasoning_item_id = Some(format!(
+                            "{}:reasoning-{}",
+                            item_id_clone, reasoning_run_index
+                        ));
+                    }
+                    let routed_item_id = if matches!(render_lane, GeminiRenderLane::Reasoning) {
+                        active_reasoning_item_id
+                            .as_deref()
+                            .unwrap_or(item_id_clone.as_str())
+                    } else {
+                        item_id_clone.as_str()
+                    };
 
                     if let EngineEvent::TextDelta { text, .. } = &event {
                         accumulated_agent_text.push_str(text);
@@ -2376,7 +2412,7 @@ pub async fn engine_send_message(
                     }
 
                     if let Some(payload) =
-                        engine_event_to_app_server_event(&event, &current_thread_id, &item_id_clone)
+                        engine_event_to_app_server_event(&event, &current_thread_id, routed_item_id)
                     {
                         let _ = app_clone.emit("app-server-event", payload);
                     }
@@ -2389,6 +2425,13 @@ pub async fn engine_send_message(
                             if matches!(engine, EngineType::Gemini) {
                                 current_thread_id = format!("gemini:{}", session_id);
                             }
+                        }
+                    }
+
+                    if !matches!(render_lane, GeminiRenderLane::Other) {
+                        last_render_lane = render_lane;
+                        if !matches!(render_lane, GeminiRenderLane::Reasoning) {
+                            active_reasoning_item_id = None;
                         }
                     }
 

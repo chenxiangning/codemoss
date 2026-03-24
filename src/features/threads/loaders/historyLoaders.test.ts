@@ -7,6 +7,7 @@ import { buildWorkspaceSessionActivity } from "../../session-activity/adapters/b
 import { createCodexHistoryLoader } from "./codexHistoryLoader";
 import { parseCodexSessionHistory } from "./codexSessionHistory";
 import { createGeminiHistoryLoader } from "./geminiHistoryLoader";
+import { parseGeminiHistoryMessages } from "./geminiHistoryParser";
 import { createOpenCodeHistoryLoader } from "./opencodeHistoryLoader";
 
 describe("history loaders", () => {
@@ -98,6 +99,7 @@ describe("history loaders", () => {
             kind: "message",
             role: "user",
             text: "hello",
+            images: ["/tmp/demo.png"],
           },
           {
             id: "gemini-assistant-1",
@@ -117,6 +119,7 @@ describe("history loaders", () => {
       expect.objectContaining({
         kind: "message",
         role: "user",
+        images: ["/tmp/demo.png"],
       }),
     );
     expect(snapshot.items[1]).toEqual(
@@ -125,6 +128,116 @@ describe("history loaders", () => {
         role: "assistant",
       }),
     );
+  });
+
+  it("keeps gemini user image-only history rows", () => {
+    const items = parseGeminiHistoryMessages([
+      {
+        id: "gemini-user-image-only",
+        kind: "message",
+        role: "user",
+        text: "",
+        images: ["/tmp/image-only.png"],
+      },
+    ]);
+
+    expect(items).toHaveLength(1);
+    expect(items[0]).toEqual(
+      expect.objectContaining({
+        id: "gemini-user-image-only",
+        kind: "message",
+        role: "user",
+        images: ["/tmp/image-only.png"],
+      }),
+    );
+  });
+
+  it("merges gemini tool start/result rows into a completed tool item", () => {
+    const items = parseGeminiHistoryMessages([
+      {
+        id: "gemini-tool-1",
+        kind: "tool",
+        toolType: "write_file",
+        title: "write_file",
+        toolInput: {
+          path: "src/a.ts",
+          content: "const a = 1;",
+        },
+      },
+      {
+        id: "gemini-tool-1-result",
+        kind: "tool",
+        toolType: "result",
+        title: "Result",
+        text: "done",
+        toolOutput: {
+          ok: true,
+        },
+      },
+    ]);
+
+    expect(items).toHaveLength(1);
+    expect(items[0]).toEqual(
+      expect.objectContaining({
+        id: "gemini-tool-1",
+        kind: "tool",
+        toolType: "write_file",
+        status: "completed",
+        output: "done",
+      }),
+    );
+  });
+
+  it("merges adjacent gemini reasoning rows while preserving tool boundaries", () => {
+    const items = parseGeminiHistoryMessages([
+      {
+        id: "gemini-reasoning-1",
+        kind: "reasoning",
+        text: "先读取目录",
+      },
+      {
+        id: "gemini-reasoning-2",
+        kind: "reasoning",
+        text: "再检查配置",
+      },
+      {
+        id: "gemini-tool-1",
+        kind: "tool",
+        toolType: "commandExecution",
+        title: "Command",
+        toolInput: { command: ["ls"] },
+      },
+      {
+        id: "gemini-reasoning-3",
+        kind: "reasoning",
+        text: "整理最终结论",
+      },
+    ]);
+
+    expect(items).toHaveLength(3);
+    expect(items[0]).toEqual(
+      expect.objectContaining({
+        kind: "reasoning",
+      }),
+    );
+    if (items[0]?.kind === "reasoning") {
+      expect(items[0].content).toContain("先读取目录");
+      expect(items[0].content).toContain("再检查配置");
+    }
+    expect(items[1]).toEqual(
+      expect.objectContaining({
+        id: "gemini-tool-1",
+        kind: "tool",
+      }),
+    );
+    expect(items[2]).toEqual(
+      expect.objectContaining({
+        kind: "reasoning",
+      }),
+    );
+    if (items[2]?.kind === "reasoning") {
+      expect(items[2].content).toContain("整理最终结论");
+    }
   });
 
   it("reconstructs codex local session history into structured activity items", () => {
@@ -855,7 +968,13 @@ describe("history loaders", () => {
       workspacePath: "/tmp/ws-2",
       loadClaudeSession: vi.fn().mockResolvedValue({
         messages: [
-          { kind: "message", id: "user-1", role: "user", text: "run test" },
+          {
+            kind: "message",
+            id: "user-1",
+            role: "user",
+            text: "run test",
+            images: ["/tmp/claude-shot.png"],
+          },
           {
             kind: "tool",
             id: "tool-1",
@@ -877,6 +996,13 @@ describe("history loaders", () => {
     const snapshot = await loader.load("claude:session-1");
     expect(snapshot.engine).toBe("claude");
     expect(snapshot.items).toHaveLength(2);
+    expect(snapshot.items[0]).toEqual(
+      expect.objectContaining({
+        kind: "message",
+        role: "user",
+        images: ["/tmp/claude-shot.png"],
+      }),
+    );
     const tool = snapshot.items[1];
     expect(tool?.kind).toBe("tool");
     if (tool?.kind === "tool") {

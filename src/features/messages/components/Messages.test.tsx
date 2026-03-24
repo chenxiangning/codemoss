@@ -1005,6 +1005,54 @@ describe("Messages", () => {
     expect(screen.queryByText("LEGACY-CODEX-DEFAULT")).toBeNull();
   });
 
+  it("respects gemini routing from conversationState when activeEngine prop is omitted", () => {
+    const legacyItems: ConversationItem[] = [
+      {
+        id: "assistant-legacy-gemini-1",
+        kind: "message",
+        role: "assistant",
+        text: "LEGACY-GEMINI-DEFAULT",
+      },
+    ];
+    const stateItems: ConversationItem[] = [
+      {
+        id: "assistant-state-gemini-1",
+        kind: "message",
+        role: "assistant",
+        text: "PLAN\n\nSTATE-GEMINI-DEFAULT",
+      },
+    ];
+
+    const { container } = render(
+      <Messages
+        items={legacyItems}
+        threadId="gemini:thread-1"
+        workspaceId="ws-1"
+        isThinking={false}
+        conversationState={{
+          items: stateItems,
+          plan: null,
+          userInputQueue: [],
+          meta: {
+            workspaceId: "ws-1",
+            threadId: "gemini:thread-1",
+            engine: "gemini",
+            activeTurnId: null,
+            isThinking: false,
+            heartbeatPulse: null,
+            historyRestoredAtMs: null,
+          },
+        }}
+        openTargets={[]}
+        selectedOpenAppId=""
+      />,
+    );
+
+    expect(container.textContent ?? "").toContain("STATE-GEMINI-DEFAULT");
+    expect(container.textContent ?? "").not.toContain("LEGACY-GEMINI-DEFAULT");
+    expect(container.querySelector(".markdown-codex-canvas")).toBeNull();
+  });
+
   it("prefers conversationState items for claude when state and legacy point to the same thread", () => {
     const legacyItems: ConversationItem[] = [
       {
@@ -2181,6 +2229,44 @@ describe("Messages", () => {
     expect(container.querySelectorAll(".thinking-block").length).toBe(1);
     expect(container.textContent ?? "").toContain("先读取 README 并识别技术栈");
     expect(container.textContent ?? "").toContain("继续读取 CLAUDE.md 并整理结论");
+    expect(container.textContent ?? "").toContain("输出最终分析报告");
+  });
+
+  it("collapses consecutive gemini reasoning runs into a single visible block", () => {
+    const items: ConversationItem[] = [
+      {
+        id: "gemini-reasoning-run-1",
+        kind: "reasoning",
+        summary: "先读取 README 并识别技术栈",
+        content: "先读取 README 并识别技术栈",
+      },
+      {
+        id: "gemini-reasoning-run-2",
+        kind: "reasoning",
+        summary: "继续读取 CLAUDE.md 并整理结论",
+        content: "继续读取 CLAUDE.md 并整理结论",
+      },
+      {
+        id: "gemini-reasoning-run-3",
+        kind: "reasoning",
+        summary: "输出最终分析报告",
+        content: "输出最终分析报告",
+      },
+    ];
+
+    const { container } = render(
+      <Messages
+        items={items}
+        threadId="gemini:thread-1"
+        workspaceId="ws-1"
+        isThinking={false}
+        activeEngine="gemini"
+        openTargets={[]}
+        selectedOpenAppId=""
+      />,
+    );
+
+    expect(container.querySelectorAll(".thinking-block").length).toBe(1);
     expect(container.textContent ?? "").toContain("输出最终分析报告");
   });
 

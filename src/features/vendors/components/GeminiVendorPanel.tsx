@@ -46,6 +46,7 @@ export function GeminiVendorPanel() {
     refreshPreflight,
     handleDraftEnvTextChange,
     handleSaveEnv,
+    handleEnabledChange,
     handleGeminiAuthModeChange,
     handleGeminiFieldChange,
     handleSaveConfig,
@@ -162,6 +163,23 @@ export function GeminiVendorPanel() {
             <ExternalLink className="h-3.5 w-3.5" />
             {t("settings.vendor.gemini.viewAuthDoc")}
           </Button>
+        </div>
+
+        <div className="vendor-form-group">
+          <label className="vendor-input-row" htmlFor="gemini-vendor-enabled">
+            <input
+              id="gemini-vendor-enabled"
+              type="checkbox"
+              checked={draft.enabled}
+              onChange={(event) => handleEnabledChange(event.target.checked)}
+            />
+            <span>{t("settings.vendor.gemini.enabledSwitch")}</span>
+          </label>
+          <div className="vendor-hint">
+            {draft.enabled
+              ? t("settings.vendor.gemini.enabled")
+              : t("settings.vendor.gemini.disabled")}
+          </div>
         </div>
 
         <div className="vendor-form-group">
