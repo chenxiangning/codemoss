@@ -3,11 +3,13 @@
 //! Handles Gemini CLI execution via:
 //! `gemini -p "<prompt>" --output-format stream-json`
 
+use base64::{engine::general_purpose::STANDARD, Engine as _};
 use serde_json::{json, Value};
 use std::collections::{BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::{Child, Command};
 use tokio::sync::{broadcast, Mutex, RwLock};
@@ -17,6 +19,8 @@ use super::gemini_history::{load_gemini_session, GeminiSessionMessage};
 use super::{EngineConfig, EngineType, SendMessageParams};
 
 const GEMINI_REASONING_HISTORY_SYNC_INTERVAL_MS: u64 = 900;
+const GEMINI_INLINE_IMAGE_MAX_BYTES: usize = 12 * 1024 * 1024;
+static GEMINI_INLINE_IMAGE_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 #[derive(Debug, Default)]
 struct GeminiSnapshotToolState {
@@ -115,7 +119,7 @@ impl GeminiSession {
         )
     }
 
-    fn normalize_image_path_for_prompt(raw: &str) -> Option<String> {
+    fn normalize_image_path_for_prompt(raw: &str, workspace_path: &Path) -> Option<String> {
         let trimmed = raw.trim();
         if trimmed.is_empty() {
             return None;
@@ -127,10 +131,7 @@ impl GeminiSession {
                     return Self::normalize_file_uri_path(recovered);
                 }
             }
-            log::warn!(
-                "Gemini image attachment is data-url based; Gemini CLI needs file paths, skipping"
-            );
-            return None;
+            return Self::materialize_data_url_image(trimmed, workspace_path);
         }
         if trimmed.starts_with("http://") || trimmed.starts_with("https://") {
             log::warn!(
@@ -140,9 +141,10 @@ impl GeminiSession {
             return None;
         }
         if trimmed.starts_with("file://") {
-            return Self::normalize_file_uri_path(trimmed);
+            return Self::normalize_file_uri_path(trimmed)
+                .and_then(|path| Self::normalize_local_image_path_for_workspace(path, workspace_path));
         }
-        Some(trimmed.to_string())
+        Self::normalize_local_image_path_for_workspace(trimmed.to_string(), workspace_path)
     }
 
     fn normalize_file_uri_path(raw_uri: &str) -> Option<String> {
@@ -156,8 +158,12 @@ impl GeminiSession {
         };
 
         let decoded_path = Self::percent_decode_path(&path_part);
-        let is_local_host = host.is_empty() || host.eq_ignore_ascii_case("localhost");
-        let mut normalized = if is_local_host {
+        let host_is_windows_drive = Self::has_windows_drive_host(host);
+        let is_local_host =
+            host.is_empty() || host.eq_ignore_ascii_case("localhost") || host_is_windows_drive;
+        let mut normalized = if host_is_windows_drive {
+            format!("/{}{}", host, decoded_path)
+        } else if is_local_host {
             decoded_path
         } else {
             format!("//{}{}", host, decoded_path)
@@ -210,19 +216,225 @@ impl GeminiSession {
             && (bytes[2] == b'/' || bytes[2] == b'\\')
     }
 
-    fn escape_image_reference(path: &str) -> String {
-        let escaped = path.replace('\\', "\\\\").replace('"', "\\\"");
-        format!("@\"{}\"", escaped)
+    fn has_windows_drive_host(host: &str) -> bool {
+        let bytes = host.as_bytes();
+        bytes.len() == 2 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':'
     }
 
-    fn with_image_references(text: &str, images: Option<&[String]>) -> String {
+    fn normalize_local_image_path_for_workspace(
+        path: String,
+        workspace_path: &Path,
+    ) -> Option<String> {
+        let trimmed = path.trim();
+        if trimmed.is_empty() {
+            return None;
+        }
+        let candidate = PathBuf::from(trimmed);
+        if !candidate.is_absolute() || Self::is_path_within_workspace(&candidate, workspace_path) {
+            return Some(trimmed.to_string());
+        }
+        if let Some(materialized) = Self::materialize_external_image_path(&candidate, workspace_path) {
+            return Some(materialized);
+        }
+        log::warn!(
+            "Gemini image attachment path is outside workspace and could not be copied, forwarding original path: {}",
+            candidate.display()
+        );
+        Some(trimmed.to_string())
+    }
+
+    fn is_path_within_workspace(candidate: &Path, workspace_path: &Path) -> bool {
+        let normalized_workspace = workspace_path
+            .canonicalize()
+            .unwrap_or_else(|_| workspace_path.to_path_buf());
+        let normalized_candidate = candidate
+            .canonicalize()
+            .unwrap_or_else(|_| candidate.to_path_buf());
+        normalized_candidate.starts_with(normalized_workspace)
+    }
+
+    fn materialize_external_image_path(path: &Path, workspace_path: &Path) -> Option<String> {
+        let bytes = match std::fs::read(path) {
+            Ok(bytes) => bytes,
+            Err(error) => {
+                log::warn!(
+                    "Gemini image attachment failed to read source file {}: {}",
+                    path.display(),
+                    error
+                );
+                return None;
+            }
+        };
+        if bytes.is_empty() {
+            log::warn!(
+                "Gemini image attachment source file is empty, skipping workspace copy: {}",
+                path.display()
+            );
+            return None;
+        }
+        let extension = path
+            .extension()
+            .and_then(|ext| ext.to_str())
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(|value| value.to_ascii_lowercase())
+            .unwrap_or_else(|| "png".to_string());
+        let sanitized_extension = extension
+            .chars()
+            .filter(|ch| ch.is_ascii_alphanumeric())
+            .collect::<String>();
+        let extension = if sanitized_extension.is_empty() {
+            "png"
+        } else {
+            sanitized_extension.as_str()
+        };
+        Self::write_workspace_inline_image_file(workspace_path, extension, &bytes)
+    }
+
+    fn write_workspace_inline_image_file(
+        workspace_path: &Path,
+        extension: &str,
+        bytes: &[u8],
+    ) -> Option<String> {
+        let inline_dir = workspace_path.join(".moss-x-gemini-inline-images");
+        if let Err(error) = std::fs::create_dir_all(&inline_dir) {
+            log::warn!(
+                "Gemini image attachment failed to ensure workspace inline dir {}: {}",
+                inline_dir.display(),
+                error
+            );
+            return None;
+        }
+
+        let nonce = GEMINI_INLINE_IMAGE_COUNTER.fetch_add(1, Ordering::Relaxed);
+        let timestamp_ms = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|duration| duration.as_millis())
+            .unwrap_or(0);
+        let file_name = format!(
+            "gemini-inline-{}-{}-{}.{}",
+            std::process::id(),
+            timestamp_ms,
+            nonce,
+            extension
+        );
+        let path = inline_dir.join(file_name);
+
+        if let Err(error) = std::fs::write(&path, bytes) {
+            log::warn!(
+                "Gemini image attachment failed to write workspace inline file {}: {}",
+                path.display(),
+                error
+            );
+            return None;
+        }
+
+        Some(path.to_string_lossy().to_string())
+    }
+
+    fn materialize_data_url_image(raw_data_url: &str, workspace_path: &Path) -> Option<String> {
+        let Some((header, payload)) = raw_data_url.split_once(',') else {
+            log::warn!(
+                "Gemini image attachment data-url is malformed (missing comma), skipping"
+            );
+            return None;
+        };
+        let Some(meta) = header.strip_prefix("data:") else {
+            log::warn!(
+                "Gemini image attachment data-url is malformed (missing data: prefix), skipping"
+            );
+            return None;
+        };
+        let mut meta_parts = meta.split(';');
+        let mime = meta_parts.next().unwrap_or("image/png").trim();
+        let normalized_mime = if mime.is_empty() { "image/png" } else { mime };
+        if !normalized_mime.to_ascii_lowercase().starts_with("image/") {
+            log::warn!(
+                "Gemini image attachment data-url mime is not image/* ({}), skipping",
+                normalized_mime
+            );
+            return None;
+        }
+        if !meta_parts.any(|entry| entry.eq_ignore_ascii_case("base64")) {
+            log::warn!(
+                "Gemini image attachment data-url is not base64 encoded, skipping"
+            );
+            return None;
+        }
+
+        let normalized_payload: String = payload.chars().filter(|ch| !ch.is_whitespace()).collect();
+        if normalized_payload.is_empty() {
+            log::warn!("Gemini image attachment data-url payload is empty, skipping");
+            return None;
+        }
+
+        let decoded = match STANDARD.decode(normalized_payload.as_bytes()) {
+            Ok(bytes) => bytes,
+            Err(error) => {
+                log::warn!(
+                    "Gemini image attachment data-url base64 decode failed, skipping: {}",
+                    error
+                );
+                return None;
+            }
+        };
+        if decoded.is_empty() {
+            log::warn!("Gemini image attachment data-url decoded to empty bytes, skipping");
+            return None;
+        }
+        if decoded.len() > GEMINI_INLINE_IMAGE_MAX_BYTES {
+            log::warn!(
+                "Gemini image attachment data-url exceeds {} bytes (actual={}), skipping",
+                GEMINI_INLINE_IMAGE_MAX_BYTES,
+                decoded.len()
+            );
+            return None;
+        }
+
+        let extension = Self::image_extension_for_mime(normalized_mime);
+        Self::write_workspace_inline_image_file(workspace_path, extension, &decoded)
+    }
+
+    fn image_extension_for_mime(mime: &str) -> &'static str {
+        match mime.to_ascii_lowercase().as_str() {
+            "image/png" => "png",
+            "image/jpeg" | "image/jpg" => "jpg",
+            "image/gif" => "gif",
+            "image/webp" => "webp",
+            "image/bmp" => "bmp",
+            "image/tiff" => "tiff",
+            "image/svg+xml" => "svg",
+            _ => "png",
+        }
+    }
+
+    fn escape_path_for_at_reference(path: &str) -> String {
+        let mut escaped = String::with_capacity(path.len());
+        for ch in path.chars() {
+            if ch.is_whitespace() {
+                escaped.push('\\');
+            }
+            escaped.push(ch);
+        }
+        escaped
+    }
+
+    fn format_image_reference(path: &str) -> String {
+        format!("@{}", Self::escape_path_for_at_reference(path))
+    }
+
+    fn with_image_references(
+        text: &str,
+        images: Option<&[String]>,
+        workspace_path: &Path,
+    ) -> String {
         let Some(images) = images else {
             return text.to_string();
         };
         let mut image_references: Vec<String> = Vec::new();
         for raw in images {
-            if let Some(path) = Self::normalize_image_path_for_prompt(raw) {
-                let reference = Self::escape_image_reference(&path);
+            if let Some(path) = Self::normalize_image_path_for_prompt(raw, workspace_path) {
+                let reference = Self::format_image_reference(&path);
                 if !image_references
                     .iter()
                     .any(|existing| existing == &reference)
@@ -490,7 +702,11 @@ impl GeminiSession {
 
         let message_text =
             Self::with_external_spec_hint(&params.text, params.custom_spec_root.as_deref());
-        let message_text = Self::with_image_references(&message_text, params.images.as_deref());
+        let message_text = Self::with_image_references(
+            &message_text,
+            params.images.as_deref(),
+            &self.workspace_path,
+        );
         let safe_text = if message_text.starts_with('-') {
             format!(" {}", message_text)
         } else {
@@ -1637,6 +1853,7 @@ fn parse_gemini_event(workspace_id: &str, event: &Value) -> Option<EngineEvent> 
 
 #[cfg(test)]
 mod tests {
+    use base64::{engine::general_purpose::STANDARD, Engine as _};
     use super::EngineEvent;
     use super::{
         collect_latest_turn_reasoning_texts, extract_latest_thought_text,
@@ -1645,6 +1862,63 @@ mod tests {
     };
     use serde_json::json;
     use std::collections::HashMap;
+    use std::path::{Path, PathBuf};
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn with_image_refs_for_test(text: &str, images: &[String]) -> String {
+        let workspace_path = std::env::temp_dir();
+        with_image_refs_for_test_in_workspace(text, images, workspace_path.as_path())
+    }
+
+    fn with_image_refs_for_test_in_workspace(
+        text: &str,
+        images: &[String],
+        workspace_path: &Path,
+    ) -> String {
+        GeminiSession::with_image_references(text, Some(images), workspace_path)
+    }
+
+    fn unique_temp_path(prefix: &str) -> PathBuf {
+        let timestamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("time")
+            .as_nanos();
+        std::env::temp_dir().join(format!("{}-{}-{}", prefix, std::process::id(), timestamp))
+    }
+
+    fn unescape_at_path(value: &str) -> String {
+        let mut output = String::with_capacity(value.len());
+        let mut escaping = false;
+        for ch in value.chars() {
+            if escaping {
+                output.push(ch);
+                escaping = false;
+                continue;
+            }
+            if ch == '\\' {
+                escaping = true;
+                continue;
+            }
+            output.push(ch);
+        }
+        if escaping {
+            output.push('\\');
+        }
+        output
+    }
+
+    fn extract_first_image_path(prompt: &str) -> String {
+        let marker = '@';
+        let start = prompt.find(marker).expect("image marker missing") + 1;
+        let tail = &prompt[start..];
+        if let Some(quoted_tail) = tail.strip_prefix('"') {
+            let end = quoted_tail.find('"').expect("closing quote missing");
+            return unescape_at_path(&quoted_tail[..end]);
+        }
+
+        let token = tail.split_whitespace().next().expect("missing image path");
+        unescape_at_path(token)
+    }
 
     #[test]
     fn selected_auth_type_for_api_key_modes() {
@@ -1693,53 +1967,113 @@ mod tests {
             "/tmp/screen 1.png".to_string(),
             "/tmp/screen-2.jpg".to_string(),
         ];
-        let prompt =
-            GeminiSession::with_image_references("Describe screenshots", Some(images.as_slice()));
+        let prompt = with_image_refs_for_test("Describe screenshots", images.as_slice());
         assert_eq!(
             prompt,
-            "Describe screenshots\n\n@\"/tmp/screen 1.png\" @\"/tmp/screen-2.jpg\""
+            "Describe screenshots\n\n@/tmp/screen\\ 1.png @/tmp/screen-2.jpg"
         );
     }
 
     #[test]
     fn with_image_references_strips_file_uri_prefix() {
         let images = vec!["file:///Users/demo/a.png".to_string()];
-        let prompt = GeminiSession::with_image_references("Describe", Some(images.as_slice()));
-        assert_eq!(prompt, "Describe\n\n@\"/Users/demo/a.png\"");
+        let prompt = with_image_refs_for_test("Describe", images.as_slice());
+        assert_eq!(prompt, "Describe\n\n@/Users/demo/a.png");
     }
 
     #[test]
     fn with_image_references_normalizes_localhost_file_uri() {
         let images = vec!["file://localhost/Users/demo/a.png".to_string()];
-        let prompt = GeminiSession::with_image_references("Describe", Some(images.as_slice()));
-        assert_eq!(prompt, "Describe\n\n@\"/Users/demo/a.png\"");
+        let prompt = with_image_refs_for_test("Describe", images.as_slice());
+        assert_eq!(prompt, "Describe\n\n@/Users/demo/a.png");
     }
 
     #[test]
     fn with_image_references_preserves_unc_host_file_uri() {
         let images = vec!["file://server/share/folder/a%20b.png".to_string()];
-        let prompt = GeminiSession::with_image_references("Describe", Some(images.as_slice()));
-        assert_eq!(prompt, "Describe\n\n@\"//server/share/folder/a b.png\"");
+        let prompt = with_image_refs_for_test("Describe", images.as_slice());
+        assert_eq!(prompt, "Describe\n\n@//server/share/folder/a\\ b.png");
     }
 
     #[test]
     fn with_image_references_decodes_percent_escaped_file_uri() {
         let images = vec!["file:///Users/demo/a%20b.png".to_string()];
-        let prompt = GeminiSession::with_image_references("Describe", Some(images.as_slice()));
-        assert_eq!(prompt, "Describe\n\n@\"/Users/demo/a b.png\"");
+        let prompt = with_image_refs_for_test("Describe", images.as_slice());
+        assert_eq!(prompt, "Describe\n\n@/Users/demo/a\\ b.png");
+    }
+
+    #[test]
+    fn with_image_references_supports_windows_drive_host_form() {
+        let images = vec!["file://C:/Users/demo/a%20b.png".to_string()];
+        let prompt = with_image_refs_for_test("Describe", images.as_slice());
+        let expected = if cfg!(windows) {
+            "Describe\n\n@C:/Users/demo/a\\ b.png"
+        } else {
+            "Describe\n\n@/C:/Users/demo/a\\ b.png"
+        };
+        assert_eq!(prompt, expected);
     }
 
     #[test]
     fn with_image_references_recovers_miswrapped_data_url_file_uri() {
         let images = vec!["data:image/png;base64,file:///Users/demo/c%20d.png".to_string()];
-        let prompt = GeminiSession::with_image_references("Describe", Some(images.as_slice()));
-        assert_eq!(prompt, "Describe\n\n@\"/Users/demo/c d.png\"");
+        let prompt = with_image_refs_for_test("Describe", images.as_slice());
+        assert_eq!(prompt, "Describe\n\n@/Users/demo/c\\ d.png");
+    }
+
+    #[test]
+    fn with_image_references_materializes_base64_data_urls_to_temp_files() {
+        let encoded = STANDARD.encode([0x89, b'P', b'N', b'G']);
+        let images = vec![format!("data:image/png;base64,{}", encoded)];
+        let workspace_path = unique_temp_path("moss-x-gemini-workspace");
+        std::fs::create_dir_all(&workspace_path).expect("create workspace");
+        let prompt =
+            with_image_refs_for_test_in_workspace("Describe", images.as_slice(), workspace_path.as_path());
+        assert!(prompt.starts_with("Describe\n\n@"));
+
+        let normalized_path = extract_first_image_path(&prompt);
+
+        let path = std::path::Path::new(&normalized_path);
+        assert!(path.exists(), "workspace image file should exist");
+        assert!(
+            path.starts_with(&workspace_path),
+            "materialized path should stay inside workspace"
+        );
+        let bytes = std::fs::read(path).expect("read temp image");
+        assert_eq!(bytes, vec![0x89, b'P', b'N', b'G']);
+        let _ = std::fs::remove_file(path);
+        let _ = std::fs::remove_dir_all(&workspace_path);
+    }
+
+    #[test]
+    fn with_image_references_copies_external_local_paths_into_workspace() {
+        let workspace_path = unique_temp_path("moss-x-gemini-workspace");
+        std::fs::create_dir_all(&workspace_path).expect("create workspace");
+        let source_path = unique_temp_path("moss-x-gemini-source.png");
+        std::fs::write(&source_path, [0x89, b'P', b'N', b'G']).expect("write source image");
+
+        let images = vec![source_path.to_string_lossy().to_string()];
+        let prompt =
+            with_image_refs_for_test_in_workspace("Describe", images.as_slice(), workspace_path.as_path());
+        let normalized_path = extract_first_image_path(&prompt);
+        let copied_path = PathBuf::from(normalized_path);
+
+        assert!(
+            copied_path.starts_with(&workspace_path),
+            "copied image path should stay inside workspace"
+        );
+        let copied_bytes = std::fs::read(&copied_path).expect("read copied image");
+        assert_eq!(copied_bytes, vec![0x89, b'P', b'N', b'G']);
+
+        let _ = std::fs::remove_file(&source_path);
+        let _ = std::fs::remove_file(&copied_path);
+        let _ = std::fs::remove_dir_all(&workspace_path);
     }
 
     #[test]
     fn with_image_references_skips_unsupported_data_urls() {
-        let images = vec!["data:image/png;base64,AAAA".to_string()];
-        let prompt = GeminiSession::with_image_references("Describe", Some(images.as_slice()));
+        let images = vec!["data:text/plain;base64,SGVsbG8=".to_string()];
+        let prompt = with_image_refs_for_test("Describe", images.as_slice());
         assert_eq!(prompt, "Describe");
     }
 

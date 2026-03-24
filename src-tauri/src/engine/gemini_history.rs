@@ -349,7 +349,7 @@ struct AtImageReference {
     path: String,
 }
 
-fn unescape_quoted_at_path(value: &str) -> String {
+fn unescape_at_path(value: &str) -> String {
     let mut output = String::with_capacity(value.len());
     let mut escaping = false;
     for ch in value.chars() {
@@ -371,7 +371,7 @@ fn unescape_quoted_at_path(value: &str) -> String {
 }
 
 fn extract_image_at_references(text: &str) -> Vec<AtImageReference> {
-    let pattern = Regex::new(r#"@"((?:\\.|[^"\\])+?)"|@([^\s]+)"#)
+    let pattern = Regex::new(r#"@"((?:\\.|[^"\\])+?)"|@((?:\\.|[^\s])+)"#)
         .expect("at-reference regex should be valid");
     let mut references = Vec::new();
     for capture in pattern.captures_iter(text) {
@@ -379,9 +379,9 @@ fn extract_image_at_references(text: &str) -> Vec<AtImageReference> {
             continue;
         };
         let path = if let Some(quoted) = capture.get(1) {
-            unescape_quoted_at_path(quoted.as_str())
+            unescape_at_path(quoted.as_str())
         } else if let Some(unquoted) = capture.get(2) {
-            unquoted.as_str().to_string()
+            unescape_at_path(unquoted.as_str())
         } else {
             continue;
         };
@@ -1163,6 +1163,36 @@ mod tests {
                     "displayContent": [
                         {
                             "text": "@\"/tmp/a b.png\" 描述一下"
+                        }
+                    ]
+                }
+            ]
+        });
+
+        let parsed = parse_messages_from_value(&value);
+        let entries = parsed.messages;
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].kind, "message");
+        assert_eq!(entries[0].role, "user");
+        assert_eq!(entries[0].text, "描述一下");
+        assert_eq!(entries[0].images, Some(vec!["/tmp/a b.png".to_string()]));
+    }
+
+    #[test]
+    fn parse_messages_extracts_user_image_path_from_unquoted_display_content() {
+        let value = json!({
+            "messages": [
+                {
+                    "type": "user",
+                    "id": "user-1",
+                    "content": [
+                        {
+                            "text": "@/tmp/a\\ b.png 描述一下"
+                        }
+                    ],
+                    "displayContent": [
+                        {
+                            "text": "@/tmp/a\\ b.png 描述一下"
                         }
                     ]
                 }
