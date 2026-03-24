@@ -426,6 +426,13 @@ function dedupeAdjacentReasoningItems(
       deduped.push(item);
       continue;
     }
+    if (
+      isExplicitReasoningSegmentId(previous.id) ||
+      isExplicitReasoningSegmentId(item.id)
+    ) {
+      deduped.push(item);
+      continue;
+    }
     const previousMeta = reasoningMetaById.get(previous.id) ?? parseReasoning(previous);
     const nextMeta = reasoningMetaById.get(item.id) ?? parseReasoning(item);
     if (!isReasoningDuplicate(previousMeta, nextMeta)) {
@@ -443,6 +450,12 @@ function dedupeAdjacentReasoningItems(
     };
   }
   return deduped;
+}
+
+const REASONING_SEGMENT_ID_REGEX = /(?:^|[:-])seg-\d+$/;
+
+function isExplicitReasoningSegmentId(id: string) {
+  return REASONING_SEGMENT_ID_REGEX.test(id);
 }
 
 function collapseConsecutiveReasoningRuns(

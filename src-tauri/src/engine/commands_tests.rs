@@ -1,12 +1,13 @@
 use super::{
     build_provider_prefill_query, delete_opencode_session_files,
-    delete_opencode_session_from_datastore, extract_turn_result_text, merge_opencode_agents,
-    is_likely_foreign_model_for_gemini, is_likely_legacy_claude_model_id, normalize_provider_key,
-    opencode_data_candidate_roots, opencode_session_candidate_paths, parse_imported_session_id,
-    parse_json_value, parse_opencode_agent_list, parse_opencode_auth_providers,
-    parse_opencode_debug_config_agents, parse_opencode_help_commands, parse_opencode_mcp_servers,
-    parse_opencode_session_list, parse_opencode_updated_at, provider_keys_match, EngineConfig,
-    OpenCodeAgentEntry,
+    delete_opencode_session_from_datastore, extract_turn_result_text,
+    is_likely_foreign_model_for_gemini, is_likely_legacy_claude_model_id, merge_opencode_agents,
+    next_gemini_routed_item_id, normalize_provider_key, opencode_data_candidate_roots,
+    opencode_session_candidate_paths, parse_imported_session_id, parse_json_value,
+    parse_opencode_agent_list, parse_opencode_auth_providers, parse_opencode_debug_config_agents,
+    parse_opencode_help_commands, parse_opencode_mcp_servers, parse_opencode_session_list,
+    parse_opencode_updated_at, provider_keys_match, EngineConfig, GeminiRenderLane,
+    GeminiRenderRoutingState, OpenCodeAgentEntry,
 };
 use chrono::{Local, TimeZone};
 use rusqlite::{params, Connection};
@@ -49,8 +50,50 @@ fn gemini_model_guard_rejects_foreign_engine_defaults() {
 #[test]
 fn gemini_model_guard_allows_gemini_and_custom_aliases() {
     assert!(!is_likely_foreign_model_for_gemini("gemini-2.5-pro"));
-    assert!(!is_likely_foreign_model_for_gemini("[L]gemini-3-pro-preview"));
+    assert!(!is_likely_foreign_model_for_gemini(
+        "[L]gemini-3-pro-preview"
+    ));
     assert!(!is_likely_foreign_model_for_gemini("123"));
+}
+
+#[test]
+fn gemini_routing_segments_text_and_reasoning_runs() {
+    let base_item_id = "gemini-item-1";
+    let mut state = GeminiRenderRoutingState::default();
+
+    let text_1 = next_gemini_routed_item_id(&mut state, GeminiRenderLane::Text, base_item_id);
+    let text_1_cont = next_gemini_routed_item_id(&mut state, GeminiRenderLane::Text, base_item_id);
+    let reasoning_1 =
+        next_gemini_routed_item_id(&mut state, GeminiRenderLane::Reasoning, base_item_id);
+    let reasoning_1_cont =
+        next_gemini_routed_item_id(&mut state, GeminiRenderLane::Reasoning, base_item_id);
+    let text_2 = next_gemini_routed_item_id(&mut state, GeminiRenderLane::Text, base_item_id);
+    let text_2_cont = next_gemini_routed_item_id(&mut state, GeminiRenderLane::Text, base_item_id);
+    let _tool = next_gemini_routed_item_id(&mut state, GeminiRenderLane::Tool, base_item_id);
+    let reasoning_2 =
+        next_gemini_routed_item_id(&mut state, GeminiRenderLane::Reasoning, base_item_id);
+
+    assert_eq!(text_1, "gemini-item-1");
+    assert_eq!(text_1_cont, "gemini-item-1");
+    assert_eq!(reasoning_1, "gemini-item-1:reasoning-seg-1");
+    assert_eq!(reasoning_1_cont, "gemini-item-1:reasoning-seg-1");
+    assert_eq!(text_2, "gemini-item-1:text-2");
+    assert_eq!(text_2_cont, "gemini-item-1:text-2");
+    assert_eq!(reasoning_2, "gemini-item-1:reasoning-seg-2");
+}
+
+#[test]
+fn gemini_routing_does_not_split_on_other_lane_events() {
+    let base_item_id = "gemini-item-2";
+    let mut state = GeminiRenderRoutingState::default();
+
+    let text_1 = next_gemini_routed_item_id(&mut state, GeminiRenderLane::Text, base_item_id);
+    let _other = next_gemini_routed_item_id(&mut state, GeminiRenderLane::Other, base_item_id);
+    let text_1_after_other =
+        next_gemini_routed_item_id(&mut state, GeminiRenderLane::Text, base_item_id);
+
+    assert_eq!(text_1, "gemini-item-2");
+    assert_eq!(text_1_after_other, "gemini-item-2");
 }
 
 #[test]

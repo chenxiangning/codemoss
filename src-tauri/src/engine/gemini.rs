@@ -16,6 +16,14 @@ use super::events::EngineEvent;
 use super::gemini_history::{load_gemini_session, GeminiSessionMessage};
 use super::{EngineConfig, EngineType, SendMessageParams};
 
+const GEMINI_REASONING_HISTORY_SYNC_INTERVAL_MS: u64 = 900;
+
+#[derive(Debug, Default)]
+struct GeminiSnapshotToolState {
+    started_emitted: bool,
+    completed_signature: Option<String>,
+}
+
 #[derive(Debug, Clone)]
 pub struct GeminiTurnEvent {
     pub turn_id: String,
@@ -113,6 +121,12 @@ impl GeminiSession {
             return None;
         }
         if trimmed.starts_with("data:") {
+            if let Some((_, data_segment)) = trimmed.split_once(',') {
+                let recovered = data_segment.trim();
+                if recovered.starts_with("file://") {
+                    return Self::normalize_file_uri_path(recovered);
+                }
+            }
             log::warn!(
                 "Gemini image attachment is data-url based; Gemini CLI needs file paths, skipping"
             );
@@ -125,20 +139,75 @@ impl GeminiSession {
             );
             return None;
         }
-        if let Some(path) = trimmed.strip_prefix("file://") {
-            let path_without_host = path.strip_prefix("localhost/").unwrap_or(path);
-            if cfg!(windows)
-                && path_without_host.starts_with('/')
-                && path_without_host
-                    .as_bytes()
-                    .get(2)
-                    .is_some_and(|value| *value == b':')
-            {
-                return Some(path_without_host[1..].to_string());
-            }
-            return Some(path_without_host.to_string());
+        if trimmed.starts_with("file://") {
+            return Self::normalize_file_uri_path(trimmed);
         }
         Some(trimmed.to_string())
+    }
+
+    fn normalize_file_uri_path(raw_uri: &str) -> Option<String> {
+        let without_scheme = raw_uri.strip_prefix("file://")?;
+        let (host, path_part) = if without_scheme.starts_with('/') {
+            ("", without_scheme.to_string())
+        } else if let Some((host, rest)) = without_scheme.split_once('/') {
+            (host, format!("/{}", rest))
+        } else {
+            (without_scheme, "/".to_string())
+        };
+
+        let decoded_path = Self::percent_decode_path(&path_part);
+        let is_local_host = host.is_empty() || host.eq_ignore_ascii_case("localhost");
+        let mut normalized = if is_local_host {
+            decoded_path
+        } else {
+            format!("//{}{}", host, decoded_path)
+        };
+
+        if cfg!(windows)
+            && is_local_host
+            && normalized.starts_with('/')
+            && Self::has_windows_drive_prefix(&normalized[1..])
+        {
+            normalized = normalized[1..].to_string();
+        }
+        Some(normalized)
+    }
+
+    fn percent_decode_path(input: &str) -> String {
+        let bytes = input.as_bytes();
+        let mut out: Vec<u8> = Vec::with_capacity(bytes.len());
+        let mut idx = 0usize;
+        while idx < bytes.len() {
+            if bytes[idx] == b'%' && idx + 2 < bytes.len() {
+                let h1 = bytes[idx + 1];
+                let h2 = bytes[idx + 2];
+                if let (Some(a), Some(b)) = (Self::hex_value(h1), Self::hex_value(h2)) {
+                    out.push((a << 4) | b);
+                    idx += 3;
+                    continue;
+                }
+            }
+            out.push(bytes[idx]);
+            idx += 1;
+        }
+        String::from_utf8_lossy(&out).into_owned()
+    }
+
+    fn hex_value(byte: u8) -> Option<u8> {
+        match byte {
+            b'0'..=b'9' => Some(byte - b'0'),
+            b'a'..=b'f' => Some(byte - b'a' + 10),
+            b'A'..=b'F' => Some(byte - b'A' + 10),
+            _ => None,
+        }
+    }
+
+    fn has_windows_drive_prefix(path: &str) -> bool {
+        let bytes = path.as_bytes();
+        bytes.len() >= 3
+            && bytes[0].is_ascii_alphabetic()
+            && bytes[1] == b':'
+            && (bytes[2] == b'/' || bytes[2] == b'\\')
     }
 
     fn escape_image_reference(path: &str) -> String {
@@ -154,7 +223,10 @@ impl GeminiSession {
         for raw in images {
             if let Some(path) = Self::normalize_image_path_for_prompt(raw) {
                 let reference = Self::escape_image_reference(&path);
-                if !image_references.iter().any(|existing| existing == &reference) {
+                if !image_references
+                    .iter()
+                    .any(|existing| existing == &reference)
+                {
                     image_references.push(reference);
                 }
             }
@@ -300,9 +372,7 @@ impl GeminiSession {
     }
 
     fn resolve_approval_mode(access_mode: Option<&str>) -> Option<&'static str> {
-        let normalized = access_mode
-            .map(str::trim)
-            .filter(|value| !value.is_empty());
+        let normalized = access_mode.map(str::trim).filter(|value| !value.is_empty());
         match normalized {
             Some("full-access") => Some("yolo"),
             Some("read-only") => Some("plan"),
@@ -523,6 +593,10 @@ impl GeminiSession {
         let mut observed_event_types = BTreeSet::new();
         let mut last_reasoning_snapshot = String::new();
         let mut saw_reasoning_output = false;
+        let mut emitted_reasoning_texts = BTreeSet::new();
+        let mut snapshot_tool_states: HashMap<String, GeminiSnapshotToolState> = HashMap::new();
+        let mut last_reasoning_history_sync_at = std::time::Instant::now()
+            - std::time::Duration::from_millis(GEMINI_REASONING_HISTORY_SYNC_INTERVAL_MS);
 
         let reader = BufReader::new(stdout);
         let mut lines = reader.lines();
@@ -551,20 +625,35 @@ impl GeminiSession {
                             );
                         }
                     }
+                    let snapshot_tool_events = extract_tool_events_from_snapshot(
+                        &self.workspace_id,
+                        &event,
+                        &mut snapshot_tool_states,
+                    );
+                    if !snapshot_tool_events.is_empty() {
+                        saw_tool_activity = true;
+                        for tool_event in snapshot_tool_events {
+                            self.emit_turn_event(turn_id, tool_event);
+                        }
+                    }
                     let parsed_event = parse_gemini_event(&self.workspace_id, &event);
                     let parsed_is_reasoning = parsed_event
                         .as_ref()
                         .is_some_and(|entry| matches!(entry, EngineEvent::ReasoningDelta { .. }));
                     if !parsed_is_reasoning {
                         if let Some(thought_text) = extract_latest_thought_text(&event) {
-                            if thought_text != last_reasoning_snapshot {
-                                last_reasoning_snapshot = thought_text.clone();
+                            let normalized_thought_text = thought_text.trim().to_string();
+                            if !normalized_thought_text.is_empty()
+                                && normalized_thought_text != last_reasoning_snapshot
+                                && emitted_reasoning_texts.insert(normalized_thought_text.clone())
+                            {
+                                last_reasoning_snapshot = normalized_thought_text.clone();
                                 saw_reasoning_output = true;
                                 self.emit_turn_event(
                                     turn_id,
                                     EngineEvent::ReasoningDelta {
                                         workspace_id: self.workspace_id.clone(),
-                                        text: thought_text,
+                                        text: normalized_thought_text,
                                     },
                                 );
                             }
@@ -577,7 +666,11 @@ impl GeminiSession {
                             }
                             EngineEvent::ReasoningDelta { text, .. } => {
                                 saw_reasoning_output = true;
-                                last_reasoning_snapshot = text.clone();
+                                let normalized_text = text.trim().to_string();
+                                if !normalized_text.is_empty() {
+                                    last_reasoning_snapshot = normalized_text.clone();
+                                    emitted_reasoning_texts.insert(normalized_text);
+                                }
                             }
                             EngineEvent::ToolStarted { .. } | EngineEvent::ToolCompleted { .. } => {
                                 saw_tool_activity = true;
@@ -600,6 +693,49 @@ impl GeminiSession {
                         }
                         self.emit_turn_event(turn_id, unified_event);
                     }
+
+                    if last_reasoning_history_sync_at.elapsed()
+                        >= std::time::Duration::from_millis(
+                            GEMINI_REASONING_HISTORY_SYNC_INTERVAL_MS,
+                        )
+                    {
+                        last_reasoning_history_sync_at = std::time::Instant::now();
+                        let fallback_session_id = if new_session_id.is_some() {
+                            new_session_id.clone()
+                        } else {
+                            self.get_session_id().await
+                        };
+                        if let Some(session_id) = fallback_session_id {
+                            if let Ok(history) = load_gemini_session(
+                                &self.workspace_path,
+                                &session_id,
+                                self.home_dir.as_deref(),
+                            )
+                            .await
+                            {
+                                let synced_reasoning =
+                                    collect_latest_turn_reasoning_texts(&history.messages);
+                                for text in synced_reasoning {
+                                    let normalized_text = text.trim().to_string();
+                                    if normalized_text.is_empty()
+                                        || normalized_text == last_reasoning_snapshot
+                                        || !emitted_reasoning_texts.insert(normalized_text.clone())
+                                    {
+                                        continue;
+                                    }
+                                    last_reasoning_snapshot = normalized_text.clone();
+                                    saw_reasoning_output = true;
+                                    self.emit_turn_event(
+                                        turn_id,
+                                        EngineEvent::ReasoningDelta {
+                                            workspace_id: self.workspace_id.clone(),
+                                            text: normalized_text,
+                                        },
+                                    );
+                                }
+                            }
+                        }
+                    }
                 }
                 Err(_) => {
                     error_output.push_str(&line);
@@ -615,24 +751,25 @@ impl GeminiSession {
                 self.get_session_id().await
             };
             if let Some(session_id) = fallback_session_id {
-                if let Ok(history) = load_gemini_session(
-                    &self.workspace_path,
-                    &session_id,
-                    self.home_dir.as_deref(),
-                )
-                .await
+                if let Ok(history) =
+                    load_gemini_session(&self.workspace_path, &session_id, self.home_dir.as_deref())
+                        .await
                 {
                     let fallback_reasoning = collect_latest_turn_reasoning_texts(&history.messages);
                     for text in fallback_reasoning {
-                        if text == last_reasoning_snapshot {
+                        let normalized_text = text.trim().to_string();
+                        if normalized_text.is_empty()
+                            || normalized_text == last_reasoning_snapshot
+                            || !emitted_reasoning_texts.insert(normalized_text.clone())
+                        {
                             continue;
                         }
-                        last_reasoning_snapshot = text.clone();
+                        last_reasoning_snapshot = normalized_text.clone();
                         self.emit_turn_event(
                             turn_id,
                             EngineEvent::ReasoningDelta {
                                 workspace_id: self.workspace_id.clone(),
-                                text,
+                                text: normalized_text,
                             },
                         );
                     }
@@ -852,7 +989,10 @@ fn extract_latest_thought_text_from_value(value: &Value, depth: usize) -> Option
     if depth > 6 {
         return None;
     }
-    if let Some(thoughts) = value.get("thoughts").and_then(|candidate| candidate.as_array()) {
+    if let Some(thoughts) = value
+        .get("thoughts")
+        .and_then(|candidate| candidate.as_array())
+    {
         if let Some(latest) = thoughts.iter().rev().find_map(extract_thought_entry_text) {
             return Some(latest);
         }
@@ -861,8 +1001,16 @@ fn extract_latest_thought_text_from_value(value: &Value, depth: usize) -> Option
     if let Some(text) = value
         .get("thought")
         .and_then(extract_thought_entry_text)
-        .or_else(|| value.get("currentThought").and_then(extract_thought_entry_text))
-        .or_else(|| value.get("latestThought").and_then(extract_thought_entry_text))
+        .or_else(|| {
+            value
+                .get("currentThought")
+                .and_then(extract_thought_entry_text)
+        })
+        .or_else(|| {
+            value
+                .get("latestThought")
+                .and_then(extract_thought_entry_text)
+        })
     {
         return Some(text);
     }
@@ -881,8 +1029,8 @@ fn extract_latest_thought_text_from_value(value: &Value, depth: usize) -> Option
     };
 
     for key in [
-        "message", "messages", "item", "items", "content", "data", "payload", "result",
-        "response", "event", "turn",
+        "message", "messages", "item", "items", "content", "data", "payload", "result", "response",
+        "event", "turn",
     ] {
         if let Some(nested) = object.get(key) {
             if let Some(latest) = extract_latest_thought_text_from_value(nested, depth + 1) {
@@ -907,8 +1055,16 @@ fn extract_reasoning_event_text(event: &Value) -> Option<String> {
     extract_event_text(event)
         .or_else(|| extract_thought_entry_text(event))
         .or_else(|| event.get("thought").and_then(extract_thought_entry_text))
-        .or_else(|| event.get("currentThought").and_then(extract_thought_entry_text))
-        .or_else(|| event.get("latestThought").and_then(extract_thought_entry_text))
+        .or_else(|| {
+            event
+                .get("currentThought")
+                .and_then(extract_thought_entry_text)
+        })
+        .or_else(|| {
+            event
+                .get("latestThought")
+                .and_then(extract_thought_entry_text)
+        })
         .or_else(|| extract_latest_thought_text(event))
 }
 
@@ -941,8 +1097,16 @@ fn parse_completion_event(workspace_id: &str, event: &Value) -> Option<EngineEve
         .get("text")
         .and_then(|v| v.as_str())
         .map(|s| s.to_string())
-        .or_else(|| event.get("response").and_then(|value| extract_text_from_value(value, 0)))
-        .or_else(|| event.get("result").and_then(|value| extract_text_from_value(value, 0)));
+        .or_else(|| {
+            event
+                .get("response")
+                .and_then(|value| extract_text_from_value(value, 0))
+        })
+        .or_else(|| {
+            event
+                .get("result")
+                .and_then(|value| extract_text_from_value(value, 0))
+        });
     let result_payload = if let Some(text) = result_text {
         Some(json!({
             "text": text,
@@ -997,9 +1161,7 @@ fn contains_reasoning_keyword(value: &str) -> bool {
     if normalized.is_empty() {
         return false;
     }
-    normalized.contains("reason")
-        || normalized.contains("think")
-        || normalized.contains("thought")
+    normalized.contains("reason") || normalized.contains("think") || normalized.contains("thought")
 }
 
 fn is_truthy(value: Option<&Value>) -> bool {
@@ -1033,7 +1195,11 @@ fn should_treat_message_as_reasoning(event: &Value, role: &str) -> bool {
         return true;
     }
     is_truthy(event.get("isThought").or_else(|| event.get("is_thought")))
-        || is_truthy(event.get("isReasoning").or_else(|| event.get("is_reasoning")))
+        || is_truthy(
+            event
+                .get("isReasoning")
+                .or_else(|| event.get("is_reasoning")),
+        )
 }
 
 fn is_reasoning_event_type(event_type: &str) -> bool {
@@ -1043,7 +1209,12 @@ fn is_reasoning_event_type(event_type: &str) -> bool {
     }
     matches!(
         normalized.as_str(),
-        "reasoning" | "reasoning_delta" | "thinking" | "thinking_delta" | "thought" | "thought_delta"
+        "reasoning"
+            | "reasoning_delta"
+            | "thinking"
+            | "thinking_delta"
+            | "thought"
+            | "thought_delta"
     ) || contains_reasoning_keyword(&normalized)
 }
 
@@ -1084,6 +1255,222 @@ fn is_completion_event_type(event_type: &str) -> bool {
     )
 }
 
+fn find_tool_calls_array<'a>(value: &'a Value, depth: usize) -> Option<&'a Vec<Value>> {
+    if depth > 6 {
+        return None;
+    }
+
+    if let Some(calls) = value.get("toolCalls").and_then(Value::as_array) {
+        if !calls.is_empty() {
+            return Some(calls);
+        }
+    }
+    if let Some(calls) = value.get("tool_calls").and_then(Value::as_array) {
+        if !calls.is_empty() {
+            return Some(calls);
+        }
+    }
+
+    if let Some(array) = value.as_array() {
+        for item in array.iter().rev() {
+            if let Some(calls) = find_tool_calls_array(item, depth + 1) {
+                return Some(calls);
+            }
+        }
+        return None;
+    }
+
+    let Some(object) = value.as_object() else {
+        return None;
+    };
+
+    for key in [
+        "message", "messages", "item", "items", "content", "data", "payload", "result", "response",
+        "event", "turn",
+    ] {
+        if let Some(nested) = object.get(key) {
+            if let Some(calls) = find_tool_calls_array(nested, depth + 1) {
+                return Some(calls);
+            }
+        }
+    }
+
+    for nested in object.values() {
+        if let Some(calls) = find_tool_calls_array(nested, depth + 1) {
+            return Some(calls);
+        }
+    }
+
+    None
+}
+
+fn extract_tool_events_from_snapshot(
+    workspace_id: &str,
+    event: &Value,
+    tool_states: &mut HashMap<String, GeminiSnapshotToolState>,
+) -> Vec<EngineEvent> {
+    let Some(tool_calls) = find_tool_calls_array(event, 0) else {
+        return Vec::new();
+    };
+    let mut events: Vec<EngineEvent> = Vec::new();
+
+    for (index, call) in tool_calls.iter().enumerate() {
+        let Some(call_object) = call.as_object() else {
+            continue;
+        };
+
+        let tool_id = first_non_empty_str(&[
+            call_object.get("id").and_then(|value| value.as_str()),
+            call_object.get("toolId").and_then(|value| value.as_str()),
+            call_object
+                .get("tool_use_id")
+                .and_then(|value| value.as_str()),
+            call_object
+                .get("toolUseId")
+                .and_then(|value| value.as_str()),
+            call_object.get("callId").and_then(|value| value.as_str()),
+            call_object.get("call_id").and_then(|value| value.as_str()),
+        ])
+        .map(str::to_string)
+        .unwrap_or_else(|| format!("gemini-tool-call-{}", index + 1));
+
+        let tool_name = first_non_empty_str(&[
+            call_object
+                .get("displayName")
+                .and_then(|value| value.as_str()),
+            call_object.get("name").and_then(|value| value.as_str()),
+            call_object.get("toolName").and_then(|value| value.as_str()),
+            call_object.get("tool").and_then(|value| value.as_str()),
+        ])
+        .unwrap_or("tool")
+        .to_string();
+
+        let input = call_object
+            .get("args")
+            .cloned()
+            .or_else(|| call_object.get("input").cloned())
+            .or_else(|| call_object.get("parameters").cloned())
+            .or_else(|| call_object.get("arguments").cloned());
+
+        let mut output = call_object
+            .get("result")
+            .cloned()
+            .filter(|value| !value.is_null())
+            .or_else(|| call_object.get("output").cloned())
+            .or_else(|| call_object.get("response").cloned());
+
+        let result_display = first_non_empty_str(&[
+            call_object
+                .get("resultDisplay")
+                .and_then(|value| value.as_str()),
+            call_object
+                .get("result_display")
+                .and_then(|value| value.as_str()),
+            call_object.get("display").and_then(|value| value.as_str()),
+        ])
+        .map(str::to_string);
+        if output.is_none() {
+            if let Some(display) = result_display.clone() {
+                output = Some(Value::String(display));
+            }
+        }
+
+        let status = first_non_empty_str(&[
+            call_object.get("status").and_then(|value| value.as_str()),
+            call_object.get("phase").and_then(|value| value.as_str()),
+            call_object.get("state").and_then(|value| value.as_str()),
+        ])
+        .map(|value| value.trim().to_ascii_lowercase());
+        let status_is_completed = status.as_deref().is_some_and(|value| {
+            matches!(
+                value,
+                "done"
+                    | "completed"
+                    | "complete"
+                    | "success"
+                    | "succeeded"
+                    | "failed"
+                    | "failure"
+                    | "error"
+                    | "cancelled"
+                    | "canceled"
+            )
+        });
+        let status_is_failed = status
+            .as_deref()
+            .is_some_and(|value| value.contains("fail") || value.contains("error"));
+        let explicit_completion = call_object.get("endedAt").is_some()
+            || call_object.get("completedAt").is_some()
+            || is_truthy(
+                call_object
+                    .get("completed")
+                    .or_else(|| call_object.get("isCompleted"))
+                    .or_else(|| call_object.get("done")),
+            );
+        let has_completion = output.is_some() || status_is_completed || explicit_completion;
+
+        let error_text = first_non_empty_str(&[
+            call_object.get("error").and_then(|value| value.as_str()),
+            call_object.get("message").and_then(|value| value.as_str()),
+        ])
+        .map(str::to_string)
+        .or_else(|| {
+            if status_is_failed {
+                Some("Tool execution failed".to_string())
+            } else {
+                None
+            }
+        });
+
+        let completion_output = match (input.clone(), output.clone()) {
+            (Some(input_value), Some(output_value)) => Some(json!({
+                "_input": input_value,
+                "_output": output_value,
+            })),
+            (None, Some(output_value)) => Some(output_value),
+            (Some(input_value), None) if error_text.is_some() => Some(json!({
+                "_input": input_value,
+            })),
+            _ => None,
+        };
+
+        let state = tool_states.entry(tool_id.clone()).or_default();
+        if !state.started_emitted {
+            events.push(EngineEvent::ToolStarted {
+                workspace_id: workspace_id.to_string(),
+                tool_id: tool_id.clone(),
+                tool_name: tool_name.clone(),
+                input: input.clone(),
+            });
+            state.started_emitted = true;
+        }
+
+        if !has_completion {
+            continue;
+        }
+
+        let completion_signature = serde_json::to_string(&json!({
+            "output": completion_output,
+            "error": error_text,
+            "status": status,
+        }))
+        .unwrap_or_default();
+        if state.completed_signature.as_deref() == Some(completion_signature.as_str()) {
+            continue;
+        }
+        state.completed_signature = Some(completion_signature);
+        events.push(EngineEvent::ToolCompleted {
+            workspace_id: workspace_id.to_string(),
+            tool_id,
+            tool_name: Some(tool_name),
+            output: completion_output,
+            error: error_text,
+        });
+    }
+
+    events
+}
+
 fn parse_gemini_event(workspace_id: &str, event: &Value) -> Option<EngineEvent> {
     let event_type = event.get("type").and_then(|v| v.as_str())?;
     match event_type {
@@ -1100,7 +1487,8 @@ fn parse_gemini_event(workspace_id: &str, event: &Value) -> Option<EngineEvent> 
                 text,
             })
         }
-        "reasoning" | "reasoning_delta" | "thinking" | "thinking_delta" | "thought" | "thought_delta" => {
+        "reasoning" | "reasoning_delta" | "thinking" | "thinking_delta" | "thought"
+        | "thought_delta" => {
             let text = extract_reasoning_event_text(event)?;
             Some(EngineEvent::ReasoningDelta {
                 workspace_id: workspace_id.to_string(),
@@ -1122,6 +1510,21 @@ fn parse_gemini_event(workspace_id: &str, event: &Value) -> Option<EngineEvent> 
                     workspace_id: workspace_id.to_string(),
                     text,
                 });
+            }
+            let text = extract_event_text(event)?;
+            Some(EngineEvent::TextDelta {
+                workspace_id: workspace_id.to_string(),
+                text,
+            })
+        }
+        "gemini" => {
+            let role = event
+                .get("role")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_ascii_lowercase();
+            if role == "user" || role == "system" {
+                return None;
             }
             let text = extract_event_text(event)?;
             Some(EngineEvent::TextDelta {
@@ -1234,12 +1637,14 @@ fn parse_gemini_event(workspace_id: &str, event: &Value) -> Option<EngineEvent> 
 
 #[cfg(test)]
 mod tests {
+    use super::EngineEvent;
     use super::{
-        collect_latest_turn_reasoning_texts, extract_latest_thought_text, parse_gemini_event,
-        GeminiSession, GeminiSessionMessage,
+        collect_latest_turn_reasoning_texts, extract_latest_thought_text,
+        extract_tool_events_from_snapshot, parse_gemini_event, GeminiSession, GeminiSessionMessage,
+        GeminiSnapshotToolState,
     };
     use serde_json::json;
-    use super::EngineEvent;
+    use std::collections::HashMap;
 
     #[test]
     fn selected_auth_type_for_api_key_modes() {
@@ -1288,7 +1693,8 @@ mod tests {
             "/tmp/screen 1.png".to_string(),
             "/tmp/screen-2.jpg".to_string(),
         ];
-        let prompt = GeminiSession::with_image_references("Describe screenshots", Some(images.as_slice()));
+        let prompt =
+            GeminiSession::with_image_references("Describe screenshots", Some(images.as_slice()));
         assert_eq!(
             prompt,
             "Describe screenshots\n\n@\"/tmp/screen 1.png\" @\"/tmp/screen-2.jpg\""
@@ -1300,6 +1706,34 @@ mod tests {
         let images = vec!["file:///Users/demo/a.png".to_string()];
         let prompt = GeminiSession::with_image_references("Describe", Some(images.as_slice()));
         assert_eq!(prompt, "Describe\n\n@\"/Users/demo/a.png\"");
+    }
+
+    #[test]
+    fn with_image_references_normalizes_localhost_file_uri() {
+        let images = vec!["file://localhost/Users/demo/a.png".to_string()];
+        let prompt = GeminiSession::with_image_references("Describe", Some(images.as_slice()));
+        assert_eq!(prompt, "Describe\n\n@\"/Users/demo/a.png\"");
+    }
+
+    #[test]
+    fn with_image_references_preserves_unc_host_file_uri() {
+        let images = vec!["file://server/share/folder/a%20b.png".to_string()];
+        let prompt = GeminiSession::with_image_references("Describe", Some(images.as_slice()));
+        assert_eq!(prompt, "Describe\n\n@\"//server/share/folder/a b.png\"");
+    }
+
+    #[test]
+    fn with_image_references_decodes_percent_escaped_file_uri() {
+        let images = vec!["file:///Users/demo/a%20b.png".to_string()];
+        let prompt = GeminiSession::with_image_references("Describe", Some(images.as_slice()));
+        assert_eq!(prompt, "Describe\n\n@\"/Users/demo/a b.png\"");
+    }
+
+    #[test]
+    fn with_image_references_recovers_miswrapped_data_url_file_uri() {
+        let images = vec!["data:image/png;base64,file:///Users/demo/c%20d.png".to_string()];
+        let prompt = GeminiSession::with_image_references("Describe", Some(images.as_slice()));
+        assert_eq!(prompt, "Describe\n\n@\"/Users/demo/c d.png\"");
     }
 
     #[test]
@@ -1441,6 +1875,32 @@ mod tests {
     }
 
     #[test]
+    fn parse_gemini_snapshot_content_maps_to_text_delta() {
+        let payload = json!({
+            "type": "gemini",
+            "content": "接下来，我将创建 PhoneRequest.java 文件。"
+        });
+        let parsed = parse_gemini_event("workspace-1", &payload);
+        match parsed {
+            Some(EngineEvent::TextDelta { text, .. }) => {
+                assert_eq!(text, "接下来，我将创建 PhoneRequest.java 文件。");
+            }
+            _ => panic!("expected TextDelta"),
+        }
+    }
+
+    #[test]
+    fn parse_gemini_snapshot_ignores_user_role() {
+        let payload = json!({
+            "type": "gemini",
+            "role": "user",
+            "content": "用户输入"
+        });
+        let parsed = parse_gemini_event("workspace-1", &payload);
+        assert!(parsed.is_none());
+    }
+
+    #[test]
     fn parse_done_alias_maps_to_turn_completed() {
         let payload = json!({
             "type": "done",
@@ -1449,6 +1909,98 @@ mod tests {
         });
         let parsed = parse_gemini_event("workspace-1", &payload);
         assert!(matches!(parsed, Some(EngineEvent::TurnCompleted { .. })));
+    }
+
+    #[test]
+    fn extract_tool_events_from_snapshot_emits_started_then_completed_once() {
+        let mut tool_states: HashMap<String, GeminiSnapshotToolState> = HashMap::new();
+        let started_payload = json!({
+            "type": "gemini",
+            "toolCalls": [
+                {
+                    "id": "tool-1",
+                    "displayName": "ReadFile",
+                    "args": {
+                        "path": "README.md"
+                    }
+                }
+            ]
+        });
+
+        let started_events =
+            extract_tool_events_from_snapshot("workspace-1", &started_payload, &mut tool_states);
+        assert_eq!(started_events.len(), 1);
+        match &started_events[0] {
+            EngineEvent::ToolStarted {
+                tool_id, tool_name, ..
+            } => {
+                assert_eq!(tool_id, "tool-1");
+                assert_eq!(tool_name, "ReadFile");
+            }
+            _ => panic!("expected ToolStarted"),
+        }
+
+        // Replayed snapshots should not duplicate tool started rows.
+        let replay_started =
+            extract_tool_events_from_snapshot("workspace-1", &started_payload, &mut tool_states);
+        assert!(replay_started.is_empty());
+
+        let completed_payload = json!({
+            "type": "gemini",
+            "toolCalls": [
+                {
+                    "id": "tool-1",
+                    "displayName": "ReadFile",
+                    "args": {
+                        "path": "README.md"
+                    },
+                    "resultDisplay": "ok",
+                    "result": {
+                        "status": "ok"
+                    }
+                }
+            ]
+        });
+        let completed_events =
+            extract_tool_events_from_snapshot("workspace-1", &completed_payload, &mut tool_states);
+        assert_eq!(completed_events.len(), 1);
+        match &completed_events[0] {
+            EngineEvent::ToolCompleted { tool_id, .. } => {
+                assert_eq!(tool_id, "tool-1");
+            }
+            _ => panic!("expected ToolCompleted"),
+        }
+
+        // Completed snapshot replay should also stay deduped.
+        let replay_completed =
+            extract_tool_events_from_snapshot("workspace-1", &completed_payload, &mut tool_states);
+        assert!(replay_completed.is_empty());
+    }
+
+    #[test]
+    fn extract_tool_events_from_snapshot_emits_started_for_completed_only_payload() {
+        let mut tool_states: HashMap<String, GeminiSnapshotToolState> = HashMap::new();
+        let payload = json!({
+            "type": "gemini",
+            "message": {
+                "toolCalls": [
+                    {
+                        "id": "tool-2",
+                        "displayName": "EditFile",
+                        "args": {
+                            "path": "src/App.tsx"
+                        },
+                        "status": "completed",
+                        "resultDisplay": "updated"
+                    }
+                ]
+            }
+        });
+
+        let events = extract_tool_events_from_snapshot("workspace-1", &payload, &mut tool_states);
+        assert_eq!(events.len(), 2);
+        assert!(matches!(events[0], EngineEvent::ToolStarted { .. }));
+        assert!(matches!(events[1], EngineEvent::ToolCompleted { .. }));
     }
 
     #[test]
@@ -1573,6 +2125,9 @@ mod tests {
             },
         ];
         let collected = collect_latest_turn_reasoning_texts(&messages);
-        assert_eq!(collected, vec!["先看目录".to_string(), "再读 README".to_string()]);
+        assert_eq!(
+            collected,
+            vec!["先看目录".to_string(), "再读 README".to_string()]
+        );
     }
 }

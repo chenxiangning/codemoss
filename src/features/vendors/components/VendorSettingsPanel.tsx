@@ -275,6 +275,7 @@ export function VendorSettingsPanel() {
                   openModelDialog("claude");
                 }}
               >
+                <PackagePlus size={14} />
                 {t("settings.vendor.manageModels")}
               </Button>
             </div>
@@ -340,6 +341,7 @@ export function VendorSettingsPanel() {
                   openModelDialog("codex");
                 }}
               >
+                <PackagePlus size={14} />
                 {t("settings.vendor.manageModels")}
               </Button>
             </div>
@@ -399,11 +401,12 @@ export function VendorSettingsPanel() {
                   openModelDialog("gemini");
                 }}
               >
+                <PackagePlus size={14} />
                 {t("settings.vendor.manageModels")}
               </Button>
             </div>
+            <GeminiVendorPanel />
           </div>
-          <GeminiVendorPanel />
         </TabsPanel>
 
       </Tabs>

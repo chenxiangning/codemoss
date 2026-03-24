@@ -14,6 +14,19 @@ import {
   isIncrementalDerivationEnabled,
   isReducerNoopGuardEnabled,
 } from "../utils/realtimePerfFlags";
+import {
+  buildLegacyTextDeltaItemId,
+  findAssistantMessageIndexByLegacyTextDelta,
+  findReasoningIndexById,
+  insertLiveReasoningItem,
+  isLegacyTextDeltaItemId,
+} from "./threadReducerItemLookup";
+import {
+  isClaudeReasoningThread,
+  isGeminiReasoningThread,
+  isLocalCliReasoningThread,
+  shouldAcceptReasoningDelta,
+} from "./threadReducerReasoningGuards";
 
 const REDUCER_NOOP_GUARD_ENABLED = isReducerNoopGuardEnabled();
 const INCREMENTAL_DERIVATION_ENABLED = isIncrementalDerivationEnabled();
@@ -255,21 +268,6 @@ function isPendingToolStatus(status: string) {
   );
 }
 
-function isLocalCliReasoningThread(threadId: string) {
-  return (
-    threadId.startsWith("claude:") ||
-    threadId.startsWith("claude-pending-") ||
-    threadId.startsWith("gemini:") ||
-    threadId.startsWith("gemini-pending-") ||
-    threadId.startsWith("opencode:") ||
-    threadId.startsWith("opencode-pending-")
-  );
-}
-
-function isClaudeReasoningThread(threadId: string) {
-  return threadId.startsWith("claude:") || threadId.startsWith("claude-pending-");
-}
-
 type ThreadActivityStatus = {
   isProcessing: boolean;
   hasUnread: boolean;
@@ -474,15 +472,6 @@ export const initialState: ThreadState = {
   lastAgentMessageByThread: {},
   agentSegmentByThread: {},
 };
-
-function shouldAcceptReasoningDelta(state: ThreadState, threadId: string) {
-  if (!isLocalCliReasoningThread(threadId)) {
-    return true;
-  }
-  const hasActiveTurn = (state.activeTurnIdByThread[threadId] ?? null) !== null;
-  const isProcessing = Boolean(state.threadStatusById[threadId]?.isProcessing);
-  return hasActiveTurn || isProcessing;
-}
 
 function mergeStreamingText(existing: string, delta: string) {
   if (!delta) {
@@ -1316,19 +1305,6 @@ function findAssistantMessageIndexById(
   return -1;
 }
 
-function findReasoningIndexById(list: ConversationItem[], candidateId: string) {
-  if (!candidateId) {
-    return -1;
-  }
-  for (let index = list.length - 1; index >= 0; index -= 1) {
-    const item = list[index];
-    if (item.kind === "reasoning" && item.id === candidateId) {
-      return index;
-    }
-  }
-  return -1;
-}
-
 function findAssistantMessageIndexByPrefix(
   list: ConversationItem[],
   idPrefix: string,
@@ -1343,36 +1319,6 @@ function findAssistantMessageIndexByPrefix(
       item.kind === "message" &&
       item.role === "assistant" &&
       item.id.startsWith(segmentPrefix)
-    ) {
-      return index;
-    }
-  }
-  return -1;
-}
-
-function buildLegacyTextDeltaItemId(threadId: string) {
-  return `${threadId}:text-delta`;
-}
-
-function isLegacyTextDeltaItemId(threadId: string, itemId: string) {
-  if (!threadId || !itemId) {
-    return false;
-  }
-  const legacyId = buildLegacyTextDeltaItemId(threadId);
-  return itemId === legacyId || itemId.startsWith(`${legacyId}-seg-`);
-}
-
-function findAssistantMessageIndexByLegacyTextDelta(
-  list: ConversationItem[],
-  threadId: string,
-) {
-  const legacyId = buildLegacyTextDeltaItemId(threadId);
-  for (let index = list.length - 1; index >= 0; index -= 1) {
-    const item = list[index];
-    if (
-      item.kind === "message" &&
-      item.role === "assistant" &&
-      (item.id === legacyId || item.id.startsWith(`${legacyId}-seg-`))
     ) {
       return index;
     }
@@ -2573,6 +2519,10 @@ export function threadReducer(state: ThreadState, action: ThreadAction): ThreadS
       if (!shouldAcceptReasoningDelta(state, action.threadId)) {
         return state;
       }
+      const shouldInsertBeforeAssistant =
+        isGeminiReasoningThread(action.threadId) &&
+        !state.threadStatusById[action.threadId]?.isProcessing &&
+        (state.activeTurnIdByThread[action.threadId] ?? null) === null;
       const segmentedReasoningId = resolveLiveReasoningItemId(
         state,
         action.threadId,
@@ -2606,10 +2556,12 @@ export function threadReducer(state: ThreadState, action: ThreadAction): ThreadS
         ...base,
         summary: nextSummary,
       } as ConversationItem;
-      const next = index >= 0 ? [...list] : [...list, updated];
-      if (index >= 0) {
-        next[index] = updated;
-      }
+      const next = insertLiveReasoningItem(
+        list,
+        index,
+        updated,
+        shouldInsertBeforeAssistant,
+      );
       return {
         ...state,
         itemsByThread: {
@@ -2622,6 +2574,10 @@ export function threadReducer(state: ThreadState, action: ThreadAction): ThreadS
       if (!shouldAcceptReasoningDelta(state, action.threadId)) {
         return state;
       }
+      const shouldInsertBeforeAssistant =
+        isGeminiReasoningThread(action.threadId) &&
+        !state.threadStatusById[action.threadId]?.isProcessing &&
+        (state.activeTurnIdByThread[action.threadId] ?? null) === null;
       const segmentedReasoningId = resolveLiveReasoningItemId(
         state,
         action.threadId,
@@ -2651,10 +2607,12 @@ export function threadReducer(state: ThreadState, action: ThreadAction): ThreadS
         ...base,
         summary: nextSummary,
       } as ConversationItem;
-      const next = index >= 0 ? [...list] : [...list, updated];
-      if (index >= 0) {
-        next[index] = updated;
-      }
+      const next = insertLiveReasoningItem(
+        list,
+        index,
+        updated,
+        shouldInsertBeforeAssistant,
+      );
       return {
         ...state,
         itemsByThread: {
@@ -2687,6 +2645,10 @@ export function threadReducer(state: ThreadState, action: ThreadAction): ThreadS
       if (!shouldAcceptReasoningDelta(state, action.threadId)) {
         return state;
       }
+      const shouldInsertBeforeAssistant =
+        isGeminiReasoningThread(action.threadId) &&
+        !state.threadStatusById[action.threadId]?.isProcessing &&
+        (state.activeTurnIdByThread[action.threadId] ?? null) === null;
       const segmentedReasoningId = resolveLiveReasoningItemId(
         state,
         action.threadId,
@@ -2720,10 +2682,12 @@ export function threadReducer(state: ThreadState, action: ThreadAction): ThreadS
         ...base,
         content: nextContent,
       } as ConversationItem;
-      const next = index >= 0 ? [...list] : [...list, updated];
-      if (index >= 0) {
-        next[index] = updated;
-      }
+      const next = insertLiveReasoningItem(
+        list,
+        index,
+        updated,
+        shouldInsertBeforeAssistant,
+      );
       return {
         ...state,
         itemsByThread: {

@@ -35,6 +35,86 @@ use parse_helpers::*;
 /// Maximum lifetime for an event forwarder task. Prevents orphaned tasks from
 /// leaking memory when the underlying process hangs or is killed externally.
 const EVENT_FORWARDER_TIMEOUT_SECS: u64 = 30 * 60;
+/// Gemini may emit fallback reasoning shortly after turn/completed.
+/// Keep the forwarder alive briefly so realtime reasoning is not dropped.
+const GEMINI_POST_COMPLETION_REASONING_GRACE_MS: u64 = 8_000;
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum GeminiRenderLane {
+    Text,
+    Reasoning,
+    Tool,
+    Other,
+}
+
+impl Default for GeminiRenderLane {
+    fn default() -> Self {
+        Self::Other
+    }
+}
+
+#[derive(Default)]
+struct GeminiRenderRoutingState {
+    last_render_lane: GeminiRenderLane,
+    text_run_index: usize,
+    reasoning_run_index: usize,
+    active_text_item_id: Option<String>,
+    active_reasoning_item_id: Option<String>,
+    saw_text_delta: bool,
+}
+
+fn next_gemini_routed_item_id(
+    state: &mut GeminiRenderRoutingState,
+    render_lane: GeminiRenderLane,
+    base_item_id: &str,
+) -> String {
+    if matches!(render_lane, GeminiRenderLane::Text)
+        && (state.last_render_lane != GeminiRenderLane::Text || state.active_text_item_id.is_none())
+    {
+        state.text_run_index += 1;
+        let text_item_id = if state.text_run_index == 1 {
+            base_item_id.to_string()
+        } else {
+            format!("{base_item_id}:text-{}", state.text_run_index)
+        };
+        state.active_text_item_id = Some(text_item_id);
+    }
+
+    if matches!(render_lane, GeminiRenderLane::Reasoning)
+        && (state.last_render_lane != GeminiRenderLane::Reasoning
+            || state.active_reasoning_item_id.is_none())
+    {
+        state.reasoning_run_index += 1;
+        state.active_reasoning_item_id = Some(format!(
+            "{base_item_id}:reasoning-seg-{}",
+            state.reasoning_run_index
+        ));
+    }
+
+    let routed_item_id = match render_lane {
+        GeminiRenderLane::Text => state
+            .active_text_item_id
+            .clone()
+            .unwrap_or_else(|| base_item_id.to_string()),
+        GeminiRenderLane::Reasoning => state
+            .active_reasoning_item_id
+            .clone()
+            .unwrap_or_else(|| base_item_id.to_string()),
+        GeminiRenderLane::Tool | GeminiRenderLane::Other => base_item_id.to_string(),
+    };
+
+    if !matches!(render_lane, GeminiRenderLane::Other) {
+        state.last_render_lane = render_lane;
+        if !matches!(render_lane, GeminiRenderLane::Reasoning) {
+            state.active_reasoning_item_id = None;
+        }
+        if !matches!(render_lane, GeminiRenderLane::Text) {
+            state.active_text_item_id = None;
+        }
+    }
+
+    routed_item_id
+}
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -2318,21 +2398,17 @@ pub async fn engine_send_message(
             let item_id_clone = item_id.clone();
             let turn_id_for_forwarder = turn_id.clone();
             let mut accumulated_agent_text = String::new();
-            #[derive(Clone, Copy, PartialEq, Eq)]
-            enum GeminiRenderLane {
-                Text,
-                Reasoning,
-                Tool,
-                Other,
-            }
             tokio::spawn(async move {
                 let deadline = tokio::time::Instant::now()
                     + std::time::Duration::from_secs(EVENT_FORWARDER_TIMEOUT_SECS);
-                let mut last_render_lane = GeminiRenderLane::Other;
-                let mut reasoning_run_index = 0usize;
-                let mut active_reasoning_item_id: Option<String> = None;
+                let mut render_state = GeminiRenderRoutingState::default();
+                let mut post_completion_grace_deadline: Option<tokio::time::Instant> = None;
                 loop {
-                    let recv_result = tokio::time::timeout_at(deadline, receiver.recv()).await;
+                    let active_deadline = post_completion_grace_deadline
+                        .map(|grace| std::cmp::min(grace, deadline))
+                        .unwrap_or(deadline);
+                    let recv_result =
+                        tokio::time::timeout_at(active_deadline, receiver.recv()).await;
                     let turn_event = match recv_result {
                         Ok(Ok(event)) => event,
                         Ok(Err(tokio::sync::broadcast::error::RecvError::Closed)) => break,
@@ -2361,25 +2437,11 @@ pub async fn engine_send_message(
                         | EngineEvent::ToolOutputDelta { .. } => GeminiRenderLane::Tool,
                         _ => GeminiRenderLane::Other,
                     };
-                    if matches!(render_lane, GeminiRenderLane::Reasoning)
-                        && (last_render_lane != GeminiRenderLane::Reasoning
-                            || active_reasoning_item_id.is_none())
-                    {
-                        reasoning_run_index += 1;
-                        active_reasoning_item_id = Some(format!(
-                            "{}:reasoning-{}",
-                            item_id_clone, reasoning_run_index
-                        ));
-                    }
-                    let routed_item_id = if matches!(render_lane, GeminiRenderLane::Reasoning) {
-                        active_reasoning_item_id
-                            .as_deref()
-                            .unwrap_or(item_id_clone.as_str())
-                    } else {
-                        item_id_clone.as_str()
-                    };
+                    let routed_item_id =
+                        next_gemini_routed_item_id(&mut render_state, render_lane, &item_id_clone);
 
                     if let EngineEvent::TextDelta { text, .. } = &event {
+                        render_state.saw_text_delta = true;
                         accumulated_agent_text.push_str(text);
                     }
 
@@ -2391,7 +2453,10 @@ pub async fn engine_send_message(
                         } else {
                             accumulated_agent_text.clone()
                         };
-                        if !completed_text.trim().is_empty() {
+                        // Preserve realtime interleaving for Gemini: when text deltas
+                        // already streamed, don't collapse them back into a single
+                        // synthetic completed assistant message.
+                        if !completed_text.trim().is_empty() && !render_state.saw_text_delta {
                             let synthetic = AppServerEvent {
                                 workspace_id: event.workspace_id().to_string(),
                                 message: json!({
@@ -2399,7 +2464,7 @@ pub async fn engine_send_message(
                                     "params": {
                                         "threadId": &current_thread_id,
                                         "item": {
-                                            "id": &item_id_clone,
+                                            "id": &routed_item_id,
                                             "type": "agentMessage",
                                             "text": completed_text,
                                             "status": "completed",
@@ -2411,9 +2476,11 @@ pub async fn engine_send_message(
                         }
                     }
 
-                    if let Some(payload) =
-                        engine_event_to_app_server_event(&event, &current_thread_id, routed_item_id)
-                    {
+                    if let Some(payload) = engine_event_to_app_server_event(
+                        &event,
+                        &current_thread_id,
+                        &routed_item_id,
+                    ) {
                         let _ = app_clone.emit("app-server-event", payload);
                     }
 
@@ -2428,14 +2495,16 @@ pub async fn engine_send_message(
                         }
                     }
 
-                    if !matches!(render_lane, GeminiRenderLane::Other) {
-                        last_render_lane = render_lane;
-                        if !matches!(render_lane, GeminiRenderLane::Reasoning) {
-                            active_reasoning_item_id = None;
-                        }
-                    }
-
                     if is_terminal {
+                        if matches!(event, EngineEvent::TurnCompleted { .. }) {
+                            post_completion_grace_deadline = Some(
+                                tokio::time::Instant::now()
+                                    + std::time::Duration::from_millis(
+                                        GEMINI_POST_COMPLETION_REASONING_GRACE_MS,
+                                    ),
+                            );
+                            continue;
+                        }
                         break;
                     }
                 }

@@ -318,7 +318,11 @@ fn extract_display_text(message: &Value) -> Option<String> {
     message
         .get("displayContent")
         .and_then(extract_text_from_value)
-        .or_else(|| message.get("display_content").and_then(extract_text_from_value))
+        .or_else(|| {
+            message
+                .get("display_content")
+                .and_then(extract_text_from_value)
+        })
 }
 
 fn is_image_path_candidate(path: &str) -> bool {
@@ -447,9 +451,7 @@ fn collect_content_image_sources(value: &Value, output: &mut Vec<String>) {
             .filter(|value| !value.is_empty());
         if let Some(data) = data {
             let mime = mime_type.unwrap_or("image/png");
-            if mime.to_ascii_lowercase().starts_with("image/")
-                && data.len() <= 3_000_000
-            {
+            if mime.to_ascii_lowercase().starts_with("image/") && data.len() <= 3_000_000 {
                 output.push(format!("data:{};base64,{}", mime, data));
             }
         }
@@ -712,7 +714,11 @@ fn parse_messages_from_value(value: &Value) -> GeminiSessionLoadResult {
                     id: base_id,
                     role: "user".to_string(),
                     text,
-                    images: if images.is_empty() { None } else { Some(images) },
+                    images: if images.is_empty() {
+                        None
+                    } else {
+                        Some(images)
+                    },
                     timestamp,
                     kind: "message".to_string(),
                     tool_type: None,
@@ -722,9 +728,7 @@ fn parse_messages_from_value(value: &Value) -> GeminiSessionLoadResult {
                 });
             }
             "gemini" | "assistant" | "model" => {
-                let base_timestamp_millis = timestamp
-                    .as_deref()
-                    .and_then(parse_timestamp_millis);
+                let base_timestamp_millis = timestamp.as_deref().and_then(parse_timestamp_millis);
                 let mut timeline_entries: Vec<TimelineEntry> = Vec::new();
                 let mut timeline_sort_index = 0usize;
                 let mut push_timeline_message =
@@ -770,17 +774,17 @@ fn parse_messages_from_value(value: &Value) -> GeminiSessionLoadResult {
                         counter += 1;
                         push_timeline_message(
                             GeminiSessionMessage {
-                            id: format!("{}-reasoning-{}", base_id, counter),
-                            role: "assistant".to_string(),
-                            text,
-                            images: None,
-                            timestamp: None,
-                            kind: "reasoning".to_string(),
-                            tool_type: None,
-                            title: None,
-                            tool_input: None,
-                            tool_output: None,
-                        },
+                                id: format!("{}-reasoning-{}", base_id, counter),
+                                role: "assistant".to_string(),
+                                text,
+                                images: None,
+                                timestamp: None,
+                                kind: "reasoning".to_string(),
+                                tool_type: None,
+                                title: None,
+                                tool_input: None,
+                                tool_output: None,
+                            },
                             thought_timestamp,
                         );
                     }
@@ -815,17 +819,17 @@ fn parse_messages_from_value(value: &Value) -> GeminiSessionLoadResult {
                         );
                         push_timeline_message(
                             GeminiSessionMessage {
-                            id: tool_use_id.clone(),
-                            role: "assistant".to_string(),
-                            text: input_text,
-                            images: None,
-                            timestamp: None,
-                            kind: "tool".to_string(),
-                            tool_type: Some(tool_name.clone()),
-                            title: Some(tool_name),
-                            tool_input: input_value,
-                            tool_output: None,
-                        },
+                                id: tool_use_id.clone(),
+                                role: "assistant".to_string(),
+                                text: input_text,
+                                images: None,
+                                timestamp: None,
+                                kind: "tool".to_string(),
+                                tool_type: Some(tool_name.clone()),
+                                title: Some(tool_name),
+                                tool_input: input_value,
+                                tool_output: None,
+                            },
                             tool_start_timestamp,
                         );
 
@@ -848,25 +852,25 @@ fn parse_messages_from_value(value: &Value) -> GeminiSessionLoadResult {
                             );
                             push_timeline_message(
                                 GeminiSessionMessage {
-                                id: format!("{}-result", tool_use_id),
-                                role: "assistant".to_string(),
-                                text: output,
-                                images: None,
-                                timestamp: None,
-                                kind: "tool".to_string(),
-                                tool_type: Some(if is_error {
-                                    "error".to_string()
-                                } else {
-                                    "result".to_string()
-                                }),
-                                title: Some(if is_error {
-                                    "Error".to_string()
-                                } else {
-                                    "Result".to_string()
-                                }),
-                                tool_input: None,
-                                tool_output: call.get("result").cloned(),
-                            },
+                                    id: format!("{}-result", tool_use_id),
+                                    role: "assistant".to_string(),
+                                    text: output,
+                                    images: None,
+                                    timestamp: None,
+                                    kind: "tool".to_string(),
+                                    tool_type: Some(if is_error {
+                                        "error".to_string()
+                                    } else {
+                                        "result".to_string()
+                                    }),
+                                    title: Some(if is_error {
+                                        "Error".to_string()
+                                    } else {
+                                        "Result".to_string()
+                                    }),
+                                    tool_input: None,
+                                    tool_output: call.get("result").cloned(),
+                                },
                                 tool_result_timestamp,
                             );
                         }
@@ -877,17 +881,17 @@ fn parse_messages_from_value(value: &Value) -> GeminiSessionLoadResult {
                     if !text.trim().is_empty() {
                         push_timeline_message(
                             GeminiSessionMessage {
-                            id: base_id.clone(),
-                            role: "assistant".to_string(),
-                            text,
-                            images: None,
-                            timestamp: None,
-                            kind: "message".to_string(),
-                            tool_type: None,
-                            title: None,
-                            tool_input: None,
-                            tool_output: None,
-                        },
+                                id: base_id.clone(),
+                                role: "assistant".to_string(),
+                                text,
+                                images: None,
+                                timestamp: None,
+                                kind: "message".to_string(),
+                                tool_type: None,
+                                title: None,
+                                tool_input: None,
+                                tool_output: None,
+                            },
                             None,
                         );
                     }

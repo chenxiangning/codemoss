@@ -55,6 +55,60 @@ const ENGINE_DISPLAY_MAP: Record<
 };
 
 const GEMINI_VENDOR_UPDATED_EVENT = "mossx:gemini-vendor-updated";
+const GEMINI_DEFAULT_MODEL_ID = "gemini-2.5-flash-lite";
+const GEMINI_PRESET_MODEL_IDS = [
+  "gemini-2.5-flash-lite",
+  "gemini-3-flash-preview",
+  "gemini-2.5-flash",
+  "gemini-2.5-pro",
+  "gemini-3.1-pro-preview",
+] as const;
+
+function normalizeGeminiModelEntry(
+  model: Partial<EngineModelInfo> & { id: string },
+): EngineModelInfo {
+  const normalizedId = model.id.trim();
+  return {
+    id: normalizedId,
+    displayName:
+      model.displayName && model.displayName.trim().length > 0
+        ? model.displayName.trim()
+        : normalizedId,
+    description: model.description?.trim() ?? "",
+    isDefault: Boolean(model.isDefault),
+  };
+}
+
+function appendGeminiPresetModels(models: EngineModelInfo[]): EngineModelInfo[] {
+  const merged: EngineModelInfo[] = [];
+  const seenIds = new Set<string>();
+
+  const pushModel = (model: Partial<EngineModelInfo> & { id: string }) => {
+    const normalized = normalizeGeminiModelEntry(model);
+    if (!normalized.id || seenIds.has(normalized.id)) {
+      return;
+    }
+    seenIds.add(normalized.id);
+    merged.push(normalized);
+  };
+
+  models.forEach(pushModel);
+  GEMINI_PRESET_MODEL_IDS.forEach((id) => {
+    pushModel({ id, displayName: id, description: id, isDefault: false });
+  });
+
+  return merged;
+}
+
+function enforceGeminiDefaultModel(models: EngineModelInfo[]): EngineModelInfo[] {
+  if (!models.some((model) => model.id === GEMINI_DEFAULT_MODEL_ID)) {
+    return models;
+  }
+  return models.map((model) => ({
+    ...model,
+    isDefault: model.id === GEMINI_DEFAULT_MODEL_ID,
+  }));
+}
 
 function readCustomGeminiModels(): EngineModelInfo[] {
   if (typeof window === "undefined" || !window.localStorage) {
@@ -332,14 +386,21 @@ export function useEngineController({
   const mappedEngineModels = useMemo((): EngineModelInfo[] => {
     if (activeEngine === "gemini") {
       const customGeminiModels = readCustomGeminiModels();
-      if (customGeminiModels.length === 0) {
-        return engineModels;
-      }
-      const customIds = new Set(customGeminiModels.map((model) => model.id));
-      const filteredEngineModels = engineModels.filter(
-        (model) => !customIds.has(model.id),
+      const customGeminiIds = new Set(
+        customGeminiModels.map((model) => model.id),
       );
-      return [...customGeminiModels, ...filteredEngineModels];
+      const mergedModels =
+        customGeminiModels.length === 0
+          ? engineModels
+          : [
+              ...customGeminiModels,
+              ...engineModels.filter(
+                (model) => !customGeminiIds.has(model.id),
+              ),
+            ];
+      return enforceGeminiDefaultModel(
+        appendGeminiPresetModels(mergedModels),
+      );
     }
     if (activeEngine !== "claude") {
       return engineModels;
