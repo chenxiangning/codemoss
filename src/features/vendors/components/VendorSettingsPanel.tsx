@@ -13,10 +13,12 @@ import { CodexProviderDialog } from "./CodexProviderDialog";
 import { DeleteConfirmDialog } from "./DeleteConfirmDialog";
 import { CustomModelDialog } from "./CustomModelDialog";
 import { CurrentClaudeConfigCard } from "./CurrentClaudeConfigCard";
+import { GeminiVendorPanel } from "./GeminiVendorPanel";
 import {
   consumeVendorModelManagerRequest,
   VENDOR_MODEL_MANAGER_REQUEST_EVENT,
 } from "../modelManagerRequest";
+import { EngineIcon } from "../../engine/components/EngineIcon";
 import { Tabs, TabsList, TabsTab, TabsPanel } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 
@@ -26,6 +28,7 @@ const LEGACY_CLAUDE_MAPPING_KEYS = [
 ];
 const CODEX_PLUGIN_MODELS_MIGRATION_MARKER =
   "codemoss-codex-plugin-models-migrated-v1";
+type ModelDialogTarget = "claude" | "codex" | "gemini";
 
 function collectProviderCustomModels(
   providers: CodexProviderConfig[],
@@ -57,7 +60,7 @@ function collectProviderCustomModels(
 export function VendorSettingsPanel() {
   const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState<VendorTab>("claude");
-  const [dialogTarget, setDialogTarget] = useState<VendorTab>("claude");
+  const [dialogTarget, setDialogTarget] = useState<ModelDialogTarget>("claude");
   const [modelDialogOpen, setModelDialogOpen] = useState(false);
   const [modelDialogAddMode, setModelDialogAddMode] = useState(false);
   const didRunLegacyMigrationRef = useRef(false);
@@ -67,8 +70,9 @@ export function VendorSettingsPanel() {
   const codex = useCodexProviderManagement();
   const claudeModels = usePluginModels(STORAGE_KEYS.CLAUDE_CUSTOM_MODELS);
   const codexModels = usePluginModels(STORAGE_KEYS.CODEX_CUSTOM_MODELS);
+  const geminiModels = usePluginModels(STORAGE_KEYS.GEMINI_CUSTOM_MODELS);
 
-  const openModelDialog = useCallback((target: VendorTab, addMode = false) => {
+  const openModelDialog = useCallback((target: ModelDialogTarget, addMode = false) => {
     setDialogTarget(target);
     setModelDialogAddMode(addMode);
     setModelDialogOpen(true);
@@ -84,7 +88,12 @@ export function VendorSettingsPanel() {
     if (!request) {
       return;
     }
-    const target: VendorTab = request.target === "codex" ? "codex" : "claude";
+    const target: ModelDialogTarget =
+      request.target === "codex"
+        ? "codex"
+        : request.target === "gemini"
+          ? "gemini"
+          : "claude";
     setActiveTab(target);
     openModelDialog(target, Boolean(request.addMode));
   }, [openModelDialog]);
@@ -182,7 +191,11 @@ export function VendorSettingsPanel() {
   }, [codex.codexProviders, codexModels.models.length, codexModels.updateModels]);
 
   const currentDialogModels =
-    dialogTarget === "codex" ? codexModels.models : claudeModels.models;
+    dialogTarget === "codex"
+      ? codexModels.models
+      : dialogTarget === "gemini"
+        ? geminiModels.models
+        : claudeModels.models;
 
   const handleDialogModelsChange = useCallback(
     (models: CodexCustomModel[]) => {
@@ -190,9 +203,13 @@ export function VendorSettingsPanel() {
         codexModels.updateModels(models);
         return;
       }
+      if (dialogTarget === "gemini") {
+        geminiModels.updateModels(models);
+        return;
+      }
       claudeModels.updateModels(models);
     },
-    [claudeModels, codexModels, dialogTarget],
+    [claudeModels, codexModels, dialogTarget, geminiModels],
   );
 
   return (
@@ -206,10 +223,22 @@ export function VendorSettingsPanel() {
       >
         <TabsList className="vendor-tabs">
           <TabsTab className="vendor-tab" value="claude">
-            Claude Code
+            <span className="vendor-tab-label">
+              <EngineIcon engine="claude" size={14} />
+              <span>Claude Code</span>
+            </span>
           </TabsTab>
           <TabsTab className="vendor-tab" value="codex">
-            Codex
+            <span className="vendor-tab-label">
+              <EngineIcon engine="codex" size={14} />
+              <span>Codex</span>
+            </span>
+          </TabsTab>
+          <TabsTab className="vendor-tab" value="gemini">
+            <span className="vendor-tab-label">
+              <EngineIcon engine="gemini" size={14} />
+              <span>Gemini CLI</span>
+            </span>
           </TabsTab>
         </TabsList>
 
@@ -336,6 +365,47 @@ export function VendorSettingsPanel() {
             />
           </div>
         </TabsPanel>
+
+        <TabsPanel value="gemini">
+          <div className="vendor-tab-content">
+            <div
+              className="vendor-plugin-model-entry"
+              role="button"
+              tabIndex={0}
+              onClick={() => openModelDialog("gemini")}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  openModelDialog("gemini");
+                }
+              }}
+            >
+              <div className="vendor-plugin-model-entry-main">
+                <PackagePlus size={16} />
+                <span className="vendor-plugin-model-entry-title">
+                  {t("settings.vendor.pluginModels")}
+                </span>
+                {geminiModels.models.length > 0 && (
+                  <span className="vendor-plugin-model-entry-count">
+                    {geminiModels.models.length}
+                  </span>
+                )}
+              </div>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  openModelDialog("gemini");
+                }}
+              >
+                {t("settings.vendor.manageModels")}
+              </Button>
+            </div>
+          </div>
+          <GeminiVendorPanel />
+        </TabsPanel>
+
       </Tabs>
 
       <CustomModelDialog

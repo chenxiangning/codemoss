@@ -320,7 +320,7 @@ function extractLatestUserInputTextPreserveFormatting(text: string): string {
 function toConversationEngine(
   engine: "claude" | "codex" | "gemini" | "opencode",
 ): ConversationEngine {
-  if (engine === "claude" || engine === "opencode") {
+  if (engine === "claude" || engine === "gemini" || engine === "opencode") {
     return engine;
   }
   return "codex";
@@ -698,6 +698,12 @@ function dedupeAdjacentReasoningItems(
   return deduped;
 }
 
+const REASONING_SEGMENT_ID_REGEX = /(?:^|[:-])seg-\d+$/;
+
+function isExplicitReasoningSegmentId(id: string) {
+  return REASONING_SEGMENT_ID_REGEX.test(id);
+}
+
 function collapseConsecutiveReasoningRuns(
   list: ConversationItem[],
   enabled: boolean,
@@ -715,9 +721,18 @@ function collapseConsecutiveReasoningRuns(
       index += 1;
       continue;
     }
+    if (isExplicitReasoningSegmentId(item.id)) {
+      collapsed.push(item);
+      index += 1;
+      continue;
+    }
 
     let end = index + 1;
-    while (end < list.length && list[end].kind === "reasoning") {
+    while (
+      end < list.length &&
+      list[end].kind === "reasoning" &&
+      !isExplicitReasoningSegmentId(list[end].id)
+    ) {
       end += 1;
     }
 
@@ -1941,7 +1956,10 @@ export const Messages = memo(function Messages({
       if (item.kind !== "reasoning") {
         continue;
       }
-      const parsed = reasoningMetaById.get(item.id) ?? parseReasoning(item);
+      const parsed = reasoningMetaById.get(item.id);
+      if (!parsed) {
+        continue;
+      }
       const hasText =
         Boolean(parsed.bodyText?.trim()) ||
         Boolean(item.content?.trim()) ||
@@ -2392,7 +2410,7 @@ export const Messages = memo(function Messages({
     if (item.kind === "reasoning") {
       const itemRenderKey = `reasoning:${item.id}`;
       const isExpanded = expandedItems.has(item.id);
-      const parsed = parseReasoning(item);
+      const parsed = reasoningMetaById.get(item.id) ?? parseReasoning(item);
       const isLiveReasoning =
         isThinking && latestReasoningId === item.id;
       return (

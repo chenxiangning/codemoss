@@ -60,6 +60,9 @@ pub(crate) fn invoke_handler(
         crate::engine::load_claude_session,
         crate::engine::fork_claude_session,
         crate::engine::delete_claude_session,
+        crate::engine::list_gemini_sessions,
+        crate::engine::load_gemini_session,
+        crate::engine::delete_gemini_session,
         crate::local_usage::load_codex_session,
         // Codex
         crate::codex::get_config_model,
@@ -238,6 +241,9 @@ pub(crate) fn invoke_handler(
         crate::vendors::vendor_update_codex_provider,
         crate::vendors::vendor_delete_codex_provider,
         crate::vendors::vendor_switch_codex_provider,
+        crate::vendors::vendor_get_gemini_settings,
+        crate::vendors::vendor_save_gemini_settings,
+        crate::vendors::vendor_gemini_preflight,
         // Open paths
         crate::get_pending_open_paths
     ]

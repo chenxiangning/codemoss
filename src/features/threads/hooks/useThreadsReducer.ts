@@ -10,6 +10,13 @@ import type {
 } from "../../../types";
 import { normalizeItem, prepareThreadItems, upsertItem } from "../../../utils/threadItems";
 import { settlePlanInProgressSteps } from "../utils/threadNormalize";
+import {
+  isIncrementalDerivationEnabled,
+  isReducerNoopGuardEnabled,
+} from "../utils/realtimePerfFlags";
+
+const REDUCER_NOOP_GUARD_ENABLED = isReducerNoopGuardEnabled();
+const INCREMENTAL_DERIVATION_ENABLED = isIncrementalDerivationEnabled();
 
 function formatThreadName(text: string) {
   const trimmed = text.trim();
@@ -252,6 +259,8 @@ function isLocalCliReasoningThread(threadId: string) {
   return (
     threadId.startsWith("claude:") ||
     threadId.startsWith("claude-pending-") ||
+    threadId.startsWith("gemini:") ||
+    threadId.startsWith("gemini-pending-") ||
     threadId.startsWith("opencode:") ||
     threadId.startsWith("opencode-pending-")
   );
@@ -299,7 +308,7 @@ export type ThreadAction =
       type: "ensureThread";
       workspaceId: string;
       threadId: string;
-      engine?: "codex" | "claude" | "opencode";
+      engine?: "codex" | "claude" | "gemini" | "opencode";
     }
   | { type: "hideThread"; workspaceId: string; threadId: string }
   | { type: "removeThread"; workspaceId: string; threadId: string }
@@ -329,7 +338,7 @@ export type ThreadAction =
       type: "setThreadEngine";
       workspaceId: string;
       threadId: string;
-      engine: "codex" | "claude" | "opencode";
+      engine: "codex" | "claude" | "gemini" | "opencode";
     }
   | {
       type: "setThreadTimestamp";
@@ -1386,6 +1395,18 @@ function resolveLiveAssistantMessageId(
   return segment > 0 ? `${itemId}-seg-${segment}` : itemId;
 }
 
+function resolveLiveReasoningItemId(
+  state: ThreadState,
+  threadId: string,
+  itemId: string,
+) {
+  if (!isLocalCliReasoningThread(threadId)) {
+    return itemId;
+  }
+  const segment = state.agentSegmentByThread[threadId] ?? 0;
+  return segment > 0 ? `${itemId}-seg-${segment}` : itemId;
+}
+
 function addSummaryBoundary(existing: string) {
   if (!existing) {
     return existing;
@@ -1542,6 +1563,8 @@ export function threadReducer(state: ThreadState, action: ThreadAction): ThreadS
       // If threadId is engine:{sessionId} but not found, check for pending thread to rename.
       const pendingPrefix = action.threadId.startsWith("claude:")
         ? "claude-pending-"
+        : action.threadId.startsWith("gemini:")
+          ? "gemini-pending-"
         : action.threadId.startsWith("opencode:")
           ? "opencode-pending-"
           : null;
@@ -1804,6 +1827,9 @@ export function threadReducer(state: ThreadState, action: ThreadAction): ThreadS
       const lastDurationMs = previous?.lastDurationMs ?? null;
       const heartbeatPulse = previous?.heartbeatPulse ?? 0;
       if (action.isProcessing) {
+        if (REDUCER_NOOP_GUARD_ENABLED && wasProcessing) {
+          return state;
+        }
         return {
           ...state,
           threadStatusById: {
@@ -1820,6 +1846,15 @@ export function threadReducer(state: ThreadState, action: ThreadAction): ThreadS
             },
           },
         };
+      }
+      if (
+        REDUCER_NOOP_GUARD_ENABLED &&
+        (!previous ||
+          (!wasProcessing &&
+            previous.processingStartedAt == null &&
+            (previous.heartbeatPulse ?? 0) === 0))
+      ) {
+        return state;
       }
       const nextDuration =
         wasProcessing && startedAt
@@ -2075,10 +2110,18 @@ export function threadReducer(state: ThreadState, action: ThreadAction): ThreadS
           return state;
         }
         const nextId = shouldCanonicalizeLegacyId ? segmentedItemId : existing.id;
+        const nextText = mergeAgentMessageText(existing.text, action.delta);
+        if (
+          INCREMENTAL_DERIVATION_ENABLED &&
+          nextId === existing.id &&
+          nextText === existing.text
+        ) {
+          return state;
+        }
         list[index] = {
           ...existing,
           id: nextId,
-          text: mergeAgentMessageText(existing.text, action.delta),
+          text: nextText,
         };
       } else {
         list.push({
@@ -2207,6 +2250,14 @@ export function threadReducer(state: ThreadState, action: ThreadAction): ThreadS
       }
       let nextItem = ensureUniqueReviewId(list, item);
       if (nextItem.kind === "reasoning") {
+        const segmentedReasoningId = resolveLiveReasoningItemId(
+          state,
+          action.threadId,
+          nextItem.id,
+        );
+        if (segmentedReasoningId !== nextItem.id) {
+          nextItem = { ...nextItem, id: segmentedReasoningId };
+        }
         const existingReasoning = list.find(
           (entry): entry is Extract<ConversationItem, { kind: "reasoning" }> =>
             entry.id === nextItem.id && entry.kind === "reasoning",
@@ -2522,24 +2573,38 @@ export function threadReducer(state: ThreadState, action: ThreadAction): ThreadS
       if (!shouldAcceptReasoningDelta(state, action.threadId)) {
         return state;
       }
+      const segmentedReasoningId = resolveLiveReasoningItemId(
+        state,
+        action.threadId,
+        action.itemId,
+      );
       const list = state.itemsByThread[action.threadId] ?? [];
-      const index = findReasoningIndexById(list, action.itemId);
+      const index = findReasoningIndexById(list, segmentedReasoningId);
       const base =
         index >= 0
           ? (list[index] as ConversationItem)
           : {
-              id: action.itemId,
+              id: segmentedReasoningId,
               kind: "reasoning",
               summary: "",
               content: "",
             };
+      const nextSummary = mergeReasoningTextForThread(
+        action.threadId,
+        "summary" in base ? base.summary : "",
+        action.delta,
+      );
+      if (
+        INCREMENTAL_DERIVATION_ENABLED &&
+        index >= 0 &&
+        "summary" in base &&
+        nextSummary === base.summary
+      ) {
+        return state;
+      }
       const updated: ConversationItem = {
         ...base,
-        summary: mergeReasoningTextForThread(
-          action.threadId,
-          "summary" in base ? base.summary : "",
-          action.delta,
-        ),
+        summary: nextSummary,
       } as ConversationItem;
       const next = index >= 0 ? [...list] : [...list, updated];
       if (index >= 0) {
@@ -2557,20 +2622,34 @@ export function threadReducer(state: ThreadState, action: ThreadAction): ThreadS
       if (!shouldAcceptReasoningDelta(state, action.threadId)) {
         return state;
       }
+      const segmentedReasoningId = resolveLiveReasoningItemId(
+        state,
+        action.threadId,
+        action.itemId,
+      );
       const list = state.itemsByThread[action.threadId] ?? [];
-      const index = findReasoningIndexById(list, action.itemId);
+      const index = findReasoningIndexById(list, segmentedReasoningId);
       const base =
         index >= 0
           ? (list[index] as ConversationItem)
           : {
-              id: action.itemId,
+              id: segmentedReasoningId,
               kind: "reasoning",
               summary: "",
               content: "",
             };
+      const nextSummary = addSummaryBoundary("summary" in base ? base.summary : "");
+      if (
+        INCREMENTAL_DERIVATION_ENABLED &&
+        index >= 0 &&
+        "summary" in base &&
+        nextSummary === base.summary
+      ) {
+        return state;
+      }
       const updated: ConversationItem = {
         ...base,
-        summary: addSummaryBoundary("summary" in base ? base.summary : ""),
+        summary: nextSummary,
       } as ConversationItem;
       const next = index >= 0 ? [...list] : [...list, updated];
       if (index >= 0) {
@@ -2608,24 +2687,38 @@ export function threadReducer(state: ThreadState, action: ThreadAction): ThreadS
       if (!shouldAcceptReasoningDelta(state, action.threadId)) {
         return state;
       }
+      const segmentedReasoningId = resolveLiveReasoningItemId(
+        state,
+        action.threadId,
+        action.itemId,
+      );
       const list = state.itemsByThread[action.threadId] ?? [];
-      const index = findReasoningIndexById(list, action.itemId);
+      const index = findReasoningIndexById(list, segmentedReasoningId);
       const base =
         index >= 0
           ? (list[index] as ConversationItem)
           : {
-              id: action.itemId,
+              id: segmentedReasoningId,
               kind: "reasoning",
               summary: "",
               content: "",
             };
+      const nextContent = mergeReasoningTextForThread(
+        action.threadId,
+        "content" in base ? base.content : "",
+        action.delta,
+      );
+      if (
+        INCREMENTAL_DERIVATION_ENABLED &&
+        index >= 0 &&
+        "content" in base &&
+        nextContent === base.content
+      ) {
+        return state;
+      }
       const updated: ConversationItem = {
         ...base,
-        content: mergeReasoningTextForThread(
-          action.threadId,
-          "content" in base ? base.content : "",
-          action.delta,
-        ),
+        content: nextContent,
       } as ConversationItem;
       const next = index >= 0 ? [...list] : [...list, updated];
       if (index >= 0) {
@@ -2678,9 +2771,16 @@ export function threadReducer(state: ThreadState, action: ThreadAction): ThreadS
         return state;
       }
       const existing = list[index];
+      const nextOutput = mergeStreamingText(existing.output ?? "", action.delta);
+      if (
+        INCREMENTAL_DERIVATION_ENABLED &&
+        nextOutput === (existing.output ?? "")
+      ) {
+        return state;
+      }
       const updated: ConversationItem = {
         ...existing,
-        output: mergeStreamingText(existing.output ?? "", action.delta),
+        output: nextOutput,
       } as ConversationItem;
       const next = [...list];
       next[index] = updated;

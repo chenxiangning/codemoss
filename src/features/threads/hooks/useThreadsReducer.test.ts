@@ -880,6 +880,51 @@ describe("threadReducer", () => {
     expect(messages[1]?.text).toBe("第二段（完整）");
   });
 
+  it("segments claude reasoning deltas when stream segment advances", () => {
+    const threadId = "claude:session-reasoning-seg";
+    const processingState: ThreadState = {
+      ...initialState,
+      threadStatusById: {
+        [threadId]: {
+          isProcessing: true,
+          hasUnread: false,
+          isReviewing: false,
+          isContextCompacting: false,
+          processingStartedAt: Date.now(),
+          lastDurationMs: null,
+          heartbeatPulse: 0,
+        },
+      },
+    };
+
+    const withFirst = threadReducer(processingState, {
+      type: "appendReasoningContent",
+      threadId,
+      itemId: "reasoning-seg",
+      delta: "先读取项目结构",
+    });
+    const withSegment = threadReducer(withFirst, {
+      type: "incrementAgentSegment",
+      threadId,
+    });
+    const withSecond = threadReducer(withSegment, {
+      type: "appendReasoningContent",
+      threadId,
+      itemId: "reasoning-seg",
+      delta: "再检查关键配置",
+    });
+
+    const reasoningItems = (withSecond.itemsByThread[threadId] ?? []).filter(
+      (item): item is Extract<ConversationItem, { kind: "reasoning" }> =>
+        item.kind === "reasoning",
+    );
+    expect(reasoningItems).toHaveLength(2);
+    expect(reasoningItems[0]?.id).toBe("reasoning-seg");
+    expect(reasoningItems[0]?.content).toContain("先读取项目结构");
+    expect(reasoningItems[1]?.id).toBe("reasoning-seg-seg-1");
+    expect(reasoningItems[1]?.content).toContain("再检查关键配置");
+  });
+
   it("reconciles legacy text-delta id with later canonical assistant id", () => {
     const first = threadReducer(initialState, {
       type: "appendAgentDelta",
@@ -1014,6 +1059,47 @@ describe("threadReducer", () => {
       timestamp: 1500,
     });
     expect(stopped.threadStatusById["thread-1"]?.heartbeatPulse ?? 0).toBe(0);
+  });
+
+  it("keeps state identity for repeated markProcessing true updates", () => {
+    const started = threadReducer(initialState, {
+      type: "markProcessing",
+      threadId: "thread-1",
+      isProcessing: true,
+      timestamp: 1000,
+    });
+    const repeated = threadReducer(started, {
+      type: "markProcessing",
+      threadId: "thread-1",
+      isProcessing: true,
+      timestamp: 1200,
+    });
+    expect(repeated).toBe(started);
+  });
+
+  it("keeps state identity when duplicate tool output delta does not change content", () => {
+    const baseTool: ConversationItem = {
+      id: "cmd-1",
+      kind: "tool",
+      toolType: "commandExecution",
+      title: "Command",
+      detail: "",
+      status: "running",
+      output: "hello",
+    };
+    const baseState: ThreadState = {
+      ...initialState,
+      itemsByThread: {
+        "thread-1": [baseTool],
+      },
+    };
+    const next = threadReducer(baseState, {
+      type: "appendToolOutput",
+      threadId: "thread-1",
+      itemId: "cmd-1",
+      delta: "hello",
+    });
+    expect(next).toBe(baseState);
   });
 
   it("tracks request user input queue", () => {

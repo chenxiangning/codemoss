@@ -166,6 +166,55 @@ describe('ChatInputBoxAdapter toggle bridge', () => {
     expect(mockState.setClaudeAlwaysThinkingEnabled).toHaveBeenCalledWith(false);
   });
 
+  it('falls back to direct claude settings when active provider lacks thinking field', async () => {
+    mockState.getClaudeProviders.mockResolvedValue([
+      {
+        id: '__local_settings_json__',
+        name: 'Local settings.json',
+        isActive: true,
+        isLocalProvider: true,
+        settingsConfig: {},
+      },
+    ]);
+    mockState.getClaudeAlwaysThinkingEnabled.mockResolvedValue(true);
+
+    renderAdapter();
+
+    await waitFor(() => expect(mockState.latestProps).toBeTruthy());
+    const latest = mockState.latestProps as {
+      alwaysThinkingEnabled?: boolean;
+    };
+    await waitFor(() => expect(latest.alwaysThinkingEnabled).toBe(true));
+    expect(mockState.getClaudeAlwaysThinkingEnabled).toHaveBeenCalledTimes(1);
+  });
+
+  it('uses direct claude settings write when local provider is active', async () => {
+    mockState.getClaudeProviders.mockResolvedValue([
+      {
+        id: '__local_settings_json__',
+        name: 'Local settings.json',
+        isActive: true,
+        isLocalProvider: true,
+        settingsConfig: {},
+      },
+    ]);
+
+    renderAdapter();
+
+    await waitFor(() => expect(mockState.latestProps).toBeTruthy());
+    const latest = mockState.latestProps as {
+      onToggleThinking?: (enabled: boolean) => void | Promise<void>;
+    };
+
+    await act(async () => {
+      await Promise.resolve(latest.onToggleThinking?.(true));
+    });
+
+    expect(mockState.setClaudeAlwaysThinkingEnabled).toHaveBeenCalledWith(true);
+    expect(mockState.updateClaudeProvider).not.toHaveBeenCalled();
+    expect(mockState.switchClaudeProvider).not.toHaveBeenCalled();
+  });
+
   it('forwards send shortcut to ChatInputBox', async () => {
     renderAdapter({ sendShortcut: 'cmdEnter' });
 
@@ -412,5 +461,61 @@ describe('ChatInputBoxAdapter toggle bridge', () => {
         title: '发布步骤',
       }),
     );
+  });
+
+  it('uses current engine model fallback when selected model is empty', async () => {
+    renderAdapter({
+      selectedEngine: 'gemini',
+      selectedModelId: null,
+      models: [
+        {
+          id: 'gemini-2.5-pro',
+          displayName: 'Gemini 2.5 Pro',
+          model: 'gemini-2.5-pro',
+        },
+        {
+          id: 'gemini-2.5-flash',
+          displayName: 'Gemini 2.5 Flash',
+          model: 'gemini-2.5-flash',
+        },
+      ],
+    });
+
+    await waitFor(() => expect(mockState.latestProps).toBeTruthy());
+
+    const latest = mockState.latestProps as {
+      selectedModel?: string;
+      models?: Array<{ id: string; label: string; description?: string }>;
+    };
+
+    expect(latest.selectedModel).toBe('gemini-2.5-pro');
+    expect(latest.models).toEqual([
+      {
+        id: 'gemini-2.5-pro',
+        label: 'Gemini 2.5 Pro',
+        description: 'gemini-2.5-pro',
+      },
+      {
+        id: 'gemini-2.5-flash',
+        label: 'Gemini 2.5 Flash',
+        description: 'gemini-2.5-flash',
+      },
+    ]);
+  });
+
+  it('does not fallback to claude model when gemini has no models yet', async () => {
+    renderAdapter({
+      selectedEngine: 'gemini',
+      selectedModelId: null,
+      models: [],
+    });
+
+    await waitFor(() => expect(mockState.latestProps).toBeTruthy());
+
+    const latest = mockState.latestProps as {
+      selectedModel?: string;
+    };
+
+    expect(latest.selectedModel).toBe('');
   });
 });
