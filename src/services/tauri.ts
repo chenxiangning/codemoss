@@ -67,6 +67,16 @@ export async function pickImageFiles(): Promise<string[]> {
   return Array.isArray(selection) ? selection : [selection];
 }
 
+export async function pickFiles(): Promise<string[]> {
+  const selection = await open({
+    multiple: true,
+  });
+  if (!selection) {
+    return [];
+  }
+  return Array.isArray(selection) ? selection : [selection];
+}
+
 export async function listWorkspaces(): Promise<WorkspaceInfo[]> {
   try {
     return await invoke<WorkspaceInfo[]>("list_workspaces");

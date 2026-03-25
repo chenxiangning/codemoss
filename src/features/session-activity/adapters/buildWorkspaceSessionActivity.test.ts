@@ -663,6 +663,45 @@ describe("buildWorkspaceSessionActivity", () => {
     expect(result.emptyState).toBe("running");
   });
 
+  it("prioritizes replace-like mcp tools as file change events over generic tool tasks", () => {
+    const threads: ThreadSummary[] = [{ id: "gemini-live-1", name: "Gemini", updatedAt: 1000 }];
+    const itemsByThread = {
+      "gemini-live-1": [
+        toolItem("tool-replace", {
+          toolType: "mcpToolCall",
+          title: "Tool: Gemini / replace-1774440197988-0 README.md",
+          detail: JSON.stringify({
+            instruction: "update README example",
+            old_string: "old line",
+            new_string: "new line",
+          }),
+          status: "started",
+        }),
+      ],
+    };
+
+    const result = buildWorkspaceSessionActivity({
+      activeThreadId: "gemini-live-1",
+      threads,
+      itemsByThread,
+      threadParentById: {},
+      threadStatusById: { "gemini-live-1": { isProcessing: true } },
+    });
+
+    expect(result.timeline).toHaveLength(1);
+    expect(result.timeline[0]?.kind).toBe("fileChange");
+    expect(result.timeline[0]?.summary).toBe("File change · README.md");
+    expect(result.timeline[0]?.jumpTarget).toEqual({
+      type: "file",
+      path: "README.md",
+      line: undefined,
+      markers: {
+        added: [],
+        modified: [],
+      },
+    });
+  });
+
   it("extracts read target from snake_case nested arguments", () => {
     const threads: ThreadSummary[] = [{ id: "claude-pending-1", name: "Claude", updatedAt: 1000 }];
     const itemsByThread = {

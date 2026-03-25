@@ -639,8 +639,10 @@ export const ChatInputBoxAdapter = forwardRef<ChatInputBoxHandle, ChatInputBoxAd
     // Handle submit from ChatInputBox
     const handleSubmit = useCallback((submittedText: string, submittedAttachments?: Attachment[]) => {
       const provider = engineToProvider(selectedEngine);
-      onSend(submittedText, attachmentsToImageInputs(submittedAttachments, provider));
-    }, [onSend, selectedEngine]);
+      const fallbackAttachments =
+        submittedAttachments ?? pathsToAttachments(attachments);
+      onSend(submittedText, attachmentsToImageInputs(fallbackAttachments, provider));
+    }, [attachments, onSend, selectedEngine]);
 
     // Handle attachment removal (convert Attachment id back to path)
     const handleRemoveAttachment = useCallback((id: string) => {
@@ -1121,7 +1123,7 @@ export const ChatInputBoxAdapter = forwardRef<ChatInputBoxHandle, ChatInputBoxAd
         onStop={onStop}
         onInput={handleInput}
         attachments={pathsToAttachments(attachments)}
-        onAddAttachment={onAddAttachment ? (_files: FileList) => {
+        onAddAttachment={onAddAttachment ? (_files?: FileList | null) => {
           // In Tauri, we use the native file picker instead of FileList
           onAddAttachment?.();
         } : undefined}

@@ -1032,6 +1032,7 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
       handleDrop,
       isDragOver,
       dragPreviewNames,
+      handleDroppedPaths,
     } = usePasteAndDrop({
       disabled,
       editableRef,
@@ -1066,6 +1067,7 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
       externalAttachments,
       onAddAttachment,
       onRemoveAttachment,
+      onAttachPaths: handleDroppedPaths,
       setInternalAttachments,
     });
 

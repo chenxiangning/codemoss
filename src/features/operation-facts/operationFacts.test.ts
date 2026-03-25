@@ -102,4 +102,60 @@ describe("operationFacts", () => {
       statusLetter: "D",
     });
   });
+
+  it("infers replace-like mcp tools as file changes for activity summary", () => {
+    const fileItem = toolItem("file-3", {
+      toolType: "mcpToolCall",
+      title: "Tool: Claude / replace-1774440197988-0 README.md",
+      detail: JSON.stringify({
+        instruction: "update README quickstart",
+        old_string: "curl http://localhost:8080/api/customers",
+        new_string: "curl http://localhost:8080/api/products",
+      }),
+      status: "started",
+    });
+
+    expect(summarizeFileChangeItem(fileItem)).toEqual({
+      summary: "File change · README.md",
+      filePath: "README.md",
+      fileCount: 1,
+      additions: 1,
+      deletions: 1,
+      statusLetter: "M",
+    });
+  });
+
+  it("handles empty-string replace boundaries without fake deletions", () => {
+    const fileItem = toolItem("file-4", {
+      toolType: "mcpToolCall",
+      title: "Tool: Gemini / replace-1774440197988-0 README.md",
+      detail: JSON.stringify({
+        old_string: "",
+        new_string: "one line",
+      }),
+      status: "started",
+    });
+
+    expect(summarizeFileChangeItem(fileItem)).toEqual({
+      summary: "File change · README.md",
+      filePath: "README.md",
+      fileCount: 1,
+      additions: 1,
+      deletions: 0,
+      statusLetter: "M",
+    });
+  });
+
+  it("does not misclassify generic replace tools without file hints", () => {
+    const nonFileTool = toolItem("tool-replace-generic", {
+      toolType: "mcpToolCall",
+      title: "Tool: replace variables in prompt",
+      detail: JSON.stringify({
+        variables: ["A", "B"],
+      }),
+      status: "started",
+    });
+
+    expect(summarizeFileChangeItem(nonFileTool)).toBeNull();
+  });
 });

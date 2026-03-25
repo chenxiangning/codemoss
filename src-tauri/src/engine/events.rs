@@ -239,6 +239,8 @@ fn resolve_tool_item_kind(tool_name: Option<&str>) -> ToolItemKind {
         || lower.contains("patch")
         || lower.contains("write")
         || lower.contains("edit")
+        || lower.starts_with("replace-")
+        || lower.contains("replace-")
     {
         return ToolItemKind::FileChange;
     }
@@ -915,6 +917,71 @@ mod tests {
         assert_eq!(
             mapped.message["method"],
             Value::String("item/fileChange/outputDelta".to_string())
+        );
+    }
+
+    #[test]
+    fn tool_output_delta_maps_replace_tool_to_file_change_output_delta() {
+        let event = EngineEvent::ToolOutputDelta {
+            workspace_id: "ws-live".to_string(),
+            tool_id: "tool-replace".to_string(),
+            tool_name: Some("replace-1774440197988-0 README.md".to_string()),
+            delta: "updated README snippet".to_string(),
+        };
+
+        let mapped =
+            engine_event_to_app_server_event(&event, "thread-1", "item-1").expect("mapped event");
+        assert_eq!(
+            mapped.message["method"],
+            Value::String("item/fileChange/outputDelta".to_string())
+        );
+    }
+
+    #[test]
+    fn tool_started_maps_generic_replace_tool_to_mcp_item() {
+        let event = EngineEvent::ToolStarted {
+            workspace_id: "ws-live".to_string(),
+            tool_id: "tool-replace-generic".to_string(),
+            tool_name: "replace_variables".to_string(),
+            input: Some(json!({
+                "variables": ["A", "B"]
+            })),
+        };
+
+        let mapped =
+            engine_event_to_app_server_event(&event, "thread-1", "item-1").expect("mapped event");
+        assert_eq!(
+            mapped.message["method"],
+            Value::String("item/started".to_string())
+        );
+        assert_eq!(
+            mapped.message["params"]["item"]["type"],
+            Value::String("mcpToolCall".to_string())
+        );
+    }
+
+    #[test]
+    fn tool_started_maps_replace_tool_to_file_change_item() {
+        let event = EngineEvent::ToolStarted {
+            workspace_id: "ws-live".to_string(),
+            tool_id: "tool-replace".to_string(),
+            tool_name: "replace-1774440197988-0 README.md".to_string(),
+            input: Some(json!({
+                "instruction": "update docs",
+                "old_string": "old",
+                "new_string": "new"
+            })),
+        };
+
+        let mapped =
+            engine_event_to_app_server_event(&event, "thread-1", "item-1").expect("mapped event");
+        assert_eq!(
+            mapped.message["method"],
+            Value::String("item/started".to_string())
+        );
+        assert_eq!(
+            mapped.message["params"]["item"]["type"],
+            Value::String("fileChange".to_string())
         );
     }
 

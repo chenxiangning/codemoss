@@ -548,7 +548,7 @@ export interface ChatInputBoxProps {
   /** Input change */
   onInput?: (content: string) => void;
   /** Add attachment */
-  onAddAttachment?: (files: FileList) => void;
+  onAddAttachment?: (files?: FileList | null) => void;
   /** Remove attachment */
   onRemoveAttachment?: (id: string) => void;
   /** Switch mode */

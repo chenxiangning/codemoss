@@ -141,8 +141,9 @@ impl GeminiSession {
             return None;
         }
         if trimmed.starts_with("file://") {
-            return Self::normalize_file_uri_path(trimmed)
-                .and_then(|path| Self::normalize_local_image_path_for_workspace(path, workspace_path));
+            return Self::normalize_file_uri_path(trimmed).and_then(|path| {
+                Self::normalize_local_image_path_for_workspace(path, workspace_path)
+            });
         }
         Self::normalize_local_image_path_for_workspace(trimmed.to_string(), workspace_path)
     }
@@ -233,7 +234,9 @@ impl GeminiSession {
         if !candidate.is_absolute() || Self::is_path_within_workspace(&candidate, workspace_path) {
             return Some(trimmed.to_string());
         }
-        if let Some(materialized) = Self::materialize_external_image_path(&candidate, workspace_path) {
+        if let Some(materialized) =
+            Self::materialize_external_image_path(&candidate, workspace_path)
+        {
             return Some(materialized);
         }
         log::warn!(
@@ -334,9 +337,7 @@ impl GeminiSession {
 
     fn materialize_data_url_image(raw_data_url: &str, workspace_path: &Path) -> Option<String> {
         let Some((header, payload)) = raw_data_url.split_once(',') else {
-            log::warn!(
-                "Gemini image attachment data-url is malformed (missing comma), skipping"
-            );
+            log::warn!("Gemini image attachment data-url is malformed (missing comma), skipping");
             return None;
         };
         let Some(meta) = header.strip_prefix("data:") else {
@@ -356,9 +357,7 @@ impl GeminiSession {
             return None;
         }
         if !meta_parts.any(|entry| entry.eq_ignore_ascii_case("base64")) {
-            log::warn!(
-                "Gemini image attachment data-url is not base64 encoded, skipping"
-            );
+            log::warn!("Gemini image attachment data-url is not base64 encoded, skipping");
             return None;
         }
 
@@ -831,6 +830,7 @@ impl GeminiSession {
                         if !session_started_emitted {
                             session_started_emitted = true;
                             new_session_id = Some(session_id.clone());
+                            self.set_session_id(Some(session_id.clone())).await;
                             self.emit_turn_event(
                                 turn_id,
                                 EngineEvent::SessionStarted {
@@ -1471,6 +1471,81 @@ fn is_completion_event_type(event_type: &str) -> bool {
     )
 }
 
+fn is_response_item_event_type(event_type: &str) -> bool {
+    let normalized = event_type.trim().to_ascii_lowercase();
+    if normalized.is_empty() {
+        return false;
+    }
+    matches!(
+        normalized.as_str(),
+        "response_item"
+            | "response.item"
+            | "response_item_added"
+            | "response.output_item.added"
+            | "response_output_item_added"
+            | "response.output_item.delta"
+            | "response_output_item_delta"
+            | "response.output_item.done"
+            | "response_output_item_done"
+    ) || (normalized.contains("response") && normalized.contains("item"))
+}
+
+fn extract_response_item_payload<'a>(event: &'a Value) -> Option<&'a Value> {
+    for key in [
+        "payload",
+        "item",
+        "output_item",
+        "outputItem",
+        "message",
+        "part",
+        "data",
+        "response",
+    ] {
+        if let Some(value) = event.get(key) {
+            return Some(value);
+        }
+    }
+    None
+}
+
+fn parse_response_item_event(
+    workspace_id: &str,
+    event_type: &str,
+    event: &Value,
+) -> Option<EngineEvent> {
+    let payload = extract_response_item_payload(event).unwrap_or(event);
+    if let Some(payload_type) = payload.get("type").and_then(|value| value.as_str()) {
+        let normalized_event_type = event_type.trim().to_ascii_lowercase();
+        let normalized_payload_type = payload_type.trim().to_ascii_lowercase();
+        if !normalized_payload_type.is_empty() && normalized_payload_type != normalized_event_type {
+            if let Some(parsed) = parse_gemini_event(workspace_id, payload) {
+                return Some(parsed);
+            }
+        }
+    }
+
+    let role = payload
+        .get("role")
+        .and_then(|value| value.as_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    if role == "user" || role == "system" {
+        return None;
+    }
+    if should_treat_message_as_reasoning(payload, &role) {
+        let text = extract_reasoning_event_text(payload)?;
+        return Some(EngineEvent::ReasoningDelta {
+            workspace_id: workspace_id.to_string(),
+            text,
+        });
+    }
+    let text = extract_event_text(payload)?;
+    Some(EngineEvent::TextDelta {
+        workspace_id: workspace_id.to_string(),
+        text,
+    })
+}
+
 fn find_tool_calls_array<'a>(value: &'a Value, depth: usize) -> Option<&'a Vec<Value>> {
     if depth > 6 {
         return None;
@@ -1689,6 +1764,11 @@ fn extract_tool_events_from_snapshot(
 
 fn parse_gemini_event(workspace_id: &str, event: &Value) -> Option<EngineEvent> {
     let event_type = event.get("type").and_then(|v| v.as_str())?;
+    if is_response_item_event_type(event_type) {
+        if let Some(parsed) = parse_response_item_event(workspace_id, event_type, event) {
+            return Some(parsed);
+        }
+    }
     match event_type {
         "text"
         | "content_delta"
@@ -1853,13 +1933,13 @@ fn parse_gemini_event(workspace_id: &str, event: &Value) -> Option<EngineEvent> 
 
 #[cfg(test)]
 mod tests {
-    use base64::{engine::general_purpose::STANDARD, Engine as _};
     use super::EngineEvent;
     use super::{
         collect_latest_turn_reasoning_texts, extract_latest_thought_text,
         extract_tool_events_from_snapshot, parse_gemini_event, GeminiSession, GeminiSessionMessage,
         GeminiSnapshotToolState,
     };
+    use base64::{engine::general_purpose::STANDARD, Engine as _};
     use serde_json::json;
     use std::collections::HashMap;
     use std::path::{Path, PathBuf};
@@ -2027,8 +2107,11 @@ mod tests {
         let images = vec![format!("data:image/png;base64,{}", encoded)];
         let workspace_path = unique_temp_path("moss-x-gemini-workspace");
         std::fs::create_dir_all(&workspace_path).expect("create workspace");
-        let prompt =
-            with_image_refs_for_test_in_workspace("Describe", images.as_slice(), workspace_path.as_path());
+        let prompt = with_image_refs_for_test_in_workspace(
+            "Describe",
+            images.as_slice(),
+            workspace_path.as_path(),
+        );
         assert!(prompt.starts_with("Describe\n\n@"));
 
         let normalized_path = extract_first_image_path(&prompt);
@@ -2053,8 +2136,11 @@ mod tests {
         std::fs::write(&source_path, [0x89, b'P', b'N', b'G']).expect("write source image");
 
         let images = vec![source_path.to_string_lossy().to_string()];
-        let prompt =
-            with_image_refs_for_test_in_workspace("Describe", images.as_slice(), workspace_path.as_path());
+        let prompt = with_image_refs_for_test_in_workspace(
+            "Describe",
+            images.as_slice(),
+            workspace_path.as_path(),
+        );
         let normalized_path = extract_first_image_path(&prompt);
         let copied_path = PathBuf::from(normalized_path);
 
@@ -2206,6 +2292,73 @@ mod tests {
             }
             _ => panic!("expected TextDelta"),
         }
+    }
+
+    #[test]
+    fn parse_response_item_payload_message_maps_to_text_delta() {
+        let payload = json!({
+            "type": "response_item",
+            "payload": {
+                "type": "message",
+                "role": "assistant",
+                "content": [
+                    {
+                        "type": "output_text",
+                        "text": "第一段正文"
+                    }
+                ]
+            }
+        });
+        let parsed = parse_gemini_event("workspace-1", &payload);
+        match parsed {
+            Some(EngineEvent::TextDelta { text, .. }) => {
+                assert_eq!(text, "第一段正文");
+            }
+            _ => panic!("expected TextDelta"),
+        }
+    }
+
+    #[test]
+    fn parse_response_output_item_added_maps_to_text_delta() {
+        let payload = json!({
+            "type": "response.output_item.added",
+            "item": {
+                "type": "message",
+                "role": "assistant",
+                "content": [
+                    {
+                        "type": "output_text",
+                        "text": "第二段正文"
+                    }
+                ]
+            }
+        });
+        let parsed = parse_gemini_event("workspace-1", &payload);
+        match parsed {
+            Some(EngineEvent::TextDelta { text, .. }) => {
+                assert_eq!(text, "第二段正文");
+            }
+            _ => panic!("expected TextDelta"),
+        }
+    }
+
+    #[test]
+    fn parse_response_item_with_user_role_is_ignored() {
+        let payload = json!({
+            "type": "response_item",
+            "payload": {
+                "type": "message",
+                "role": "user",
+                "content": [
+                    {
+                        "type": "output_text",
+                        "text": "用户输入"
+                    }
+                ]
+            }
+        });
+        let parsed = parse_gemini_event("workspace-1", &payload);
+        assert!(parsed.is_none());
     }
 
     #[test]

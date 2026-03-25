@@ -21,7 +21,7 @@ interface ContextBarProps {
   onRequestContextCompaction?: () => Promise<void> | void;
   isLoading?: boolean;
   onClearFile?: () => void;
-  onAddAttachment?: (files: FileList) => void;
+  onAddAttachment?: (files?: FileList | null) => void;
   selectedAgent?: SelectedAgent | null;
   selectedContextChips?: ContextSelectionChip[];
   onRemoveContextChip?: (chip: ContextSelectionChip) => void;
@@ -67,7 +67,6 @@ export const ContextBar: React.FC<ContextBarProps> = memo(({
   onToggleStatusPanel,
 }) => {
   const { t } = useTranslation();
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const manualCompactionLockRef = useRef(false);
   const manualCompactionRequestInFlightRef = useRef(false);
   const manualCompactionStartedAtRef = useRef<number>(0);
@@ -78,14 +77,7 @@ export const ContextBar: React.FC<ContextBarProps> = memo(({
   const handleAttachClick = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    fileInputRef.current?.click();
-  }, []);
-
-  const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files.length > 0) {
-      onAddAttachment?.(e.target.files);
-    }
-    e.target.value = '';
+    onAddAttachment?.();
   }, [onAddAttachment]);
 
   // Extract filename from path
@@ -368,16 +360,6 @@ export const ContextBar: React.FC<ContextBarProps> = memo(({
           </div>
         )}
 
-        {/* Hidden file input */}
-        <input
-          ref={fileInputRef}
-          type="file"
-          multiple
-          className="hidden-file-input"
-          onChange={handleFileChange}
-          style={{ display: 'none' }}
-        />
-        
         <div className="context-tool-divider" />
       </div>
 

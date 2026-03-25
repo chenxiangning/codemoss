@@ -56,6 +56,8 @@ interface UsePasteAndDropReturn {
   isDragOver: boolean;
   /** Preview names for drag hint chip */
   dragPreviewNames: string[];
+  /** Consume selected absolute paths using the same split logic as external drop */
+  handleDroppedPaths: (paths: string[]) => boolean;
 }
 
 const MAX_DROP_TEXT_LENGTH = 100000;
@@ -427,6 +429,16 @@ export function usePasteAndDrop({
       handlePathInsertion(validPaths);
     },
     [handlePathInsertion],
+  );
+
+  const handleDroppedPaths = useCallback(
+    (paths: string[]) =>
+      consumeDroppedPaths(
+        paths,
+        appendImagePathAttachments,
+        handlePathInsertionWithDedupGuard,
+      ),
+    [appendImagePathAttachments, handlePathInsertionWithDedupGuard],
   );
 
   const resetDragHint = useCallback(() => {
@@ -860,5 +872,6 @@ export function usePasteAndDrop({
     handleDrop,
     isDragOver,
     dragPreviewNames,
+    handleDroppedPaths,
   };
 }

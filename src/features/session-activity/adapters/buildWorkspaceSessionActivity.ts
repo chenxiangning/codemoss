@@ -1306,25 +1306,6 @@ export function buildThreadActivity(args: WorkspaceSessionActivityThreadContext 
       return;
     }
 
-    const inspectionSummary = summarizeInspectionTool(item);
-    if (inspectionSummary) {
-      events.push({
-        eventId: `task:${item.id}`,
-        threadId: args.thread.id,
-        threadName,
-        turnId,
-        turnIndex,
-        sessionRole,
-        relationshipSource: args.relationshipSource,
-        kind: "task",
-        occurredAt,
-        summary: inspectionSummary.summary,
-        status: eventStatus,
-        jumpTarget: inspectionSummary.jumpTarget ?? { type: "thread", threadId: args.thread.id },
-      });
-      return;
-    }
-
     const fileChangeSummary = summarizeFileChangeItem(item);
     if (fileChangeSummary) {
       const primaryDiff = extractPrimaryChangeDiff(item, fileChangeSummary.filePath);
@@ -1355,6 +1336,25 @@ export function buildThreadActivity(args: WorkspaceSessionActivityThreadContext 
         fileCount: fileChangeSummary.fileCount,
         additions: fileChangeSummary.additions,
         deletions: fileChangeSummary.deletions,
+      });
+      return;
+    }
+
+    const inspectionSummary = summarizeInspectionTool(item);
+    if (inspectionSummary) {
+      events.push({
+        eventId: `task:${item.id}`,
+        threadId: args.thread.id,
+        threadName,
+        turnId,
+        turnIndex,
+        sessionRole,
+        relationshipSource: args.relationshipSource,
+        kind: "task",
+        occurredAt,
+        summary: inspectionSummary.summary,
+        status: eventStatus,
+        jumpTarget: inspectionSummary.jumpTarget ?? { type: "thread", threadId: args.thread.id },
       });
     }
   });
