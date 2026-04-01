@@ -2,6 +2,23 @@ name: Release
 
 on:
   workflow_dispatch:
+    inputs:
+      release_mode:
+        description: Select release scope
+        required: true
+        default: full-release
+        type: choice
+        options:
+          - windows-only
+          - full-release
+      windows_signing_mode:
+        description: Windows packaging mode
+        required: true
+        default: unsigned
+        type: choice
+        options:
+          - unsigned
+          - signed
 
 permissions:
   contents: write
@@ -9,6 +26,7 @@ permissions:
 
 jobs:
   build_macos:
+    if: ${{ inputs.release_mode == 'full-release' }}
     name: macos (${{ matrix.arch }})
     runs-on: ${{ matrix.platform }}
     environment: release
@@ -176,6 +194,7 @@ jobs:
             release-artifacts/CodeMoss_${{ matrix.arch }}.app.tar.gz.sig
 
   build_linux:
+    if: ${{ inputs.release_mode == 'full-release' }}
     name: appimage (x86_64)
     runs-on: ubuntu-24.04
     environment: release
@@ -226,9 +245,6 @@ jobs:
     name: windows (x64)
     runs-on: windows-latest
     environment: release
-    env:
-      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-      TAURI_SIGNING_PRIVATE_KEY_B64: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_B64 }}
     steps:
       - uses: actions/checkout@v4
 
@@ -249,10 +265,27 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Build Windows installer
+      - name: Prepare unsigned Windows config
+        if: ${{ inputs.windows_signing_mode == 'unsigned' }}
+        shell: pwsh
+        run: |
+          node -e "const fs=require('fs');const src='src-tauri/tauri.windows.conf.json';const dst='src-tauri/tauri.windows.ci.unsigned.json';const cfg=JSON.parse(fs.readFileSync(src,'utf8'));cfg.bundle={...(cfg.bundle||{}),createUpdaterArtifacts:false};fs.writeFileSync(dst,JSON.stringify(cfg,null,2)+'\n');"
+
+      - name: Build Windows installer (unsigned)
+        if: ${{ inputs.windows_signing_mode == 'unsigned' }}
         shell: pwsh
         env:
           NODE_OPTIONS: "--max-old-space-size=8192"
+        run: |
+          npm run tauri -- build --config src-tauri/tauri.windows.ci.unsigned.json --bundles nsis
+
+      - name: Build Windows installer (signed)
+        if: ${{ inputs.windows_signing_mode == 'signed' }}
+        shell: pwsh
+        env:
+          NODE_OPTIONS: "--max-old-space-size=8192"
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          TAURI_SIGNING_PRIVATE_KEY_B64: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_B64 }}
         run: |
           # TAURI_SIGNING_PRIVATE_KEY expects base64-encoded minisign key
           $env:TAURI_SIGNING_PRIVATE_KEY = $env:TAURI_SIGNING_PRIVATE_KEY_B64
@@ -265,7 +298,15 @@ jobs:
           $conf = Get-Content src-tauri/tauri.conf.json | ConvertFrom-Json
           echo "version=$($conf.version)" >> $env:GITHUB_OUTPUT
 
-      - name: Upload Windows installer
+      - name: Upload Windows installer (unsigned)
+        if: ${{ inputs.windows_signing_mode == 'unsigned' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-x64
+          path: src-tauri/target/release/bundle/nsis/*.exe
+
+      - name: Upload Windows installer (signed)
+        if: ${{ inputs.windows_signing_mode == 'signed' }}
         uses: actions/upload-artifact@v4
         with:
           name: windows-x64
@@ -274,6 +315,7 @@ jobs:
             src-tauri/target/release/bundle/nsis/*.exe.sig
 
   release:
+    if: ${{ inputs.release_mode == 'full-release' }}
     runs-on: ubuntu-latest
     environment: release
     needs:
