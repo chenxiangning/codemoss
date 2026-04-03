@@ -2344,6 +2344,17 @@ async fn handle_rpc_request(
             state.engine_interrupt(workspace_id).await?;
             Ok(json!({ "ok": true }))
         }
+        "engine_interrupt_turn" => {
+            let workspace_id = parse_string(&params, "workspaceId")?;
+            let turn_id = parse_string(&params, "turnId")?;
+            let engine = parse_optional_string(&params, "engine")
+                .as_deref()
+                .and_then(|value| parse_engine_type_string(Some(value)));
+            state
+                .engine_interrupt_turn(workspace_id, turn_id, engine)
+                .await?;
+            Ok(json!({ "ok": true }))
+        }
         "start_web_server" => {
             let port = parse_optional_port(&params, "port")?;
             let token = parse_optional_string(&params, "token");

@@ -1369,6 +1369,47 @@ impl DaemonState {
         }
     }
 
+    pub(super) async fn engine_interrupt_turn(
+        &self,
+        workspace_id: String,
+        turn_id: String,
+        engine: Option<engine::EngineType>,
+    ) -> Result<(), String> {
+        self.sync_engine_configs().await;
+        let active_engine = self.get_active_engine().await;
+        let target_engine = engine.unwrap_or(active_engine);
+        match target_engine {
+            engine::EngineType::Claude => {
+                if let Some(session) = self
+                    .engine_manager
+                    .claude_manager
+                    .get_session(&workspace_id)
+                    .await
+                {
+                    session.interrupt_turn(&turn_id).await?;
+                }
+                Ok(())
+            }
+            engine::EngineType::Codex => Ok(()),
+            engine::EngineType::OpenCode => {
+                if let Some(session) = self
+                    .engine_manager
+                    .get_opencode_session(&workspace_id)
+                    .await
+                {
+                    session.interrupt_turn(&turn_id).await?;
+                }
+                Ok(())
+            }
+            engine::EngineType::Gemini => {
+                if let Some(session) = self.engine_manager.get_gemini_session(&workspace_id).await {
+                    session.interrupt_turn(&turn_id).await?;
+                }
+                Ok(())
+            }
+        }
+    }
+
     pub(super) async fn start_web_server(
         &self,
         port: Option<u16>,
