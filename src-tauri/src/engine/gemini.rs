@@ -10,7 +10,7 @@ use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
-use tokio::io::{AsyncBufReadExt, BufReader};
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{Child, Command};
 use tokio::sync::{broadcast, Mutex, RwLock};
 
@@ -21,6 +21,8 @@ use super::{EngineConfig, EngineType, SendMessageParams};
 
 const GEMINI_REASONING_HISTORY_SYNC_INTERVAL_MS: u64 = 900;
 const GEMINI_INLINE_IMAGE_MAX_BYTES: usize = 12 * 1024 * 1024;
+// Keep enough margin under Windows CreateProcessW command-line limits.
+const GEMINI_PROMPT_ARG_MAX_CHARS: usize = 8 * 1024;
 static GEMINI_INLINE_IMAGE_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 #[derive(Debug, Default)]
@@ -39,6 +41,11 @@ pub struct GeminiTurnEvent {
 struct GeminiVendorRuntimeConfig {
     env: HashMap<String, String>,
     auth_mode: Option<String>,
+}
+
+struct GeminiBuiltCommand {
+    command: Command,
+    prompt_stdin_payload: Option<String>,
 }
 
 /// Gemini session for a workspace
@@ -689,7 +696,11 @@ impl GeminiSession {
         result
     }
 
-    fn build_command(&self, params: &SendMessageParams) -> Command {
+    fn should_pipe_prompt_via_stdin(text: &str) -> bool {
+        text.chars().count() > GEMINI_PROMPT_ARG_MAX_CHARS
+    }
+
+    fn build_command(&self, params: &SendMessageParams) -> GeminiBuiltCommand {
         let bin = if let Some(ref custom) = self.bin_path {
             custom.clone()
         } else {
@@ -749,8 +760,15 @@ impl GeminiSession {
         } else {
             message_text
         };
+        let prompt_via_stdin = Self::should_pipe_prompt_via_stdin(&safe_text);
         cmd.arg("--prompt");
-        cmd.arg(safe_text);
+        if prompt_via_stdin {
+            // Gemini CLI appends stdin content to --prompt. Keep prompt empty and stream
+            // the payload to stdin so long text does not rely on argv limits/parsing.
+            cmd.arg("");
+        } else {
+            cmd.arg(&safe_text);
+        }
 
         let vendor_runtime = Self::load_vendor_runtime_config();
         apply_dead_loopback_proxy_guard(&mut cmd, &vendor_runtime.env);
@@ -767,10 +785,17 @@ impl GeminiSession {
             cmd.env("GEMINI_CLI_HOME", home);
         }
 
-        cmd.stdin(Stdio::null());
+        if prompt_via_stdin {
+            cmd.stdin(Stdio::piped());
+        } else {
+            cmd.stdin(Stdio::null());
+        }
         cmd.stdout(Stdio::piped());
         cmd.stderr(Stdio::piped());
-        cmd
+        GeminiBuiltCommand {
+            command: cmd,
+            prompt_stdin_payload: if prompt_via_stdin { Some(safe_text) } else { None },
+        }
     }
 
     pub async fn send_message(
@@ -801,8 +826,11 @@ impl GeminiSession {
             params.access_mode.as_deref().unwrap_or("current"),
         );
 
-        let mut cmd = self.build_command(&params);
-        let mut child = match cmd.spawn() {
+        let GeminiBuiltCommand {
+            mut command,
+            prompt_stdin_payload,
+        } = self.build_command(&params);
+        let mut child = match command.spawn() {
             Ok(child) => child,
             Err(error) => {
                 let error_msg = format!("Failed to spawn gemini: {}", error);
@@ -811,6 +839,33 @@ impl GeminiSession {
             }
         };
         let spawn_ms = turn_started_at.elapsed().as_millis();
+
+        if let Some(prompt_payload) = prompt_stdin_payload {
+            let prompt_chars = prompt_payload.chars().count();
+            let Some(mut stdin) = child.stdin.take() else {
+                let error_msg = "Failed to capture stdin for Gemini long prompt".to_string();
+                let _ = child.kill().await;
+                self.emit_error(turn_id, error_msg.clone());
+                return Err(error_msg);
+            };
+            if let Err(error) = stdin.write_all(prompt_payload.as_bytes()).await {
+                let error_msg = format!("Failed to write Gemini prompt to stdin: {}", error);
+                let _ = child.kill().await;
+                self.emit_error(turn_id, error_msg.clone());
+                return Err(error_msg);
+            }
+            if let Err(error) = stdin.flush().await {
+                let error_msg = format!("Failed to flush Gemini prompt stdin: {}", error);
+                let _ = child.kill().await;
+                self.emit_error(turn_id, error_msg.clone());
+                return Err(error_msg);
+            }
+            log::info!(
+                "[gemini/send] turn={} prompt_transport=stdin prompt_chars={}",
+                turn_id,
+                prompt_chars
+            );
+        }
 
         let stdout = match child.stdout.take() {
             Some(stdout) => stdout,
@@ -2135,7 +2190,7 @@ mod tests {
     use super::{
         collect_latest_turn_reasoning_texts, extract_latest_thought_text,
         extract_session_id, extract_tool_events_from_snapshot, parse_gemini_event,
-        should_extract_thought_fallback, GeminiSession, GeminiSessionMessage,
+        should_extract_thought_fallback, GeminiSession, GeminiSessionMessage, SendMessageParams,
         GeminiSnapshotToolState,
     };
     use base64::{engine::general_purpose::STANDARD, Engine as _};
@@ -2197,6 +2252,13 @@ mod tests {
 
         let token = tail.split_whitespace().next().expect("missing image path");
         unescape_at_path(token)
+    }
+
+    fn command_args(cmd: &super::Command) -> Vec<String> {
+        cmd.as_std()
+            .get_args()
+            .map(|value| value.to_string_lossy().to_string())
+            .collect()
     }
 
     #[test]
@@ -2372,6 +2434,63 @@ mod tests {
         let images = vec!["data:text/plain;base64,SGVsbG8=".to_string()];
         let prompt = with_image_refs_for_test("Describe", images.as_slice());
         assert_eq!(prompt, "Describe");
+    }
+
+    #[test]
+    fn build_command_keeps_short_prompt_in_argv() {
+        let workspace_path = unique_temp_path("moss-x-gemini-workspace");
+        std::fs::create_dir_all(&workspace_path).expect("create workspace");
+        let session = GeminiSession::new("workspace-1".to_string(), workspace_path.clone(), None);
+        let mut params = SendMessageParams::default();
+        params.text = "short prompt".to_string();
+
+        let built = session.build_command(&params);
+        assert!(
+            built.prompt_stdin_payload.is_none(),
+            "short prompt should remain in argv path"
+        );
+        let args = command_args(&built.command);
+        let prompt_idx = args
+            .iter()
+            .position(|value| value == "--prompt")
+            .expect("missing --prompt arg");
+        let prompt_value = args
+            .get(prompt_idx + 1)
+            .expect("missing prompt value after --prompt");
+        assert!(
+            !prompt_value.is_empty(),
+            "short prompt argv value should not be empty placeholder"
+        );
+
+        let _ = std::fs::remove_dir_all(&workspace_path);
+    }
+
+    #[test]
+    fn build_command_routes_long_prompt_to_stdin() {
+        let workspace_path = unique_temp_path("moss-x-gemini-workspace");
+        std::fs::create_dir_all(&workspace_path).expect("create workspace");
+        let session = GeminiSession::new("workspace-1".to_string(), workspace_path.clone(), None);
+        let mut params = SendMessageParams::default();
+        params.text = "a".repeat(super::GEMINI_PROMPT_ARG_MAX_CHARS + 128);
+
+        let built = session.build_command(&params);
+        let payload = built
+            .prompt_stdin_payload
+            .as_ref()
+            .expect("long prompt should be routed via stdin");
+        assert!(payload.chars().count() > super::GEMINI_PROMPT_ARG_MAX_CHARS);
+
+        let args = command_args(&built.command);
+        let prompt_idx = args
+            .iter()
+            .position(|value| value == "--prompt")
+            .expect("missing --prompt arg");
+        let prompt_value = args
+            .get(prompt_idx + 1)
+            .expect("missing prompt value after --prompt");
+        assert_eq!(prompt_value, "", "long prompt should use empty argv placeholder");
+
+        let _ = std::fs::remove_dir_all(&workspace_path);
     }
 
     #[test]
