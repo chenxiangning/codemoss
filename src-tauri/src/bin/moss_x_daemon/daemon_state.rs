@@ -380,6 +380,17 @@ impl DaemonState {
             }
         }
 
+        {
+            let workspaces = self.workspaces.lock().await;
+            let entry = workspaces
+                .get(&id)
+                .ok_or_else(|| "workspace not found".to_string())?;
+            if !workspaces_core::workspace_requires_persistent_session(entry) {
+                // Claude/Gemini/OpenCode do not require a persistent workspace session.
+                return Ok(());
+            }
+        }
+
         let client_version = client_version.clone();
         workspaces_core::connect_workspace_core(
             id,
@@ -1493,13 +1504,14 @@ impl DaemonState {
         workspace_id: String,
         spec_root: String,
     ) -> Result<WorkspaceFilesResponse, String> {
+        const MAX_EXTERNAL_SPEC_TREE_FILES: usize = 8_000;
         {
             let workspaces = self.workspaces.lock().await;
             if !workspaces.contains_key(&workspace_id) {
                 return Err(format!("Workspace not found: {workspace_id}"));
             }
         }
-        list_external_spec_tree_inner(&spec_root, usize::MAX)
+        list_external_spec_tree_inner(&spec_root, MAX_EXTERNAL_SPEC_TREE_FILES)
     }
 
     pub(super) async fn read_external_spec_file(

@@ -16,6 +16,7 @@ use tokio::sync::{broadcast, Mutex, RwLock};
 
 use super::events::EngineEvent;
 use super::gemini_history::{load_gemini_session, GeminiSessionMessage};
+use super::gemini_proxy_guard::apply_dead_loopback_proxy_guard;
 use super::{EngineConfig, EngineType, SendMessageParams};
 
 const GEMINI_REASONING_HISTORY_SYNC_INTERVAL_MS: u64 = 900;
@@ -752,7 +753,8 @@ impl GeminiSession {
         cmd.arg(safe_text);
 
         let vendor_runtime = Self::load_vendor_runtime_config();
-        for (key, value) in vendor_runtime.env {
+        apply_dead_loopback_proxy_guard(&mut cmd, &vendor_runtime.env);
+        for (key, value) in &vendor_runtime.env {
             cmd.env(key, value);
         }
         Self::apply_auth_mode_env_overrides(&mut cmd, vendor_runtime.auth_mode.as_deref());
@@ -776,6 +778,29 @@ impl GeminiSession {
         params: SendMessageParams,
         turn_id: &str,
     ) -> Result<String, String> {
+        let turn_started_at = std::time::Instant::now();
+        let requested_model = params
+            .model
+            .as_ref()
+            .map(|value| value.trim())
+            .filter(|value| !value.is_empty())
+            .unwrap_or("<auto>");
+        let resume_session_id_len = params
+            .session_id
+            .as_ref()
+            .map(|value| value.trim().len())
+            .unwrap_or(0);
+        log::info!(
+            "[gemini/send] turn={} workspace={} model={} continue_session={} resume_session_id_len={} images={} access_mode={}",
+            turn_id,
+            self.workspace_id,
+            requested_model,
+            params.continue_session,
+            resume_session_id_len,
+            params.images.as_ref().map(|entries| entries.len()).unwrap_or(0),
+            params.access_mode.as_deref().unwrap_or("current"),
+        );
+
         let mut cmd = self.build_command(&params);
         let mut child = match cmd.spawn() {
             Ok(child) => child,
@@ -785,6 +810,7 @@ impl GeminiSession {
                 return Err(error_msg);
             }
         };
+        let spawn_ms = turn_started_at.elapsed().as_millis();
 
         let stdout = match child.stdout.take() {
             Some(stdout) => stdout,
@@ -849,6 +875,12 @@ impl GeminiSession {
         let mut snapshot_tool_states: HashMap<String, GeminiSnapshotToolState> = HashMap::new();
         let mut last_reasoning_history_sync_at = std::time::Instant::now()
             - std::time::Duration::from_millis(GEMINI_REASONING_HISTORY_SYNC_INTERVAL_MS);
+        let mut first_stdout_line_ms: Option<u128> = None;
+        let mut first_json_event_ms: Option<u128> = None;
+        let mut first_text_delta_ms: Option<u128> = None;
+        let mut first_turn_completed_ms: Option<u128> = None;
+        let mut first_event_type: Option<String> = None;
+        let mut stdout_line_count: usize = 0;
 
         let reader = BufReader::new(stdout);
         let mut lines = reader.lines();
@@ -858,9 +890,19 @@ impl GeminiSession {
             if line.is_empty() {
                 continue;
             }
+            stdout_line_count += 1;
+            if first_stdout_line_ms.is_none() {
+                first_stdout_line_ms = Some(turn_started_at.elapsed().as_millis());
+            }
             match serde_json::from_str::<Value>(&line) {
                 Ok(event) => {
+                    if first_json_event_ms.is_none() {
+                        first_json_event_ms = Some(turn_started_at.elapsed().as_millis());
+                    }
                     if let Some(event_type) = event.get("type").and_then(|value| value.as_str()) {
+                        if first_event_type.is_none() {
+                            first_event_type = Some(event_type.to_string());
+                        }
                         observed_event_types.insert(event_type.to_string());
                     }
                     if let Some(session_id) = extract_session_id(&event) {
@@ -912,6 +954,9 @@ impl GeminiSession {
                     if let Some(unified_event) = parsed_event {
                         match &unified_event {
                             EngineEvent::TextDelta { text, .. } => {
+                                if first_text_delta_ms.is_none() {
+                                    first_text_delta_ms = Some(turn_started_at.elapsed().as_millis());
+                                }
                                 response_text.push_str(text);
                             }
                             EngineEvent::ReasoningDelta { text, .. } => {
@@ -929,6 +974,10 @@ impl GeminiSession {
                                 saw_turn_error = true;
                             }
                             EngineEvent::TurnCompleted { result, .. } => {
+                                if first_turn_completed_ms.is_none() {
+                                    first_turn_completed_ms =
+                                        Some(turn_started_at.elapsed().as_millis());
+                                }
                                 saw_turn_completed = true;
                                 if response_text.trim().is_empty() {
                                     if let Some(result_text) = result
@@ -994,6 +1043,7 @@ impl GeminiSession {
                 }
             }
         }
+        let stdout_eof_ms = turn_started_at.elapsed().as_millis();
 
         if !saw_reasoning_output {
             let fallback_session_id = if new_session_id.is_some() {
@@ -1041,6 +1091,39 @@ impl GeminiSession {
         if !stderr_text.trim().is_empty() {
             error_output.push_str(&stderr_text);
         }
+        let completed_ms = turn_started_at.elapsed().as_millis();
+        let status_success = status.as_ref().is_some_and(|value| value.success());
+        let had_retry_backoff = error_output.contains("Retrying with backoff");
+        let had_conn_reset = error_output.contains("ECONNRESET");
+        log::info!(
+            "[gemini/send][timing] turn={} spawn_ms={} first_stdout_line_ms={:?} first_json_event_ms={:?} first_text_delta_ms={:?} first_turn_completed_ms={:?} stdout_eof_ms={} completed_ms={} stdout_lines={} first_event_type={:?} observed_event_types={} status_success={} saw_turn_completed={} saw_turn_error={} response_chars={} stderr_chars={} retry_backoff={} conn_reset={}",
+            turn_id,
+            spawn_ms,
+            first_stdout_line_ms,
+            first_json_event_ms,
+            first_text_delta_ms,
+            first_turn_completed_ms,
+            stdout_eof_ms,
+            completed_ms,
+            stdout_line_count,
+            first_event_type,
+            if observed_event_types.is_empty() {
+                "none".to_string()
+            } else {
+                observed_event_types
+                    .iter()
+                    .cloned()
+                    .collect::<Vec<String>>()
+                    .join(",")
+            },
+            status_success,
+            saw_turn_completed,
+            saw_turn_error,
+            response_text.chars().count(),
+            error_output.chars().count(),
+            had_retry_backoff,
+            had_conn_reset,
+        );
 
         if let Some(status) = status {
             if !status.success() {
