@@ -29,6 +29,7 @@ import {
   getOpenCodeMcpStatus as getOpenCodeMcpStatusService,
   getOpenCodeStats as getOpenCodeStatsService,
   importOpenCodeSession as importOpenCodeSessionService,
+  listGeminiSessions as listGeminiSessionsService,
   shareOpenCodeSession as shareOpenCodeSessionService,
   projectMemoryCaptureAuto as projectMemoryCaptureAutoService,
 } from "../../../services/tauri";
@@ -300,6 +301,68 @@ function extractSessionIdFromEngineSendResponse(
   return null;
 }
 
+type GeminiSessionSummary = {
+  sessionId: string;
+  updatedAt: number;
+};
+
+function normalizeGeminiSessionSummary(value: unknown): GeminiSessionSummary | null {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+  const record = value as Record<string, unknown>;
+  const sessionId = normalizeSessionIdCandidate(record.sessionId ?? record.session_id);
+  if (!sessionId) {
+    return null;
+  }
+  const rawUpdatedAt = record.updatedAt ?? record.updated_at;
+  const updatedAt =
+    typeof rawUpdatedAt === "number" && Number.isFinite(rawUpdatedAt)
+      ? rawUpdatedAt
+      : typeof rawUpdatedAt === "string"
+        ? Number(rawUpdatedAt)
+        : 0;
+  return {
+    sessionId,
+    updatedAt: Number.isFinite(updatedAt) ? updatedAt : 0,
+  };
+}
+
+function pickLikelyGeminiSessionId(
+  payload: unknown,
+  minUpdatedAt: number,
+): string | null {
+  const nestedSessions =
+    payload && typeof payload === "object"
+      ? (payload as Record<string, unknown>).sessions
+      : null;
+  const entries = Array.isArray(payload)
+    ? payload
+    : Array.isArray(nestedSessions)
+      ? nestedSessions
+      : [];
+  const summaries = entries
+    .map(normalizeGeminiSessionSummary)
+    .filter((entry): entry is GeminiSessionSummary => entry !== null);
+  if (summaries.length === 0) {
+    return null;
+  }
+  const recents = summaries.filter((entry) => entry.updatedAt >= minUpdatedAt);
+  // Safety first: only bind when there is exactly one plausible candidate.
+  // This prevents cross-thread session hijack when multiple pending Gemini
+  // conversations update around the same time in the same workspace.
+  if (recents.length === 1) {
+    return recents[0]?.sessionId ?? null;
+  }
+  if (recents.length > 1) {
+    return null;
+  }
+  if (summaries.length === 1) {
+    return summaries[0]?.sessionId ?? null;
+  }
+  return null;
+}
+
 function resolveRecoverableCodexFirstPacketTimeout(
   engine: EngineType,
   rawMessage: string,
@@ -415,6 +478,7 @@ export function useThreadMessaging({
   const { t, i18n } = useTranslation();
   const lastOpenCodeModelByThreadRef = useRef<Map<string, string>>(new Map());
   const claudeSessionIdByPendingThreadRef = useRef<Map<string, string>>(new Map());
+  const geminiSessionIdByPendingThreadRef = useRef<Map<string, string>>(new Map());
   const sessionSpecLinkByThreadRef = useRef<Map<string, SessionSpecLinkContext>>(new Map());
   const normalizeEngineSelection = useCallback(
     (
@@ -1017,6 +1081,8 @@ export function useThreadMessaging({
               ? (claudeSessionIdByPendingThreadRef.current.get(threadId) ?? null)
             : resolvedEngine === "gemini" && threadId.startsWith("gemini:")
               ? threadId.slice("gemini:".length)
+            : resolvedEngine === "gemini" && threadId.startsWith("gemini-pending-")
+              ? (geminiSessionIdByPendingThreadRef.current.get(threadId) ?? null)
             : resolvedEngine === "opencode" && isOpenCodeSession
               ? threadId.slice("opencode:".length)
               : null;
@@ -1042,6 +1108,7 @@ export function useThreadMessaging({
             hasCustomName: Boolean(getCustomName(workspace.id, threadId)),
           });
 
+          const sendRequestedAt = Date.now();
           response = await engineSendMessageService(workspace.id, {
             text: finalText,
             engine: resolvedEngine,
@@ -1107,6 +1174,38 @@ export function useThreadMessaging({
                   threadId,
                   sessionId: responseSessionId,
                   source: "engineSendMessageResponse",
+                },
+              });
+            }
+          }
+          if (resolvedEngine === "gemini" && threadId.startsWith("gemini-pending-")) {
+            let responseSessionId = extractSessionIdFromEngineSendResponse(response);
+            if (!responseSessionId) {
+              const workspacePath = workspace.path?.trim();
+              if (workspacePath) {
+                try {
+                  const sessions = await listGeminiSessionsService(workspacePath, 6);
+                  responseSessionId = pickLikelyGeminiSessionId(
+                    sessions,
+                    sendRequestedAt - 120_000,
+                  );
+                } catch {
+                  responseSessionId = null;
+                }
+              }
+            }
+            if (responseSessionId) {
+              geminiSessionIdByPendingThreadRef.current.set(threadId, responseSessionId);
+              onDebug?.({
+                id: `${Date.now()}-client-gemini-session-cache`,
+                timestamp: Date.now(),
+                source: "client",
+                label: "thread/session cached",
+                payload: {
+                  workspaceId: workspace.id,
+                  threadId,
+                  sessionId: responseSessionId,
+                  source: "geminiSessionListFallback",
                 },
               });
             }

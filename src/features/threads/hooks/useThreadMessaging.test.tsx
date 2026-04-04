@@ -16,6 +16,7 @@ import {
   interruptTurn,
   listGitBranches,
   listExternalSpecTree,
+  listGeminiSessions,
   listMcpServerStatus,
   sendUserMessage,
   startReview as startReviewService,
@@ -44,6 +45,7 @@ vi.mock("../../../services/tauri", () => ({
   listExternalSpecTree: vi.fn(),
   listGitBranches: vi.fn(),
   getGitLog: vi.fn(),
+  listGeminiSessions: vi.fn(),
   engineSendMessage: vi.fn(),
   engineInterruptTurn: vi.fn(),
   engineInterrupt: vi.fn(),
@@ -98,6 +100,7 @@ describe("useThreadMessaging", () => {
         { name: "release/1.0", lastCommit: 1500 },
       ],
     });
+    vi.mocked(listGeminiSessions).mockResolvedValue([]);
     vi.mocked(getGitLog).mockResolvedValue({
       total: 2,
       ahead: 0,
@@ -597,6 +600,114 @@ describe("useThreadMessaging", () => {
         continueSession: true,
         sessionId: "session-snake",
         threadId: "claude-pending-snake",
+      }),
+    );
+  });
+
+  it("reuses discovered gemini session id for follow-up sends on pending thread", async () => {
+    vi.mocked(engineSendMessage)
+      .mockResolvedValueOnce({
+        result: { turn: { id: "turn-g1" } },
+      })
+      .mockResolvedValueOnce({
+        result: { turn: { id: "turn-g2" } },
+      });
+    vi.mocked(listGeminiSessions).mockResolvedValueOnce([
+      {
+        sessionId: "gem-session-xyz",
+        updatedAt: Date.now(),
+      },
+    ]);
+    const { result } = makeHook("gemini", {
+      activeThreadId: "gemini-pending-abc",
+      ensuredThreadId: "gemini-pending-abc",
+    });
+
+    await act(async () => {
+      await result.current.sendUserMessageToThread(
+        workspace,
+        "gemini-pending-abc",
+        "hello gemini",
+      );
+    });
+
+    await act(async () => {
+      await result.current.sendUserMessageToThread(
+        workspace,
+        "gemini-pending-abc",
+        "follow up",
+      );
+    });
+
+    expect(engineSendMessage).toHaveBeenNthCalledWith(
+      1,
+      "ws-1",
+      expect.objectContaining({
+        engine: "gemini",
+        continueSession: false,
+        sessionId: null,
+        threadId: "gemini-pending-abc",
+      }),
+    );
+    expect(engineSendMessage).toHaveBeenNthCalledWith(
+      2,
+      "ws-1",
+      expect.objectContaining({
+        engine: "gemini",
+        continueSession: true,
+        sessionId: "gem-session-xyz",
+        threadId: "gemini-pending-abc",
+      }),
+    );
+  });
+
+  it("does not bind gemini pending thread when session fallback is ambiguous", async () => {
+    vi.mocked(engineSendMessage)
+      .mockResolvedValueOnce({
+        result: { turn: { id: "turn-g1" } },
+      })
+      .mockResolvedValueOnce({
+        result: { turn: { id: "turn-g2" } },
+      });
+    vi.mocked(listGeminiSessions).mockResolvedValueOnce([
+      {
+        sessionId: "gem-session-a",
+        updatedAt: Date.now(),
+      },
+      {
+        sessionId: "gem-session-b",
+        updatedAt: Date.now(),
+      },
+    ]);
+    const { result } = makeHook("gemini", {
+      activeThreadId: "gemini-pending-ambiguous",
+      ensuredThreadId: "gemini-pending-ambiguous",
+    });
+
+    await act(async () => {
+      await result.current.sendUserMessageToThread(
+        workspace,
+        "gemini-pending-ambiguous",
+        "hello gemini",
+      );
+    });
+
+    await act(async () => {
+      await result.current.sendUserMessageToThread(
+        workspace,
+        "gemini-pending-ambiguous",
+        "follow up",
+      );
+    });
+
+    expect(engineSendMessage).toHaveBeenNthCalledWith(
+      2,
+      "ws-1",
+      expect.objectContaining({
+        engine: "gemini",
+        continueSession: false,
+        sessionId: null,
+        threadId: "gemini-pending-ambiguous",
       }),
     );
   });
