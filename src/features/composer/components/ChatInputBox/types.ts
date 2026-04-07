@@ -102,6 +102,8 @@ export interface DropdownItemData {
   checked?: boolean;
   /** Associated data */
   data?: Record<string, unknown>;
+  /** Optional item class name */
+  className?: string;
 }
 
 /**
@@ -148,6 +150,22 @@ export interface SkillItem {
   source?: string;
   /** User-facing scope label */
   scopeLabel?: string;
+}
+
+/**
+ * Prompt item (for ! trigger)
+ */
+export interface PromptItem {
+  id: string;
+  name: string;
+  content: string;
+  description?: string;
+  scopeLabel?: string;
+  argumentHint?: string;
+  argumentHintLabel?: string;
+  usageCount?: number;
+  heatLevel?: 0 | 1 | 2 | 3;
+  kind?: "prompt" | "create" | "empty";
 }
 
 /**
@@ -199,6 +217,7 @@ export interface SelectedAgent {
   id: string;
   name: string;
   prompt?: string;
+  icon?: string;
 }
 
 /**
@@ -479,6 +498,8 @@ export interface ChatInputBoxProps {
   isLoading?: boolean;
   /** Current model */
   selectedModel?: string;
+  /** Optional dynamic model list from host engine */
+  models?: ModelInfo[];
   /** Current permission mode */
   permissionMode?: PermissionMode;
   /** Current provider */
@@ -527,6 +548,8 @@ export interface ChatInputBoxProps {
   disabled?: boolean;
   /** Controlled mode: input content */
   value?: string;
+  /** Current workspace id for prompt enhancer and local providers */
+  workspaceId?: string | null;
 
   /** Current active file */
   activeFile?: string;
@@ -546,7 +569,7 @@ export interface ChatInputBoxProps {
   /** Input change */
   onInput?: (content: string) => void;
   /** Add attachment */
-  onAddAttachment?: (files: FileList) => void;
+  onAddAttachment?: (files?: FileList | null) => void;
   /** Remove attachment */
   onRemoveAttachment?: (id: string) => void;
   /** Switch mode */
@@ -622,6 +645,8 @@ export interface ChatInputBoxProps {
   commandCompletionProvider?: (query: string, signal: AbortSignal) => Promise<CommandItem[]>;
   /** Optional skill completion provider override (for $ skill insertion) */
   skillCompletionProvider?: (query: string, signal: AbortSignal) => Promise<SkillItem[]>;
+  /** Optional prompt completion provider override (for ! prompt insertion) */
+  promptCompletionProvider?: (query: string, signal: AbortSignal) => Promise<PromptItem[]>;
   /** Optional manual memory completion provider override (for @@ memory linking) */
   manualMemoryCompletionProvider?: (
     query: string,
@@ -647,6 +672,8 @@ export interface ButtonAreaProps {
   isEnhancing?: boolean;
   /** Current model */
   selectedModel?: string;
+  /** Optional dynamic model list from host engine */
+  models?: ModelInfo[];
   /** Current mode */
   permissionMode?: PermissionMode;
   /** Current provider */
@@ -704,6 +731,15 @@ export interface ButtonAreaProps {
   onOpenAgentSettings?: () => void;
   /** Navigate to model management to add models */
   onAddModel?: (providerId?: string) => void;
+  /** Quick shortcut actions rendered in config panel */
+  shortcutActions?: ShortcutAction[];
+}
+
+export interface ShortcutAction {
+  key: string;
+  trigger: string;
+  label: string;
+  onClick: () => void;
 }
 
 /**

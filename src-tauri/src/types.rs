@@ -373,6 +373,10 @@ pub(crate) struct LocalUsageSessionSummary {
     pub(crate) cost: f64,
     #[serde(default)]
     pub(crate) summary: Option<String>,
+    #[serde(default)]
+    pub(crate) source: Option<String>,
+    #[serde(default)]
+    pub(crate) provider: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
@@ -589,6 +593,8 @@ pub(crate) struct AppSettings {
     pub(crate) remote_backend_host: String,
     #[serde(default, rename = "remoteBackendToken")]
     pub(crate) remote_backend_token: Option<String>,
+    #[serde(default = "default_web_service_port", rename = "webServicePort")]
+    pub(crate) web_service_port: u16,
     #[serde(default, rename = "systemProxyEnabled")]
     pub(crate) system_proxy_enabled: bool,
     #[serde(default, rename = "systemProxyUrl")]
@@ -728,6 +734,16 @@ pub(crate) struct AppSettings {
     #[serde(default = "default_preload_git_diffs", rename = "preloadGitDiffs")]
     pub(crate) preload_git_diffs: bool,
     #[serde(
+        default = "default_detached_external_change_awareness_enabled",
+        rename = "detachedExternalChangeAwarenessEnabled"
+    )]
+    pub(crate) detached_external_change_awareness_enabled: bool,
+    #[serde(
+        default = "default_detached_external_change_watcher_enabled",
+        rename = "detachedExternalChangeWatcherEnabled"
+    )]
+    pub(crate) detached_external_change_watcher_enabled: bool,
+    #[serde(
         default = "default_experimental_collab_enabled",
         rename = "experimentalCollabEnabled"
     )]
@@ -857,6 +873,10 @@ fn default_remote_backend_host() -> String {
     "127.0.0.1:4732".to_string()
 }
 
+fn default_web_service_port() -> u16 {
+    3080
+}
+
 fn default_ui_scale() -> f64 {
     1.0
 }
@@ -977,6 +997,14 @@ fn default_notification_sound_id() -> String {
 
 fn default_notification_sound_custom_path() -> String {
     String::new()
+}
+
+fn default_detached_external_change_awareness_enabled() -> bool {
+    true
+}
+
+fn default_detached_external_change_watcher_enabled() -> bool {
+    true
 }
 
 fn default_system_notification_enabled() -> bool {
@@ -1141,6 +1169,7 @@ impl Default for AppSettings {
             backend_mode: BackendMode::Local,
             remote_backend_host: default_remote_backend_host(),
             remote_backend_token: None,
+            web_service_port: default_web_service_port(),
             system_proxy_enabled: false,
             system_proxy_url: None,
             default_engine: None,
@@ -1178,6 +1207,10 @@ impl Default for AppSettings {
             notification_sound_custom_path: default_notification_sound_custom_path(),
             system_notification_enabled: true,
             preload_git_diffs: default_preload_git_diffs(),
+            detached_external_change_awareness_enabled:
+                default_detached_external_change_awareness_enabled(),
+            detached_external_change_watcher_enabled:
+                default_detached_external_change_watcher_enabled(),
             experimental_collab_enabled: false,
             experimental_collaboration_modes_enabled: false,
             codex_mode_enforcement_enabled: true,
@@ -1275,6 +1308,7 @@ mod tests {
         assert!(matches!(settings.backend_mode, BackendMode::Local));
         assert_eq!(settings.remote_backend_host, "127.0.0.1:4732");
         assert!(settings.remote_backend_token.is_none());
+        assert_eq!(settings.web_service_port, 3080);
         assert!(!settings.system_proxy_enabled);
         assert!(settings.system_proxy_url.is_none());
         assert_eq!(settings.default_access_mode, "full-access");
@@ -1350,6 +1384,8 @@ mod tests {
         assert!(settings.notification_sound_custom_path.is_empty());
         assert!(settings.system_notification_enabled);
         assert!(settings.preload_git_diffs);
+        assert!(settings.detached_external_change_awareness_enabled);
+        assert!(settings.detached_external_change_watcher_enabled);
         assert!(!settings.experimental_steer_enabled);
         assert!(settings.codex_mode_enforcement_enabled);
         assert!(!settings.chat_canvas_use_normalized_realtime);

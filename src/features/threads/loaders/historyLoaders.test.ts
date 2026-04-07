@@ -6,6 +6,8 @@ import {
 import { buildWorkspaceSessionActivity } from "../../session-activity/adapters/buildWorkspaceSessionActivity";
 import { createCodexHistoryLoader } from "./codexHistoryLoader";
 import { parseCodexSessionHistory } from "./codexSessionHistory";
+import { createGeminiHistoryLoader } from "./geminiHistoryLoader";
+import { parseGeminiHistoryMessages } from "./geminiHistoryParser";
 import { createOpenCodeHistoryLoader } from "./opencodeHistoryLoader";
 
 describe("history loaders", () => {
@@ -84,6 +86,286 @@ describe("history loaders", () => {
         },
       },
     ]);
+  });
+
+  it("hydrates codex final completion time and duration from turn item timestamps", async () => {
+    const startedAt = "2026-04-01T08:00:00.000Z";
+    const completedAt = "2026-04-01T08:00:07.000Z";
+    const loader = createCodexHistoryLoader({
+      workspaceId: "ws-codex-timing",
+      resumeThread: vi.fn().mockResolvedValue({
+        result: {
+          thread: {
+            turns: [
+              {
+                id: "turn-timing-1",
+                items: [
+                  {
+                    id: "msg-user-timing-1",
+                    type: "userMessage",
+                    content: [{ type: "text", text: "hello" }],
+                    timestamp: startedAt,
+                  },
+                  {
+                    id: "msg-assistant-timing-1",
+                    type: "agentMessage",
+                    text: "hi there",
+                    timestamp: completedAt,
+                  },
+                ],
+              },
+            ],
+          },
+        },
+      }),
+    });
+
+    const snapshot = await loader.load("thread-codex-timing");
+    const assistant = snapshot.items.find(
+      (item) => item.kind === "message" && item.role === "assistant",
+    );
+    expect(assistant).toEqual(
+      expect.objectContaining({
+        isFinal: true,
+        finalCompletedAt: Date.parse(completedAt),
+        finalDurationMs: 7_000,
+      }),
+    );
+  });
+
+  it("loads gemini history into normalized snapshot", async () => {
+    const loader = createGeminiHistoryLoader({
+      workspaceId: "ws-gemini",
+      workspacePath: "/tmp/workspace",
+      loadGeminiSession: vi.fn().mockResolvedValue({
+        messages: [
+          {
+            id: "gemini-user-1",
+            kind: "message",
+            role: "user",
+            text: "hello",
+            images: ["/tmp/demo.png"],
+          },
+          {
+            id: "gemini-assistant-1",
+            kind: "message",
+            role: "assistant",
+            text: "hi",
+          },
+        ],
+      }),
+    });
+
+    const snapshot = await loader.load("gemini:session-1");
+    expect(snapshot.engine).toBe("gemini");
+    expect(snapshot.threadId).toBe("gemini:session-1");
+    expect(snapshot.items).toHaveLength(2);
+    expect(snapshot.items[0]).toEqual(
+      expect.objectContaining({
+        kind: "message",
+        role: "user",
+        images: ["/tmp/demo.png"],
+      }),
+    );
+    expect(snapshot.items[1]).toEqual(
+      expect.objectContaining({
+        kind: "message",
+        role: "assistant",
+      }),
+    );
+  });
+
+  it("hydrates gemini final completion time and duration from message timestamps", () => {
+    const startedAt = "2026-04-01T09:00:00.000Z";
+    const completedAt = "2026-04-01T09:00:12.000Z";
+    const items = parseGeminiHistoryMessages([
+      {
+        id: "gemini-user-timing-1",
+        kind: "message",
+        role: "user",
+        text: "hello",
+        timestamp: startedAt,
+      },
+      {
+        id: "gemini-assistant-timing-1",
+        kind: "message",
+        role: "assistant",
+        text: "done",
+        timestamp: completedAt,
+      },
+    ]);
+
+    const assistant = items.find(
+      (item) => item.kind === "message" && item.role === "assistant",
+    );
+    expect(assistant).toEqual(
+      expect.objectContaining({
+        isFinal: true,
+        finalCompletedAt: Date.parse(completedAt),
+        finalDurationMs: 12_000,
+      }),
+    );
+  });
+
+  it("keeps gemini user image-only history rows", () => {
+    const items = parseGeminiHistoryMessages([
+      {
+        id: "gemini-user-image-only",
+        kind: "message",
+        role: "user",
+        text: "",
+        images: ["/tmp/image-only.png"],
+      },
+    ]);
+
+    expect(items).toHaveLength(1);
+    expect(items[0]).toEqual(
+      expect.objectContaining({
+        id: "gemini-user-image-only",
+        kind: "message",
+        role: "user",
+        images: ["/tmp/image-only.png"],
+      }),
+    );
+  });
+
+  it("merges gemini tool start/result rows into a completed tool item", () => {
+    const items = parseGeminiHistoryMessages([
+      {
+        id: "gemini-tool-1",
+        kind: "tool",
+        toolType: "write_file",
+        title: "write_file",
+        toolInput: {
+          path: "src/a.ts",
+          content: "const a = 1;",
+        },
+      },
+      {
+        id: "gemini-tool-1-result",
+        kind: "tool",
+        toolType: "result",
+        title: "Result",
+        text: "done",
+        toolOutput: {
+          ok: true,
+        },
+      },
+    ]);
+
+    expect(items).toHaveLength(1);
+    expect(items[0]).toEqual(
+      expect.objectContaining({
+        id: "gemini-tool-1",
+        kind: "tool",
+        toolType: "fileChange",
+        status: "completed",
+        output: "done",
+      }),
+    );
+    expect(items[0]?.kind).toBe("tool");
+    if (items[0]?.kind === "tool") {
+      expect(items[0].changes).toEqual([
+        expect.objectContaining({
+          path: "src/a.ts",
+          kind: "modified",
+        }),
+      ]);
+    }
+  });
+
+  it("normalizes gemini EditFile history rows to fileChange cards", () => {
+    const items = parseGeminiHistoryMessages([
+      {
+        id: "gemini-edit-1",
+        kind: "tool",
+        toolType: "EditFile",
+        title: "EditFile",
+        toolInput: {
+          path: "src/App.tsx",
+          old_string: "const before = true;",
+          new_string: "const after = true;",
+        },
+      },
+      {
+        id: "gemini-edit-1-result",
+        kind: "tool",
+        toolType: "result",
+        title: "Result",
+        text: "updated",
+      },
+    ]);
+
+    expect(items).toHaveLength(1);
+    expect(items[0]).toEqual(
+      expect.objectContaining({
+        id: "gemini-edit-1",
+        kind: "tool",
+        toolType: "fileChange",
+        status: "completed",
+      }),
+    );
+    expect(items[0]?.kind).toBe("tool");
+    if (items[0]?.kind === "tool") {
+      expect(items[0].changes).toEqual([
+        expect.objectContaining({
+          path: "src/App.tsx",
+          kind: "modified",
+        }),
+      ]);
+    }
+  });
+
+  it("merges adjacent gemini reasoning rows while preserving tool boundaries", () => {
+    const items = parseGeminiHistoryMessages([
+      {
+        id: "gemini-reasoning-1",
+        kind: "reasoning",
+        text: "先读取目录",
+      },
+      {
+        id: "gemini-reasoning-2",
+        kind: "reasoning",
+        text: "再检查配置",
+      },
+      {
+        id: "gemini-tool-1",
+        kind: "tool",
+        toolType: "commandExecution",
+        title: "Command",
+        toolInput: { command: ["ls"] },
+      },
+      {
+        id: "gemini-reasoning-3",
+        kind: "reasoning",
+        text: "整理最终结论",
+      },
+    ]);
+
+    expect(items).toHaveLength(3);
+    expect(items[0]).toEqual(
+      expect.objectContaining({
+        kind: "reasoning",
+      }),
+    );
+    if (items[0]?.kind === "reasoning") {
+      expect(items[0].content).toContain("先读取目录");
+      expect(items[0].content).toContain("再检查配置");
+    }
+    expect(items[1]).toEqual(
+      expect.objectContaining({
+        id: "gemini-tool-1",
+        kind: "tool",
+      }),
+    );
+    expect(items[2]).toEqual(
+      expect.objectContaining({
+        kind: "reasoning",
+      }),
+    );
+    if (items[2]?.kind === "reasoning") {
+      expect(items[2].content).toContain("整理最终结论");
+    }
   });
 
   it("reconstructs codex local session history into structured activity items", () => {
@@ -174,6 +456,7 @@ describe("history loaders", () => {
           expect.objectContaining({
             path: "src/App.tsx",
             kind: "modified",
+            diff: expect.stringContaining("+const after = true;"),
           }),
         ],
       }),
@@ -191,6 +474,44 @@ describe("history loaders", () => {
         role: "assistant",
         text: "Done",
       }),
+    );
+  });
+
+  it("hydrates codex local assistant final metadata from entry timestamps", () => {
+    const startedAt = "2026-04-01T16:31:34.000Z";
+    const completedAt = "2026-04-01T16:31:37.000Z";
+    const items = parseCodexSessionHistory({
+      entries: [
+        {
+          timestamp: startedAt,
+          type: "event_msg",
+          payload: {
+            type: "user_message",
+            message: "在吗",
+          },
+        },
+        {
+          timestamp: completedAt,
+          type: "event_msg",
+          payload: {
+            type: "agent_message",
+            message: "在这儿，等你派活。",
+          },
+        },
+      ],
+    });
+
+    expect(items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "message",
+          role: "assistant",
+          text: "在这儿，等你派活。",
+          isFinal: true,
+          finalCompletedAt: Date.parse(completedAt),
+          finalDurationMs: 3_000,
+        }),
+      ]),
     );
   });
 
@@ -293,6 +614,107 @@ describe("history loaders", () => {
     );
   });
 
+  it("reconstructs codex generic search tool calls from local function history", () => {
+    const items = parseCodexSessionHistory({
+      entries: [
+        {
+          type: "response_item",
+          payload: {
+            type: "function_call",
+            call_id: "search-1",
+            name: "search_query",
+            arguments: JSON.stringify({
+              search_query: [{ q: "site:developers.openai.com Codex AGENTS.md" }],
+            }),
+          },
+        },
+        {
+          type: "response_item",
+          payload: {
+            type: "function_call_output",
+            call_id: "search-1",
+            output: JSON.stringify({
+              items: [
+                {
+                  title: "OpenAI Codex AGENTS.md",
+                  url: "https://developers.openai.com/codex/guides/agents-md",
+                },
+              ],
+            }),
+          },
+        },
+      ],
+    });
+
+    expect(items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "search-1",
+          kind: "tool",
+          toolType: "mcpToolCall",
+          title: "Tool: codex / search_query",
+          detail: expect.stringContaining("site:developers.openai.com Codex AGENTS.md"),
+          output: expect.stringContaining("agents-md"),
+        }),
+      ]),
+    );
+  });
+
+  it("reconstructs codex web_search_call entries from local session history", () => {
+    const items = parseCodexSessionHistory({
+      entries: [
+        {
+          type: "response_item",
+          payload: {
+            type: "web_search_call",
+            status: "completed",
+            action: {
+              type: "search",
+              query: "OpenAI Codex CLI AGENTS.md default instructions file",
+              queries: [
+                "OpenAI Codex CLI AGENTS.md default instructions file",
+                "developers.openai.com/codex/guides/agents-md",
+              ],
+            },
+          },
+        },
+        {
+          type: "response_item",
+          payload: {
+            type: "web_search_call",
+            status: "completed",
+            action: {
+              type: "find_in_page",
+              url: "https://developers.openai.com/codex/guides/agents-md",
+              pattern: "searches for AGENTS.md",
+            },
+          },
+        },
+      ],
+    });
+
+    expect(items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "codex-web-search-1",
+          kind: "tool",
+          toolType: "mcpToolCall",
+          title: "Tool: codex / search_query",
+          detail: expect.stringContaining("OpenAI Codex CLI AGENTS.md"),
+          output: expect.stringContaining("\"queries\""),
+        }),
+        expect.objectContaining({
+          id: "codex-web-search-2",
+          kind: "tool",
+          toolType: "mcpToolCall",
+          title: "Tool: codex / search_query",
+          detail: expect.stringContaining("searches for AGENTS.md"),
+          output: expect.stringContaining("find_in_page"),
+        }),
+      ]),
+    );
+  });
+
   it("reconstructs nested response_item apply_patch history entries", () => {
     const items = parseCodexSessionHistory({
       entries: [
@@ -330,6 +752,77 @@ describe("history loaders", () => {
           expect.objectContaining({
             path: "src/routes.ts",
             kind: "modified",
+            diff: expect.stringContaining("+const route = \"/new\";"),
+          }),
+        ],
+      }),
+    );
+  });
+
+  it("prefers richer local fileChange diffs when remote history only has path-level snapshots", async () => {
+    const loader = createCodexHistoryLoader({
+      workspaceId: "ws-codex-file-diff-merge",
+      resumeThread: vi.fn().mockResolvedValue({
+        result: {
+          thread: {
+            turns: [
+              {
+                id: "turn-1",
+                items: [
+                  {
+                    id: "patch-1",
+                    type: "fileChange",
+                    status: "completed",
+                    changes: [
+                      {
+                        path: "src/App.tsx",
+                        kind: "M",
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        },
+      }),
+      loadCodexSession: vi.fn().mockResolvedValue({
+        entries: [
+          {
+            type: "response_item",
+            payload: {
+              type: "custom_tool_call",
+              call_id: "patch-1",
+              name: "apply_patch",
+              status: "completed",
+              input:
+                "*** Begin Patch\n*** Update File: src/App.tsx\n@@\n-const before = true;\n+const after = true;\n*** End Patch\n",
+            },
+          },
+          {
+            type: "response_item",
+            payload: {
+              type: "custom_tool_call_output",
+              call_id: "patch-1",
+              output: "Patch applied\nOutput:\nSuccess",
+            },
+          },
+        ],
+      }),
+    });
+
+    const snapshot = await loader.load("thread-codex-file-diff-merge");
+    const patchItem = snapshot.items.find((item) => item.id === "patch-1");
+    expect(patchItem).toBeTruthy();
+    expect(patchItem).toEqual(
+      expect.objectContaining({
+        kind: "tool",
+        toolType: "fileChange",
+        changes: [
+          expect.objectContaining({
+            path: "src/App.tsx",
+            kind: "modified",
+            diff: expect.stringContaining("+const after = true;"),
           }),
         ],
       }),
@@ -392,6 +885,132 @@ describe("history loaders", () => {
         id: "reason-4",
         summary: "Inspect workspace state",
         content: "Inspect workspace state\nCheck recent fixes and confirm history loader path",
+      }),
+    );
+  });
+
+  it("dedupes adjacent codex assistant messages emitted by both response_item and event_msg", () => {
+    const items = parseCodexSessionHistory({
+      entries: [
+        {
+          type: "response_item",
+          payload: {
+            type: "message",
+            role: "assistant",
+            content: [{ type: "output_text", text: "同一条 assistant 文本" }],
+          },
+        },
+        {
+          type: "event_msg",
+          payload: {
+            type: "agent_message",
+            message: "同一条 assistant 文本",
+          },
+        },
+      ],
+    });
+
+    const assistantMessages = items.filter(
+      (item): item is Extract<(typeof items)[number], { kind: "message" }> =>
+        item.kind === "message" && item.role === "assistant",
+    );
+    expect(assistantMessages).toHaveLength(1);
+    expect(assistantMessages[0]?.text).toBe("同一条 assistant 文本");
+  });
+
+  it("keeps repeated assistant messages when they come from separate response_item events", () => {
+    const items = parseCodexSessionHistory({
+      entries: [
+        {
+          type: "response_item",
+          payload: {
+            type: "message",
+            role: "assistant",
+            content: [{ type: "output_text", text: "OK" }],
+          },
+        },
+        {
+          type: "response_item",
+          payload: {
+            type: "message",
+            role: "assistant",
+            content: [{ type: "output_text", text: "OK" }],
+          },
+        },
+      ],
+    });
+
+    const assistantMessages = items.filter(
+      (item): item is Extract<(typeof items)[number], { kind: "message" }> =>
+        item.kind === "message" && item.role === "assistant",
+    );
+    expect(assistantMessages).toHaveLength(2);
+  });
+
+  it("hydrates codex remote final metadata from local session timestamps", async () => {
+    const startedAt = "2026-04-01T16:45:07.000Z";
+    const completedAt = "2026-04-01T16:45:17.000Z";
+    const loader = createCodexHistoryLoader({
+      workspaceId: "ws-codex-final-meta-merge",
+      resumeThread: vi.fn().mockResolvedValue({
+        result: {
+          thread: {
+            turns: [
+              {
+                id: "turn-1",
+                items: [
+                  {
+                    id: "remote-user-1",
+                    type: "userMessage",
+                    content: [{ type: "text", text: "你好" }],
+                  },
+                  {
+                    id: "remote-assistant-1",
+                    type: "agentMessage",
+                    text: "你好。要我现在帮你处理什么？",
+                    isFinal: true,
+                  },
+                ],
+              },
+            ],
+          },
+        },
+      }),
+      loadCodexSession: vi.fn().mockResolvedValue({
+        entries: [
+          {
+            timestamp: startedAt,
+            type: "event_msg",
+            payload: {
+              type: "user_message",
+              message: "你好",
+            },
+          },
+          {
+            timestamp: completedAt,
+            type: "event_msg",
+            payload: {
+              type: "agent_message",
+              message: "你好。要我现在帮你处理什么？",
+            },
+          },
+        ],
+      }),
+    });
+
+    const snapshot = await loader.load("thread-codex-final-meta-merge");
+    const assistant = snapshot.items.find(
+      (item) =>
+        item.kind === "message" &&
+        item.role === "assistant" &&
+        item.id === "remote-assistant-1",
+    );
+
+    expect(assistant).toEqual(
+      expect.objectContaining({
+        isFinal: true,
+        finalCompletedAt: Date.parse(completedAt),
+        finalDurationMs: 10_000,
       }),
     );
   });
@@ -814,7 +1433,13 @@ describe("history loaders", () => {
       workspacePath: "/tmp/ws-2",
       loadClaudeSession: vi.fn().mockResolvedValue({
         messages: [
-          { kind: "message", id: "user-1", role: "user", text: "run test" },
+          {
+            kind: "message",
+            id: "user-1",
+            role: "user",
+            text: "run test",
+            images: ["/tmp/claude-shot.png"],
+          },
           {
             kind: "tool",
             id: "tool-1",
@@ -836,12 +1461,76 @@ describe("history loaders", () => {
     const snapshot = await loader.load("claude:session-1");
     expect(snapshot.engine).toBe("claude");
     expect(snapshot.items).toHaveLength(2);
+    expect(snapshot.items[0]).toEqual(
+      expect.objectContaining({
+        kind: "message",
+        role: "user",
+        images: ["/tmp/claude-shot.png"],
+      }),
+    );
     const tool = snapshot.items[1];
     expect(tool?.kind).toBe("tool");
     if (tool?.kind === "tool") {
       expect(tool.status).toBe("completed");
       expect(tool.output).toBe("ok");
     }
+  });
+
+  it("hydrates claude pending askuserquestion into snapshot userInputQueue", async () => {
+    const loader = createClaudeHistoryLoader({
+      workspaceId: "ws-claude-ask",
+      workspacePath: "/tmp/ws-claude-ask",
+      loadClaudeSession: vi.fn().mockResolvedValue({
+        messages: [
+          {
+            kind: "tool",
+            id: "tool-ask-pending-1",
+            tool_name: "AskUserQuestion",
+            tool_input: {
+              questions: [
+                {
+                  id: "project-type",
+                  header: "项目类型",
+                  question: "请选择项目类型",
+                  multiSelect: false,
+                  options: [
+                    { label: "Web应用", description: "前端应用" },
+                    { label: "服务端", description: "后端服务" },
+                  ],
+                },
+              ],
+            },
+          },
+        ],
+      }),
+    });
+
+    const snapshot = await loader.load("claude:session-ask-pending");
+    expect(snapshot.engine).toBe("claude");
+    expect(snapshot.userInputQueue).toEqual([
+      {
+        workspace_id: "ws-claude-ask",
+        request_id: "tool-ask-pending-1",
+        params: {
+          thread_id: "claude:session-ask-pending",
+          turn_id: "",
+          item_id: "tool-ask-pending-1",
+          questions: [
+            {
+              id: "project-type",
+              header: "项目类型",
+              question: "请选择项目类型",
+              isOther: true,
+              isSecret: false,
+              options: [
+                { label: "Web应用", description: "前端应用" },
+                { label: "服务端", description: "后端服务" },
+              ],
+            },
+          ],
+        },
+      },
+    ]);
   });
 
   it("merges Claude tool result by tool_use_id and avoids duplicate tool rows", () => {

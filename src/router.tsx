@@ -8,12 +8,25 @@ const AboutView = lazy(() =>
   })),
 );
 
+const DetachedFileExplorerWindow = lazy(() =>
+  import("./features/files/components/DetachedFileExplorerWindow").then((module) => ({
+    default: module.DetachedFileExplorerWindow,
+  })),
+);
+
 export function AppRouter() {
   const windowLabel = useWindowLabel();
   if (windowLabel === "about") {
     return (
       <Suspense fallback={null}>
         <AboutView />
+      </Suspense>
+    );
+  }
+  if (windowLabel === "file-explorer") {
+    return (
+      <Suspense fallback={null}>
+        <DetachedFileExplorerWindow />
       </Suspense>
     );
   }

@@ -15,6 +15,9 @@ pub(crate) mod codex_prompt_service;
 pub mod commands;
 pub(crate) mod error_mapper;
 pub mod events;
+pub mod gemini;
+pub mod gemini_history;
+pub(crate) mod gemini_proxy_guard;
 pub mod manager;
 pub mod opencode;
 pub mod status;
@@ -32,7 +35,7 @@ pub enum EngineType {
     Claude,
     /// Codex CLI
     Codex,
-    /// Google Gemini CLI (future)
+    /// Google Gemini CLI
     Gemini,
     /// OpenCode CLI
     OpenCode,
@@ -69,7 +72,7 @@ impl EngineType {
     pub fn is_supported(&self) -> bool {
         matches!(
             self,
-            EngineType::Claude | EngineType::Codex | EngineType::OpenCode
+            EngineType::Claude | EngineType::Codex | EngineType::Gemini | EngineType::OpenCode
         )
     }
 }
@@ -253,6 +256,19 @@ impl EngineFeatures {
             tools_control: true,
             streaming: true,
             mcp: false,
+        }
+    }
+
+    /// Features for Gemini
+    pub fn gemini() -> Self {
+        Self {
+            reasoning_effort: false,
+            collaboration_mode: false,
+            image_input: true,
+            session_resume: true,
+            tools_control: true,
+            streaming: true,
+            mcp: true,
         }
     }
 }

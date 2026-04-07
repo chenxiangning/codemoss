@@ -1,7 +1,11 @@
 // @vitest-environment jsdom
-import { act, render, waitFor } from '@testing-library/react';
+import { act, cleanup, render, waitFor } from '@testing-library/react';
 import type { ComponentProps } from 'react';
-import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  clearPromptUsageForTests,
+  recordPromptUsage,
+} from '../../../prompts/promptUsage';
 
 const mockState = vi.hoisted(() => ({
   latestProps: null as Record<string, unknown> | null,
@@ -66,6 +70,10 @@ function renderAdapter(
 }
 
 describe('ChatInputBoxAdapter toggle bridge', () => {
+  afterEach(() => {
+    cleanup();
+  });
+
   beforeEach(() => {
     mockState.latestProps = null;
     mockState.getClaudeProviders.mockReset().mockResolvedValue([
@@ -82,6 +90,7 @@ describe('ChatInputBoxAdapter toggle bridge', () => {
     mockState.switchClaudeProvider.mockReset().mockResolvedValue(undefined);
     mockState.projectMemoryList.mockReset().mockResolvedValue({ items: [], total: 0 });
     window.localStorage.clear();
+    clearPromptUsageForTests();
   });
 
   it('provides internal thinking and streaming handlers by default', async () => {
@@ -166,6 +175,55 @@ describe('ChatInputBoxAdapter toggle bridge', () => {
     expect(mockState.setClaudeAlwaysThinkingEnabled).toHaveBeenCalledWith(false);
   });
 
+  it('falls back to direct claude settings when active provider lacks thinking field', async () => {
+    mockState.getClaudeProviders.mockResolvedValue([
+      {
+        id: '__local_settings_json__',
+        name: 'Local settings.json',
+        isActive: true,
+        isLocalProvider: true,
+        settingsConfig: {},
+      },
+    ]);
+    mockState.getClaudeAlwaysThinkingEnabled.mockResolvedValue(true);
+
+    renderAdapter();
+
+    await waitFor(() => expect(mockState.latestProps).toBeTruthy());
+    const getLatest = () => mockState.latestProps as {
+      alwaysThinkingEnabled?: boolean;
+    };
+    await waitFor(() => expect(getLatest().alwaysThinkingEnabled).toBe(true));
+    expect(mockState.getClaudeAlwaysThinkingEnabled).toHaveBeenCalledTimes(1);
+  });
+
+  it('uses direct claude settings write when local provider is active', async () => {
+    mockState.getClaudeProviders.mockResolvedValue([
+      {
+        id: '__local_settings_json__',
+        name: 'Local settings.json',
+        isActive: true,
+        isLocalProvider: true,
+        settingsConfig: {},
+      },
+    ]);
+
+    renderAdapter();
+
+    await waitFor(() => expect(mockState.latestProps).toBeTruthy());
+    const latest = mockState.latestProps as {
+      onToggleThinking?: (enabled: boolean) => void | Promise<void>;
+    };
+
+    await act(async () => {
+      await Promise.resolve(latest.onToggleThinking?.(true));
+    });
+
+    expect(mockState.setClaudeAlwaysThinkingEnabled).toHaveBeenCalledWith(true);
+    expect(mockState.updateClaudeProvider).not.toHaveBeenCalled();
+    expect(mockState.switchClaudeProvider).not.toHaveBeenCalled();
+  });
+
   it('forwards send shortcut to ChatInputBox', async () => {
     renderAdapter({ sendShortcut: 'cmdEnter' });
 
@@ -245,6 +303,192 @@ describe('ChatInputBoxAdapter toggle bridge', () => {
       "fresh child snapshot",
       ["data:image/png;base64,ZmFrZS1pbWFnZQ=="],
     );
+  });
+
+  it("falls back to external attachments when submit callback omits attachments", async () => {
+    const onSend = vi.fn();
+    renderAdapter({
+      onSend,
+      attachments: ["file:///tmp/fallback-image.png"],
+    });
+
+    await waitFor(() => expect(mockState.latestProps).toBeTruthy());
+
+    const latest = mockState.latestProps as {
+      onSubmit?: (content: string) => void;
+    };
+
+    act(() => {
+      latest.onSubmit?.("fresh child snapshot");
+    });
+
+    expect(onSend).toHaveBeenCalledWith("fresh child snapshot", [
+      "file:///tmp/fallback-image.png",
+    ]);
+  });
+
+  it("keeps file URI attachments unchanged for claude sends", async () => {
+    const onSend = vi.fn();
+    renderAdapter({ onSend });
+
+    await waitFor(() => expect(mockState.latestProps).toBeTruthy());
+
+    const latest = mockState.latestProps as {
+      onSubmit?: (
+        content: string,
+        attachments?: Array<{
+          id: string;
+          fileName: string;
+          mediaType: string;
+          data: string;
+        }>,
+      ) => void;
+    };
+
+    act(() => {
+      latest.onSubmit?.("fresh child snapshot", [
+        {
+          id: "att-2",
+          fileName: "image.png",
+          mediaType: "image/png",
+          data: "file:///tmp/a%20b.png",
+        },
+      ]);
+    });
+
+    expect(onSend).toHaveBeenCalledWith("fresh child snapshot", ["file:///tmp/a%20b.png"]);
+  });
+
+  it("normalizes file URI attachments into host paths for gemini sends", async () => {
+    const onSend = vi.fn();
+    renderAdapter({ onSend, selectedEngine: "gemini" });
+
+    await waitFor(() => expect(mockState.latestProps).toBeTruthy());
+
+    const latest = mockState.latestProps as {
+      onSubmit?: (
+        content: string,
+        attachments?: Array<{
+          id: string;
+          fileName: string;
+          mediaType: string;
+          data: string;
+        }>,
+      ) => void;
+    };
+
+    act(() => {
+      latest.onSubmit?.("fresh child snapshot", [
+        {
+          id: "att-2b",
+          fileName: "image.png",
+          mediaType: "image/png",
+          data: "file:///tmp/a%20b.png",
+        },
+      ]);
+    });
+
+    expect(onSend).toHaveBeenCalledWith("fresh child snapshot", ["/tmp/a b.png"]);
+  });
+
+  it("keeps miswrapped data URL payload containing file URI for claude sends", async () => {
+    const onSend = vi.fn();
+    renderAdapter({ onSend });
+
+    await waitFor(() => expect(mockState.latestProps).toBeTruthy());
+
+    const latest = mockState.latestProps as {
+      onSubmit?: (
+        content: string,
+        attachments?: Array<{
+          id: string;
+          fileName: string;
+          mediaType: string;
+          data: string;
+        }>,
+      ) => void;
+    };
+
+    act(() => {
+      latest.onSubmit?.("fresh child snapshot", [
+        {
+          id: "att-3",
+          fileName: "image.png",
+          mediaType: "image/png",
+          data: "data:image/png;base64,file:///tmp/c%20d.png",
+        },
+      ]);
+    });
+
+    expect(onSend).toHaveBeenCalledWith("fresh child snapshot", [
+      "data:image/png;base64,file:///tmp/c%20d.png",
+    ]);
+  });
+
+  it("keeps localhost file URI attachments unchanged for claude sends", async () => {
+    const onSend = vi.fn();
+    renderAdapter({ onSend });
+
+    await waitFor(() => expect(mockState.latestProps).toBeTruthy());
+
+    const latest = mockState.latestProps as {
+      onSubmit?: (
+        content: string,
+        attachments?: Array<{
+          id: string;
+          fileName: string;
+          mediaType: string;
+          data: string;
+        }>,
+      ) => void;
+    };
+
+    act(() => {
+      latest.onSubmit?.("fresh child snapshot", [
+        {
+          id: "att-4",
+          fileName: "image.png",
+          mediaType: "image/png",
+          data: "file://localhost/tmp/e%20f.png",
+        },
+      ]);
+    });
+
+    expect(onSend).toHaveBeenCalledWith("fresh child snapshot", ["file://localhost/tmp/e%20f.png"]);
+  });
+
+  it("keeps UNC-like file URI host attachments unchanged for claude sends", async () => {
+    const onSend = vi.fn();
+    renderAdapter({ onSend });
+
+    await waitFor(() => expect(mockState.latestProps).toBeTruthy());
+
+    const latest = mockState.latestProps as {
+      onSubmit?: (
+        content: string,
+        attachments?: Array<{
+          id: string;
+          fileName: string;
+          mediaType: string;
+          data: string;
+        }>,
+      ) => void;
+    };
+
+    act(() => {
+      latest.onSubmit?.("fresh child snapshot", [
+        {
+          id: "att-5",
+          fileName: "image.png",
+          mediaType: "image/png",
+          data: "file://server/share/folder/a%20b.png",
+        },
+      ]);
+    });
+
+    expect(onSend).toHaveBeenCalledWith("fresh child snapshot", [
+      "file://server/share/folder/a%20b.png",
+    ]);
   });
 
   it('forwards dual context usage model and flag to ChatInputBox', async () => {
@@ -412,5 +656,218 @@ describe('ChatInputBoxAdapter toggle bridge', () => {
         title: '发布步骤',
       }),
     );
+  });
+
+  it('bridges prompt completion data and settings opener', async () => {
+    const onOpenPromptSettings = vi.fn();
+    renderAdapter({
+      prompts: [
+        {
+          path: '/tmp/workspace/.mossx/prompts/review.md',
+          name: 'review',
+          content: '请审查这段代码',
+          description: '代码评审',
+          argumentHint: undefined,
+          scope: 'workspace',
+        },
+      ],
+      onOpenPromptSettings,
+    });
+
+    await waitFor(() => expect(mockState.latestProps).toBeTruthy());
+
+    const latest = mockState.latestProps as {
+      promptCompletionProvider?: (
+        query: string,
+        signal: AbortSignal,
+      ) => Promise<
+        Array<{
+          id: string;
+          name: string;
+          content: string;
+          description?: string;
+        }>
+      >;
+      onOpenPromptSettings?: () => void;
+    };
+
+    expect(typeof latest.promptCompletionProvider).toBe('function');
+    expect(latest.onOpenPromptSettings).toBe(onOpenPromptSettings);
+
+    const results = await latest.promptCompletionProvider?.('rev', new AbortController().signal);
+    expect(results).toEqual([
+      expect.objectContaining({
+        name: 'review',
+        content: '请审查这段代码',
+        description: '代码评审',
+        usageCount: 0,
+        heatLevel: 0,
+      }),
+      expect.objectContaining({
+        id: '__create_new__',
+      }),
+    ]);
+  });
+
+  it('sorts prompt completion by usage heat', async () => {
+    recordPromptUsage('/tmp/workspace/.mossx/prompts/review.md');
+    recordPromptUsage('/tmp/workspace/.mossx/prompts/review.md');
+    recordPromptUsage('/tmp/workspace/.mossx/prompts/review.md');
+    recordPromptUsage('/tmp/workspace/.mossx/prompts/fix.md');
+
+    renderAdapter({
+      prompts: [
+        {
+          path: '/tmp/workspace/.mossx/prompts/fix.md',
+          name: 'fix',
+          content: '帮我修复问题',
+          description: '修复',
+          argumentHint: undefined,
+          scope: 'workspace',
+        },
+        {
+          path: '/tmp/workspace/.mossx/prompts/review.md',
+          name: 'review',
+          content: '请审查这段代码',
+          description: '代码评审',
+          argumentHint: undefined,
+          scope: 'workspace',
+        },
+      ],
+    });
+
+    await waitFor(() => expect(mockState.latestProps).toBeTruthy());
+
+    const latest = mockState.latestProps as {
+      promptCompletionProvider?: (
+        query: string,
+        signal: AbortSignal,
+      ) => Promise<
+        Array<{
+          id: string;
+          name: string;
+          usageCount?: number;
+          heatLevel?: number;
+        }>
+      >;
+    };
+
+    const results = await latest.promptCompletionProvider?.('', new AbortController().signal);
+    expect(results?.[0]).toEqual(
+      expect.objectContaining({
+        name: 'review',
+        usageCount: 3,
+        heatLevel: 1,
+      }),
+    );
+    expect(results?.[1]).toEqual(
+      expect.objectContaining({
+        name: 'fix',
+        usageCount: 1,
+        heatLevel: 1,
+      }),
+    );
+  });
+
+  it('matches prompt completion query against argument hint and scope metadata', async () => {
+    renderAdapter({
+      prompts: [
+        {
+          path: '/tmp/workspace/.mossx/prompts/deploy.md',
+          name: 'deploy',
+          content: '帮我生成部署步骤',
+          description: '部署流程',
+          argumentHint: 'ticket, env',
+          scope: 'global',
+        },
+      ],
+    });
+
+    await waitFor(() => expect(mockState.latestProps).toBeTruthy());
+
+    const latest = mockState.latestProps as {
+      promptCompletionProvider?: (
+        query: string,
+        signal: AbortSignal,
+      ) => Promise<Array<{ name: string }>>;
+    };
+
+    const byHint = await latest.promptCompletionProvider?.('ticket', new AbortController().signal);
+    expect(byHint?.[0]).toEqual(expect.objectContaining({ name: 'deploy' }));
+
+    const byScope = await latest.promptCompletionProvider?.('global', new AbortController().signal);
+    expect(byScope?.[0]).toEqual(expect.objectContaining({ name: 'deploy' }));
+  });
+
+  it('uses current engine model fallback when selected model is empty', async () => {
+    renderAdapter({
+      selectedEngine: 'gemini',
+      selectedModelId: null,
+      models: [
+        {
+          id: 'gemini-2.5-pro',
+          displayName: 'Gemini 2.5 Pro',
+          model: 'gemini-2.5-pro',
+        },
+        {
+          id: 'gemini-2.5-flash',
+          displayName: 'Gemini 2.5 Flash',
+          model: 'gemini-2.5-flash',
+        },
+      ],
+    });
+
+    await waitFor(() => expect(mockState.latestProps).toBeTruthy());
+
+    const latest = mockState.latestProps as {
+      selectedModel?: string;
+      models?: Array<{ id: string; label: string; description?: string }>;
+    };
+
+    expect(latest.selectedModel).toBe('gemini-2.5-pro');
+    expect(latest.models).toEqual([
+      {
+        id: 'gemini-2.5-pro',
+        label: 'Gemini 2.5 Pro',
+        description: 'gemini-2.5-pro',
+      },
+      {
+        id: 'gemini-2.5-flash',
+        label: 'Gemini 2.5 Flash',
+        description: 'gemini-2.5-flash',
+      },
+    ]);
+  });
+
+  it('does not fallback to claude model when gemini has no models yet', async () => {
+    renderAdapter({
+      selectedEngine: 'gemini',
+      selectedModelId: null,
+      models: [],
+    });
+
+    await waitFor(() => expect(mockState.latestProps).toBeTruthy());
+
+    const latest = mockState.latestProps as {
+      selectedModel?: string;
+    };
+
+    expect(latest.selectedModel).toBe('');
+  });
+
+  it('falls back to default claude model when claude has no models yet', async () => {
+    renderAdapter({
+      selectedEngine: 'claude',
+      selectedModelId: null,
+      models: [],
+    });
+
+    await waitFor(() => expect(mockState.latestProps).toBeTruthy());
+
+    const latest = mockState.latestProps as {
+      selectedModel?: string;
+    };
+
+    expect(latest.selectedModel).toBe('claude-sonnet-4-6');
   });
 });

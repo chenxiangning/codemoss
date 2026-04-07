@@ -51,7 +51,7 @@ function formatReview(item: Extract<ConversationItem, { kind: "review" }>) {
 function formatExplore(item: Extract<ConversationItem, { kind: "explore" }>) {
   const title = item.status === "exploring" ? "Exploring" : "Explored";
   const lines = item.entries.map((entry) => {
-    const prefix = entry.kind[0].toUpperCase() + entry.kind.slice(1);
+    const prefix = (entry.kind[0] ?? "").toUpperCase() + entry.kind.slice(1);
     return `- ${prefix} ${entry.label}${entry.detail ? ` (${entry.detail})` : ""}`;
   });
   return [title, ...lines].join("\n");

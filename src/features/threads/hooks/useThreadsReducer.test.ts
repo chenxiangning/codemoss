@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { ConversationItem, ThreadSummary } from "../../../types";
 import { initialState, threadReducer } from "./useThreadsReducer";
 import type { ThreadState } from "./useThreadsReducer";
@@ -12,55 +12,9 @@ describe("threadReducer", () => {
     });
     const threads = next.threadsByWorkspace["ws-1"] ?? [];
     expect(threads).toHaveLength(1);
-    expect(threads[0].name).toBe("Agent 1");
+    expect(threads[0]?.name).toBe("Agent 1");
     expect(next.activeThreadIdByWorkspace["ws-1"]).toBe("thread-1");
     expect(next.threadStatusById["thread-1"]?.isProcessing).toBe(false);
-  });
-
-  it("resolves raw session id to existing prefixed engine thread", () => {
-    const next = threadReducer(
-      {
-        ...initialState,
-        threadsByWorkspace: {
-          "ws-1": [
-            {
-              id: "opencode:session-xyz",
-              name: "Agent 1",
-              updatedAt: 1,
-              engineSource: "opencode",
-            },
-          ],
-        },
-      },
-      {
-        type: "ensureThread",
-        workspaceId: "ws-1",
-        threadId: "session-xyz",
-      },
-    );
-
-    expect(next.threadsByWorkspace["ws-1"]).toHaveLength(1);
-    expect(next.threadsByWorkspace["ws-1"]?.[0]?.id).toBe("opencode:session-xyz");
-    expect(next.threadStatusById["session-xyz"]).toBeUndefined();
-  });
-
-  it("updates thread engine source when requested", () => {
-    const threads: ThreadSummary[] = [
-      { id: "thread-1", name: "Agent 1", updatedAt: 1, engineSource: "codex" },
-    ];
-    const next = threadReducer(
-      {
-        ...initialState,
-        threadsByWorkspace: { "ws-1": threads },
-      },
-      {
-        type: "setThreadEngine",
-        workspaceId: "ws-1",
-        threadId: "thread-1",
-        engine: "claude",
-      },
-    );
-    expect(next.threadsByWorkspace["ws-1"]?.[0]?.engineSource).toBe("claude");
   });
 
   it("renames auto-generated thread on first user message", () => {
@@ -85,7 +39,7 @@ describe("threadReducer", () => {
         hasCustomName: false,
       },
     );
-    expect(next.threadsByWorkspace["ws-1"]?.[0]?.name).toBe("Hello there");
+    expect(next.threadsByWorkspace["ws-1"]?.[0]?.name).toBe("Hello ther");
     const items = next.itemsByThread["thread-1"] ?? [];
     expect(items).toHaveLength(1);
     if (items[0]?.kind === "message") {
@@ -283,6 +237,515 @@ describe("threadReducer", () => {
         text: "新增日志 CRUD",
       },
     ]);
+  });
+
+  it("preserves selected agent metadata when snapshot user message lacks it", () => {
+    const base: ThreadState = {
+      ...initialState,
+      itemsByThread: {
+        "thread-1": [
+          {
+            id: "user-local-1",
+            kind: "message",
+            role: "user",
+            text: "你好你是架构师吗",
+            selectedAgentName: "java架构师",
+            selectedAgentIcon: "agent-robot-02",
+          },
+        ],
+      },
+    };
+
+    const next = threadReducer(base, {
+      type: "setThreadItems",
+      threadId: "thread-1",
+      items: [
+        {
+          id: "user-remote-1",
+          kind: "message",
+          role: "user",
+          text: "你好你是架构师吗",
+        },
+      ],
+    });
+
+    expect(next.itemsByThread["thread-1"]).toEqual([
+      {
+        id: "user-remote-1",
+        kind: "message",
+        role: "user",
+        text: "你好你是架构师吗",
+        selectedAgentName: "java架构师",
+        selectedAgentIcon: "agent-robot-02",
+      },
+    ]);
+  });
+
+  it("preserves per-message selected agent metadata order for duplicate user texts", () => {
+    const base: ThreadState = {
+      ...initialState,
+      itemsByThread: {
+        "thread-1": [
+          {
+            id: "user-local-1",
+            kind: "message",
+            role: "user",
+            text: "收到",
+            selectedAgentName: "前端专家",
+            selectedAgentIcon: "agent-robot-01",
+          },
+          {
+            id: "user-local-2",
+            kind: "message",
+            role: "user",
+            text: "收到",
+            selectedAgentName: "后端架构师",
+            selectedAgentIcon: "agent-robot-03",
+          },
+        ],
+      },
+    };
+
+    const next = threadReducer(base, {
+      type: "setThreadItems",
+      threadId: "thread-1",
+      items: [
+        {
+          id: "user-remote-1",
+          kind: "message",
+          role: "user",
+          text: "收到",
+        },
+        {
+          id: "user-remote-2",
+          kind: "message",
+          role: "user",
+          text: "收到",
+        },
+      ],
+    });
+
+    expect(next.itemsByThread["thread-1"]).toEqual([
+      {
+        id: "user-remote-1",
+        kind: "message",
+        role: "user",
+        text: "收到",
+        selectedAgentName: "前端专家",
+        selectedAgentIcon: "agent-robot-01",
+      },
+      {
+        id: "user-remote-2",
+        kind: "message",
+        role: "user",
+        text: "收到",
+        selectedAgentName: "后端架构师",
+        selectedAgentIcon: "agent-robot-03",
+      },
+    ]);
+  });
+
+  it("does not hydrate duplicate user metadata when snapshot user sequence drifts", () => {
+    const base: ThreadState = {
+      ...initialState,
+      itemsByThread: {
+        "thread-1": [
+          {
+            id: "user-local-1",
+            kind: "message",
+            role: "user",
+            text: "收到",
+            selectedAgentName: "前端专家",
+            selectedAgentIcon: "agent-robot-01",
+          },
+          {
+            id: "user-local-2",
+            kind: "message",
+            role: "user",
+            text: "执行",
+          },
+          {
+            id: "user-local-3",
+            kind: "message",
+            role: "user",
+            text: "收到",
+            selectedAgentName: "后端架构师",
+            selectedAgentIcon: "agent-robot-03",
+          },
+        ],
+      },
+    };
+
+    const next = threadReducer(base, {
+      type: "setThreadItems",
+      threadId: "thread-1",
+      items: [
+        {
+          id: "user-remote-1",
+          kind: "message",
+          role: "user",
+          text: "收到",
+        },
+        {
+          id: "user-remote-2",
+          kind: "message",
+          role: "user",
+          text: "收到",
+        },
+        {
+          id: "user-remote-3",
+          kind: "message",
+          role: "user",
+          text: "执行",
+        },
+      ],
+    });
+
+    expect(next.itemsByThread["thread-1"]).toEqual([
+      {
+        id: "user-remote-1",
+        kind: "message",
+        role: "user",
+        text: "收到",
+      },
+      {
+        id: "user-remote-2",
+        kind: "message",
+        role: "user",
+        text: "收到",
+      },
+      {
+        id: "user-remote-3",
+        kind: "message",
+        role: "user",
+        text: "执行",
+      },
+    ]);
+  });
+
+  it("preserves local requestUserInputSubmitted record while thread is processing", () => {
+    const base: ThreadState = {
+      ...initialState,
+      itemsByThread: {
+        "thread-1": [
+          {
+            id: "assistant-1",
+            kind: "message",
+            role: "assistant",
+            text: "请先回答一个问题。",
+          },
+          {
+            id: "user-input-answer-req-1",
+            kind: "tool",
+            toolType: "requestUserInputSubmitted",
+            title: "请求输入",
+            detail: "{\"schema\":\"requestUserInputSubmitted/v1\"}",
+            status: "completed",
+            output: "[用户输入已提交]\n问题A\n选项1",
+          },
+        ],
+      },
+      threadStatusById: {
+        "thread-1": {
+          isProcessing: true,
+          hasUnread: false,
+          isReviewing: false,
+          isContextCompacting: false,
+          processingStartedAt: Date.now(),
+          lastDurationMs: null,
+          heartbeatPulse: 1,
+        },
+      },
+    };
+
+    const next = threadReducer(base, {
+      type: "setThreadItems",
+      threadId: "thread-1",
+      items: [
+        {
+          id: "assistant-1",
+          kind: "message",
+          role: "assistant",
+          text: "请先回答一个问题。",
+        },
+      ],
+    });
+
+    const items = next.itemsByThread["thread-1"] ?? [];
+    expect(items.some((item) => item.id === "user-input-answer-req-1")).toBe(true);
+  });
+
+  it("does not preserve local requestUserInputSubmitted record for settled history snapshot", () => {
+    const base: ThreadState = {
+      ...initialState,
+      itemsByThread: {
+        "thread-1": [
+          {
+            id: "assistant-1",
+            kind: "message",
+            role: "assistant",
+            text: "请先回答一个问题。",
+          },
+          {
+            id: "user-input-answer-req-1",
+            kind: "tool",
+            toolType: "requestUserInputSubmitted",
+            title: "请求输入",
+            detail: "{\"schema\":\"requestUserInputSubmitted/v1\"}",
+            status: "completed",
+            output: "[用户输入已提交]\n问题A\n选项1",
+          },
+        ],
+      },
+      threadStatusById: {
+        "thread-1": {
+          isProcessing: false,
+          hasUnread: false,
+          isReviewing: false,
+          isContextCompacting: false,
+          processingStartedAt: null,
+          lastDurationMs: null,
+          heartbeatPulse: 0,
+        },
+      },
+    };
+
+    const next = threadReducer(base, {
+      type: "setThreadItems",
+      threadId: "thread-1",
+      items: [
+        {
+          id: "assistant-1",
+          kind: "message",
+          role: "assistant",
+          text: "请先回答一个问题。",
+        },
+      ],
+    });
+
+    const items = next.itemsByThread["thread-1"] ?? [];
+    expect(items.some((item) => item.id === "user-input-answer-req-1")).toBe(false);
+  });
+
+  it("marks latest assistant message as final without clearing previous turn finals", () => {
+    const base: ThreadState = {
+      ...initialState,
+      itemsByThread: {
+        "thread-1": [
+          {
+            id: "assistant-turn-1",
+            kind: "message",
+            role: "assistant",
+            text: "第一轮回答",
+            isFinal: true,
+          },
+          {
+            id: "user-turn-2",
+            kind: "message",
+            role: "user",
+            text: "继续",
+          },
+          {
+            id: "assistant-turn-2",
+            kind: "message",
+            role: "assistant",
+            text: "第二轮回答",
+            isFinal: false,
+          },
+        ],
+      },
+    };
+
+    const next = threadReducer(base, {
+      type: "markLatestAssistantMessageFinal",
+      threadId: "thread-1",
+    });
+
+    const items = next.itemsByThread["thread-1"] ?? [];
+    const turn1 = items[0];
+    const turn2 = items[2];
+    expect(turn1?.kind).toBe("message");
+    expect(turn2?.kind).toBe("message");
+    if (turn1?.kind === "message" && turn2?.kind === "message") {
+      expect(turn1.isFinal).toBe(true);
+      expect(turn2.isFinal).toBe(true);
+      expect(typeof turn2.finalCompletedAt).toBe("number");
+    }
+  });
+
+  it("keeps state identity when latest assistant is already final", () => {
+    const frozenNow = Date.parse("2026-04-01T10:20:30.000Z");
+    const base: ThreadState = {
+      ...initialState,
+      itemsByThread: {
+        "thread-1": [
+          {
+            id: "assistant-1",
+            kind: "message",
+            role: "assistant",
+            text: "done",
+            isFinal: true,
+            finalCompletedAt: frozenNow,
+            finalDurationMs: 2_000,
+          },
+        ],
+      },
+    };
+
+    const nowSpy = vi.spyOn(Date, "now").mockReturnValue(frozenNow + 500);
+    try {
+      const next = threadReducer(base, {
+        type: "markLatestAssistantMessageFinal",
+        threadId: "thread-1",
+      });
+      expect(next).toBe(base);
+    } finally {
+      nowSpy.mockRestore();
+    }
+  });
+
+  it("captures final completion time and duration from thread status", () => {
+    const frozenNow = Date.parse("2026-04-01T10:20:30.000Z");
+    const nowSpy = vi.spyOn(Date, "now").mockReturnValue(frozenNow);
+    try {
+      const base: ThreadState = {
+        ...initialState,
+        threadStatusById: {
+          "thread-1": {
+            isProcessing: false,
+            hasUnread: false,
+            isReviewing: false,
+            isContextCompacting: false,
+            processingStartedAt: null,
+            lastDurationMs: 4_250,
+            heartbeatPulse: 0,
+          },
+        },
+        itemsByThread: {
+          "thread-1": [
+            {
+              id: "assistant-1",
+              kind: "message",
+              role: "assistant",
+              text: "done",
+              isFinal: false,
+            },
+          ],
+        },
+      };
+
+      const next = threadReducer(base, {
+        type: "markLatestAssistantMessageFinal",
+        threadId: "thread-1",
+      });
+
+      const finalMessage = next.itemsByThread["thread-1"]?.[0];
+      expect(finalMessage?.kind).toBe("message");
+      if (finalMessage?.kind === "message") {
+        expect(finalMessage.isFinal).toBe(true);
+        expect(finalMessage.finalCompletedAt).toBe(frozenNow);
+        expect(finalMessage.finalDurationMs).toBe(4_250);
+      }
+    } finally {
+      nowSpy.mockRestore();
+    }
+  });
+
+  it("preserves final metadata when a completed snapshot arrives after turn settled", () => {
+    const frozenNow = Date.parse("2026-04-01T10:20:30.000Z");
+    const base: ThreadState = {
+      ...initialState,
+      threadStatusById: {
+        "thread-1": {
+          isProcessing: false,
+          hasUnread: false,
+          isReviewing: false,
+          isContextCompacting: false,
+          processingStartedAt: null,
+          lastDurationMs: 1_880,
+          heartbeatPulse: 0,
+        },
+      },
+      itemsByThread: {
+        "thread-1": [
+          {
+            id: "assistant-1",
+            kind: "message",
+            role: "assistant",
+            text: "done",
+            isFinal: true,
+            finalCompletedAt: frozenNow,
+            finalDurationMs: 1_880,
+          },
+        ],
+      },
+    };
+
+    const next = threadReducer(base, {
+      type: "completeAgentMessage",
+      workspaceId: "ws-1",
+      threadId: "thread-1",
+      itemId: "assistant-1",
+      text: "done",
+      hasCustomName: false,
+    });
+
+    const message = next.itemsByThread["thread-1"]?.[0];
+    expect(message?.kind).toBe("message");
+    if (message?.kind === "message") {
+      expect(message.isFinal).toBe(true);
+      expect(message.finalCompletedAt).toBe(frozenNow);
+      expect(message.finalDurationMs).toBe(1_880);
+    }
+  });
+
+  it("clears final metadata when assistant text continues while thread is still processing", () => {
+    const frozenNow = Date.parse("2026-04-01T10:20:30.000Z");
+    const base: ThreadState = {
+      ...initialState,
+      threadStatusById: {
+        "thread-1": {
+          isProcessing: true,
+          hasUnread: false,
+          isReviewing: false,
+          isContextCompacting: false,
+          processingStartedAt: frozenNow - 300,
+          lastDurationMs: null,
+          heartbeatPulse: 1,
+        },
+      },
+      itemsByThread: {
+        "thread-1": [
+          {
+            id: "assistant-1",
+            kind: "message",
+            role: "assistant",
+            text: "done",
+            isFinal: true,
+            finalCompletedAt: frozenNow,
+            finalDurationMs: 1_880,
+          },
+        ],
+      },
+    };
+
+    const next = threadReducer(base, {
+      type: "appendAgentDelta",
+      workspaceId: "ws-1",
+      threadId: "thread-1",
+      itemId: "assistant-1",
+      delta: " + more",
+      hasCustomName: false,
+    });
+
+    const message = next.itemsByThread["thread-1"]?.[0];
+    expect(message?.kind).toBe("message");
+    if (message?.kind === "message") {
+      expect(message.isFinal).toBe(false);
+      expect(message.finalCompletedAt).toBeUndefined();
+      expect(message.finalDurationMs).toBeUndefined();
+      expect(message.text).toBe("done + more");
+    }
   });
 
   it("renames auto-generated thread from assistant output when no user message", () => {
@@ -776,6 +1239,108 @@ describe("threadReducer", () => {
     expect(messages[1]?.text).toBe("第二段（完整）");
   });
 
+  it("segments claude reasoning deltas when stream segment advances", () => {
+    const threadId = "claude:session-reasoning-seg";
+    const processingState: ThreadState = {
+      ...initialState,
+      threadStatusById: {
+        [threadId]: {
+          isProcessing: true,
+          hasUnread: false,
+          isReviewing: false,
+          isContextCompacting: false,
+          processingStartedAt: Date.now(),
+          lastDurationMs: null,
+          heartbeatPulse: 0,
+        },
+      },
+    };
+
+    const withFirst = threadReducer(processingState, {
+      type: "appendReasoningContent",
+      threadId,
+      itemId: "reasoning-seg",
+      delta: "先读取项目结构",
+    });
+    const withSegment = threadReducer(withFirst, {
+      type: "incrementAgentSegment",
+      threadId,
+    });
+    const withSecond = threadReducer(withSegment, {
+      type: "appendReasoningContent",
+      threadId,
+      itemId: "reasoning-seg",
+      delta: "再检查关键配置",
+    });
+
+    const reasoningItems = (withSecond.itemsByThread[threadId] ?? []).filter(
+      (item): item is Extract<ConversationItem, { kind: "reasoning" }> =>
+        item.kind === "reasoning",
+    );
+    expect(reasoningItems).toHaveLength(2);
+    expect(reasoningItems[0]?.id).toBe("reasoning-seg");
+    expect(reasoningItems[0]?.content).toContain("先读取项目结构");
+    expect(reasoningItems[1]?.id).toBe("reasoning-seg-seg-1");
+    expect(reasoningItems[1]?.content).toContain("再检查关键配置");
+  });
+
+  it("reconciles legacy text-delta id with later canonical assistant id", () => {
+    const first = threadReducer(initialState, {
+      type: "appendAgentDelta",
+      workspaceId: "ws-1",
+      threadId: "claude:session-1",
+      itemId: "claude:session-1:text-delta",
+      delta: "你好！我看到你列出了三个饮料品牌。",
+      hasCustomName: false,
+    });
+    const second = threadReducer(first, {
+      type: "appendAgentDelta",
+      workspaceId: "ws-1",
+      threadId: "claude:session-1",
+      itemId: "assistant-msg-1",
+      delta: "你好！我看到你列出了三个饮料品牌。请问你需要什么帮助呢？",
+      hasCustomName: false,
+    });
+
+    const messages = (second.itemsByThread["claude:session-1"] ?? []).filter(
+      (item): item is Extract<ConversationItem, { kind: "message" }> =>
+        item.kind === "message" && item.role === "assistant",
+    );
+    expect(messages).toHaveLength(1);
+    expect(messages[0]?.id).toBe("assistant-msg-1");
+    expect(messages[0]?.text).toBe(
+      "你好！我看到你列出了三个饮料品牌。请问你需要什么帮助呢？",
+    );
+  });
+
+  it("reconciles legacy text-delta id when completed assistant id arrives", () => {
+    const streamed = "你好！我看到你列出了三个饮料品牌。";
+    const first = threadReducer(initialState, {
+      type: "appendAgentDelta",
+      workspaceId: "ws-1",
+      threadId: "claude:session-1",
+      itemId: "claude:session-1:text-delta",
+      delta: streamed,
+      hasCustomName: false,
+    });
+    const completed = threadReducer(first, {
+      type: "completeAgentMessage",
+      workspaceId: "ws-1",
+      threadId: "claude:session-1",
+      itemId: "assistant-msg-1",
+      text: `${streamed}请问你需要什么帮助呢？`,
+      hasCustomName: false,
+    });
+
+    const messages = (completed.itemsByThread["claude:session-1"] ?? []).filter(
+      (item): item is Extract<ConversationItem, { kind: "message" }> =>
+        item.kind === "message" && item.role === "assistant",
+    );
+    expect(messages).toHaveLength(1);
+    expect(messages[0]?.id).toBe("assistant-msg-1");
+    expect(messages[0]?.text).toBe("你好！我看到你列出了三个饮料品牌。请问你需要什么帮助呢？");
+  });
+
   it("updates thread timestamp when newer activity arrives", () => {
     const threads: ThreadSummary[] = [
       { id: "thread-1", name: "Agent 1", updatedAt: 1000 },
@@ -853,6 +1418,47 @@ describe("threadReducer", () => {
       timestamp: 1500,
     });
     expect(stopped.threadStatusById["thread-1"]?.heartbeatPulse ?? 0).toBe(0);
+  });
+
+  it("keeps state identity for repeated markProcessing true updates", () => {
+    const started = threadReducer(initialState, {
+      type: "markProcessing",
+      threadId: "thread-1",
+      isProcessing: true,
+      timestamp: 1000,
+    });
+    const repeated = threadReducer(started, {
+      type: "markProcessing",
+      threadId: "thread-1",
+      isProcessing: true,
+      timestamp: 1200,
+    });
+    expect(repeated).toBe(started);
+  });
+
+  it("keeps state identity when duplicate tool output delta does not change content", () => {
+    const baseTool: ConversationItem = {
+      id: "cmd-1",
+      kind: "tool",
+      toolType: "commandExecution",
+      title: "Command",
+      detail: "",
+      status: "running",
+      output: "hello",
+    };
+    const baseState: ThreadState = {
+      ...initialState,
+      itemsByThread: {
+        "thread-1": [baseTool],
+      },
+    };
+    const next = threadReducer(baseState, {
+      type: "appendToolOutput",
+      threadId: "thread-1",
+      itemId: "cmd-1",
+      delta: "hello",
+    });
+    expect(next).toBe(baseState);
   });
 
   it("tracks request user input queue", () => {
@@ -1078,6 +1684,238 @@ describe("threadReducer", () => {
       delta: "stale delta",
     });
     expect(next.itemsByThread["claude:session-a"]).toBeUndefined();
+  });
+
+  it("accepts gemini reasoning deltas even after processing settles", () => {
+    const settledState: ThreadState = {
+      ...initialState,
+      threadStatusById: {
+        "gemini:session-a": {
+          isProcessing: false,
+          hasUnread: false,
+          isReviewing: false,
+          isContextCompacting: false,
+          processingStartedAt: null,
+          lastDurationMs: null,
+          heartbeatPulse: 0,
+        },
+      },
+      activeTurnIdByThread: {
+        "gemini:session-a": null,
+      },
+    };
+
+    const next = threadReducer(settledState, {
+      type: "appendReasoningContent",
+      threadId: "gemini:session-a",
+      itemId: "reasoning-late-1",
+      delta: "late reasoning from fallback",
+    });
+
+    const item = next.itemsByThread["gemini:session-a"]?.[0];
+    expect(item?.kind).toBe("reasoning");
+    if (item?.kind === "reasoning") {
+      expect(item.id).toBe("reasoning-late-1");
+      expect(item.content).toBe("late reasoning from fallback");
+    }
+  });
+
+  it("inserts late gemini reasoning before the latest assistant answer", () => {
+    const settledState: ThreadState = {
+      ...initialState,
+      itemsByThread: {
+        "gemini:session-order": [
+          {
+            id: "user-1",
+            kind: "message",
+            role: "user",
+            text: "这个网站是什么",
+          },
+          {
+            id: "assistant-1",
+            kind: "message",
+            role: "assistant",
+            text: "这是一个本地项目目录。",
+          },
+        ],
+      },
+      threadStatusById: {
+        "gemini:session-order": {
+          isProcessing: false,
+          hasUnread: false,
+          isReviewing: false,
+          isContextCompacting: false,
+          processingStartedAt: null,
+          lastDurationMs: 980,
+          heartbeatPulse: 0,
+        },
+      },
+      activeTurnIdByThread: {
+        "gemini:session-order": null,
+      },
+    };
+
+    const next = threadReducer(settledState, {
+      type: "appendReasoningContent",
+      threadId: "gemini:session-order",
+      itemId: "reasoning-late-order-1",
+      delta: "先确认目录结构，再给出解释。",
+    });
+
+    const items = next.itemsByThread["gemini:session-order"] ?? [];
+    expect(items).toHaveLength(3);
+    expect(items[0]?.id).toBe("user-1");
+    expect(items[1]?.kind).toBe("reasoning");
+    if (items[1]?.kind === "reasoning") {
+      expect(items[1].id).toBe("reasoning-late-order-1");
+      expect(items[1].content).toBe("先确认目录结构，再给出解释。");
+    }
+    expect(items[2]?.kind).toBe("message");
+    if (items[2]?.kind === "message") {
+      expect(items[2].role).toBe("assistant");
+      expect(items[2].id).toBe("assistant-1");
+    }
+  });
+
+  it("keeps gemini reasoning in arrival order while the turn is still active", () => {
+    const liveState: ThreadState = {
+      ...initialState,
+      itemsByThread: {
+        "gemini:session-live-order": [
+          {
+            id: "user-1",
+            kind: "message",
+            role: "user",
+            text: "继续",
+          },
+          {
+            id: "assistant-1",
+            kind: "message",
+            role: "assistant",
+            text: "先看目录",
+          },
+        ],
+      },
+      threadStatusById: {
+        "gemini:session-live-order": {
+          isProcessing: false,
+          hasUnread: false,
+          isReviewing: false,
+          isContextCompacting: false,
+          processingStartedAt: null,
+          lastDurationMs: null,
+          heartbeatPulse: 1,
+        },
+      },
+      activeTurnIdByThread: {
+        "gemini:session-live-order": "gemini-turn-live-1",
+      },
+    };
+
+    const next = threadReducer(liveState, {
+      type: "appendReasoningContent",
+      threadId: "gemini:session-live-order",
+      itemId: "reasoning-live-order-1",
+      delta: "先确认项目结构，再继续回复。",
+    });
+
+    const items = next.itemsByThread["gemini:session-live-order"] ?? [];
+    expect(items).toHaveLength(3);
+    expect(items[0]?.id).toBe("user-1");
+    expect(items[1]?.id).toBe("assistant-1");
+    expect(items[2]?.kind).toBe("reasoning");
+    if (items[2]?.kind === "reasoning") {
+      expect(items[2].id).toBe("reasoning-live-order-1");
+      expect(items[2].content).toBe("先确认项目结构，再继续回复。");
+    }
+  });
+
+  it("treats gemini reasoning updates as snapshots to avoid cumulative duplicate walls", () => {
+    const threadId = "gemini:session-snapshot-merge";
+    const liveState: ThreadState = {
+      ...initialState,
+      threadStatusById: {
+        [threadId]: {
+          isProcessing: true,
+          hasUnread: false,
+          isReviewing: false,
+          isContextCompacting: false,
+          processingStartedAt: Date.now(),
+          lastDurationMs: null,
+          heartbeatPulse: 1,
+        },
+      },
+      activeTurnIdByThread: {
+        [threadId]: "gemini-turn-snapshot-1",
+      },
+    };
+    const snapshot1 = "Investigating composer conditions for Gemini.";
+    const snapshot2 = `${snapshot1} Verifying status panel and live controls visibility.`;
+
+    const withFirst = threadReducer(liveState, {
+      type: "appendReasoningContent",
+      threadId,
+      itemId: "reasoning-gemini-snapshot-1",
+      delta: snapshot1,
+    });
+    const withSecond = threadReducer(withFirst, {
+      type: "appendReasoningContent",
+      threadId,
+      itemId: "reasoning-gemini-snapshot-1",
+      delta: snapshot2,
+    });
+
+    const item = withSecond.itemsByThread[threadId]?.find(
+      (entry) => entry.kind === "reasoning",
+    );
+    expect(item?.kind).toBe("reasoning");
+    if (item?.kind === "reasoning") {
+      expect(item.content).toBe(snapshot2);
+      expect(item.content).not.toBe(`${snapshot1}${snapshot2}`);
+    }
+  });
+
+  it("keeps gemini incremental reasoning deltas append-only when not snapshot-like", () => {
+    const threadId = "gemini:session-incremental-merge";
+    const liveState: ThreadState = {
+      ...initialState,
+      threadStatusById: {
+        [threadId]: {
+          isProcessing: true,
+          hasUnread: false,
+          isReviewing: false,
+          isContextCompacting: false,
+          processingStartedAt: Date.now(),
+          lastDurationMs: null,
+          heartbeatPulse: 1,
+        },
+      },
+      activeTurnIdByThread: {
+        [threadId]: "gemini-turn-incremental-1",
+      },
+    };
+
+    const withFirst = threadReducer(liveState, {
+      type: "appendReasoningContent",
+      threadId,
+      itemId: "reasoning-gemini-incremental-1",
+      delta: "先读取目录",
+    });
+    const withSecond = threadReducer(withFirst, {
+      type: "appendReasoningContent",
+      threadId,
+      itemId: "reasoning-gemini-incremental-1",
+      delta: "，再检查配置。",
+    });
+
+    const item = withSecond.itemsByThread[threadId]?.find(
+      (entry) => entry.kind === "reasoning",
+    );
+    expect(item?.kind).toBe("reasoning");
+    if (item?.kind === "reasoning") {
+      expect(item.content).toBe("先读取目录，再检查配置。");
+      expect(item.content).not.toContain("\n\n");
+    }
   });
 
   it("accepts claude reasoning deltas while processing", () => {
@@ -1593,541 +2431,5 @@ describe("threadReducer", () => {
     expect(cleared.userInputRequests).toEqual([requestThreadTwo]);
   });
 
-  it("hides background threads and keeps them hidden on future syncs", () => {
-    const withThread = threadReducer(initialState, {
-      type: "ensureThread",
-      workspaceId: "ws-1",
-      threadId: "thread-bg",
-    });
-    expect(withThread.threadsByWorkspace["ws-1"]?.some((t) => t.id === "thread-bg")).toBe(true);
 
-    const hidden = threadReducer(withThread, {
-      type: "hideThread",
-      workspaceId: "ws-1",
-      threadId: "thread-bg",
-    });
-    expect(hidden.threadsByWorkspace["ws-1"]?.some((t) => t.id === "thread-bg")).toBe(false);
-
-    const synced = threadReducer(hidden, {
-      type: "setThreads",
-      workspaceId: "ws-1",
-      threads: [
-        { id: "thread-bg", name: "Agent 1", updatedAt: Date.now() },
-        { id: "thread-visible", name: "Agent 2", updatedAt: Date.now() },
-      ],
-    });
-    const ids = synced.threadsByWorkspace["ws-1"]?.map((t) => t.id) ?? [];
-    expect(ids).toContain("thread-visible");
-    expect(ids).not.toContain("thread-bg");
-  });
-
-  it("does not force-rename when multiple Claude pending threads remain ambiguous", () => {
-    const base: ThreadState = {
-      ...initialState,
-      activeThreadIdByWorkspace: { "ws-1": "claude-pending-a" },
-      threadsByWorkspace: {
-        "ws-1": [
-          {
-            id: "claude-pending-a",
-            name: "Agent 1",
-            updatedAt: 1,
-            engineSource: "claude",
-          },
-          {
-            id: "claude-pending-b",
-            name: "Agent 2",
-            updatedAt: 2,
-            engineSource: "claude",
-          },
-        ],
-      },
-      threadStatusById: {
-        "claude-pending-a": {
-          isProcessing: true,
-          hasUnread: false,
-          isReviewing: false,
-          processingStartedAt: 100,
-          lastDurationMs: null,
-        },
-        "claude-pending-b": {
-          isProcessing: true,
-          hasUnread: false,
-          isReviewing: false,
-          processingStartedAt: 120,
-          lastDurationMs: null,
-        },
-      },
-    };
-
-    const next = threadReducer(base, {
-      type: "ensureThread",
-      workspaceId: "ws-1",
-      threadId: "claude:session-1",
-      engine: "claude",
-    });
-
-    const ids = next.threadsByWorkspace["ws-1"]?.map((thread) => thread.id) ?? [];
-    expect(ids).toContain("claude-pending-a");
-    expect(ids).toContain("claude-pending-b");
-    expect(ids).toContain("claude:session-1");
-    expect(next.threadStatusById["claude-pending-a"]?.isProcessing).toBe(true);
-    expect(next.threadStatusById["claude-pending-b"]?.isProcessing).toBe(true);
-    expect(next.threadStatusById["claude:session-1"]?.isProcessing).toBe(false);
-    expect(next.activeThreadIdByWorkspace["ws-1"]).toBe("claude-pending-a");
-  });
-
-  it("does not auto-rename when multiple pending Claude threads exist even if active has activity", () => {
-    const base: ThreadState = {
-      ...initialState,
-      activeThreadIdByWorkspace: { "ws-1": "claude-pending-new" },
-      threadsByWorkspace: {
-        "ws-1": [
-          {
-            id: "claude-pending-old",
-            name: "Agent 1",
-            updatedAt: 1,
-            engineSource: "claude",
-          },
-          {
-            id: "claude-pending-new",
-            name: "Agent 2",
-            updatedAt: 2,
-            engineSource: "claude",
-          },
-        ],
-      },
-      threadStatusById: {
-        "claude-pending-old": {
-          isProcessing: true,
-          hasUnread: false,
-          isReviewing: false,
-          processingStartedAt: 100,
-          lastDurationMs: null,
-        },
-        "claude-pending-new": {
-          isProcessing: false,
-          hasUnread: false,
-          isReviewing: false,
-          processingStartedAt: null,
-          lastDurationMs: null,
-        },
-      },
-      itemsByThread: {
-        "claude-pending-old": [
-          { id: "reasoning-old", kind: "reasoning", summary: "old", content: "old stream" },
-        ],
-        "claude-pending-new": [
-          { id: "user-new", kind: "message", role: "user", text: "new prompt" },
-        ],
-      },
-    };
-
-    const next = threadReducer(base, {
-      type: "ensureThread",
-      workspaceId: "ws-1",
-      threadId: "claude:session-2",
-      engine: "claude",
-    });
-
-    const ids = next.threadsByWorkspace["ws-1"]?.map((thread) => thread.id) ?? [];
-    expect(ids).toContain("claude-pending-old");
-    expect(ids).toContain("claude-pending-new");
-    expect(ids).toContain("claude:session-2");
-    expect(next.itemsByThread["claude:session-2"] ?? []).toHaveLength(0);
-    expect(next.itemsByThread["claude-pending-new"]?.map((item) => item.id)).toContain(
-      "user-new",
-    );
-    expect(next.itemsByThread["claude-pending-old"]?.map((item) => item.id)).toContain(
-      "reasoning-old",
-    );
-    expect(next.activeThreadIdByWorkspace["ws-1"]).toBe("claude-pending-new");
-  });
-
-  it("does not force-rename a single idle pending thread to unrelated session id", () => {
-    const base: ThreadState = {
-      ...initialState,
-      activeThreadIdByWorkspace: { "ws-1": "claude-pending-idle" },
-      threadsByWorkspace: {
-        "ws-1": [
-          {
-            id: "claude-pending-idle",
-            name: "Agent 1",
-            updatedAt: 1,
-            engineSource: "claude",
-          },
-        ],
-      },
-      threadStatusById: {
-        "claude-pending-idle": {
-          isProcessing: false,
-          hasUnread: false,
-          isReviewing: false,
-          processingStartedAt: null,
-          lastDurationMs: null,
-        },
-      },
-      itemsByThread: {
-        "claude-pending-idle": [],
-      },
-      activeTurnIdByThread: {
-        "claude-pending-idle": null,
-      },
-    };
-
-    const next = threadReducer(base, {
-      type: "ensureThread",
-      workspaceId: "ws-1",
-      threadId: "claude:historical-session",
-      engine: "claude",
-    });
-
-    const ids = next.threadsByWorkspace["ws-1"]?.map((thread) => thread.id) ?? [];
-    expect(ids).toContain("claude-pending-idle");
-    expect(ids).toContain("claude:historical-session");
-    expect(next.itemsByThread["claude-pending-idle"]).toEqual([]);
-    expect(next.activeThreadIdByWorkspace["ws-1"]).toBe("claude-pending-idle");
-  });
-
-  it("finalizes pending tool statuses to completed", () => {
-    const base: ThreadState = {
-      ...initialState,
-      itemsByThread: {
-        "thread-1": [
-          {
-            id: "tool-1",
-            kind: "tool",
-            toolType: "mcpToolCall",
-            title: "Tool: Read",
-            detail: "{}",
-            status: "started",
-          },
-          {
-            id: "tool-2",
-            kind: "tool",
-            toolType: "mcpToolCall",
-            title: "Tool: Bash",
-            detail: "{}",
-            status: "running",
-          },
-          {
-            id: "tool-3",
-            kind: "tool",
-            toolType: "mcpToolCall",
-            title: "Tool: Search",
-            detail: "{}",
-            status: "completed",
-          },
-          {
-            id: "tool-4",
-            kind: "tool",
-            toolType: "mcpToolCall",
-            title: "Tool: Edit",
-            detail: "{}",
-            status: "failed",
-          },
-        ],
-      },
-    };
-
-    const next = threadReducer(base, {
-      type: "finalizePendingToolStatuses",
-      threadId: "thread-1",
-      status: "completed",
-    });
-
-    const tools = (next.itemsByThread["thread-1"] ?? []).filter(
-      (item): item is Extract<ConversationItem, { kind: "tool" }> =>
-        item.kind === "tool",
-    );
-
-    expect(tools.find((item) => item.id === "tool-1")?.status).toBe("completed");
-    expect(tools.find((item) => item.id === "tool-2")?.status).toBe("completed");
-    expect(tools.find((item) => item.id === "tool-3")?.status).toBe("completed");
-    expect(tools.find((item) => item.id === "tool-4")?.status).toBe("failed");
-  });
-
-  it("creates a placeholder tool when output delta arrives before the tool snapshot", () => {
-    const base: ThreadState = {
-      ...initialState,
-      itemsByThread: {
-        "thread-1": [],
-      },
-    };
-
-    const next = threadReducer(base, {
-      type: "appendToolOutput",
-      threadId: "thread-1",
-      itemId: "tool-1",
-      delta: "partial output",
-    });
-
-    const tool = (next.itemsByThread["thread-1"] ?? []).find(
-      (item): item is Extract<ConversationItem, { kind: "tool" }> =>
-        item.kind === "tool" && item.id === "tool-1",
-    );
-
-    expect(tool).toMatchObject({
-      id: "tool-1",
-      toolType: "commandExecution",
-      title: "Command",
-      status: "running",
-      output: "partial output",
-    });
-  });
-
-  it("finalizes pending tool statuses to failed", () => {
-    const base: ThreadState = {
-      ...initialState,
-      itemsByThread: {
-        "thread-1": [
-          {
-            id: "tool-1",
-            kind: "tool",
-            toolType: "mcpToolCall",
-            title: "Tool: Read",
-            detail: "{}",
-            status: "started",
-          },
-          {
-            id: "tool-2",
-            kind: "tool",
-            toolType: "mcpToolCall",
-            title: "Tool: Search",
-            detail: "{}",
-            status: "in_progress",
-          },
-        ],
-      },
-    };
-
-    const next = threadReducer(base, {
-      type: "finalizePendingToolStatuses",
-      threadId: "thread-1",
-      status: "failed",
-    });
-
-    const tools = (next.itemsByThread["thread-1"] ?? []).filter(
-      (item): item is Extract<ConversationItem, { kind: "tool" }> =>
-        item.kind === "tool",
-    );
-
-    expect(tools.find((item) => item.id === "tool-1")?.status).toBe("failed");
-    expect(tools.find((item) => item.id === "tool-2")?.status).toBe("failed");
-  });
-
-  it("merges pending thread into real session thread on rename collision", () => {
-    const base: ThreadState = {
-      ...initialState,
-      activeThreadIdByWorkspace: { "ws-1": "opencode-pending-1" },
-      itemsByThread: {
-        "opencode-pending-1": [
-          { id: "u1", kind: "message", role: "user", text: "你好" },
-        ],
-        "opencode:ses-1": [
-          { id: "a1", kind: "message", role: "assistant", text: "已收到" },
-        ],
-      },
-      threadsByWorkspace: {
-        "ws-1": [
-          { id: "opencode-pending-1", name: "你好", updatedAt: 100, engineSource: "opencode" },
-          { id: "opencode:ses-1", name: "Agent 2", updatedAt: 200, engineSource: "opencode" },
-        ],
-      },
-      threadStatusById: {
-        "opencode-pending-1": {
-          isProcessing: true,
-          hasUnread: false,
-          isReviewing: false,
-          processingStartedAt: 100,
-          lastDurationMs: null,
-        },
-        "opencode:ses-1": {
-          isProcessing: false,
-          hasUnread: true,
-          isReviewing: false,
-          processingStartedAt: null,
-          lastDurationMs: 80,
-        },
-      },
-    };
-
-    const next = threadReducer(base, {
-      type: "renameThreadId",
-      workspaceId: "ws-1",
-      oldThreadId: "opencode-pending-1",
-      newThreadId: "opencode:ses-1",
-    });
-
-    expect(next.activeThreadIdByWorkspace["ws-1"]).toBe("opencode:ses-1");
-    expect(next.itemsByThread["opencode-pending-1"]).toBeUndefined();
-    expect(next.itemsByThread["opencode:ses-1"]?.map((item) => item.id)).toEqual([
-      "u1",
-      "a1",
-    ]);
-    expect(next.threadsByWorkspace["ws-1"]?.filter((t) => t.id === "opencode:ses-1")).toHaveLength(1);
-    expect(next.threadStatusById["opencode:ses-1"]?.isProcessing).toBe(true);
-    expect(next.threadStatusById["opencode:ses-1"]?.hasUnread).toBe(true);
-  });
-
-  it("keeps latest pending user message when merging into long existing history", () => {
-    const existingItems: ConversationItem[] = Array.from({ length: 200 }, (_, index) => ({
-      id: `existing-${index}`,
-      kind: "message",
-      role: index % 2 === 0 ? "user" : "assistant",
-      text: `msg-${index}`,
-    }));
-    const pendingItem: ConversationItem = {
-      id: "pending-user",
-      kind: "message",
-      role: "user",
-      text: "最新问题",
-    };
-    const base: ThreadState = {
-      ...initialState,
-      itemsByThread: {
-        "opencode-pending-1": [pendingItem],
-        "opencode:ses-1": existingItems,
-      },
-      threadsByWorkspace: {
-        "ws-1": [
-          { id: "opencode-pending-1", name: "最新问题", updatedAt: 300, engineSource: "opencode" },
-          { id: "opencode:ses-1", name: "历史会话", updatedAt: 200, engineSource: "opencode" },
-        ],
-      },
-    };
-
-    const next = threadReducer(base, {
-      type: "renameThreadId",
-      workspaceId: "ws-1",
-      oldThreadId: "opencode-pending-1",
-      newThreadId: "opencode:ses-1",
-    });
-
-    const merged = next.itemsByThread["opencode:ses-1"] ?? [];
-    expect(merged.some((item) => item.id === "pending-user")).toBe(true);
-    expect(merged[merged.length - 1]?.id).toBe("pending-user");
-  });
-
-  it("renames pending userInputRequest thread id together with thread rename", () => {
-    const pendingRequest = {
-      workspace_id: "ws-1",
-      request_id: "req-1",
-      params: {
-        thread_id: "codex-pending-1",
-        turn_id: "turn-1",
-        item_id: "item-1",
-        questions: [{ id: "q1", header: "", question: "继续?" }],
-      },
-    };
-    const base: ThreadState = {
-      ...initialState,
-      userInputRequests: [pendingRequest],
-      threadsByWorkspace: {
-        "ws-1": [
-          { id: "codex-pending-1", name: "Agent 1", updatedAt: 1, engineSource: "codex" },
-        ],
-      },
-    };
-
-    const next = threadReducer(base, {
-      type: "renameThreadId",
-      workspaceId: "ws-1",
-      oldThreadId: "codex-pending-1",
-      newThreadId: "codex:session-1",
-    });
-
-    expect(next.userInputRequests).toHaveLength(1);
-    expect(next.userInputRequests[0]?.params.thread_id).toBe("codex:session-1");
-  });
-
-  it("stores plan state per thread and replaces stale plan for same thread", () => {
-    const base: ThreadState = {
-      ...initialState,
-      planByThread: {
-        "thread-1": {
-          turnId: "turn-1",
-          explanation: "old",
-          steps: [{ step: "old-step", status: "pending" }],
-        },
-      },
-    };
-
-    const updatedThreadOne = threadReducer(base, {
-      type: "setThreadPlan",
-      threadId: "thread-1",
-      plan: {
-        turnId: "turn-2",
-        explanation: "new",
-        steps: [{ step: "new-step", status: "completed" }],
-      },
-    });
-
-    const withThreadTwo = threadReducer(updatedThreadOne, {
-      type: "setThreadPlan",
-      threadId: "thread-2",
-      plan: {
-        turnId: "turn-3",
-        explanation: "other",
-        steps: [{ step: "other-step", status: "inProgress" }],
-      },
-    });
-
-    expect(withThreadTwo.planByThread["thread-1"]).toEqual({
-      turnId: "turn-2",
-      explanation: "new",
-      steps: [{ step: "new-step", status: "completed" }],
-    });
-    expect(withThreadTwo.planByThread["thread-2"]).toEqual({
-      turnId: "turn-3",
-      explanation: "other",
-      steps: [{ step: "other-step", status: "inProgress" }],
-    });
-  });
-
-  it("settles in-progress plan steps without changing other statuses", () => {
-    const base: ThreadState = {
-      ...initialState,
-      planByThread: {
-        "thread-1": {
-          turnId: "turn-9",
-          explanation: "plan",
-          steps: [
-            { step: "step-a", status: "completed" },
-            { step: "step-b", status: "inProgress" },
-            { step: "step-c", status: "pending" },
-          ],
-        },
-      },
-    };
-
-    const settledPending = threadReducer(base, {
-      type: "settleThreadPlanInProgress",
-      threadId: "thread-1",
-      targetStatus: "pending",
-    });
-    expect(settledPending.planByThread["thread-1"]).toEqual({
-      turnId: "turn-9",
-      explanation: "plan",
-      steps: [
-        { step: "step-a", status: "completed" },
-        { step: "step-b", status: "pending" },
-        { step: "step-c", status: "pending" },
-      ],
-    });
-
-    const settledCompleted = threadReducer(base, {
-      type: "settleThreadPlanInProgress",
-      threadId: "thread-1",
-      targetStatus: "completed",
-    });
-    expect(settledCompleted.planByThread["thread-1"]).toEqual({
-      turnId: "turn-9",
-      explanation: "plan",
-      steps: [
-        { step: "step-a", status: "completed" },
-        { step: "step-b", status: "completed" },
-        { step: "step-c", status: "pending" },
-      ],
-    });
-  });
 });

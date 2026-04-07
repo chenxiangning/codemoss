@@ -1,7 +1,11 @@
 /** @vitest-environment jsdom */
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { GitLogEntry } from "../../../types";
+
+const mockMenuPopup = vi.fn<
+  (items: Array<{ text: string; action?: () => Promise<void> | void }>) => Promise<void>
+>();
 
 // Mock react-i18next
 vi.mock("react-i18next", () => ({
@@ -16,6 +20,13 @@ vi.mock("react-i18next", () => ({
         "git.unstaged": "Unstaged",
         "git.commitStagedChanges": "Commit staged changes",
         "git.commitAllChanges": "Commit all unstaged changes",
+        "git.generateCommitMessage": "Generate commit message",
+        "git.generateCommitMessageChinese": "Generate Chinese commit message",
+        "git.generateCommitMessageEnglish": "Generate English commit message",
+        "git.generateCommitMessageEngineCodex": "Use Codex engine",
+        "git.generateCommitMessageEngineClaude": "Use Claude engine",
+        "git.generateCommitMessageEngineGemini": "Use Gemini engine",
+        "git.generateCommitMessageEngineOpenCode": "Use OpenCode engine",
         "git.listFlat": "Flat",
         "git.listTree": "Tree",
         "git.listView": "List view",
@@ -32,6 +43,10 @@ vi.mock("react-i18next", () => ({
         "git.fileActions": "File actions",
         "git.stageFile": "Stage file",
         "git.stageChanges": "Stage changes",
+        "git.path": "Path:",
+        "git.change": "Switch",
+        "git.statusUnavailable": "Git status unavailable",
+        "git.noRepositoriesFound": "No repositories found.",
         "git.historyQuickAction": "Hub",
         "menu.maximize": "Maximize",
         "common.restore": "Restore",
@@ -54,8 +69,14 @@ import { GitDiffPanel } from "./GitDiffPanel";
 import { buildDiffTree } from "./GitDiffPanel";
 
 vi.mock("@tauri-apps/api/menu", () => ({
-  Menu: { new: vi.fn(async () => ({ popup: vi.fn() })) },
-  MenuItem: { new: vi.fn(async () => ({})) },
+  Menu: {
+    new: vi.fn(async ({ items }: { items: Array<{ text: string; action?: () => Promise<void> | void }> }) => ({
+      popup: vi.fn(async () => {
+        await mockMenuPopup(items);
+      }),
+    })),
+  },
+  MenuItem: { new: vi.fn(async (options: Record<string, unknown>) => options) },
 }));
 
 vi.mock("@tauri-apps/api/window", () => ({
@@ -99,6 +120,7 @@ const baseProps = {
 
 afterEach(() => {
   cleanup();
+  mockMenuPopup.mockReset();
 });
 
 describe("GitDiffPanel", () => {
@@ -140,6 +162,21 @@ describe("GitDiffPanel", () => {
     expect(srcNode?.folders.has("git")).toBe(true);
   });
 
+  it("builds a nested tree from Windows-style file paths", () => {
+    const tree = buildDiffTree(
+      [
+        { path: "src\\app\\main.tsx", status: "M", additions: 1, deletions: 0 },
+        { path: "README.md", status: "M", additions: 1, deletions: 1 },
+      ],
+      "unstaged",
+    );
+
+    expect(tree.folders.has("src")).toBe(true);
+    const srcNode = tree.folders.get("src");
+    expect(srcNode?.folders.has("app")).toBe(true);
+    expect(tree.files.map((entry) => entry.path)).toEqual(["README.md"]);
+  });
+
   it("supports tree keyboard navigation and Enter-to-open", () => {
     const onSelectFile = vi.fn();
     render(
@@ -163,6 +200,48 @@ describe("GitDiffPanel", () => {
     expect(document.activeElement).toBe(secondRow);
     fireEvent.keyDown(secondRow as HTMLElement, { key: "Enter" });
     expect(onSelectFile).toHaveBeenCalledWith("b.ts");
+  });
+
+  it("opens engine menu then language menu before generating commit message", async () => {
+    mockMenuPopup
+      .mockImplementationOnce(async (items) => {
+        const codexItem = items.find((item) => item.text === "Use Codex engine");
+        await codexItem?.action?.();
+      })
+      .mockImplementationOnce(async (items) => {
+        const englishItem = items.find((item) => item.text === "Generate English commit message");
+        await englishItem?.action?.();
+      });
+    const onGenerateCommitMessage = vi.fn();
+
+    render(
+      <GitDiffPanel
+        {...baseProps}
+        onGenerateCommitMessage={onGenerateCommitMessage}
+        unstagedFiles={[{ path: "file.txt", status: "M", additions: 1, deletions: 0 }]}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Toggle commit section" }));
+    fireEvent.click(screen.getByRole("button", { name: "Generate commit message" }));
+
+    await waitFor(() => {
+      expect(onGenerateCommitMessage).toHaveBeenCalledWith("en", "codex");
+    });
+  });
+
+  it("shows spinning engine icon while generating commit message", () => {
+    render(
+      <GitDiffPanel
+        {...baseProps}
+        commitMessageLoading
+        onGenerateCommitMessage={vi.fn()}
+        unstagedFiles={[{ path: "file.txt", status: "M", additions: 1, deletions: 0 }]}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Toggle commit section" }));
+    expect(document.querySelector(".commit-message-engine-icon--spinning")).toBeTruthy();
   });
 
   it("applies unified file-tree semantic classes", () => {
@@ -251,6 +330,9 @@ describe("GitDiffPanel", () => {
     );
 
     const flatButton = screen.getAllByRole("button", { name: "Flat" })[0];
+    if (!flatButton) {
+      throw new Error("Flat button not found");
+    }
     flatButton.focus();
     fireEvent.keyDown(window, { key: "V", altKey: true, shiftKey: true });
     expect(onGitDiffListViewChange).toHaveBeenCalledWith("tree");
@@ -273,6 +355,9 @@ describe("GitDiffPanel", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Toggle commit section" }));
     const textarea = screen.getAllByPlaceholderText("Commit message...")[0];
+    if (!textarea) {
+      throw new Error("Commit textarea not found");
+    }
     textarea.focus();
     fireEvent.keyDown(textarea, { key: "V", altKey: true, shiftKey: true });
     expect(onGitDiffListViewChange).not.toHaveBeenCalled();
@@ -361,5 +446,130 @@ describe("GitDiffPanel", () => {
     const restoreButton = screen.getByRole("button", { name: "Restore" });
     fireEvent.click(restoreButton);
     expect(modal?.classList.contains("is-maximized")).toBe(false);
+  });
+
+  it("keeps root summary visible and in first content row for non-git workspace path", () => {
+    render(
+      <GitDiffPanel
+        {...baseProps}
+        workspacePath="/tmp/non-git-workspace"
+        gitRoot={null}
+        onScanGitRoots={vi.fn()}
+      />,
+    );
+
+    const rootPath = screen.getByText("/tmp/non-git-workspace");
+    expect(rootPath).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Switch" })).toBeTruthy();
+
+    const rootRow = document.querySelector(".git-root-current");
+    const statusRow = document.querySelector(".diff-status");
+    expect(rootRow).toBeTruthy();
+    expect(statusRow).toBeTruthy();
+    if (!rootRow || !statusRow) {
+      throw new Error("Expected root/status rows to exist");
+    }
+    expect(Boolean(rootRow.compareDocumentPosition(statusRow) & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(true);
+  });
+
+  it("toggles git root panel by clicking change icon button", () => {
+    render(
+      <GitDiffPanel
+        {...baseProps}
+        workspacePath="/tmp/non-git-workspace"
+        error="not a git repository"
+        gitRoot={null}
+        onScanGitRoots={vi.fn()}
+      />,
+    );
+
+    const toggleButton = screen.getByRole("button", { name: "Switch" });
+    expect(screen.getByText("git.chooseRepo")).toBeTruthy();
+
+    fireEvent.click(toggleButton);
+    expect(screen.queryByText("git.chooseRepo")).toBeNull();
+
+    fireEvent.click(toggleButton);
+    expect(screen.getByText("git.chooseRepo")).toBeTruthy();
+  });
+
+  it("renders compact red alert on root row and hides raw git error", () => {
+    render(
+      <GitDiffPanel
+        {...baseProps}
+        workspacePath="/tmp/non-git-workspace"
+        error="could not find repository at '/tmp/non-git-workspace'; class=Repository (6); code=NotFound (-3)"
+        gitRoot={null}
+        onScanGitRoots={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("No repositories found.")).toBeTruthy();
+    expect(screen.queryByText(/could not find repository/i)).toBeNull();
+    expect(screen.queryByText("Git status unavailable")).toBeNull();
+    expect(screen.queryByText("main")).toBeNull();
+  });
+
+  it("auto-collapses git root panel after selecting a repository", () => {
+    const onSelectGitRoot = vi.fn();
+    render(
+      <GitDiffPanel
+        {...baseProps}
+        workspacePath="/tmp/non-git-workspace"
+        gitRoot={null}
+        gitRootCandidates={["/tmp/non-git-workspace/repo-a"]}
+        onScanGitRoots={vi.fn()}
+        onSelectGitRoot={onSelectGitRoot}
+      />,
+    );
+
+    const repoOption = screen.getByRole("button", { name: "/tmp/non-git-workspace/repo-a" });
+    fireEvent.click(repoOption);
+    expect(onSelectGitRoot).toHaveBeenCalledWith("/tmp/non-git-workspace/repo-a");
+    expect(screen.queryByText("git.chooseRepo")).toBeNull();
+  });
+
+  it("auto-collapses git root panel when scan finishes with no repositories", () => {
+    const { rerender } = render(
+      <GitDiffPanel
+        {...baseProps}
+        workspacePath="/tmp/non-git-workspace"
+        gitRoot={null}
+        gitRootScanLoading={true}
+        onScanGitRoots={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("git.chooseRepo")).toBeTruthy();
+
+    rerender(
+      <GitDiffPanel
+        {...baseProps}
+        workspacePath="/tmp/non-git-workspace"
+        gitRoot={null}
+        gitRootScanLoading={false}
+        gitRootScanHasScanned={true}
+        gitRootCandidates={[]}
+        gitRootScanError={null}
+        onScanGitRoots={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByText("git.chooseRepo")).toBeNull();
+  });
+
+  it("hides pick-folder action in root panel", () => {
+    render(
+      <GitDiffPanel
+        {...baseProps}
+        workspacePath="/tmp/non-git-workspace"
+        gitRoot={null}
+        gitRootScanLoading={true}
+        onScanGitRoots={vi.fn()}
+        onPickGitRoot={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByText("git.pickFolder")).toBeNull();
   });
 });

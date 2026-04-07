@@ -75,9 +75,9 @@ export function computeDiff(oldStr: string, newStr: string): DiffResult {
   for (let oi = 1; oi <= oldLength; oi++) {
     for (let ni = 1; ni <= newLength; ni++) {
       if (oldLines[oi - 1] === newLines[ni - 1]) {
-        lcs[oi][ni] = lcs[oi - 1][ni - 1] + 1;
+        lcs[oi]![ni] = (lcs[oi - 1]?.[ni - 1] ?? 0) + 1;
       } else {
-        lcs[oi][ni] = Math.max(lcs[oi - 1][ni], lcs[oi][ni - 1]);
+        lcs[oi]![ni] = Math.max(lcs[oi - 1]?.[ni] ?? 0, lcs[oi]?.[ni - 1] ?? 0);
       }
     }
   }
@@ -91,18 +91,18 @@ export function computeDiff(oldStr: string, newStr: string): DiffResult {
   // Backtrack using push + reverse (O(n) total instead of O(n^2) from unshift)
   while (oi > 0 || ni > 0) {
     if (oi > 0 && ni > 0 && oldLines[oi - 1] === newLines[ni - 1]) {
-      lines.push({ type: 'unchanged', content: oldLines[oi - 1] });
+      lines.push({ type: 'unchanged', content: oldLines[oi - 1] ?? '' });
       oi--;
       ni--;
       continue;
     }
-    if (ni > 0 && (oi === 0 || lcs[oi][ni - 1] >= lcs[oi - 1][ni])) {
+    if (ni > 0 && (oi === 0 || (lcs[oi]?.[ni - 1] ?? 0) >= (lcs[oi - 1]?.[ni] ?? 0))) {
       additions++;
-      lines.push({ type: 'added', content: newLines[ni - 1] });
+      lines.push({ type: 'added', content: newLines[ni - 1] ?? '' });
       ni--;
     } else {
       deletions++;
-      lines.push({ type: 'deleted', content: oldLines[oi - 1] });
+      lines.push({ type: 'deleted', content: oldLines[oi - 1] ?? '' });
       oi--;
     }
   }

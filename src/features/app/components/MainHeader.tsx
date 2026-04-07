@@ -3,9 +3,11 @@ import { useTranslation } from "react-i18next";
 import Check from "lucide-react/dist/esm/icons/check";
 import Copy from "lucide-react/dist/esm/icons/copy";
 import Folder from "lucide-react/dist/esm/icons/folder";
+import GitBranch from "lucide-react/dist/esm/icons/git-branch";
+import Search from "lucide-react/dist/esm/icons/search";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import type { BranchInfo, OpenAppTarget, WorkspaceInfo } from "../../../types";
-import type { ReactNode } from "react";
+import type { FocusEvent, ReactNode } from "react";
 import { OpenAppMenu } from "./OpenAppMenu";
 import { LaunchScriptButton } from "./LaunchScriptButton";
 import { LaunchScriptEntryButton } from "./LaunchScriptEntryButton";
@@ -32,6 +34,7 @@ type MainHeaderProps = {
   branches: BranchInfo[];
   onCheckoutBranch: (name: string) => Promise<void> | void;
   onCreateBranch: (name: string) => Promise<void> | void;
+  sessionTabsNode?: ReactNode;
   canCopyThread?: boolean;
   onCopyThread?: () => void | Promise<void>;
   onLockPanel?: () => void;
@@ -85,6 +88,7 @@ export function MainHeader({
   branches,
   onCheckoutBranch,
   onCreateBranch,
+  sessionTabsNode,
   canCopyThread: _canCopyThread = false,
   onCopyThread: _onCopyThread,
   onLockPanel: _onLockPanel,
@@ -112,11 +116,13 @@ export function MainHeader({
   const [error, setError] = useState<string | null>(null);
   const [projectMenuOpen, setProjectMenuOpen] = useState(false);
   const [projectQuery, setProjectQuery] = useState("");
+  const [projectRevealActive, setProjectRevealActive] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const infoRef = useRef<HTMLDivElement | null>(null);
   const projectMenuRef = useRef<HTMLDivElement | null>(null);
   const renameInputRef = useRef<HTMLInputElement | null>(null);
   const renameConfirmRef = useRef<HTMLButtonElement | null>(null);
+  const projectRevealHideTimerRef = useRef<number | null>(null);
   const renameOnCancel = worktreeRename?.onCancel;
 
   // 判断是否显示项目选择菜单
@@ -218,6 +224,34 @@ export function MainHeader({
       setProjectQuery("");
     }
   };
+  const clearProjectRevealHideTimer = () => {
+    if (projectRevealHideTimerRef.current !== null) {
+      window.clearTimeout(projectRevealHideTimerRef.current);
+      projectRevealHideTimerRef.current = null;
+    }
+  };
+  const showProjectDetails = () => {
+    clearProjectRevealHideTimer();
+    setProjectRevealActive(true);
+  };
+  const scheduleHideProjectDetails = () => {
+    clearProjectRevealHideTimer();
+    projectRevealHideTimerRef.current = window.setTimeout(() => {
+      setProjectRevealActive(false);
+      projectRevealHideTimerRef.current = null;
+    }, 220);
+  };
+  const handleProjectScopeBlur = (
+    event: FocusEvent<HTMLDivElement>,
+  ) => {
+    const nextTarget = event.relatedTarget as Node | null;
+    if (nextTarget && event.currentTarget.contains(nextTarget)) {
+      return;
+    }
+    scheduleHideProjectDetails();
+  };
+  const isProjectDetailVisible =
+    !showProjectMenu || projectRevealActive || projectMenuOpen || menuOpen || infoOpen;
 
   useEffect(() => {
     if (!menuOpen && !infoOpen && !projectMenuOpen) {
@@ -249,12 +283,41 @@ export function MainHeader({
     }
   }, [infoOpen, renameOnCancel]);
 
+  useEffect(() => () => {
+    clearProjectRevealHideTimer();
+  }, []);
+
   return (
-    <header className="main-header" data-tauri-drag-region>
+    <header
+      className={`main-header${sessionTabsNode ? " has-session-tabs" : ""}`}
+      data-tauri-drag-region
+    >
       <div className="workspace-header">
-        <div className="workspace-title-line">
+        <div
+          className={`workspace-title-line${
+            showProjectMenu ? " has-project-menu" : ""
+          }${isProjectDetailVisible ? " is-project-detail-visible" : ""}`}
+          onFocusCapture={() => {
+            if (showProjectMenu) {
+              showProjectDetails();
+            }
+          }}
+          onBlurCapture={(event) => {
+            if (!showProjectMenu) {
+              return;
+            }
+            handleProjectScopeBlur(event);
+          }}
+        >
           {showProjectMenu ? (
-            <div className="workspace-project-menu" ref={projectMenuRef}>
+            <div
+              className="workspace-project-menu"
+              ref={projectMenuRef}
+              onMouseEnter={showProjectDetails}
+              onMouseLeave={scheduleHideProjectDetails}
+              onFocusCapture={showProjectDetails}
+              onBlurCapture={handleProjectScopeBlur}
+            >
               <button
                 type="button"
                 className="workspace-project-button"
@@ -282,41 +345,51 @@ export function MainHeader({
                   role="menu"
                   data-tauri-drag-region="false"
                 >
-                  <div className="project-search">
+                  <label className="workspace-project-search">
+                    <span className="workspace-project-search-icon" aria-hidden>
+                      <Search size={14} />
+                    </span>
                     <input
                       value={projectQuery}
                       onChange={(event) => setProjectQuery(event.target.value)}
                       placeholder={t("workspace.searchProjects")}
-                      className="branch-input"
+                      className="workspace-project-search-input"
                       autoFocus
                       data-tauri-drag-region="false"
                       aria-label={t("workspace.searchProjects")}
                     />
-                  </div>
-                  <div className="project-list" role="none">
+                  </label>
+                  <div className="workspace-project-list" role="none">
                     {filteredGroups.map((group) => (
-                      <div key={group.id ?? "ungrouped"}>
+                      <div key={group.id ?? "ungrouped"} className="workspace-project-group">
                         {group.name && (
-                          <div className="project-group-label">{group.name}</div>
+                          <div className="workspace-project-group-label">{group.name}</div>
                         )}
                         {group.workspaces.map((ws) => (
                           <button
                             key={ws.id}
                             type="button"
-                            className={`project-item${
+                            className={`workspace-project-item${
+                              ws.kind === "worktree" ? " is-worktree" : ""
+                            }${
                               ws.id === activeWorkspaceId ? " is-active" : ""
                             }`}
                             onClick={() => handleSelectProject(ws.id)}
                             role="menuitem"
                             data-tauri-drag-region="false"
                           >
-                            {ws.name}
+                            <span className="workspace-project-item-icon" aria-hidden>
+                              {ws.kind === "worktree" ? <GitBranch size={14} /> : <Folder size={14} />}
+                            </span>
+                            <span className="workspace-project-item-label">
+                              {ws.kind === "worktree" ? (ws.worktree?.branch ?? ws.name) : ws.name}
+                            </span>
                           </button>
                         ))}
                       </div>
                     ))}
                     {filteredGroups.length === 0 && (
-                      <div className="project-empty">
+                      <div className="workspace-project-empty">
                         {t("workspace.noProjectsFound")}
                       </div>
                     )}
@@ -329,11 +402,18 @@ export function MainHeader({
               {parentName ? parentName : workspace.name}
             </span>
           )}
-          <span className="workspace-separator" aria-hidden>
-            ›
-          </span>
+          {!showProjectMenu ? (
+            <span className="workspace-separator" aria-hidden>
+              ›
+            </span>
+          ) : null}
           {disableBranchMenu ? (
-            <div className="workspace-branch-static-row" ref={infoRef}>
+            <div
+              className="workspace-branch-static-row"
+              ref={infoRef}
+              onFocusCapture={showProjectDetails}
+              onBlurCapture={handleProjectScopeBlur}
+            >
               <button
                 type="button"
                 className="workspace-branch-static-button"
@@ -475,7 +555,12 @@ export function MainHeader({
               )}
             </div>
           ) : (
-            <div className="workspace-branch-menu" ref={menuRef}>
+            <div
+              className="workspace-branch-menu"
+              ref={menuRef}
+              onFocusCapture={showProjectDetails}
+              onBlurCapture={handleProjectScopeBlur}
+            >
               <button
                 type="button"
                 className="workspace-branch-button"
@@ -621,6 +706,9 @@ export function MainHeader({
           )}
         </div>
       </div>
+      {sessionTabsNode ? (
+        <div className="main-header-session-tabs-slot">{sessionTabsNode}</div>
+      ) : null}
       <div className="main-header-actions">
         {onRunLaunchScript &&
           onOpenLaunchScriptEditor &&
@@ -680,6 +768,7 @@ export function MainHeader({
           selectedOpenAppId={selectedOpenAppId}
           onSelectOpenAppId={onSelectOpenAppId}
           iconById={openAppIconById}
+          iconOnly
         />
         {extraActionsNode}
       </div>

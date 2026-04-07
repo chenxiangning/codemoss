@@ -2,6 +2,10 @@
 import React, { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  DETACHED_FILE_TREE_DRAG_BRIDGE_EVENT,
+  DETACHED_FILE_TREE_DRAG_SNAPSHOT_STORAGE_KEY,
+} from "../../../../files/detachedFileTreeDragBridge";
 import { usePasteAndDrop } from "./usePasteAndDrop";
 
 let windowDropHandler:
@@ -13,6 +17,9 @@ let windowDropHandler:
       };
     }) => void)
   | null = null;
+let crossWindowDragBridgeHandler:
+  | ((event: { payload: { type: "start"; paths: string[] } }) => void)
+  | null = null;
 
 vi.mock("../../../../../services/dragDrop.js", () => ({
   subscribeWindowDragDrop: (handler: typeof windowDropHandler) => {
@@ -21,6 +28,24 @@ vi.mock("../../../../../services/dragDrop.js", () => ({
       windowDropHandler = null;
     };
   },
+}));
+
+vi.mock("@tauri-apps/api/window", () => ({
+  getCurrentWindow: () => ({
+    listen: vi.fn(
+      async (
+        eventName: string,
+        handler: typeof crossWindowDragBridgeHandler,
+      ) => {
+        if (eventName === DETACHED_FILE_TREE_DRAG_BRIDGE_EVENT) {
+          crossWindowDragBridgeHandler = handler;
+        }
+        return () => {
+          crossWindowDragBridgeHandler = null;
+        };
+      },
+    ),
+  }),
 }));
 
 type HookResult = ReturnType<typeof usePasteAndDrop>;
@@ -82,6 +107,7 @@ function createHarness(disabled = false) {
     renderFileTags,
     onInput,
     setHasContent,
+    setInternalAttachments,
     unmount() {
       act(() => root.unmount());
       container.remove();
@@ -95,6 +121,10 @@ describe("usePasteAndDrop path insertion", () => {
     delete window.__fileTreeDragPaths;
     delete window.__fileTreeDragStamp;
     delete window.__fileTreeDragActive;
+    delete window.__fileTreeDragOverChat;
+    delete window.__fileTreeDragDropped;
+    window.localStorage.removeItem(DETACHED_FILE_TREE_DRAG_SNAPSHOT_STORAGE_KEY);
+    crossWindowDragBridgeHandler = null;
   });
 
   it("inserts multi-path payload from custom drag data once", () => {
@@ -146,6 +176,67 @@ describe("usePasteAndDrop path insertion", () => {
     expect(harness.editable.textContent).toContain("@/tmp/from-tree.ts");
     expect(window.__fileTreeDragPaths).toBeUndefined();
     expect(window.__fileTreeDragStamp).toBeUndefined();
+    harness.unmount();
+  });
+
+  it("consumes detached window bridge paths forwarded into the main window", () => {
+    const harness = createHarness();
+
+    act(() => {
+      crossWindowDragBridgeHandler?.({
+        payload: {
+          type: "start",
+          paths: ["/tmp/from-detached-window.ts"],
+        },
+      });
+    });
+
+    const dropEvent = {
+      preventDefault: vi.fn(),
+      stopPropagation: vi.fn(),
+      dataTransfer: {
+        files: [] as File[],
+        getData: () => "",
+      },
+    } as unknown as React.DragEvent;
+
+    act(() => {
+      harness.result.handleDrop(dropEvent);
+    });
+
+    expect(harness.editable.textContent).toContain("@/tmp/from-detached-window.ts");
+    expect(window.__fileTreeDragPaths).toBeUndefined();
+    harness.unmount();
+  });
+
+  it("accepts detached bridge drop with zero coordinates when target is inside editable", () => {
+    const harness = createHarness();
+
+    act(() => {
+      crossWindowDragBridgeHandler?.({
+        payload: {
+          type: "start",
+          paths: ["/tmp/from-detached-zero-point.ts"],
+        },
+      });
+    });
+
+    const dragOverEvent = new Event("dragover", { bubbles: true, cancelable: true });
+    Object.defineProperty(dragOverEvent, "clientX", { value: 0 });
+    Object.defineProperty(dragOverEvent, "clientY", { value: 0 });
+    act(() => {
+      harness.editable.dispatchEvent(dragOverEvent);
+    });
+
+    const dropEvent = new Event("drop", { bubbles: true, cancelable: true });
+    Object.defineProperty(dropEvent, "clientX", { value: 0 });
+    Object.defineProperty(dropEvent, "clientY", { value: 0 });
+    act(() => {
+      harness.editable.dispatchEvent(dropEvent);
+    });
+
+    expect(harness.editable.textContent).toContain("@/tmp/from-detached-zero-point.ts");
+    expect(window.__fileTreeDragPaths).toBeUndefined();
     harness.unmount();
   });
 
@@ -278,6 +369,60 @@ describe("usePasteAndDrop path insertion", () => {
     vi.useRealTimers();
   });
 
+  it("consumes detached bridge paths when window drop has no paths", () => {
+    const harness = createHarness();
+
+    act(() => {
+      crossWindowDragBridgeHandler?.({
+        payload: {
+          type: "start",
+          paths: ["/tmp/from-window-drop-empty.ts"],
+        },
+      });
+    });
+
+    act(() => {
+      windowDropHandler?.({
+        payload: {
+          type: "drop",
+          position: { x: 10, y: 10 },
+          paths: [],
+        },
+      });
+    });
+
+    expect(harness.editable.textContent).toContain("@/tmp/from-window-drop-empty.ts");
+    expect(window.__fileTreeDragPaths).toBeUndefined();
+    harness.unmount();
+  });
+
+  it("falls back to detached snapshot when bridge start event is missed", () => {
+    const harness = createHarness();
+    window.localStorage.setItem(
+      DETACHED_FILE_TREE_DRAG_SNAPSHOT_STORAGE_KEY,
+      JSON.stringify({
+        paths: ["/tmp/from-detached-snapshot.ts"],
+        stamp: Date.now(),
+      }),
+    );
+
+    const dropEvent = {
+      preventDefault: vi.fn(),
+      stopPropagation: vi.fn(),
+      dataTransfer: {
+        files: [] as File[],
+        getData: () => "",
+      },
+    } as unknown as React.DragEvent;
+
+    act(() => {
+      harness.result.handleDrop(dropEvent);
+    });
+
+    expect(harness.editable.textContent).toContain("@/tmp/from-detached-snapshot.ts");
+    harness.unmount();
+  });
+
   it("ignores window drop outside editable bounds", () => {
     const harness = createHarness();
     act(() => {
@@ -307,6 +452,205 @@ describe("usePasteAndDrop path insertion", () => {
       });
     });
     expect(harness.result.isDragOver).toBe(false);
+    harness.unmount();
+  });
+
+  it("normalizes window drag-drop position for high DPI coordinates", () => {
+    const harness = createHarness();
+    const originalDpr = window.devicePixelRatio;
+    Object.defineProperty(window, "devicePixelRatio", {
+      value: 2,
+      configurable: true,
+    });
+
+    const dragOverEvent = {
+      clientX: 100,
+      clientY: 100,
+      preventDefault: vi.fn(),
+      stopPropagation: vi.fn(),
+      dataTransfer: {
+        types: ["text/plain"],
+        getData: () => "",
+        dropEffect: "none",
+      },
+    } as unknown as React.DragEvent;
+
+    act(() => {
+      harness.result.handleDragOver(dragOverEvent);
+    });
+
+    act(() => {
+      windowDropHandler?.({
+        payload: {
+          type: "drop",
+          // Simulate physical-pixel coordinates from Windows/Tauri on scale=2
+          position: { x: 200, y: 200 },
+          paths: ["/tmp/inside.ts"],
+        },
+      });
+    });
+
+    expect(harness.editable.textContent).toContain("@/tmp/inside.ts");
+
+    Object.defineProperty(window, "devicePixelRatio", {
+      value: originalDpr,
+      configurable: true,
+    });
+    harness.unmount();
+  });
+
+  it("accepts high DPI window drop without prior dragover when scaled point is inside", () => {
+    const harness = createHarness();
+    const originalDpr = window.devicePixelRatio;
+    Object.defineProperty(window, "devicePixelRatio", {
+      value: 2,
+      configurable: true,
+    });
+
+    act(() => {
+      windowDropHandler?.({
+        payload: {
+          type: "drop",
+          // Raw point is outside (x=400 > right=300), scaled point is inside (x=200, y=50)
+          position: { x: 400, y: 100 },
+          paths: ["/tmp/scaled-inside.ts"],
+        },
+      });
+    });
+
+    expect(harness.editable.textContent).toContain("@/tmp/scaled-inside.ts");
+
+    Object.defineProperty(window, "devicePixelRatio", {
+      value: originalDpr,
+      configurable: true,
+    });
+    harness.unmount();
+  });
+
+  it("treats dropped image path payload as image attachment instead of file reference", () => {
+    const harness = createHarness();
+    const dropEvent = {
+      preventDefault: vi.fn(),
+      stopPropagation: vi.fn(),
+      dataTransfer: {
+        files: [] as File[],
+        getData: (type: string) =>
+          type === "text/plain" ? "C:\\Users\\demo\\Desktop\\bug.png" : "",
+      },
+    } as unknown as React.DragEvent;
+
+    act(() => {
+      harness.result.handleDrop(dropEvent);
+    });
+
+    expect(harness.editable.textContent).toBe("");
+    expect(harness.setInternalAttachments).toHaveBeenCalled();
+
+    const updater = harness.setInternalAttachments.mock.calls[0]?.[0] as
+      | ((prev: Array<{ data: string; fileName: string; mediaType: string }>) => Array<{ data: string; fileName: string; mediaType: string }>)
+      | undefined;
+    expect(typeof updater).toBe("function");
+    const next = updater ? updater([]) : [];
+    expect(next).toHaveLength(1);
+    expect(next[0]?.fileName).toBe("bug.png");
+    expect(next[0]?.mediaType).toBe("image/png");
+    expect(next[0]?.data).toBe("C:\\Users\\demo\\Desktop\\bug.png");
+
+    harness.unmount();
+  });
+
+  it("splits window drop paths into image attachments and file references", () => {
+    const harness = createHarness();
+
+    const dragOverEvent = {
+      clientX: 100,
+      clientY: 100,
+      preventDefault: vi.fn(),
+      stopPropagation: vi.fn(),
+      dataTransfer: {
+        types: ["text/plain"],
+        getData: () => "",
+        dropEffect: "none",
+      },
+    } as unknown as React.DragEvent;
+    act(() => {
+      harness.result.handleDragOver(dragOverEvent);
+    });
+
+    act(() => {
+      windowDropHandler?.({
+        payload: {
+          type: "drop",
+          position: { x: 100, y: 100 },
+          paths: [
+            "/tmp/screen.png",
+            "/tmp/readme.ts",
+            "C:\\Users\\demo\\Desktop\\PIC.JPG",
+          ],
+        },
+      });
+    });
+
+    expect(harness.editable.textContent).toContain("@/tmp/readme.ts");
+    expect(harness.editable.textContent).not.toContain("screen.png");
+    expect(harness.editable.textContent).not.toContain("PIC.JPG");
+
+    expect(harness.setInternalAttachments).toHaveBeenCalled();
+    const updater = harness.setInternalAttachments.mock.calls[0]?.[0] as
+      | ((prev: Array<{ data: string; fileName: string; mediaType: string }>) => Array<{ data: string; fileName: string; mediaType: string }>)
+      | undefined;
+    const next = updater ? updater([]) : [];
+    expect(next).toHaveLength(2);
+    expect(next[0]?.fileName).toBe("screen.png");
+    expect(next[0]?.mediaType).toBe("image/png");
+    expect(next[1]?.fileName).toBe("PIC.JPG");
+    expect(next[1]?.mediaType).toBe("image/jpeg");
+
+    harness.unmount();
+  });
+
+  it("dedupes image-path attachments across windows path separator and drive-case variants", () => {
+    const harness = createHarness();
+
+    const firstDrop = {
+      preventDefault: vi.fn(),
+      stopPropagation: vi.fn(),
+      dataTransfer: {
+        files: [] as File[],
+        getData: (type: string) =>
+          type === "text/plain" ? "C:\\Users\\demo\\Desktop\\bug.png" : "",
+      },
+    } as unknown as React.DragEvent;
+
+    const secondDrop = {
+      preventDefault: vi.fn(),
+      stopPropagation: vi.fn(),
+      dataTransfer: {
+        files: [] as File[],
+        getData: (type: string) =>
+          type === "text/plain" ? "c:/Users/demo/Desktop/bug.png" : "",
+      },
+    } as unknown as React.DragEvent;
+
+    act(() => {
+      harness.result.handleDrop(firstDrop);
+    });
+    act(() => {
+      harness.result.handleDrop(secondDrop);
+    });
+
+    expect(harness.setInternalAttachments).toHaveBeenCalledTimes(2);
+    const updater1 = harness.setInternalAttachments.mock.calls[0]?.[0] as
+      | ((prev: Array<{ data: string; fileName: string; mediaType: string }>) => Array<{ data: string; fileName: string; mediaType: string }>)
+      | undefined;
+    const updater2 = harness.setInternalAttachments.mock.calls[1]?.[0] as
+      | ((prev: Array<{ data: string; fileName: string; mediaType: string }>) => Array<{ data: string; fileName: string; mediaType: string }>)
+      | undefined;
+    const state1 = updater1 ? updater1([]) : [];
+    const state2 = updater2 ? updater2(state1) : state1;
+    expect(state2).toHaveLength(1);
+    expect(state2[0]?.data).toBe("C:\\Users\\demo\\Desktop\\bug.png");
+
     harness.unmount();
   });
 });

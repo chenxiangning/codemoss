@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { ButtonAreaProps, ModelInfo, PermissionMode, ReasoningEffort } from './types';
-import { ConfigSelect, ModelSelect, ModeSelect, ProviderSelect, ReasoningSelect } from './selectors';
+import { ConfigSelect, ModelSelect, ModeSelect, ProviderSelect, ReasoningSelect, ShortcutActionsSelect } from './selectors';
 import { CLAUDE_MODELS, CODEX_MODELS } from './types';
 import { STORAGE_KEYS, validateCodexCustomModels } from '../../types/provider';
 import type { CodexCustomModel } from '../../types/provider';
@@ -10,6 +10,11 @@ import type { CodexCustomModel } from '../../types/provider';
 const NOOP_MODE = (_mode: PermissionMode) => {};
 const NOOP_MODEL = (_modelId: string) => {};
 const NOOP_REASONING = (_effort: ReasoningEffort) => {};
+const CLAUDE_MODEL_MAPPING_KEY_BY_ID: Record<string, 'haiku' | 'sonnet' | 'opus'> = {
+  'claude-haiku-4-5': 'haiku',
+  'claude-sonnet-4-6': 'sonnet',
+  'claude-opus-4-6': 'opus',
+};
 
 /**
  * Get custom Codex model list from localStorage
@@ -67,6 +72,31 @@ function getCustomClaudeModels(): ModelInfo[] {
 }
 
 /**
+ * Get custom Gemini model list from localStorage
+ * Uses runtime type validation for data safety
+ */
+function getCustomGeminiModels(): ModelInfo[] {
+  if (typeof window === 'undefined' || !window.localStorage) {
+    return [];
+  }
+  try {
+    const stored = window.localStorage.getItem(STORAGE_KEYS.GEMINI_CUSTOM_MODELS);
+    if (!stored) {
+      return [];
+    }
+    const parsed = JSON.parse(stored);
+    const validModels = validateCodexCustomModels(parsed);
+    return validModels.map(m => ({
+      id: m.id,
+      label: m.label || m.id,
+      description: m.description,
+    }));
+  } catch {
+    return [];
+  }
+}
+
+/**
  * ButtonArea - Bottom toolbar component
  * Contains mode selector, model selector, attachment button, prompt enhancer button, send/stop button
  */
@@ -74,7 +104,8 @@ export const ButtonArea = ({
   disabled = false,
   hasInputContent = false,
   isLoading = false,
-  selectedModel = 'claude-sonnet-4-6',
+  selectedModel = '',
+  models,
   permissionMode = 'bypassPermissions',
   currentProvider = 'claude',
   providerAvailability,
@@ -103,6 +134,7 @@ export const ButtonArea = ({
   onAgentSelect,
   onOpenAgentSettings,
   onAddModel,
+  shortcutActions,
 }: ButtonAreaProps) => {
   const { t } = useTranslation();
   // const fileInputRef = useRef<HTMLInputElement>(null);
@@ -115,14 +147,24 @@ export const ButtonArea = ({
   // Listen for localStorage changes (cross-tab sync + same-tab custom events)
   useEffect(() => {
     const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === STORAGE_KEYS.CODEX_CUSTOM_MODELS || e.key === STORAGE_KEYS.CLAUDE_MODEL_MAPPING || e.key === STORAGE_KEYS.CLAUDE_CUSTOM_MODELS) {
+      if (
+        e.key === STORAGE_KEYS.CODEX_CUSTOM_MODELS ||
+        e.key === STORAGE_KEYS.CLAUDE_MODEL_MAPPING ||
+        e.key === STORAGE_KEYS.CLAUDE_CUSTOM_MODELS ||
+        e.key === STORAGE_KEYS.GEMINI_CUSTOM_MODELS
+      ) {
         setCustomModelsVersion(v => v + 1);
       }
     };
 
     // Listen for custom events (localStorage changes within the same tab)
     const handleCustomStorageChange = (e: CustomEvent<{ key: string }>) => {
-      if (e.detail.key === STORAGE_KEYS.CODEX_CUSTOM_MODELS || e.detail.key === STORAGE_KEYS.CLAUDE_MODEL_MAPPING || e.detail.key === STORAGE_KEYS.CLAUDE_CUSTOM_MODELS) {
+      if (
+        e.detail.key === STORAGE_KEYS.CODEX_CUSTOM_MODELS ||
+        e.detail.key === STORAGE_KEYS.CLAUDE_MODEL_MAPPING ||
+        e.detail.key === STORAGE_KEYS.CLAUDE_CUSTOM_MODELS ||
+        e.detail.key === STORAGE_KEYS.GEMINI_CUSTOM_MODELS
+      ) {
         setCustomModelsVersion(v => v + 1);
       }
     };
@@ -141,13 +183,7 @@ export const ButtonArea = ({
    * Maps base model IDs to actual model names (e.g., versions with capacity suffixes)
    */
   const applyModelMapping = useCallback((model: ModelInfo, mapping: { haiku?: string; sonnet?: string; opus?: string }): ModelInfo => {
-    const modelKeyMap: Record<string, keyof typeof mapping> = {
-      'claude-sonnet-4-6': 'sonnet',
-      'claude-opus-4-6': 'opus',
-      'claude-haiku-4-5': 'haiku',
-    };
-
-    const key = modelKeyMap[model.id];
+    const key = CLAUDE_MODEL_MAPPING_KEY_BY_ID[model.id];
     if (key && mapping[key]) {
       const actualModel = String(mapping[key]).trim();
       if (actualModel.length > 0) {
@@ -162,8 +198,40 @@ export const ButtonArea = ({
   // Select model list based on current provider
   // customModelsVersion triggers recalculation when localStorage changes
   const availableModels = useMemo(() => {
+    if (currentProvider === 'gemini') {
+      const dynamicModels = Array.isArray(models) ? models : [];
+      const customModels = getCustomGeminiModels();
+      if (customModels.length > 0) {
+        const customIds = new Set(customModels.map(m => m.id));
+        const filteredDynamicModels = dynamicModels.filter(m => !customIds.has(m.id));
+        const merged = [...customModels, ...filteredDynamicModels];
+        if (merged.length > 0) {
+          return merged;
+        }
+      }
+      if (dynamicModels.length > 0) {
+        return dynamicModels;
+      }
+      if (selectedModel && selectedModel.trim().length > 0) {
+        return [{ id: selectedModel, label: selectedModel }];
+      }
+      return [];
+    }
+    if (currentProvider !== 'claude' && currentProvider !== 'codex') {
+      if (Array.isArray(models) && models.length > 0) {
+        return models;
+      }
+      if (selectedModel && selectedModel.trim().length > 0) {
+        return [{ id: selectedModel, label: selectedModel }];
+      }
+      return [];
+    }
     if (currentProvider === 'codex') {
-      // Merge built-in models and custom models
+      const dynamicModels = Array.isArray(models) ? models : [];
+      if (dynamicModels.length > 0) {
+        return dynamicModels;
+      }
+      // Fallback to built-in defaults only when backend model list is unavailable.
       const customModels = getCustomCodexModels();
       if (customModels.length === 0) {
         return CODEX_MODELS;
@@ -174,12 +242,14 @@ export const ButtonArea = ({
       const filteredBuiltIn = CODEX_MODELS.filter(m => !customIds.has(m.id));
       return [...customModels, ...filteredBuiltIn];
     }
+    const dynamicClaudeModels = Array.isArray(models) ? models : [];
+    const baseClaudeModels = dynamicClaudeModels.length > 0 ? dynamicClaudeModels : CLAUDE_MODELS;
     if (typeof window === 'undefined' || !window.localStorage) {
-      return CLAUDE_MODELS;
+      return baseClaudeModels;
     }
 
-    // Apply model mapping to built-in models
-    let builtInModels = CLAUDE_MODELS;
+    // Apply model mapping to base Claude models
+    let builtInModels = baseClaudeModels;
     try {
       const stored = window.localStorage.getItem(STORAGE_KEYS.CLAUDE_MODEL_MAPPING);
       if (stored) {
@@ -189,7 +259,7 @@ export const ButtonArea = ({
           sonnet?: string;
           opus?: string;
         };
-        builtInModels = CLAUDE_MODELS.map((m) => applyModelMapping(m, mapping));
+        builtInModels = baseClaudeModels.map((m) => applyModelMapping(m, mapping));
       }
     } catch {
       // ignore
@@ -204,7 +274,7 @@ export const ButtonArea = ({
     const customIds = new Set(customModels.map(m => m.id));
     const filteredBuiltIn = builtInModels.filter(m => !customIds.has(m.id));
     return [...customModels, ...filteredBuiltIn];
-  }, [currentProvider, applyModelMapping, customModelsVersion]);
+  }, [currentProvider, models, selectedModel, applyModelMapping, customModelsVersion]);
 
   /**
    * Handle submit button click
@@ -240,7 +310,12 @@ export const ButtonArea = ({
     if (!onAddModel) {
       return;
     }
-    const targetProvider = currentProvider === "codex" ? "codex" : "claude";
+    const targetProvider =
+      currentProvider === "codex"
+        ? "codex"
+        : currentProvider === "gemini"
+          ? "gemini"
+          : "claude";
     onAddModel(targetProvider);
   }, [currentProvider, onAddModel]);
 
@@ -269,6 +344,7 @@ export const ButtonArea = ({
           onAgentSelect={onAgentSelect}
           onOpenAgentSettings={onOpenAgentSettings}
         />
+        <ShortcutActionsSelect actions={shortcutActions} />
         {onProviderSelect && (
           <ProviderSelect
             value={currentProvider}
@@ -286,7 +362,9 @@ export const ButtonArea = ({
           currentProvider={currentProvider}
           onAddModel={
             onAddModel &&
-            (currentProvider === "claude" || currentProvider === "codex")
+            (currentProvider === "claude" ||
+              currentProvider === "codex" ||
+              currentProvider === "gemini")
               ? handleAddModel
               : undefined
           }

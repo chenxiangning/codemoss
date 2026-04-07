@@ -116,7 +116,8 @@ function sliceByComparableLength(text: string, targetLength: number) {
   }
   let compactLength = 0;
   for (let index = 0; index < text.length; index += 1) {
-    if (!/\s/.test(text[index])) {
+    const currentChar = text[index] ?? "";
+    if (!/\s/.test(currentChar)) {
       compactLength += 1;
     }
     if (compactLength >= targetLength) {
@@ -205,7 +206,8 @@ function dedupeAdjacentReasoningParagraphs(value: string) {
       if (`${half}${half}` === compact) {
         let compactLength = 0;
         for (let index = 0; index < trimmed.length; index += 1) {
-          if (!/\s/.test(trimmed[index])) {
+          const currentChar = trimmed[index] ?? "";
+          if (!/\s/.test(currentChar)) {
             compactLength += 1;
           }
           if (compactLength >= half.length) {
@@ -304,7 +306,7 @@ function parseReasoning(item: Extract<ConversationItem, { kind: "reasoning" }>):
   const titleLines = titleSource.split("\n");
   const trimmedLines = titleLines.map((line) => line.trim());
   const titleLineIndex = trimmedLines.findIndex(Boolean);
-  const rawTitle = titleLineIndex >= 0 ? trimmedLines[titleLineIndex] : "";
+  const rawTitle = titleLineIndex >= 0 ? (trimmedLines[titleLineIndex] ?? "") : "";
   const cleanTitle = sanitizeReasoningTitle(rawTitle);
   const summaryTitle = cleanTitle
     ? cleanTitle.length > 80
@@ -426,6 +428,13 @@ function dedupeAdjacentReasoningItems(
       deduped.push(item);
       continue;
     }
+    if (
+      isExplicitReasoningSegmentId(previous.id) ||
+      isExplicitReasoningSegmentId(item.id)
+    ) {
+      deduped.push(item);
+      continue;
+    }
     const previousMeta = reasoningMetaById.get(previous.id) ?? parseReasoning(previous);
     const nextMeta = reasoningMetaById.get(item.id) ?? parseReasoning(item);
     if (!isReasoningDuplicate(previousMeta, nextMeta)) {
@@ -445,6 +454,12 @@ function dedupeAdjacentReasoningItems(
   return deduped;
 }
 
+const REASONING_SEGMENT_ID_REGEX = /(?:^|[:-])seg-\d+$/;
+
+function isExplicitReasoningSegmentId(id: string) {
+  return REASONING_SEGMENT_ID_REGEX.test(id);
+}
+
 function collapseConsecutiveReasoningRuns(
   list: ConversationItem[],
   enabled: boolean,
@@ -457,6 +472,10 @@ function collapseConsecutiveReasoningRuns(
   let index = 0;
   while (index < list.length) {
     const item = list[index];
+    if (!item) {
+      index += 1;
+      continue;
+    }
     if (item.kind !== "reasoning") {
       collapsed.push(item);
       index += 1;
@@ -464,7 +483,11 @@ function collapseConsecutiveReasoningRuns(
     }
 
     let end = index + 1;
-    while (end < list.length && list[end].kind === "reasoning") {
+    while (end < list.length) {
+      const candidate = list[end];
+      if (!candidate || candidate.kind !== "reasoning") {
+        break;
+      }
       end += 1;
     }
 
@@ -476,10 +499,18 @@ function collapseConsecutiveReasoningRuns(
 
     const run = list.slice(index, end) as Array<Extract<ConversationItem, { kind: "reasoning" }>>;
     const latest = run[run.length - 1];
-    let mergedSummary = run[0].summary;
-    let mergedContent = run[0].content;
+    const first = run[0];
+    if (!first || !latest) {
+      index = end;
+      continue;
+    }
+    let mergedSummary = first.summary;
+    let mergedContent = first.content;
     for (let runIndex = 1; runIndex < run.length; runIndex += 1) {
       const candidate = run[runIndex];
+      if (!candidate) {
+        continue;
+      }
       mergedSummary = mergeReasoningRunText(
         mergedSummary,
         candidate.summary,
@@ -592,13 +623,14 @@ function normalizeReasoningItemsForTimeline(threadId: string, items: Conversatio
     return parsed.hasBody || Boolean(parsed.workingLabel);
   });
   const engine = inferReasoningPresentationEngine(threadId);
-  const appendReasoningRuns = engine === "claude" || engine === "codex";
+  const appendReasoningRuns = engine === "claude" || engine === "codex" || engine === "gemini";
   const deduped = dedupeAdjacentReasoningItems(
     filtered,
     sourceReasoningMetaById,
     appendReasoningRuns,
   );
-  const collapseReasoningRuns = engine === "claude" || engine === "codex" || engine === "opencode";
+  const collapseReasoningRuns =
+    engine === "claude" || engine === "codex" || engine === "opencode" || engine === "gemini";
   const normalized = collapseConsecutiveReasoningRuns(
     deduped,
     collapseReasoningRuns,
@@ -732,7 +764,7 @@ function summarizeTask(item: Extract<ConversationItem, { kind: "tool" }>) {
 function getFirstNonEmptyValue(
   source: Record<string, unknown> | null,
   keys: string[],
-) {
+): string {
   if (!source) {
     return "";
   }
@@ -742,12 +774,26 @@ function getFirstNonEmptyValue(
       return value.trim();
     }
     if (Array.isArray(value)) {
-      const parts = value
-        .filter((entry): entry is string => typeof entry === "string")
-        .map((entry) => entry.trim())
+      const parts: string[] = value
+        .map((entry): string => {
+          if (typeof entry === "string") {
+            return entry.trim();
+          }
+          if (!entry || typeof entry !== "object") {
+            return "";
+          }
+          const record = entry as Record<string, unknown>;
+          return getFirstNonEmptyValue(record, keys);
+        })
         .filter(Boolean);
       if (parts.length > 0) {
         return parts.join(", ");
+      }
+    }
+    if (value && typeof value === "object") {
+      const nested: string = getFirstNonEmptyValue(value as Record<string, unknown>, keys);
+      if (nested) {
+        return nested;
       }
     }
   }
@@ -863,8 +909,15 @@ const INSPECTION_PATH_KEYS = [
   "workdir",
   "url",
   "query",
+  "q",
+  "search_query",
+  "searchQuery",
   "pattern",
 ];
+
+function extractInspectionPreview(output: string | undefined) {
+  return extractCommandOutputWindow(output);
+}
 
 function summarizeInspectionTool(item: Extract<ConversationItem, { kind: "tool" }>) {
   const toolName = extractToolName(item.title).trim().toLowerCase();
@@ -909,20 +962,33 @@ function summarizeInspectionTool(item: Extract<ConversationItem, { kind: "tool" 
       jumpTarget: finalPath
         ? ({ type: "file", path: finalPath } as const)
         : undefined,
+      preview: extractInspectionPreview(item.output),
     };
   }
   if (isSearchTool(toolName)) {
-    return { summary: `Search · ${path || toolLabel || "workspace"}` };
+    return {
+      summary: `Search · ${path || toolLabel || "workspace"}`,
+      preview: extractInspectionPreview(item.output),
+    };
   }
   if (isWebTool(toolName)) {
-    return { summary: `Web · ${path || toolLabel || "request"}` };
+    return {
+      summary: `Web · ${path || toolLabel || "request"}`,
+      preview: extractInspectionPreview(item.output),
+    };
   }
   if (toolName === "skill_mcp" || toolName === "skill") {
     const nestedToolName = getFirstNonEmptyValue(args, ["tool_name", "toolName", "name"]);
-    return { summary: `Skill · ${nestedToolName || path || "tool call"}` };
+    return {
+      summary: `Skill · ${nestedToolName || path || "tool call"}`,
+      preview: extractInspectionPreview(item.output),
+    };
   }
   if (item.toolType === "mcpToolCall") {
-    return { summary: `Tool · ${path || toolLabel || "activity"}` };
+    return {
+      summary: `Tool · ${path || toolLabel || "activity"}`,
+      preview: extractInspectionPreview(item.output),
+    };
   }
   return null;
 }
@@ -932,7 +998,9 @@ function parseFallbackLink(detail: string, fallbackParentId: string) {
   if (!trimmed.includes("→")) {
     return null;
   }
-  const [leftSide, rightSide] = trimmed.split("→", 2).map((part) => part.trim());
+  const [leftSide = "", rightSide = ""] = trimmed
+    .split("→", 2)
+    .map((part) => part.trim());
   const parentMatch = leftSide.match(/^From\s+(.+)$/i);
   const parentId = parentMatch?.[1]?.trim() || fallbackParentId;
   const receivers = rightSide
@@ -1039,7 +1107,9 @@ export function buildThreadActivity(args: WorkspaceSessionActivityThreadContext 
   const occurredBase = getThreadTimestamp(args.thread) || 0;
   const reasoningPresentationEngine = inferReasoningPresentationEngine(args.thread.id);
   const shouldMergeReasoningIntoFirstNode =
-    reasoningPresentationEngine === "claude" || reasoningPresentationEngine === "codex";
+    reasoningPresentationEngine === "claude" ||
+    reasoningPresentationEngine === "codex" ||
+    reasoningPresentationEngine === "gemini";
   const reasoningAnchorIndexByTurnId = new Map<string, number>();
   const exploreEventIndexBySignature = new Map<string, number>();
   const { items: normalizedItems, reasoningMetaById } = normalizeReasoningItemsForTimeline(
@@ -1094,6 +1164,11 @@ export function buildThreadActivity(args: WorkspaceSessionActivityThreadContext 
       return;
     }
     const existing = events[existingIndex];
+    if (!existing) {
+      events.push(candidate);
+      exploreEventIndexBySignature.set(signature, events.length - 1);
+      return;
+    }
     events[existingIndex] = {
       ...existing,
       occurredAt: Math.max(existing.occurredAt, candidate.occurredAt),
@@ -1290,25 +1365,6 @@ export function buildThreadActivity(args: WorkspaceSessionActivityThreadContext 
       return;
     }
 
-    const inspectionSummary = summarizeInspectionTool(item);
-    if (inspectionSummary) {
-      events.push({
-        eventId: `task:${item.id}`,
-        threadId: args.thread.id,
-        threadName,
-        turnId,
-        turnIndex,
-        sessionRole,
-        relationshipSource: args.relationshipSource,
-        kind: "task",
-        occurredAt,
-        summary: inspectionSummary.summary,
-        status: eventStatus,
-        jumpTarget: inspectionSummary.jumpTarget ?? { type: "thread", threadId: args.thread.id },
-      });
-      return;
-    }
-
     const fileChangeSummary = summarizeFileChangeItem(item);
     if (fileChangeSummary) {
       const primaryDiff = extractPrimaryChangeDiff(item, fileChangeSummary.filePath);
@@ -1339,6 +1395,26 @@ export function buildThreadActivity(args: WorkspaceSessionActivityThreadContext 
         fileCount: fileChangeSummary.fileCount,
         additions: fileChangeSummary.additions,
         deletions: fileChangeSummary.deletions,
+      });
+      return;
+    }
+
+    const inspectionSummary = summarizeInspectionTool(item);
+    if (inspectionSummary) {
+      events.push({
+        eventId: `task:${item.id}`,
+        threadId: args.thread.id,
+        threadName,
+        turnId,
+        turnIndex,
+        sessionRole,
+        relationshipSource: args.relationshipSource,
+        kind: "task",
+        occurredAt,
+        summary: inspectionSummary.summary,
+        status: eventStatus,
+        jumpTarget: inspectionSummary.jumpTarget ?? { type: "thread", threadId: args.thread.id },
+        explorePreview: inspectionSummary.preview || undefined,
       });
     }
   });

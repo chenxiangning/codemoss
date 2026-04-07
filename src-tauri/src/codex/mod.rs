@@ -87,11 +87,102 @@ fn thread_list_response_is_empty(response: &Value) -> bool {
         .unwrap_or(true)
 }
 
+#[allow(dead_code)]
+fn thread_list_response_entries(response: &Value) -> Vec<Value> {
+    response
+        .get("result")
+        .and_then(|result| result.get("data"))
+        .or_else(|| response.get("data"))
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default()
+}
+
+#[allow(dead_code)]
+fn thread_list_response_next_cursor(response: &Value) -> Option<Value> {
+    response
+        .get("result")
+        .and_then(|result| {
+            result
+                .get("nextCursor")
+                .or_else(|| result.get("next_cursor"))
+                .cloned()
+        })
+        .or_else(|| {
+            response
+                .get("nextCursor")
+                .or_else(|| response.get("next_cursor"))
+                .cloned()
+        })
+}
+
+fn normalize_optional_string(value: Option<&str>) -> Option<String> {
+    value
+        .map(str::trim)
+        .filter(|item| !item.is_empty())
+        .map(ToString::to_string)
+}
+
+fn build_thread_source_label(source: Option<&str>, provider: Option<&str>) -> Option<String> {
+    let source = normalize_optional_string(source);
+    let provider = normalize_optional_string(provider);
+    match (source, provider) {
+        (Some(source), Some(provider)) => Some(format!("{source}/{provider}")),
+        (Some(source), None) => Some(source),
+        (None, Some(provider)) => Some(provider),
+        (None, None) => None,
+    }
+}
+
+#[allow(dead_code)]
+fn thread_entry_id(entry: &Value) -> Option<String> {
+    normalize_optional_string(entry.get("id").and_then(Value::as_str))
+}
+
+#[allow(dead_code)]
+fn thread_entry_timestamp(entry: &Value) -> i64 {
+    entry
+        .get("updatedAt")
+        .or_else(|| entry.get("updated_at"))
+        .and_then(Value::as_i64)
+        .or_else(|| {
+            entry
+                .get("createdAt")
+                .or_else(|| entry.get("created_at"))
+                .and_then(Value::as_i64)
+        })
+        .unwrap_or(0)
+        .max(0)
+}
+
 fn build_local_codex_session_preview(summary: Option<String>, model: String) -> String {
     let preview = summary
         .map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty());
     preview.unwrap_or_else(|| format!("Codex session ({model})"))
+}
+
+fn build_local_codex_thread_entry(
+    workspace_path: &str,
+    session: &LocalUsageSessionSummary,
+) -> Value {
+    let preview = build_local_codex_session_preview(session.summary.clone(), session.model.clone());
+    let title = preview.clone();
+    let source = normalize_optional_string(session.source.as_deref());
+    let provider = normalize_optional_string(session.provider.as_deref());
+    let source_label = build_thread_source_label(source.as_deref(), provider.as_deref());
+    json!({
+        "id": session.session_id,
+        "preview": preview,
+        "title": title,
+        "cwd": workspace_path,
+        "createdAt": session.timestamp,
+        "updatedAt": session.timestamp,
+        "localFallback": true,
+        "source": source,
+        "provider": provider,
+        "sourceLabel": source_label
+    })
 }
 
 fn build_local_codex_thread_fallback_response_from_sessions(
@@ -102,20 +193,7 @@ fn build_local_codex_thread_fallback_response_from_sessions(
     let data: Vec<Value> = sessions
         .iter()
         .take(requested_limit)
-        .map(|session| {
-            let preview =
-                build_local_codex_session_preview(session.summary.clone(), session.model.clone());
-            let title = preview.clone();
-            json!({
-                "id": session.session_id,
-                "preview": preview,
-                "title": title,
-                "cwd": workspace_path,
-                "createdAt": session.timestamp,
-                "updatedAt": session.timestamp,
-                "localFallback": true
-            })
-        })
+        .map(|session| build_local_codex_thread_entry(workspace_path, session))
         .collect();
     json!({
         "result": {
@@ -125,18 +203,158 @@ fn build_local_codex_thread_fallback_response_from_sessions(
     })
 }
 
+#[allow(dead_code)]
+fn merge_unified_codex_thread_entries(
+    mut live_entries: Vec<Value>,
+    local_sessions: &[LocalUsageSessionSummary],
+    workspace_path: &str,
+    requested_limit: usize,
+) -> Vec<Value> {
+    let mut merged_entries: Vec<Value> = Vec::new();
+    let mut id_to_index: HashMap<String, usize> = HashMap::new();
+
+    for entry in live_entries.drain(..) {
+        let Some(id) = thread_entry_id(&entry) else {
+            continue;
+        };
+        if let Some(existing_index) = id_to_index.get(&id).copied() {
+            let existing_timestamp = thread_entry_timestamp(&merged_entries[existing_index]);
+            let candidate_timestamp = thread_entry_timestamp(&entry);
+            if candidate_timestamp > existing_timestamp {
+                merged_entries[existing_index] = entry;
+            }
+            continue;
+        }
+        let next_index = merged_entries.len();
+        id_to_index.insert(id, next_index);
+        merged_entries.push(entry);
+    }
+
+    for session in local_sessions {
+        let local_entry = build_local_codex_thread_entry(workspace_path, session);
+        let Some(id) = thread_entry_id(&local_entry) else {
+            continue;
+        };
+        if let Some(existing_index) = id_to_index.get(&id).copied() {
+            if let (Some(existing), Some(local)) = (
+                merged_entries[existing_index].as_object_mut(),
+                local_entry.as_object(),
+            ) {
+                let existing_updated = existing
+                    .get("updatedAt")
+                    .and_then(Value::as_i64)
+                    .unwrap_or(0)
+                    .max(0);
+                let local_updated = local
+                    .get("updatedAt")
+                    .and_then(Value::as_i64)
+                    .unwrap_or(0)
+                    .max(0);
+                if local_updated > existing_updated {
+                    existing.insert("updatedAt".to_string(), json!(local_updated));
+                    existing.insert("createdAt".to_string(), json!(local_updated));
+                }
+                let should_replace_source = existing
+                    .get("source")
+                    .and_then(Value::as_str)
+                    .map(|value| value.eq_ignore_ascii_case("vscode"))
+                    .unwrap_or(false)
+                    && local
+                        .get("source")
+                        .and_then(Value::as_str)
+                        .map(|value| !value.eq_ignore_ascii_case("vscode"))
+                        .unwrap_or(false);
+                if should_replace_source {
+                    if let Some(value) = local.get("source") {
+                        existing.insert("source".to_string(), value.clone());
+                    }
+                    if let Some(value) = local.get("sourceLabel") {
+                        existing.insert("sourceLabel".to_string(), value.clone());
+                    }
+                }
+                for key in ["source", "provider", "sourceLabel"] {
+                    let missing = match existing.get(key) {
+                        None => true,
+                        Some(value) => {
+                            if value.is_null() {
+                                true
+                            } else {
+                                value.as_str().map(str::is_empty).unwrap_or(false)
+                            }
+                        }
+                    };
+                    if missing {
+                        if let Some(value) = local.get(key) {
+                            existing.insert(key.to_string(), value.clone());
+                        }
+                    }
+                }
+            }
+            continue;
+        }
+        let next_index = merged_entries.len();
+        id_to_index.insert(id, next_index);
+        merged_entries.push(local_entry);
+    }
+
+    merged_entries.sort_by(|left, right| {
+        let left_timestamp = thread_entry_timestamp(left);
+        let right_timestamp = thread_entry_timestamp(right);
+        right_timestamp
+            .cmp(&left_timestamp)
+            .then_with(|| thread_entry_id(left).cmp(&thread_entry_id(right)))
+    });
+    if merged_entries.len() > requested_limit {
+        merged_entries.truncate(requested_limit);
+    }
+    merged_entries
+}
+
+#[allow(dead_code)]
+fn build_unified_codex_thread_response(
+    data: Vec<Value>,
+    next_cursor: Option<Value>,
+    partial_source: Option<&str>,
+) -> Value {
+    let cursor_value = next_cursor.unwrap_or(Value::Null);
+    let mut result = json!({
+        "result": {
+            "data": data,
+            "nextCursor": cursor_value
+        }
+    });
+    if let (Some(partial_source), Some(result_map)) = (
+        partial_source,
+        result.get_mut("result").and_then(Value::as_object_mut),
+    ) {
+        result_map.insert(
+            "partialSource".to_string(),
+            Value::String(partial_source.to_string()),
+        );
+    }
+    result
+}
+
+async fn load_local_codex_session_summaries(
+    state: &AppState,
+    workspace_id: &str,
+    requested_limit: usize,
+) -> Result<(String, Vec<LocalUsageSessionSummary>), String> {
+    local_usage::list_codex_session_summaries_for_workspace(
+        &state.workspaces,
+        workspace_id,
+        requested_limit,
+    )
+    .await
+}
+
 async fn build_local_codex_thread_fallback_response(
     state: &AppState,
     workspace_id: &str,
     limit: Option<u32>,
 ) -> Option<Value> {
     let requested_limit = limit.unwrap_or(50).clamp(1, 200) as usize;
-    let fallback = local_usage::list_codex_session_summaries_for_workspace(
-        &state.workspaces,
-        workspace_id,
-        requested_limit,
-    )
-    .await;
+    let fallback = load_local_codex_session_summaries(state, workspace_id, requested_limit).await;
     let (workspace_path, sessions) = match fallback {
         Ok(result) => result,
         Err(error) => {
@@ -1304,15 +1522,16 @@ pub(crate) async fn respond_to_server_request(
         return Ok(());
     }
 
-    // Route to the appropriate engine based on active engine type
-    let active_engine = state.engine_manager.get_active_engine().await;
-    if active_engine == crate::engine::EngineType::Claude {
-        if let Some(session) = state
-            .engine_manager
-            .claude_manager
-            .get_session(&workspace_id)
-            .await
-        {
+    // Prefer request-id based Claude routing so AskUserQuestion responses
+    // are delivered to the correct waiting Claude turn even when global
+    // active-engine state is stale.
+    if let Some(session) = state
+        .engine_manager
+        .claude_manager
+        .get_session(&workspace_id)
+        .await
+    {
+        if session.has_pending_user_input(&request_id) {
             return session.respond_to_user_input(request_id, result).await;
         }
     }
@@ -1321,10 +1540,31 @@ pub(crate) async fn respond_to_server_request(
         .await
 }
 
+// Shared commit-message prompt builder for both preview and background generation.
+fn build_commit_message_prompt(diff: &str, language: Option<&str>) -> String {
+    let normalized_language = language
+        .map(|value| value.trim().to_ascii_lowercase())
+        .unwrap_or_else(|| "zh".to_string());
+
+    let intro = match normalized_language.as_str() {
+        "en" => {
+            "Please generate a commit message. The commit message must follow the Conventional Commits specification and be written entirely in English.\
+Please provide the complete commit message: the title should follow the Conventional Commits format, and the body should describe the content, reasons, and impact of this change in detail."
+        }
+        _ => {
+            "请生成一次提交（commit）信息，提交信息需遵循 Conventional Commits 规范，并且全部使用中文。\
+请提供完整提交信息：标题按 Conventional Commits 格式编写，正文需详细描述本次变更的内容、原因和影响。"
+        }
+    };
+
+    format!("{intro}\n\nChanges:\n{diff}")
+}
+
 /// Gets the diff content for commit message generation
 #[tauri::command]
 pub(crate) async fn get_commit_message_prompt(
     workspace_id: String,
+    language: Option<String>,
     state: State<'_, AppState>,
 ) -> Result<String, String> {
     // Get the diff from git
@@ -1334,15 +1574,7 @@ pub(crate) async fn get_commit_message_prompt(
         return Err("No changes to generate commit message for".to_string());
     }
 
-    let prompt = format!(
-        "Generate a concise git commit message for the following changes. \
-Follow conventional commit format (e.g., feat:, fix:, refactor:, docs:, etc.). \
-Focus on the 'why' rather than the 'what'. Keep the summary line under 72 characters. \
-Only output the commit message, nothing else.\n\n\
-Changes:\n{diff}"
-    );
-
-    Ok(prompt)
+    Ok(build_commit_message_prompt(&diff, language.as_deref()))
 }
 
 #[tauri::command]
@@ -1377,6 +1609,7 @@ pub(crate) async fn get_config_model(
 #[tauri::command]
 pub(crate) async fn generate_commit_message(
     workspace_id: String,
+    language: Option<String>,
     state: State<'_, AppState>,
     app: AppHandle,
 ) -> Result<String, String> {
@@ -1387,13 +1620,7 @@ pub(crate) async fn generate_commit_message(
         return Err("No changes to generate commit message for".to_string());
     }
 
-    let prompt = format!(
-        "Generate a concise git commit message for the following changes. \
-Follow conventional commit format (e.g., feat:, fix:, refactor:, docs:, etc.). \
-Focus on the 'why' rather than the 'what'. Keep the summary line under 72 characters. \
-Only output the commit message, nothing else.\n\n\
-Changes:\n{diff}"
-    );
+    let prompt = build_commit_message_prompt(&diff, language.as_deref());
 
     // Get the session – requires a running Codex CLI process
     let session = {
@@ -2190,7 +2417,8 @@ mod tests {
     use super::{
         build_local_codex_session_preview,
         build_local_codex_thread_fallback_response_from_sessions, build_thread_list_empty_response,
-        normalize_model_id, pick_model_from_model_list_response,
+        merge_unified_codex_thread_entries, normalize_model_id,
+        pick_model_from_model_list_response,
     };
     use crate::types::{LocalUsageSessionSummary, LocalUsageUsageData};
     use serde_json::json;
@@ -2264,6 +2492,8 @@ mod tests {
                 usage: LocalUsageUsageData::default(),
                 cost: 0.0,
                 summary: Some("  hello world  ".to_string()),
+                source: Some("custom".to_string()),
+                provider: Some("openai".to_string()),
             },
             LocalUsageSessionSummary {
                 session_id: "session-b".to_string(),
@@ -2272,6 +2502,8 @@ mod tests {
                 usage: LocalUsageUsageData::default(),
                 cost: 0.0,
                 summary: None,
+                source: None,
+                provider: None,
             },
         ];
 
@@ -2292,6 +2524,100 @@ mod tests {
         assert_eq!(data[0]["createdAt"], 1_700_000_001_000_i64);
         assert_eq!(data[0]["updatedAt"], 1_700_000_001_000_i64);
         assert_eq!(data[0]["localFallback"], true);
+        assert_eq!(data[0]["source"], "custom");
+        assert_eq!(data[0]["provider"], "openai");
+        assert_eq!(data[0]["sourceLabel"], "custom/openai");
         assert!(response["result"]["nextCursor"].is_null());
+    }
+
+    #[test]
+    fn merge_unified_codex_thread_entries_dedupes_and_keeps_metadata_stable() {
+        let live_entries = vec![
+            json!({
+                "id": "thread-live",
+                "preview": "live",
+                "updatedAt": 100,
+                "createdAt": 100
+            }),
+            json!({
+                "id": "thread-dup",
+                "preview": "remote",
+                "updatedAt": 90,
+                "createdAt": 90
+            }),
+            json!({
+                "id": "thread-dup",
+                "preview": "stale",
+                "updatedAt": 80,
+                "createdAt": 80
+            }),
+        ];
+        let local_sessions = vec![
+            LocalUsageSessionSummary {
+                session_id: "thread-dup".to_string(),
+                timestamp: 110,
+                model: "openai/gpt-5".to_string(),
+                usage: LocalUsageUsageData::default(),
+                cost: 0.0,
+                summary: Some("local".to_string()),
+                source: Some("custom".to_string()),
+                provider: Some("openai".to_string()),
+            },
+            LocalUsageSessionSummary {
+                session_id: "thread-local".to_string(),
+                timestamp: 105,
+                model: "openai/gpt-5-mini".to_string(),
+                usage: LocalUsageUsageData::default(),
+                cost: 0.0,
+                summary: Some("local-only".to_string()),
+                source: Some("project".to_string()),
+                provider: Some("openai".to_string()),
+            },
+        ];
+
+        let merged =
+            merge_unified_codex_thread_entries(live_entries, &local_sessions, "/tmp/workspace", 10);
+
+        assert_eq!(merged.len(), 3);
+        assert_eq!(merged[0]["id"], "thread-dup");
+        assert_eq!(merged[0]["updatedAt"], 110);
+        assert_eq!(merged[0]["preview"], "remote");
+        assert_eq!(merged[0]["source"], "custom");
+        assert_eq!(merged[0]["provider"], "openai");
+        assert_eq!(merged[0]["sourceLabel"], "custom/openai");
+
+        assert_eq!(merged[1]["id"], "thread-local");
+        assert_eq!(merged[1]["localFallback"], true);
+        assert_eq!(merged[1]["sourceLabel"], "project/openai");
+
+        assert_eq!(merged[2]["id"], "thread-live");
+    }
+
+    #[test]
+    fn merge_unified_codex_thread_entries_replaces_generic_vscode_source() {
+        let live_entries = vec![json!({
+            "id": "thread-dup",
+            "preview": "remote",
+            "updatedAt": 90,
+            "createdAt": 90,
+            "source": "vscode",
+            "sourceLabel": "vscode"
+        })];
+        let local_sessions = vec![LocalUsageSessionSummary {
+            session_id: "thread-dup".to_string(),
+            timestamp: 110,
+            model: "openai/gpt-5".to_string(),
+            usage: LocalUsageUsageData::default(),
+            cost: 0.0,
+            summary: Some("local".to_string()),
+            source: Some("mossx".to_string()),
+            provider: Some("openai".to_string()),
+        }];
+
+        let merged =
+            merge_unified_codex_thread_entries(live_entries, &local_sessions, "/tmp/workspace", 10);
+        assert_eq!(merged.len(), 1);
+        assert_eq!(merged[0]["source"], "mossx");
+        assert_eq!(merged[0]["sourceLabel"], "mossx/openai");
     }
 }

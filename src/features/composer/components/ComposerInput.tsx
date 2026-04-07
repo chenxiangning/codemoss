@@ -526,7 +526,8 @@ export function ComposerInput({
       if (disabled || !onHeightChange) return;
       event.preventDefault();
       setIsDragging(true);
-      const clientY = "touches" in event ? event.touches[0].clientY : event.clientY;
+      const clientY =
+        "touches" in event ? (event.touches[0]?.clientY ?? 0) : event.clientY;
       dragStartY.current = clientY;
       dragStartHeight.current = currentHeight;
     },
@@ -537,7 +538,8 @@ export function ComposerInput({
     if (!isDragging) return;
 
     const handleMouseMove = (event: MouseEvent | TouchEvent) => {
-      const clientY = "touches" in event ? event.touches[0].clientY : event.clientY;
+      const clientY =
+        "touches" in event ? (event.touches[0]?.clientY ?? dragStartY.current) : event.clientY;
       // Dragging up (negative delta) should increase height
       const delta = dragStartY.current - clientY;
       const rawHeight = dragStartHeight.current + delta;
@@ -682,6 +684,7 @@ export function ComposerInput({
   }, []);
 
   const isCodexEngine = selectedEngine === "codex";
+  const isGeminiEngine = selectedEngine === "gemini";
   const collaborationModeDisabled = disabled;
   const planModeId = collaborationModes.find((mode) => mode.id === "plan")?.id ?? "plan";
   const defaultModeId = collaborationModes.find((mode) => mode.id !== planModeId)?.id ?? "code";
@@ -1098,7 +1101,7 @@ export function ComposerInput({
                         align="start"
                         className="composer-inline-select-popup"
                       >
-                        <SelectItem value="read-only" disabled>
+                        <SelectItem value="read-only" disabled={!isGeminiEngine}>
                           <span className="composer-inline-select-item">
                             <Lock size={14} aria-hidden />
                             <span className="composer-inline-select-item-label">
@@ -1106,7 +1109,7 @@ export function ComposerInput({
                             </span>
                           </span>
                         </SelectItem>
-                        <SelectItem value="current" disabled>
+                        <SelectItem value="current" disabled={!isGeminiEngine}>
                           <span className="composer-inline-select-item">
                             <Clock3 size={14} aria-hidden />
                             <span className="composer-inline-select-item-label">

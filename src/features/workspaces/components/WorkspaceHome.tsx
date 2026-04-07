@@ -121,7 +121,8 @@ export function WorkspaceHome({
   const fallbackStartEngine = useMemo(
     () =>
       startConversationEngineOptions.find((option) => !option.disabled)?.type ??
-      START_CONVERSATION_ENGINE_OPTIONS[0].type,
+      START_CONVERSATION_ENGINE_OPTIONS[0]?.type ??
+      "claude",
     [startConversationEngineOptions],
   );
 

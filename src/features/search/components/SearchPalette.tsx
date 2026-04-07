@@ -97,12 +97,15 @@ export function SearchPalette({
         return;
       }
       if (event.key === "Enter") {
-        if (!results.length || selectedIndex < 0 || selectedIndex >= results.length) {
-          return;
-        }
-        event.preventDefault();
-        onSelect(results[selectedIndex]);
+      if (!results.length || selectedIndex < 0 || selectedIndex >= results.length) {
+        return;
       }
+      event.preventDefault();
+      const selectedResult = results[selectedIndex];
+      if (selectedResult) {
+        onSelect(selectedResult);
+      }
+    }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);

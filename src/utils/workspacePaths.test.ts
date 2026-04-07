@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  isAbsoluteFsPath,
+  resolveGitRootWorkspacePrefix,
+  resolveGitStatusPathCandidates,
+  resolveWorkspacePathCandidates,
   resolveFileReadTarget,
   resolveDiffPathFromWorkspacePath,
   resolveWorkspaceRelativePath,
@@ -79,7 +83,7 @@ describe("workspacePaths", () => {
     });
   });
 
-  it("marks unsupported absolute paths outside workspace and spec root", () => {
+  it("routes absolute paths outside workspace and spec root to external-absolute domain", () => {
     expect(
       resolveFileReadTarget(
         "/repo",
@@ -87,9 +91,60 @@ describe("workspacePaths", () => {
         "/spec-root",
       ),
     ).toEqual({
-      domain: "unsupported-external",
+      domain: "external-absolute",
       normalizedInputPath: "/another-project/src/App.tsx",
       workspaceRelativePath: "/another-project/src/App.tsx",
     });
+  });
+
+  it("marks empty input path as invalid", () => {
+    expect(
+      resolveFileReadTarget(
+        "/repo",
+        "   ",
+        "/spec-root",
+      ),
+    ).toEqual({
+      domain: "invalid",
+      normalizedInputPath: "",
+      workspaceRelativePath: "",
+    });
+  });
+
+  it("detects Windows-style absolute paths with backslashes", () => {
+    expect(isAbsoluteFsPath("C:\\Users\\Chen\\Project\\src\\App.tsx")).toBe(true);
+    expect(isAbsoluteFsPath("\\\\server\\share\\file.txt")).toBe(true);
+    expect(isAbsoluteFsPath("src/App.tsx")).toBe(false);
+  });
+
+  it("resolves git root prefix from absolute git root path under workspace", () => {
+    expect(
+      resolveGitRootWorkspacePrefix(
+        "/tmp/JinSen",
+        "/tmp/JinSen/kmllm-search-showcar-py",
+      ),
+    ).toBe("kmllm-search-showcar-py");
+  });
+
+  it("maps repo-relative git status path into subrepo path without leaking to workspace root", () => {
+    expect(
+      resolveGitStatusPathCandidates(
+        "/tmp/JinSen",
+        "kmllm-search-showcar-py",
+        "README.md",
+      ),
+    ).toEqual(["kmllm-search-showcar-py/README.md"]);
+  });
+
+  it("provides workspace-oriented path candidates for matching opened file paths", () => {
+    expect(
+      resolveWorkspacePathCandidates(
+        "/tmp/JinSen",
+        "/tmp/JinSen/kmllm-search-showcar-py/README.md",
+      ),
+    ).toEqual([
+      "kmllm-search-showcar-py/README.md",
+      "tmp/JinSen/kmllm-search-showcar-py/README.md",
+    ]);
   });
 });

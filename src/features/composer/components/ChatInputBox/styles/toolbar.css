@@ -52,7 +52,7 @@
   cursor: default;
 }
 
-.agent-tag .codicon-hubot {
+.agent-tag .codicon {
   font-size: 12px;
   flex-shrink: 0;
 }

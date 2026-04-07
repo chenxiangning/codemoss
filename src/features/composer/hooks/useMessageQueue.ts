@@ -57,6 +57,9 @@ export function useMessageQueue({
 
     if (wasLoading && !isLoading && !isExecutingFromQueueRef.current && queue.length > 0) {
       const nextMessage = queue[0];
+      if (!nextMessage) {
+        return;
+      }
       isExecutingFromQueueRef.current = true;
       setQueue(prev => prev.slice(1));
       setTimeout(() => {

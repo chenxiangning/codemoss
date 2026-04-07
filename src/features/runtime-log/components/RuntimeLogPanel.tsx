@@ -545,16 +545,17 @@ export function RuntimeLogPanel({
         return null;
       }
       const [, timestamp, level, pid, thread, logger, message] = matched;
+      const normalizedLevel = level ?? "info";
       return (
         <>
           <span className="runtime-console-token is-time">{timestamp}</span>{" "}
-          <span className={`runtime-console-token is-level is-level-${level.toLowerCase()}`}>
-            {level}
+          <span className={`runtime-console-token is-level is-level-${normalizedLevel.toLowerCase()}`}>
+            {normalizedLevel}
           </span>{" "}
           <span className="runtime-console-token is-pid">{pid}</span>{" "}
           <span className="runtime-console-token is-separator">---</span>{" "}
           <span className="runtime-console-token is-thread">{thread}</span>{" "}
-          {renderJavaToken(logger, "spring-logger")}
+          {renderJavaToken(logger ?? "", "spring-logger")}
           <span className="runtime-console-token is-separator"> : </span>
           {message ? renderHighlightedLine(message) : null}
         </>

@@ -30,6 +30,7 @@ const makeOptions = (
   startMcp: vi.fn().mockResolvedValue(undefined),
   startSpecRoot: vi.fn().mockResolvedValue(undefined),
   startStatus: vi.fn().mockResolvedValue(undefined),
+  startContext: vi.fn().mockResolvedValue(undefined),
   startExport: vi.fn().mockResolvedValue(undefined),
   startImport: vi.fn().mockResolvedValue(undefined),
   startLsp: vi.fn().mockResolvedValue(undefined),
@@ -245,6 +246,58 @@ describe("useQueuedSend", () => {
     expect(options.sendUserMessage).toHaveBeenCalledWith("After review", []);
   });
 
+  it("keeps /review-code as plain text and does not route to review handler", async () => {
+    const options = makeOptions();
+    const { result } = renderHook((props) => useQueuedSend(props), {
+      initialProps: options,
+    });
+
+    await act(async () => {
+      await result.current.handleSend("/review-code run full check", ["img-1"]);
+    });
+
+    expect(options.startReview).not.toHaveBeenCalled();
+    expect(options.sendUserMessage).toHaveBeenCalledWith(
+      "/review-code run full check",
+      ["img-1"],
+    );
+  });
+
+  it("keeps /review-like custom commands as plain text", async () => {
+    const options = makeOptions();
+    const { result } = renderHook((props) => useQueuedSend(props), {
+      initialProps: options,
+    });
+    const cases = [
+      "/review:custom run",
+      "/review_custom run",
+      "/review.custom run",
+    ];
+
+    await act(async () => {
+      for (const text of cases) {
+        await result.current.handleSend(text, ["img-1"]);
+      }
+    });
+
+    expect(options.startReview).not.toHaveBeenCalled();
+    expect(options.sendUserMessage).toHaveBeenNthCalledWith(
+      1,
+      "/review:custom run",
+      ["img-1"],
+    );
+    expect(options.sendUserMessage).toHaveBeenNthCalledWith(
+      2,
+      "/review_custom run",
+      ["img-1"],
+    );
+    expect(options.sendUserMessage).toHaveBeenNthCalledWith(
+      3,
+      "/review.custom run",
+      ["img-1"],
+    );
+  });
+
   it("starts a new thread for /new and sends the remaining text there", async () => {
     const startThreadForWorkspace = vi.fn().mockResolvedValue("thread-2");
     const sendUserMessageToThread = vi.fn().mockResolvedValue(undefined);
@@ -285,6 +338,41 @@ describe("useQueuedSend", () => {
       engine: "claude",
     });
     expect(sendUserMessageToThread).not.toHaveBeenCalled();
+    expect(options.sendUserMessage).not.toHaveBeenCalled();
+  });
+
+  it("treats /clear and /reset as new-session aliases on claude", async () => {
+    const startThreadForWorkspace = vi
+      .fn()
+      .mockResolvedValueOnce("thread-4")
+      .mockResolvedValueOnce("thread-5");
+    const sendUserMessageToThread = vi.fn().mockResolvedValue(undefined);
+    const options = makeOptions({
+      activeEngine: "claude",
+      startThreadForWorkspace,
+      sendUserMessageToThread,
+    });
+    const { result } = renderHook((props) => useQueuedSend(props), {
+      initialProps: options,
+    });
+
+    await act(async () => {
+      await result.current.handleSend("/clear keep this", ["img-1"]);
+      await result.current.handleSend("/reset");
+    });
+
+    expect(startThreadForWorkspace).toHaveBeenNthCalledWith(1, "workspace-1", {
+      engine: "claude",
+    });
+    expect(startThreadForWorkspace).toHaveBeenNthCalledWith(2, "workspace-1", {
+      engine: "claude",
+    });
+    expect(sendUserMessageToThread).toHaveBeenCalledWith(
+      workspace,
+      "thread-4",
+      "keep this",
+      [],
+    );
     expect(options.sendUserMessage).not.toHaveBeenCalled();
   });
 
@@ -347,6 +435,21 @@ describe("useQueuedSend", () => {
 
     expect(setCodexCollaborationMode).toHaveBeenNthCalledWith(1, "code");
     expect(setCodexCollaborationMode).toHaveBeenNthCalledWith(2, "code");
+    expect(options.sendUserMessage).not.toHaveBeenCalled();
+  });
+
+  it("routes /context to the local context handler", async () => {
+    const startContext = vi.fn().mockResolvedValue(undefined);
+    const options = makeOptions({ startContext });
+    const { result } = renderHook((props) => useQueuedSend(props), {
+      initialProps: options,
+    });
+
+    await act(async () => {
+      await result.current.handleSend("/context", ["img-1"]);
+    });
+
+    expect(startContext).toHaveBeenCalledWith("/context");
     expect(options.sendUserMessage).not.toHaveBeenCalled();
   });
 
@@ -460,6 +563,22 @@ describe("useQueuedSend", () => {
     );
     expect(startMode).not.toHaveBeenCalled();
     expect(setCodexCollaborationMode).not.toHaveBeenCalled();
+  });
+
+  it("keeps /clear as plain text on codex engine", async () => {
+    const options = makeOptions({
+      activeEngine: "codex",
+    });
+    const { result } = renderHook((props) => useQueuedSend(props), {
+      initialProps: options,
+    });
+
+    await act(async () => {
+      await result.current.handleSend("/clear");
+    });
+
+    expect(options.sendUserMessage).toHaveBeenCalledWith("/clear", []);
+    expect(options.startThreadForWorkspace).not.toHaveBeenCalled();
   });
 
   it("routes /spec-root to the spec root handler", async () => {

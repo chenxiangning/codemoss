@@ -29,8 +29,18 @@ export const ModeSelect = ({ value, onChange, provider }: ModeSelectProps) => {
   const [isOpen, setIsOpen] = useState(false);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const fallbackMode = AVAILABLE_MODES[0] ?? {
+    id: 'default' as PermissionMode,
+    label: 'Default Mode',
+    icon: 'codicon-comment-discussion',
+    tooltip: 'Standard permission behavior',
+    description: 'Requires manual confirmation for each operation',
+  };
 
   const modeOptions = useMemo(() => {
+    if (provider === 'gemini') {
+      return AVAILABLE_MODES.map((mode) => ({ ...mode, disabled: false }));
+    }
     // Only allow bypassPermissions (Auto Mode) to be selectable
     // Disable all other modes (default, plan, acceptEdits)
     return AVAILABLE_MODES.map((mode) => {
@@ -39,9 +49,9 @@ export const ModeSelect = ({ value, onChange, provider }: ModeSelectProps) => {
       }
       return mode;
     });
-  }, []);
+  }, [provider]);
 
-  const currentMode = modeOptions.find(m => m.id === value) || modeOptions[0];
+  const currentMode = modeOptions.find(m => m.id === value) ?? modeOptions[0] ?? fallbackMode;
 
   // Helper function to get translated mode text
   const getModeText = (modeId: PermissionMode, field: 'label' | 'tooltip' | 'description') => {
@@ -127,6 +137,7 @@ export const ModeSelect = ({ value, onChange, provider }: ModeSelectProps) => {
           {modeOptions.map((mode) => (
             <div
               key={mode.id}
+              data-mode-id={mode.id}
               className={`selector-option ${mode.id === value ? 'selected' : ''} ${mode.disabled ? 'disabled' : ''}`}
               onClick={() => handleSelect(mode.id, mode.disabled)}
               title={getModeText(mode.id, 'tooltip')}

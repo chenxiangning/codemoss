@@ -1,9 +1,10 @@
-import { useCallback, useMemo, useRef, type DragEvent, type MouseEvent, type ReactNode, type RefObject } from "react";
+import { useCallback, useMemo, useReducer, useRef, type DragEvent, type MouseEvent, type ReactNode, type RefObject } from "react";
 import { useTranslation } from "react-i18next";
 import ArrowLeft from "lucide-react/dist/esm/icons/arrow-left";
 import { Sidebar } from "../../app/components/Sidebar";
 import { HomeChat } from "../../home/components/HomeChat";
 import { MainHeader } from "../../app/components/MainHeader";
+import { TopbarSessionTabs } from "../../app/components/TopbarSessionTabs";
 import { Messages } from "../../messages/components/Messages";
 import { ApprovalToasts } from "../../app/components/ApprovalToasts";
 import { UpdateToast } from "../../update/components/UpdateToast";
@@ -84,6 +85,15 @@ import { resolveDiffPathFromWorkspacePath } from "../../../utils/workspacePaths"
 import { resolvePresentationProfile } from "../../messages/presentation/presentationProfile";
 import { useWorkspaceSessionActivity } from "../../session-activity/hooks/useWorkspaceSessionActivity";
 import type { SessionRadarEntry } from "../../session-activity/hooks/useSessionRadarFeed";
+import {
+  TOPBAR_SESSION_TAB_MAX,
+  buildTopbarSessionTabItems,
+  createEmptyTopbarSessionWindows,
+  dismissTopbarSessionTab,
+  pruneTopbarSessionWindows,
+  recordTopbarSessionActivation,
+  type TopbarSessionWindows,
+} from "./topbarSessionTabs";
 
 type ThreadActivityStatus = {
   isProcessing: boolean;
@@ -220,6 +230,8 @@ type LayoutNodesOptions = {
   onWorkspaceDragLeave: (event: DragEvent<HTMLElement>) => void;
   onWorkspaceDrop: (event: DragEvent<HTMLElement>) => void;
   appMode: AppMode;
+  isPhone: boolean;
+  isTablet: boolean;
   onAppModeChange: (mode: AppMode) => void;
   onOpenHomeChat: () => void;
   onOpenMemory: () => void;
@@ -288,6 +300,8 @@ type LayoutNodesOptions = {
     location?: EditorNavigationLocation,
     options?: OpenFileOptions,
   ) => void;
+  externalChangeMonitoringEnabled?: boolean;
+  externalChangeTransportMode?: "watcher" | "polling";
   liveEditPreviewEnabled?: boolean;
   onToggleLiveEditPreview?: () => void;
   onExitEditor: () => void;
@@ -311,6 +325,7 @@ type LayoutNodesOptions = {
   onFilePanelModeChange: (mode: "git" | "files" | "search" | "prompts" | "memory" | "activity" | "radar") => void;
   fileTreeLoading: boolean;
   onRefreshFiles?: () => void;
+  onOpenDetachedFileExplorer?: (initialFilePath?: string | null) => void;
   onToggleRuntimeConsole: () => void;
   runtimeConsoleVisible: boolean;
   gitStatus: {
@@ -377,7 +392,10 @@ type LayoutNodesOptions = {
   commitMessageLoading: boolean;
   commitMessageError: string | null;
   onCommitMessageChange: (value: string) => void;
-  onGenerateCommitMessage: () => void | Promise<void>;
+  onGenerateCommitMessage: (
+    language?: "zh" | "en",
+    engine?: "codex" | "claude" | "gemini" | "opencode",
+  ) => void | Promise<void>;
   onCommit?: () => void | Promise<void>;
   onCommitAndPush?: () => void | Promise<void>;
   onCommitAndSync?: () => void | Promise<void>;
@@ -489,6 +507,7 @@ type LayoutNodesOptions = {
   selectedAgent: SelectedAgentOption | null;
   onSelectAgent: (agent: SelectedAgentOption | null) => void;
   onOpenAgentSettings: () => void;
+  onOpenPromptSettings: () => void;
   onOpenModelSettings: (providerId?: string) => void;
   opencodeVariantOptions: string[];
   selectedOpenCodeVariant: string | null;
@@ -585,14 +604,38 @@ type LayoutNodesResult = {
 const EMPTY_COMMANDS: CustomCommandOption[] = [];
 
 function toConversationEngine(engine: EngineType | undefined): ConversationEngine {
-  if (engine === "claude" || engine === "opencode") {
+  if (engine === "claude" || engine === "gemini" || engine === "opencode") {
     return engine;
   }
   return "codex";
 }
 
+function toTopbarTabKey(workspaceId: string, threadId: string): string {
+  return `${workspaceId}::${threadId}`;
+}
+
 export function useLayoutNodes(options: LayoutNodesOptions): LayoutNodesResult {
   const { t } = useTranslation();
+  const onOpenFile = options.onOpenFile;
+  const [, forceTopbarSessionRender] = useReducer((value: number) => value + 1, 0);
+  const topbarSessionWindowsRef = useRef<TopbarSessionWindows>(
+    createEmptyTopbarSessionWindows(),
+  );
+  const pendingTopbarSelectionRef = useRef<{
+    workspaceId: string;
+    threadId: string;
+    setAt: number;
+  } | null>(null);
+  const dismissedTopbarTabKeysRef = useRef<Set<string>>(new Set());
+  const lastActivationRef = useRef<{
+    initialized: boolean;
+    workspaceId: string | null;
+    threadId: string | null;
+  }>({
+    initialized: false,
+    workspaceId: null,
+    threadId: null,
+  });
   const activeThreadStatus = options.activeThreadId
     ? options.threadStatusById[options.activeThreadId] ?? null
     : null;
@@ -654,7 +697,7 @@ export function useLayoutNodes(options: LayoutNodesOptions): LayoutNodesResult {
         activeWorkspacePath,
       );
       onGitDiffListViewChange("tree");
-      onSelectDiff(resolvedPath);
+      onSelectDiff(resolvedPath ?? null);
     },
     [gitDiffItems, activeWorkspacePath, onGitDiffListViewChange, onSelectDiff],
   );
@@ -673,10 +716,197 @@ export function useLayoutNodes(options: LayoutNodesOptions): LayoutNodesResult {
       location?: EditorNavigationLocation,
       highlightOptions?: OpenFileOptions,
     ) => {
-      options.onOpenFile(path, location, highlightOptions);
+      onOpenFile(path, location, highlightOptions);
     },
-    [options.onOpenFile],
+    [onOpenFile],
   );
+  const groupedWorkspacesForHeader = useMemo(() => {
+    const worktreesByParent = new Map<string, WorkspaceInfo[]>();
+    const getSortOrder = (value?: number | null) =>
+      Number.isFinite(value) ? Number(value) : Number.MAX_SAFE_INTEGER;
+    const sortByOrderAndName = (a: WorkspaceInfo, b: WorkspaceInfo) => {
+      const orderDiff = getSortOrder(a.settings.sortOrder) - getSortOrder(b.settings.sortOrder);
+      if (orderDiff !== 0) {
+        return orderDiff;
+      }
+      return a.name.localeCompare(b.name);
+    };
+
+    options.workspaces
+      .filter((entry) => (entry.kind ?? "main") === "worktree" && Boolean(entry.parentId))
+      .forEach((worktree) => {
+        const parentId = worktree.parentId as string;
+        const bucket = worktreesByParent.get(parentId) ?? [];
+        bucket.push(worktree);
+        worktreesByParent.set(parentId, bucket);
+      });
+
+    worktreesByParent.forEach((entries) => {
+      entries.sort(sortByOrderAndName);
+    });
+
+    return options.groupedWorkspaces.map((group) => ({
+      ...group,
+      workspaces: group.workspaces.flatMap((workspace) => {
+        const worktrees = worktreesByParent.get(workspace.id) ?? [];
+        return worktrees.length > 0 ? [workspace, ...worktrees] : [workspace];
+      }),
+    }));
+  }, [options.groupedWorkspaces, options.workspaces]);
+
+  topbarSessionWindowsRef.current = pruneTopbarSessionWindows(
+    topbarSessionWindowsRef.current,
+    options.threadsByWorkspace,
+  );
+  const currentActivation = {
+    workspaceId: options.activeWorkspaceId,
+    threadId: options.activeThreadId,
+  };
+  if (!lastActivationRef.current.initialized) {
+    lastActivationRef.current = {
+      initialized: true,
+      workspaceId: currentActivation.workspaceId,
+      threadId: currentActivation.threadId,
+    };
+  } else {
+    const isActivationChanged =
+      currentActivation.workspaceId !== lastActivationRef.current.workspaceId ||
+      currentActivation.threadId !== lastActivationRef.current.threadId;
+    if (
+      isActivationChanged &&
+      currentActivation.workspaceId &&
+      currentActivation.threadId
+    ) {
+      dismissedTopbarTabKeysRef.current.delete(
+        toTopbarTabKey(
+          currentActivation.workspaceId,
+          currentActivation.threadId,
+        ),
+      );
+      topbarSessionWindowsRef.current = recordTopbarSessionActivation(
+        topbarSessionWindowsRef.current,
+        currentActivation.workspaceId,
+        currentActivation.threadId,
+        options.threadsByWorkspace,
+        TOPBAR_SESSION_TAB_MAX,
+      );
+    }
+    lastActivationRef.current = {
+      initialized: true,
+      workspaceId: currentActivation.workspaceId,
+      threadId: currentActivation.threadId,
+    };
+  }
+  if (currentActivation.workspaceId && currentActivation.threadId) {
+    const activeKey = toTopbarTabKey(
+      currentActivation.workspaceId,
+      currentActivation.threadId,
+    );
+    const activeExists = topbarSessionWindowsRef.current.tabs.some(
+      (tab) =>
+        tab.workspaceId === currentActivation.workspaceId &&
+        tab.threadId === currentActivation.threadId,
+    );
+    if (!activeExists && !dismissedTopbarTabKeysRef.current.has(activeKey)) {
+      topbarSessionWindowsRef.current = recordTopbarSessionActivation(
+        topbarSessionWindowsRef.current,
+        currentActivation.workspaceId,
+        currentActivation.threadId,
+        options.threadsByWorkspace,
+        TOPBAR_SESSION_TAB_MAX,
+      );
+    }
+  }
+  const pendingSelection = pendingTopbarSelectionRef.current;
+  if (
+    pendingSelection &&
+    pendingSelection.workspaceId === options.activeWorkspaceId &&
+    pendingSelection.threadId === options.activeThreadId
+  ) {
+    pendingTopbarSelectionRef.current = null;
+  } else if (
+    pendingSelection &&
+    Date.now() - pendingSelection.setAt > 1800
+  ) {
+    pendingTopbarSelectionRef.current = null;
+  }
+  const highlightedWorkspaceId =
+    pendingTopbarSelectionRef.current?.workspaceId ?? options.activeWorkspaceId;
+  const highlightedThreadId =
+    pendingTopbarSelectionRef.current?.threadId ?? options.activeThreadId;
+  const topbarSessionTabItems = buildTopbarSessionTabItems(
+    highlightedWorkspaceId,
+    highlightedThreadId,
+    options.threadsByWorkspace,
+    topbarSessionWindowsRef.current,
+    t("threads.untitledThread"),
+    {
+      codex: t("settings.projectSessionEngineCodex"),
+      claude: t("settings.projectSessionEngineClaude"),
+      gemini: t("settings.projectSessionEngineGemini"),
+      opencode: t("settings.projectSessionEngineOpencode"),
+    },
+  );
+  const sessionTabsNode =
+    !options.isPhone && !options.isTablet ? (
+      <TopbarSessionTabs
+        tabs={topbarSessionTabItems}
+        ariaLabel={t("threads.topbarSessionTabsAriaLabel")}
+        onSelectThread={(workspaceId, threadId) => {
+          const isCurrentTab =
+            workspaceId === options.activeWorkspaceId &&
+            threadId === options.activeThreadId;
+          if (isCurrentTab) {
+            return;
+          }
+          pendingTopbarSelectionRef.current = {
+            workspaceId,
+            threadId,
+            setAt: Date.now(),
+          };
+          forceTopbarSessionRender();
+          options.onSelectThread(workspaceId, threadId);
+        }}
+        onCloseThread={(workspaceId, threadId) => {
+          const closedKey = toTopbarTabKey(workspaceId, threadId);
+          dismissedTopbarTabKeysRef.current.add(closedKey);
+          const isClosingActiveTab =
+            workspaceId === options.activeWorkspaceId &&
+            threadId === options.activeThreadId;
+          topbarSessionWindowsRef.current = dismissTopbarSessionTab(
+            topbarSessionWindowsRef.current,
+            workspaceId,
+            threadId,
+          );
+          if (
+            pendingTopbarSelectionRef.current?.workspaceId === workspaceId &&
+            pendingTopbarSelectionRef.current?.threadId === threadId
+          ) {
+            pendingTopbarSelectionRef.current = null;
+          }
+          forceTopbarSessionRender();
+          if (!isClosingActiveTab) {
+            return;
+          }
+          const fallbackTab =
+            topbarSessionWindowsRef.current.tabs[
+              topbarSessionWindowsRef.current.tabs.length - 1
+            ] ?? null;
+          if (fallbackTab) {
+            pendingTopbarSelectionRef.current = {
+              workspaceId: fallbackTab.workspaceId,
+              threadId: fallbackTab.threadId,
+              setAt: Date.now(),
+            };
+            forceTopbarSessionRender();
+            options.onSelectThread(fallbackTab.workspaceId, fallbackTab.threadId);
+            return;
+          }
+          const targetWorkspaceId = options.activeWorkspaceId ?? workspaceId;
+          options.onSelectWorkspace(targetWorkspaceId);
+        }}
+      />
+    ) : null;
 
   const sidebarNode = (
     <Sidebar
@@ -824,6 +1054,7 @@ export function useLayoutNodes(options: LayoutNodesOptions): LayoutNodesResult {
             id: options.selectedAgent.id,
             name: options.selectedAgent.name,
             prompt: options.selectedAgent.prompt ?? undefined,
+            icon: options.selectedAgent.icon ?? undefined,
           }
         : null,
     [options.selectedAgent],
@@ -883,6 +1114,7 @@ export function useLayoutNodes(options: LayoutNodesOptions): LayoutNodesResult {
       selectedAgent={composerSelectedAgent}
       onAgentSelect={options.onSelectAgent}
       onOpenAgentSettings={options.onOpenAgentSettings}
+      onOpenPromptSettings={options.onOpenPromptSettings}
       onOpenModelSettings={options.onOpenModelSettings}
       opencodeVariantOptions={options.opencodeVariantOptions}
       selectedOpenCodeVariant={options.selectedOpenCodeVariant}
@@ -997,6 +1229,7 @@ export function useLayoutNodes(options: LayoutNodesOptions): LayoutNodesResult {
       branches={options.branches}
       onCheckoutBranch={options.onCheckoutBranch}
       onCreateBranch={options.onCreateBranch}
+      sessionTabsNode={sessionTabsNode}
       canCopyThread={options.activeItems.length > 0}
       onCopyThread={options.onCopyThread}
       onLockPanel={options.onLockPanel}
@@ -1012,7 +1245,7 @@ export function useLayoutNodes(options: LayoutNodesOptions): LayoutNodesResult {
       onSaveLaunchScript={options.onSaveLaunchScript}
       launchScriptsState={options.launchScriptsState}
       extraActionsNode={options.mainHeaderActionsNode}
-      groupedWorkspaces={options.groupedWorkspaces}
+      groupedWorkspaces={groupedWorkspacesForHeader}
       activeWorkspaceId={options.activeWorkspaceId}
       onSelectWorkspace={options.onSelectWorkspace}
     />
@@ -1086,6 +1319,7 @@ export function useLayoutNodes(options: LayoutNodesOptions): LayoutNodesResult {
         workspaceId={options.activeWorkspace.id}
         workspaceName={options.activeWorkspace.name}
         workspacePath={options.activeWorkspace.path}
+        gitRoot={options.gitRoot}
         files={options.files}
         directories={options.directories}
         isLoading={options.fileTreeLoading}
@@ -1101,6 +1335,7 @@ export function useLayoutNodes(options: LayoutNodesOptions): LayoutNodesResult {
         isRuntimeConsoleVisible={options.runtimeConsoleVisible}
         onOpenSpecHub={options.onOpenSpecHub}
         isSpecHubActive={options.activeTab === "spec"}
+        onOpenDetachedExplorer={options.onOpenDetachedFileExplorer}
         gitStatusFiles={options.gitStatus.files}
         gitignoredFiles={options.gitignoredFiles}
         gitignoredDirectories={options.gitignoredDirectories}
@@ -1277,6 +1512,7 @@ export function useLayoutNodes(options: LayoutNodesOptions): LayoutNodesResult {
       <FileViewPanel
         workspaceId={options.activeWorkspace.id}
         workspacePath={options.activeWorkspace.path}
+        gitRoot={options.gitRoot}
         customSpecRoot={activeWorkspaceCustomSpecRoot}
         filePath={options.editorFilePath}
         navigationTarget={options.editorNavigationTarget}
@@ -1306,6 +1542,8 @@ export function useLayoutNodes(options: LayoutNodesOptions): LayoutNodesResult {
         onNavigateToLocation={options.onOpenFile}
         onClose={options.onExitEditor}
         onInsertText={options.onInsertComposerText}
+        externalChangeMonitoringEnabled={options.externalChangeMonitoringEnabled}
+        externalChangeTransportMode={options.externalChangeTransportMode}
       />
     ) : null;
 

@@ -160,20 +160,20 @@ export function extractToolName(title: string): string {
 
   // 移除 "Tool:" 或 "Command:" 前缀
   const prefixMatch = title.match(/^(?:Tool|Command):\s*(.+)$/i);
-  const cleanTitle = prefixMatch ? prefixMatch[1].trim() : title.trim();
+  const cleanTitle = prefixMatch ? (prefixMatch[1] ?? title).trim() : title.trim();
 
   // 如果是 MCP 工具名称，提取最后一部分
   // 例如: mcp__ace-tool__search_context -> search_context
   if (cleanTitle.includes('__')) {
     const parts = cleanTitle.split('__');
-    return parts[parts.length - 1].trim();
+    return (parts[parts.length - 1] ?? cleanTitle).trim();
   }
 
   // 如果包含斜杠，取最后一部分
   // 例如: "claude / TodoWrite" -> "TodoWrite"
   if (cleanTitle.includes('/')) {
     const parts = cleanTitle.split('/');
-    return parts[parts.length - 1].trim();
+    return (parts[parts.length - 1] ?? cleanTitle).trim();
   }
 
   return cleanTitle.toLowerCase();
@@ -301,7 +301,7 @@ export function getFileName(path?: string): string {
   if (!path) return '';
   const normalized = path.replace(/\\/g, '/');
   const parts = normalized.split('/').filter(Boolean);
-  return parts.length ? parts[parts.length - 1] : path;
+  return parts.length ? (parts[parts.length - 1] ?? path) : path;
 }
 
 /**

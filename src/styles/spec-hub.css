@@ -962,6 +962,12 @@
   font-weight: 600;
 }
 
+.spec-hub-markdown .markdown-codeblock-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .spec-hub-markdown .markdown-codeblock-copy {
   border: 1px solid var(--border-strong);
   border-radius: 999px;

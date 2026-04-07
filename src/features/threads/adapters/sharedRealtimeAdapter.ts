@@ -165,6 +165,9 @@ export function inferEngineFromThreadId(
   if (threadId.startsWith("claude:") || threadId.startsWith("claude-pending-")) {
     return "claude";
   }
+  if (threadId.startsWith("gemini:") || threadId.startsWith("gemini-pending-")) {
+    return "gemini";
+  }
   if (threadId.startsWith("opencode:") || threadId.startsWith("opencode-pending-")) {
     return "opencode";
   }
@@ -227,7 +230,9 @@ export function mapCommonRealtimeEvent(
     if (!delta) {
       return null;
     }
-    const itemId = asString(params.itemId ?? params.item_id ?? params.turnId ?? params.turn_id ?? "");
+    const itemId = asString(
+      params.itemId ?? params.item_id ?? turn.itemId ?? turn.item_id ?? "",
+    );
     const resolvedItemId = itemId || `${threadId}:text-delta`;
     return createEvent({
       engine,

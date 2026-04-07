@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import type { AgentConfig, AgentImportPreviewItem } from "../../../types";
+import { DEFAULT_AGENT_ICON, resolveAgentIcon, resolveAgentIconForAgent } from "../../../utils/agentIcons";
 import {
   addAgentConfig,
   applyImportAgentConfigs,
@@ -20,6 +21,7 @@ export type AgentDialogState = {
   target: AgentConfig | null;
   name: string;
   prompt: string;
+  icon: string;
   nameError: string | null;
   saving: boolean;
 };
@@ -68,6 +70,7 @@ export function useAgentManagement() {
     target: null,
     name: "",
     prompt: "",
+    icon: DEFAULT_AGENT_ICON,
     nameError: null,
     saving: false,
   });
@@ -110,6 +113,7 @@ export function useAgentManagement() {
       target: null,
       name: "",
       prompt: "",
+      icon: DEFAULT_AGENT_ICON,
       nameError: null,
       saving: false,
     });
@@ -122,6 +126,7 @@ export function useAgentManagement() {
       target: agent,
       name: agent.name ?? "",
       prompt: agent.prompt ?? "",
+      icon: resolveAgentIconForAgent(agent, DEFAULT_AGENT_ICON),
       nameError: null,
       saving: false,
     });
@@ -139,6 +144,7 @@ export function useAgentManagement() {
   const handleSaveAgent = useCallback(async () => {
     const trimmedName = agentDialog.name.trim();
     const trimmedPrompt = agentDialog.prompt.trim();
+    const icon = resolveAgentIcon(agentDialog.icon, DEFAULT_AGENT_ICON);
     const nameLength = trimmedName.length;
     if (nameLength < 1 || nameLength > 20) {
       setAgentDialog((prev) => ({
@@ -167,6 +173,7 @@ export function useAgentManagement() {
           id: newId,
           name: trimmedName,
           prompt: trimmedPrompt || null,
+          icon,
           createdAt: Date.now(),
         });
         setAgentNotice({
@@ -177,6 +184,7 @@ export function useAgentManagement() {
         await updateAgentConfig(agentDialog.target.id, {
           name: trimmedName,
           prompt: trimmedPrompt || null,
+          icon,
         });
         setAgentNotice({
           kind: "success",
@@ -189,6 +197,7 @@ export function useAgentManagement() {
         target: null,
         name: "",
         prompt: "",
+        icon: DEFAULT_AGENT_ICON,
         nameError: null,
         saving: false,
       });

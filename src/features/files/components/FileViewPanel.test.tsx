@@ -6,13 +6,17 @@ import {
   getCodeIntelDefinition,
   getCodeIntelReferences,
   getGitFileFullDiff,
+  readExternalAbsoluteFile,
   readExternalSpecFile,
   readWorkspaceFile,
   writeExternalSpecFile,
   writeWorkspaceFile,
 } from "../../../services/tauri";
+import { subscribeDetachedExternalFileChanges } from "../../../services/events";
+import { pushErrorToast } from "../../../services/toasts";
 
 const mockCodeMirrorDispatch = vi.fn();
+let detachedExternalFileChangeListener: ((event: any) => void) | null = null;
 
 function createDoc(text: string) {
   const lines = text.split("\n");
@@ -114,11 +118,25 @@ vi.mock("../../../components/FileIcon", () => ({
 vi.mock("../../../services/tauri", () => ({
   readWorkspaceFile: vi.fn(),
   readExternalSpecFile: vi.fn(),
+  readExternalAbsoluteFile: vi.fn(),
   writeWorkspaceFile: vi.fn(),
   writeExternalSpecFile: vi.fn(),
   getGitFileFullDiff: vi.fn(),
   getCodeIntelDefinition: vi.fn(),
   getCodeIntelReferences: vi.fn(),
+}));
+
+vi.mock("../../../services/events", () => ({
+  subscribeDetachedExternalFileChanges: vi.fn((onEvent: (event: any) => void) => {
+    detachedExternalFileChangeListener = onEvent;
+    return () => {
+      detachedExternalFileChangeListener = null;
+    };
+  }),
+}));
+
+vi.mock("../../../services/toasts", () => ({
+  pushErrorToast: vi.fn(),
 }));
 
 const mermaidInitialize = vi.fn();
@@ -149,6 +167,7 @@ describe("FileViewPanel navigation", () => {
     cleanup();
     vi.clearAllMocks();
     mockCodeMirrorDispatch.mockReset();
+    detachedExternalFileChangeListener = null;
   });
 
   it("navigates directly when definition has a single target", async () => {
@@ -332,6 +351,35 @@ describe("FileViewPanel navigation", () => {
     expect(onToggleEditorFileMaximized).toHaveBeenCalledTimes(1);
   });
 
+  it("renders tabs and action buttons in a single header row when requested", async () => {
+    vi.mocked(readWorkspaceFile).mockResolvedValue({
+      content: "class Main {}",
+      truncated: false,
+    });
+
+    const { container } = render(
+      <FileViewPanel
+        workspaceId="ws-single-row-header"
+        workspacePath="/repo"
+        filePath="src/Main.java"
+        openTabs={["src/Main.java", "src/Foo.java"]}
+        activeTabPath="src/Main.java"
+        openTargets={[]}
+        openAppIconById={{}}
+        selectedOpenAppId=""
+        onSelectOpenAppId={vi.fn()}
+        onClose={vi.fn()}
+        headerLayout="single-row"
+      />,
+    );
+
+    await screen.findByTestId("mock-codemirror");
+    expect(container.querySelector(".fvp-header-row")).toBeTruthy();
+    expect(container.querySelector(".fvp-topbar")).toBeNull();
+    expect(screen.getByRole("tablist", { name: "Open files" })).toBeTruthy();
+    expect(screen.getByTitle(/gotoDefinition/i)).toBeTruthy();
+  });
+
   it("prefers provided highlight markers over workspace git diff fetch", async () => {
     vi.mocked(readWorkspaceFile).mockResolvedValue({
       content: "line 1\nline 2\nline 3",
@@ -356,12 +404,14 @@ describe("FileViewPanel navigation", () => {
     );
 
     await screen.findByTestId("mock-codemirror");
-    expect(getGitFileFullDiff).not.toHaveBeenCalled();
-    expect(mockCodeMirrorDispatch).toHaveBeenCalledWith(
-      expect.objectContaining({
-        effects: expect.anything(),
-      }),
-    );
+    await waitFor(() => {
+      expect(getGitFileFullDiff).not.toHaveBeenCalled();
+      expect(mockCodeMirrorDispatch).toHaveBeenCalledWith(
+        expect.objectContaining({
+          effects: expect.anything(),
+        }),
+      );
+    });
   });
 
   it("falls back to workspace git diff fetch when provided highlight markers are empty", async () => {
@@ -456,6 +506,66 @@ describe("FileViewPanel navigation", () => {
     );
   });
 
+  it("uses repo-relative git path for diff when git root is a workspace subdirectory", async () => {
+    vi.mocked(readWorkspaceFile).mockResolvedValue({
+      content: "APP_HOST=0.0.0.0\n",
+      truncated: false,
+    });
+    vi.mocked(getGitFileFullDiff).mockResolvedValue("@@ -1,1 +1,2 @@\n-APP_HOST=0.0.0.0\n+APP_HOST=127.0.0.1");
+
+    const { container } = render(
+      <FileViewPanel
+        workspaceId="ws-subrepo"
+        workspacePath="/tmp/JinSen"
+        gitRoot="kmllm-search-showcar-py"
+        filePath="kmllm-search-showcar-py/.env.example"
+        gitStatusFiles={[
+          { path: ".env.example", status: "M", additions: 1, deletions: 1 },
+        ]}
+        highlightMarkers={{ added: [], modified: [] }}
+        openTargets={[]}
+        openAppIconById={{}}
+        selectedOpenAppId=""
+        onSelectOpenAppId={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    await screen.findByTestId("mock-codemirror");
+    expect(getGitFileFullDiff).toHaveBeenCalledWith("ws-subrepo", ".env.example");
+    expect(container.querySelector(".fvp-filepath")?.className).toContain("git-m");
+  });
+
+  it("does not apply subrepo repo-relative git status to workspace root file with same relative path", async () => {
+    vi.mocked(readWorkspaceFile).mockResolvedValue({
+      content: "# workspace root readme\n",
+      truncated: false,
+    });
+    vi.mocked(getGitFileFullDiff).mockResolvedValue("");
+
+    const { container } = render(
+      <FileViewPanel
+        workspaceId="ws-subrepo-root"
+        workspacePath="/tmp/JinSen"
+        gitRoot="kmllm-search-showcar-py"
+        filePath="README.md"
+        gitStatusFiles={[
+          { path: "README.md", status: "M", additions: 1, deletions: 1 },
+        ]}
+        highlightMarkers={{ added: [], modified: [] }}
+        openTargets={[]}
+        openAppIconById={{}}
+        selectedOpenAppId=""
+        onSelectOpenAppId={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    await screen.findByTestId("file-markdown-preview");
+    expect(getGitFileFullDiff).not.toHaveBeenCalled();
+    expect(container.querySelector(".fvp-filepath")?.className).not.toContain("git-m");
+  });
+
   it("reads file content via external spec route when path is under custom spec root", async () => {
     vi.mocked(readExternalSpecFile).mockResolvedValue({
       exists: true,
@@ -523,10 +633,15 @@ describe("FileViewPanel navigation", () => {
     expect(writeWorkspaceFile).not.toHaveBeenCalled();
   });
 
-  it("shows recoverable error for unsupported external absolute path", async () => {
+  it("reads file content via external absolute route when path is outside workspace and spec root", async () => {
+    vi.mocked(readExternalAbsoluteFile).mockResolvedValue({
+      content: "export const external = true;",
+      truncated: false,
+    });
+
     render(
       <FileViewPanel
-        workspaceId="ws-unsupported-external"
+        workspaceId="ws-external-absolute"
         workspacePath="/repo"
         customSpecRoot="/spec-root"
         filePath="/another-project/src/App.tsx"
@@ -538,11 +653,43 @@ describe("FileViewPanel navigation", () => {
       />,
     );
 
-    await waitFor(() => {
-      expect(screen.getByText("Invalid file path")).toBeTruthy();
-    });
+    await screen.findByTestId("mock-codemirror");
+    expect(readExternalAbsoluteFile).toHaveBeenCalledWith(
+      "ws-external-absolute",
+      "/another-project/src/App.tsx",
+    );
     expect(readWorkspaceFile).not.toHaveBeenCalled();
     expect(readExternalSpecFile).not.toHaveBeenCalled();
+  });
+
+  it("keeps external absolute files read-only on save", async () => {
+    vi.mocked(readExternalAbsoluteFile).mockResolvedValue({
+      content: "const a = 1;",
+      truncated: false,
+    });
+
+    render(
+      <FileViewPanel
+        workspaceId="ws-external-absolute-save"
+        workspacePath="/repo"
+        customSpecRoot="/spec-root"
+        filePath="/another-project/src/App.tsx"
+        openTargets={[]}
+        openAppIconById={{}}
+        selectedOpenAppId=""
+        onSelectOpenAppId={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    const editor = (await screen.findByTestId("mock-codemirror")) as HTMLTextAreaElement;
+    fireEvent.change(editor, { target: { value: "const a = 2;" } });
+    fireEvent.click(screen.getByRole("button", { name: /save|files\.save/i }));
+
+    await waitFor(() => {
+      expect(writeWorkspaceFile).not.toHaveBeenCalled();
+      expect(writeExternalSpecFile).not.toHaveBeenCalled();
+    });
   });
 });
 
@@ -742,6 +889,37 @@ describe("FileViewPanel markdown modes", () => {
     const editor = await screen.findByTestId("mock-codemirror");
     expect(editor).toBeTruthy();
     expect(screen.queryByTestId("file-structured-preview")).toBeNull();
+  });
+
+  it("keeps shell-group compatibility for zsh and dotfile scripts", async () => {
+    vi.mocked(readWorkspaceFile).mockResolvedValue({
+      content: [
+        "#!/usr/bin/env zsh",
+        "",
+        "# setup env",
+        "export APP_ENV=dev",
+      ].join("\n"),
+      truncated: false,
+    });
+
+    render(
+      <FileViewPanel
+        workspaceId="ws-shell-2"
+        workspacePath="/repo"
+        filePath=".envrc"
+        openTargets={[]}
+        openAppIconById={{}}
+        selectedOpenAppId=""
+        onSelectOpenAppId={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    await screen.findByTestId("mock-codemirror");
+    fireEvent.click(screen.getByRole("button", { name: /preview/i }));
+    await screen.findByTestId("file-structured-preview");
+    expect(screen.getByText("setup env")).toBeTruthy();
+    expect(screen.getByText("Commands")).toBeTruthy();
   });
 
   it("opens Dockerfile in edit mode by default", async () => {
@@ -964,5 +1142,266 @@ describe("FileViewPanel editor theme selection", () => {
 
     const editor = await screen.findByTestId("mock-codemirror");
     expect(editor.getAttribute("data-editor-theme")).toBe("dark");
+  });
+});
+
+describe("FileViewPanel external change awareness in detached mode", () => {
+  afterEach(() => {
+    cleanup();
+    vi.clearAllMocks();
+  });
+
+  it("auto-syncs clean buffer when disk content changes", async () => {
+    vi.mocked(readWorkspaceFile)
+      .mockResolvedValueOnce({ content: "const value = 1;", truncated: false })
+      .mockResolvedValue({ content: "const value = 2;", truncated: false });
+
+    render(
+      <FileViewPanel
+        workspaceId="ws-ext-clean"
+        workspacePath="/repo"
+        filePath="src/value.ts"
+        openTargets={[]}
+        openAppIconById={{}}
+        selectedOpenAppId=""
+        onSelectOpenAppId={vi.fn()}
+        onClose={vi.fn()}
+        externalChangeMonitoringEnabled
+        externalChangePollIntervalMs={20}
+      />,
+    );
+
+    const editor = await screen.findByTestId("mock-codemirror");
+    expect((editor as HTMLTextAreaElement).value).toBe("const value = 1;");
+
+    await waitFor(() => {
+      expect(screen.getByText("files.externalChangeAutoSynced")).toBeTruthy();
+    });
+    expect((screen.getByTestId("mock-codemirror") as HTMLTextAreaElement).value)
+      .toBe("const value = 2;");
+  });
+
+  it("continues polling after the first tick", async () => {
+    vi.mocked(readWorkspaceFile)
+      .mockResolvedValueOnce({ content: "const value = 1;", truncated: false })
+      .mockResolvedValueOnce({ content: "const value = 2;", truncated: false })
+      .mockResolvedValue({ content: "const value = 3;", truncated: false });
+
+    render(
+      <FileViewPanel
+        workspaceId="ws-ext-poll-loop"
+        workspacePath="/repo"
+        filePath="src/value-loop.ts"
+        openTargets={[]}
+        openAppIconById={{}}
+        selectedOpenAppId=""
+        onSelectOpenAppId={vi.fn()}
+        onClose={vi.fn()}
+        externalChangeMonitoringEnabled
+        externalChangePollIntervalMs={20}
+      />,
+    );
+
+    await screen.findByTestId("mock-codemirror");
+
+    await waitFor(() => {
+      expect((screen.getByTestId("mock-codemirror") as HTMLTextAreaElement).value)
+        .toBe("const value = 3;");
+      expect(vi.mocked(readWorkspaceFile).mock.calls.length).toBeGreaterThanOrEqual(3);
+    });
+  });
+
+  it("keeps polling after a read error and recovers on later tick", async () => {
+    vi.mocked(readWorkspaceFile)
+      .mockResolvedValueOnce({ content: "const value = 1;", truncated: false })
+      .mockRejectedValueOnce(new Error("disk temporary failure"))
+      .mockResolvedValue({ content: "const value = 2;", truncated: false });
+
+    render(
+      <FileViewPanel
+        workspaceId="ws-ext-poll-error-recover"
+        workspacePath="/repo"
+        filePath="src/value-recover.ts"
+        openTargets={[]}
+        openAppIconById={{}}
+        selectedOpenAppId=""
+        onSelectOpenAppId={vi.fn()}
+        onClose={vi.fn()}
+        externalChangeMonitoringEnabled
+        externalChangePollIntervalMs={20}
+      />,
+    );
+
+    await screen.findByTestId("mock-codemirror");
+    await waitFor(() => {
+      expect((screen.getByTestId("mock-codemirror") as HTMLTextAreaElement).value)
+        .toBe("const value = 2;");
+      expect(vi.mocked(readWorkspaceFile).mock.calls.length).toBeGreaterThanOrEqual(3);
+    });
+  });
+
+  it("does not show unavailable monitor toast for missing-file polling errors", async () => {
+    vi.mocked(readWorkspaceFile)
+      .mockResolvedValueOnce({ content: "const value = 1;", truncated: false })
+      .mockRejectedValue(new Error("Failed to open file: No such file or directory (os error 2)"));
+
+    render(
+      <FileViewPanel
+        workspaceId="ws-ext-poll-missing"
+        workspacePath="/repo"
+        filePath="src/value-missing.ts"
+        openTargets={[]}
+        openAppIconById={{}}
+        selectedOpenAppId=""
+        onSelectOpenAppId={vi.fn()}
+        onClose={vi.fn()}
+        externalChangeMonitoringEnabled
+        externalChangePollIntervalMs={20}
+      />,
+    );
+
+    await screen.findByTestId("mock-codemirror");
+    await waitFor(() => {
+      expect(vi.mocked(readWorkspaceFile).mock.calls.length).toBeGreaterThanOrEqual(4);
+    });
+    expect(vi.mocked(pushErrorToast)).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: "External file monitor is unavailable",
+      }),
+    );
+  });
+
+  it("shows conflict actions for dirty buffer and can keep local edits", async () => {
+    vi.mocked(readWorkspaceFile)
+      .mockResolvedValueOnce({ content: "console.log('v1');", truncated: false })
+      .mockResolvedValue({ content: "console.log('v2');", truncated: false });
+
+    render(
+      <FileViewPanel
+        workspaceId="ws-ext-dirty"
+        workspacePath="/repo"
+        filePath="src/app.ts"
+        openTargets={[]}
+        openAppIconById={{}}
+        selectedOpenAppId=""
+        onSelectOpenAppId={vi.fn()}
+        onClose={vi.fn()}
+        externalChangeMonitoringEnabled
+        externalChangePollIntervalMs={20}
+      />,
+    );
+
+    const editor = await screen.findByTestId("mock-codemirror");
+    fireEvent.change(editor, { target: { value: "console.log('local');" } });
+
+    await waitFor(() => {
+      expect(screen.getByText("files.externalChangeConflictTitle")).toBeTruthy();
+      expect(screen.getByText("files.externalChangeKeepLocal")).toBeTruthy();
+    });
+    expect((screen.getByTestId("mock-codemirror") as HTMLTextAreaElement).value)
+      .toBe("console.log('local');");
+
+    fireEvent.click(screen.getByText("files.externalChangeKeepLocal"));
+    await waitFor(() => {
+      expect(screen.queryByText("files.externalChangeConflictTitle")).toBeNull();
+    });
+  });
+
+  it("reloads disk content when user chooses reload action", async () => {
+    vi.mocked(readWorkspaceFile)
+      .mockResolvedValueOnce({ content: "line-a", truncated: false })
+      .mockResolvedValue({ content: "line-b", truncated: false });
+
+    render(
+      <FileViewPanel
+        workspaceId="ws-ext-reload"
+        workspacePath="/repo"
+        filePath="src/reload.ts"
+        openTargets={[]}
+        openAppIconById={{}}
+        selectedOpenAppId=""
+        onSelectOpenAppId={vi.fn()}
+        onClose={vi.fn()}
+        externalChangeMonitoringEnabled
+        externalChangePollIntervalMs={20}
+      />,
+    );
+
+    const editor = await screen.findByTestId("mock-codemirror");
+    fireEvent.change(editor, { target: { value: "line-local" } });
+
+    await waitFor(() => {
+      expect(screen.getByText("files.externalChangeReload")).toBeTruthy();
+    });
+    fireEvent.click(screen.getByText("files.externalChangeReload"));
+
+    await waitFor(() => {
+      expect((screen.getByTestId("mock-codemirror") as HTMLTextAreaElement).value).toBe("line-b");
+    });
+  });
+
+  it("applies watcher-driven external change events when watcher mode is enabled", async () => {
+    vi.mocked(readWorkspaceFile)
+      .mockResolvedValueOnce({ content: "const watcher = 1;", truncated: false })
+      .mockResolvedValue({ content: "const watcher = 2;", truncated: false });
+
+    render(
+      <FileViewPanel
+        workspaceId="ws-ext-watcher"
+        workspacePath="/repo"
+        filePath="src/watcher.ts"
+        openTargets={[]}
+        openAppIconById={{}}
+        selectedOpenAppId=""
+        onSelectOpenAppId={vi.fn()}
+        onClose={vi.fn()}
+        externalChangeMonitoringEnabled
+        externalChangeTransportMode="watcher"
+      />,
+    );
+
+    await screen.findByTestId("mock-codemirror");
+    expect(vi.mocked(subscribeDetachedExternalFileChanges)).toHaveBeenCalled();
+    detachedExternalFileChangeListener?.({
+      workspaceId: "ws-ext-watcher",
+      normalizedPath: "src/watcher.ts",
+      detectedAtMs: Date.now(),
+      source: "watcher",
+      eventKind: "modify(data)",
+      platform: "macos",
+    });
+
+    await waitFor(() => {
+      expect((screen.getByTestId("mock-codemirror") as HTMLTextAreaElement).value)
+        .toBe("const watcher = 2;");
+    });
+  });
+
+  it("reconciles watcher mode on startup even without incoming events", async () => {
+    vi.mocked(readWorkspaceFile)
+      .mockResolvedValueOnce({ content: "const startup = 1;", truncated: false })
+      .mockResolvedValue({ content: "const startup = 2;", truncated: false });
+
+    render(
+      <FileViewPanel
+        workspaceId="ws-ext-watcher-startup"
+        workspacePath="/repo"
+        filePath="src/startup.ts"
+        openTargets={[]}
+        openAppIconById={{}}
+        selectedOpenAppId=""
+        onSelectOpenAppId={vi.fn()}
+        onClose={vi.fn()}
+        externalChangeMonitoringEnabled
+        externalChangeTransportMode="watcher"
+      />,
+    );
+
+    await screen.findByTestId("mock-codemirror");
+    await waitFor(() => {
+      expect(vi.mocked(readWorkspaceFile).mock.calls.length).toBeGreaterThanOrEqual(2);
+      expect((screen.getByTestId("mock-codemirror") as HTMLTextAreaElement).value)
+        .toBe("const startup = 2;");
+    });
   });
 });

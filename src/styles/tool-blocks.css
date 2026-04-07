@@ -12,8 +12,16 @@
   background: var(--bg-primary, var(--surface-card));
   border: 1px solid var(--border-primary, var(--border-subtle));
   border-radius: 8px;
-  margin: 12px 0;
+  margin: 8px 0;
   overflow: hidden;
+}
+
+/* 折叠态（无详情体）先隐藏外边框，便于观察更轻量的视觉效果 */
+.task-container.task-container-collapsed,
+.task-container:not(:has(.task-details)) {
+  border-color: transparent;
+  border-bottom-color: var(--border-primary, var(--border-subtle));
+  border-radius: 0;
 }
 
 .task-header {
@@ -116,11 +124,53 @@
   border: 1px solid var(--border-primary, var(--border-subtle));
 }
 
+.read-tool-rendered-content {
+  max-height: 300px;
+  overflow: auto;
+  border: 1px solid var(--border-primary, var(--border-subtle));
+  border-radius: 6px;
+  background: var(--bg-secondary, var(--surface-command));
+  padding: 8px;
+}
+
+.read-tool-markdown {
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.read-tool-markdown p,
+.read-tool-markdown ul,
+.read-tool-markdown ol,
+.read-tool-markdown pre,
+.read-tool-markdown blockquote {
+  margin-top: 0;
+}
+
+.read-tool-markdown > :last-child {
+  margin-bottom: 0;
+}
+
 /* 工具标题样式 */
 .tool-title-icon {
   color: var(--text-primary);
   font-size: 14px;
   margin-right: 4px;
+}
+
+.tool-title-icon-file-change {
+  color: var(--tool-file-change-icon-color, #7a8fb8);
+}
+
+.tool-title-icon-file-change-collapsed {
+  font-size: 16px;
+}
+
+:root[data-theme="light"] .tool-title-icon-file-change {
+  color: #4f83d9;
+}
+
+:root[data-theme="dark"] .tool-title-icon-file-change {
+  color: #8fb7ff;
 }
 
 .tool-title-text {
@@ -144,7 +194,30 @@
   margin-left: 8px;
   color: var(--text-faint);
   font-size: 11px;
+  flex-shrink: 1;
+  min-width: 0;
+}
+
+.tool-change-collapsed-preview {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: 6px;
+  min-width: 0;
+  max-width: min(42vw, 360px);
+  color: var(--text-secondary);
+}
+
+.tool-change-collapsed-file-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tool-change-collapsed-more {
   flex-shrink: 0;
+  color: var(--text-faint);
 }
 
 /* 工具状态指示器 */
@@ -392,6 +465,10 @@
   min-width: 0;
 }
 
+.tool-change-entry {
+  display: block;
+}
+
 .tool-change-row:hover {
   background: color-mix(in srgb, var(--surface-hover) 70%, transparent);
 }
@@ -436,6 +513,88 @@
   margin-left: auto;
   flex-shrink: 0;
   font-size: 12px;
+}
+
+.tool-change-inline-diff.edit-diff-viewer {
+  margin: 0 0 8px 0;
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--surface-card) 86%, var(--surface-base));
+  max-height: 180px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.tool-change-inline-diff .edit-diff-line.is-hunk {
+  background: color-mix(in srgb, var(--accent) 28%, transparent);
+  border-top: 1px solid color-mix(in srgb, var(--accent) 24%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--accent) 24%, transparent);
+}
+
+.tool-change-inline-diff .edit-diff-line.is-hunk .edit-diff-gutter {
+  background: color-mix(in srgb, var(--accent) 58%, transparent);
+}
+
+.tool-change-inline-diff .edit-diff-sign.is-hunk {
+  width: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #93c5fd;
+  font-weight: 700;
+  font-size: 10px;
+  letter-spacing: 0.02em;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  margin: 0;
+  line-height: 18px;
+}
+
+.tool-change-hunk-icon {
+  font-size: 12px;
+  color: inherit;
+}
+
+.tool-change-inline-diff .edit-diff-line.is-hunk .edit-diff-content {
+  color: rgba(224, 238, 255, 0.96);
+  font-weight: 600;
+}
+
+.tool-change-inline-diff-truncated {
+  padding: 4px 8px 6px;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+:root[data-theme="light"] .tool-change-inline-diff .edit-diff-line.is-hunk {
+  background: color-mix(in srgb, #2563eb 16%, transparent);
+  border-top-color: color-mix(in srgb, #2563eb 26%, transparent);
+  border-bottom-color: color-mix(in srgb, #2563eb 26%, transparent);
+}
+
+:root[data-theme="light"] .tool-change-inline-diff .edit-diff-line.is-hunk .edit-diff-gutter {
+  background: color-mix(in srgb, #2563eb 52%, transparent);
+}
+
+:root[data-theme="light"] .tool-change-inline-diff .edit-diff-sign.is-hunk {
+  color: #1d4ed8;
+  background: transparent;
+}
+
+:root[data-theme="dark"] .tool-change-inline-diff .edit-diff-line.is-hunk {
+  background: rgba(59, 130, 246, 0.2);
+  border-top-color: rgba(96, 165, 250, 0.38);
+  border-bottom-color: rgba(96, 165, 250, 0.38);
+}
+
+:root[data-theme="dark"] .tool-change-inline-diff .edit-diff-line.is-hunk .edit-diff-gutter {
+  background: rgba(96, 165, 250, 0.72);
+}
+
+:root[data-theme="dark"] .tool-change-inline-diff .edit-diff-sign.is-hunk {
+  color: #dbeafe;
+  background: transparent;
 }
 
 .tool-block-dot.failed {
@@ -971,10 +1130,15 @@
 }
 
 .bash-group-chevron {
-  font-size: 12px;
+  font-size: 14px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transform: translateY(-0.5px);
   margin-right: 6px;
   color: var(--text-tertiary, var(--text-muted));
-  transition: transform 0.2s ease;
+  transition: color 0.2s ease;
 }
 
 .bash-group-count {

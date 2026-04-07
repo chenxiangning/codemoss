@@ -469,7 +469,9 @@ export function GitDiffViewer({
             break;
           }
         }
-        nextPath = effectiveDiffs[activeItem.index]?.path;
+        if (activeItem) {
+          nextPath = effectiveDiffs[activeItem.index]?.path;
+        }
       }
       if (!nextPath || nextPath === activePathRef.current) {
         return;
@@ -1023,6 +1025,9 @@ export function GitDiffViewer({
           >
             {virtualItems.map((virtualRow) => {
               const entry = effectiveDiffs[virtualRow.index];
+              if (!entry) {
+                return null;
+              }
               return (
                 <div
                   key={entry.path}

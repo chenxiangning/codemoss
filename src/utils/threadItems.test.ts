@@ -7,9 +7,41 @@ import {
   getThreadTimestamp,
   mergeThreadItems,
   normalizeItem,
+  previewThreadName,
   prepareThreadItems,
   upsertItem,
 } from "./threadItems";
+
+type ExploreItem = Extract<ConversationItem, { kind: "explore" }>;
+type ToolItem = Extract<ConversationItem, { kind: "tool" }>;
+type MessageItem = Extract<ConversationItem, { kind: "message" }>;
+type ReviewItem = Extract<ConversationItem, { kind: "review" }>;
+type ReasoningItem = Extract<ConversationItem, { kind: "reasoning" }>;
+
+function expectExploreItem(item: ConversationItem | undefined): ExploreItem {
+  expect(item?.kind).toBe("explore");
+  return item as ExploreItem;
+}
+
+function expectToolItem(item: ConversationItem | undefined): ToolItem {
+  expect(item?.kind).toBe("tool");
+  return item as ToolItem;
+}
+
+function expectMessageItem(item: ConversationItem | undefined): MessageItem {
+  expect(item?.kind).toBe("message");
+  return item as MessageItem;
+}
+
+function expectReviewItem(item: ConversationItem | undefined): ReviewItem {
+  expect(item?.kind).toBe("review");
+  return item as ReviewItem;
+}
+
+function expectReasoningItem(item: ConversationItem | undefined): ReasoningItem {
+  expect(item?.kind).toBe("reasoning");
+  return item as ReasoningItem;
+}
 
 describe("threadItems", () => {
   it("truncates long message text in normalizeItem", () => {
@@ -90,6 +122,19 @@ describe("threadItems", () => {
     }
   });
 
+  it("uses only [User Input] content for default thread title", () => {
+    const source =
+      "[System] [Session Spec Link] source=custom; status=visible; root=/tmp/spec. " +
+      "[Spec Root Priority] Active external OpenSpec root: /tmp/spec. " +
+      "When checking spec visibility, prioritize this root.\n" +
+      "[User Input] 工作区代码做一下兼容性测试,在更新一下提案";
+    expect(previewThreadName(source, "Agent 1")).toBe("工作区代码做一下兼容");
+  });
+
+  it("truncates default thread title to 10 characters", () => {
+    expect(previewThreadName("123456789012345", "Agent 1")).toBe("1234567890");
+  });
+
   it("filters out assistant placeholder messages after normalization", () => {
     const items: ConversationItem[] = [
       {
@@ -107,7 +152,7 @@ describe("threadItems", () => {
     ];
     const prepared = prepareThreadItems(items);
     expect(prepared).toHaveLength(1);
-    expect(prepared[0].kind).toBe("reasoning");
+    expectReasoningItem(prepared[0]);
   });
 
   it("preserves tool output for fileChange and commandExecution", () => {
@@ -197,7 +242,7 @@ describe("threadItems", () => {
     }
   });
 
-  it("truncates older tool output in prepareThreadItems", () => {
+  it("keeps recent tool output untruncated while truncating older entries", () => {
     const output = "y".repeat(21000);
     const items: ConversationItem[] = Array.from({ length: 41 }, (_, index) => ({
       id: `tool-${index}`,
@@ -208,11 +253,13 @@ describe("threadItems", () => {
       output,
     }));
     const prepared = prepareThreadItems(items);
-    const firstOutput = prepared[0].kind === "tool" ? prepared[0].output : undefined;
-    const secondOutput = prepared[1].kind === "tool" ? prepared[1].output : undefined;
+    const firstOutput = expectToolItem(prepared[0]).output;
+    const recentFullOutput = expectToolItem(prepared[35]).output;
+    const latestFullOutput = expectToolItem(prepared[40]).output;
     expect(firstOutput).not.toBe(output);
     expect(firstOutput?.endsWith("...")).toBe(true);
-    expect(secondOutput).toBe(output);
+    expect(recentFullOutput).toBe(output);
+    expect(latestFullOutput).toBe(output);
   });
 
   it("drops assistant review summaries that duplicate completed review items", () => {
@@ -232,7 +279,7 @@ describe("threadItems", () => {
     ];
     const prepared = prepareThreadItems(items);
     expect(prepared).toHaveLength(1);
-    expect(prepared[0].kind).toBe("review");
+    expectReviewItem(prepared[0]);
   });
 
   it("summarizes explored reads and hides raw commands", () => {
@@ -264,14 +311,12 @@ describe("threadItems", () => {
     ];
 
     const prepared = prepareThreadItems(items);
-    expect(prepared[0].kind).toBe("explore");
-    if (prepared[0].kind === "explore") {
-      expect(prepared[0].entries).toHaveLength(2);
-      expect(prepared[0].entries[0].kind).toBe("read");
-      expect(prepared[0].entries[0].label).toContain("foo.ts");
-      expect(prepared[0].entries[1].kind).toBe("read");
-      expect(prepared[0].entries[1].label).toContain("bar.ts");
-    }
+    const explore = expectExploreItem(prepared[0]);
+    expect(explore.entries).toHaveLength(2);
+    expect(explore.entries[0]?.kind).toBe("read");
+    expect(explore.entries[0]?.label).toContain("foo.ts");
+    expect(explore.entries[1]?.kind).toBe("read");
+    expect(explore.entries[1]?.label).toContain("bar.ts");
     expect(prepared.filter((item) => item.kind === "tool")).toHaveLength(0);
   });
 
@@ -290,11 +335,9 @@ describe("threadItems", () => {
 
     const prepared = prepareThreadItems(items);
     expect(prepared).toHaveLength(1);
-    expect(prepared[0].kind).toBe("explore");
-    if (prepared[0].kind === "explore") {
-      expect(prepared[0].status).toBe("exploring");
-      expect(prepared[0].entries[0]?.kind).toBe("search");
-    }
+    const explore = expectExploreItem(prepared[0]);
+    expect(explore.status).toBe("exploring");
+    expect(explore.entries[0]?.kind).toBe("search");
   });
 
   it("deduplicates explore entries when consecutive summaries merge", () => {
@@ -321,11 +364,9 @@ describe("threadItems", () => {
 
     const prepared = prepareThreadItems(items);
     expect(prepared).toHaveLength(1);
-    expect(prepared[0].kind).toBe("explore");
-    if (prepared[0].kind === "explore") {
-      expect(prepared[0].entries).toHaveLength(1);
-      expect(prepared[0].entries[0].label).toContain("customPrompts.ts");
-    }
+    const explore = expectExploreItem(prepared[0]);
+    expect(explore.entries).toHaveLength(1);
+    expect(explore.entries[0]?.label).toContain("customPrompts.ts");
   });
 
   it("coalesces duplicate message snapshots by id when preparing thread items", () => {
@@ -345,11 +386,9 @@ describe("threadItems", () => {
     ];
     const prepared = prepareThreadItems(items);
     expect(prepared).toHaveLength(1);
-    expect(prepared[0].kind).toBe("message");
-    if (prepared[0].kind === "message") {
-      expect(prepared[0].id).toBe("assistant-dup-1");
-      expect(prepared[0].text).toBe("你好！");
-    }
+    const message = expectMessageItem(prepared[0]);
+    expect(message.id).toBe("assistant-dup-1");
+    expect(message.text).toBe("你好！");
   });
 
   it("keeps reasoning item when it shares id with assistant message", () => {
@@ -454,13 +493,11 @@ describe("threadItems", () => {
 
     const prepared = prepareThreadItems(items);
     expect(prepared).toHaveLength(1);
-    expect(prepared[0].kind).toBe("explore");
-    if (prepared[0].kind === "explore") {
-      expect(prepared[0].entries).toHaveLength(2);
-      const details = prepared[0].entries.map((entry) => entry.detail ?? entry.label);
-      expect(details).toContain("src/foo/index.ts");
-      expect(details).toContain("tests/foo/index.ts");
-    }
+    const explore = expectExploreItem(prepared[0]);
+    expect(explore.entries).toHaveLength(2);
+    const details = explore.entries.map((entry) => entry.detail ?? entry.label);
+    expect(details).toContain("src/foo/index.ts");
+    expect(details).toContain("tests/foo/index.ts");
   });
 
   it("preserves multi-path read commands instead of collapsing to the last path", () => {
@@ -478,13 +515,11 @@ describe("threadItems", () => {
 
     const prepared = prepareThreadItems(items);
     expect(prepared).toHaveLength(1);
-    expect(prepared[0].kind).toBe("explore");
-    if (prepared[0].kind === "explore") {
-      expect(prepared[0].entries).toHaveLength(2);
-      const details = prepared[0].entries.map((entry) => entry.detail ?? entry.label);
-      expect(details).toContain("src/a.ts");
-      expect(details).toContain("src/b.ts");
-    }
+    const explore = expectExploreItem(prepared[0]);
+    expect(explore.entries).toHaveLength(2);
+    const details = explore.entries.map((entry) => entry.detail ?? entry.label);
+    expect(details).toContain("src/a.ts");
+    expect(details).toContain("src/b.ts");
   });
 
   it("keeps existing tool detail when completed payload omits arguments", () => {
@@ -509,12 +544,10 @@ describe("threadItems", () => {
 
     const merged = upsertItem([existing], completed);
     expect(merged).toHaveLength(1);
-    expect(merged[0].kind).toBe("tool");
-    if (merged[0].kind === "tool") {
-      expect(merged[0].detail).toContain("src/index.js");
-      expect(merged[0].status).toBe("completed");
-      expect(merged[0].output).toBe("ok");
-    }
+    const mergedTool = expectToolItem(merged[0]);
+    expect(mergedTool.detail).toContain("src/index.js");
+    expect(mergedTool.status).toBe("completed");
+    expect(mergedTool.output).toBe("ok");
   });
 
   it("upserts by id+kind and preserves entries with same id across kinds", () => {
@@ -556,12 +589,10 @@ describe("threadItems", () => {
 
     const prepared = prepareThreadItems(items);
     expect(prepared).toHaveLength(1);
-    expect(prepared[0].kind).toBe("explore");
-    if (prepared[0].kind === "explore") {
-      expect(prepared[0].entries).toHaveLength(1);
-      expect(prepared[0].entries[0].kind).toBe("list");
-      expect(prepared[0].entries[0].label).toBe("src");
-    }
+    const explore = expectExploreItem(prepared[0]);
+    expect(explore.entries).toHaveLength(1);
+    expect(explore.entries[0]?.kind).toBe("list");
+    expect(explore.entries[0]?.label).toBe("src");
   });
 
   it("skips rg glob flag values and keeps the actual search path", () => {
@@ -579,12 +610,10 @@ describe("threadItems", () => {
 
     const prepared = prepareThreadItems(items);
     expect(prepared).toHaveLength(1);
-    expect(prepared[0].kind).toBe("explore");
-    if (prepared[0].kind === "explore") {
-      expect(prepared[0].entries).toHaveLength(1);
-      expect(prepared[0].entries[0].kind).toBe("search");
-      expect(prepared[0].entries[0].label).toBe("myQuery in src");
-    }
+    const explore = expectExploreItem(prepared[0]);
+    expect(explore.entries).toHaveLength(1);
+    expect(explore.entries[0]?.kind).toBe("search");
+    expect(explore.entries[0]?.label).toBe("myQuery in src");
   });
 
   it("strips injected project-memory block from user message text", () => {
@@ -671,12 +700,53 @@ go lang`,
 
     const prepared = prepareThreadItems(items);
     expect(prepared).toHaveLength(1);
-    expect(prepared[0].kind).toBe("explore");
-    if (prepared[0].kind === "explore") {
-      expect(prepared[0].entries).toHaveLength(1);
-      expect(prepared[0].entries[0].kind).toBe("search");
-      expect(prepared[0].entries[0].label).toBe("RouterDestination in src");
-    }
+    const explore = expectExploreItem(prepared[0]);
+    expect(explore.entries).toHaveLength(1);
+    expect(explore.entries[0]?.kind).toBe("search");
+    expect(explore.entries[0]?.label).toBe("RouterDestination in src");
+  });
+
+  it("unwraps powershell -Command rg commands on windows", () => {
+    const items: ConversationItem[] = [
+      {
+        id: "cmd-win-ps-1",
+        kind: "tool",
+        toolType: "commandExecution",
+        title:
+          'Command: C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe -NoProfile -Command "rg -n RouterDestination src"',
+        detail: "",
+        status: "completed",
+        output: "",
+      },
+    ];
+
+    const prepared = prepareThreadItems(items);
+    expect(prepared).toHaveLength(1);
+    const explore = expectExploreItem(prepared[0]);
+    expect(explore.entries).toHaveLength(1);
+    expect(explore.entries[0]?.kind).toBe("search");
+    expect(explore.entries[0]?.label).toBe("RouterDestination in src");
+  });
+
+  it("unwraps cmd /c rg commands on windows", () => {
+    const items: ConversationItem[] = [
+      {
+        id: "cmd-win-cmd-1",
+        kind: "tool",
+        toolType: "commandExecution",
+        title: 'Command: cmd /c "rg -n RouterDestination src"',
+        detail: "",
+        status: "completed",
+        output: "",
+      },
+    ];
+
+    const prepared = prepareThreadItems(items);
+    expect(prepared).toHaveLength(1);
+    const explore = expectExploreItem(prepared[0]);
+    expect(explore.entries).toHaveLength(1);
+    expect(explore.entries[0]?.kind).toBe("search");
+    expect(explore.entries[0]?.label).toBe("RouterDestination in src");
   });
 
   it("treats nl -ba as a read command", () => {
@@ -694,14 +764,10 @@ go lang`,
 
     const prepared = prepareThreadItems(items);
     expect(prepared).toHaveLength(1);
-    expect(prepared[0].kind).toBe("explore");
-    if (prepared[0].kind === "explore") {
-      expect(prepared[0].entries).toHaveLength(1);
-      expect(prepared[0].entries[0].kind).toBe("read");
-      expect(prepared[0].entries[0].detail ?? prepared[0].entries[0].label).toBe(
-        "src/foo.ts",
-      );
-    }
+    const explore = expectExploreItem(prepared[0]);
+    expect(explore.entries).toHaveLength(1);
+    expect(explore.entries[0]?.kind).toBe("read");
+    expect(explore.entries[0]?.detail ?? explore.entries[0]?.label).toBe("src/foo.ts");
   });
 
   it("treats wc -l as a read command when a file path is present", () => {
@@ -719,14 +785,10 @@ go lang`,
 
     const prepared = prepareThreadItems(items);
     expect(prepared).toHaveLength(1);
-    expect(prepared[0].kind).toBe("explore");
-    if (prepared[0].kind === "explore") {
-      expect(prepared[0].entries).toHaveLength(1);
-      expect(prepared[0].entries[0].kind).toBe("read");
-      expect(prepared[0].entries[0].detail ?? prepared[0].entries[0].label).toBe(
-        "src/foo.ts",
-      );
-    }
+    const explore = expectExploreItem(prepared[0]);
+    expect(explore.entries).toHaveLength(1);
+    expect(explore.entries[0]?.kind).toBe("read");
+    expect(explore.entries[0]?.detail ?? explore.entries[0]?.label).toBe("src/foo.ts");
   });
 
   it("summarizes piped nl commands using the left-hand read", () => {
@@ -744,14 +806,10 @@ go lang`,
 
     const prepared = prepareThreadItems(items);
     expect(prepared).toHaveLength(1);
-    expect(prepared[0].kind).toBe("explore");
-    if (prepared[0].kind === "explore") {
-      expect(prepared[0].entries).toHaveLength(1);
-      expect(prepared[0].entries[0].kind).toBe("read");
-      expect(prepared[0].entries[0].detail ?? prepared[0].entries[0].label).toBe(
-        "src/foo.ts",
-      );
-    }
+    const explore = expectExploreItem(prepared[0]);
+    expect(explore.entries).toHaveLength(1);
+    expect(explore.entries[0]?.kind).toBe("read");
+    expect(explore.entries[0]?.detail ?? explore.entries[0]?.label).toBe("src/foo.ts");
   });
 
   it("does not trim pipes that appear inside quoted arguments", () => {
@@ -769,12 +827,10 @@ go lang`,
 
     const prepared = prepareThreadItems(items);
     expect(prepared).toHaveLength(1);
-    expect(prepared[0].kind).toBe("explore");
-    if (prepared[0].kind === "explore") {
-      expect(prepared[0].entries).toHaveLength(1);
-      expect(prepared[0].entries[0].kind).toBe("search");
-      expect(prepared[0].entries[0].label).toBe("foo | bar in src");
-    }
+    const explore = expectExploreItem(prepared[0]);
+    expect(explore.entries).toHaveLength(1);
+    expect(explore.entries[0]?.kind).toBe("search");
+    expect(explore.entries[0]?.label).toBe("foo | bar in src");
   });
 
   it("keeps raw commands when they are not recognized", () => {
@@ -791,7 +847,7 @@ go lang`,
     ];
     const prepared = prepareThreadItems(items);
     expect(prepared).toHaveLength(1);
-    expect(prepared[0].kind).toBe("tool");
+    expectToolItem(prepared[0]);
   });
 
   it("keeps raw commands when they fail", () => {
@@ -808,7 +864,7 @@ go lang`,
     ];
     const prepared = prepareThreadItems(items);
     expect(prepared).toHaveLength(1);
-    expect(prepared[0].kind).toBe("tool");
+    expectToolItem(prepared[0]);
   });
 
   it("builds file change items with summary details", () => {
@@ -946,6 +1002,58 @@ go lang`,
     }
   });
 
+  it("uses Move to target path for apply_patch rename entries", () => {
+    const item = buildConversationItem({
+      type: "fileChange",
+      id: "change-move-to-1",
+      status: "completed",
+      input: {
+        patch: [
+          "*** Begin Patch",
+          "*** Update File: src/old-name.ts",
+          "*** Move to: src/new-name.ts",
+          "@@ -1 +1 @@",
+          "-const oldName = true;",
+          "+const newName = true;",
+          "*** End Patch",
+        ].join("\n"),
+      },
+    });
+
+    expect(item).not.toBeNull();
+    if (item && item.kind === "tool") {
+      expect(item.detail).toContain("R src/new-name.ts");
+      expect(item.detail).not.toContain("src/old-name.ts");
+      expect(item.changes?.[0]?.path).toBe("src/new-name.ts");
+      expect(item.changes?.[0]?.kind).toBe("rename");
+      expect(item.changes?.[0]?.diff).toContain("*** Move to: src/new-name.ts");
+    }
+  });
+
+  it("infers file changes from output-only unified diff payloads", () => {
+    const item = buildConversationItem({
+      type: "fileChange",
+      id: "change-output-only-1",
+      status: "completed",
+      output: [
+        "diff --git a/src/main/java/com/example/OperationLog.java b/src/main/java/com/example/OperationLog.java",
+        "--- a/src/main/java/com/example/OperationLog.java",
+        "+++ b/src/main/java/com/example/OperationLog.java",
+        "@@ -1,1 +1,2 @@",
+        " public class OperationLog {}",
+        "+// added line",
+      ].join("\n"),
+    });
+
+    expect(item).not.toBeNull();
+    if (item && item.kind === "tool") {
+      expect(item.detail).toBe("M src/main/java/com/example/OperationLog.java");
+      expect(item.changes?.[0]?.path).toBe("src/main/java/com/example/OperationLog.java");
+      expect(item.changes?.[0]?.kind).toBe("modified");
+      expect(item.output).toContain("+// added line");
+    }
+  });
+
   it("builds commandExecution items with structured detail payload", () => {
     const item = buildConversationItem({
       type: "commandExecution",
@@ -1001,11 +1109,9 @@ go lang`,
 
     const prepared = prepareThreadItems(items);
     expect(prepared).toHaveLength(1);
-    expect(prepared[0].kind).toBe("tool");
-    if (prepared[0].kind === "tool") {
-      expect(prepared[0].toolType).toBe("commandExecution");
-      expect(prepared[0].title).toBe("Command: 列出工作区根目录内容");
-    }
+    const tool = expectToolItem(prepared[0]);
+    expect(tool.toolType).toBe("commandExecution");
+    expect(tool.title).toBe("Command: 列出工作区根目录内容");
   });
 
   it("falls back to description when commandExecution command is missing", () => {
@@ -1055,6 +1161,85 @@ go lang`,
     if (item && item.kind === "tool") {
       expect(item.output).toContain("\"stdout\": \"ok\"");
       expect(item.output).toContain("\"exitCode\": 0");
+    }
+  });
+
+  it("converts successful apply_patch commandExecution to fileChange", () => {
+    const item = buildConversationItem({
+      type: "commandExecution",
+      id: "cmd-apply-patch-1",
+      cmd:
+        "cat > /tmp/changelog_patch.diff <<'PATCH'\n" +
+        "*** Begin Patch\n" +
+        "*** Update File: CHANGELOG.md\n" +
+        "@@ -1,1 +1,2 @@\n" +
+        " old-line\n" +
+        "+new-line\n" +
+        "*** End Patch\n" +
+        "PATCH\n" +
+        "apply_patch < /tmp/changelog_patch.diff",
+      status: "completed",
+      aggregatedOutput: "Success. Updated the following files:\nM CHANGELOG.md",
+    });
+    expect(item).not.toBeNull();
+    if (item && item.kind === "tool") {
+      expect(item.toolType).toBe("fileChange");
+      expect(item.title).toBe("File changes");
+      expect(item.detail).toContain("CHANGELOG.md");
+      expect(item.changes?.[0]?.path).toBe("CHANGELOG.md");
+      expect(item.changes?.[0]?.kind).toBe("modified");
+      expect(item.changes?.[0]?.diff).toContain("+new-line");
+    }
+  });
+
+  it("keeps apply_patch commandExecution as command tool when execution fails", () => {
+    const item = buildConversationItem({
+      type: "commandExecution",
+      id: "cmd-apply-patch-failed-1",
+      cmd: "apply_patch < /tmp/changelog_patch.diff",
+      status: "failed",
+      aggregatedOutput: "error: malformed patch",
+    });
+    expect(item).not.toBeNull();
+    if (item && item.kind === "tool") {
+      expect(item.toolType).toBe("commandExecution");
+      expect(item.title).toBe("Command: apply_patch < /tmp/changelog_patch.diff");
+    }
+  });
+
+  it("does not convert commandExecution when patch text exists but apply_patch is not executed", () => {
+    const item = buildConversationItem({
+      type: "commandExecution",
+      id: "cmd-patch-text-only-1",
+      cmd:
+        "cat > /tmp/changelog_patch.diff <<'PATCH'\n" +
+        "*** Begin Patch\n" +
+        "*** Update File: CHANGELOG.md\n" +
+        "@@ -1,1 +1,2 @@\n" +
+        " old-line\n" +
+        "+new-line\n" +
+        "*** End Patch\n" +
+        "PATCH",
+      status: "completed",
+      aggregatedOutput: "",
+    });
+    expect(item).not.toBeNull();
+    if (item && item.kind === "tool") {
+      expect(item.toolType).toBe("commandExecution");
+    }
+  });
+
+  it("converts apply_patch commandExecution when status is missing but output has success marker", () => {
+    const item = buildConversationItem({
+      type: "commandExecution",
+      id: "cmd-apply-patch-status-missing-1",
+      cmd: "apply_patch < /tmp/changelog_patch.diff",
+      aggregatedOutput: "Success. Updated the following files:\nM CHANGELOG.md",
+    });
+    expect(item).not.toBeNull();
+    if (item && item.kind === "tool") {
+      expect(item.toolType).toBe("fileChange");
+      expect(item.changes?.[0]?.path).toBe("CHANGELOG.md");
     }
   });
 
@@ -1238,11 +1423,9 @@ go lang`,
     };
     const merged = mergeThreadItems([remote], [local]);
     expect(merged).toHaveLength(1);
-    expect(merged[0].kind).toBe("tool");
-    if (merged[0].kind === "tool") {
-      expect(merged[0].output).toBe("much longer output");
-      expect(merged[0].status).toBe("ok");
-    }
+    const tool = expectToolItem(merged[0]);
+    expect(tool.output).toBe("much longer output");
+    expect(tool.status).toBe("ok");
   });
 
   it("builds webSearch items with query detail and output payload", () => {
@@ -1284,10 +1467,8 @@ go lang`,
 
     const merged = mergeThreadItems([remote], [local]);
     expect(merged).toHaveLength(1);
-    expect(merged[0].kind).toBe("message");
-    if (merged[0].kind === "message") {
-      expect(merged[0].text).toBe(clean);
-    }
+    const message = expectMessageItem(merged[0]);
+    expect(message.text).toBe(clean);
   });
 
   it("builds user message text from mixed inputs", () => {
@@ -1305,6 +1486,124 @@ go lang`,
       expect(item.role).toBe("user");
       expect(item.text).toBe("Please $Review");
       expect(item.images).toEqual(["https://example.com/image.png"]);
+    }
+  });
+
+  it("derives selected agent metadata from explicit Agent Name line in prompt block", () => {
+    const item = buildConversationItemFromThreadItem({
+      type: "userMessage",
+      id: "msg-agent-name-line-1",
+      content: [
+        {
+          type: "text",
+          text:
+            "请继续优化。\n\n## Agent Role and Instructions\n\nAgent Name: 后端架构师\nAgent Icon: agent-robot-04\n\n你是一位资深后端架构师，擅长服务治理和高并发设计。",
+        },
+      ],
+    });
+    expect(item).not.toBeNull();
+    if (item && item.kind === "message") {
+      expect(item.role).toBe("user");
+      expect(item.selectedAgentName).toBe("后端架构师");
+      expect(item.selectedAgentIcon).toBe("agent-robot-04");
+    }
+  });
+
+  it("derives selected agent name from the first prompt clause when metadata is missing", () => {
+    const item = buildConversationItemFromThreadItem({
+      type: "userMessage",
+      id: "msg-agent-clause-1",
+      content: [
+        {
+          type: "text",
+          text:
+            "请继续优化。\n\n## Agent Role and Instructions\n\n你是一位资深的桌面软件架构师，专精于 Tauri v2 生态。",
+        },
+      ],
+    });
+    expect(item).not.toBeNull();
+    if (item && item.kind === "message") {
+      expect(item.role).toBe("user");
+      expect(item.selectedAgentName).toBe("你是一位资深的桌面软件架构师");
+    }
+  });
+
+  it("preserves multiline structure when user text is split into multiple text inputs", () => {
+    const item = buildConversationItemFromThreadItem({
+      type: "userMessage",
+      id: "msg-multiline-split-1",
+      content: [
+        { type: "text", text: "整理内容为：\n" },
+        { type: "text", text: "1. 宏观观点\n2. 技术观点\n" },
+        { type: "text", text: "\n3. 商品观点" },
+      ],
+    });
+
+    expect(item).not.toBeNull();
+    if (item && item.kind === "message") {
+      expect(item.role).toBe("user");
+      expect(item.text).toBe("整理内容为：\n1. 宏观观点\n2. 技术观点\n\n3. 商品观点");
+    }
+  });
+
+  it("keeps a single separator before skill token without collapsing text structure", () => {
+    const item = buildConversationItemFromThreadItem({
+      type: "userMessage",
+      id: "msg-skill-spacing-1",
+      content: [
+        { type: "text", text: "Please" },
+        { type: "skill", name: "Review" },
+        { type: "text", text: "\nline2" },
+      ],
+    });
+
+    expect(item).not.toBeNull();
+    if (item && item.kind === "message") {
+      expect(item.role).toBe("user");
+      expect(item.text).toBe("Please $Review\nline2");
+    }
+  });
+
+  it("adds a separator after skill token when following text starts inline", () => {
+    const item = buildConversationItemFromThreadItem({
+      type: "userMessage",
+      id: "msg-skill-inline-follow-1",
+      content: [
+        { type: "text", text: "Please" },
+        { type: "skill", name: "Review" },
+        { type: "text", text: "now" },
+      ],
+    });
+
+    expect(item).not.toBeNull();
+    if (item && item.kind === "message") {
+      expect(item.role).toBe("user");
+      expect(item.text).toBe("Please $Review now");
+    }
+  });
+
+  it("preserves multiline [User Input] block when skill token and common/system prefixes coexist", () => {
+    const rawInput = "你好\n我是陈湘宁!!";
+    const item = buildConversationItemFromThreadItem({
+      type: "userMessage",
+      id: "msg-skill-common-user-input-1",
+      content: [
+        { type: "skill", name: "tr-zh-en-jp" },
+        {
+          type: "text",
+          text:
+            "[System] 你是 MossX Agent。\n[Skill Prompt] tr-zh-en-jp\n[Commons Prompt] follow project rules\n[User Input] " +
+            rawInput,
+        },
+      ],
+    });
+
+    expect(item).not.toBeNull();
+    if (item && item.kind === "message") {
+      expect(item.role).toBe("user");
+      expect(item.text).toContain("$tr-zh-en-jp");
+      expect(item.text).toContain("[Commons Prompt]");
+      expect(item.text).toContain(`[User Input] ${rawInput}`);
     }
   });
 
@@ -1376,6 +1675,106 @@ go lang`,
       expect(item.detail).toContain("thread-b, thread-c");
       expect(item.output).toBe("Coordinate work\n\nagent-1: running");
     }
+  });
+
+  it("normalizes AskUserQuestion answer echo into submitted history card", () => {
+    const items: ConversationItem[] = [
+      {
+        id: "ask-tool-1",
+        kind: "tool",
+        toolType: "askuserquestion",
+        title: "Tool: askuserquestion",
+        detail: JSON.stringify({
+          questions: [
+            {
+              id: "q-0",
+              header: "编程语言",
+              question: "你最喜欢的编程语言是什么？",
+              options: [
+                { label: "Python", description: "简洁优雅" },
+                { label: "TypeScript", description: "类型安全" },
+              ],
+            },
+          ],
+        }),
+        status: "started",
+      },
+      {
+        id: "user-answer-1",
+        kind: "message",
+        role: "user",
+        text: "The user answered the AskUserQuestion: Python. Please continue based on this selection.",
+      },
+    ];
+
+    const prepared = prepareThreadItems(items);
+    expect(prepared).toHaveLength(2);
+    expect(prepared[0]).toMatchObject({
+      id: "ask-tool-1",
+      kind: "tool",
+      status: "completed",
+      output: "Python",
+    });
+    expect(prepared[1]).toMatchObject({
+      id: "request-user-input-submitted-ask-tool-1",
+      kind: "tool",
+      toolType: "requestUserInputSubmitted",
+      status: "completed",
+      output: "Python",
+    });
+    if (prepared[1]?.kind === "tool") {
+      const payload = JSON.parse(prepared[1].detail);
+      expect(payload.schema).toBe("requestUserInputSubmitted/v1");
+      expect(payload.questions[0].question).toBe("你最喜欢的编程语言是什么？");
+      expect(payload.questions[0].selectedOptions).toEqual(["Python"]);
+    }
+  });
+
+  it("normalizes mcp askuserquestion answer echo into submitted history card", () => {
+    const items: ConversationItem[] = [
+      {
+        id: "mcp-ask-1",
+        kind: "tool",
+        toolType: "mcpToolCall",
+        title: "Tool: Claude / askuserquestion",
+        detail: JSON.stringify({
+          questions: [
+            {
+              id: "q-0",
+              header: "框架",
+              question: "偏好哪个框架？",
+              options: [
+                { label: "React", description: "生态完整" },
+                { label: "Vue", description: "易上手" },
+              ],
+            },
+          ],
+        }),
+        status: "running",
+      },
+      {
+        id: "user-answer-2",
+        kind: "message",
+        role: "user",
+        text: "The user answered the AskUserQuestion: React. Please continue based on this selection.",
+      },
+    ];
+
+    const prepared = prepareThreadItems(items);
+    expect(prepared).toHaveLength(2);
+    expect(prepared[0]).toMatchObject({
+      id: "mcp-ask-1",
+      kind: "tool",
+      status: "completed",
+      output: "React",
+    });
+    expect(prepared[1]).toMatchObject({
+      id: "request-user-input-submitted-mcp-ask-1",
+      kind: "tool",
+      toolType: "requestUserInputSubmitted",
+      status: "completed",
+      output: "React",
+    });
   });
 
   it("parses ISO timestamps for thread updates", () => {

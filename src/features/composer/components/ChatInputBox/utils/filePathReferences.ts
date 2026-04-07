@@ -9,6 +9,13 @@ type InsertFilePathReferencesArgs = {
   renderFileTags: () => void;
   setHasContent: (hasContent: boolean) => void;
   onInput?: (content: string) => void;
+  handleInput?: () => void;
+  stageNextCommitOptions?: (options: {
+    source: 'programmatic';
+    forceNewTransaction?: boolean;
+    inputType?: string;
+    timestamp?: number;
+  }) => void;
   fileCompletion?: { close: () => void };
   commandCompletion?: { close: () => void };
   flushInput?: () => void;
@@ -22,7 +29,7 @@ export function normalizePathForComparison(path: string): string {
   let normalized = trimmed.replace(/\\/g, "/");
   const driveMatch = normalized.match(/^([a-zA-Z]):(\/|$)/);
   if (driveMatch) {
-    normalized = `${driveMatch[1].toLowerCase()}:${normalized.slice(2)}`;
+    normalized = `${(driveMatch[1] ?? "").toLowerCase()}:${normalized.slice(2)}`;
   }
   return normalized;
 }
@@ -88,6 +95,8 @@ export function insertFilePathReferences({
   renderFileTags,
   setHasContent,
   onInput,
+  handleInput,
+  stageNextCommitOptions,
   fileCompletion,
   commandCompletion,
   flushInput,
@@ -119,7 +128,16 @@ export function insertFilePathReferences({
   const newText = getTextContent();
   setHasContent(!!newText.trim());
   adjustHeight();
-  onInput?.(newText);
+  stageNextCommitOptions?.({
+    source: 'programmatic',
+    forceNewTransaction: true,
+    inputType: 'insert:file-reference',
+  });
+  if (handleInput) {
+    handleInput();
+  } else {
+    onInput?.(newText);
+  }
   flushInput?.();
   setTimeout(() => {
     renderFileTags();

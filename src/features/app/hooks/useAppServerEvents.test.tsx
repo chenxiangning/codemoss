@@ -616,6 +616,110 @@ describe("useAppServerEvents", () => {
     });
   });
 
+  it("preserves multiSelect flag for request user input questions", async () => {
+    const handlers: Handlers = {
+      onRequestUserInput: vi.fn(),
+    };
+    const { root } = await mount(handlers);
+
+    act(() => {
+      listener?.({
+        workspace_id: "ws-multi",
+        message: {
+          method: "item/tool/requestUserInput",
+          id: "req-multi-1",
+          params: {
+            threadId: "thread-multi",
+            turnId: "turn-multi",
+            itemId: "item-multi",
+            questions: [
+              {
+                id: "q-1",
+                header: "Focus",
+                question: "Choose multiple",
+                multiSelect: true,
+                options: [{ label: "A", description: "" }],
+              },
+            ],
+          },
+        },
+      });
+    });
+
+    expect(handlers.onRequestUserInput).toHaveBeenCalledWith({
+      workspace_id: "ws-multi",
+      request_id: "req-multi-1",
+      params: {
+        thread_id: "thread-multi",
+        turn_id: "turn-multi",
+        item_id: "item-multi",
+        questions: [
+          {
+            id: "q-1",
+            header: "Focus",
+            question: "Choose multiple",
+            isOther: false,
+            isSecret: false,
+            multiSelect: true,
+            options: [{ label: "A", description: "" }],
+          },
+        ],
+      },
+    });
+
+    await act(async () => {
+      root.unmount();
+    });
+  });
+
+  it("prefers params.request_id over transport-level message.id for requestUserInput", async () => {
+    const handlers: Handlers = {
+      onRequestUserInput: vi.fn(),
+    };
+    const { root } = await mount(handlers);
+
+    act(() => {
+      listener?.({
+        workspace_id: "ws-req-id",
+        message: {
+          method: "item/tool/requestUserInput",
+          id: 999,
+          params: {
+            request_id: "ask-real-1",
+            threadId: "thread-real",
+            turnId: "turn-real",
+            itemId: "item-real",
+            questions: [{ id: "q-1", header: "", question: "Choose one" }],
+          },
+        },
+      });
+    });
+
+    expect(handlers.onRequestUserInput).toHaveBeenCalledWith({
+      workspace_id: "ws-req-id",
+      request_id: "ask-real-1",
+      params: {
+        thread_id: "thread-real",
+        turn_id: "turn-real",
+        item_id: "item-real",
+        questions: [
+          {
+            id: "q-1",
+            header: "",
+            question: "Choose one",
+            isOther: false,
+            isSecret: false,
+            options: undefined,
+          },
+        ],
+      },
+    });
+
+    await act(async () => {
+      root.unmount();
+    });
+  });
+
   it("falls back to active codex thread for reasoning events without threadId", async () => {
     const handlers: Handlers = {
       onAppServerEvent: vi.fn(),
@@ -1196,6 +1300,98 @@ describe("useAppServerEvents", () => {
     });
   });
 
+  it("keeps multiple agent completions in the same thread when item ids differ", async () => {
+    const handlers: Handlers = {
+      onAgentMessageCompleted: vi.fn(),
+      onItemCompleted: vi.fn(),
+    };
+    const { root } = await mount(handlers);
+
+    act(() => {
+      listener?.({
+        workspace_id: "ws-1",
+        message: {
+          method: "item/completed",
+          params: {
+            threadId: "thread-1",
+            item: { type: "agentMessage", id: "item-1", text: "first short paragraph" },
+          },
+        },
+      });
+      listener?.({
+        workspace_id: "ws-1",
+        message: {
+          method: "item/completed",
+          params: {
+            threadId: "thread-1",
+            item: { type: "agentMessage", id: "item-2", text: "second short paragraph" },
+          },
+        },
+      });
+    });
+
+    expect(handlers.onAgentMessageCompleted).toHaveBeenCalledTimes(2);
+    expect(handlers.onAgentMessageCompleted).toHaveBeenNthCalledWith(1, {
+      workspaceId: "ws-1",
+      threadId: "thread-1",
+      itemId: "item-1",
+      text: "first short paragraph",
+    });
+    expect(handlers.onAgentMessageCompleted).toHaveBeenNthCalledWith(2, {
+      workspaceId: "ws-1",
+      threadId: "thread-1",
+      itemId: "item-2",
+      text: "second short paragraph",
+    });
+
+    await act(async () => {
+      root.unmount();
+    });
+  });
+
+  it("dedupes repeated item/completed snapshots for the same agent item id", async () => {
+    const handlers: Handlers = {
+      onAgentMessageCompleted: vi.fn(),
+      onItemCompleted: vi.fn(),
+    };
+    const { root } = await mount(handlers);
+
+    act(() => {
+      listener?.({
+        workspace_id: "ws-1",
+        message: {
+          method: "item/completed",
+          params: {
+            threadId: "thread-1",
+            item: { type: "agentMessage", id: "item-dup-1", text: "same completion text" },
+          },
+        },
+      });
+      listener?.({
+        workspace_id: "ws-1",
+        message: {
+          method: "item/completed",
+          params: {
+            threadId: "thread-1",
+            item: { type: "agentMessage", id: "item-dup-1", text: "same completion text" },
+          },
+        },
+      });
+    });
+
+    expect(handlers.onAgentMessageCompleted).toHaveBeenCalledTimes(1);
+    expect(handlers.onAgentMessageCompleted).toHaveBeenCalledWith({
+      workspaceId: "ws-1",
+      threadId: "thread-1",
+      itemId: "item-dup-1",
+      text: "same completion text",
+    });
+
+    await act(async () => {
+      root.unmount();
+    });
+  });
+
   it("routes processing heartbeat events", async () => {
     const handlers: Handlers = {
       onProcessingHeartbeat: vi.fn(),
@@ -1284,6 +1480,291 @@ describe("useAppServerEvents", () => {
     });
   });
 
+  it("ignores claude item/updated agentMessage snapshot in normalized realtime routing", async () => {
+    const handlers: Handlers = {
+      onAgentMessageDelta: vi.fn(),
+      onItemUpdated: vi.fn(),
+    };
+    const { root } = await mount(handlers, {
+      useNormalizedRealtimeAdapters: true,
+    });
+
+    act(() => {
+      listener?.({
+        workspace_id: "ws-claude",
+        message: {
+          method: "item/updated",
+          params: {
+            threadId: "claude:session-100",
+            item: {
+              id: "assistant-100",
+              type: "agentMessage",
+              text: "snapshot text",
+            },
+          },
+        },
+      });
+    });
+
+    expect(handlers.onAgentMessageDelta).not.toHaveBeenCalled();
+    expect(handlers.onItemUpdated).not.toHaveBeenCalled();
+
+    await act(async () => {
+      root.unmount();
+    });
+  });
+
+  it("keeps claude realtime assistant body single in normalized mode when delta and snapshot coexist", async () => {
+    const handlers: Handlers = {
+      onAgentMessageDelta: vi.fn(),
+      onAgentMessageCompleted: vi.fn(),
+      onItemUpdated: vi.fn(),
+      onItemStarted: vi.fn(),
+    };
+    const { root } = await mount(handlers, {
+      useNormalizedRealtimeAdapters: true,
+    });
+
+    act(() => {
+      listener?.({
+        workspace_id: "ws-claude",
+        message: {
+          method: "turn/started",
+          params: {
+            threadId: "claude:session-seq-1",
+            turnId: "turn-1",
+          },
+        },
+      });
+      listener?.({
+        workspace_id: "ws-claude",
+        message: {
+          method: "item/agentMessage/delta",
+          params: {
+            threadId: "claude:session-seq-1",
+            itemId: "assistant-seq-1",
+            delta: "第一段",
+          },
+        },
+      });
+      listener?.({
+        workspace_id: "ws-claude",
+        message: {
+          method: "item/started",
+          params: {
+            threadId: "claude:session-seq-1",
+            item: {
+              id: "assistant-seq-1",
+              type: "agentMessage",
+              text: "第一段",
+            },
+          },
+        },
+      });
+      listener?.({
+        workspace_id: "ws-claude",
+        message: {
+          method: "item/updated",
+          params: {
+            threadId: "claude:session-seq-1",
+            item: {
+              id: "assistant-seq-1",
+              type: "agentMessage",
+              text: "第一段第二段",
+            },
+          },
+        },
+      });
+      listener?.({
+        workspace_id: "ws-claude",
+        message: {
+          method: "item/agentMessage/delta",
+          params: {
+            threadId: "claude:session-seq-1",
+            itemId: "assistant-seq-1",
+            delta: "第二段",
+          },
+        },
+      });
+      listener?.({
+        workspace_id: "ws-claude",
+        message: {
+          method: "item/completed",
+          params: {
+            threadId: "claude:session-seq-1",
+            item: {
+              id: "assistant-seq-1",
+              type: "agentMessage",
+              text: "第一段第二段",
+            },
+          },
+        },
+      });
+      listener?.({
+        workspace_id: "ws-claude",
+        message: {
+          method: "turn/completed",
+          params: {
+            threadId: "claude:session-seq-1",
+            turnId: "turn-1",
+            result: {
+              text: "第一段第二段",
+            },
+          },
+        },
+      });
+    });
+
+    expect(handlers.onAgentMessageDelta).toHaveBeenCalledTimes(2);
+    expect(handlers.onAgentMessageDelta).toHaveBeenNthCalledWith(1, {
+      workspaceId: "ws-claude",
+      threadId: "claude:session-seq-1",
+      itemId: "assistant-seq-1",
+      delta: "第一段",
+    });
+    expect(handlers.onAgentMessageDelta).toHaveBeenNthCalledWith(2, {
+      workspaceId: "ws-claude",
+      threadId: "claude:session-seq-1",
+      itemId: "assistant-seq-1",
+      delta: "第二段",
+    });
+    expect(handlers.onItemStarted).not.toHaveBeenCalled();
+    expect(handlers.onItemUpdated).not.toHaveBeenCalled();
+    expect(handlers.onAgentMessageCompleted).toHaveBeenCalledTimes(1);
+    expect(handlers.onAgentMessageCompleted).toHaveBeenCalledWith({
+      workspaceId: "ws-claude",
+      threadId: "claude:session-seq-1",
+      itemId: "assistant-seq-1",
+      text: "第一段第二段",
+    });
+
+    await act(async () => {
+      root.unmount();
+    });
+  });
+
+  it("keeps claude agent completion when only snapshot and completed arrive in normalized mode", async () => {
+    const handlers: Handlers = {
+      onAgentMessageDelta: vi.fn(),
+      onAgentMessageCompleted: vi.fn(),
+      onItemUpdated: vi.fn(),
+    };
+    const { root } = await mount(handlers, {
+      useNormalizedRealtimeAdapters: true,
+    });
+
+    act(() => {
+      listener?.({
+        workspace_id: "ws-claude",
+        message: {
+          method: "item/updated",
+          params: {
+            threadId: "claude:session-snapshot-only-1",
+            item: {
+              id: "assistant-snapshot-only-1",
+              type: "agentMessage",
+              text: "snapshot-only-text",
+            },
+          },
+        },
+      });
+      listener?.({
+        workspace_id: "ws-claude",
+        message: {
+          method: "item/completed",
+          params: {
+            threadId: "claude:session-snapshot-only-1",
+            item: {
+              id: "assistant-snapshot-only-1",
+              type: "agentMessage",
+              text: "snapshot-only-text",
+            },
+          },
+        },
+      });
+    });
+
+    expect(handlers.onAgentMessageDelta).not.toHaveBeenCalled();
+    expect(handlers.onItemUpdated).not.toHaveBeenCalled();
+    expect(handlers.onAgentMessageCompleted).toHaveBeenCalledTimes(1);
+    expect(handlers.onAgentMessageCompleted).toHaveBeenCalledWith({
+      workspaceId: "ws-claude",
+      threadId: "claude:session-snapshot-only-1",
+      itemId: "assistant-snapshot-only-1",
+      text: "snapshot-only-text",
+    });
+
+    await act(async () => {
+      root.unmount();
+    });
+  });
+
+  it("routes claude text:delta through normalized adapters with thread-scoped fallback id when itemId is missing", async () => {
+    const handlers: Handlers = {
+      onAgentMessageDelta: vi.fn(),
+    };
+    const { root } = await mount(handlers, {
+      useNormalizedRealtimeAdapters: true,
+    });
+
+    act(() => {
+      listener?.({
+        workspace_id: "ws-claude",
+        message: {
+          method: "text:delta",
+          params: {
+            threadId: "claude:session-77",
+            turnId: "turn-77",
+            delta: "streaming text",
+          },
+        },
+      });
+    });
+
+    expect(handlers.onAgentMessageDelta).toHaveBeenCalledWith({
+      workspaceId: "ws-claude",
+      threadId: "claude:session-77",
+      itemId: "claude:session-77:text-delta",
+      delta: "streaming text",
+    });
+
+    await act(async () => {
+      root.unmount();
+    });
+  });
+
+  it("routes gemini text:delta through legacy fallback when normalized adapters are disabled", async () => {
+    const handlers: Handlers = {
+      onAgentMessageDelta: vi.fn(),
+    };
+    const { root } = await mount(handlers);
+
+    act(() => {
+      listener?.({
+        workspace_id: "ws-gemini",
+        message: {
+          method: "text:delta",
+          params: {
+            threadId: "gemini:session-88",
+            itemId: "assistant-88",
+            delta: "短正文片段",
+          },
+        },
+      });
+    });
+
+    expect(handlers.onAgentMessageDelta).toHaveBeenCalledWith({
+      workspaceId: "ws-gemini",
+      threadId: "gemini:session-88",
+      itemId: "assistant-88",
+      delta: "短正文片段",
+    });
+
+    await act(async () => {
+      root.unmount();
+    });
+  });
+
   it("does not route opencode text:delta when normalized realtime adapters are disabled", async () => {
     const handlers: Handlers = {
       onAgentMessageDelta: vi.fn(),
@@ -1305,6 +1786,363 @@ describe("useAppServerEvents", () => {
     });
 
     expect(handlers.onAgentMessageDelta).not.toHaveBeenCalled();
+
+    await act(async () => {
+      root.unmount();
+    });
+  });
+
+  it("ignores claude item/updated agentMessage snapshot in legacy routing", async () => {
+    const handlers: Handlers = {
+      onAgentMessageDelta: vi.fn(),
+      onItemUpdated: vi.fn(),
+    };
+    const { root } = await mount(handlers);
+
+    act(() => {
+      listener?.({
+        workspace_id: "ws-claude",
+        message: {
+          method: "item/updated",
+          params: {
+            threadId: "claude:session-101",
+            item: {
+              id: "assistant-101",
+              type: "agentMessage",
+              text: "snapshot text",
+            },
+          },
+        },
+      });
+    });
+
+    expect(handlers.onAgentMessageDelta).not.toHaveBeenCalled();
+    expect(handlers.onItemUpdated).not.toHaveBeenCalled();
+
+    await act(async () => {
+      root.unmount();
+    });
+  });
+
+  it("ignores codex item/updated agentMessage snapshot after streaming delta in legacy routing", async () => {
+    const handlers: Handlers = {
+      onAgentMessageDelta: vi.fn(),
+      onItemUpdated: vi.fn(),
+    };
+    const { root } = await mount(handlers);
+
+    act(() => {
+      listener?.({
+        workspace_id: "ws-codex",
+        message: {
+          method: "item/agentMessage/delta",
+          params: {
+            threadId: "thread-codex-legacy-1",
+            itemId: "assistant-codex-legacy-1",
+            delta: "codex stream",
+          },
+        },
+      });
+    });
+
+    act(() => {
+      listener?.({
+        workspace_id: "ws-codex",
+        message: {
+          method: "item/updated",
+          params: {
+            threadId: "thread-codex-legacy-1",
+            item: {
+              id: "assistant-codex-legacy-1",
+              type: "agentMessage",
+              text: "codex snapshot",
+            },
+          },
+        },
+      });
+    });
+
+    expect(handlers.onAgentMessageDelta).toHaveBeenCalledTimes(1);
+    expect(handlers.onAgentMessageDelta).toHaveBeenCalledWith({
+      workspaceId: "ws-codex",
+      threadId: "thread-codex-legacy-1",
+      itemId: "assistant-codex-legacy-1",
+      delta: "codex stream",
+    });
+    expect(handlers.onItemUpdated).not.toHaveBeenCalled();
+
+    await act(async () => {
+      root.unmount();
+    });
+  });
+
+  it("keeps claude realtime assistant body single in legacy mode when delta and snapshot coexist", async () => {
+    const handlers: Handlers = {
+      onAgentMessageDelta: vi.fn(),
+      onAgentMessageCompleted: vi.fn(),
+      onItemUpdated: vi.fn(),
+      onItemStarted: vi.fn(),
+    };
+    const { root } = await mount(handlers);
+
+    act(() => {
+      listener?.({
+        workspace_id: "ws-claude",
+        message: {
+          method: "turn/started",
+          params: {
+            threadId: "claude:session-seq-2",
+            turnId: "turn-2",
+          },
+        },
+      });
+      listener?.({
+        workspace_id: "ws-claude",
+        message: {
+          method: "item/agentMessage/delta",
+          params: {
+            threadId: "claude:session-seq-2",
+            itemId: "assistant-seq-2",
+            delta: "第一段",
+          },
+        },
+      });
+      listener?.({
+        workspace_id: "ws-claude",
+        message: {
+          method: "item/started",
+          params: {
+            threadId: "claude:session-seq-2",
+            item: {
+              id: "assistant-seq-2",
+              type: "agentMessage",
+              text: "第一段",
+            },
+          },
+        },
+      });
+      listener?.({
+        workspace_id: "ws-claude",
+        message: {
+          method: "item/updated",
+          params: {
+            threadId: "claude:session-seq-2",
+            item: {
+              id: "assistant-seq-2",
+              type: "agentMessage",
+              text: "第一段第二段",
+            },
+          },
+        },
+      });
+      listener?.({
+        workspace_id: "ws-claude",
+        message: {
+          method: "item/agentMessage/delta",
+          params: {
+            threadId: "claude:session-seq-2",
+            itemId: "assistant-seq-2",
+            delta: "第二段",
+          },
+        },
+      });
+      listener?.({
+        workspace_id: "ws-claude",
+        message: {
+          method: "item/completed",
+          params: {
+            threadId: "claude:session-seq-2",
+            item: {
+              id: "assistant-seq-2",
+              type: "agentMessage",
+              text: "第一段第二段",
+            },
+          },
+        },
+      });
+      listener?.({
+        workspace_id: "ws-claude",
+        message: {
+          method: "turn/completed",
+          params: {
+            threadId: "claude:session-seq-2",
+            turnId: "turn-2",
+            result: {
+              text: "第一段第二段",
+            },
+          },
+        },
+      });
+    });
+
+    expect(handlers.onAgentMessageDelta).toHaveBeenCalledTimes(2);
+    expect(handlers.onAgentMessageDelta).toHaveBeenNthCalledWith(1, {
+      workspaceId: "ws-claude",
+      threadId: "claude:session-seq-2",
+      itemId: "assistant-seq-2",
+      delta: "第一段",
+    });
+    expect(handlers.onAgentMessageDelta).toHaveBeenNthCalledWith(2, {
+      workspaceId: "ws-claude",
+      threadId: "claude:session-seq-2",
+      itemId: "assistant-seq-2",
+      delta: "第二段",
+    });
+    expect(handlers.onItemStarted).not.toHaveBeenCalled();
+    expect(handlers.onItemUpdated).not.toHaveBeenCalled();
+    expect(handlers.onAgentMessageCompleted).toHaveBeenCalledTimes(1);
+    expect(handlers.onAgentMessageCompleted).toHaveBeenCalledWith({
+      workspaceId: "ws-claude",
+      threadId: "claude:session-seq-2",
+      itemId: "assistant-seq-2",
+      text: "第一段第二段",
+    });
+
+    await act(async () => {
+      root.unmount();
+    });
+  });
+
+  it("keeps claude agent completion when only snapshot and completed arrive in legacy mode", async () => {
+    const handlers: Handlers = {
+      onAgentMessageDelta: vi.fn(),
+      onAgentMessageCompleted: vi.fn(),
+      onItemUpdated: vi.fn(),
+    };
+    const { root } = await mount(handlers);
+
+    act(() => {
+      listener?.({
+        workspace_id: "ws-claude",
+        message: {
+          method: "item/updated",
+          params: {
+            threadId: "claude:session-snapshot-only-2",
+            item: {
+              id: "assistant-snapshot-only-2",
+              type: "agentMessage",
+              text: "snapshot-only-text",
+            },
+          },
+        },
+      });
+      listener?.({
+        workspace_id: "ws-claude",
+        message: {
+          method: "item/completed",
+          params: {
+            threadId: "claude:session-snapshot-only-2",
+            item: {
+              id: "assistant-snapshot-only-2",
+              type: "agentMessage",
+              text: "snapshot-only-text",
+            },
+          },
+        },
+      });
+    });
+
+    expect(handlers.onAgentMessageDelta).not.toHaveBeenCalled();
+    expect(handlers.onItemUpdated).not.toHaveBeenCalled();
+    expect(handlers.onAgentMessageCompleted).toHaveBeenCalledTimes(1);
+    expect(handlers.onAgentMessageCompleted).toHaveBeenCalledWith({
+      workspaceId: "ws-claude",
+      threadId: "claude:session-snapshot-only-2",
+      itemId: "assistant-snapshot-only-2",
+      text: "snapshot-only-text",
+    });
+
+    await act(async () => {
+      root.unmount();
+    });
+  });
+
+  it("keeps codex agentMessage snapshot routing when no streaming delta was seen in normalized mode", async () => {
+    const handlers: Handlers = {
+      onAgentMessageDelta: vi.fn(),
+    };
+    const { root } = await mount(handlers, {
+      useNormalizedRealtimeAdapters: true,
+    });
+
+    act(() => {
+      listener?.({
+        workspace_id: "ws-codex",
+        message: {
+          method: "item/updated",
+          params: {
+            threadId: "thread-codex-1",
+            item: {
+              id: "assistant-codex-1",
+              type: "agentMessage",
+              text: "codex snapshot",
+            },
+          },
+        },
+      });
+    });
+
+    expect(handlers.onAgentMessageDelta).toHaveBeenCalledTimes(1);
+    expect(handlers.onAgentMessageDelta).toHaveBeenCalledWith({
+      workspaceId: "ws-codex",
+      threadId: "thread-codex-1",
+      itemId: "assistant-codex-1",
+      delta: "codex snapshot",
+    });
+
+    await act(async () => {
+      root.unmount();
+    });
+  });
+
+  it("ignores codex agentMessage snapshot after streaming delta in normalized mode", async () => {
+    const handlers: Handlers = {
+      onAgentMessageDelta: vi.fn(),
+      onItemUpdated: vi.fn(),
+    };
+    const { root } = await mount(handlers, {
+      useNormalizedRealtimeAdapters: true,
+    });
+
+    act(() => {
+      listener?.({
+        workspace_id: "ws-codex",
+        message: {
+          method: "item/agentMessage/delta",
+          params: {
+            threadId: "thread-codex-2",
+            itemId: "assistant-codex-2",
+            delta: "codex stream",
+          },
+        },
+      });
+    });
+
+    act(() => {
+      listener?.({
+        workspace_id: "ws-codex",
+        message: {
+          method: "item/updated",
+          params: {
+            threadId: "thread-codex-2",
+            item: {
+              id: "assistant-codex-2",
+              type: "agentMessage",
+              text: "codex snapshot",
+            },
+          },
+        },
+      });
+    });
+
+    expect(handlers.onAgentMessageDelta).toHaveBeenCalledTimes(1);
+    expect(handlers.onAgentMessageDelta).toHaveBeenCalledWith({
+      workspaceId: "ws-codex",
+      threadId: "thread-codex-2",
+      itemId: "assistant-codex-2",
+      delta: "codex stream",
+    });
+    expect(handlers.onItemUpdated).not.toHaveBeenCalled();
 
     await act(async () => {
       root.unmount();
@@ -1334,6 +2172,38 @@ describe("useAppServerEvents", () => {
       workspaceId: "ws-claude",
       threadId: "claude:session-99",
       itemId: "claude:session-99:text-delta",
+      delta: "streaming text",
+    });
+
+    await act(async () => {
+      root.unmount();
+    });
+  });
+
+  it("ignores turnId as assistant item id for legacy claude text:delta fallback", async () => {
+    const handlers: Handlers = {
+      onAgentMessageDelta: vi.fn(),
+    };
+    const { root } = await mount(handlers);
+
+    act(() => {
+      listener?.({
+        workspace_id: "ws-claude",
+        message: {
+          method: "text:delta",
+          params: {
+            threadId: "claude:session-98",
+            turnId: "turn-98",
+            delta: "streaming text",
+          },
+        },
+      });
+    });
+
+    expect(handlers.onAgentMessageDelta).toHaveBeenCalledWith({
+      workspaceId: "ws-claude",
+      threadId: "claude:session-98",
+      itemId: "claude:session-98:text-delta",
       delta: "streaming text",
     });
 

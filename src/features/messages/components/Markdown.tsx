@@ -6,6 +6,8 @@ import remarkGfm from "remark-gfm";
 import rehypeRaw from "rehype-raw";
 import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
 import { openUrl } from "@tauri-apps/plugin-opener";
+import { convertFileSrc } from "@tauri-apps/api/core";
+import { LocalImage } from "./LocalImage";
 
 const MermaidBlock = lazy(() => import("./MermaidBlock"));
 import {
@@ -21,6 +23,7 @@ import { detectCodexLeadMarker, type CodexLeadMarkerConfig } from "../constants/
 type MarkdownProps = {
   value: string;
   className?: string;
+  workspaceId?: string | null;
   codeBlock?: boolean;
   codeBlockStyle?: "default" | "message";
   codeBlockCopyUseModifier?: boolean;
@@ -58,6 +61,7 @@ function areMarkdownPropsEqual(prev: MarkdownProps, next: MarkdownProps) {
   return (
     prev.value === next.value &&
     prev.className === next.className &&
+    prev.workspaceId === next.workspaceId &&
     prev.codeBlock === next.codeBlock &&
     prev.codeBlockStyle === next.codeBlockStyle &&
     prev.codeBlockCopyUseModifier === next.codeBlockCopyUseModifier &&
@@ -77,7 +81,7 @@ function extractLanguageTag(className?: string) {
   if (!match) {
     return null;
   }
-  return match[1];
+  return match[1] ?? null;
 }
 
 function extractCodeFromPre(node?: PreProps["node"]) {
@@ -146,23 +150,23 @@ function normalizeListIndentation(value: string) {
       return line;
     }
 
-    const orderedMatch = line.match(/^(\s*)(\d+)\.(\s*)(.*)$/);
-    const orderedContent = orderedMatch?.[4] ?? "";
-    const orderedHasWhitespace = (orderedMatch?.[3].length ?? 0) > 0;
+  const orderedMatch = line.match(/^(\s*)(\d+)\.(\s*)(.*)$/);
+  const orderedContent = orderedMatch?.[4] ?? "";
+  const orderedHasWhitespace = ((orderedMatch?.[3] ?? "").length ?? 0) > 0;
     const orderedLooksDecimal =
       Boolean(orderedContent) &&
       !orderedHasWhitespace &&
       /^\d/.test(orderedContent);
     if (orderedMatch && !orderedLooksDecimal) {
-      const rawIndent = orderedMatch[1].length;
+      const rawIndent = (orderedMatch[1] ?? "").length;
       const normalizedIndent = rawIndent;
       activeOrderedItem = true;
       orderedBaseIndent = normalizedIndent + 4;
       orderedIndentOffset = null;
       const normalizedBody = orderedContent.trimStart();
       const normalizedLine = normalizedBody
-        ? `${spaces(normalizedIndent)}${orderedMatch[2]}. ${normalizedBody}`
-        : `${spaces(normalizedIndent)}${orderedMatch[2]}.`;
+        ? `${spaces(normalizedIndent)}${orderedMatch[2] ?? ""}. ${normalizedBody}`
+        : `${spaces(normalizedIndent)}${orderedMatch[2] ?? ""}.`;
       if (normalizedIndent !== rawIndent || normalizedLine !== line) {
         return normalizedLine;
       }
@@ -171,7 +175,7 @@ function normalizeListIndentation(value: string) {
 
     const bulletMatch = line.match(/^(\s*)([-*+])\s+/);
     if (bulletMatch) {
-      const rawIndent = bulletMatch[1].length;
+      const rawIndent = (bulletMatch[1] ?? "").length;
       let targetIndent = rawIndent;
 
       if (activeOrderedItem) {
@@ -211,6 +215,8 @@ const FRAGMENTED_LINE_MAX_LENGTH = 10;
 const FRAGMENTED_LINE_MIN_TOTAL_CHARS = 12;
 const PARAGRAPH_BREAK_SPLIT_REGEX = /\r?\n[^\S\r\n]*\r?\n+/;
 const CODE_FENCE_LINE_REGEX = /^\s*(```|~~~)/;
+const MARKDOWN_IMAGE_FILE_EXTENSION_REGEX =
+  /\.(png|jpe?g|gif|webp|bmp|tiff?|svg|ico|avif)(?:[?#].*)?$/i;
 
 function hasParagraphBreak(value: string) {
   return PARAGRAPH_BREAK_SPLIT_REGEX.test(value);
@@ -259,7 +265,7 @@ function extractBlockquoteParagraphText(paragraph: string) {
     if (!match) {
       return null;
     }
-    const content = match[1].trim();
+    const content = (match[1] ?? "").trim();
     if (!content || startsWithMarkdownBlockSyntax(content)) {
       return null;
     }
@@ -546,6 +552,96 @@ function normalizeOutsideCodeFences(
   return changed ? normalized : value;
 }
 
+function escapeHtmlAttribute(value: string) {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+function parseImageAttributes(raw: string) {
+  const attributes: Record<string, string> = {};
+  const pattern = /([a-zA-Z_:][-\w.:]*)\s*=\s*("([^"]*)"|'([^']*)'|([^\s"'>]+))/g;
+  let match: RegExpExecArray | null = null;
+  while ((match = pattern.exec(raw)) !== null) {
+    const key = match[1]?.toLowerCase();
+    if (!key) {
+      continue;
+    }
+    const value = match[3] ?? match[4] ?? match[5] ?? "";
+    attributes[key] = value;
+  }
+  return attributes;
+}
+
+function toHtmlImageTag(src: string, alt?: string, title?: string) {
+  const safeSrc = escapeHtmlAttribute(src.trim());
+  if (!safeSrc) {
+    return "";
+  }
+  const safeAlt = escapeHtmlAttribute((alt ?? "image").trim() || "image");
+  const titlePart = title && title.trim()
+    ? ` title="${escapeHtmlAttribute(title.trim())}"`
+    : "";
+  return `<img src="${safeSrc}" alt="${safeAlt}" loading="lazy"${titlePart} />`;
+}
+
+function normalizeMarkdownLocalImageSyntax(value: string) {
+  return value.replace(
+    /!\[([^\]]*)\]\((file:\/\/[^\s)]+|[A-Za-z]:[\\/][^\s)]*)(?:\s+"([^"]*)")?\)/g,
+    (match, rawAlt: string, rawSrc: string, rawTitle: string) => {
+      const normalizedLocalPath = normalizeImageLocalPath(rawSrc);
+      let renderSrc = normalizedLocalPath ?? rawSrc;
+      if (/^[A-Za-z]:[\\/]/.test(renderSrc)) {
+        renderSrc = `/${renderSrc}`;
+      }
+      const next = toHtmlImageTag(renderSrc, rawAlt, rawTitle);
+      return next || match;
+    },
+  );
+}
+
+function normalizeImageTags(value: string) {
+  let changed = false;
+  const withLocalMarkdownImages = normalizeMarkdownLocalImageSyntax(value);
+  if (withLocalMarkdownImages !== value) {
+    changed = true;
+  }
+
+  const withBlockTags = withLocalMarkdownImages.replace(
+    /<image>\s*([\s\S]*?)\s*<\/image>/gi,
+    (_match, body: string) => {
+      const src = body.trim();
+      const next = toHtmlImageTag(src);
+      if (!next) {
+        return _match;
+      }
+      changed = true;
+      return next;
+    },
+  );
+
+  const withSelfClosingTags = withBlockTags.replace(
+    /<image\b([^>]*)\/?>/gi,
+    (match, rawAttrs: string) => {
+      const attrs = parseImageAttributes(rawAttrs ?? "");
+      const src = attrs.src?.trim();
+      if (!src) {
+        return match;
+      }
+      const next = toHtmlImageTag(src, attrs.alt, attrs.title);
+      if (!next) {
+        return match;
+      }
+      changed = true;
+      return next;
+    },
+  );
+
+  return changed ? withSelfClosingTags : value;
+}
+
 function safeDecodeUrl(value: string) {
   try {
     return decodeURIComponent(value);
@@ -584,7 +680,9 @@ function resolveLocalFileHref(url: string) {
   if (!trimmed || trimmed.startsWith("#")) {
     return null;
   }
-  const normalized = stripFileScheme(safeDecodeUrl(trimmed));
+  const normalized = repairFragmentedResourceToken(
+    stripFileScheme(safeDecodeUrl(trimmed)),
+  );
   if (
     normalized.startsWith("/") ||
     normalized.startsWith("./") ||
@@ -597,6 +695,140 @@ function resolveLocalFileHref(url: string) {
     return normalized;
   }
   return isLinkableFilePath(normalized) ? normalized : null;
+}
+
+function decodeUrlValueSafe(value: string) {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
+function looksLikeResourceReference(value: string) {
+  const compact = value.replace(/\s+/g, "");
+  if (!compact) {
+    return false;
+  }
+  return (
+    /(https?:\/\/|file:\/\/|\/Users\/|data:image\/)/i.test(compact) ||
+    /^[A-Za-z]:[\\/]/.test(compact) ||
+    MARKDOWN_IMAGE_FILE_EXTENSION_REGEX.test(compact)
+  );
+}
+
+function repairFragmentedResourceToken(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed || !looksLikeResourceReference(trimmed)) {
+    return trimmed;
+  }
+  let repaired = trimmed;
+  repaired = repaired.replace(/(https?):\s*\/\s*\//gi, "$1://");
+  repaired = repaired.replace(/file:\s*\/\s*\//gi, "file://");
+  repaired = repaired.replace(/([A-Za-z0-9])\s+([./\\:_-])/g, "$1$2");
+  repaired = repaired.replace(/([./\\:_-])\s+([A-Za-z0-9])/g, "$1$2");
+  return repaired.trim();
+}
+
+function normalizeFragmentedResourceReferences(value: string) {
+  const withMarkdownTargets = value.replace(
+    /(!?\[[^\]]*]\()([\s\S]*?)(\))/g,
+    (match, prefix: string, rawTarget: string, suffix: string) => {
+      const repaired = repairFragmentedResourceToken(rawTarget);
+      if (!repaired || repaired === rawTarget || !looksLikeResourceReference(repaired)) {
+        return match;
+      }
+      return `${prefix}${repaired}${suffix}`;
+    },
+  );
+  const source = withMarkdownTargets;
+  const lines = source.split(/\r?\n/);
+  let changed = false;
+  const normalized = lines.map((line) => {
+    if (!looksLikeResourceReference(line)) {
+      return line;
+    }
+    const repaired = repairFragmentedResourceToken(line);
+    if (repaired !== line) {
+      changed = true;
+    }
+    return repaired;
+  });
+  if (!changed) {
+    return source;
+  }
+  return normalized.join("\n");
+}
+
+function normalizeImageLocalPath(src: string) {
+  const decoded = repairFragmentedResourceToken(decodeUrlValueSafe(src.trim()));
+  if (!decoded) {
+    return null;
+  }
+  if (/^\/[A-Za-z]:[\\/]/.test(decoded)) {
+    return decoded.slice(1);
+  }
+  if (decoded.startsWith("file://")) {
+    const withoutScheme = decoded.slice("file://".length);
+    const withoutHost = withoutScheme.startsWith("localhost/")
+      ? withoutScheme.slice("localhost/".length)
+      : withoutScheme;
+    if (/^\/[A-Za-z]:[\\/]/.test(withoutHost)) {
+      return withoutHost.slice(1);
+    }
+    if (/^[A-Za-z]:[\\/]/.test(withoutHost)) {
+      return withoutHost;
+    }
+    if (withoutHost.startsWith("/")) {
+      return withoutHost;
+    }
+    return `/${withoutHost}`;
+  }
+  if (
+    decoded.startsWith("/") ||
+    decoded.startsWith("./") ||
+    decoded.startsWith("../") ||
+    decoded.startsWith("~/") ||
+    /^[A-Za-z]:[\\/]/.test(decoded) ||
+    /^\\\\[^\\]/.test(decoded)
+  ) {
+    return decoded;
+  }
+  return null;
+}
+
+function normalizeMarkdownImageSrc(src: string) {
+  const trimmed = src.trim();
+  if (!trimmed) {
+    return "";
+  }
+  const cleaned = repairFragmentedResourceToken(
+    trimmed
+    .replace(/^<(.+)>$/, "$1")
+    .replace(/^['"](.+)['"]$/, "$1")
+    .trim(),
+  );
+  if (!cleaned) {
+    return "";
+  }
+  if (
+    cleaned.startsWith("data:") ||
+    cleaned.startsWith("http://") ||
+    cleaned.startsWith("https://") ||
+    cleaned.startsWith("asset://")
+  ) {
+    return cleaned;
+  }
+  const localPath = normalizeImageLocalPath(cleaned);
+  const imageLikeLocal = MARKDOWN_IMAGE_FILE_EXTENSION_REGEX.test(cleaned);
+  if (!localPath && !imageLikeLocal) {
+    return "";
+  }
+  try {
+    return convertFileSrc(localPath ?? cleaned);
+  } catch {
+    return "";
+  }
 }
 
 function LinkBlock({ urls }: LinkBlockProps) {
@@ -621,7 +853,7 @@ function LinkBlock({ urls }: LinkBlockProps) {
 
 function CodeBlock({ className, value, copyUseModifier }: CodeBlockProps) {
   const { t } = useTranslation();
-  const [copied, setCopied] = useState(false);
+  const [copiedMode, setCopiedMode] = useState<"plain" | "fenced" | null>(null);
   const copyTimeoutRef = useRef<number | null>(null);
   const languageTag = extractLanguageTag(className);
   const languageLabel = languageTag ?? "Code";
@@ -641,15 +873,29 @@ function CodeBlock({ className, value, copyUseModifier }: CodeBlockProps) {
 
   const handleCopy = async (event: MouseEvent<HTMLButtonElement>) => {
     try {
-      const shouldFence = copyUseModifier ? event.altKey : true;
-      const nextValue = shouldFence ? fencedValue : value;
+      const nextValue = copyUseModifier && event.altKey ? fencedValue : value;
       await navigator.clipboard.writeText(nextValue);
-      setCopied(true);
+      setCopiedMode(nextValue === fencedValue ? "fenced" : "plain");
       if (copyTimeoutRef.current) {
         window.clearTimeout(copyTimeoutRef.current);
       }
       copyTimeoutRef.current = window.setTimeout(() => {
-        setCopied(false);
+        setCopiedMode(null);
+      }, 1200);
+    } catch {
+      // No-op: clipboard errors can occur in restricted contexts.
+    }
+  };
+
+  const handleCopyFenced = async () => {
+    try {
+      await navigator.clipboard.writeText(fencedValue);
+      setCopiedMode("fenced");
+      if (copyTimeoutRef.current) {
+        window.clearTimeout(copyTimeoutRef.current);
+      }
+      copyTimeoutRef.current = window.setTimeout(() => {
+        setCopiedMode(null);
       }, 1200);
     } catch {
       // No-op: clipboard errors can occur in restricted contexts.
@@ -660,15 +906,26 @@ function CodeBlock({ className, value, copyUseModifier }: CodeBlockProps) {
     <div className="markdown-codeblock">
       <div className="markdown-codeblock-header">
         <span className="markdown-codeblock-language">{languageLabel}</span>
-        <button
-          type="button"
-          className={`ghost markdown-codeblock-copy${copied ? " is-copied" : ""}`}
-          onClick={handleCopy}
-          aria-label={t("messages.copyCodeBlock")}
-          title={copied ? t("messages.copied") : t("messages.copy")}
-        >
-          {copied ? t("messages.copied") : t("messages.copy")}
-        </button>
+        <div className="markdown-codeblock-actions">
+          <button
+            type="button"
+            className={`ghost markdown-codeblock-copy${copiedMode === "plain" ? " is-copied" : ""}`}
+            onClick={handleCopy}
+            aria-label={t("messages.copyCodeBlock")}
+            title={copiedMode === "plain" ? t("messages.copied") : t("messages.copy")}
+          >
+            {copiedMode === "plain" ? t("messages.copied") : t("messages.copy")}
+          </button>
+          <button
+            type="button"
+            className={`ghost markdown-codeblock-copy${copiedMode === "fenced" ? " is-copied" : ""}`}
+            onClick={handleCopyFenced}
+            aria-label={t("messages.copyCodeBlockWithFence")}
+            title={copiedMode === "fenced" ? t("messages.copied") : t("messages.copyWithFence")}
+          >
+            {copiedMode === "fenced" ? t("messages.copied") : t("messages.copyWithFence")}
+          </button>
+        </div>
       </div>
       <pre>
         <code
@@ -699,7 +956,7 @@ function extractMermaidContent(languageTag: string | null, value: string): strin
   // Case 2: fenced marker leaked into the content (e.g. ```mermaid\n...\n```)
   const fencedMatch = value.match(/^```mermaid\s*\n([\s\S]*?)(?:\n```\s*)?$/);
   if (fencedMatch) {
-    const inner = fencedMatch[1].trim();
+    const inner = (fencedMatch[1] ?? "").trim();
     if (inner) return inner;
   }
   return null;
@@ -728,7 +985,7 @@ function PreBlock({ node, children, copyUseModifier }: PreProps) {
     return <LinkBlock urls={urlLines} />;
   }
   const languageTag = extractLanguageTag(className);
-  const mermaidContent = extractMermaidContent(languageTag, value);
+  const mermaidContent = extractMermaidContent(languageTag, value ?? "");
   if (mermaidContent) {
     return (
       <Suspense fallback={<MermaidFallback />}>
@@ -760,6 +1017,7 @@ function PreBlock({ node, children, copyUseModifier }: PreProps) {
 export const Markdown = memo(function Markdown({
   value,
   className,
+  workspaceId = null,
   codeBlock,
   codeBlockStyle = "default",
   codeBlockCopyUseModifier = false,
@@ -838,9 +1096,13 @@ export const Markdown = memo(function Markdown({
       return `\`\`\`\n${renderValue}\n\`\`\``;
     }
     const normalizeDisplayText = (text: string) =>
-      normalizeListIndentation(
-        normalizeInlineOrderedListBreaks(
-          normalizeFragmentedLineBreaks(normalizeFragmentedParagraphBreaks(text)),
+      normalizeImageTags(
+        normalizeFragmentedResourceReferences(
+        normalizeListIndentation(
+          normalizeInlineOrderedListBreaks(
+            normalizeFragmentedLineBreaks(normalizeFragmentedParagraphBreaks(text)),
+          ),
+        ),
         ),
       );
     return normalizeOutsideCodeFences(renderValue, normalizeDisplayText);
@@ -941,6 +1203,23 @@ export const Markdown = memo(function Markdown({
           </a>
         );
       },
+      img: ({ src, alt, ...props }) => {
+        const fallbackLocalPath = normalizeImageLocalPath(src ?? "");
+        const normalizedSrc = normalizeMarkdownImageSrc(src ?? "");
+        if (!normalizedSrc) {
+          return null;
+        }
+        return (
+          <LocalImage
+            {...props}
+            src={normalizedSrc}
+            localPath={fallbackLocalPath}
+            workspaceId={workspaceId}
+            alt={alt ?? "image"}
+            loading="lazy"
+          />
+        );
+      },
     };
 
     if (enableCodexLeadEnhancement) {
@@ -975,6 +1254,7 @@ export const Markdown = memo(function Markdown({
     codexLeadMarkerConfig,
     codeBlockStyle,
     codeBlockCopyUseModifier,
+    workspaceId,
   ]);
 
   // Memoize plugin arrays so ReactMarkdown doesn't re-initialize its processor
@@ -1007,11 +1287,13 @@ export const Markdown = memo(function Markdown({
       isFileLinkUrl(url) ||
       url.startsWith("http://") ||
       url.startsWith("https://") ||
+      url.startsWith("file://") ||
       url.startsWith("mailto:") ||
       url.startsWith("#") ||
       url.startsWith("/") ||
       url.startsWith("./") ||
-      url.startsWith("../")
+      url.startsWith("../") ||
+      /^[A-Za-z]:[\\/]/.test(url)
     ) {
       return url;
     }

@@ -7,6 +7,7 @@ import {
 } from "react";
 import { useTranslation } from "react-i18next";
 import ArrowLeft from "lucide-react/dist/esm/icons/arrow-left";
+import ArrowRight from "lucide-react/dist/esm/icons/arrow-right";
 import Columns2 from "lucide-react/dist/esm/icons/columns-2";
 import Pencil from "lucide-react/dist/esm/icons/pencil";
 import Eye from "lucide-react/dist/esm/icons/eye";
@@ -18,7 +19,10 @@ import Rows2 from "lucide-react/dist/esm/icons/rows-2";
 import Save from "lucide-react/dist/esm/icons/save";
 import Search from "lucide-react/dist/esm/icons/search";
 import X from "lucide-react/dist/esm/icons/x";
-import CodeMirror, { type ReactCodeMirrorRef } from "@uiw/react-codemirror";
+import CodeMirror, {
+  type ReactCodeMirrorProps,
+  type ReactCodeMirrorRef,
+} from "@uiw/react-codemirror";
 import {
   keymap,
   Decoration,
@@ -40,12 +44,14 @@ import {
 import {
   getCodeIntelDefinition,
   getCodeIntelReferences,
+  readExternalAbsoluteFile,
   getGitFileFullDiff,
   readExternalSpecFile,
   readWorkspaceFile,
   writeExternalSpecFile,
   writeWorkspaceFile,
 } from "../../../services/tauri";
+import { subscribeDetachedExternalFileChanges } from "../../../services/events";
 import { highlightLine, languageFromPath } from "../../../utils/syntax";
 import { OpenAppMenu } from "../../app/components/OpenAppMenu";
 import FileIcon from "../../../components/FileIcon";
@@ -70,11 +76,19 @@ import {
   normalizeComparablePath,
   normalizeFsPath,
   resolveFileReadTarget,
+  resolveGitRootWorkspacePrefix,
+  resolveGitStatusPathCandidates,
+  resolveWorkspacePathCandidates,
 } from "../../../utils/workspacePaths";
+import {
+  reduceExternalChangeSyncState,
+  type ExternalChangeSyncState,
+} from "../externalChangeStateMachine";
 
 type FileViewPanelProps = {
   workspaceId: string;
   workspacePath: string;
+  gitRoot?: string | null;
   customSpecRoot?: string | null;
   filePath: string;
   gitStatusFiles?: GitFileStatus[];
@@ -109,17 +123,41 @@ type FileViewPanelProps = {
   ) => void;
   onClose: () => void;
   onInsertText?: (text: string) => void;
+  headerLayout?: "stacked" | "single-row";
+  onSingleRowLeadingAction?: () => void;
+  singleRowLeadingDirection?: "left" | "right";
+  singleRowLeadingLabel?: string;
+  externalChangeMonitoringEnabled?: boolean;
+  externalChangeTransportMode?: "watcher" | "polling";
+  externalChangePollIntervalMs?: number;
 };
 
 const markdownExtensions = new Set(["md", "mdx"]);
 const NAVIGATION_REQUEST_TIMEOUT_MS = 8_000;
 const CODE_INTEL_CACHE_TTL_MS = 3_000;
 const CODE_INTEL_REPEAT_DEBOUNCE_MS = 120;
+const EXTERNAL_CHANGE_POLL_INTERVAL_MS = 2_000;
+const EXTERNAL_CHANGE_NOTICE_MS = 3_200;
+const EXTERNAL_CHANGE_ERROR_TOAST_THRESHOLD = 3;
+const EXTERNAL_CHANGE_ERROR_TOAST_COOLDOWN_MS = 30_000;
+const MISSING_FILE_ERROR_PATTERN =
+  /no such file or directory|os error 2|enoent|cannot find the file|the system cannot find the file specified/i;
 type EditorTheme = "light" | "dark";
+
+type ExternalChangeConflict = {
+  diskContent: string;
+  diskTruncated: boolean;
+  updateCount: number;
+  detectedAt: number;
+};
 
 function isMarkdownPath(path: string) {
   const ext = path.split(".").pop()?.toLowerCase() ?? "";
   return markdownExtensions.has(ext);
+}
+
+function isMissingFileErrorMessage(message: string): boolean {
+  return MISSING_FILE_ERROR_PATTERN.test(message);
 }
 
 const imageExtensions = new Set([
@@ -488,6 +526,7 @@ function hasGitLineMarkers(markers: GitLineMarkers | null | undefined) {
 export function FileViewPanel({
   workspaceId,
   workspacePath,
+  gitRoot = null,
   customSpecRoot = null,
   filePath,
   gitStatusFiles,
@@ -514,6 +553,13 @@ export function FileViewPanel({
   onNavigateToLocation,
   onClose,
   onInsertText,
+  headerLayout = "stacked",
+  onSingleRowLeadingAction,
+  singleRowLeadingDirection = "left",
+  singleRowLeadingLabel,
+  externalChangeMonitoringEnabled = false,
+  externalChangeTransportMode = "polling",
+  externalChangePollIntervalMs = EXTERNAL_CHANGE_POLL_INTERVAL_MS,
 }: FileViewPanelProps) {
   const { t } = useTranslation();
   const isMarkdown = useMemo(() => isMarkdownPath(filePath), [filePath]);
@@ -567,31 +613,89 @@ export function FileViewPanel({
   });
   const [fileReferenceShouldRender, setFileReferenceShouldRender] = useState(false);
   const [fileReferenceVisible, setFileReferenceVisible] = useState(false);
+  const usesSingleRowHeader = headerLayout === "single-row";
+  const [externalChangeConflict, setExternalChangeConflict] =
+    useState<ExternalChangeConflict | null>(null);
+  const [externalCompareOpen, setExternalCompareOpen] = useState(false);
+  const [externalAutoSyncAt, setExternalAutoSyncAt] = useState<number | null>(null);
+  const [externalChangeSyncState, setExternalChangeSyncState] =
+    useState<ExternalChangeSyncState>("in-sync");
   const splitResizeCleanupRef = useRef<(() => void) | null>(null);
   const pendingOpenFindPanelRef = useRef(false);
+  const latestIsDirtyRef = useRef(false);
+  const externalDiskSnapshotRef = useRef<{ content: string; truncated: boolean } | null>(null);
+  const externalPollInFlightRef = useRef(false);
+  const externalPollErrorCountRef = useRef(0);
+  const externalPollLastToastAtRef = useRef(0);
+  const watcherRefreshQueuedRef = useRef(false);
 
   const isDirty = content !== savedContentRef.current;
+  latestIsDirtyRef.current = isDirty;
+  const gitRootWorkspacePrefix = useMemo(
+    () => resolveGitRootWorkspacePrefix(workspacePath, gitRoot),
+    [gitRoot, workspacePath],
+  );
   const gitStatusMap = useMemo(() => {
-    const map = new Map<string, string>();
+    const map = new Map<string, { status: string; path: string }>();
     if (!gitStatusFiles) {
       return map;
     }
     for (const entry of gitStatusFiles) {
-      map.set(entry.path, entry.status);
+      const entryPath = entry.path?.trim();
+      const entryStatus = entry.status?.trim();
+      if (!entryPath || !entryStatus) {
+        continue;
+      }
+      const candidates = resolveGitStatusPathCandidates(
+        workspacePath,
+        gitRootWorkspacePrefix,
+        entryPath,
+      );
+      for (const candidate of candidates) {
+        if (!map.has(candidate)) {
+          map.set(candidate, { status: entryStatus, path: entryPath });
+        }
+      }
     }
     return map;
-  }, [gitStatusFiles]);
+  }, [gitRootWorkspacePrefix, gitStatusFiles, workspacePath]);
   const fileReadTarget = useMemo(
     () => resolveFileReadTarget(workspacePath, filePath, customSpecRoot),
     [workspacePath, filePath, customSpecRoot],
   );
   const workspaceRelativeFilePath = fileReadTarget.workspaceRelativePath;
-  const fileGitStatus = useMemo(
-    () =>
-      gitStatusMap.get(workspaceRelativeFilePath) ??
-      gitStatusMap.get(filePath) ??
-      null,
-    [gitStatusMap, workspaceRelativeFilePath, filePath],
+  const matchedGitStatus = useMemo(() => {
+    const fileCandidates = new Set<string>([
+      ...resolveWorkspacePathCandidates(workspacePath, workspaceRelativeFilePath),
+      ...resolveWorkspacePathCandidates(workspacePath, filePath),
+    ]);
+    for (const candidate of fileCandidates) {
+      const matched = gitStatusMap.get(candidate);
+      if (matched) {
+        return matched;
+      }
+    }
+    return null;
+  }, [
+    filePath,
+    gitRootWorkspacePrefix,
+    gitStatusMap,
+    workspacePath,
+    workspaceRelativeFilePath,
+  ]);
+  const fileGitStatus = matchedGitStatus?.status ?? null;
+  const gitDiffTargetPath = matchedGitStatus?.path ?? workspaceRelativeFilePath;
+  const resolveMatchedGitStatusByPath = useCallback(
+    (path: string) => {
+      for (const candidate of resolveWorkspacePathCandidates(workspacePath, path)) {
+        const matched = gitStatusMap.get(candidate);
+        if (matched) {
+          return matched;
+        }
+      }
+      return null;
+    },
+    [gitStatusMap, workspacePath],
   );
   const fileGitStatusClass = fileGitStatus ? `git-${fileGitStatus.toLowerCase()}` : "";
   const absolutePath = useMemo(
@@ -684,6 +788,13 @@ export function FileViewPanel({
       setContent("");
       savedContentRef.current = "";
       setTruncated(false);
+      setExternalChangeConflict(null);
+      setExternalCompareOpen(false);
+      setExternalAutoSyncAt(null);
+      setExternalChangeSyncState((current) =>
+        reduceExternalChangeSyncState(current, { type: "file-loaded" }),
+      );
+      externalDiskSnapshotRef.current = null;
       return;
     }
 
@@ -693,7 +804,7 @@ export function FileViewPanel({
     setIsLoading(true);
     setError(null);
 
-    if (fileReadTarget.domain === "unsupported-external") {
+    if (fileReadTarget.domain === "invalid") {
       setError("Invalid file path");
       setIsLoading(false);
       return;
@@ -714,14 +825,31 @@ export function FileViewPanel({
               truncated: Boolean(response.truncated),
             };
           })
+        : fileReadTarget.domain === "external-absolute"
+          ? readExternalAbsoluteFile(
+              workspaceId,
+              fileReadTarget.normalizedInputPath,
+            )
         : readWorkspaceFile(workspaceId, workspaceRelativeFilePath);
 
     readPromise
       .then((response) => {
         if (cancelled || currentRequest !== requestIdRef.current) return;
-        setContent(response.content ?? "");
-        savedContentRef.current = response.content ?? "";
-        setTruncated(Boolean(response.truncated));
+        const nextContent = response.content ?? "";
+        const nextTruncated = Boolean(response.truncated);
+        setContent(nextContent);
+        savedContentRef.current = nextContent;
+        setTruncated(nextTruncated);
+        setExternalChangeConflict(null);
+        setExternalCompareOpen(false);
+        setExternalAutoSyncAt(null);
+        setExternalChangeSyncState((current) =>
+          reduceExternalChangeSyncState(current, { type: "file-loaded" }),
+        );
+        externalDiskSnapshotRef.current = {
+          content: nextContent,
+          truncated: nextTruncated,
+        };
       })
       .catch((err) => {
         if (cancelled || currentRequest !== requestIdRef.current) return;
@@ -760,7 +888,7 @@ export function FileViewPanel({
     }
 
     let cancelled = false;
-    getGitFileFullDiff(workspaceId, workspaceRelativeFilePath)
+    getGitFileFullDiff(workspaceId, gitDiffTargetPath)
       .then((diff) => {
         if (cancelled) {
           return;
@@ -778,7 +906,7 @@ export function FileViewPanel({
     };
   }, [
     workspaceId,
-    workspaceRelativeFilePath,
+    gitDiffTargetPath,
     fileGitStatus,
     fileReadTarget.domain,
     hasExplicitHighlightMarkers,
@@ -799,6 +927,12 @@ export function FileViewPanel({
     setNavigationError(null);
     setDefinitionCandidates([]);
     setReferenceResults(null);
+    setExternalChangeConflict(null);
+    setExternalCompareOpen(false);
+    setExternalAutoSyncAt(null);
+    setExternalChangeSyncState((current) =>
+      reduceExternalChangeSyncState(current, { type: "file-loaded" }),
+    );
   }, [defaultsToPreview, filePath, initialMode, onActiveFileLineRangeChange]);
 
   useEffect(() => {
@@ -856,12 +990,23 @@ export function FileViewPanel({
           fileReadTarget.externalSpecLogicalPath,
           content,
         );
-      } else if (fileReadTarget.domain === "unsupported-external") {
+      } else if (fileReadTarget.domain === "external-absolute") {
+        throw new Error(t("files.externalAbsoluteReadOnly"));
+      } else if (fileReadTarget.domain === "invalid") {
         throw new Error("Invalid file path");
       } else {
         await writeWorkspaceFile(workspaceId, workspaceRelativeFilePath, content);
       }
       savedContentRef.current = content;
+      externalDiskSnapshotRef.current = {
+        content,
+        truncated,
+      };
+      setExternalChangeSyncState((current) =>
+        reduceExternalChangeSyncState(current, { type: "file-loaded" }),
+      );
+      setExternalChangeConflict(null);
+      setExternalCompareOpen(false);
     } catch (err) {
       pushErrorToast({
         title: "Failed to save file",
@@ -880,6 +1025,248 @@ export function FileViewPanel({
     isSaving,
     truncated,
   ]);
+
+  useEffect(() => {
+    if (!externalAutoSyncAt) {
+      return;
+    }
+    const timeoutId = window.setTimeout(() => {
+      setExternalAutoSyncAt(null);
+      setExternalChangeSyncState((current) =>
+        reduceExternalChangeSyncState(current, { type: "notice-cleared" }),
+      );
+    }, EXTERNAL_CHANGE_NOTICE_MS);
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [externalAutoSyncAt]);
+
+  const applyExternalDiskSnapshot = useCallback(
+    (
+      nextContent: string,
+      nextTruncated: boolean,
+      source: "polling" | "watcher" | string,
+      eventKind: string,
+    ) => {
+      const previousDiskSnapshot = externalDiskSnapshotRef.current;
+      const isSameAsKnownDisk =
+        previousDiskSnapshot?.content === nextContent &&
+        previousDiskSnapshot?.truncated === nextTruncated;
+      if (isSameAsKnownDisk) {
+        return;
+      }
+
+      externalDiskSnapshotRef.current = {
+        content: nextContent,
+        truncated: nextTruncated,
+      };
+      if (latestIsDirtyRef.current) {
+        setExternalChangeSyncState((current) =>
+          reduceExternalChangeSyncState(current, { type: "external-change-detected-dirty" }),
+        );
+        setExternalChangeConflict((current) => {
+          if (
+            current &&
+            current.diskContent === nextContent &&
+            current.diskTruncated === nextTruncated
+          ) {
+            return current;
+          }
+          return {
+            diskContent: nextContent,
+            diskTruncated: nextTruncated,
+            updateCount: Math.min(99, (current?.updateCount ?? 0) + 1),
+            detectedAt: Date.now(),
+          };
+        });
+        return;
+      }
+
+      setContent(nextContent);
+      savedContentRef.current = nextContent;
+      setTruncated(nextTruncated);
+      setExternalCompareOpen(false);
+      setExternalChangeConflict(null);
+      setExternalAutoSyncAt(Date.now());
+      setExternalChangeSyncState((current) =>
+        reduceExternalChangeSyncState(
+          reduceExternalChangeSyncState(current, { type: "external-change-detected-clean" }),
+          { type: "refresh-applied" },
+        ),
+      );
+      if (source === "polling" && eventKind === "watcher-fallback") {
+        pushErrorToast({
+          title: "External file monitor fallback",
+          message: t("files.externalChangeAutoSynced"),
+        });
+      }
+    },
+    [t],
+  );
+
+  const refreshFromDisk = useCallback(
+    async (source: "polling" | "watcher" | string, eventKind: string) => {
+      if (externalPollInFlightRef.current) {
+        watcherRefreshQueuedRef.current = true;
+        return;
+      }
+      externalPollInFlightRef.current = true;
+      try {
+        const response = await readWorkspaceFile(workspaceId, workspaceRelativeFilePath);
+        externalPollErrorCountRef.current = 0;
+        const nextContent = response.content ?? "";
+        const nextTruncated = Boolean(response.truncated);
+        applyExternalDiskSnapshot(nextContent, nextTruncated, source, eventKind);
+      } catch (pollError) {
+        const message = errorMessageFromUnknown(
+          pollError,
+          "Unable to refresh file from disk.",
+        );
+        const isMissingFileError = isMissingFileErrorMessage(message);
+        const isTransientFsError =
+          /permission denied|resource busy|sharing violation|used by another process/i.test(
+            message,
+          );
+        if (isMissingFileError) {
+          externalPollErrorCountRef.current = 0;
+          return;
+        }
+        if (!isTransientFsError) {
+          externalPollErrorCountRef.current += 1;
+          const now = Date.now();
+          const shouldNotify =
+            externalPollErrorCountRef.current >= EXTERNAL_CHANGE_ERROR_TOAST_THRESHOLD &&
+            now - externalPollLastToastAtRef.current >=
+              EXTERNAL_CHANGE_ERROR_TOAST_COOLDOWN_MS;
+          if (shouldNotify) {
+            externalPollLastToastAtRef.current = now;
+            externalPollErrorCountRef.current = 0;
+            pushErrorToast({
+              title: "External file monitor is unavailable",
+              message,
+            });
+          }
+        }
+      } finally {
+        externalPollInFlightRef.current = false;
+        if (watcherRefreshQueuedRef.current) {
+          watcherRefreshQueuedRef.current = false;
+          void refreshFromDisk(source, eventKind);
+        }
+      }
+    },
+    [applyExternalDiskSnapshot, workspaceId, workspaceRelativeFilePath],
+  );
+
+  useEffect(() => {
+    if (
+      !externalChangeMonitoringEnabled ||
+      externalChangeTransportMode !== "polling" ||
+      fileReadTarget.domain !== "workspace" ||
+      isBinary ||
+      isLoading
+    ) {
+      return;
+    }
+
+    let cancelled = false;
+    let timeoutId = 0;
+    externalPollErrorCountRef.current = 0;
+
+    const scheduleNext = () => {
+      if (cancelled) {
+        return;
+      }
+      timeoutId = window.setTimeout(() => {
+        void refreshFromDisk("polling", "polling-tick").finally(() => {
+          scheduleNext();
+        });
+      }, externalChangePollIntervalMs);
+    };
+
+    scheduleNext();
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timeoutId);
+    };
+  }, [
+    externalChangeMonitoringEnabled,
+    externalChangeTransportMode,
+    externalChangePollIntervalMs,
+    fileReadTarget.domain,
+    isBinary,
+    isLoading,
+    refreshFromDisk,
+  ]);
+
+  useEffect(() => {
+    if (
+      !externalChangeMonitoringEnabled ||
+      externalChangeTransportMode !== "watcher" ||
+      fileReadTarget.domain !== "workspace" ||
+      isBinary ||
+      isLoading
+    ) {
+      return;
+    }
+    // Reconcile once when watcher mode becomes active, so changes that happened
+    // while this window was unfocused are still detected.
+    void refreshFromDisk("watcher", "watcher-startup-sync");
+    return subscribeDetachedExternalFileChanges((event) => {
+      if (event.workspaceId !== workspaceId) {
+        return;
+      }
+      const samePath =
+        normalizeComparablePath(event.normalizedPath, caseInsensitivePathCompare) ===
+        normalizeComparablePath(workspaceRelativeFilePath, caseInsensitivePathCompare);
+      if (!samePath) {
+        return;
+      }
+      void refreshFromDisk(event.source, event.eventKind || "watcher-event");
+    });
+  }, [
+    caseInsensitivePathCompare,
+    externalChangeMonitoringEnabled,
+    externalChangeTransportMode,
+    fileReadTarget.domain,
+    isBinary,
+    isLoading,
+    refreshFromDisk,
+    workspaceId,
+    workspaceRelativeFilePath,
+  ]);
+
+  const handleExternalReloadFromDisk = useCallback(() => {
+    if (!externalChangeConflict) {
+      return;
+    }
+    setContent(externalChangeConflict.diskContent);
+    savedContentRef.current = externalChangeConflict.diskContent;
+    setTruncated(externalChangeConflict.diskTruncated);
+    externalDiskSnapshotRef.current = {
+      content: externalChangeConflict.diskContent,
+      truncated: externalChangeConflict.diskTruncated,
+    };
+    setExternalCompareOpen(false);
+    setExternalChangeConflict(null);
+    setExternalAutoSyncAt(Date.now());
+    setExternalChangeSyncState((current) =>
+      reduceExternalChangeSyncState(current, { type: "conflict-reload" }),
+    );
+  }, [externalChangeConflict]);
+
+  const handleExternalKeepLocal = useCallback(() => {
+    setExternalCompareOpen(false);
+    setExternalChangeConflict(null);
+    setExternalChangeSyncState((current) =>
+      reduceExternalChangeSyncState(current, { type: "conflict-keep-local" }),
+    );
+  }, []);
+
+  const handleExternalToggleCompare = useCallback(() => {
+    setExternalCompareOpen((current) => !current);
+  }, []);
 
   // Auto-focus CodeMirror when entering edit mode
   useEffect(() => {
@@ -924,11 +1311,12 @@ export function FileViewPanel({
     [],
   );
   const persistentSearchExtension = useMemo(() => search({ top: true }), []);
-  const handleCodeMirrorCreate = useCallback((view: EditorView) => {
-    view.dispatch({
-      effects: setGitLineMarkersEffect.of(effectiveGitLineMarkers),
-    });
-  }, [effectiveGitLineMarkers]);
+  const handleCodeMirrorCreate: NonNullable<ReactCodeMirrorProps["onCreateEditor"]> =
+    useCallback((view) => {
+      view.dispatch({
+        effects: setGitLineMarkersEffect.of(effectiveGitLineMarkers),
+      });
+    }, [effectiveGitLineMarkers]);
 
   // Keyboard shortcut: Cmd+S / Ctrl+S (works in any mode, including preview)
   useEffect(() => {
@@ -1099,7 +1487,10 @@ export function FileViewPanel({
           return;
         }
         if (cachedLocations.length === 1) {
-          navigateToLocation(cachedLocations[0]);
+          const onlyLocation = cachedLocations[0];
+          if (onlyLocation) {
+            navigateToLocation(onlyLocation);
+          }
           return;
         }
         setDefinitionCandidates(cachedLocations);
@@ -1129,7 +1520,10 @@ export function FileViewPanel({
           return;
         }
         if (locations.length === 1) {
-          navigateToLocation(locations[0]);
+          const onlyLocation = locations[0];
+          if (onlyLocation) {
+            navigateToLocation(onlyLocation);
+          }
           return;
         }
         setDefinitionCandidates(locations);
@@ -1619,6 +2013,77 @@ export function FileViewPanel({
   );
 
   // ── Topbar ──
+  const renderTopbarActions = (className = "fvp-topbar-right") => (
+    <div className={className}>
+      {!isBinary && (
+        <>
+          {mode === "preview" ? (
+            <div className="fvp-action-group fvp-preview-tools" role="group">
+              <button
+                type="button"
+                className="fvp-action-btn"
+                onClick={handleEnterEdit}
+                disabled={truncated}
+                title={truncated ? t("files.fileTooLarge") : t("files.edit")}
+              >
+                <Pencil size={14} aria-hidden />
+                <span>{t("files.edit")}</span>
+              </button>
+            </div>
+          ) : (
+            <div className="fvp-action-group" role="group">
+              <button
+                type="button"
+                className="ghost fvp-action-btn"
+                onClick={runDefinitionFromCursor}
+                aria-busy={isDefinitionLoading}
+                title={t("files.gotoDefinition")}
+              >
+                <Code size={14} aria-hidden />
+                <span>
+                  {isDefinitionLoading
+                    ? t("files.navigating")
+                    : t("files.gotoDefinition")}
+                </span>
+              </button>
+              <button
+                type="button"
+                className="ghost fvp-action-btn"
+                onClick={runReferencesFromCursor}
+                aria-busy={isReferencesLoading}
+                title={t("files.findReferences")}
+              >
+                <Search size={14} aria-hidden />
+                <span>
+                  {isReferencesLoading
+                    ? t("files.searchingReferences")
+                    : t("files.findReferences")}
+                </span>
+              </button>
+              <button
+                type="button"
+                className="ghost fvp-action-btn"
+                onClick={handleEnterPreview}
+              >
+                <Eye size={14} aria-hidden />
+                <span>{t("files.preview")}</span>
+              </button>
+              <button
+                type="button"
+                className={`primary fvp-action-btn fvp-save-btn ${isDirty ? "" : "is-saved"}`}
+                onClick={handleSave}
+                disabled={!isDirty || isSaving}
+              >
+                <Save size={14} aria-hidden />
+                <span>{isSaving ? t("files.saving") : isDirty ? t("files.save") : t("files.saved")}</span>
+              </button>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+
   const renderTopbar = () => (
     <div className="fvp-topbar">
       <div className="fvp-topbar-left">
@@ -1640,81 +2105,89 @@ export function FileViewPanel({
         {isDirty && <span className="fvp-dirty-dot" aria-label={t("files.unsavedChanges")} />}
         {truncated && <span className="fvp-truncated">{t("files.truncated")}</span>}
       </div>
-      <div className="fvp-topbar-right">
-        {!isBinary && (
-          <>
-            {mode === "preview" ? (
-              <div className="fvp-action-group fvp-preview-tools" role="group">
-                <button
-                  type="button"
-                  className="fvp-action-btn"
-                  onClick={handleEnterEdit}
-                  disabled={truncated}
-                  title={truncated ? t("files.fileTooLarge") : t("files.edit")}
-                >
-                  <Pencil size={14} aria-hidden />
-                  <span>{t("files.edit")}</span>
-                </button>
-              </div>
-            ) : (
-              <div className="fvp-action-group" role="group">
-                <button
-                  type="button"
-                  className="ghost fvp-action-btn"
-                  onClick={runDefinitionFromCursor}
-                  aria-busy={isDefinitionLoading}
-                  title={t("files.gotoDefinition")}
-                >
-                  <Code size={14} aria-hidden />
-                  <span>
-                    {isDefinitionLoading
-                      ? t("files.navigating")
-                      : t("files.gotoDefinition")}
-                  </span>
-                </button>
-                <button
-                  type="button"
-                  className="ghost fvp-action-btn"
-                  onClick={runReferencesFromCursor}
-                  aria-busy={isReferencesLoading}
-                  title={t("files.findReferences")}
-                >
-                  <Search size={14} aria-hidden />
-                  <span>
-                    {isReferencesLoading
-                      ? t("files.searchingReferences")
-                      : t("files.findReferences")}
-                  </span>
-                </button>
-                <button
-                  type="button"
-                  className="ghost fvp-action-btn"
-                  onClick={handleEnterPreview}
-                >
-                  <Eye size={14} aria-hidden />
-                  <span>{t("files.preview")}</span>
-                </button>
-                <button
-                  type="button"
-                  className={`primary fvp-action-btn fvp-save-btn ${isDirty ? "" : "is-saved"}`}
-                  onClick={handleSave}
-                  disabled={!isDirty || isSaving}
-                >
-                  <Save size={14} aria-hidden />
-                  <span>{isSaving ? t("files.saving") : isDirty ? t("files.save") : t("files.saved")}</span>
-                </button>
-              </div>
-            )}
-          </>
-        )}
-      </div>
+      {renderTopbarActions()}
     </div>
   );
 
-  const renderTabs = () => (
+  const renderExternalChangeNotice = () => {
+    if (externalChangeSyncState === "in-sync") {
+      return null;
+    }
+    if (externalChangeSyncState === "external-changed-clean" && !externalAutoSyncAt) {
+      return null;
+    }
+    if (externalChangeSyncState !== "external-changed-dirty" || !externalChangeConflict) {
+      return (
+        <div className="fvp-external-change-banner is-auto-sync" role="status" aria-live="polite">
+          {t("files.externalChangeAutoSynced")}
+        </div>
+      );
+    }
+    return (
+      <div className="fvp-external-change-banner is-conflict" role="status" aria-live="polite">
+        <div className="fvp-external-change-banner-copy">
+          <strong>{t("files.externalChangeConflictTitle")}</strong>
+          <span>
+            {t("files.externalChangeConflictBody", {
+              count: externalChangeConflict.updateCount,
+            })}
+          </span>
+        </div>
+        <div className="fvp-external-change-banner-actions">
+          <button
+            type="button"
+            className="ghost fvp-action-btn"
+            onClick={handleExternalToggleCompare}
+          >
+            {externalCompareOpen ? t("files.externalChangeHideCompare") : t("files.externalChangeCompare")}
+          </button>
+          <button
+            type="button"
+            className="ghost fvp-action-btn"
+            onClick={handleExternalKeepLocal}
+          >
+            {t("files.externalChangeKeepLocal")}
+          </button>
+          <button
+            type="button"
+            className="primary fvp-action-btn"
+            onClick={handleExternalReloadFromDisk}
+          >
+            {t("files.externalChangeReload")}
+          </button>
+        </div>
+      </div>
+    );
+  };
+
+  const renderExternalComparePanel = () => {
+    if (!externalCompareOpen || !externalChangeConflict) {
+      return null;
+    }
+    const localPreview =
+      content.length > 6_000 ? `${content.slice(0, 6_000)}\n\n...` : content;
+    const diskPreview =
+      externalChangeConflict.diskContent.length > 6_000
+        ? `${externalChangeConflict.diskContent.slice(0, 6_000)}\n\n...`
+        : externalChangeConflict.diskContent;
+    return (
+      <div className="fvp-external-compare">
+        <div className="fvp-external-compare-column">
+          <header>{t("files.externalChangeCompareLocal")}</header>
+          <pre>{localPreview}</pre>
+        </div>
+        <div className="fvp-external-compare-column">
+          <header>{t("files.externalChangeCompareDisk")}</header>
+          <pre>{diskPreview}</pre>
+        </div>
+      </div>
+    );
+  };
+
+  const renderTabs = (className?: string) => (
     <div
       ref={tabsContainerRef}
-      className="fvp-tabs"
+      className={`fvp-tabs${className ? ` ${className}` : ""}`}
       role="tablist"
       aria-label="Open files"
       onContextMenu={openTabContextMenu}
@@ -1723,7 +2196,7 @@ export function FileViewPanel({
         {visibleTabs.map((tabPath) => {
           const isActive = (activeTabPath ?? filePath) === tabPath;
           const tabName = tabPath.split("/").pop() || tabPath;
-          const tabGitStatus = gitStatusMap.get(tabPath) ?? null;
+          const tabGitStatus = resolveMatchedGitStatusByPath(tabPath)?.status ?? null;
           const tabGitStatusClass = tabGitStatus ? `git-${tabGitStatus.toLowerCase()}` : "";
           return (
             <div
@@ -1760,6 +2233,32 @@ export function FileViewPanel({
             </div>
           );
         })}
+      </div>
+    </div>
+  );
+
+  const renderSingleRowHeader = () => (
+    <div className="fvp-header-row">
+      <button
+        type="button"
+        className="icon-button fvp-back"
+        onClick={onSingleRowLeadingAction ?? handleClose}
+        aria-label={singleRowLeadingLabel ?? t("files.backToChat")}
+        title={singleRowLeadingLabel ?? t("files.backToChat")}
+      >
+        {singleRowLeadingDirection === "right" && onSingleRowLeadingAction ? (
+          <ArrowRight size={16} aria-hidden />
+        ) : (
+          <ArrowLeft size={16} aria-hidden />
+        )}
+      </button>
+      <div className="fvp-header-row-tabs">
+        {renderTabs("fvp-tabs-inline")}
+      </div>
+      <div className="fvp-header-row-right">
+        {isDirty ? <span className="fvp-dirty-dot" aria-label={t("files.unsavedChanges")} /> : null}
+        {truncated ? <span className="fvp-truncated">{t("files.truncated")}</span> : null}
+        {renderTopbarActions("fvp-header-actions")}
       </div>
     </div>
   );
@@ -2120,8 +2619,8 @@ export function FileViewPanel({
   };
 
   return (
-    <div className="fvp" ref={panelRootRef}>
-      {renderTabs()}
+    <div className={`fvp${usesSingleRowHeader ? " fvp-single-row-header" : ""}`} ref={panelRootRef}>
+      {usesSingleRowHeader ? renderSingleRowHeader() : renderTabs()}
       {tabContextMenu.visible && canCloseAllTabs ? (
         <div
           ref={tabContextMenuRef}
@@ -2139,7 +2638,9 @@ export function FileViewPanel({
           </button>
         </div>
       ) : null}
-      {renderTopbar()}
+      {!usesSingleRowHeader ? renderTopbar() : null}
+      {renderExternalChangeNotice()}
+      {renderExternalComparePanel()}
       <div className="fvp-body">{renderContent()}</div>
       {renderNavigationPanel()}
       {renderFooter()}

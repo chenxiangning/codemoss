@@ -73,6 +73,39 @@
   width: 24px;
   height: 24px;
   padding: 0;
+  border: none;
+  box-shadow: none;
+  background: transparent;
+}
+
+.file-tree-root-action.is-spinning svg {
+  animation: file-tree-root-action-spin 420ms ease-in-out 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .file-tree-root-action.is-spinning svg {
+    animation: none;
+  }
+}
+
+.file-tree-root-action:hover:not(:disabled),
+.file-tree-root-action:focus-visible {
+  background: color-mix(in srgb, var(--surface-hover) 78%, transparent);
+  color: var(--text-emphasis);
+}
+
+.file-tree-root-action.is-active {
+  background: color-mix(in srgb, var(--accent-500) 16%, transparent);
+  color: var(--text-accent, var(--accent-500));
+}
+
+@keyframes file-tree-root-action-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .file-tree-root-action-danger {
@@ -569,7 +602,7 @@
   gap: 5px;
   padding: 2px 6px;
   border-radius: 7px;
-  cursor: pointer;
+  cursor: default;
   border: 1px solid transparent;
   background: transparent;
   color: var(--text-emphasis);
@@ -580,13 +613,11 @@
 }
 
 .file-tree-row[draggable="true"] {
-  cursor: -webkit-grab;
-  cursor: grab;
+  cursor: default;
 }
 
 .file-tree-row[draggable="true"]:active {
-  cursor: -webkit-grabbing;
-  cursor: grabbing;
+  cursor: default;
 }
 
 :root.file-tree-dragging,
@@ -1030,6 +1061,16 @@
 }
 
 /* Git status colors in file tree */
+.file-tree-name.git-a,
+.file-tree-name.git-m,
+.file-tree-name.git-d,
+.file-tree-name.git-r,
+.file-tree-name.git-t {
+  font-weight: 800 !important;
+  font-variation-settings: "wght" 800;
+  text-shadow: 0.25px 0 currentColor;
+}
+
 .file-tree-name.git-a {
   color: #89d185;
 }

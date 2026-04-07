@@ -32,10 +32,10 @@ function cleanCommand(commandText: string): string {
   const shellMatch = trimmed.match(
     /^(?:\/\S+\/)?(?:bash|zsh|sh|fish)(?:\.exe)?\s+-(?:l?c)\s+(['"])([\s\S]+)\1$/
   );
-  const inner = shellMatch ? shellMatch[2] : trimmed;
+  const inner = shellMatch ? (shellMatch[2] ?? trimmed) : trimmed;
 
   const cdMatch = inner.match(/^\s*cd\s+[^&;]+(?:\s*&&\s*|\s*;\s*)([\s\S]+)$/i);
-  const stripped = cdMatch ? cdMatch[1] : inner;
+  const stripped = cdMatch ? (cdMatch[1] ?? inner) : inner;
 
   return stripped.trim();
 }

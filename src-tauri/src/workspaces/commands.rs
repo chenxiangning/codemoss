@@ -8,14 +8,21 @@ use serde_json::json;
 use tauri::{AppHandle, Manager, State};
 use tokio::io::AsyncWriteExt;
 use uuid::Uuid;
+use base64::{engine::general_purpose::STANDARD, Engine as _};
 
+use super::external_changes::{
+    clear_detached_external_change_monitor_inner, configure_detached_external_change_monitor_inner,
+    DetachedExternalMonitorStatus,
+};
 use super::files::{
-    copy_workspace_item_inner, create_workspace_directory_inner, list_external_spec_tree_inner,
+    copy_workspace_item_inner, create_workspace_directory_inner,
+    list_external_absolute_directory_children_inner, list_external_spec_tree_inner,
     list_workspace_directory_children_inner, list_workspace_files_inner,
-    read_external_spec_file_inner, read_workspace_file_inner, search_workspace_text_inner,
-    trash_workspace_item_inner, write_external_spec_file_inner, write_workspace_file_inner,
-    ExternalSpecFileResponse, WorkspaceFileResponse, WorkspaceFilesResponse,
-    WorkspaceTextSearchOptions, WorkspaceTextSearchResponse,
+    read_external_absolute_file_inner, read_external_spec_file_inner, read_workspace_file_inner,
+    search_workspace_text_inner, trash_workspace_item_inner, write_external_absolute_file_inner,
+    write_external_spec_file_inner, write_workspace_file_inner, ExternalSpecFileResponse,
+    WorkspaceFileResponse, WorkspaceFilesResponse, WorkspaceTextSearchOptions,
+    WorkspaceTextSearchResponse,
 };
 use super::git::{
     git_branch_exists, git_find_remote_for_branch, git_get_origin_url, git_remote_branch_exists,
@@ -32,7 +39,7 @@ use super::worktree::{
 
 use crate::backend::app_server::WorkspaceSession;
 use crate::codex::args::resolve_workspace_codex_args;
-use crate::codex::home::resolve_workspace_codex_home;
+use crate::codex::home::{resolve_default_codex_home, resolve_workspace_codex_home};
 use crate::codex::spawn_workspace_session;
 use crate::engine::{resolve_engine_type, EngineType};
 use crate::git_utils::resolve_git_root;
@@ -53,6 +60,55 @@ pub(crate) struct WorkspaceCommandResult {
     pub(crate) success: bool,
     pub(crate) stdout: String,
     pub(crate) stderr: String,
+}
+
+fn app_data_dir_for_state(state: &AppState) -> Result<PathBuf, String> {
+    state
+        .settings_path
+        .parent()
+        .map(|path| path.to_path_buf())
+        .ok_or_else(|| "Unable to resolve app data dir.".to_string())
+}
+
+fn allowed_external_skill_roots(
+    state: &AppState,
+    workspaces: &std::collections::HashMap<String, WorkspaceEntry>,
+    workspace_id: &str,
+) -> Result<Vec<PathBuf>, String> {
+    let entry = workspaces
+        .get(workspace_id)
+        .ok_or_else(|| format!("Workspace not found: {workspace_id}"))?;
+    let parent_entry = entry
+        .parent_id
+        .as_ref()
+        .and_then(|parent_id| workspaces.get(parent_id));
+
+    let mut roots = vec![
+        app_data_dir_for_state(state)?
+            .join("workspaces")
+            .join(&entry.id)
+            .join("skills"),
+        PathBuf::from(&entry.path).join(".claude").join("skills"),
+        PathBuf::from(&entry.path).join(".codex").join("skills"),
+        PathBuf::from(&entry.path).join(".gemini").join("skills"),
+        PathBuf::from(&entry.path).join(".agents").join("skills"),
+    ];
+
+    if let Some(home) = dirs::home_dir() {
+        roots.push(home.join(".claude").join("skills"));
+        roots.push(home.join(".gemini").join("skills"));
+        roots.push(home.join(".agents").join("skills"));
+    }
+
+    if let Some(codex_home) =
+        resolve_workspace_codex_home(entry, parent_entry).or_else(resolve_default_codex_home)
+    {
+        roots.push(codex_home.join("skills"));
+    }
+
+    roots.sort();
+    roots.dedup();
+    Ok(roots)
 }
 
 fn normalize_custom_spec_root(path: &str) -> Result<PathBuf, String> {
@@ -222,6 +278,187 @@ fn cleanup_spec_command_workdir(path: &Path) {
     }
 }
 
+fn normalize_image_local_path(raw_path: &str) -> Option<PathBuf> {
+    let trimmed = raw_path.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    let mut decoded = trimmed.to_string();
+    if let Some(rest) = decoded.strip_prefix("file://localhost/") {
+        decoded = format!("/{rest}");
+    } else if let Some(rest) = decoded.strip_prefix("file://") {
+        decoded = if rest.starts_with('/') {
+            rest.to_string()
+        } else {
+            format!("/{rest}")
+        };
+    }
+    #[cfg(windows)]
+    {
+        if decoded.starts_with('/') && decoded.len() >= 3 {
+            let bytes = decoded.as_bytes();
+            if bytes[2] == b':' && bytes[1].is_ascii_alphabetic() {
+                decoded = decoded[1..].to_string();
+            }
+        }
+    }
+    Some(PathBuf::from(decoded))
+}
+
+const MAX_INLINE_IMAGE_BYTES: u64 = 20 * 1024 * 1024;
+
+fn is_supported_image_extension(path: &Path) -> bool {
+    matches!(
+        path.extension()
+            .and_then(|value| value.to_str())
+            .map(|value| value.to_ascii_lowercase())
+            .as_deref(),
+        Some("png")
+            | Some("jpg")
+            | Some("jpeg")
+            | Some("gif")
+            | Some("webp")
+            | Some("bmp")
+            | Some("tif")
+            | Some("tiff")
+            | Some("svg")
+            | Some("ico")
+            | Some("avif")
+    )
+}
+
+fn is_path_under_allowed_roots(path: &Path, roots: &[PathBuf]) -> bool {
+    roots.iter().any(|root| path.starts_with(root))
+}
+
+async fn allowed_image_preview_roots(
+    state: &AppState,
+    workspace_id: &str,
+) -> Result<Vec<PathBuf>, String> {
+    let (workspace_path, parent_workspace_path) = {
+        let workspaces = state.workspaces.lock().await;
+        let entry = workspaces
+            .get(workspace_id)
+            .ok_or_else(|| format!("Workspace not found: {workspace_id}"))?;
+        let parent = entry
+            .parent_id
+            .as_ref()
+            .and_then(|parent_id| workspaces.get(parent_id))
+            .map(|parent_entry| parent_entry.path.clone());
+        (entry.path.clone(), parent)
+    };
+
+    let mut roots: Vec<PathBuf> = vec![PathBuf::from(workspace_path)];
+    if let Some(parent_path) = parent_workspace_path {
+        roots.push(PathBuf::from(parent_path));
+    }
+    roots.push(app_data_dir_for_state(state)?.join("workspaces"));
+    if let Some(home_dir) = dirs::home_dir() {
+        roots.push(home_dir.join(".codemoss").join("workspace"));
+        roots.push(home_dir.join(".mossx").join("workspace"));
+        roots.push(home_dir.join(".moss-x").join("workspace"));
+    }
+
+    let mut canonical_roots = roots
+        .into_iter()
+        .filter_map(|root| root.canonicalize().ok())
+        .collect::<Vec<_>>();
+    canonical_roots.sort();
+    canonical_roots.dedup();
+    Ok(canonical_roots)
+}
+
+fn image_mime_type(path: &Path) -> &'static str {
+    match path
+        .extension()
+        .and_then(|value| value.to_str())
+        .map(|value| value.to_ascii_lowercase())
+        .as_deref()
+    {
+        Some("png") => "image/png",
+        Some("jpg") | Some("jpeg") => "image/jpeg",
+        Some("gif") => "image/gif",
+        Some("webp") => "image/webp",
+        Some("bmp") => "image/bmp",
+        Some("tif") | Some("tiff") => "image/tiff",
+        Some("svg") => "image/svg+xml",
+        Some("ico") => "image/x-icon",
+        Some("avif") => "image/avif",
+        _ => "application/octet-stream",
+    }
+}
+
+#[tauri::command]
+pub(crate) async fn read_local_image_data_url(
+    workspace_id: String,
+    path: String,
+    state: State<'_, AppState>,
+    _app: AppHandle,
+) -> Result<String, String> {
+    if remote_backend::is_remote_mode(&*state).await {
+        return Err("read_local_image_data_url is not supported in remote mode.".to_string());
+    }
+    let absolute_path = normalize_image_local_path(&path)
+        .ok_or_else(|| "Invalid image path.".to_string())?;
+    if !absolute_path.is_absolute() {
+        return Err("Image path must be absolute.".to_string());
+    }
+    let metadata = std::fs::metadata(&absolute_path)
+        .map_err(|err| format!("Failed to stat image file: {err}"))?;
+    if !metadata.is_file() {
+        return Err("Target image path is not a file.".to_string());
+    }
+    if metadata.len() > MAX_INLINE_IMAGE_BYTES {
+        return Err(format!(
+            "Image file is too large to inline (max {} bytes).",
+            MAX_INLINE_IMAGE_BYTES
+        ));
+    }
+    if !is_supported_image_extension(&absolute_path) {
+        return Err("Unsupported image file extension.".to_string());
+    }
+    let canonical_path = absolute_path
+        .canonicalize()
+        .map_err(|err| format!("Failed to resolve image path: {err}"))?;
+    let allowed_roots = allowed_image_preview_roots(&state, &workspace_id).await?;
+    if allowed_roots.is_empty() || !is_path_under_allowed_roots(&canonical_path, &allowed_roots) {
+        return Err("Image path is outside allowed preview directories.".to_string());
+    }
+    let bytes = std::fs::read(&canonical_path)
+        .map_err(|err| format!("Failed to read image file: {err}"))?;
+    let mime = image_mime_type(&canonical_path);
+    let encoded = STANDARD.encode(bytes);
+    Ok(format!("data:{mime};base64,{encoded}"))
+}
+
+#[cfg(test)]
+mod image_preview_policy_tests {
+    use super::{is_path_under_allowed_roots, is_supported_image_extension};
+    use std::path::PathBuf;
+
+    #[test]
+    fn supported_image_extension_is_restricted() {
+        assert!(is_supported_image_extension(&PathBuf::from("/tmp/a.png")));
+        assert!(is_supported_image_extension(&PathBuf::from("/tmp/a.jpeg")));
+        assert!(!is_supported_image_extension(&PathBuf::from("/tmp/a.txt")));
+        assert!(!is_supported_image_extension(&PathBuf::from("/tmp/a")));
+    }
+
+    #[test]
+    fn path_must_be_under_allowed_roots() {
+        let root = PathBuf::from("/tmp/allowed");
+        let roots = vec![root.clone()];
+        assert!(is_path_under_allowed_roots(
+            &root.join("a.png"),
+            &roots,
+        ));
+        assert!(!is_path_under_allowed_roots(
+            &PathBuf::from("/tmp/other/a.png"),
+            &roots,
+        ));
+    }
+}
+
 async fn run_command_with_cwd(
     command: Vec<String>,
     current_dir: &Path,
@@ -303,10 +540,15 @@ async fn collect_workspace_cleanup_ids(
 }
 
 async fn cleanup_engine_sessions_for_workspace(state: &AppState, workspace_id: &str) {
+    crate::terminal::cleanup_terminal_sessions_for_workspace(state, workspace_id).await;
     crate::engine::commands::clear_mcp_toggle_state(workspace_id);
     state
         .engine_manager
         .remove_claude_session(workspace_id)
+        .await;
+    state
+        .engine_manager
+        .remove_gemini_session(workspace_id)
         .await;
     state
         .engine_manager
@@ -401,6 +643,7 @@ pub(crate) async fn list_external_spec_tree(
     state: State<'_, AppState>,
     app: AppHandle,
 ) -> Result<WorkspaceFilesResponse, String> {
+    const MAX_EXTERNAL_SPEC_TREE_FILES: usize = 8_000;
     if remote_backend::is_remote_mode(&*state).await {
         let response = remote_backend::call_remote(
             &*state,
@@ -419,7 +662,7 @@ pub(crate) async fn list_external_spec_tree(
         }
     }
 
-    list_external_spec_tree_inner(&spec_root, usize::MAX)
+    list_external_spec_tree_inner(&spec_root, MAX_EXTERNAL_SPEC_TREE_FILES)
 }
 
 #[tauri::command]
@@ -452,6 +695,32 @@ pub(crate) async fn read_external_spec_file(
 }
 
 #[tauri::command]
+pub(crate) async fn read_external_absolute_file(
+    workspace_id: String,
+    path: String,
+    state: State<'_, AppState>,
+    app: AppHandle,
+) -> Result<WorkspaceFileResponse, String> {
+    if remote_backend::is_remote_mode(&*state).await {
+        let response = remote_backend::call_remote(
+            &*state,
+            app,
+            "read_external_absolute_file",
+            json!({ "workspaceId": workspace_id, "path": path }),
+        )
+        .await?;
+        return serde_json::from_value(response).map_err(|err| err.to_string());
+    }
+
+    let allowed_roots = {
+        let workspaces = state.workspaces.lock().await;
+        allowed_external_skill_roots(&state, &workspaces, &workspace_id)?
+    };
+
+    read_external_absolute_file_inner(&path, &allowed_roots)
+}
+
+#[tauri::command]
 pub(crate) async fn write_external_spec_file(
     workspace_id: String,
     spec_root: String,
@@ -479,6 +748,33 @@ pub(crate) async fn write_external_spec_file(
     }
 
     write_external_spec_file_inner(&spec_root, &path, &content)
+}
+
+#[tauri::command]
+pub(crate) async fn write_external_absolute_file(
+    workspace_id: String,
+    path: String,
+    content: String,
+    state: State<'_, AppState>,
+    app: AppHandle,
+) -> Result<(), String> {
+    if remote_backend::is_remote_mode(&*state).await {
+        remote_backend::call_remote(
+            &*state,
+            app,
+            "write_external_absolute_file",
+            json!({ "workspaceId": workspace_id, "path": path, "content": content }),
+        )
+        .await?;
+        return Ok(());
+    }
+
+    let allowed_roots = {
+        let workspaces = state.workspaces.lock().await;
+        allowed_external_skill_roots(&state, &workspaces, &workspace_id)?
+    };
+
+    write_external_absolute_file_inner(&path, &allowed_roots, &content)
 }
 
 #[tauri::command]
@@ -676,6 +972,7 @@ pub(crate) async fn add_workspace(
         claude_bin_setting.as_deref(),
         codex_bin.as_deref().or(codex_bin_setting.as_deref()),
         None,
+        None,
     )
     .await;
 
@@ -703,22 +1000,24 @@ pub(crate) async fn add_workspace(
             // OpenCode follows local CLI session model (no persistent daemon session).
             add_workspace_for_cli_engine(EngineType::OpenCode, path, codex_bin, &state).await
         }
-        _ => Err(format!(
-            "Engine type {:?} is not yet supported. Please use Claude Code or Codex CLI.",
-            engine_type
-        )),
+        EngineType::Gemini => {
+            // Gemini follows local CLI session model (no persistent daemon session).
+            add_workspace_for_cli_engine(EngineType::Gemini, path, codex_bin, &state).await
+        }
     }
 }
 
 /// Add workspace for a CLI-based engine (no persistent session needed).
-/// Supports Claude and OpenCode engines.
+/// Supports Claude, Gemini and OpenCode engines.
 async fn add_workspace_for_cli_engine(
     engine_type: EngineType,
     path: String,
     codex_bin: Option<String>,
     state: &AppState,
 ) -> Result<WorkspaceInfo, String> {
-    use crate::engine::status::{detect_claude_status, detect_opencode_status};
+    use crate::engine::status::{
+        detect_claude_status, detect_gemini_status, detect_opencode_status,
+    };
     use std::path::PathBuf;
 
     if !PathBuf::from(&path).is_dir() {
@@ -727,6 +1026,7 @@ async fn add_workspace_for_cli_engine(
 
     let engine_name = match engine_type {
         EngineType::Claude => "claude",
+        EngineType::Gemini => "gemini",
         EngineType::OpenCode => "opencode",
         _ => return Err(format!("Unsupported CLI engine: {:?}", engine_type)),
     };
@@ -740,6 +1040,7 @@ async fn add_workspace_for_cli_engine(
             };
             detect_claude_status(claude_bin.as_deref()).await.installed
         }
+        EngineType::Gemini => detect_gemini_status(None).await.installed,
         EngineType::OpenCode => detect_opencode_status(None).await.installed,
         _ => false,
     };
@@ -747,11 +1048,7 @@ async fn add_workspace_for_cli_engine(
         return Err(format!("CLI_NOT_FOUND:{}", engine_name));
     }
 
-    let name = PathBuf::from(&path)
-        .file_name()
-        .and_then(|s| s.to_str())
-        .unwrap_or("Workspace")
-        .to_string();
+    let name = workspaces_core::workspace_name_from_path(&path);
 
     let settings = WorkspaceSettings {
         engine_type: Some(engine_name.to_string()),
@@ -1438,16 +1735,8 @@ pub(crate) async fn connect_workspace(
             .ok_or_else(|| "workspace not found".to_string())?
     };
 
-    // Check engine type - default to Claude if not specified
-    let is_claude_engine = entry
-        .settings
-        .engine_type
-        .as_deref()
-        .map(|e| e.eq_ignore_ascii_case("claude"))
-        .unwrap_or(true);
-
-    if is_claude_engine {
-        // For Claude: No persistent session needed, already "connected"
+    if !workspaces_core::workspace_requires_persistent_session(&entry) {
+        // Claude/Gemini/OpenCode do not require a persistent workspace session.
         Ok(())
     } else {
         // For Codex: Use existing session spawn logic
@@ -1520,6 +1809,37 @@ pub(crate) async fn list_workspace_directory_children(
         },
     )
     .await
+}
+
+#[tauri::command]
+pub(crate) async fn list_external_absolute_directory_children(
+    workspace_id: String,
+    path: String,
+    state: State<'_, AppState>,
+    app: AppHandle,
+) -> Result<WorkspaceFilesResponse, String> {
+    const MAX_EXTERNAL_DIRECTORY_CHILDREN: usize = 2_000;
+    if remote_backend::is_remote_mode(&*state).await {
+        let response = remote_backend::call_remote(
+            &*state,
+            app,
+            "list_external_absolute_directory_children",
+            json!({ "workspaceId": workspace_id, "path": path }),
+        )
+        .await?;
+        return serde_json::from_value(response).map_err(|err| err.to_string());
+    }
+
+    let allowed_roots = {
+        let workspaces = state.workspaces.lock().await;
+        allowed_external_skill_roots(&state, &workspaces, &workspace_id)?
+    };
+
+    list_external_absolute_directory_children_inner(
+        &path,
+        &allowed_roots,
+        MAX_EXTERNAL_DIRECTORY_CHILDREN,
+    )
 }
 
 #[tauri::command]
@@ -1701,6 +2021,38 @@ pub(crate) async fn open_new_window(path: Option<String>) -> Result<(), String> 
 }
 
 #[tauri::command]
+pub(crate) async fn configure_detached_external_change_monitor(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    workspace_id: String,
+    workspace_path: String,
+    active_file_path: String,
+    watcher_enabled: bool,
+) -> Result<DetachedExternalMonitorStatus, String> {
+    configure_detached_external_change_monitor_inner(
+        app,
+        &state.detached_external_change_runtime,
+        workspace_id,
+        workspace_path,
+        active_file_path,
+        watcher_enabled,
+    )
+    .await
+}
+
+#[tauri::command]
+pub(crate) async fn clear_detached_external_change_monitor(
+    state: State<'_, AppState>,
+    workspace_id: String,
+) -> Result<(), String> {
+    clear_detached_external_change_monitor_inner(
+        &state.detached_external_change_runtime,
+        workspace_id,
+    )
+    .await
+}
+
+#[tauri::command]
 pub(crate) async fn get_open_app_icon(app_name: String) -> Result<Option<String>, String> {
     #[cfg(target_os = "macos")]
     {
@@ -1759,7 +2111,8 @@ mod tests {
 
     #[test]
     fn prepare_spec_command_workdir_accepts_project_root_with_openspec_child() {
-        let project_root = std::env::temp_dir().join(format!("mossx-spec-project-{}", Uuid::new_v4()));
+        let project_root =
+            std::env::temp_dir().join(format!("mossx-spec-project-{}", Uuid::new_v4()));
         std::fs::create_dir_all(project_root.join("openspec")).expect("create openspec dir");
         let workspace_root = project_root.join("workspace");
         std::fs::create_dir_all(&workspace_root).expect("create workspace root");
@@ -1770,7 +2123,10 @@ mod tests {
         )
         .expect("prepare spec workdir");
 
-        assert_eq!(exec_dir, project_root.canonicalize().expect("canonical project root"));
+        assert_eq!(
+            exec_dir,
+            project_root.canonicalize().expect("canonical project root")
+        );
         assert_eq!(cleanup_dir, None);
 
         std::fs::remove_dir_all(&project_root).expect("cleanup");
@@ -1790,7 +2146,10 @@ mod tests {
         )
         .expect("prepare spec workdir");
 
-        assert_eq!(exec_dir, project_root.canonicalize().expect("canonical project root"));
+        assert_eq!(
+            exec_dir,
+            project_root.canonicalize().expect("canonical project root")
+        );
         assert_eq!(cleanup_dir, None);
 
         std::fs::remove_dir_all(&project_root).expect("cleanup");
@@ -1798,7 +2157,8 @@ mod tests {
 
     #[test]
     fn prepare_spec_command_workdir_supports_direct_openspec_root_input() {
-        let project_root = std::env::temp_dir().join(format!("mossx-spec-direct-{}", Uuid::new_v4()));
+        let project_root =
+            std::env::temp_dir().join(format!("mossx-spec-direct-{}", Uuid::new_v4()));
         let openspec_root = project_root.join("openspec");
         std::fs::create_dir_all(&openspec_root).expect("create openspec dir");
         let workspace_root = project_root.join("workspace");
@@ -1810,7 +2170,10 @@ mod tests {
         )
         .expect("prepare spec workdir");
 
-        assert_eq!(exec_dir, project_root.canonicalize().expect("canonical project root"));
+        assert_eq!(
+            exec_dir,
+            project_root.canonicalize().expect("canonical project root")
+        );
         assert_eq!(cleanup_dir, None);
 
         std::fs::remove_dir_all(&project_root).expect("cleanup");

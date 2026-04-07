@@ -114,6 +114,36 @@ describe('AskUserQuestionDialog', () => {
     expect(optionA.classList.contains('is-selected')).toBe(false);
   });
 
+  it('supports multi-select questions when multiSelect=true', () => {
+    renderDialog({
+      requests: [
+        makeRequest({
+          questions: [
+            {
+              id: 'q1',
+              header: 'Header',
+              question: 'Pick many',
+              multiSelect: true,
+              options: [
+                { label: 'Option A', description: 'Desc A' },
+                { label: 'Option B', description: 'Desc B' },
+              ],
+            },
+          ],
+        }),
+      ],
+    });
+
+    const optionA = screen.getByText('Option A').closest('button')!;
+    const optionB = screen.getByText('Option B').closest('button')!;
+
+    fireEvent.click(optionA);
+    fireEvent.click(optionB);
+
+    expect(optionA.classList.contains('is-selected')).toBe(true);
+    expect(optionB.classList.contains('is-selected')).toBe(true);
+  });
+
   it('shows "Next" for non-last question and advances on click', () => {
     const twoQuestions: RequestUserInputRequest['params']['questions'] = [
       {

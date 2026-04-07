@@ -15,6 +15,7 @@ import type {
   EngineStatus,
   EngineType,
   EngineModelInfo,
+  CustomPromptOption,
 } from "../types";
 import type {
   GitFileDiff,
@@ -34,6 +35,11 @@ import type {
   GitPushPreviewResponse,
   ReviewTarget,
 } from "../types";
+import type {
+  ClaudeCurrentConfig as VendorClaudeCurrentConfig,
+  CodexProviderConfig as VendorCodexProviderConfig,
+  ProviderConfig as VendorProviderConfig,
+} from "../features/vendors/types";
 
 function isMissingTauriInvokeError(error: unknown) {
   return (
@@ -41,6 +47,77 @@ function isMissingTauriInvokeError(error: unknown) {
     (error.message.includes("reading 'invoke'") ||
       error.message.includes("reading \"invoke\""))
   );
+}
+
+const WEB_SERVICE_CLI_ENGINE_MESSAGE =
+  "Web 服务当前仅支持 Codex CLI。请切换到 Codex CLI（Web service currently supports Codex CLI only）.";
+let daemonEngineRpcSupported: boolean | null = null;
+
+function normalizeInvokeErrorMessage(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message;
+  }
+  if (typeof error === "string") {
+    return error;
+  }
+  try {
+    return JSON.stringify(error);
+  } catch {
+    return String(error);
+  }
+}
+
+function isUnknownMethodError(error: unknown, method: string): boolean {
+  return normalizeInvokeErrorMessage(error)
+    .toLowerCase()
+    .includes(`unknown method: ${method}`);
+}
+
+function shouldUseWebServiceFallback(): boolean {
+  return isWebServiceRuntime();
+}
+
+export function isWebServiceRuntime(): boolean {
+  if (typeof window === "undefined") {
+    return false;
+  }
+  return window.__MOSSX_WEB_SERVICE__ === true;
+}
+
+function isEngineRpcFallbackMode(): boolean {
+  return shouldUseWebServiceFallback() && daemonEngineRpcSupported === false;
+}
+
+function webServiceEngineFeatures(engineType: EngineType): EngineStatus["features"] {
+  if (engineType === "codex") {
+    return {
+      streaming: true,
+      reasoning: true,
+      toolUse: true,
+      imageInput: true,
+      sessionContinuation: true,
+    };
+  }
+  return {
+    streaming: true,
+    reasoning: true,
+    toolUse: true,
+    imageInput: false,
+    sessionContinuation: true,
+  };
+}
+
+function webServiceCodexOnlyStatuses(): EngineStatus[] {
+  const types: EngineType[] = ["claude", "codex", "gemini", "opencode"];
+  return types.map((engineType) => ({
+    engineType,
+    installed: engineType === "codex",
+    version: engineType === "codex" ? "web-service" : null,
+    binPath: null,
+    features: webServiceEngineFeatures(engineType),
+    models: [],
+    error: engineType === "codex" ? null : WEB_SERVICE_CLI_ENGINE_MESSAGE,
+  }));
 }
 
 export async function pickWorkspacePath(): Promise<string | null> {
@@ -67,6 +144,16 @@ export async function pickImageFiles(): Promise<string[]> {
   return Array.isArray(selection) ? selection : [selection];
 }
 
+export async function pickFiles(): Promise<string[]> {
+  const selection = await open({
+    multiple: true,
+  });
+  if (!selection) {
+    return [];
+  }
+  return Array.isArray(selection) ? selection : [selection];
+}
+
 export async function listWorkspaces(): Promise<WorkspaceInfo[]> {
   try {
     return await invoke<WorkspaceInfo[]>("list_workspaces");
@@ -85,6 +172,40 @@ export async function getCodexConfigPath(): Promise<string> {
   return invoke<string>("get_codex_config_path");
 }
 
+export interface CodexRuntimeReloadResult {
+  status: string;
+  stage: string;
+  restartedSessions: number;
+  message?: string | null;
+}
+
+export async function reloadCodexRuntimeConfig(): Promise<CodexRuntimeReloadResult> {
+  return invoke<CodexRuntimeReloadResult>("reload_codex_runtime_config");
+}
+
+type RpcObject = Record<string, unknown>;
+
+export interface ThreadListResultPayload extends RpcObject {
+  data?: unknown[];
+  nextCursor?: string | null;
+  next_cursor?: string | null;
+  partialSource?: string;
+  partial_source?: string;
+}
+
+export interface ThreadListPayload extends RpcObject {
+  result?: ThreadListResultPayload;
+  data?: unknown[];
+  nextCursor?: string | null;
+  next_cursor?: string | null;
+}
+
+export interface ClaudeSessionSummaryPayload {
+  sessionId: string;
+  firstMessage: string;
+  updatedAt: number;
+}
+
 export type TextFileResponse = {
   exists: boolean;
   content: string;
@@ -93,10 +214,11 @@ export type TextFileResponse = {
 
 export type GlobalAgentsResponse = TextFileResponse;
 export type GlobalCodexConfigResponse = TextFileResponse;
+export type GlobalCodexAuthResponse = TextFileResponse;
 export type AgentMdResponse = TextFileResponse;
 
 type FileScope = "workspace" | "global";
-type FileKind = "agents" | "claude" | "config";
+type FileKind = "agents" | "claude" | "config" | "auth";
 
 async function fileRead(
   scope: FileScope,
@@ -129,6 +251,10 @@ export async function readGlobalCodexConfigToml(): Promise<GlobalCodexConfigResp
 
 export async function writeGlobalCodexConfigToml(content: string): Promise<void> {
   return fileWrite("global", "config", content);
+}
+
+export async function readGlobalCodexAuthJson(): Promise<GlobalCodexAuthResponse> {
+  return fileRead("global", "auth");
 }
 
 export async function getConfigModel(workspaceId: string): Promise<string | null> {
@@ -281,11 +407,14 @@ export async function connectWorkspace(id: string): Promise<void> {
 }
 
 export async function startThread(workspaceId: string) {
-  return invoke<any>("start_thread", { workspaceId });
+  return invoke<Record<string, unknown> | null | undefined>("start_thread", { workspaceId });
 }
 
 export async function forkThread(workspaceId: string, threadId: string) {
-  return invoke<any>("fork_thread", { workspaceId, threadId });
+  return invoke<Record<string, unknown> | null | undefined>("fork_thread", {
+    workspaceId,
+    threadId,
+  });
 }
 
 export async function sendUserMessage(
@@ -295,7 +424,7 @@ export async function sendUserMessage(
   options?: {
     model?: string | null;
     effort?: string | null;
-    accessMode?: "read-only" | "current" | "full-access";
+    accessMode?: "default" | "read-only" | "current" | "full-access";
     images?: string[];
     collaborationMode?: Record<string, unknown> | null;
     preferredLanguage?: string | null;
@@ -327,6 +456,18 @@ export async function interruptTurn(
   turnId: string,
 ) {
   return invoke("turn_interrupt", { workspaceId, threadId, turnId });
+}
+
+export async function engineInterruptTurn(
+  workspaceId: string,
+  turnId: string,
+  engine?: EngineType | null,
+): Promise<void> {
+  return invoke("engine_interrupt_turn", {
+    workspaceId,
+    turnId,
+    engine: engine ?? null,
+  });
 }
 
 export async function compactThreadContext(
@@ -714,7 +855,11 @@ export async function localUsageStatistics(input: {
 }
 
 export async function getModelList(workspaceId: string) {
-  return invoke<any>("model_list", { workspaceId });
+  return invoke<{
+    data?: Record<string, unknown>[];
+    result?: { data?: Record<string, unknown>[]; [key: string]: unknown };
+    [key: string]: unknown;
+  }>("model_list", { workspaceId });
 }
 
 export async function generateRunMetadata(workspaceId: string, prompt: string) {
@@ -725,15 +870,34 @@ export async function generateRunMetadata(workspaceId: string, prompt: string) {
 }
 
 export async function getCollaborationModes(workspaceId: string) {
-  return invoke<any>("collaboration_mode_list", { workspaceId });
+  return invoke<{
+    data?: Record<string, unknown>[];
+    result?: { data?: Record<string, unknown>[]; [key: string]: unknown };
+    [key: string]: unknown;
+  }>(
+    "collaboration_mode_list",
+    { workspaceId },
+  );
 }
 
 export async function getAccountRateLimits(workspaceId: string) {
-  return invoke<any>("account_rate_limits", { workspaceId });
+  return invoke<{
+    rateLimits?: unknown;
+    rate_limits?: unknown;
+    result?: {
+      rateLimits?: unknown;
+      rate_limits?: unknown;
+      [key: string]: unknown;
+    };
+    [key: string]: unknown;
+  }>(
+    "account_rate_limits",
+    { workspaceId },
+  );
 }
 
 export async function getAccountInfo(workspaceId: string) {
-  return invoke<any>("account_read", { workspaceId });
+  return invoke<Record<string, unknown> | null>("account_read", { workspaceId });
 }
 
 export async function runCodexLogin(workspaceId: string) {
@@ -745,21 +909,21 @@ export async function cancelCodexLogin(workspaceId: string) {
 }
 
 export async function getSkillsList(workspaceId: string) {
-  return invoke<any>("skills_list", { workspaceId });
+  return invoke<unknown>("skills_list", { workspaceId });
 }
 
 export async function getClaudeCommandsList(workspaceId?: string | null) {
-  return invoke<any>("claude_commands_list", {
+  return invoke<unknown>("claude_commands_list", {
     workspaceId: workspaceId ?? null,
   });
 }
 
 export async function getOpenCodeCommandsList(refresh = false) {
-  return invoke<any>("opencode_commands_list", { refresh });
+  return invoke<unknown>("opencode_commands_list", { refresh });
 }
 
 export async function getOpenCodeAgentsList(refresh = false) {
-  return invoke<any>("opencode_agents_list", { refresh });
+  return invoke<unknown>("opencode_agents_list", { refresh });
 }
 
 export async function getOpenCodeSessionList(workspaceId: string) {
@@ -1051,8 +1215,8 @@ export async function getOpenCodeLspReferences(
   });
 }
 
-export async function getPromptsList(workspaceId: string) {
-  return invoke<any>("prompts_list", { workspaceId });
+export async function getPromptsList(workspaceId: string): Promise<CustomPromptOption[]> {
+  return invoke<CustomPromptOption[]>("prompts_list", { workspaceId });
 }
 
 export async function getWorkspacePromptsDir(workspaceId: string) {
@@ -1072,8 +1236,8 @@ export async function createPrompt(
     argumentHint?: string | null;
     content: string;
   },
-) {
-  return invoke<any>("prompts_create", {
+): Promise<CustomPromptOption> {
+  return invoke<CustomPromptOption>("prompts_create", {
     workspaceId,
     scope: data.scope,
     name: data.name,
@@ -1092,8 +1256,8 @@ export async function updatePrompt(
     argumentHint?: string | null;
     content: string;
   },
-) {
-  return invoke<any>("prompts_update", {
+): Promise<CustomPromptOption> {
+  return invoke<CustomPromptOption>("prompts_update", {
     workspaceId,
     path: data.path,
     name: data.name,
@@ -1103,15 +1267,15 @@ export async function updatePrompt(
   });
 }
 
-export async function deletePrompt(workspaceId: string, path: string) {
-  return invoke<any>("prompts_delete", { workspaceId, path });
+export async function deletePrompt(workspaceId: string, path: string): Promise<void> {
+  return invoke<void>("prompts_delete", { workspaceId, path });
 }
 
 export async function movePrompt(
   workspaceId: string,
   data: { path: string; scope: "workspace" | "global" },
-) {
-  return invoke<any>("prompts_move", {
+): Promise<CustomPromptOption> {
+  return invoke<CustomPromptOption>("prompts_move", {
     workspaceId,
     path: data.path,
     scope: data.scope,
@@ -1124,6 +1288,51 @@ export async function getAppSettings(): Promise<AppSettings> {
 
 export async function updateAppSettings(settings: AppSettings): Promise<AppSettings> {
   return invoke<AppSettings>("update_app_settings", { settings });
+}
+
+export type WebServerStatus = {
+  running: boolean;
+  rpcEndpoint: string;
+  webPort: number;
+  addresses: string[];
+  webAccessToken: string | null;
+  lastError?: string | null;
+};
+
+export type DaemonStatus = {
+  running: boolean;
+  host: string;
+  lastError?: string | null;
+};
+
+export async function startWebServer(options: {
+  port?: number | null;
+  token?: string | null;
+}): Promise<WebServerStatus> {
+  return invoke<WebServerStatus>("start_web_server", {
+    port: options.port ?? null,
+    token: options.token ?? null,
+  });
+}
+
+export async function stopWebServer(): Promise<WebServerStatus> {
+  return invoke<WebServerStatus>("stop_web_server");
+}
+
+export async function getWebServerStatus(): Promise<WebServerStatus> {
+  return invoke<WebServerStatus>("get_web_server_status");
+}
+
+export async function getDaemonStatus(): Promise<DaemonStatus> {
+  return invoke<DaemonStatus>("get_daemon_status");
+}
+
+export async function startDaemon(): Promise<DaemonStatus> {
+  return invoke<DaemonStatus>("start_daemon");
+}
+
+export async function stopDaemon(): Promise<DaemonStatus> {
+  return invoke<DaemonStatus>("stop_daemon");
 }
 
 type MenuAcceleratorUpdate = {
@@ -1188,6 +1397,11 @@ export type ExternalSpecFileResponse = {
   truncated: boolean;
 };
 
+export type DetachedExternalChangeMonitorStatus = {
+  mode: "watcher" | "polling";
+  fallbackReason?: string | null;
+};
+
 export async function getWorkspaceFiles(workspaceId: string) {
   return invoke<WorkspaceFilesResponse>("list_workspace_files", { workspaceId });
 }
@@ -1197,6 +1411,16 @@ export async function getWorkspaceDirectoryChildren(
   path: string,
 ) {
   return invoke<WorkspaceFilesResponse>("list_workspace_directory_children", {
+    workspaceId,
+    path,
+  });
+}
+
+export async function listExternalAbsoluteDirectoryChildren(
+  workspaceId: string,
+  path: string,
+) {
+  return invoke<WorkspaceFilesResponse>("list_external_absolute_directory_children", {
     workspaceId,
     path,
   });
@@ -1250,6 +1474,33 @@ export async function readExternalSpecFile(
   });
 }
 
+export async function readExternalAbsoluteFile(
+  workspaceId: string,
+  path: string,
+): Promise<{ content: string; truncated: boolean }> {
+  return invoke<{ content: string; truncated: boolean }>("read_external_absolute_file", {
+    workspaceId,
+    path,
+  });
+}
+
+export async function readLocalImageDataUrl(
+  workspaceId: string,
+  path: string,
+): Promise<string | null> {
+  try {
+    const result = await invoke<string>("read_local_image_data_url", { workspaceId, path });
+    return typeof result === "string" && result.startsWith("data:image/")
+      ? result
+      : null;
+  } catch (error) {
+    if (isUnknownMethodError(error, "read_local_image_data_url")) {
+      return null;
+    }
+    return null;
+  }
+}
+
 export async function writeWorkspaceFile(
   workspaceId: string,
   path: string,
@@ -1274,6 +1525,14 @@ export async function writeExternalSpecFile(
   return invoke("write_external_spec_file", { workspaceId, specRoot, path, content });
 }
 
+export async function writeExternalAbsoluteFile(
+  workspaceId: string,
+  path: string,
+  content: string,
+): Promise<void> {
+  return invoke("write_external_absolute_file", { workspaceId, path, content });
+}
+
 export async function trashWorkspaceItem(
   workspaceId: string,
   path: string,
@@ -1286,6 +1545,29 @@ export async function copyWorkspaceItem(
   path: string,
 ): Promise<string> {
   return invoke("copy_workspace_item", { workspaceId, path });
+}
+
+export async function configureDetachedExternalChangeMonitor(
+  workspaceId: string,
+  workspacePath: string,
+  activeFilePath: string,
+  watcherEnabled: boolean,
+): Promise<DetachedExternalChangeMonitorStatus> {
+  return invoke<DetachedExternalChangeMonitorStatus>(
+    "configure_detached_external_change_monitor",
+    {
+      workspaceId,
+      workspacePath,
+      activeFilePath,
+      watcherEnabled,
+    },
+  );
+}
+
+export async function clearDetachedExternalChangeMonitor(
+  workspaceId: string,
+): Promise<void> {
+  return invoke("clear_detached_external_change_monitor", { workspaceId });
 }
 
 export type WorkspaceCommandResult = {
@@ -1628,7 +1910,11 @@ export async function listThreads(
   cursor?: string | null,
   limit?: number | null,
 ) {
-  return invoke<any>("list_threads", { workspaceId, cursor, limit });
+  return invoke<ThreadListPayload | null | undefined>("list_threads", {
+    workspaceId,
+    cursor,
+    limit,
+  });
 }
 
 export async function listMcpServerStatus(
@@ -1636,7 +1922,7 @@ export async function listMcpServerStatus(
   cursor?: string | null,
   limit?: number | null,
 ) {
-  return invoke<any>("list_mcp_server_status", { workspaceId, cursor, limit });
+  return invoke<unknown>("list_mcp_server_status", { workspaceId, cursor, limit });
 }
 
 export type GlobalMcpServerEntry = {
@@ -1654,11 +1940,17 @@ export async function listGlobalMcpServers() {
 }
 
 export async function resumeThread(workspaceId: string, threadId: string) {
-  return invoke<any>("resume_thread", { workspaceId, threadId });
+  return invoke<Record<string, unknown> | null>("resume_thread", {
+    workspaceId,
+    threadId,
+  });
 }
 
 export async function archiveThread(workspaceId: string, threadId: string) {
-  return invoke<any>("archive_thread", { workspaceId, threadId });
+  return invoke<Record<string, unknown> | null>("archive_thread", {
+    workspaceId,
+    threadId,
+  });
 }
 
 export async function deleteOpenCodeSession(
@@ -1671,16 +1963,37 @@ export async function deleteOpenCodeSession(
   );
 }
 
+export type CommitMessageLanguage = "zh" | "en";
+export type CommitMessageEngine = EngineType;
+
 export async function getCommitMessagePrompt(
   workspaceId: string,
+  language: CommitMessageLanguage = "zh",
 ): Promise<string> {
-  return invoke("get_commit_message_prompt", { workspaceId });
+  return invoke("get_commit_message_prompt", { workspaceId, language });
 }
 
 export async function generateCommitMessage(
   workspaceId: string,
+  language: CommitMessageLanguage = "zh",
 ): Promise<string> {
-  return invoke("generate_commit_message", { workspaceId });
+  return invoke("generate_commit_message", { workspaceId, language });
+}
+
+export async function generateCommitMessageWithEngine(
+  workspaceId: string,
+  language: CommitMessageLanguage = "zh",
+  engine: CommitMessageEngine = "codex",
+): Promise<string> {
+  if (engine === "codex") {
+    return generateCommitMessage(workspaceId, language);
+  }
+  const prompt = await getCommitMessagePrompt(workspaceId, language);
+  const response = await engineSendMessageSync(workspaceId, {
+    text: prompt,
+    engine,
+  });
+  return response.text;
 }
 
 export async function listThreadTitles(
@@ -1729,21 +2042,66 @@ export async function generateThreadTitle(
  * Detect all installed engines and their status
  */
 export async function detectEngines(): Promise<EngineStatus[]> {
-  return invoke<EngineStatus[]>("detect_engines");
+  try {
+    const statuses = await invoke<EngineStatus[]>("detect_engines");
+    daemonEngineRpcSupported = true;
+    return statuses;
+  } catch (error) {
+    if (isUnknownMethodError(error, "detect_engines")) {
+      if (!shouldUseWebServiceFallback()) {
+        throw error;
+      }
+      daemonEngineRpcSupported = false;
+      return webServiceCodexOnlyStatuses();
+    }
+    throw error;
+  }
 }
 
 /**
  * Get the currently active engine type
  */
 export async function getActiveEngine(): Promise<EngineType> {
-  return invoke<EngineType>("get_active_engine");
+  try {
+    const engine = await invoke<EngineType>("get_active_engine");
+    daemonEngineRpcSupported = true;
+    return engine;
+  } catch (error) {
+    if (isUnknownMethodError(error, "get_active_engine")) {
+      if (!shouldUseWebServiceFallback()) {
+        throw error;
+      }
+      daemonEngineRpcSupported = false;
+      return "codex";
+    }
+    throw error;
+  }
 }
 
 /**
  * Switch to a different engine
  */
 export async function switchEngine(engineType: EngineType): Promise<void> {
-  return invoke("switch_engine", { engineType });
+  if (isEngineRpcFallbackMode() && engineType !== "codex") {
+    throw new Error(WEB_SERVICE_CLI_ENGINE_MESSAGE);
+  }
+  try {
+    await invoke("switch_engine", { engineType });
+    daemonEngineRpcSupported = true;
+    return;
+  } catch (error) {
+    if (isUnknownMethodError(error, "switch_engine")) {
+      if (!shouldUseWebServiceFallback()) {
+        throw error;
+      }
+      daemonEngineRpcSupported = false;
+      if (engineType === "codex") {
+        return;
+      }
+      throw new Error(WEB_SERVICE_CLI_ENGINE_MESSAGE);
+    }
+    throw error;
+  }
 }
 
 /**
@@ -1752,7 +2110,20 @@ export async function switchEngine(engineType: EngineType): Promise<void> {
 export async function getEngineStatus(
   engineType: EngineType,
 ): Promise<EngineStatus | null> {
-  return invoke<EngineStatus | null>("get_engine_status", { engineType });
+  try {
+    const status = await invoke<EngineStatus | null>("get_engine_status", { engineType });
+    daemonEngineRpcSupported = true;
+    return status;
+  } catch (error) {
+    if (isUnknownMethodError(error, "get_engine_status")) {
+      if (!shouldUseWebServiceFallback()) {
+        throw error;
+      }
+      daemonEngineRpcSupported = false;
+      return webServiceCodexOnlyStatuses().find((entry) => entry.engineType === engineType) ?? null;
+    }
+    throw error;
+  }
 }
 
 /**
@@ -1761,7 +2132,23 @@ export async function getEngineStatus(
 export async function getEngineModels(
   engineType: EngineType,
 ): Promise<EngineModelInfo[]> {
-  return invoke<EngineModelInfo[]>("get_engine_models", { engineType });
+  if (isEngineRpcFallbackMode() && engineType !== "codex") {
+    return [];
+  }
+  try {
+    const models = await invoke<EngineModelInfo[]>("get_engine_models", { engineType });
+    daemonEngineRpcSupported = true;
+    return models;
+  } catch (error) {
+    if (isUnknownMethodError(error, "get_engine_models")) {
+      if (!shouldUseWebServiceFallback()) {
+        throw error;
+      }
+      daemonEngineRpcSupported = false;
+      return [];
+    }
+    throw error;
+  }
 }
 
 /**
@@ -1784,21 +2171,43 @@ export async function engineSendMessage(
     customSpecRoot?: string | null;
   },
 ): Promise<Record<string, unknown>> {
-  return invoke<Record<string, unknown>>("engine_send_message", {
-    workspaceId,
-    text: params.text,
-    engine: params.engine ?? null,
-    model: params.model ?? null,
-    effort: params.effort ?? null,
-    images: params.images ?? null,
-    continueSession: params.continueSession ?? false,
-    accessMode: params.accessMode ?? null,
-    threadId: params.threadId ?? null,
-    sessionId: params.sessionId ?? null,
-    agent: params.agent ?? null,
-    variant: params.variant ?? null,
-    customSpecRoot: params.customSpecRoot ?? null,
-  });
+  if (isEngineRpcFallbackMode() && params.engine && params.engine !== "codex") {
+    return {
+      error: {
+        message: WEB_SERVICE_CLI_ENGINE_MESSAGE,
+      },
+    };
+  }
+  try {
+    return await invoke<Record<string, unknown>>("engine_send_message", {
+      workspaceId,
+      text: params.text,
+      engine: params.engine ?? null,
+      model: params.model ?? null,
+      effort: params.effort ?? null,
+      images: params.images ?? null,
+      continueSession: params.continueSession ?? false,
+      accessMode: params.accessMode ?? null,
+      threadId: params.threadId ?? null,
+      sessionId: params.sessionId ?? null,
+      agent: params.agent ?? null,
+      variant: params.variant ?? null,
+      customSpecRoot: params.customSpecRoot ?? null,
+    });
+  } catch (error) {
+    if (isUnknownMethodError(error, "engine_send_message")) {
+      if (!shouldUseWebServiceFallback()) {
+        throw error;
+      }
+      daemonEngineRpcSupported = false;
+      return {
+        error: {
+          message: WEB_SERVICE_CLI_ENGINE_MESSAGE,
+        },
+      };
+    }
+    throw error;
+  }
 }
 
 /**
@@ -1820,20 +2229,34 @@ export async function engineSendMessageSync(
     customSpecRoot?: string | null;
   },
 ): Promise<{ engine: EngineType; text: string }> {
-  return invoke<{ engine: EngineType; text: string }>("engine_send_message_sync", {
-    workspaceId,
-    text: params.text,
-    engine: params.engine ?? null,
-    model: params.model ?? null,
-    effort: params.effort ?? null,
-    images: params.images ?? null,
-    continueSession: params.continueSession ?? false,
-    accessMode: params.accessMode ?? null,
-    sessionId: params.sessionId ?? null,
-    agent: params.agent ?? null,
-    variant: params.variant ?? null,
-    customSpecRoot: params.customSpecRoot ?? null,
-  });
+  if (isEngineRpcFallbackMode() && params.engine && params.engine !== "codex") {
+    throw new Error(WEB_SERVICE_CLI_ENGINE_MESSAGE);
+  }
+  try {
+    return await invoke<{ engine: EngineType; text: string }>("engine_send_message_sync", {
+      workspaceId,
+      text: params.text,
+      engine: params.engine ?? null,
+      model: params.model ?? null,
+      effort: params.effort ?? null,
+      images: params.images ?? null,
+      continueSession: params.continueSession ?? false,
+      accessMode: params.accessMode ?? null,
+      sessionId: params.sessionId ?? null,
+      agent: params.agent ?? null,
+      variant: params.variant ?? null,
+      customSpecRoot: params.customSpecRoot ?? null,
+    });
+  } catch (error) {
+    if (isUnknownMethodError(error, "engine_send_message_sync")) {
+      if (!shouldUseWebServiceFallback()) {
+        throw error;
+      }
+      daemonEngineRpcSupported = false;
+      throw new Error(WEB_SERVICE_CLI_ENGINE_MESSAGE);
+    }
+    throw error;
+  }
 }
 
 /**
@@ -1850,11 +2273,14 @@ export async function engineInterrupt(workspaceId: string): Promise<void> {
 export async function listClaudeSessions(
   workspacePath: string,
   limit?: number | null,
-): Promise<any> {
-  return invoke<any>("list_claude_sessions", {
-    workspacePath,
-    limit: limit ?? null,
-  });
+): Promise<ClaudeSessionSummaryPayload[] | Record<string, unknown> | null | undefined> {
+  return invoke<ClaudeSessionSummaryPayload[] | Record<string, unknown> | null | undefined>(
+    "list_claude_sessions",
+    {
+      workspacePath,
+      limit: limit ?? null,
+    },
+  );
 }
 
 /**
@@ -1863,8 +2289,34 @@ export async function listClaudeSessions(
 export async function loadClaudeSession(
   workspacePath: string,
   sessionId: string,
-): Promise<any> {
-  return invoke<any>("load_claude_session", {
+): Promise<Record<string, unknown> | null> {
+  return invoke<Record<string, unknown> | null>("load_claude_session", {
+    workspacePath,
+    sessionId,
+  });
+}
+
+/**
+ * List Gemini CLI session history for a workspace path.
+ */
+export async function listGeminiSessions(
+  workspacePath: string,
+  limit?: number | null,
+): Promise<Record<string, unknown> | unknown[] | null> {
+  return invoke<Record<string, unknown> | unknown[] | null>("list_gemini_sessions", {
+    workspacePath,
+    limit: limit ?? null,
+  });
+}
+
+/**
+ * Load full message history for a specific Gemini CLI session.
+ */
+export async function loadGeminiSession(
+  workspacePath: string,
+  sessionId: string,
+): Promise<Record<string, unknown> | null> {
+  return invoke<Record<string, unknown> | null>("load_gemini_session", {
     workspacePath,
     sessionId,
   });
@@ -1876,8 +2328,8 @@ export async function loadClaudeSession(
 export async function loadCodexSession(
   workspaceId: string,
   sessionId: string,
-): Promise<any> {
-  return invoke<any>("load_codex_session", {
+): Promise<Record<string, unknown> | null> {
+  return invoke<Record<string, unknown> | null>("load_codex_session", {
     workspaceId,
     sessionId,
   });
@@ -1889,8 +2341,8 @@ export async function loadCodexSession(
 export async function forkClaudeSession(
   workspacePath: string,
   sessionId: string,
-): Promise<any> {
-  return invoke<any>("fork_claude_session", {
+): Promise<Record<string, unknown> | null> {
+  return invoke<Record<string, unknown> | null>("fork_claude_session", {
     workspacePath,
     sessionId,
   });
@@ -1904,6 +2356,19 @@ export async function deleteClaudeSession(
   sessionId: string,
 ): Promise<void> {
   return invoke<void>("delete_claude_session", {
+    workspacePath,
+    sessionId,
+  });
+}
+
+/**
+ * Delete a Gemini CLI session (remove session JSON file from disk).
+ */
+export async function deleteGeminiSession(
+  workspacePath: string,
+  sessionId: string,
+): Promise<void> {
+  return invoke<void>("delete_gemini_session", {
     workspacePath,
     sessionId,
   });
@@ -2095,17 +2560,17 @@ export async function projectMemoryCaptureAuto(input: {
 
 // ==================== Vendor/Provider API ====================
 
-export async function getClaudeProviders(): Promise<any[]> {
-  return invoke<any[]>("vendor_get_claude_providers");
+export async function getClaudeProviders(): Promise<VendorProviderConfig[]> {
+  return invoke<VendorProviderConfig[]>("vendor_get_claude_providers");
 }
 
-export async function addClaudeProvider(provider: any): Promise<void> {
+export async function addClaudeProvider(provider: unknown): Promise<void> {
   return invoke("vendor_add_claude_provider", { provider });
 }
 
 export async function updateClaudeProvider(
   id: string,
-  updates: any,
+  updates: unknown,
 ): Promise<void> {
   return invoke("vendor_update_claude_provider", { id, updates });
 }
@@ -2118,8 +2583,8 @@ export async function switchClaudeProvider(id: string): Promise<void> {
   return invoke("vendor_switch_claude_provider", { id });
 }
 
-export async function getCurrentClaudeConfig(): Promise<any> {
-  return invoke<any>("vendor_get_current_claude_config");
+export async function getCurrentClaudeConfig(): Promise<VendorClaudeCurrentConfig> {
+  return invoke<VendorClaudeCurrentConfig>("vendor_get_current_claude_config");
 }
 
 export async function getClaudeAlwaysThinkingEnabled(): Promise<boolean> {
@@ -2132,17 +2597,17 @@ export async function setClaudeAlwaysThinkingEnabled(
   return invoke("vendor_set_claude_always_thinking_enabled", { enabled });
 }
 
-export async function getCodexProviders(): Promise<any[]> {
-  return invoke<any[]>("vendor_get_codex_providers");
+export async function getCodexProviders(): Promise<VendorCodexProviderConfig[]> {
+  return invoke<VendorCodexProviderConfig[]>("vendor_get_codex_providers");
 }
 
-export async function addCodexProvider(provider: any): Promise<void> {
+export async function addCodexProvider(provider: unknown): Promise<void> {
   return invoke("vendor_add_codex_provider", { provider });
 }
 
 export async function updateCodexProvider(
   id: string,
-  updates: any,
+  updates: unknown,
 ): Promise<void> {
   return invoke("vendor_update_codex_provider", { id, updates });
 }
@@ -2153,6 +2618,37 @@ export async function deleteCodexProvider(id: string): Promise<void> {
 
 export async function switchCodexProvider(id: string): Promise<void> {
   return invoke("vendor_switch_codex_provider", { id });
+}
+
+export interface GeminiVendorSettings {
+  enabled: boolean;
+  env: Record<string, string>;
+  authMode: string;
+}
+
+export interface GeminiVendorPreflightCheck {
+  id: string;
+  label: string;
+  status: "pass" | "fail" | string;
+  message: string;
+}
+
+export interface GeminiVendorPreflightResult {
+  checks: GeminiVendorPreflightCheck[];
+}
+
+export async function getGeminiVendorSettings(): Promise<GeminiVendorSettings> {
+  return invoke<GeminiVendorSettings>("vendor_get_gemini_settings");
+}
+
+export async function saveGeminiVendorSettings(
+  settings: GeminiVendorSettings,
+): Promise<void> {
+  return invoke("vendor_save_gemini_settings", { settings });
+}
+
+export async function getGeminiVendorPreflight(): Promise<GeminiVendorPreflightResult> {
+  return invoke<GeminiVendorPreflightResult>("vendor_gemini_preflight");
 }
 
 // ==================== Agent API ====================
@@ -2167,7 +2663,7 @@ export async function addAgentConfig(agent: AgentConfig): Promise<void> {
 
 export async function updateAgentConfig(
   id: string,
-  updates: Partial<Pick<AgentConfig, "name" | "prompt">>,
+  updates: Partial<Pick<AgentConfig, "name" | "prompt" | "icon">>,
 ): Promise<void> {
   return invoke("agent_update", { id, updates });
 }

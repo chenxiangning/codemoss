@@ -95,8 +95,9 @@ function renderTextWithLinks(text: string): Array<{ type: 'text' | 'link'; value
     if (index > lastIndex) {
       parts.push({ type: 'text', value: text.slice(lastIndex, index) });
     }
-    parts.push({ type: 'link', value: match[1], href: url });
-    lastIndex = index + match[1].length;
+    const matchedText = match[1] ?? url;
+    parts.push({ type: 'link', value: matchedText, href: url });
+    lastIndex = index + matchedText.length;
   }
 
   if (lastIndex < text.length) {

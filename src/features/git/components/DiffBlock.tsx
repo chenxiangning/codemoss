@@ -72,6 +72,10 @@ function buildSplitRows(
 
   while (cursor < parsed.length) {
     const line = parsed[cursor];
+    if (!line) {
+      cursor += 1;
+      continue;
+    }
     if (line.type === "hunk" || line.type === "meta") {
       if (showHunkHeaders) {
         rows.push({
@@ -100,17 +104,29 @@ function buildSplitRows(
     const additions: IndexedDiffLine[] = [];
 
     if (line.type === "del") {
-      while (cursor < parsed.length && parsed[cursor].type === "del") {
-        deletions.push({ index: cursor, line: parsed[cursor] });
+      while (cursor < parsed.length) {
+        const currentLine = parsed[cursor];
+        if (!currentLine || currentLine.type !== "del") {
+          break;
+        }
+        deletions.push({ index: cursor, line: currentLine });
         cursor += 1;
       }
-      while (cursor < parsed.length && parsed[cursor].type === "add") {
-        additions.push({ index: cursor, line: parsed[cursor] });
+      while (cursor < parsed.length) {
+        const currentLine = parsed[cursor];
+        if (!currentLine || currentLine.type !== "add") {
+          break;
+        }
+        additions.push({ index: cursor, line: currentLine });
         cursor += 1;
       }
     } else if (line.type === "add") {
-      while (cursor < parsed.length && parsed[cursor].type === "add") {
-        additions.push({ index: cursor, line: parsed[cursor] });
+      while (cursor < parsed.length) {
+        const currentLine = parsed[cursor];
+        if (!currentLine || currentLine.type !== "add") {
+          break;
+        }
+        additions.push({ index: cursor, line: currentLine });
         cursor += 1;
       }
     } else {

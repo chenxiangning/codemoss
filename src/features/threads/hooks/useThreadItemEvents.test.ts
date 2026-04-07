@@ -40,7 +40,7 @@ const makeOptions = (overrides: SetupOverrides = {}) => {
   const onAgentMessageCompletedExternal =
     overrides.onAgentMessageCompletedExternal ?? undefined;
 
-  const { result } = renderHook(() =>
+  const { result, unmount } = renderHook(() =>
     useThreadItemEvents({
       activeThreadId: overrides.activeThreadId ?? null,
       dispatch,
@@ -58,6 +58,7 @@ const makeOptions = (overrides: SetupOverrides = {}) => {
 
   return {
     result,
+    unmount,
     dispatch,
     markProcessing,
     markReviewing,
@@ -80,6 +81,7 @@ describe("useThreadItemEvents", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    window.localStorage.removeItem("mossx.perf.realtimeBatching");
     vi.mocked(buildConversationItem).mockReturnValue(convertedItem);
   });
 
@@ -254,6 +256,7 @@ describe("useThreadItemEvents", () => {
       itemId: "assistant-1",
       text: "Done",
       hasCustomName: false,
+      timestamp: 1234,
     });
     expect(dispatch).toHaveBeenCalledWith({
       type: "setThreadTimestamp",
@@ -328,6 +331,34 @@ describe("useThreadItemEvents", () => {
     expect(safeMessageActivity).toHaveBeenCalled();
   });
 
+  it("does not re-enable processing for gemini reasoning deltas", () => {
+    const { result, dispatch, markProcessing, safeMessageActivity } = makeOptions();
+
+    act(() => {
+      result.current.onReasoningTextDelta(
+        "ws-1",
+        "gemini:session-1",
+        "reasoning-1",
+        "先确认目录，再组织回答。",
+      );
+    });
+
+    expect(dispatch).toHaveBeenNthCalledWith(1, {
+      type: "ensureThread",
+      workspaceId: "ws-1",
+      threadId: "gemini:session-1",
+      engine: "gemini",
+    });
+    expect(dispatch).toHaveBeenNthCalledWith(2, {
+      type: "appendReasoningContent",
+      threadId: "gemini:session-1",
+      itemId: "reasoning-1",
+      delta: "先确认目录，再组织回答。",
+    });
+    expect(markProcessing).not.toHaveBeenCalled();
+    expect(safeMessageActivity).toHaveBeenCalled();
+  });
+
   it("skips reasoning deltas for interrupted threads", () => {
     const { result, dispatch, markProcessing, safeMessageActivity, interruptedThreadsRef } =
       makeOptions();
@@ -385,6 +416,83 @@ describe("useThreadItemEvents", () => {
 
     expect(dispatch).not.toHaveBeenCalled();
     expect(markProcessing).not.toHaveBeenCalled();
+  });
+
+  it("skips gemini item snapshots for interrupted threads", () => {
+    const { result, dispatch, markProcessing, interruptedThreadsRef, safeMessageActivity } =
+      makeOptions();
+    interruptedThreadsRef.current.add("gemini:session-1");
+
+    act(() => {
+      result.current.onItemStarted("ws-1", "gemini:session-1", {
+        type: "commandExecution",
+        id: "tool-1",
+      });
+    });
+
+    expect(dispatch).not.toHaveBeenCalled();
+    expect(markProcessing).not.toHaveBeenCalled();
+    expect(safeMessageActivity).not.toHaveBeenCalled();
+  });
+
+  it("skips gemini completed agent snapshots for interrupted threads", () => {
+    const {
+      result,
+      dispatch,
+      interruptedThreadsRef,
+      onAgentMessageCompletedExternal,
+    } = makeOptions({
+      onAgentMessageCompletedExternal: vi.fn(),
+    });
+    interruptedThreadsRef.current.add("gemini:session-1");
+
+    act(() => {
+      result.current.onAgentMessageCompleted({
+        workspaceId: "ws-1",
+        threadId: "gemini:session-1",
+        itemId: "assistant-1",
+        text: "late arriving text",
+      });
+    });
+
+    expect(dispatch).not.toHaveBeenCalled();
+    expect(onAgentMessageCompletedExternal).not.toHaveBeenCalled();
+  });
+
+  it("bypasses realtime batching for gemini agent deltas", () => {
+    vi.useFakeTimers();
+    window.localStorage.setItem("mossx.perf.realtimeBatching", "1");
+    const { result, dispatch, markProcessing, safeMessageActivity } = makeOptions();
+
+    act(() => {
+      result.current.onAgentMessageDelta({
+        workspaceId: "ws-1",
+        threadId: "gemini:session-1",
+        itemId: "assistant-1",
+        delta: "第一段",
+      });
+    });
+
+    expect(dispatch).toHaveBeenNthCalledWith(1, {
+      type: "ensureThread",
+      workspaceId: "ws-1",
+      threadId: "gemini:session-1",
+      engine: "gemini",
+    });
+    expect(markProcessing).toHaveBeenCalledWith("gemini:session-1", true);
+    expect(dispatch).toHaveBeenNthCalledWith(2, {
+      type: "appendAgentDelta",
+      workspaceId: "ws-1",
+      threadId: "gemini:session-1",
+      itemId: "assistant-1",
+      delta: "第一段",
+      hasCustomName: false,
+    });
+    expect(safeMessageActivity).toHaveBeenCalledTimes(1);
+
+    vi.runOnlyPendingTimers();
+    expect(dispatch).toHaveBeenCalledTimes(2);
+    vi.useRealTimers();
   });
 
   it("calls onAgentMessageCompletedExternal with correct payload", () => {
@@ -503,5 +611,116 @@ describe("useThreadItemEvents", () => {
       hasCustomName: false,
     });
     expect(safeMessageActivity).toHaveBeenCalled();
+  });
+
+  it("batches realtime deltas in one flush window while preserving operation order", () => {
+    vi.useFakeTimers();
+    window.localStorage.setItem("mossx.perf.realtimeBatching", "1");
+    const { result, dispatch, markProcessing, safeMessageActivity } = makeOptions();
+
+    act(() => {
+      result.current.onAgentMessageDelta({
+        workspaceId: "ws-1",
+        threadId: "claude:session-1",
+        itemId: "assistant-1",
+        delta: "A",
+      });
+      result.current.onReasoningTextDelta(
+        "ws-1",
+        "claude:session-1",
+        "reasoning-1",
+        "B",
+      );
+      result.current.onAgentMessageDelta({
+        workspaceId: "ws-1",
+        threadId: "claude:session-1",
+        itemId: "assistant-1",
+        delta: "C",
+      });
+    });
+
+    expect(dispatch).not.toHaveBeenCalled();
+    expect(markProcessing).not.toHaveBeenCalled();
+    expect(safeMessageActivity).not.toHaveBeenCalled();
+
+    act(() => {
+      vi.advanceTimersByTime(20);
+    });
+
+    expect(dispatch).toHaveBeenNthCalledWith(1, {
+      type: "ensureThread",
+      workspaceId: "ws-1",
+      threadId: "claude:session-1",
+      engine: "claude",
+    });
+    expect(markProcessing).toHaveBeenCalledTimes(1);
+    expect(markProcessing).toHaveBeenCalledWith("claude:session-1", true);
+    expect(dispatch).toHaveBeenNthCalledWith(2, {
+      type: "appendAgentDelta",
+      workspaceId: "ws-1",
+      threadId: "claude:session-1",
+      itemId: "assistant-1",
+      delta: "A",
+      hasCustomName: false,
+    });
+    expect(dispatch).toHaveBeenNthCalledWith(3, {
+      type: "appendReasoningContent",
+      threadId: "claude:session-1",
+      itemId: "reasoning-1",
+      delta: "B",
+    });
+    expect(dispatch).toHaveBeenNthCalledWith(4, {
+      type: "appendAgentDelta",
+      workspaceId: "ws-1",
+      threadId: "claude:session-1",
+      itemId: "assistant-1",
+      delta: "C",
+      hasCustomName: false,
+    });
+    expect(safeMessageActivity).toHaveBeenCalledTimes(1);
+
+    vi.useRealTimers();
+  });
+
+  it("flushes buffered realtime deltas on unmount so the last batch is not dropped", () => {
+    vi.useFakeTimers();
+    window.localStorage.setItem("mossx.perf.realtimeBatching", "1");
+    const { result, dispatch, markProcessing, safeMessageActivity, unmount } = makeOptions();
+
+    act(() => {
+      result.current.onAgentMessageDelta({
+        workspaceId: "ws-1",
+        threadId: "claude:session-1",
+        itemId: "assistant-1",
+        delta: "closing text",
+      });
+    });
+
+    expect(dispatch).not.toHaveBeenCalled();
+    expect(markProcessing).not.toHaveBeenCalled();
+    expect(safeMessageActivity).not.toHaveBeenCalled();
+
+    act(() => {
+      unmount();
+    });
+
+    expect(dispatch).toHaveBeenNthCalledWith(1, {
+      type: "ensureThread",
+      workspaceId: "ws-1",
+      threadId: "claude:session-1",
+      engine: "claude",
+    });
+    expect(markProcessing).toHaveBeenCalledWith("claude:session-1", true);
+    expect(dispatch).toHaveBeenNthCalledWith(2, {
+      type: "appendAgentDelta",
+      workspaceId: "ws-1",
+      threadId: "claude:session-1",
+      itemId: "assistant-1",
+      delta: "closing text",
+      hasCustomName: false,
+    });
+    expect(safeMessageActivity).toHaveBeenCalledTimes(1);
+
+    vi.useRealTimers();
   });
 });

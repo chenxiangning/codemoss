@@ -635,9 +635,13 @@ export function useWorkspaces(options: UseWorkspacesOptions = {}) {
         return null;
       }
       const nextOrdered = ordered.slice();
-      const temp = nextOrdered[index];
-      nextOrdered[index] = nextOrdered[nextIndex];
-      nextOrdered[nextIndex] = temp;
+      const currentGroup = nextOrdered[index];
+      const targetGroup = nextOrdered[nextIndex];
+      if (!currentGroup || !targetGroup) {
+        return null;
+      }
+      nextOrdered[index] = targetGroup;
+      nextOrdered[nextIndex] = currentGroup;
       const nextOrderById = new Map(
         nextOrdered.map((group, idx) => [group.id, idx]),
       );

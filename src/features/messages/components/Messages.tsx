@@ -1,13 +1,14 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState, startTransition } from "react";
-import { createPortal } from "react-dom";
+import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState, startTransition } from "react";
 import { useTranslation } from "react-i18next";
 import { convertFileSrc } from "@tauri-apps/api/core";
+import Bell from "lucide-react/dist/esm/icons/bell";
 import Check from "lucide-react/dist/esm/icons/check";
 import ChevronDown from "lucide-react/dist/esm/icons/chevron-down";
 import ChevronUp from "lucide-react/dist/esm/icons/chevron-up";
 import Copy from "lucide-react/dist/esm/icons/copy";
+import Flag from "lucide-react/dist/esm/icons/flag";
 import Terminal from "lucide-react/dist/esm/icons/terminal";
-import X from "lucide-react/dist/esm/icons/x";
+import { AgentIcon } from "../../../components/AgentIcon";
 import { ProxyStatusBadge } from "../../../components/ProxyStatusBadge";
 import type {
   ConversationItem,
@@ -39,9 +40,28 @@ import {
   SearchToolGroupBlock,
 } from "./toolBlocks";
 import { buildCommandSummary } from "./toolBlocks/toolConstants";
-import { MEMORY_CONTEXT_SUMMARY_PREFIX } from "../../project-memory/utils/memoryMarkers";
 import type { PresentationProfile } from "../presentation/presentationProfile";
 import { RequestUserInputMessage } from "../../app/components/RequestUserInputMessage";
+import { ImageLightbox, MessageImageGrid, type MessageImage } from "./MessageMediaBlocks";
+import {
+  MESSAGES_LIVE_AUTO_FOLLOW_FLAG_KEY,
+  MESSAGES_LIVE_COLLAPSE_MIDDLE_STEPS_FLAG_KEY,
+  MESSAGES_LIVE_CONTROLS_UPDATED_EVENT,
+  readLocalBooleanFlag,
+  writeLocalBooleanFlag,
+} from "../constants/liveCanvasControls";
+import { normalizeAgentIcon } from "../../../utils/agentIcons";
+import {
+  parseInjectedMemoryPrefixFromUser,
+  parseMemoryContextSummary,
+} from "./messagesMemoryContext";
+import {
+  collapseConsecutiveReasoningRuns,
+  compactComparableReasoningText,
+  dedupeAdjacentReasoningItems,
+  isExplicitReasoningSegmentId,
+  parseReasoning,
+} from "./messagesReasoning";
 
 
 type MessagesProps = {
@@ -93,6 +113,7 @@ type WorkingIndicatorProps = {
 
 type MessageRowProps = {
   item: Extract<ConversationItem, { kind: "message" }>;
+  workspaceId?: string | null;
   isStreaming?: boolean;
   activeEngine?: "claude" | "codex" | "gemini" | "opencode";
   activeCollaborationModeId?: string | null;
@@ -110,6 +131,7 @@ type MessageRowProps = {
 
 type ReasoningRowProps = {
   item: Extract<ConversationItem, { kind: "reasoning" }>;
+  workspaceId?: string | null;
   parsed: ReturnType<typeof parseReasoning>;
   isExpanded: boolean;
   isLive: boolean;
@@ -121,6 +143,7 @@ type ReasoningRowProps = {
 
 type ReviewRowProps = {
   item: Extract<ConversationItem, { kind: "review" }>;
+  workspaceId?: string | null;
   onOpenFileLink?: (path: string) => void;
   onOpenFileLinkMenu?: (event: React.MouseEvent, path: string) => void;
 };
@@ -133,16 +156,6 @@ type ExploreRowProps = {
   item: Extract<ConversationItem, { kind: "explore" }>;
   isExpanded: boolean;
   onToggle: (id: string) => void;
-};
-
-type MessageImage = {
-  src: string;
-  label: string;
-};
-
-type MemoryContextSummary = {
-  preview: string;
-  lines: string[];
 };
 
 function areMessageImagesEqual(
@@ -171,6 +184,11 @@ function areMessageItemsEqual(
       previous.id === next.id &&
       previous.role === next.role &&
       previous.text === next.text &&
+      previous.isFinal === next.isFinal &&
+      previous.finalCompletedAt === next.finalCompletedAt &&
+      previous.finalDurationMs === next.finalDurationMs &&
+      previous.selectedAgentName === next.selectedAgentName &&
+      previous.selectedAgentIcon === next.selectedAgentIcon &&
       areMessageImagesEqual(previous.images, next.images)
     )
   );
@@ -182,6 +200,7 @@ function areMessageRowPropsEqual(
 ) {
   return (
     areMessageItemsEqual(previous.item, next.item) &&
+    previous.workspaceId === next.workspaceId &&
     previous.isStreaming === next.isStreaming &&
     previous.activeEngine === next.activeEngine &&
     previous.enableCollaborationBadge === next.enableCollaborationBadge &&
@@ -209,19 +228,46 @@ function isSelectionInsideNode(selection: Selection | null, node: HTMLElement | 
 
 const SCROLL_THRESHOLD_PX = 120;
 const OPENCODE_NON_STREAMING_HINT_DELAY_MS = 12_000;
-const PARAGRAPH_BREAK_SPLIT_REGEX = /\r?\n[^\S\r\n]*\r?\n+/;
-const PROJECT_MEMORY_KIND_LINE_REGEX =
-  /^\[(?:已知问题|技术决策|项目上下文|对话记录|笔记|记忆)\]\s*/;
-const LEGACY_MEMORY_RECORD_HINT_REGEX =
-  /(?:用户输入[:：]|助手输出摘要[:：]|助手输出[:：])/;
-const PROJECT_MEMORY_XML_PREFIX_REGEX =
-  /^<project-memory\b[^>]*>([\s\S]*?)<\/project-memory>\s*/i;
 const MODE_FALLBACK_MARKER_REGEX = /User request\s*:\s*/i;
 const MODE_FALLBACK_PREFIX_REGEX =
   /^(?:collaboration mode:\s*code\.|execution policy \(default mode\):|execution policy \(plan mode\):)/i;
+const AGENT_PROMPT_BLOCK_AT_TAIL_REGEX =
+  /(?:\r?\n){2}##\s*Agent Role and Instructions\s*(?:\r?\n){2}([\s\S]*)$/;
+const AGENT_PROMPT_NAME_LINE_REGEX =
+  /^(?:agent\s*name|selected\s*agent|智能体(?:名称|标题)?|agent)\s*[:：]\s*(.+)$/i;
+const AGENT_PROMPT_ICON_LINE_REGEX =
+  /^(?:agent\s*icon|selected\s*agent\s*icon|智能体图标|agent\s*icon\s*id)\s*[:：]\s*(.+)$/i;
 const MESSAGES_PERF_DEBUG_FLAG_KEY = "mossx.debug.messages.perf";
 const CLAUDE_HIDE_REASONING_MODULE_FLAG_KEY = "mossx.claude.hideReasoningModule";
 const CLAUDE_RENDER_DEBUG_FLAG_KEY = "mossx.debug.claude.render";
+
+type MessageConversationItem = Extract<ConversationItem, { kind: "message" }>;
+type ReasoningConversationItem = Extract<ConversationItem, { kind: "reasoning" }>;
+
+function isMessageConversationItem(
+  item: ConversationItem | undefined,
+): item is MessageConversationItem {
+  return item?.kind === "message";
+}
+
+function isUserMessageConversationItem(
+  item: ConversationItem | undefined,
+): item is MessageConversationItem & { role: "user" } {
+  return item?.kind === "message" && item.role === "user";
+}
+
+function isAssistantMessageConversationItem(
+  item: ConversationItem | undefined,
+): item is MessageConversationItem & { role: "assistant" } {
+  return item?.kind === "message" && item.role === "assistant";
+}
+
+function isReasoningConversationItem(
+  item: ConversationItem | undefined,
+): item is ReasoningConversationItem {
+  return item?.kind === "reasoning";
+}
+
 const MESSAGES_SLOW_RENDER_WARN_MS = 18;
 const MESSAGES_SLOW_ANCHOR_WARN_MS = 8;
 const VISIBLE_MESSAGE_WINDOW = 30;
@@ -296,16 +342,140 @@ function extractModeFallbackUserInput(
   if (!markerMatch || markerMatch.index < 0) {
     return { text, mode };
   }
-  const extracted = text
-    .slice(markerMatch.index + markerMatch[0].length)
-    .trim();
-  return { text: extracted || text, mode };
+  const extractedRaw = text.slice(markerMatch.index + markerMatch[0].length);
+  const extracted = extractedRaw.replace(/^\r?\n/, "").replace(/^ /, "");
+  return { text: extracted.trim().length > 0 ? extracted : text, mode };
+}
+
+function extractLatestUserInputTextPreserveFormatting(text: string): string {
+  const userInputMatches = [...text.matchAll(/\[User Input\]\s*/g)];
+  if (userInputMatches.length === 0) {
+    return text;
+  }
+  const lastMatch = userInputMatches[userInputMatches.length - 1];
+  if (!lastMatch) {
+    return text;
+  }
+  const markerIndex = lastMatch.index ?? -1;
+  if (markerIndex < 0) {
+    return text;
+  }
+  const markerLength = lastMatch[0]?.length ?? 0;
+  const extractedRaw = text.slice(markerIndex + markerLength);
+  const extracted = extractedRaw.replace(/^\r?\n/, "").replace(/^ /, "");
+  return extracted.trim().length > 0 ? extracted : text;
+}
+
+function normalizeSelectedAgentName(value: string | null | undefined): string | null {
+  const trimmed = (value ?? "").trim();
+  if (!trimmed) {
+    return null;
+  }
+  const normalized = trimmed.replace(/^#+\s*/, "").trim();
+  return normalized || null;
+}
+
+function normalizeSelectedAgentIcon(value: string | null | undefined): string | null {
+  return normalizeAgentIcon(value);
+}
+
+function isLikelyAgentDisplayName(value: string | null): boolean {
+  if (!value) {
+    return false;
+  }
+  if (value.length > 24) {
+    return false;
+  }
+  return !/[。！？!?]/.test(value) && !/[,:，；;：]/.test(value);
+}
+
+function extractAgentNameFromPromptLine(value: string | null): string | null {
+  const normalized = normalizeSelectedAgentName(value);
+  if (!normalized) {
+    return null;
+  }
+  const namedMatch = AGENT_PROMPT_NAME_LINE_REGEX.exec(normalized);
+  if (namedMatch?.[1]) {
+    return normalizeSelectedAgentName(namedMatch[1]);
+  }
+  const firstClause = normalized.split(/[,:，；;：。！？!?]/)[0]?.trim() ?? "";
+  if (firstClause && firstClause.length <= 24) {
+    return firstClause;
+  }
+  return isLikelyAgentDisplayName(normalized) ? normalized : null;
+}
+
+function extractAgentIconFromPromptLine(value: string | null): string | null {
+  const normalized = normalizeSelectedAgentName(value);
+  if (!normalized) {
+    return null;
+  }
+  const iconMatch = AGENT_PROMPT_ICON_LINE_REGEX.exec(normalized);
+  if (!iconMatch?.[1]) {
+    return null;
+  }
+  return normalizeSelectedAgentIcon(iconMatch[1]);
+}
+
+function stripAgentPromptBlockFromUserText(
+  text: string,
+  fallbackAgentName: string | null,
+  fallbackAgentIcon: string | null,
+): {
+  text: string;
+  selectedAgentName: string | null;
+  selectedAgentIcon: string | null;
+  hasInjectedAgentPromptBlock: boolean;
+} {
+  const match = AGENT_PROMPT_BLOCK_AT_TAIL_REGEX.exec(text);
+  if (!match || typeof match.index !== "number" || match.index < 0) {
+    return {
+      text,
+      selectedAgentName: null,
+      selectedAgentIcon: null,
+      hasInjectedAgentPromptBlock: false,
+    };
+  }
+  const tailText = match[1] ?? "";
+  if (!tailText.trim()) {
+    return {
+      text,
+      selectedAgentName: null,
+      selectedAgentIcon: null,
+      hasInjectedAgentPromptBlock: false,
+    };
+  }
+  const promptLines = tailText
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+  const inferredAgentName = extractAgentNameFromPromptLine(promptLines[0] ?? null);
+  const inferredAgentIcon = promptLines
+    .map((line) => extractAgentIconFromPromptLine(line))
+    .find((icon) => Boolean(icon)) ?? null;
+  const agentName = fallbackAgentName ?? inferredAgentName;
+  const agentIcon = fallbackAgentIcon ?? inferredAgentIcon;
+  const baseText = text.slice(0, match.index).replace(/\s+$/, "");
+  if (!baseText) {
+    return {
+      text,
+      selectedAgentName: null,
+      selectedAgentIcon: null,
+      hasInjectedAgentPromptBlock: false,
+    };
+  }
+  return {
+    text: baseText,
+    selectedAgentName: agentName,
+    selectedAgentIcon: agentIcon,
+    hasInjectedAgentPromptBlock: true,
+  };
 }
 
 function toConversationEngine(
   engine: "claude" | "codex" | "gemini" | "opencode",
 ): ConversationEngine {
-  if (engine === "claude" || engine === "opencode") {
+  if (engine === "claude" || engine === "gemini" || engine === "opencode") {
     return engine;
   }
   return "codex";
@@ -328,484 +498,6 @@ function resolveRenderableItems({
   return conversationState.items;
 }
 
-function sanitizeReasoningTitle(title: string) {
-  return title
-    .replace(/[`*_~]/g, "")
-    .replace(/\[(.*?)\]\(.*?\)/g, "$1")
-    .trim();
-}
-
-function compactReasoningText(value: string) {
-  return value.replace(/\s+/g, "");
-}
-
-function compactComparableReasoningText(value: string) {
-  return compactReasoningText(value)
-    .replace(/[！!]/g, "!")
-    .replace(/[？?]/g, "?")
-    .replace(/[，,]/g, ",")
-    .replace(/[。．.]/g, ".");
-}
-
-function sliceByComparableLength(text: string, targetLength: number) {
-  if (targetLength <= 0) {
-    return text;
-  }
-  let compactLength = 0;
-  for (let index = 0; index < text.length; index += 1) {
-    if (!/\s/.test(text[index])) {
-      compactLength += 1;
-    }
-    if (compactLength >= targetLength) {
-      return text.slice(index + 1);
-    }
-  }
-  return "";
-}
-
-function stripLeadingReasoningTitleOverlap(
-  content: string,
-  candidates: string[],
-) {
-  const trimmedContent = content.trim();
-  if (!trimmedContent) {
-    return trimmedContent;
-  }
-  const normalizedCandidates = candidates
-    .map((entry) => entry.trim())
-    .filter((entry) => entry.length >= 8);
-  if (normalizedCandidates.length === 0) {
-    return trimmedContent;
-  }
-
-  for (const candidate of normalizedCandidates) {
-    if (trimmedContent.startsWith(candidate)) {
-      return trimmedContent
-        .slice(candidate.length)
-        .replace(/^[\s，。！？!?:：;；、-]+/, "")
-        .trim();
-    }
-  }
-
-  const compactContent = compactComparableReasoningText(trimmedContent);
-  for (const candidate of normalizedCandidates) {
-    const compactCandidate = compactComparableReasoningText(candidate);
-    if (!compactCandidate || compactCandidate.length < 8) {
-      continue;
-    }
-    if (compactContent === compactCandidate) {
-      return "";
-    }
-    if (compactContent.startsWith(compactCandidate)) {
-      const sliced = sliceByComparableLength(trimmedContent, compactCandidate.length);
-      return sliced.replace(/^[\s，。！？!?:：;；、-]+/, "").trim();
-    }
-  }
-
-  return trimmedContent;
-}
-
-function splitComparableReasoningClauses(value: string) {
-  return value
-    .split(/[。！？!?；;\n]+/)
-    .map((entry) => compactComparableReasoningText(entry.trim()))
-    .filter((entry) => entry.length >= 6);
-}
-
-function hasSharedReasoningClauseSuffix(left: string, right: string) {
-  const leftClauses = splitComparableReasoningClauses(left);
-  const rightClauses = splitComparableReasoningClauses(right);
-  if (leftClauses.length < 3 || rightClauses.length < 3) {
-    return false;
-  }
-  const max = Math.min(leftClauses.length, rightClauses.length);
-  let shared = 0;
-  for (let offset = 1; offset <= max; offset += 1) {
-    if (leftClauses[leftClauses.length - offset] !== rightClauses[rightClauses.length - offset]) {
-      break;
-    }
-    shared += 1;
-  }
-  return shared >= 2;
-}
-
-function dedupeAdjacentReasoningParagraphs(value: string) {
-  const collapseRepeatedParagraph = (paragraph: string) => {
-    const trimmed = paragraph.trim();
-    if (trimmed.length < 12) {
-      return trimmed;
-    }
-    const directRepeat = trimmed.match(/^([\s\S]{6,}?)\s+\1$/);
-    if (directRepeat?.[1]) {
-      return directRepeat[1].trim();
-    }
-    const compact = compactReasoningText(trimmed);
-    if (compact.length >= 12 && compact.length % 2 === 0) {
-      const half = compact.slice(0, compact.length / 2);
-      if (`${half}${half}` === compact) {
-        let compactLength = 0;
-        for (let index = 0; index < trimmed.length; index += 1) {
-          if (!/\s/.test(trimmed[index])) {
-            compactLength += 1;
-          }
-          if (compactLength >= half.length) {
-            return trimmed.slice(0, index + 1).trim();
-          }
-        }
-      }
-    }
-    const sentenceMatches = trimmed.match(/[^。！？!?]+[。！？!?]/g);
-    if (sentenceMatches && sentenceMatches.length >= 4 && sentenceMatches.length % 2 === 0) {
-      const mid = sentenceMatches.length / 2;
-      const left = compactReasoningText(sentenceMatches.slice(0, mid).join(""));
-      const right = compactReasoningText(sentenceMatches.slice(mid).join(""));
-      if (left.length >= 6 && left === right) {
-        return sentenceMatches.slice(0, mid).join("").trim();
-      }
-    }
-    return trimmed;
-  };
-
-  const paragraphs = value
-    .split(PARAGRAPH_BREAK_SPLIT_REGEX)
-    .map((line) => collapseRepeatedParagraph(line))
-    .filter(Boolean);
-  if (paragraphs.length <= 1) {
-    return paragraphs[0] ?? value.trim();
-  }
-  const deduped: string[] = [];
-  for (const paragraph of paragraphs) {
-    const previous = deduped[deduped.length - 1];
-    if (
-      previous &&
-      compactReasoningText(previous) === compactReasoningText(paragraph) &&
-      compactReasoningText(paragraph).length >= 8
-    ) {
-      continue;
-    }
-    deduped.push(paragraph);
-  }
-  return deduped.join("\n\n");
-}
-
-function scoreReasoningTextQuality(value: string) {
-  const paragraphs = value
-    .split(PARAGRAPH_BREAK_SPLIT_REGEX)
-    .map((entry) => entry.trim())
-    .filter(Boolean);
-  if (paragraphs.length <= 1) {
-    return 0;
-  }
-  const shortParagraphs = paragraphs.filter((entry) => entry.length <= 8).length;
-  return shortParagraphs * 3 + paragraphs.length;
-}
-
-function chooseBetterReasoningText(left: string, right: string) {
-  const leftScore = scoreReasoningTextQuality(left);
-  const rightScore = scoreReasoningTextQuality(right);
-  if (leftScore < rightScore) {
-    return left;
-  }
-  if (rightScore < leftScore) {
-    return right;
-  }
-  const leftLength = compactComparableReasoningText(left).length;
-  const rightLength = compactComparableReasoningText(right).length;
-  return rightLength >= leftLength ? right : left;
-}
-
-function isGenericReasoningTitle(title: string) {
-  const normalized = title
-    .trim()
-    .toLowerCase()
-    .replace(/[.:：。!！]+$/g, "");
-  return (
-    normalized === "reasoning" ||
-    normalized === "thinking" ||
-    normalized === "planning" ||
-    normalized === "思考中" ||
-    normalized === "正在思考" ||
-    normalized === "正在规划"
-  );
-}
-
-function parseReasoning(item: Extract<ConversationItem, { kind: "reasoning" }>) {
-  const summary = item.summary ?? "";
-  const content = item.content ?? "";
-  const hasSummary = summary.trim().length > 0 && !isGenericReasoningTitle(summary);
-  const titleSource = hasSummary ? summary : content;
-  const titleLines = titleSource.split("\n");
-  const trimmedLines = titleLines.map((line) => line.trim());
-  const titleLineIndex = trimmedLines.findIndex(Boolean);
-  const rawTitle = titleLineIndex >= 0 ? trimmedLines[titleLineIndex] : "";
-  const cleanTitle = sanitizeReasoningTitle(rawTitle);
-  const summaryTitle = cleanTitle
-    ? cleanTitle.length > 80
-      ? `${cleanTitle.slice(0, 80)}…`
-      : cleanTitle
-    : "Reasoning";
-  const summaryLines = summary.split("\n");
-  const contentLines = content.split("\n");
-  const summaryBody =
-    hasSummary && titleLineIndex >= 0
-      ? summaryLines
-          .filter((_, index) => index !== titleLineIndex)
-          .join("\n")
-          .trim()
-      : "";
-  let contentBody = hasSummary
-    ? content.trim()
-    : titleLineIndex >= 0
-      ? contentLines
-          .filter((_, index) => index !== titleLineIndex)
-          .join("\n")
-          .trim()
-      : content.trim();
-  if (!hasSummary && !contentBody && content.trim()) {
-    // Preserve single-line reasoning so Codex rows don't collapse to title-only.
-    contentBody = content.trim();
-  }
-  const normalizedSummaryBody = summaryBody.trim();
-  const normalizedContentBody = stripLeadingReasoningTitleOverlap(
-    contentBody,
-    [rawTitle, cleanTitle, normalizedSummaryBody],
-  ).trim();
-  const compactSummaryBody = compactReasoningText(normalizedSummaryBody);
-  const compactContentBody = compactReasoningText(normalizedContentBody);
-  let bodyParts: string[] = [];
-  if (normalizedSummaryBody && normalizedContentBody) {
-    if (compactSummaryBody === compactContentBody) {
-      bodyParts = [normalizedContentBody];
-    } else if (compactContentBody.startsWith(compactSummaryBody)) {
-      bodyParts = [normalizedContentBody];
-    } else if (compactSummaryBody.startsWith(compactContentBody)) {
-      bodyParts = [normalizedSummaryBody];
-    } else if (hasSharedReasoningClauseSuffix(normalizedSummaryBody, normalizedContentBody)) {
-      bodyParts = [chooseBetterReasoningText(normalizedSummaryBody, normalizedContentBody)];
-    } else {
-      bodyParts = [normalizedSummaryBody, normalizedContentBody];
-    }
-  } else {
-    bodyParts = [normalizedSummaryBody, normalizedContentBody].filter(Boolean);
-  }
-  const bodyText = dedupeAdjacentReasoningParagraphs(bodyParts.join("\n\n")).trim();
-  const hasBody = bodyText.length > 0;
-  const hasAnyText = titleSource.trim().length > 0;
-  const workingLabel = hasAnyText ? summaryTitle : null;
-  return {
-    summaryTitle,
-    bodyText,
-    hasBody,
-    workingLabel,
-  };
-}
-
-function isReasoningDuplicate(
-  previous: ReturnType<typeof parseReasoning>,
-  next: ReturnType<typeof parseReasoning>,
-) {
-  const previousBody = compactComparableReasoningText(previous.bodyText || "");
-  const nextBody = compactComparableReasoningText(next.bodyText || "");
-  if (previousBody && nextBody) {
-    if (previousBody === nextBody) {
-      return true;
-    }
-    if (previousBody.length >= 16 && nextBody.includes(previousBody)) {
-      return true;
-    }
-    if (nextBody.length >= 16 && previousBody.includes(nextBody)) {
-      return true;
-    }
-    return false;
-  }
-
-  const previousTitle = compactComparableReasoningText(
-    previous.summaryTitle || previous.workingLabel || "",
-  );
-  const nextTitle = compactComparableReasoningText(
-    next.summaryTitle || next.workingLabel || "",
-  );
-
-  if (!previousBody && !nextBody) {
-    if (
-      previousTitle &&
-      nextTitle &&
-      previousTitle.length >= 8 &&
-      nextTitle.length >= 8
-    ) {
-      return previousTitle === nextTitle;
-    }
-    return false;
-  }
-
-  if (
-    previousTitle &&
-    nextTitle &&
-    previousTitle.length >= 6 &&
-    nextTitle.length >= 6 &&
-    previousTitle !== nextTitle
-  ) {
-    return false;
-  }
-
-  return false;
-}
-
-function dedupeAdjacentReasoningItems(
-  list: ConversationItem[],
-  reasoningMetaById: Map<string, ReturnType<typeof parseReasoning>>,
-  appendOnly = false,
-) {
-  const deduped: ConversationItem[] = [];
-  for (const item of list) {
-    const previous = deduped[deduped.length - 1];
-    if (item.kind !== "reasoning" || previous?.kind !== "reasoning") {
-      deduped.push(item);
-      continue;
-    }
-    const previousMeta =
-      reasoningMetaById.get(previous.id) ?? parseReasoning(previous);
-    const nextMeta = reasoningMetaById.get(item.id) ?? parseReasoning(item);
-    if (!isReasoningDuplicate(previousMeta, nextMeta)) {
-      deduped.push(item);
-      continue;
-    }
-    deduped[deduped.length - 1] = {
-      ...item,
-      summary: appendOnly
-        ? appendReasoningRunText(previous.summary, item.summary)
-        : chooseBetterReasoningText(previous.summary, item.summary),
-      content: appendOnly
-        ? appendReasoningRunText(previous.content, item.content)
-        : chooseBetterReasoningText(previous.content, item.content),
-    };
-  }
-  return deduped;
-}
-
-function collapseConsecutiveReasoningRuns(
-  list: ConversationItem[],
-  enabled: boolean,
-  appendOnly = false,
-) {
-  if (!enabled || list.length <= 1) {
-    return list;
-  }
-  const collapsed: ConversationItem[] = [];
-  let index = 0;
-  while (index < list.length) {
-    const item = list[index];
-    if (item.kind !== "reasoning") {
-      collapsed.push(item);
-      index += 1;
-      continue;
-    }
-
-    let end = index + 1;
-    while (end < list.length && list[end].kind === "reasoning") {
-      end += 1;
-    }
-
-    if (end - index === 1) {
-      collapsed.push(item);
-      index = end;
-      continue;
-    }
-
-    const run = list.slice(index, end) as Array<Extract<ConversationItem, { kind: "reasoning" }>>;
-    const latest = run[run.length - 1];
-    let mergedSummary = run[0].summary;
-    let mergedContent = run[0].content;
-    for (let runIndex = 1; runIndex < run.length; runIndex += 1) {
-      const candidate = run[runIndex];
-      mergedSummary = mergeReasoningRunText(
-        mergedSummary,
-        candidate.summary,
-        appendOnly,
-      );
-      mergedContent = mergeReasoningRunText(
-        mergedContent,
-        candidate.content,
-        appendOnly,
-      );
-    }
-    collapsed.push({
-      ...latest,
-      summary: mergedSummary,
-      content: mergedContent,
-    });
-    index = end;
-  }
-  return collapsed;
-}
-
-function appendReasoningRunText(existing: string, incoming: string) {
-  if (!existing) {
-    return incoming;
-  }
-  if (!incoming) {
-    return existing;
-  }
-  const normalizedExisting = existing.trim();
-  const normalizedIncoming = incoming.trim();
-  const compactExisting = compactComparableReasoningText(normalizedExisting);
-  const compactIncoming = compactComparableReasoningText(normalizedIncoming);
-  if (!compactExisting) {
-    return normalizedIncoming;
-  }
-  if (!compactIncoming) {
-    return normalizedExisting;
-  }
-  if (compactExisting === compactIncoming) {
-    return chooseBetterReasoningText(normalizedExisting, normalizedIncoming);
-  }
-  const maxOverlap = Math.min(compactExisting.length, compactIncoming.length);
-  for (let overlapLength = maxOverlap; overlapLength > 0; overlapLength -= 1) {
-    if (!compactExisting.endsWith(compactIncoming.slice(0, overlapLength))) {
-      continue;
-    }
-    const suffix = sliceByComparableLength(normalizedIncoming, overlapLength).trimStart();
-    return suffix ? `${normalizedExisting}${suffix}` : normalizedExisting;
-  }
-  return `${normalizedExisting}\n\n${normalizedIncoming}`;
-}
-
-function mergeReasoningRunText(
-  existing: string,
-  incoming: string,
-  appendOnly = false,
-) {
-  if (appendOnly) {
-    return appendReasoningRunText(existing, incoming);
-  }
-  if (!existing) {
-    return incoming;
-  }
-  if (!incoming) {
-    return existing;
-  }
-  const normalizedExisting = existing.trim();
-  const normalizedIncoming = incoming.trim();
-  const compactExisting = compactComparableReasoningText(normalizedExisting);
-  const compactIncoming = compactComparableReasoningText(normalizedIncoming);
-  if (!compactExisting) {
-    return normalizedIncoming;
-  }
-  if (!compactIncoming) {
-    return normalizedExisting;
-  }
-  if (compactExisting === compactIncoming) {
-    return chooseBetterReasoningText(normalizedExisting, normalizedIncoming);
-  }
-  if (compactIncoming.includes(compactExisting)) {
-    return normalizedIncoming;
-  }
-  if (compactExisting.includes(compactIncoming)) {
-    return normalizedExisting;
-  }
-  return `${normalizedExisting}\n\n${normalizedIncoming}`;
-}
-
 function normalizeMessageImageSrc(path: string) {
   if (!path) {
     return "";
@@ -823,207 +515,26 @@ function normalizeMessageImageSrc(path: string) {
   }
 }
 
-function parseMemoryContextSummary(text: string): MemoryContextSummary | null {
-  const normalized = text.trim();
-  if (!normalized.startsWith(MEMORY_CONTEXT_SUMMARY_PREFIX)) {
-    return null;
-  }
-  const preview = normalized.slice(MEMORY_CONTEXT_SUMMARY_PREFIX.length).trim();
-  if (!preview) {
-    return null;
-  }
-  const lines = preview
-    .split(/[；\n]+/)
-    .map((line) => line.trim())
-    .filter(Boolean);
-  return {
-    preview,
-    lines: lines.length > 0 ? lines : [preview],
-  };
-}
-
-function buildMemorySummary(preview: string): MemoryContextSummary | null {
-  const normalizedPreview = preview.trim();
-  if (!normalizedPreview) {
-    return null;
-  }
-  const lines = normalizedPreview
-    .split(/[；\n]+/)
-    .map((line) => line.trim())
-    .filter(Boolean);
-  return {
-    preview: normalizedPreview,
-    lines: lines.length > 0 ? lines : [normalizedPreview],
-  };
-}
-
-function parseInjectedMemoryPrefixFromUser(
-  text: string,
-): { memorySummary: MemoryContextSummary; remainingText: string } | null {
-  const normalized = text.trimStart();
-  if (!normalized) {
-    return null;
-  }
-
-  const xmlMatch = normalized.match(PROJECT_MEMORY_XML_PREFIX_REGEX);
-  if (xmlMatch) {
-    const blockBody = (xmlMatch[1] ?? "").trim();
-    const memoryLines = blockBody
-      .split(/\r?\n+/)
-      .map((line) => line.trim())
-      .filter(Boolean)
-      .filter((line) => PROJECT_MEMORY_KIND_LINE_REGEX.test(line));
-    const previewText = memoryLines.length > 0 ? memoryLines.join("；") : blockBody;
-    const memorySummary = buildMemorySummary(previewText);
-    if (!memorySummary) {
-      return null;
-    }
-    const remainingText = normalized.slice(xmlMatch[0].length).trimStart();
-    return { memorySummary, remainingText };
-  }
-
-  if (!PROJECT_MEMORY_KIND_LINE_REGEX.test(normalized)) {
-    return null;
-  }
-  if (!LEGACY_MEMORY_RECORD_HINT_REGEX.test(normalized)) {
-    return null;
-  }
-
-  const paragraphBlocks = normalized.split(PARAGRAPH_BREAK_SPLIT_REGEX);
-  if (paragraphBlocks.length >= 2) {
-    const firstBlock = (paragraphBlocks[0] ?? "").trim();
-    if (
-      PROJECT_MEMORY_KIND_LINE_REGEX.test(firstBlock) &&
-      LEGACY_MEMORY_RECORD_HINT_REGEX.test(firstBlock)
-    ) {
-      const memorySummary = buildMemorySummary(firstBlock);
-      if (!memorySummary) {
-        return null;
-      }
-      return {
-        memorySummary,
-        remainingText: paragraphBlocks.slice(1).join("\n\n").trimStart(),
-      };
-    }
-  }
-
-  const lines = normalized.split(/\r?\n/);
-  if (lines.length >= 2) {
-    const firstLine = (lines[0] ?? "").trim();
-    if (
-      PROJECT_MEMORY_KIND_LINE_REGEX.test(firstLine) &&
-      LEGACY_MEMORY_RECORD_HINT_REGEX.test(firstLine)
-    ) {
-      const memorySummary = buildMemorySummary(firstLine);
-      if (!memorySummary) {
-        return null;
-      }
-      return {
-        memorySummary,
-        remainingText: lines.slice(1).join("\n").trimStart(),
-      };
-    }
-  }
-
-  return null;
-}
-
-const MessageImageGrid = memo(function MessageImageGrid({
-  images,
-  onOpen,
-  hasText,
-}: {
-  images: MessageImage[];
-  onOpen: (index: number) => void;
-  hasText: boolean;
-}) {
-  return (
-    <div
-      className={`message-image-grid${hasText ? " message-image-grid--with-text" : ""}`}
-      role="list"
-    >
-      {images.map((image, index) => (
-        <button
-          key={`${image.src}-${index}`}
-          type="button"
-          className="message-image-thumb"
-          onClick={() => onOpen(index)}
-          aria-label={`Open image ${index + 1}`}
-        >
-          <img src={image.src} alt={image.label} loading="lazy" />
-        </button>
-      ))}
-    </div>
-  );
-});
-
-const ImageLightbox = memo(function ImageLightbox({
-  images,
-  activeIndex,
-  onClose,
-}: {
-  images: MessageImage[];
-  activeIndex: number;
-  onClose: () => void;
-}) {
-  const { t } = useTranslation();
-  const activeImage = images[activeIndex];
-
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        onClose();
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => {
-      window.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [onClose]);
-
-  useEffect(() => {
-    const previous = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = previous;
-    };
-  }, []);
-
-  if (!activeImage) {
-    return null;
-  }
-
-  return createPortal(
-    <div
-      className="message-image-lightbox"
-      role="dialog"
-      aria-modal="true"
-      onClick={onClose}
-    >
-      <div
-        className="message-image-lightbox-content"
-        onClick={(event) => event.stopPropagation()}
-      >
-        <button
-          type="button"
-          className="message-image-lightbox-close"
-          onClick={onClose}
-          aria-label={t("messages.closeImagePreview")}
-        >
-          <X size={16} aria-hidden />
-        </button>
-        <img src={activeImage.src} alt={activeImage.label} />
-      </div>
-    </div>,
-    document.body,
-  );
-});
-
 function formatDurationMs(durationMs: number) {
   const durationSeconds = Math.max(0, Math.floor(durationMs / 1000));
+  const durationHours = Math.floor(durationSeconds / 3600);
   const durationMinutes = Math.floor(durationSeconds / 60);
   const durationRemainder = durationSeconds % 60;
+  if (durationHours > 0) {
+    const remainderMinutes = durationMinutes % 60;
+    return `${durationHours}:${String(remainderMinutes).padStart(2, "0")}:${String(durationRemainder).padStart(2, "0")}`;
+  }
   return `${durationMinutes}:${String(durationRemainder).padStart(2, "0")}`;
+}
+
+function formatCompletedTimeMs(timestampMs: number) {
+  const date = new Date(timestampMs);
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  const hours = String(date.getHours()).padStart(2, "0");
+  const minutes = String(date.getMinutes()).padStart(2, "0");
+  const seconds = String(date.getSeconds()).padStart(2, "0");
+  return `${month}-${day} ${hours}:${minutes}:${seconds}`;
 }
 
 function scrollKeyForItems(items: ConversationItem[]) {
@@ -1031,6 +542,9 @@ function scrollKeyForItems(items: ConversationItem[]) {
     return "empty";
   }
   const last = items[items.length - 1];
+  if (!last) {
+    return "empty";
+  }
   switch (last.kind) {
     case "message":
       return `${last.id}-${last.text.length}`;
@@ -1103,7 +617,7 @@ function resolveWorkingActivityLabel(
 function findLastUserMessageIndex(items: ConversationItem[]) {
   for (let index = items.length - 1; index >= 0; index -= 1) {
     const item = items[index];
-    if (item.kind === "message" && item.role === "user") {
+    if (isUserMessageConversationItem(item)) {
       return index;
     }
   }
@@ -1113,7 +627,7 @@ function findLastUserMessageIndex(items: ConversationItem[]) {
 function findLastAssistantMessageIndex(items: ConversationItem[]) {
   for (let index = items.length - 1; index >= 0; index -= 1) {
     const item = items[index];
-    if (item.kind === "message" && item.role === "assistant") {
+    if (isAssistantMessageConversationItem(item)) {
       return index;
     }
   }
@@ -1279,6 +793,7 @@ const WorkingIndicator = memo(function WorkingIndicator({
 
 const MessageRow = memo(function MessageRow({
   item,
+  workspaceId = null,
   isStreaming = false,
   activeEngine = "claude",
   enableCollaborationBadge = false,
@@ -1292,6 +807,7 @@ const MessageRow = memo(function MessageRow({
   const { t } = useTranslation();
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [memorySummaryExpanded, setMemorySummaryExpanded] = useState(false);
+  const [isAgentBadgeExpanded, setIsAgentBadgeExpanded] = useState(false);
   const legacyUserMemory = useMemo(
     () =>
       item.role === "user" ? parseInjectedMemoryPrefixFromUser(item.text) : null,
@@ -1304,28 +820,58 @@ const MessageRow = memo(function MessageRow({
         : legacyUserMemory?.memorySummary ?? null,
     [item.role, item.text, legacyUserMemory],
   );
-  const displayText = useMemo(() => {
+  const userMessagePresentation = useMemo(() => {
     const originalText = item.role === "user" ? legacyUserMemory?.remainingText ?? item.text : item.text;
     if (item.role !== "user") {
-      return memorySummary ? "" : originalText;
+      return {
+        displayText: memorySummary ? "" : originalText,
+        selectedAgentName: null,
+        selectedAgentIcon: null,
+        hasInjectedAgentPromptBlock: false,
+      };
     }
+    const normalizedSelectedAgentName = normalizeSelectedAgentName(item.selectedAgentName);
+    const normalizedSelectedAgentIcon = normalizeSelectedAgentIcon(item.selectedAgentIcon);
+    const strippedAgentPrompt = stripAgentPromptBlockFromUserText(
+      originalText,
+      normalizedSelectedAgentName,
+      normalizedSelectedAgentIcon,
+    );
     const safeText = enableCollaborationBadge
-      ? extractModeFallbackUserInput(originalText).text
-      : originalText;
+      ? extractModeFallbackUserInput(strippedAgentPrompt.text).text
+      : strippedAgentPrompt.text;
     const filteredCommandText = extractCommandMessageDisplayText(safeText);
-    const userInputMatches = [...filteredCommandText.matchAll(/\[User Input\]\s*/g)];
-    if (userInputMatches.length === 0) {
-      return filteredCommandText;
-    }
-    const lastMatch = userInputMatches[userInputMatches.length - 1];
-    const markerIndex = lastMatch.index ?? -1;
-    if (markerIndex < 0) {
-      return filteredCommandText;
-    }
-    const markerLength = lastMatch[0]?.length ?? 0;
-    const extracted = filteredCommandText.slice(markerIndex + markerLength).trim();
-    return extracted.length > 0 ? extracted : filteredCommandText;
-  }, [enableCollaborationBadge, item.role, item.text, memorySummary]);
+    return {
+      displayText: extractLatestUserInputTextPreserveFormatting(filteredCommandText),
+      selectedAgentName:
+        strippedAgentPrompt.selectedAgentName
+        ?? normalizedSelectedAgentName,
+      selectedAgentIcon:
+        strippedAgentPrompt.selectedAgentIcon
+        ?? normalizedSelectedAgentIcon,
+      hasInjectedAgentPromptBlock: strippedAgentPrompt.hasInjectedAgentPromptBlock,
+    };
+  }, [
+    enableCollaborationBadge,
+    item.role,
+    item.selectedAgentIcon,
+    item.selectedAgentName,
+    item.text,
+    legacyUserMemory?.remainingText,
+    memorySummary,
+  ]);
+  const displayText = userMessagePresentation.displayText;
+  const selectedAgentName = userMessagePresentation.selectedAgentName;
+  const selectedAgentIcon = userMessagePresentation.selectedAgentIcon;
+  const hasInjectedAgentPromptBlock = userMessagePresentation.hasInjectedAgentPromptBlock;
+  const hasExternalAgentBadge =
+    item.role === "user" && (Boolean(selectedAgentName) || hasInjectedAgentPromptBlock);
+  useEffect(() => {
+    setIsAgentBadgeExpanded(false);
+  }, [item.id, selectedAgentIcon, selectedAgentName]);
+  const handleToggleAgentBadge = useCallback(() => {
+    setIsAgentBadgeExpanded((current) => !current);
+  }, []);
   const hasText = displayText.trim().length > 0;
   const hideCopyButton = item.role === "assistant" && Boolean(memorySummary) && !hasText;
   const useCodexCanvasMarkdown = presentationProfile
@@ -1353,90 +899,127 @@ const MessageRow = memo(function MessageRow({
       .filter(Boolean) as MessageImage[];
   }, [item.images]);
 
-  return (
-    <div className={`message ${item.role}`}>
-      <div className="bubble message-bubble">
-        {imageItems.length > 0 && (
-          <MessageImageGrid
-            images={imageItems}
-            onOpen={setLightboxIndex}
-            hasText={hasText}
-          />
-        )}
-        {memorySummary ? (
-          <div className="memory-context-summary-card">
-            <button
-              type="button"
-              className="memory-context-summary-toggle"
-              onClick={() => setMemorySummaryExpanded((current) => !current)}
-              aria-expanded={memorySummaryExpanded}
-            >
-              <span className="memory-context-summary-title">
-                {t("messages.memoryContextSummary")}
-              </span>
-              <span className="memory-context-summary-count">
-                {t("messages.memoryContextSummaryCount", {
-                  count: memorySummary.lines.length,
-                })}
-              </span>
-              {memorySummaryExpanded ? (
-                <ChevronUp size={14} aria-hidden />
-              ) : (
-                <ChevronDown size={14} aria-hidden />
-              )}
-            </button>
-            {memorySummaryExpanded && (
-              <div className="memory-context-summary-content">
-                {memorySummary.lines.map((line, index) => (
-                  <p key={`${item.id}-line-${index}`}>{line}</p>
-                ))}
-              </div>
-            )}
-          </div>
-        ) : null}
-        {hasText && (
-          item.role === "user" ? (
-            <CollapsibleUserTextBlock content={displayText} />
-          ) : (
-            <Markdown
-              value={displayText}
-              className={resolvedMarkdownClassName}
-              codeBlockStyle="message"
-              codeBlockCopyUseModifier={codeBlockCopyUseModifier}
-              streamingThrottleMs={isStreaming ? 0 : 80}
-              onOpenFileLink={onOpenFileLink}
-              onOpenFileLinkMenu={onOpenFileLinkMenu}
-            />
-          )
-        )}
-        {lightboxIndex !== null && imageItems.length > 0 && (
-          <ImageLightbox
-            images={imageItems}
-            activeIndex={lightboxIndex}
-            onClose={() => setLightboxIndex(null)}
-          />
-        )}
-        {!hideCopyButton && (
+  const bubbleNode = (
+    <div className="bubble message-bubble">
+      {imageItems.length > 0 && (
+        <MessageImageGrid
+          images={imageItems}
+          onOpen={setLightboxIndex}
+          hasText={hasText}
+        />
+      )}
+      {memorySummary ? (
+        <div className="memory-context-summary-card">
           <button
             type="button"
-            className={`ghost message-copy-button${isCopied ? " is-copied" : ""}`}
-            onClick={() => onCopy(item, displayText || item.text)}
-            aria-label={t("messages.copyMessage")}
-            title={t("messages.copyMessage")}
+            className="memory-context-summary-toggle"
+            onClick={() => setMemorySummaryExpanded((current) => !current)}
+            aria-expanded={memorySummaryExpanded}
           >
-            <span className="message-copy-icon" aria-hidden>
-              <Copy className="message-copy-icon-copy" size={14} />
-              <Check className="message-copy-icon-check" size={14} />
+            <span className="memory-context-summary-title">
+              {t("messages.memoryContextSummary")}
             </span>
+            <span className="memory-context-summary-count">
+              {t("messages.memoryContextSummaryCount", {
+                count: memorySummary.lines.length,
+              })}
+            </span>
+            {memorySummaryExpanded ? (
+              <ChevronUp size={14} aria-hidden />
+            ) : (
+              <ChevronDown size={14} aria-hidden />
+            )}
           </button>
-        )}
-      </div>
+          {memorySummaryExpanded && (
+            <div className="memory-context-summary-content">
+              {memorySummary.lines.map((line, index) => (
+                <p key={`${item.id}-line-${index}`}>{line}</p>
+              ))}
+            </div>
+          )}
+        </div>
+      ) : null}
+      {hasText && (
+        item.role === "user" ? (
+          <CollapsibleUserTextBlock content={displayText} />
+        ) : (
+          <Markdown
+            value={displayText}
+            className={resolvedMarkdownClassName}
+            workspaceId={workspaceId}
+            codeBlockStyle="message"
+            codeBlockCopyUseModifier={codeBlockCopyUseModifier}
+            streamingThrottleMs={isStreaming ? 0 : 80}
+            onOpenFileLink={onOpenFileLink}
+            onOpenFileLinkMenu={onOpenFileLinkMenu}
+          />
+        )
+      )}
+      {lightboxIndex !== null && imageItems.length > 0 && (
+        <ImageLightbox
+          images={imageItems}
+          activeIndex={lightboxIndex}
+          onClose={() => setLightboxIndex(null)}
+        />
+      )}
+      {!hideCopyButton && (
+        <button
+          type="button"
+          className={`ghost message-copy-button${isCopied ? " is-copied" : ""}`}
+          onClick={() => onCopy(item, displayText || item.text)}
+          aria-label={t("messages.copyMessage")}
+          title={t("messages.copyMessage")}
+        >
+          <span className="message-copy-icon" aria-hidden>
+            <Copy className="message-copy-icon-copy" size={14} />
+            <Check className="message-copy-icon-check" size={14} />
+          </span>
+        </button>
+      )}
+    </div>
+  );
+
+  const agentBadgeNode = hasExternalAgentBadge ? (
+    <div className={`message-user-agent-rail${isAgentBadgeExpanded ? " is-open" : ""}`}>
+      <button
+        type="button"
+        className="message-agent-icon-button"
+        onClick={handleToggleAgentBadge}
+        aria-expanded={isAgentBadgeExpanded}
+        aria-label={selectedAgentName ? `显示智能体标签：${selectedAgentName}` : "显示智能体标记"}
+        title={selectedAgentName ?? undefined}
+      >
+        <AgentIcon
+          icon={selectedAgentIcon}
+          seed={selectedAgentName ?? item.id}
+          fallback="codicon-hubot"
+          className="message-agent-icon-glyph"
+          size={30}
+        />
+      </button>
+      {isAgentBadgeExpanded && selectedAgentName && (
+        <div className="message-agent-reveal is-visible" role="status">
+          <span className="message-agent-tag-text">{selectedAgentName}</span>
+        </div>
+      )}
+    </div>
+  ) : null;
+
+  return (
+    <div className={`message ${item.role}`}>
+      {hasExternalAgentBadge ? (
+        <div className="message-user-layout">
+          {agentBadgeNode}
+          {bubbleNode}
+        </div>
+      ) : bubbleNode}
     </div>
   );
 }, areMessageRowPropsEqual);
 
 const ReasoningRow = memo(function ReasoningRow({
   item,
+  workspaceId = null,
   parsed,
   isExpanded,
   isLive,
@@ -1486,6 +1069,7 @@ const ReasoningRow = memo(function ReasoningRow({
             <Markdown
               value={thinkingText}
               className={`markdown reasoning-markdown${isLive ? " markdown-live-streaming" : ""}`}
+              workspaceId={workspaceId}
               codeBlockStyle="message"
               streamingThrottleMs={isLive ? 180 : 80}
               onOpenFileLink={onOpenFileLink}
@@ -1502,6 +1086,7 @@ const ReasoningRow = memo(function ReasoningRow({
 
 const ReviewRow = memo(function ReviewRow({
   item,
+  workspaceId = null,
   onOpenFileLink,
   onOpenFileLinkMenu,
 }: ReviewRowProps) {
@@ -1520,6 +1105,7 @@ const ReviewRow = memo(function ReviewRow({
         <Markdown
           value={item.text}
           className="item-text markdown"
+          workspaceId={workspaceId}
           onOpenFileLink={onOpenFileLink}
           onOpenFileLinkMenu={onOpenFileLinkMenu}
         />
@@ -1543,13 +1129,14 @@ const DiffRow = memo(function DiffRow({ item }: DiffRowProps) {
 });
 
 function exploreKindLabel(kind: ExploreRowProps["item"]["entries"][number]["kind"]) {
-  return kind[0].toUpperCase() + kind.slice(1);
+  return (kind[0] ?? "").toUpperCase() + kind.slice(1);
 }
 
 const ExploreRow = memo(function ExploreRow({ item, isExpanded, onToggle }: ExploreRowProps) {
   const { t } = useTranslation();
   const title = item.title ?? (item.status === "exploring" ? "Exploring" : "Explored");
-  const isCollapsible = item.collapsible === true;
+  const isCollapsible =
+    item.collapsible ?? (item.status === "explored" && item.entries.length > 1);
   const listCollapsed = isCollapsible && !isExpanded;
   const handleToggle = () => {
     if (!isCollapsible) {
@@ -1559,24 +1146,37 @@ const ExploreRow = memo(function ExploreRow({ item, isExpanded, onToggle }: Expl
   };
   return (
     <div className={`tool-inline explore-inline${isCollapsible ? " is-collapsible" : ""}`}>
-      <button
-        type="button"
-        className="tool-inline-bar-toggle"
-        onClick={handleToggle}
-        aria-expanded={isCollapsible ? isExpanded : undefined}
-        aria-label={isCollapsible ? t("messages.toggleDetails") : undefined}
-        disabled={!isCollapsible}
-      />
       <div className="tool-inline-content">
         <div className="explore-inline-header">
-          <Terminal
-            className={`tool-inline-icon ${
-              item.status === "exploring" ? "processing" : "completed"
-            }`}
-            size={14}
-            aria-hidden
-          />
-          <span className="explore-inline-title">{title}</span>
+          {isCollapsible ? (
+            <button
+              type="button"
+              className="explore-inline-header-toggle"
+              onClick={handleToggle}
+              aria-expanded={isExpanded}
+              aria-label={t("messages.toggleDetails")}
+            >
+              <Terminal
+                className={`tool-inline-icon explore-inline-toggle-icon${
+                  isExpanded ? " is-expanded" : ""
+                } ${item.status === "exploring" ? "processing" : "completed"}`}
+                size={14}
+                aria-hidden
+              />
+              <span className="explore-inline-title">{title}</span>
+            </button>
+          ) : (
+            <>
+              <Terminal
+                className={`tool-inline-icon ${
+                  item.status === "exploring" ? "processing" : "completed"
+                }`}
+                size={14}
+                aria-hidden
+              />
+              <span className="explore-inline-title">{title}</span>
+            </>
+          )}
         </div>
         <div className={`explore-inline-list${listCollapsed ? " is-collapsed" : ""}`}>
           {item.entries.map((entry, index) => (
@@ -1662,14 +1262,7 @@ export const Messages = memo(function Messages({
   const userInputRequests = effectiveState.userInputQueue;
   const workspaceId = effectiveState.meta.workspaceId || legacyWorkspaceId;
   const threadId = effectiveState.meta.threadId || legacyThreadId;
-  const activeEngine =
-    effectiveState.meta.engine === "claude"
-      ? "claude"
-      : effectiveState.meta.engine === "opencode"
-        ? "opencode"
-        : legacyActiveEngine === "gemini"
-          ? "gemini"
-          : "codex";
+  const activeEngine = toConversationEngine(effectiveState.meta.engine);
   const isThinking = conversationState
     ? effectiveState.meta.isThinking
     : legacyIsThinking;
@@ -1696,6 +1289,12 @@ export const Messages = memo(function Messages({
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
   const [activeAnchorId, setActiveAnchorId] = useState<string | null>(null);
   const [showAllHistoryItems, setShowAllHistoryItems] = useState(false);
+  const [liveAutoFollowEnabled, setLiveAutoFollowEnabled] = useState(() =>
+    readLocalBooleanFlag(MESSAGES_LIVE_AUTO_FOLLOW_FLAG_KEY, true),
+  );
+  const [collapseLiveMiddleStepsEnabled, setCollapseLiveMiddleStepsEnabled] = useState(() =>
+    readLocalBooleanFlag(MESSAGES_LIVE_COLLAPSE_MIDDLE_STEPS_FLAG_KEY, false),
+  );
   const hideClaudeReasoning = activeEngine === "claude" && shouldHideClaudeReasoningModule();
   const [isSelectionFrozen, setIsSelectionFrozen] = useState(false);
   const copyTimeoutRef = useRef<number | null>(null);
@@ -1780,18 +1379,15 @@ export const Messages = memo(function Messages({
   }, []);
 
   const requestAutoScroll = useCallback(() => {
-    if (!bottomRef.current) {
+    if (!liveAutoFollowEnabled) {
       return;
     }
-    const container = containerRef.current;
-    const shouldScroll =
-      autoScrollRef.current || (container ? isNearBottom(container) : true);
-    if (!shouldScroll) {
+    if (!bottomRef.current) {
       return;
     }
     // Always use instant for programmatic scroll requests to avoid blocking input
     bottomRef.current.scrollIntoView({ behavior: "instant", block: "end" });
-  }, [isNearBottom]);
+  }, [liveAutoFollowEnabled]);
 
   useEffect(() => {
     autoScrollRef.current = true;
@@ -1819,6 +1415,73 @@ export const Messages = memo(function Messages({
       frozenItemsRef.current = null;
     }
   }, [isSelectionFrozen, items]);
+
+  useEffect(() => {
+    writeLocalBooleanFlag(MESSAGES_LIVE_AUTO_FOLLOW_FLAG_KEY, liveAutoFollowEnabled);
+  }, [liveAutoFollowEnabled]);
+
+  useEffect(() => {
+    writeLocalBooleanFlag(
+      MESSAGES_LIVE_COLLAPSE_MIDDLE_STEPS_FLAG_KEY,
+      collapseLiveMiddleStepsEnabled,
+    );
+  }, [collapseLiveMiddleStepsEnabled]);
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    const handleLiveControlsUpdated = (
+      event: Event,
+    ) => {
+      const customEvent = event as CustomEvent<{
+        liveAutoFollowEnabled?: boolean;
+        collapseLiveMiddleStepsEnabled?: boolean;
+      }>;
+      const detail = customEvent.detail;
+      if (!detail) {
+        return;
+      }
+      if (typeof detail.liveAutoFollowEnabled === "boolean") {
+        setLiveAutoFollowEnabled(detail.liveAutoFollowEnabled);
+      }
+      if (typeof detail.collapseLiveMiddleStepsEnabled === "boolean") {
+        setCollapseLiveMiddleStepsEnabled(detail.collapseLiveMiddleStepsEnabled);
+      }
+    };
+    const handleStorage = (event: StorageEvent) => {
+      if (!event.key) {
+        return;
+      }
+      if (event.key === MESSAGES_LIVE_AUTO_FOLLOW_FLAG_KEY) {
+        setLiveAutoFollowEnabled(readLocalBooleanFlag(MESSAGES_LIVE_AUTO_FOLLOW_FLAG_KEY, true));
+        return;
+      }
+      if (event.key === MESSAGES_LIVE_COLLAPSE_MIDDLE_STEPS_FLAG_KEY) {
+        setCollapseLiveMiddleStepsEnabled(
+          readLocalBooleanFlag(MESSAGES_LIVE_COLLAPSE_MIDDLE_STEPS_FLAG_KEY, false),
+        );
+      }
+    };
+    window.addEventListener(
+      MESSAGES_LIVE_CONTROLS_UPDATED_EVENT,
+      handleLiveControlsUpdated as EventListener,
+    );
+    window.addEventListener("storage", handleStorage);
+    return () => {
+      window.removeEventListener(
+        MESSAGES_LIVE_CONTROLS_UPDATED_EVENT,
+        handleLiveControlsUpdated as EventListener,
+      );
+      window.removeEventListener("storage", handleStorage);
+    };
+  }, []);
+  useEffect(() => {
+    if (!liveAutoFollowEnabled) {
+      return;
+    }
+    autoScrollRef.current = true;
+    requestAutoScroll();
+  }, [liveAutoFollowEnabled, requestAutoScroll]);
   useEffect(() => {
     const currentFirstId = effectiveItems[0]?.id ?? null;
     if (currentFirstId !== firstItemIdRef.current) {
@@ -1855,13 +1518,15 @@ export const Messages = memo(function Messages({
 
     if (reasoningIds.length === 0) return;
 
-    const lastReasoningId = reasoningIds[reasoningIds.length - 1];
+    const lastReasoningId = reasoningIds[reasoningIds.length - 1] ?? null;
 
     if (lastReasoningId !== lastAutoExpandedIdRef.current) {
       setExpandedItems((prev) => {
         const next = new Set<string>();
         // Only expand the latest reasoning block, collapse all others
-        next.add(lastReasoningId);
+        if (lastReasoningId) {
+          next.add(lastReasoningId);
+        }
         // Preserve non-reasoning expanded items
         for (const id of prev) {
           const isReasoning = reasoningIds.includes(id);
@@ -1901,7 +1566,7 @@ export const Messages = memo(function Messages({
     }
     for (let index = effectiveItems.length - 1; index > reasoningWindowStartIndex; index -= 1) {
       const item = effectiveItems[index];
-      if (item.kind !== "reasoning") {
+      if (!isReasoningConversationItem(item)) {
         continue;
       }
       const parsed = reasoningMetaById.get(item.id);
@@ -1915,7 +1580,7 @@ export const Messages = memo(function Messages({
   const latestReasoningId = useMemo(() => {
     for (let index = effectiveItems.length - 1; index > reasoningWindowStartIndex; index -= 1) {
       const item = effectiveItems[index];
-      if (item.kind === "reasoning") {
+      if (isReasoningConversationItem(item)) {
         return item.id;
       }
     }
@@ -1934,10 +1599,13 @@ export const Messages = memo(function Messages({
     }> = [];
     for (let index = reasoningWindowStartIndex + 1; index < effectiveItems.length; index += 1) {
       const item = effectiveItems[index];
-      if (item.kind !== "reasoning") {
+      if (!isReasoningConversationItem(item)) {
         continue;
       }
-      const parsed = reasoningMetaById.get(item.id) ?? parseReasoning(item);
+      const parsed = reasoningMetaById.get(item.id);
+      if (!parsed) {
+        continue;
+      }
       const hasText =
         Boolean(parsed.bodyText?.trim()) ||
         Boolean(item.content?.trim()) ||
@@ -1973,7 +1641,7 @@ export const Messages = memo(function Messages({
   const latestTitleOnlyReasoningId = useMemo(() => {
     for (let index = effectiveItems.length - 1; index >= 0; index -= 1) {
       const item = effectiveItems[index];
-      if (item.kind !== "reasoning") {
+      if (!isReasoningConversationItem(item)) {
         continue;
       }
       const parsed = reasoningMetaById.get(item.id);
@@ -1988,7 +1656,7 @@ export const Messages = memo(function Messages({
     let lastUserIndex = -1;
     for (let index = effectiveItems.length - 1; index >= 0; index -= 1) {
       const item = effectiveItems[index];
-      if (item.kind === "message" && item.role === "user") {
+      if (isUserMessageConversationItem(item)) {
         lastUserIndex = index;
         break;
       }
@@ -1998,7 +1666,10 @@ export const Messages = memo(function Messages({
     }
     for (let index = effectiveItems.length - 1; index > lastUserIndex; index -= 1) {
       const item = effectiveItems[index];
-      if (item.kind === "message" && item.role === "assistant") {
+      if (!item) {
+        continue;
+      }
+      if (isAssistantMessageConversationItem(item)) {
         break;
       }
       const label = resolveWorkingActivityLabel(item, activeEngine, presentationProfile);
@@ -2012,7 +1683,7 @@ export const Messages = memo(function Messages({
   const latestAssistantMessageId = useMemo(() => {
     for (let index = effectiveItems.length - 1; index > lastUserMessageIndex; index -= 1) {
       const item = effectiveItems[index];
-      if (item.kind === "message" && item.role === "assistant") {
+      if (isAssistantMessageConversationItem(item)) {
         return item.id;
       }
     }
@@ -2026,7 +1697,7 @@ export const Messages = memo(function Messages({
     let lastUserIndex = -1;
     for (let index = effectiveItems.length - 1; index >= 0; index -= 1) {
       const item = effectiveItems[index];
-      if (item.kind === "message" && item.role === "user") {
+      if (isUserMessageConversationItem(item)) {
         lastUserIndex = index;
         break;
       }
@@ -2036,7 +1707,7 @@ export const Messages = memo(function Messages({
     }
     for (let index = lastUserIndex + 1; index < effectiveItems.length; index += 1) {
       const item = effectiveItems[index];
-      if (item.kind === "message" && item.role === "assistant") {
+      if (isAssistantMessageConversationItem(item)) {
         return false;
       }
     }
@@ -2062,6 +1733,11 @@ export const Messages = memo(function Messages({
         if (!parsed?.workingLabel) {
           return false;
         }
+        // Gemini realtime segmented reasoning must stay visible as independent
+        // timeline slices instead of being reduced to only the latest title-only row.
+        if (activeEngine === "gemini" && isExplicitReasoningSegmentId(item.id)) {
+          return true;
+        }
         if (activeEngine === "claude") {
           return true;
         }
@@ -2073,13 +1749,14 @@ export const Messages = memo(function Messages({
           : activeEngine === "codex";
         return keepTitleOnlyReasoning || item.id === latestTitleOnlyReasoningId;
       });
-    const appendReasoningRuns = activeEngine === "claude";
+    const appendReasoningRuns = activeEngine === "claude" || activeEngine === "gemini";
     const deduped = dedupeAdjacentReasoningItems(
       filtered,
       reasoningMetaById,
       appendReasoningRuns,
+      toConversationEngine(activeEngine),
     );
-    const collapseReasoningRuns = activeEngine !== "codex" && activeEngine !== "gemini";
+    const collapseReasoningRuns = activeEngine !== "codex";
     return collapseConsecutiveReasoningRuns(
       deduped,
       collapseReasoningRuns,
@@ -2093,6 +1770,77 @@ export const Messages = memo(function Messages({
     presentationProfile,
     reasoningMetaById,
   ]);
+  const { timelineItems, collapsedMiddleStepCount } = useMemo(() => {
+    if (!collapseLiveMiddleStepsEnabled || visibleItems.length <= 2) {
+      return { timelineItems: visibleItems, collapsedMiddleStepCount: 0 };
+    }
+    if (!isThinking) {
+      const firstUserIndex = visibleItems.findIndex(
+        (item) => item.kind === "message" && item.role === "user",
+      );
+      if (firstUserIndex < 0) {
+        return { timelineItems: visibleItems, collapsedMiddleStepCount: 0 };
+      }
+      let lastMessageIndex = -1;
+      for (let index = visibleItems.length - 1; index >= 0; index -= 1) {
+        if (visibleItems[index]?.kind === "message") {
+          lastMessageIndex = index;
+          break;
+        }
+      }
+      if (lastMessageIndex <= firstUserIndex) {
+        return { timelineItems: visibleItems, collapsedMiddleStepCount: 0 };
+      }
+      const nextTimelineItems: ConversationItem[] = [];
+      let hiddenCount = 0;
+      for (let index = 0; index < visibleItems.length; index += 1) {
+      const item = visibleItems[index];
+      if (!item) {
+        continue;
+      }
+      if (index < firstUserIndex || index > lastMessageIndex || isMessageConversationItem(item)) {
+        nextTimelineItems.push(item);
+        continue;
+      }
+        hiddenCount += 1;
+      }
+      return hiddenCount > 0
+        ? { timelineItems: nextTimelineItems, collapsedMiddleStepCount: hiddenCount }
+        : { timelineItems: visibleItems, collapsedMiddleStepCount: 0 };
+    }
+    let lastUserIndex = -1;
+    for (let index = visibleItems.length - 1; index >= 0; index -= 1) {
+      const candidate = visibleItems[index];
+      if (isUserMessageConversationItem(candidate)) {
+        lastUserIndex = index;
+        break;
+      }
+    }
+    if (lastUserIndex < 0 || lastUserIndex >= visibleItems.length - 2) {
+      return { timelineItems: visibleItems, collapsedMiddleStepCount: 0 };
+    }
+    const lastIndex = visibleItems.length - 1;
+    const nextTimelineItems: ConversationItem[] = [];
+    let hiddenCount = 0;
+    for (let index = 0; index < visibleItems.length; index += 1) {
+      const item = visibleItems[index];
+      if (!item) {
+        continue;
+      }
+      if (index <= lastUserIndex || index === lastIndex) {
+        nextTimelineItems.push(item);
+        continue;
+      }
+      if (isMessageConversationItem(item)) {
+        nextTimelineItems.push(item);
+        continue;
+      }
+      hiddenCount += 1;
+    }
+    return hiddenCount > 0
+      ? { timelineItems: nextTimelineItems, collapsedMiddleStepCount: hiddenCount }
+      : { timelineItems: visibleItems, collapsedMiddleStepCount: 0 };
+  }, [collapseLiveMiddleStepsEnabled, isThinking, visibleItems]);
   useEffect(() => {
     if (activeEngine !== "claude") {
       return;
@@ -2124,16 +1872,16 @@ export const Messages = memo(function Messages({
     visibleItems,
   ]);
   const shouldCollapseHistoryItems =
-    !showAllHistoryItems && visibleItems.length > VISIBLE_MESSAGE_WINDOW;
+    !showAllHistoryItems && timelineItems.length > VISIBLE_MESSAGE_WINDOW;
   const collapsedHistoryItemCount = shouldCollapseHistoryItems
-    ? visibleItems.length - VISIBLE_MESSAGE_WINDOW
+    ? timelineItems.length - VISIBLE_MESSAGE_WINDOW
     : 0;
   const renderedItems = useMemo(
     () =>
       shouldCollapseHistoryItems
-        ? visibleItems.slice(collapsedHistoryItemCount)
-        : visibleItems,
-    [collapsedHistoryItemCount, shouldCollapseHistoryItems, visibleItems],
+        ? timelineItems.slice(collapsedHistoryItemCount)
+        : timelineItems,
+    [collapsedHistoryItemCount, shouldCollapseHistoryItems, timelineItems],
   );
   const messageAnchors = useMemo(() => {
     const messageItems = renderedItems.filter(
@@ -2188,12 +1936,14 @@ export const Messages = memo(function Messages({
     [computeActiveAnchor, hasAnchorRail, messageAnchors, threadId],
   );
   const updateAutoScroll = useCallback(() => {
-    if (!containerRef.current) {
+    const container = containerRef.current;
+    if (!container) {
       return;
     }
-    autoScrollRef.current = isNearBottom(containerRef.current);
+    const nearBottom = isNearBottom(container);
+    autoScrollRef.current = liveAutoFollowEnabled ? true : nearBottom;
     scheduleAnchorUpdate("scroll");
-  }, [isNearBottom, scheduleAnchorUpdate]);
+  }, [isNearBottom, liveAutoFollowEnabled, scheduleAnchorUpdate]);
 
   useEffect(() => {
     if (!isMessagesPerfDebugEnabled()) {
@@ -2312,8 +2062,12 @@ export const Messages = memo(function Messages({
     if (!bottomRef.current) {
       return undefined;
     }
+    if (!liveAutoFollowEnabled) {
+      return undefined;
+    }
     const container = containerRef.current;
     const shouldScroll =
+      liveAutoFollowEnabled ||
       autoScrollRef.current ||
       (container ? isNearBottom(container) : true);
     if (!shouldScroll) {
@@ -2332,12 +2086,106 @@ export const Messages = memo(function Messages({
         window.cancelAnimationFrame(raf);
       }
     };
-  }, [scrollKey, isThinking, isNearBottom]);
+  }, [scrollKey, isThinking, isNearBottom, liveAutoFollowEnabled]);
 
   const groupedEntries = useMemo(() => groupToolItems(renderedItems), [renderedItems]);
+  const assistantFinalBoundarySet = useMemo(() => {
+    const ids = new Set<string>();
+    let lastFinalAssistantIdInTurn: string | null = null;
+    renderedItems.forEach((entry) => {
+      if (entry.kind === "message" && entry.role === "user") {
+        if (lastFinalAssistantIdInTurn) {
+          ids.add(lastFinalAssistantIdInTurn);
+        }
+        lastFinalAssistantIdInTurn = null;
+        return;
+      }
+      if (
+        entry.kind === "message" &&
+        entry.role === "assistant" &&
+        entry.isFinal === true
+      ) {
+        lastFinalAssistantIdInTurn = entry.id;
+      }
+    });
+    if (lastFinalAssistantIdInTurn) {
+      ids.add(lastFinalAssistantIdInTurn);
+    }
+    return ids;
+  }, [renderedItems]);
+  const assistantFinalWithVisibleProcessSet = useMemo(() => {
+    const ids = new Set<string>();
+    let hasVisibleProcessItemsInTurn = false;
+    let lastFinalAssistantIdInTurn: string | null = null;
+    let lastFinalAssistantHasProcessInTurn = false;
+    const flushTurn = () => {
+      if (
+        lastFinalAssistantIdInTurn &&
+        lastFinalAssistantHasProcessInTurn &&
+        assistantFinalBoundarySet.has(lastFinalAssistantIdInTurn)
+      ) {
+        ids.add(lastFinalAssistantIdInTurn);
+      }
+      lastFinalAssistantIdInTurn = null;
+      lastFinalAssistantHasProcessInTurn = false;
+    };
+    renderedItems.forEach((entry) => {
+      if (entry.kind === "message" && entry.role === "user") {
+        flushTurn();
+        hasVisibleProcessItemsInTurn = false;
+        return;
+      }
+      if (entry.kind === "reasoning" || entry.kind === "tool") {
+        hasVisibleProcessItemsInTurn = true;
+        return;
+      }
+      if (
+        entry.kind === "message" &&
+        entry.role === "assistant" &&
+        entry.isFinal === true
+      ) {
+        lastFinalAssistantIdInTurn = entry.id;
+        lastFinalAssistantHasProcessInTurn = hasVisibleProcessItemsInTurn;
+      }
+    });
+    flushTurn();
+    return ids;
+  }, [assistantFinalBoundarySet, renderedItems]);
+  const assistantLiveTurnFinalBoundarySuppressedSet = useMemo(() => {
+    const ids = new Set<string>();
+    if (!isThinking) {
+      return ids;
+    }
+    let lastUserIndex = -1;
+    for (let index = renderedItems.length - 1; index >= 0; index -= 1) {
+      const entry = renderedItems[index];
+      if (entry?.kind === "message" && entry.role === "user") {
+        lastUserIndex = index;
+        break;
+      }
+    }
+    if (lastUserIndex < 0) {
+      return ids;
+    }
+    for (let index = lastUserIndex + 1; index < renderedItems.length; index += 1) {
+      const entry = renderedItems[index];
+      if (
+        entry?.kind === "message" &&
+        entry.role === "assistant" &&
+        entry.isFinal === true &&
+        assistantFinalBoundarySet.has(entry.id)
+      ) {
+        ids.add(entry.id);
+      }
+    }
+    return ids;
+  }, [assistantFinalBoundarySet, isThinking, renderedItems]);
 
+  const shouldRenderUserInputNode =
+    (activeEngine === "codex" || activeEngine === "claude") &&
+    Boolean(legacyOnUserInputSubmit);
   const userInputNode =
-    activeEngine === "codex" && legacyOnUserInputSubmit
+    shouldRenderUserInputNode && legacyOnUserInputSubmit
       ? (
         <RequestUserInputMessage
           requests={userInputRequests}
@@ -2352,6 +2200,21 @@ export const Messages = memo(function Messages({
     if (item.kind === "message") {
       const itemRenderKey = `message:${item.id}`;
       const isCopied = copiedMessageId === item.id;
+      const shouldRenderFinalBoundary =
+        item.role === "assistant" &&
+        item.isFinal === true &&
+        assistantFinalBoundarySet.has(item.id) &&
+        !assistantLiveTurnFinalBoundarySuppressedSet.has(item.id);
+      const shouldRenderReasoningBoundary =
+        shouldRenderFinalBoundary && assistantFinalWithVisibleProcessSet.has(item.id);
+      const finalMetaParts: string[] = [];
+      if (typeof item.finalCompletedAt === "number" && item.finalCompletedAt > 0) {
+        finalMetaParts.push(formatCompletedTimeMs(item.finalCompletedAt));
+      }
+      if (typeof item.finalDurationMs === "number" && item.finalDurationMs >= 0) {
+        finalMetaParts.push(`总耗时 ${formatDurationMs(item.finalDurationMs)}`);
+      }
+      const finalMetaText = finalMetaParts.join(" · ");
       const bindMessageNode = (node: HTMLDivElement | null) => {
         if (item.role === "user" && node) {
           messageNodeByIdRef.current.set(item.id, node);
@@ -2360,38 +2223,65 @@ export const Messages = memo(function Messages({
         messageNodeByIdRef.current.delete(item.id);
       };
       return (
-        <div key={itemRenderKey} ref={bindMessageNode} data-message-anchor-id={item.id}>
-          <MessageRow
-            item={item}
-            isStreaming={
-              activeEngine === "claude" &&
-              isThinking &&
-              item.role === "assistant" &&
-              item.id === latestAssistantMessageId
-            }
-            activeEngine={activeEngine}
-            activeCollaborationModeId={activeCollaborationModeId}
-            enableCollaborationBadge={activeEngine === "codex"}
-            presentationProfile={presentationProfile}
-            isCopied={isCopied}
-            onCopy={handleCopyMessage}
-            codeBlockCopyUseModifier={codeBlockCopyUseModifier}
-            onOpenFileLink={openFileLink}
-            onOpenFileLinkMenu={showFileLinkMenu}
-          />
-        </div>
+        <Fragment key={itemRenderKey}>
+          {shouldRenderReasoningBoundary && (
+            <div className="messages-turn-boundary messages-reasoning-boundary" role="separator">
+              <span className="messages-turn-boundary-label">
+                <span className="messages-turn-boundary-label-content">
+                  <Bell className="messages-turn-boundary-icon" size={13} aria-hidden />
+                  <span>推理过程</span>
+                </span>
+              </span>
+            </div>
+          )}
+          <div ref={bindMessageNode} data-message-anchor-id={item.id}>
+            <MessageRow
+              item={item}
+              workspaceId={workspaceId}
+              isStreaming={
+                activeEngine === "claude" &&
+                isThinking &&
+                item.role === "assistant" &&
+                item.id === latestAssistantMessageId
+              }
+              activeEngine={activeEngine}
+              activeCollaborationModeId={activeCollaborationModeId}
+              enableCollaborationBadge={activeEngine === "codex"}
+              presentationProfile={presentationProfile}
+              isCopied={isCopied}
+              onCopy={handleCopyMessage}
+              codeBlockCopyUseModifier={codeBlockCopyUseModifier}
+              onOpenFileLink={openFileLink}
+              onOpenFileLinkMenu={showFileLinkMenu}
+            />
+          </div>
+          {shouldRenderFinalBoundary && (
+            <div className="messages-turn-boundary messages-final-boundary" role="separator">
+              <span className="messages-turn-boundary-label">
+                <span className="messages-turn-boundary-label-content">
+                  <Flag className="messages-turn-boundary-icon" size={13} aria-hidden />
+                  <span>最终消息</span>
+                </span>
+              </span>
+              {finalMetaText && (
+                <span className="messages-turn-boundary-meta">{finalMetaText}</span>
+              )}
+            </div>
+          )}
+        </Fragment>
       );
     }
     if (item.kind === "reasoning") {
       const itemRenderKey = `reasoning:${item.id}`;
       const isExpanded = expandedItems.has(item.id);
-      const parsed = parseReasoning(item);
+      const parsed = reasoningMetaById.get(item.id) ?? parseReasoning(item);
       const isLiveReasoning =
         isThinking && latestReasoningId === item.id;
       return (
         <ReasoningRow
           key={itemRenderKey}
           item={item}
+          workspaceId={workspaceId}
           parsed={parsed}
           isExpanded={isExpanded}
           isLive={isLiveReasoning}
@@ -2407,6 +2297,7 @@ export const Messages = memo(function Messages({
         <ReviewRow
           key={`review:${item.id}`}
           item={item}
+          workspaceId={workspaceId}
           onOpenFileLink={openFileLink}
           onOpenFileLinkMenu={showFileLinkMenu}
         />
@@ -2421,10 +2312,13 @@ export const Messages = memo(function Messages({
         <ToolBlockRenderer
           key={`tool:${item.id}`}
           item={item}
+          workspaceId={workspaceId}
           isExpanded={isExpanded}
           onToggle={toggleExpanded}
           onRequestAutoScroll={requestAutoScroll}
           activeCollaborationModeId={activeCollaborationModeId}
+          activeEngine={activeEngine}
+          hasPendingUserInputRequest={activeUserInputRequestId !== null}
           onOpenDiffPath={onOpenDiffPath}
         />
       );
@@ -2445,28 +2339,32 @@ export const Messages = memo(function Messages({
 
   const renderEntry = (entry: GroupedEntry, _index: number) => {
     if (entry.kind === "readGroup") {
-      return <ReadToolGroupBlock key={`rg-${entry.items[0].id}`} items={entry.items} />;
+      const firstItem = entry.items[0];
+      return <ReadToolGroupBlock key={`rg-${firstItem?.id ?? "read-group"}`} items={entry.items} />;
     }
     if (entry.kind === "editGroup") {
+      const firstItem = entry.items[0];
       return (
         <EditToolGroupBlock
-          key={`eg-${entry.items[0].id}`}
+          key={`eg-${firstItem?.id ?? "edit-group"}`}
           items={entry.items}
           onOpenDiffPath={onOpenDiffPath}
         />
       );
     }
     if (entry.kind === "bashGroup") {
+      const firstItem = entry.items[0];
       return (
         <BashToolGroupBlock
-          key={`bg-${entry.items[0].id}`}
+          key={`bg-${firstItem?.id ?? "bash-group"}`}
           items={entry.items}
           onRequestAutoScroll={requestAutoScroll}
         />
       );
     }
     if (entry.kind === "searchGroup") {
-      return <SearchToolGroupBlock key={`sg-${entry.items[0].id}`} items={entry.items} />;
+      const firstItem = entry.items[0];
+      return <SearchToolGroupBlock key={`sg-${firstItem?.id ?? "search-group"}`} items={entry.items} />;
     }
     return renderSingleItem(entry.item);
   };
@@ -2541,6 +2439,7 @@ export const Messages = memo(function Messages({
             <ReasoningRow
               key={`claude-live-${item.id}`}
               item={item}
+              workspaceId={workspaceId}
               parsed={parsed}
               isExpanded={isThinking && latestReasoningId === item.id ? true : expandedItems.has(item.id)}
               isLive={isThinking && latestReasoningId === item.id}
@@ -2550,6 +2449,11 @@ export const Messages = memo(function Messages({
             />
           ))}
           {userInputNode}
+          {isThinking && collapseLiveMiddleStepsEnabled && collapsedMiddleStepCount > 0 && (
+            <div className="messages-live-middle-collapsed-indicator" role="status">
+              {t("messages.middleStepsCollapsedHint", { count: collapsedMiddleStepCount })}
+            </div>
+          )}
           <WorkingIndicator
             isThinking={isThinking}
             proxyEnabled={proxyEnabled}

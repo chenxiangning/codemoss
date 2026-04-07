@@ -24,6 +24,14 @@ export type GroupedEntry =
 function mergeExploreItems(items: ExploreItem[]): ExploreItem {
   const first = items[0];
   const last = items[items.length - 1];
+  if (!first) {
+    return {
+      id: "explore-group-empty",
+      kind: "explore",
+      status: "explored",
+      entries: [],
+    };
+  }
   return {
     id: first.id,
     kind: 'explore',
@@ -62,6 +70,14 @@ export function shouldHideToolItemForRender(item: ToolItem): boolean {
   return toolName === 'todowrite' || toolName === 'todo_write';
 }
 
+function shouldUngroupSearchTools(item: ToolItem): boolean {
+  if (item.toolType !== 'mcpToolCall') {
+    return false;
+  }
+  const toolName = extractToolName(item.title).toLowerCase();
+  return toolName === 'search_query';
+}
+
 /**
  * 对 ConversationItem[] 进行分组，连续 2+ 个同类工具合并为 group entry。
  * 保留 explore 合并逻辑。
@@ -76,7 +92,10 @@ export function groupToolItems(items: ConversationItem[]): GroupedEntry[] {
   const flushExplores = () => {
     if (exploreBuffer.length === 0) return;
     if (exploreBuffer.length === 1) {
-      entries.push({ kind: 'item', item: exploreBuffer[0] });
+      const firstExplore = exploreBuffer[0];
+      if (firstExplore) {
+        entries.push({ kind: 'item', item: firstExplore });
+      }
     } else {
       entries.push({ kind: 'item', item: mergeExploreItems(exploreBuffer) });
     }
@@ -85,7 +104,14 @@ export function groupToolItems(items: ConversationItem[]): GroupedEntry[] {
 
   const flushTools = () => {
     if (toolBuffer.length === 0) return;
-    if (toolBuffer.length >= 2 && isGroupableCategory(currentCategory)) {
+    const hasUngroupedSearchTool =
+      currentCategory === 'search' && toolBuffer.some(shouldUngroupSearchTools);
+    // Keep only codex mcp search_query tools line-by-line so each search record can expand.
+    if (
+      toolBuffer.length >= 2 &&
+      isGroupableCategory(currentCategory) &&
+      !hasUngroupedSearchTool
+    ) {
       entries.push({
         kind: CATEGORY_TO_GROUP_KIND[currentCategory],
         items: toolBuffer,

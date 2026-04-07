@@ -91,6 +91,7 @@ type ComposerProps = {
   selectedAgent?: ChatInputSelectedAgent | null;
   onAgentSelect?: (agent: ChatInputSelectedAgent | null) => void;
   onOpenAgentSettings?: () => void;
+  onOpenPromptSettings?: () => void;
   onOpenModelSettings?: (providerId?: string) => void;
   opencodeVariantOptions?: string[];
   selectedOpenCodeVariant?: string | null;
@@ -214,6 +215,38 @@ const MANUAL_MEMORY_USER_INPUT_REGEX =
 const MANUAL_MEMORY_ASSISTANT_SUMMARY_REGEX =
   /(?:^|\n)\s*助手输出摘要[:：]\s*([\s\S]*?)(?=\n+\s*(?:助手输出|用户输入)[:：]|$)/;
 const INLINE_FILE_REFERENCE_TOKEN_REGEX = /(📁|📄)\s+([^\n`📁📄]+?)\s+`([^`\n]+)`/gu;
+
+function resolveSelectedNamedItems<T extends { name: string }>(
+  selectedNames: string[],
+  items: T[],
+): T[] {
+  if (selectedNames.length === 0 || items.length === 0) {
+    return [];
+  }
+  const firstByName = new Map<string, T>();
+  for (const item of items) {
+    const normalizedName = item.name.trim();
+    if (!normalizedName || firstByName.has(normalizedName)) {
+      continue;
+    }
+    firstByName.set(normalizedName, item);
+  }
+  const resolved: T[] = [];
+  const seen = new Set<string>();
+  for (const selectedName of selectedNames) {
+    const normalizedName = selectedName.trim();
+    if (!normalizedName || seen.has(normalizedName)) {
+      continue;
+    }
+    const resolvedItem = firstByName.get(normalizedName);
+    if (!resolvedItem) {
+      continue;
+    }
+    seen.add(normalizedName);
+    resolved.push(resolvedItem);
+  }
+  return resolved;
+}
 
 function clampUsagePercent(percent: number): number {
   if (!Number.isFinite(percent)) {
@@ -432,6 +465,7 @@ export const Composer = memo(function Composer({
   selectedAgent = null,
   onAgentSelect,
   onOpenAgentSettings,
+  onOpenPromptSettings,
   onOpenModelSettings,
   opencodeVariantOptions: _opencodeVariantOptions = [],
   selectedOpenCodeVariant: _selectedOpenCodeVariant = null,
@@ -519,7 +553,10 @@ export const Composer = memo(function Composer({
   const isCodexEngine = selectedEngine === "codex";
   const isReviewQuickActionEngine =
     selectedEngine === "codex" || selectedEngine === "claude";
-  const showStatusPanel = selectedEngine === "claude" || selectedEngine === "codex";
+  const showStatusPanel =
+    selectedEngine === "claude" ||
+    selectedEngine === "codex" ||
+    selectedEngine === "gemini";
   const { todoTotal, subagentTotal, fileChanges, commandTotal } = useStatusPanelData(
     items,
     { isCodexEngine },
@@ -584,9 +621,13 @@ export const Composer = memo(function Composer({
       dismissedActiveFileReference !== activeFileReferenceSignature,
   );
 
-  const selectedSkills = skills.filter((skill) => selectedSkillNames.includes(skill.name));
-  const selectedCommons = commands.filter((item) =>
-    selectedCommonsNames.includes(item.name),
+  const selectedSkills = useMemo(
+    () => resolveSelectedNamedItems(selectedSkillNames, skills),
+    [selectedSkillNames, skills],
+  );
+  const selectedCommons = useMemo(
+    () => resolveSelectedNamedItems(selectedCommonsNames, commands),
+    [commands, selectedCommonsNames],
   );
   const selectedOpenCodeDirectCommand = useMemo(() => {
     if (selectedEngine !== "opencode") {
@@ -1283,6 +1324,7 @@ export const Composer = memo(function Composer({
           files={files}
           directories={directories}
           commands={commands}
+          prompts={prompts}
           workspaceId={activeWorkspaceId}
           onManualMemorySelect={handleSelectManualMemory}
           onSelectSkill={handleSelectSkill}
@@ -1301,6 +1343,7 @@ export const Composer = memo(function Composer({
           onRemoveContextChip={handleRemoveContextChip}
           onAgentSelect={handleAgentSelect}
           onOpenAgentSettings={onOpenAgentSettings}
+          onOpenPromptSettings={onOpenPromptSettings}
           onOpenModelSettings={onOpenModelSettings}
           permissionMode={accessModeToPermissionMode(accessMode)}
           onModeSelect={handleModeSelect}

@@ -509,6 +509,9 @@ export function OpenCodeControlPanel({
     }
     candidates.sort((a, b) => b.rank - a.rank || b.index - a.index);
     const winner = candidates[0];
+    if (!winner) {
+      return null;
+    }
     onSelectModel(winner.id);
     return winner.fullLabel;
   };

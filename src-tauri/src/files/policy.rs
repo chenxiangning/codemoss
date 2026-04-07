@@ -13,6 +13,7 @@ pub(crate) enum FileKind {
     Agents,
     Claude,
     Config,
+    Auth,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -27,6 +28,7 @@ pub(crate) struct FilePolicy {
 const AGENTS_FILENAME: &str = "AGENTS.md";
 const CLAUDE_FILENAME: &str = "CLAUDE.md";
 const CONFIG_FILENAME: &str = "config.toml";
+const AUTH_FILENAME: &str = "auth.json";
 
 pub(crate) fn policy_for(scope: FileScope, kind: FileKind) -> Result<FilePolicy, String> {
     match (scope, kind) {
@@ -65,8 +67,18 @@ pub(crate) fn policy_for(scope: FileScope, kind: FileKind) -> Result<FilePolicy,
             create_root: true,
             allow_external_symlink_target: false,
         }),
+        (FileScope::Global, FileKind::Auth) => Ok(FilePolicy {
+            filename: AUTH_FILENAME,
+            root_context: "CODEX_HOME",
+            root_may_be_missing: true,
+            create_root: false,
+            allow_external_symlink_target: false,
+        }),
         (FileScope::Workspace, FileKind::Config) => {
             Err("config.toml is only supported for global scope".to_string())
+        }
+        (FileScope::Workspace, FileKind::Auth) => {
+            Err("auth.json is only supported for global scope".to_string())
         }
     }
 }
@@ -109,5 +121,15 @@ mod tests {
     fn workspace_config_is_rejected() {
         let result = policy_for(FileScope::Workspace, FileKind::Config);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn global_auth_policy_is_readable() {
+        let policy = policy_for(FileScope::Global, FileKind::Auth).expect("policy");
+        assert_eq!(policy.filename, "auth.json");
+        assert_eq!(policy.root_context, "CODEX_HOME");
+        assert!(policy.root_may_be_missing);
+        assert!(!policy.create_root);
+        assert!(!policy.allow_external_symlink_target);
     }
 }

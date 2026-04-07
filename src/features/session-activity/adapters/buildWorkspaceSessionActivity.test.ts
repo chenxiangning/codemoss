@@ -371,6 +371,58 @@ describe("buildWorkspaceSessionActivity", () => {
     expect(commandEvents).toHaveLength(1);
   });
 
+  it("merges gemini reasoning nodes into the first timeline node per turn", () => {
+    const threadId = "gemini:session-merge-first-node";
+    const threads: ThreadSummary[] = [{ id: threadId, name: "Gemini", updatedAt: 1000 }];
+    const itemsByThread = {
+      [threadId]: [
+        {
+          id: "reason-gemini-first-node-1",
+          kind: "reasoning" as const,
+          summary: "先看项目结构",
+          content: "先读取 README 和 docs 目录",
+        } satisfies ConversationItem,
+        toolItem("cmd-gemini-first-node-1", {
+          toolType: "commandExecution",
+          title: "Command: ls -la",
+          status: "completed",
+          output: "total 8",
+        }),
+        {
+          id: "reason-gemini-first-node-2",
+          kind: "reasoning" as const,
+          summary: "再看配置",
+          content: "再检查 package.json 和脚本入口",
+        } satisfies ConversationItem,
+        {
+          id: "reason-gemini-first-node-3",
+          kind: "reasoning" as const,
+          summary: "最后看源码",
+          content: "最后阅读关键 TypeScript 文件",
+        } satisfies ConversationItem,
+      ],
+    };
+
+    const result = buildWorkspaceSessionActivity({
+      activeThreadId: threadId,
+      threads,
+      itemsByThread,
+      threadParentById: {},
+      threadStatusById: { [threadId]: { isProcessing: true } },
+    });
+
+    const reasoningEvents = result.timeline.filter((event) => event.kind === "reasoning");
+    expect(reasoningEvents).toHaveLength(1);
+    const mergedReasoning = reasoningEvents[0];
+    expect(mergedReasoning?.eventId).toBe("reasoning:reason-gemini-first-node-1");
+    expect(mergedReasoning?.reasoningPreview).toContain("先读取 README 和 docs 目录");
+    expect(mergedReasoning?.reasoningPreview).toContain("再检查 package.json 和脚本入口");
+    expect(mergedReasoning?.reasoningPreview).toContain("最后阅读关键 TypeScript 文件");
+
+    const commandEvents = result.timeline.filter((event) => event.kind === "command");
+    expect(commandEvents).toHaveLength(1);
+  });
+
   it("keeps non-claude multiline reasoning summary as a single activity event", () => {
     const threads: ThreadSummary[] = [{ id: "root", name: "Root", updatedAt: 1000 }];
     const itemsByThread = {
@@ -611,6 +663,109 @@ describe("buildWorkspaceSessionActivity", () => {
     expect(result.emptyState).toBe("running");
   });
 
+  it("extracts search_query payload and keeps inspection output preview for task expansion", () => {
+    const threads: ThreadSummary[] = [{ id: "root", name: "Root", updatedAt: 1000 }];
+    const itemsByThread = {
+      root: [
+        toolItem("tool-search-query", {
+          toolType: "mcpToolCall",
+          title: "Tool: codex / search_query",
+          detail: JSON.stringify({
+            search_query: [{ q: "site:developers.openai.com Codex AGENTS.md" }],
+          }),
+          status: "completed",
+          output: "hit 1: https://developers.openai.com/codex/guides/agents-md",
+        }),
+      ],
+    };
+
+    const result = buildWorkspaceSessionActivity({
+      activeThreadId: "root",
+      threads,
+      itemsByThread,
+      threadParentById: {},
+      threadStatusById: { root: { isProcessing: false } },
+    });
+
+    expect(result.timeline).toHaveLength(1);
+    expect(result.timeline[0]?.kind).toBe("task");
+    expect(result.timeline[0]?.summary).toBe("Search · site:developers.openai.com Codex AGENTS.md");
+    expect(result.timeline[0]?.explorePreview).toContain("agents-md");
+  });
+
+  it("prioritizes file path over q/query when building read inspection summary", () => {
+    const threads: ThreadSummary[] = [{ id: "root", name: "Root", updatedAt: 1000 }];
+    const itemsByThread = {
+      root: [
+        toolItem("tool-read-path-priority", {
+          toolType: "mcpToolCall",
+          title: "Tool: codex / read",
+          detail: JSON.stringify({
+            q: "this should not override file path",
+            path: "src/features/messages/components/toolBlocks/SearchToolBlock.tsx",
+          }),
+          status: "completed",
+          output: "content preview",
+        }),
+      ],
+    };
+
+    const result = buildWorkspaceSessionActivity({
+      activeThreadId: "root",
+      threads,
+      itemsByThread,
+      threadParentById: {},
+      threadStatusById: { root: { isProcessing: false } },
+    });
+
+    expect(result.timeline).toHaveLength(1);
+    expect(result.timeline[0]?.kind).toBe("task");
+    expect(result.timeline[0]?.summary).toBe("Read · SearchToolBlock.tsx");
+    expect(result.timeline[0]?.jumpTarget).toEqual({
+      type: "file",
+      path: "src/features/messages/components/toolBlocks/SearchToolBlock.tsx",
+    });
+  });
+
+  it("prioritizes replace-like mcp tools as file change events over generic tool tasks", () => {
+    const threads: ThreadSummary[] = [{ id: "gemini-live-1", name: "Gemini", updatedAt: 1000 }];
+    const itemsByThread = {
+      "gemini-live-1": [
+        toolItem("tool-replace", {
+          toolType: "mcpToolCall",
+          title: "Tool: Gemini / replace-1774440197988-0 README.md",
+          detail: JSON.stringify({
+            instruction: "update README example",
+            old_string: "old line",
+            new_string: "new line",
+          }),
+          status: "started",
+        }),
+      ],
+    };
+
+    const result = buildWorkspaceSessionActivity({
+      activeThreadId: "gemini-live-1",
+      threads,
+      itemsByThread,
+      threadParentById: {},
+      threadStatusById: { "gemini-live-1": { isProcessing: true } },
+    });
+
+    expect(result.timeline).toHaveLength(1);
+    expect(result.timeline[0]?.kind).toBe("fileChange");
+    expect(result.timeline[0]?.summary).toBe("File change · README.md");
+    expect(result.timeline[0]?.jumpTarget).toEqual({
+      type: "file",
+      path: "README.md",
+      line: undefined,
+      markers: {
+        added: [],
+        modified: [],
+      },
+    });
+  });
+
   it("extracts read target from snake_case nested arguments", () => {
     const threads: ThreadSummary[] = [{ id: "claude-pending-1", name: "Claude", updatedAt: 1000 }];
     const itemsByThread = {
@@ -737,6 +892,50 @@ describe("buildWorkspaceSessionActivity", () => {
       type: "file",
       path: "C:\\workspace\\repo\\retrieve_memory.py",
     });
+  });
+
+  it("keeps mixed external-spec and external-absolute read jump targets in one timeline", () => {
+    const threads: ThreadSummary[] = [{ id: "root", name: "Root", updatedAt: 1000 }];
+    const itemsByThread = {
+      root: [
+        toolItem("tool-read-spec", {
+          toolType: "mcpToolCall",
+          title: "Tool: read",
+          detail: JSON.stringify({
+            path: "openspec/project.md",
+            cwd: "/Users/test/code/codemoss-openspec",
+          }),
+          status: "started",
+        }),
+        toolItem("tool-read-skill", {
+          toolType: "mcpToolCall",
+          title: "Tool: read",
+          detail: JSON.stringify({
+            path: "SKILL.md",
+            cwd: "/Users/test/.codex/skills/openspec-apply-change",
+          }),
+          status: "started",
+        }),
+      ],
+    };
+
+    const result = buildWorkspaceSessionActivity({
+      activeThreadId: "root",
+      threads,
+      itemsByThread,
+      threadParentById: {},
+      threadStatusById: { root: { isProcessing: true } },
+    });
+
+    const fileEvents = result.timeline.filter((event) => event.jumpTarget?.type === "file");
+    const filePaths = fileEvents
+      .map((event) =>
+        event.jumpTarget?.type === "file" ? event.jumpTarget.path : "",
+      )
+      .filter(Boolean);
+
+    expect(filePaths).toContain("/Users/test/code/codemoss-openspec/openspec/project.md");
+    expect(filePaths).toContain("/Users/test/.codex/skills/openspec-apply-change/SKILL.md");
   });
 
   it("treats namespaced exec_command tool as command event", () => {
@@ -1027,7 +1226,7 @@ describe("buildWorkspaceSessionActivity", () => {
 
     expect(result.timeline).toHaveLength(3);
     const occurredAt = result.timeline.map((event) => event.occurredAt);
-    expect(occurredAt[0] - occurredAt[1]).toBeGreaterThanOrEqual(1000);
-    expect(occurredAt[1] - occurredAt[2]).toBeGreaterThanOrEqual(1000);
+    expect((occurredAt[0] ?? 0) - (occurredAt[1] ?? 0)).toBeGreaterThanOrEqual(1000);
+    expect((occurredAt[1] ?? 0) - (occurredAt[2] ?? 0)).toBeGreaterThanOrEqual(1000);
   });
 });

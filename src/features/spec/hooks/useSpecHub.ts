@@ -766,6 +766,11 @@ export function useSpecHub({ workspaceId, files, directories }: UseSpecHubOption
   );
 
   const refresh = useCallback(async (options: RefreshOptions = {}) => {
+    const canUpdateState = () =>
+      mountedRef.current && typeof window !== "undefined";
+    if (!canUpdateState()) {
+      return;
+    }
     if (!workspaceId) {
       setSnapshot(EMPTY_SNAPSHOT);
       setSelectedChangeId(null);
@@ -812,7 +817,7 @@ export function useSpecHub({ workspaceId, files, directories }: UseSpecHubOption
         mode: environmentMode,
         customSpecRoot: effectiveCustomSpecRoot,
       });
-      if (sequence !== refreshSequenceRef.current || !mountedRef.current) {
+      if (sequence !== refreshSequenceRef.current || !canUpdateState()) {
         return;
       }
       setSnapshot(nextSnapshot);
@@ -829,11 +834,11 @@ export function useSpecHub({ workspaceId, files, directories }: UseSpecHubOption
       }
       const change = nextSnapshot.changes.find((entry) => entry.id === nextSelected) ?? null;
       await loadArtifactsForChange(change);
-      if (sequence !== refreshSequenceRef.current || !mountedRef.current) {
+      if (sequence !== refreshSequenceRef.current || !canUpdateState()) {
         return;
       }
     } finally {
-      if (!silent && sequence === refreshSequenceRef.current && mountedRef.current) {
+      if (!silent && sequence === refreshSequenceRef.current && canUpdateState()) {
         setIsLoading(false);
       }
     }
@@ -1250,6 +1255,9 @@ export function useSpecHub({ workspaceId, files, directories }: UseSpecHubOption
           } catch (writebackError) {
             for (let index = toggledTaskIndices.length - 1; index >= 0; index -= 1) {
               const taskIndex = toggledTaskIndices[index];
+              if (taskIndex === undefined) {
+                continue;
+              }
               try {
                 const reverted = await updateSpecTaskChecklist({
                   workspaceId,

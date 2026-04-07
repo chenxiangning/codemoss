@@ -65,10 +65,35 @@
 }
 
 .stop-button {
-  background: var(--error-color, #f44336);
+  background-color: var(--error-color, #f44336);
+  background-image: url('../../../../../assets/icon.png');
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  border-radius: 50%;
+  animation: stop-button-spin 1.1s linear infinite;
+  will-change: transform;
 }
 
 .stop-button:hover {
-  background: #d32f2f;
+  opacity: 0.9;
 }
 
+.stop-button .codicon {
+  opacity: 0;
+}
+
+@keyframes stop-button-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stop-button {
+    animation: none;
+  }
+}

@@ -4,8 +4,10 @@ import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import type {
   AccessMode,
+  ConversationItem,
   MemoryContextInjectionMode,
   RateLimitSnapshot,
+  ThreadTokenUsage,
   CustomPromptOption,
   DebugEntry,
   EngineType,
@@ -16,6 +18,7 @@ import {
   sendUserMessage as sendUserMessageService,
   startReview as startReviewService,
   interruptTurn as interruptTurnService,
+  engineInterruptTurn as engineInterruptTurnService,
   listMcpServerStatus as listMcpServerStatusService,
   engineSendMessage as engineSendMessageService,
   engineInterrupt as engineInterruptService,
@@ -26,8 +29,7 @@ import {
   getOpenCodeMcpStatus as getOpenCodeMcpStatusService,
   getOpenCodeStats as getOpenCodeStatsService,
   importOpenCodeSession as importOpenCodeSessionService,
-  listExternalSpecTree as listExternalSpecTreeService,
-  getWorkspaceFiles as getWorkspaceFilesService,
+  listGeminiSessions as listGeminiSessionsService,
   shareOpenCodeSession as shareOpenCodeSessionService,
   projectMemoryCaptureAuto as projectMemoryCaptureAutoService,
 } from "../../../services/tauri";
@@ -37,7 +39,7 @@ import {
   type InjectionResult,
 } from "../../project-memory/utils/memoryContextInjection";
 import { MEMORY_CONTEXT_SUMMARY_PREFIX } from "../../project-memory/utils/memoryMarkers";
-import { getClientStoreSync, writeClientStoreValue } from "../../../services/clientStorage";
+import { writeClientStoreValue } from "../../../services/clientStorage";
 import { expandCustomPromptText } from "../../../utils/customPrompts";
 import {
   asString,
@@ -53,10 +55,31 @@ import type { ThreadAction, ThreadState } from "./useThreadsReducer";
 import { useReviewPrompt } from "./useReviewPrompt";
 import { formatRelativeTime } from "../../../utils/time";
 import { pushErrorToast } from "../../../services/toasts";
-import { normalizeSpecRootInput } from "../../spec/pathUtils";
+import { resolveAgentIconForAgent } from "../../../utils/agentIcons";
+import { isValidModelId } from "../../composer/types/provider";
+import {
+  clearPendingClaudeMcpOutputNotice,
+  getClaudeMcpRuntimeSnapshot,
+  setPendingClaudeMcpOutputNotice,
+  rewriteClaudePlaywrightAlias,
+} from "../utils/claudeMcpRuntimeSnapshot";
+import {
+  buildCodexTextWithSpecRootPriority,
+  buildDefaultSpecRootPath,
+  isAbsoluteHostPath,
+  normalizeExtendedWindowsPath,
+  probeSessionSpecLink,
+  probeSessionSpecLinkWithTimeout,
+  resolveWorkspaceSpecRoot,
+  shouldProbeSessionSpecForEngine,
+  toFileUriFromAbsolutePath,
+  type SessionSpecLinkContext,
+  type SessionSpecLinkSource,
+} from "./threadMessagingSpecRoot";
 
 type SendMessageOptions = {
   skipPromptExpansion?: boolean;
+  skipOptimisticUserBubble?: boolean;
   model?: string | null;
   effort?: string | null;
   collaborationMode?: Record<string, unknown> | null;
@@ -67,23 +90,14 @@ type SendMessageOptions = {
     id: string;
     name: string;
     prompt?: string | null;
+    icon?: string | null;
   } | null;
+  codexInvalidThreadRetryAttempted?: boolean;
 };
 
-const SPEC_ROOT_PRIORITY_MARKER = "[Spec Root Priority]";
-const SPEC_ROOT_SESSION_MARKER = "[Session Spec Link]";
 const AGENT_PROMPT_HEADER = "## Agent Role and Instructions";
-
-type SessionSpecLinkSource = "custom" | "default";
-type SessionSpecProbeStatus = "visible" | "invalid" | "permissionDenied" | "malformed";
-
-type SessionSpecLinkContext = {
-  source: SessionSpecLinkSource;
-  rootPath: string;
-  status: SessionSpecProbeStatus;
-  reason: string | null;
-  checkedAt: number;
-};
+const AGENT_PROMPT_NAME_PREFIX = "Agent Name:";
+const AGENT_PROMPT_ICON_PREFIX = "Agent Icon:";
 
 function normalizeCollaborationModeId(
   value: unknown,
@@ -114,172 +128,74 @@ function resolveCollaborationModeIdFromPayload(
 }
 
 function normalizeAccessMode(
-  mode: AccessMode | "read-only" | "current" | "full-access" | undefined,
-): "read-only" | "current" | "full-access" | undefined {
+  mode:
+    | AccessMode
+    | "default"
+    | "read-only"
+    | "current"
+    | "full-access"
+    | undefined,
+  engine: EngineType,
+): "default" | "read-only" | "current" | "full-access" | undefined {
   if (mode === undefined) {
     return undefined;
   }
   if (mode === "default") {
-    return "current";
+    // Codex does not expose a dedicated "default" policy, so we keep legacy behavior there.
+    return engine === "codex" ? "current" : "default";
   }
   return mode;
 }
 
-function resolveWorkspaceSpecRoot(workspaceId: string): string | null {
-  const value = getClientStoreSync<string | null>("app", `specHub.specRoot.${workspaceId}`);
-  return normalizeSpecRootInput(value);
+function isUnknownEngineInterruptTurnMethodError(error: unknown): boolean {
+  const message = error instanceof Error
+    ? error.message
+    : typeof error === "string"
+      ? error
+      : (() => {
+          try {
+            return JSON.stringify(error);
+          } catch {
+            return String(error);
+          }
+        })();
+  return message.toLowerCase().includes("unknown method: engine_interrupt_turn");
 }
 
-function buildDefaultSpecRootPath(workspacePath: string): string {
-  const trimmed = workspacePath.trim();
-  if (!trimmed) {
-    return "openspec";
+function isLikelyForeignModelForGemini(modelId: string): boolean {
+  const normalized = modelId.trim().toLowerCase();
+  if (!normalized) {
+    return false;
   }
-  const normalized = trimmed.replace(/[\\/]+$/, "");
-  const useBackslash = normalized.includes("\\") && !normalized.includes("/");
-  return `${normalized}${useBackslash ? "\\" : "/"}openspec`;
-}
-
-function normalizeExtendedWindowsPath(path: string): string {
-  if (path.startsWith("\\\\?\\UNC\\")) {
-    return `\\\\${path.slice("\\\\?\\UNC\\".length)}`;
+  // Allow custom Gemini aliases like "[L]gemini-3-pro-preview" even if they
+  // are wrapped by proxy-specific prefixes.
+  if (normalized.includes("gemini")) {
+    return false;
   }
-  if (path.startsWith("\\\\?\\")) {
-    return path.slice("\\\\?\\".length);
-  }
-  if (path.startsWith("//?/UNC/")) {
-    return `//${path.slice("//?/UNC/".length)}`;
-  }
-  if (path.startsWith("//?/")) {
-    return path.slice("//?/".length);
-  }
-  return path;
-}
-
-function isAbsoluteHostPath(path: string): boolean {
-  const normalized = normalizeExtendedWindowsPath(path);
-  if (normalized.startsWith("/")) {
+  if (normalized.startsWith("claude-")) {
     return true;
   }
-  if (/^[a-zA-Z]:[\\/]/.test(normalized)) {
+  if (normalized.startsWith("gpt-") || normalized.includes("codex")) {
     return true;
   }
-  if (/^\\\\[^\\]+\\[^\\]+/.test(normalized)) {
-    return true;
-  }
-  if (/^\/\/[^/]+\/[^/]+/.test(normalized)) {
-    return true;
-  }
-  return false;
-}
-
-function toFileUriFromAbsolutePath(path: string): string {
-  const normalized = normalizeExtendedWindowsPath(path).replace(/\\/g, "/");
-  const encodedPath = encodeURI(normalized);
-  if (/^[a-zA-Z]:\//.test(normalized)) {
-    return `file:///${encodedPath}`;
-  }
-  if (normalized.startsWith("//")) {
-    return `file:${encodedPath}`;
-  }
-  return `file://${encodedPath}`;
-}
-
-function classifySpecProbeError(errorMessage: string): SessionSpecProbeStatus {
-  if (/(permission denied|operation not permitted|eacces|eprem)/i.test(errorMessage)) {
-    return "permissionDenied";
-  }
-  return "invalid";
-}
-
-function hasOpenSpecStructure(
-  directories: string[],
-  files: string[],
-): { ok: boolean; reason: string | null } {
-  const hasChangesDir = directories.includes("openspec/changes");
-  const hasSpecsDir = directories.includes("openspec/specs");
-  if (!hasChangesDir || !hasSpecsDir) {
-    return {
-      ok: false,
-      reason: "Missing required openspec/changes or openspec/specs directory.",
-    };
-  }
-  const hasChangeArtifact = files.some(
-    (entry) =>
-      entry.startsWith("openspec/changes/") &&
-      (entry.endsWith("/proposal.md") || entry.endsWith("/tasks.md") || entry.endsWith("/design.md")),
+  return (
+    normalized.startsWith("openai/")
+    || normalized.startsWith("anthropic/")
+    || normalized.startsWith("x-ai/")
+    || normalized.startsWith("openrouter/")
+    || normalized.startsWith("deepseek/")
+    || normalized.startsWith("qwen/")
+    || normalized.startsWith("meta/")
+    || normalized.startsWith("mistral/")
   );
-  if (!hasChangeArtifact) {
-    return {
-      ok: false,
-      reason: "Missing expected change artifacts under openspec/changes.",
-    };
-  }
-  return { ok: true, reason: null };
 }
 
-async function probeSessionSpecLink(
-  workspaceId: string,
-  workspacePath: string,
-  source: SessionSpecLinkSource,
-  rootPath: string,
-): Promise<SessionSpecLinkContext> {
-  try {
-    const snapshot =
-      source === "custom"
-        ? await listExternalSpecTreeService(workspaceId, rootPath)
-        : await getWorkspaceFilesService(workspaceId);
-    const structure = hasOpenSpecStructure(snapshot.directories, snapshot.files);
-    if (!structure.ok) {
-      return {
-        source,
-        rootPath,
-        status: "malformed",
-        reason: structure.reason,
-        checkedAt: Date.now(),
-      };
-    }
-    return {
-      source,
-      rootPath: source === "custom" ? rootPath : buildDefaultSpecRootPath(workspacePath),
-      status: "visible",
-      reason: null,
-      checkedAt: Date.now(),
-    };
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    return {
-      source,
-      rootPath,
-      status: classifySpecProbeError(message),
-      reason: message,
-      checkedAt: Date.now(),
-    };
+function isValidClaudeModelForPassthrough(modelId: string): boolean {
+  const normalized = modelId.trim();
+  if (!normalized) {
+    return false;
   }
-}
-
-function buildCodexTextWithSpecRootPriority(
-  text: string,
-  sessionSpecLink: SessionSpecLinkContext,
-): string {
-  const trimmedText = text.trim();
-  if (!trimmedText) {
-    return text;
-  }
-  if (trimmedText.includes(SPEC_ROOT_PRIORITY_MARKER) || trimmedText.includes(SPEC_ROOT_SESSION_MARKER)) {
-    return text;
-  }
-  const statusHint = `${SPEC_ROOT_SESSION_MARKER} source=${sessionSpecLink.source}; status=${sessionSpecLink.status}; root=${sessionSpecLink.rootPath}.`;
-  const policyHint =
-    sessionSpecLink.status === "visible"
-      ? `${SPEC_ROOT_PRIORITY_MARKER} Active external OpenSpec root: ${sessionSpecLink.rootPath}. When checking spec visibility or reading specs, verify and prioritize this root first, then fallback to workspace/openspec and sibling conventions. Do not conclude 'missing spec' before checking this external root.`
-      : `${SPEC_ROOT_PRIORITY_MARKER} Explicit session spec link is currently unusable (status=${sessionSpecLink.status}, root=${sessionSpecLink.rootPath}). Do not silently fallback to inferred paths for visibility verdicts. First report this link status and provide remediation (rebind or restore default), then continue after repair.`;
-  const reasonHint = sessionSpecLink.reason ? `Probe reason: ${sessionSpecLink.reason}` : "";
-  const systemHint = [statusHint, policyHint, reasonHint].filter(Boolean).join(" ");
-  if (/\[User Input\]\s*/.test(trimmedText)) {
-    return `[System] ${systemHint}\n${trimmedText}`;
-  }
-  return `[System] ${systemHint}\n[User Input] ${trimmedText}`;
+  return isValidModelId(normalized);
 }
 
 function buildReviewCommandText(target: ReviewTarget): string {
@@ -345,6 +261,108 @@ function mapNetworkErrorToUserMessage(
   };
 }
 
+function normalizeSessionIdCandidate(value: unknown): string | null {
+  if (typeof value === "string") {
+    const normalized = value.trim();
+    return normalized && normalized !== "pending" ? normalized : null;
+  }
+  if (typeof value === "number") {
+    const normalized = String(value).trim();
+    return normalized && normalized !== "pending" ? normalized : null;
+  }
+  return null;
+}
+
+function extractSessionIdFromEngineSendResponse(
+  response: Record<string, unknown>,
+): string | null {
+  const result =
+    response.result && typeof response.result === "object"
+      ? (response.result as Record<string, unknown>)
+      : null;
+  const thread =
+    result?.thread && typeof result.thread === "object"
+      ? (result.thread as Record<string, unknown>)
+      : null;
+  const candidates = [
+    response.sessionId,
+    response.session_id,
+    result?.sessionId,
+    result?.session_id,
+    thread?.sessionId,
+    thread?.session_id,
+  ];
+  for (const candidate of candidates) {
+    const normalized = normalizeSessionIdCandidate(candidate);
+    if (normalized) {
+      return normalized;
+    }
+  }
+  return null;
+}
+
+type GeminiSessionSummary = {
+  sessionId: string;
+  updatedAt: number;
+};
+
+function normalizeGeminiSessionSummary(value: unknown): GeminiSessionSummary | null {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+  const record = value as Record<string, unknown>;
+  const sessionId = normalizeSessionIdCandidate(record.sessionId ?? record.session_id);
+  if (!sessionId) {
+    return null;
+  }
+  const rawUpdatedAt = record.updatedAt ?? record.updated_at;
+  const updatedAt =
+    typeof rawUpdatedAt === "number" && Number.isFinite(rawUpdatedAt)
+      ? rawUpdatedAt
+      : typeof rawUpdatedAt === "string"
+        ? Number(rawUpdatedAt)
+        : 0;
+  return {
+    sessionId,
+    updatedAt: Number.isFinite(updatedAt) ? updatedAt : 0,
+  };
+}
+
+function pickLikelyGeminiSessionId(
+  payload: unknown,
+  minUpdatedAt: number,
+): string | null {
+  const nestedSessions =
+    payload && typeof payload === "object"
+      ? (payload as Record<string, unknown>).sessions
+      : null;
+  const entries = Array.isArray(payload)
+    ? payload
+    : Array.isArray(nestedSessions)
+      ? nestedSessions
+      : [];
+  const summaries = entries
+    .map(normalizeGeminiSessionSummary)
+    .filter((entry): entry is GeminiSessionSummary => entry !== null);
+  if (summaries.length === 0) {
+    return null;
+  }
+  const recents = summaries.filter((entry) => entry.updatedAt >= minUpdatedAt);
+  // Safety first: only bind when there is exactly one plausible candidate.
+  // This prevents cross-thread session hijack when multiple pending Gemini
+  // conversations update around the same time in the same workspace.
+  if (recents.length === 1) {
+    return recents[0]?.sessionId ?? null;
+  }
+  if (recents.length > 1) {
+    return null;
+  }
+  if (summaries.length === 1) {
+    return summaries[0]?.sessionId ?? null;
+  }
+  return null;
+}
+
 function resolveRecoverableCodexFirstPacketTimeout(
   engine: EngineType,
   rawMessage: string,
@@ -358,7 +376,7 @@ function resolveRecoverableCodexFirstPacketTimeout(
 type UseThreadMessagingOptions = {
   activeWorkspace: WorkspaceInfo | null;
   activeThreadId: string | null;
-  accessMode?: "read-only" | "current" | "full-access";
+  accessMode?: "default" | "read-only" | "current" | "full-access";
   model?: string | null;
   effort?: string | null;
   collaborationMode?: Record<string, unknown> | null;
@@ -368,6 +386,7 @@ type UseThreadMessagingOptions = {
   threadStatusById: ThreadState["threadStatusById"];
   itemsByThread: ThreadState["itemsByThread"];
   activeTurnIdByThread: ThreadState["activeTurnIdByThread"];
+  tokenUsageByThread: Record<string, ThreadTokenUsage>;
   rateLimitsByWorkspace: Record<string, RateLimitSnapshot | null>;
   pendingInterruptsRef: MutableRefObject<Set<string>>;
   interruptedThreadsRef: MutableRefObject<Set<string>>;
@@ -376,7 +395,7 @@ type UseThreadMessagingOptions = {
   getThreadEngine: (
     workspaceId: string,
     threadId: string,
-  ) => "claude" | "codex" | "opencode" | undefined;
+  ) => "claude" | "codex" | "gemini" | "opencode" | undefined;
   markProcessing: (threadId: string, isProcessing: boolean) => void;
   markReviewing: (threadId: string, isReviewing: boolean) => void;
   setActiveTurnId: (threadId: string, turnId: string | null) => void;
@@ -399,7 +418,7 @@ type UseThreadMessagingOptions = {
   updateThreadParent: (parentId: string, childIds: string[]) => void;
   startThreadForWorkspace: (
     workspaceId: string,
-    options?: { activate?: boolean; engine?: "claude" | "codex" | "opencode" },
+    options?: { activate?: boolean; engine?: "claude" | "codex" | "gemini" | "opencode" },
   ) => Promise<string | null>;
   resolveOpenCodeAgent?: (threadId: string | null) => string | null;
   resolveOpenCodeVariant?: (threadId: string | null) => string | null;
@@ -431,6 +450,7 @@ export function useThreadMessaging({
   threadStatusById,
   itemsByThread,
   activeTurnIdByThread,
+  tokenUsageByThread,
   rateLimitsByWorkspace,
   pendingInterruptsRef,
   interruptedThreadsRef,
@@ -457,12 +477,20 @@ export function useThreadMessaging({
 }: UseThreadMessagingOptions) {
   const { t, i18n } = useTranslation();
   const lastOpenCodeModelByThreadRef = useRef<Map<string, string>>(new Map());
+  const claudeSessionIdByPendingThreadRef = useRef<Map<string, string>>(new Map());
+  const geminiSessionIdByPendingThreadRef = useRef<Map<string, string>>(new Map());
   const sessionSpecLinkByThreadRef = useRef<Map<string, SessionSpecLinkContext>>(new Map());
   const normalizeEngineSelection = useCallback(
     (
       engine: "claude" | "codex" | "gemini" | "opencode" | undefined,
-    ): "claude" | "codex" | "opencode" =>
-      engine === "claude" ? "claude" : engine === "opencode" ? "opencode" : "codex",
+    ): "claude" | "codex" | "gemini" | "opencode" =>
+      engine === "claude"
+        ? "claude"
+        : engine === "opencode"
+          ? "opencode"
+          : engine === "gemini"
+            ? "gemini"
+            : "codex",
     [],
   );
 
@@ -470,13 +498,16 @@ export function useThreadMessaging({
     (
       workspaceId: string,
       threadId: string,
-    ): "claude" | "codex" | "opencode" => {
+    ): "claude" | "codex" | "gemini" | "opencode" => {
       const persistedEngine = getThreadEngine(workspaceId, threadId);
       if (persistedEngine) {
         return persistedEngine;
       }
       if (threadId.startsWith("claude:") || threadId.startsWith("claude-pending-")) {
         return "claude";
+      }
+      if (threadId.startsWith("gemini:") || threadId.startsWith("gemini-pending-")) {
+        return "gemini";
       }
       if (
         threadId.startsWith("opencode:") ||
@@ -491,13 +522,19 @@ export function useThreadMessaging({
 
   const isThreadIdCompatibleWithEngine = useCallback(
     (
-      engine: "claude" | "codex" | "opencode",
+      engine: "claude" | "codex" | "gemini" | "opencode",
       threadId: string,
     ): boolean => {
       if (engine === "claude") {
         return (
           threadId.startsWith("claude:") ||
           threadId.startsWith("claude-pending-")
+        );
+      }
+      if (engine === "gemini") {
+        return (
+          threadId.startsWith("gemini:") ||
+          threadId.startsWith("gemini-pending-")
         );
       }
       if (engine === "opencode") {
@@ -509,6 +546,8 @@ export function useThreadMessaging({
       return (
         !threadId.startsWith("claude:")
         && !threadId.startsWith("claude-pending-")
+        && !threadId.startsWith("gemini:")
+        && !threadId.startsWith("gemini-pending-")
         && !threadId.startsWith("opencode:")
         && !threadId.startsWith("opencode-pending-")
       );
@@ -588,11 +627,65 @@ export function useThreadMessaging({
       finalText = injectionResult.finalText;
       const resolvedSelectedAgent =
         resolvedEngine !== "opencode" ? options?.selectedAgent ?? null : null;
+      const selectedAgentName =
+        resolvedEngine !== "opencode"
+          ? resolvedSelectedAgent?.name?.trim() || null
+          : null;
+      const selectedAgentIcon =
+        resolvedEngine !== "opencode" && resolvedSelectedAgent
+          ? resolveAgentIconForAgent(resolvedSelectedAgent, "codicon-hubot")
+          : null;
       const selectedAgentPrompt = resolvedSelectedAgent?.prompt?.trim() || "";
+      const selectedAgentPromptSections: string[] = [];
+      if (selectedAgentName) {
+        selectedAgentPromptSections.push(`${AGENT_PROMPT_NAME_PREFIX} ${selectedAgentName}`);
+      }
+      if (selectedAgentIcon) {
+        selectedAgentPromptSections.push(`${AGENT_PROMPT_ICON_PREFIX} ${selectedAgentIcon}`);
+      }
       if (selectedAgentPrompt) {
+        selectedAgentPromptSections.push(selectedAgentPrompt);
+      }
+      const selectedAgentPromptBlock = selectedAgentPromptSections.join("\n\n").trim();
+      if (selectedAgentPromptBlock) {
         if (!finalText.includes(AGENT_PROMPT_HEADER)) {
-          finalText = `${finalText}\n\n${AGENT_PROMPT_HEADER}\n\n${selectedAgentPrompt}`;
+          finalText = `${finalText}\n\n${AGENT_PROMPT_HEADER}\n\n${selectedAgentPromptBlock}`;
         }
+      }
+      let claudeMcpDiagnostics: string[] = [];
+      let claudeMcpOutputNotice: string | null = null;
+      const claudeMcpSnapshot =
+        resolvedEngine === "claude"
+          ? getClaudeMcpRuntimeSnapshot(workspace.id)
+          : null;
+      if (resolvedEngine === "claude") {
+        const rewriteResult = rewriteClaudePlaywrightAlias(workspace.id, finalText);
+        finalText = rewriteResult.text;
+        claudeMcpDiagnostics = rewriteResult.diagnostics;
+        if (rewriteResult.aliasMentioned) {
+          onDebug?.({
+            id: `${Date.now()}-claude-mcp-routing`,
+            timestamp: Date.now(),
+            source: "client",
+            label: "claude/mcp-routing",
+            payload: {
+              workspaceId: workspace.id,
+              threadId,
+              applied: rewriteResult.applied,
+              fromServer: rewriteResult.fromServer,
+              toServer: rewriteResult.toServer,
+              diagnostics: rewriteResult.diagnostics,
+            },
+          });
+          claudeMcpOutputNotice = rewriteResult.applied
+            ? "MCP 路由提示：检测到 `playwright-mcp`，当前会话已自动映射为 `chrome-devtools`。"
+            : `MCP 路由提示：检测到 \`playwright-mcp\`，但当前会话未确认可见该工具。`;
+        }
+      }
+      if (resolvedEngine === "claude") {
+        setPendingClaudeMcpOutputNotice(workspace.id, threadId, claudeMcpOutputNotice);
+      } else {
+        clearPendingClaudeMcpOutputNotice(workspace.id, threadId);
       }
       if (injectionResult.injectedCount > 0 && injectionResult.previewText) {
         dispatch({
@@ -657,6 +750,7 @@ export function useThreadMessaging({
           : null;
       const resolvedAccessMode = normalizeAccessMode(
         options?.accessMode !== undefined ? options.accessMode : accessMode,
+        resolvedEngine,
       );
       const resolvedOpenCodeAgent =
         resolvedEngine === "opencode" ? (resolveOpenCodeAgent?.(threadId) ?? null) : null;
@@ -679,9 +773,17 @@ export function useThreadMessaging({
       const sanitizedModel =
         resolvedEngine === "claude" &&
         resolvedModel &&
-        !resolvedModel.startsWith("claude-")
+        !isValidClaudeModelForPassthrough(resolvedModel)
           ? null
-          : resolvedModel;
+          : resolvedEngine === "codex" &&
+              resolvedModel &&
+              resolvedModel.startsWith("claude-")
+            ? null
+            : resolvedEngine === "gemini" &&
+                resolvedModel &&
+                isLikelyForeignModelForGemini(resolvedModel)
+              ? null
+            : resolvedModel;
       const sanitizedOpenCodeModel =
         resolvedEngine === "opencode"
           ? sanitizeOpenCodeModel(sanitizedModel)
@@ -717,13 +819,13 @@ export function useThreadMessaging({
           source: "client",
           label: "model/sanitize",
           payload: {
-            reason: "non-claude-model",
+            reason: "invalid-claude-model",
             model: resolvedModel,
           },
         });
         if (import.meta.env.DEV) {
           console.warn("[model/sanitize]", {
-            reason: "non-claude-model",
+            reason: "invalid-claude-model",
             model: resolvedModel,
           });
         }
@@ -775,24 +877,29 @@ export function useThreadMessaging({
       const wasProcessing =
         (threadStatusById[threadId]?.isProcessing ?? false) && steerEnabled;
       const shouldAddOptimisticUserBubble =
-        resolvedEngine === "codex" || wasProcessing;
+        !options?.skipOptimisticUserBubble &&
+        (resolvedEngine === "codex" || wasProcessing);
+      let optimisticUserItem: Extract<ConversationItem, { kind: "message" }> | null = null;
       if (shouldAddOptimisticUserBubble) {
         const optimisticText = visibleUserText;
         if (optimisticText || images.length > 0) {
+          optimisticUserItem = {
+            id: `optimistic-user-${Date.now()}-${Math.random()
+              .toString(36)
+              .slice(2, 8)}`,
+            kind: "message",
+            role: "user",
+            text: optimisticText,
+            images: images.length > 0 ? images : undefined,
+            collaborationMode: userCollaborationMode,
+            selectedAgentName,
+            selectedAgentIcon,
+          };
           dispatch({
             type: "upsertItem",
             workspaceId: workspace.id,
             threadId,
-            item: {
-              id: `optimistic-user-${Date.now()}-${Math.random()
-                .toString(36)
-                .slice(2, 8)}`,
-              kind: "message",
-              role: "user",
-              text: optimisticText,
-              images: images.length > 0 ? images : undefined,
-              collaborationMode: userCollaborationMode,
-            },
+            item: optimisticUserItem,
             hasCustomName: Boolean(getCustomName(workspace.id, threadId)),
           });
         }
@@ -805,6 +912,9 @@ export function useThreadMessaging({
         threadId,
         timestamp,
       });
+      if (resolvedEngine === "gemini") {
+        interruptedThreadsRef.current.delete(threadId);
+      }
       markProcessing(threadId, true);
       safeMessageActivity();
       onDebug?.({
@@ -825,6 +935,15 @@ export function useThreadMessaging({
           accessMode: resolvedAccessMode ?? null,
           agent: resolvedOpenCodeAgent,
           variant: resolvedOpenCodeVariant,
+          claudeMcpSnapshot:
+            resolvedEngine === "claude"
+              ? {
+                  capturedAt: claudeMcpSnapshot?.capturedAt ?? null,
+                  sessionId: claudeMcpSnapshot?.sessionId ?? null,
+                  toolsCount: claudeMcpSnapshot?.tools.length ?? 0,
+                  servers: claudeMcpSnapshot?.mcpServers ?? [],
+                }
+              : null,
         },
       });
       if (import.meta.env.DEV) {
@@ -853,19 +972,42 @@ export function useThreadMessaging({
         const customSpecRoot = resolveWorkspaceSpecRoot(workspace.id);
         let sessionSpecLink = sessionSpecLinkByThreadRef.current.get(sessionSpecKey) ?? null;
         const shouldProbeSessionSpecLink =
+          shouldProbeSessionSpecForEngine(resolvedEngine) &&
           Boolean(customSpecRoot) &&
           (threadItems.length === 0 || !sessionSpecLink);
         if (shouldProbeSessionSpecLink && customSpecRoot) {
-          sessionSpecLink = await probeSessionSpecLink(
+          const probeStartAt = Date.now();
+          sessionSpecLink = await probeSessionSpecLinkWithTimeout(
             workspace.id,
             workspace.path,
             "custom",
             customSpecRoot,
           );
+          const probeDurationMs = Date.now() - probeStartAt;
           sessionSpecLinkByThreadRef.current.set(sessionSpecKey, sessionSpecLink);
+          onDebug?.({
+            id: `${Date.now()}-spec-root-probe`,
+            timestamp: Date.now(),
+            source: "client",
+            label: "specRoot/probe",
+            payload: {
+              workspaceId: workspace.id,
+              threadId,
+              engine: resolvedEngine,
+              source: "custom",
+              rootPath: customSpecRoot,
+              status: sessionSpecLink.status,
+              reason: sessionSpecLink.reason,
+              durationMs: probeDurationMs,
+            },
+          });
         }
+        const shouldInjectSpecRootHintInPrompt =
+          resolvedEngine === "codex" &&
+          Boolean(sessionSpecLink) &&
+          threadItems.length === 0;
         const codexEffectiveText =
-          resolvedEngine === "codex" && sessionSpecLink
+          shouldInjectSpecRootHintInPrompt && sessionSpecLink
             ? buildCodexTextWithSpecRootPriority(finalText, sessionSpecLink)
             : finalText;
         const shouldInjectSpecRootCard =
@@ -935,6 +1077,12 @@ export function useThreadMessaging({
         const realSessionId =
           resolvedEngine === "claude" && isClaudeSession
             ? threadId.slice("claude:".length)
+            : resolvedEngine === "claude" && threadId.startsWith("claude-pending-")
+              ? (claudeSessionIdByPendingThreadRef.current.get(threadId) ?? null)
+            : resolvedEngine === "gemini" && threadId.startsWith("gemini:")
+              ? threadId.slice("gemini:".length)
+            : resolvedEngine === "gemini" && threadId.startsWith("gemini-pending-")
+              ? (geminiSessionIdByPendingThreadRef.current.get(threadId) ?? null)
             : resolvedEngine === "opencode" && isOpenCodeSession
               ? threadId.slice("opencode:".length)
               : null;
@@ -954,10 +1102,13 @@ export function useThreadMessaging({
               text: visibleUserText,
               images: images.length > 0 ? images : undefined,
               collaborationMode: userCollaborationMode,
+              selectedAgentName,
+              selectedAgentIcon,
             },
             hasCustomName: Boolean(getCustomName(workspace.id, threadId)),
           });
 
+          const sendRequestedAt = Date.now();
           response = await engineSendMessageService(workspace.id, {
             text: finalText,
             engine: resolvedEngine,
@@ -984,13 +1135,19 @@ export function useThreadMessaging({
           const rpcError = extractRpcErrorMessage(response);
           if (rpcError) {
             const normalized = mapNetworkErrorToUserMessage(rpcError, t);
+            const claudeMcpHint =
+              resolvedEngine === "claude" &&
+              !normalized.isNetwork &&
+              claudeMcpDiagnostics.length > 0
+                ? `\n\n${claudeMcpDiagnostics.join("\n")}`
+                : "";
             markProcessing(threadId, false);
             setActiveTurnId(threadId, null);
             pushThreadErrorMessage(
               threadId,
               normalized.isNetwork
                 ? normalized.message
-                : t("threads.turnFailedWithMessage", { message: normalized.message }),
+                : `${t("threads.turnFailedWithMessage", { message: normalized.message })}${claudeMcpHint}`,
             );
             if (normalized.isNetwork) {
               pushErrorToast({
@@ -1001,6 +1158,57 @@ export function useThreadMessaging({
             }
             safeMessageActivity();
             return;
+          }
+
+          if (resolvedEngine === "claude" && threadId.startsWith("claude-pending-")) {
+            const responseSessionId = extractSessionIdFromEngineSendResponse(response);
+            if (responseSessionId) {
+              claudeSessionIdByPendingThreadRef.current.set(threadId, responseSessionId);
+              onDebug?.({
+                id: `${Date.now()}-client-claude-session-cache`,
+                timestamp: Date.now(),
+                source: "client",
+                label: "thread/session cached",
+                payload: {
+                  workspaceId: workspace.id,
+                  threadId,
+                  sessionId: responseSessionId,
+                  source: "engineSendMessageResponse",
+                },
+              });
+            }
+          }
+          if (resolvedEngine === "gemini" && threadId.startsWith("gemini-pending-")) {
+            let responseSessionId = extractSessionIdFromEngineSendResponse(response);
+            if (!responseSessionId) {
+              const workspacePath = workspace.path?.trim();
+              if (workspacePath) {
+                try {
+                  const sessions = await listGeminiSessionsService(workspacePath, 6);
+                  responseSessionId = pickLikelyGeminiSessionId(
+                    sessions,
+                    sendRequestedAt - 120_000,
+                  );
+                } catch {
+                  responseSessionId = null;
+                }
+              }
+            }
+            if (responseSessionId) {
+              geminiSessionIdByPendingThreadRef.current.set(threadId, responseSessionId);
+              onDebug?.({
+                id: `${Date.now()}-client-gemini-session-cache`,
+                timestamp: Date.now(),
+                source: "client",
+                label: "thread/session cached",
+                payload: {
+                  workspaceId: workspace.id,
+                  threadId,
+                  sessionId: responseSessionId,
+                  source: "geminiSessionListFallback",
+                },
+              });
+            }
           }
 
           // Extract turn ID - streaming events will handle the rest
@@ -1054,6 +1262,64 @@ export function useThreadMessaging({
         });
         const rpcError = extractRpcErrorMessage(response);
         if (rpcError) {
+          if (
+            resolvedEngine === "codex" &&
+            !options?.codexInvalidThreadRetryAttempted &&
+            isInvalidReviewThreadIdError(rpcError)
+          ) {
+            const reboundThreadId = await refreshThread(workspace.id, threadId);
+            if (reboundThreadId) {
+              onDebug?.({
+                id: `${Date.now()}-client-turn-start-thread-retry`,
+                timestamp: Date.now(),
+                source: "client",
+                label: "turn/start thread rebind retry",
+                payload: {
+                  workspaceId: workspace.id,
+                  originalThreadId: threadId,
+                  reboundThreadId,
+                  reboundChanged: reboundThreadId !== threadId,
+                  reason: rpcError,
+                },
+              });
+              if (reboundThreadId !== threadId) {
+                dispatch({
+                  type: "setActiveThreadId",
+                  workspaceId: workspace.id,
+                  threadId: reboundThreadId,
+                });
+                if (optimisticUserItem) {
+                  dispatch({
+                    type: "setThreadItems",
+                    threadId,
+                    items: (itemsByThread[threadId] ?? []).filter(
+                      (item) => item.id !== optimisticUserItem?.id,
+                    ),
+                  });
+                  dispatch({
+                    type: "upsertItem",
+                    workspaceId: workspace.id,
+                    threadId: reboundThreadId,
+                    item: optimisticUserItem,
+                    hasCustomName: Boolean(getCustomName(workspace.id, reboundThreadId)),
+                  });
+                }
+              }
+              markProcessing(threadId, false);
+              setActiveTurnId(threadId, null);
+              safeMessageActivity();
+              await sendMessageToThread(workspace, reboundThreadId, finalText, images, {
+                skipPromptExpansion: true,
+                skipOptimisticUserBubble: true,
+                model: modelForSend,
+                effort: resolvedEffort,
+                collaborationMode: sanitizedCollaborationMode,
+                accessMode: resolvedAccessMode,
+                codexInvalidThreadRetryAttempted: true,
+              });
+              return;
+            }
+          }
           const firstPacketTimeoutSeconds =
             resolveRecoverableCodexFirstPacketTimeout(resolvedEngine, rpcError);
           if (firstPacketTimeoutSeconds) {
@@ -1210,6 +1476,7 @@ export function useThreadMessaging({
       resolveThreadEngine,
       resolveOpenCodeAgent,
       resolveOpenCodeVariant,
+      refreshThread,
       safeMessageActivity,
       setActiveTurnId,
       i18n,
@@ -1347,7 +1614,7 @@ export function useThreadMessaging({
       pendingInterruptsRef.current.add(activeThreadId);
     }
 
-    // Determine if this is a Claude session
+    // Determine whether this thread is backed by a local CLI session.
     const resolvedThreadEngine = resolveThreadEngine(activeWorkspace.id, activeThreadId);
     const isCliManagedEngine = resolvedThreadEngine !== "codex";
 
@@ -1366,8 +1633,26 @@ export function useThreadMessaging({
     });
     try {
       if (isCliManagedEngine) {
-        // Claude/OpenCode: kill the local CLI process via engine_interrupt.
-        await engineInterruptService(activeWorkspace.id);
+        // Claude/OpenCode/Gemini: target only the current turn process.
+        // If turn id is not known yet, keep pending interrupt and let onTurnStarted
+        // execute a precise kill once the backend emits the real turn id.
+        if (activeTurnId) {
+          try {
+            await engineInterruptTurnService(
+              activeWorkspace.id,
+              activeTurnId,
+              resolvedThreadEngine,
+            );
+          } catch (error) {
+            if (isUnknownEngineInterruptTurnMethodError(error)) {
+              // Compatibility fallback for stale daemon/runtime that doesn't
+              // implement engine_interrupt_turn yet.
+              await engineInterruptService(activeWorkspace.id);
+            } else {
+              throw error;
+            }
+          }
+        }
       } else {
         // Codex: notify daemon via turn_interrupt RPC, plus engine_interrupt fallback.
         await Promise.allSettled([
@@ -1623,7 +1908,14 @@ export function useThreadMessaging({
         return;
       }
       const trimmed = text.trim();
-      const rest = trimmed.replace(/^\/review\b/i, "").trim();
+      if (!trimmed.startsWith("/")) {
+        return;
+      }
+      const commandToken = trimmed.slice(1).split(/\s+/, 1)[0]?.toLowerCase() ?? "";
+      if (commandToken !== "review") {
+        return;
+      }
+      const rest = trimmed.slice(commandToken.length + 1).trim();
       if (!rest) {
         openReviewPrompt();
         return;
@@ -1636,6 +1928,98 @@ export function useThreadMessaging({
       activeWorkspace,
       openReviewPrompt,
       startReviewTarget,
+    ],
+  );
+
+  const startContext = useCallback(
+    async (_text: string) => {
+      if (!activeWorkspace) {
+        return;
+      }
+      const threadId = await ensureThreadForActiveWorkspace();
+      if (!threadId) {
+        return;
+      }
+
+      const usage = tokenUsageByThread[threadId] ?? null;
+      const formatTokenCount = (value: number) =>
+        Math.max(0, Math.round(value)).toLocaleString("en-US");
+
+      const noUsageLines = [
+        "Context Usage",
+        "",
+        "No context usage telemetry yet for this thread.",
+        "Send at least one turn, then run /context again.",
+      ];
+
+      if (!usage) {
+        const timestamp = Date.now();
+        recordThreadActivity(activeWorkspace.id, threadId, timestamp);
+        dispatch({
+          type: "addAssistantMessage",
+          threadId,
+          text: ["```text", ...noUsageLines, "```"].join("\n"),
+        });
+        safeMessageActivity();
+        return;
+      }
+
+      const inputTokens = usage.last.inputTokens ?? 0;
+      const cachedInputTokens = usage.last.cachedInputTokens ?? 0;
+      const outputTokens = usage.last.outputTokens ?? 0;
+      const reasoningOutputTokens = usage.last.reasoningOutputTokens ?? 0;
+      const usedTokens = inputTokens + cachedInputTokens;
+      const contextWindow = usage.modelContextWindow ?? null;
+      const usedPercent = contextWindow && contextWindow > 0
+        ? Math.min(Math.max((usedTokens / contextWindow) * 100, 0), 100)
+        : null;
+      const remainingPercent =
+        usedPercent === null ? null : Math.max(0, 100 - usedPercent);
+
+      const lines = [
+        "Context Usage",
+        "",
+        `Thread:             ${threadId}`,
+        `Used:               ${formatTokenCount(usedTokens)} tokens`,
+        contextWindow && contextWindow > 0
+          ? `Context window:     ${formatTokenCount(contextWindow)} tokens`
+          : "Context window:     n/a",
+        usedPercent === null
+          ? "Used percent:       n/a"
+          : `Used percent:       ${usedPercent.toFixed(1)}%`,
+        remainingPercent === null
+          ? "Remaining:          n/a"
+          : `Remaining:          ${remainingPercent.toFixed(1)}%`,
+        "",
+        "Last turn breakdown:",
+        `- Input:            ${formatTokenCount(inputTokens)}`,
+        `- Cached input:     ${formatTokenCount(cachedInputTokens)}`,
+        `- Output:           ${formatTokenCount(outputTokens)}`,
+        `- Reasoning output: ${formatTokenCount(reasoningOutputTokens)}`,
+        "",
+        "Session totals:",
+        `- Total tokens:     ${formatTokenCount(usage.total.totalTokens ?? 0)}`,
+        `- Input tokens:     ${formatTokenCount(usage.total.inputTokens ?? 0)}`,
+        `- Cached input:     ${formatTokenCount(usage.total.cachedInputTokens ?? 0)}`,
+        `- Output tokens:    ${formatTokenCount(usage.total.outputTokens ?? 0)}`,
+      ];
+
+      const timestamp = Date.now();
+      recordThreadActivity(activeWorkspace.id, threadId, timestamp);
+      dispatch({
+        type: "addAssistantMessage",
+        threadId,
+        text: ["```text", ...lines, "```"].join("\n"),
+      });
+      safeMessageActivity();
+    },
+    [
+      activeWorkspace,
+      dispatch,
+      ensureThreadForActiveWorkspace,
+      recordThreadActivity,
+      safeMessageActivity,
+      tokenUsageByThread,
     ],
   );
 
@@ -2507,6 +2891,7 @@ export function useThreadMessaging({
     startMcp,
     startSpecRoot,
     startStatus,
+    startContext,
     startFast,
     startMode,
     startExport,

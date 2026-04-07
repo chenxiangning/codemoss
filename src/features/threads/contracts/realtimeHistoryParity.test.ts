@@ -2,9 +2,11 @@ import { describe, expect, it, vi } from "vitest";
 import type { ConversationItem } from "../../../types";
 import { claudeRealtimeAdapter } from "../adapters/claudeRealtimeAdapter";
 import { codexRealtimeAdapter } from "../adapters/codexRealtimeAdapter";
+import { geminiRealtimeAdapter } from "../adapters/geminiRealtimeAdapter";
 import { opencodeRealtimeAdapter } from "../adapters/opencodeRealtimeAdapter";
 import { createClaudeHistoryLoader } from "../loaders/claudeHistoryLoader";
 import { createCodexHistoryLoader } from "../loaders/codexHistoryLoader";
+import { createGeminiHistoryLoader } from "../loaders/geminiHistoryLoader";
 import { createOpenCodeHistoryLoader } from "../loaders/opencodeHistoryLoader";
 import { appendEvent, findConversationStateDiffs, hydrateHistory } from "./conversationAssembler";
 import {
@@ -28,6 +30,8 @@ function createRealtimeState(
   const adapter =
     engine === "claude"
       ? claudeRealtimeAdapter
+      : engine === "gemini"
+        ? geminiRealtimeAdapter
       : engine === "opencode"
         ? opencodeRealtimeAdapter
         : codexRealtimeAdapter;
@@ -458,6 +462,117 @@ describe("realtime/history parity", () => {
             cwd: "",
             status: "completed",
             aggregatedOutput: "ok",
+          },
+        },
+      },
+    ]);
+
+    expect(
+      realtimeState.items.map(projectSemanticItem),
+    ).toEqual(historyState.items.map(projectSemanticItem));
+  });
+
+  it("keeps gemini realtime and history semantics aligned for tool and reasoning", async () => {
+    const workspaceId = "ws-gemini";
+    const threadId = "gemini:session-parity";
+    const loader = createGeminiHistoryLoader({
+      workspaceId,
+      workspacePath: "/tmp/ws-gemini",
+      loadGeminiSession: vi.fn().mockResolvedValue({
+        messages: [
+          { kind: "message", id: "msg-1", role: "user", text: "Run checks" },
+          {
+            kind: "reasoning",
+            id: "reason-1",
+            role: "assistant",
+            text: "Inspect workspace\nChecking ts errors",
+          },
+          {
+            kind: "tool",
+            id: "tool-1",
+            toolType: "commandExecution",
+            title: "Command",
+            toolInput: { command: ["pnpm", "vitest"], cwd: "/repo" },
+          },
+          {
+            kind: "tool",
+            id: "tool-1-result",
+            toolType: "result",
+            title: "Result",
+            text: "running...\nok",
+            toolOutput: { output: "running...\nok" },
+          },
+          { kind: "message", id: "msg-2", role: "assistant", text: "Done." },
+        ],
+      }),
+    });
+    const historySnapshot = await loader.load(threadId);
+    const historyState = hydrateHistory(historySnapshot);
+
+    const realtimeState = createRealtimeState("gemini", workspaceId, threadId, [
+      {
+        method: "item/started",
+        params: {
+          threadId,
+          item: {
+            id: "msg-1",
+            type: "userMessage",
+            content: [{ type: "text", text: "Run checks" }],
+          },
+        },
+      },
+      {
+        method: "item/reasoning/summaryTextDelta",
+        params: { threadId, itemId: "reason-1", delta: "Inspect workspace" },
+      },
+      {
+        method: "item/reasoning/textDelta",
+        params: {
+          threadId,
+          itemId: "reason-1",
+          delta: "Inspect workspace\nChecking ts errors",
+        },
+      },
+      {
+        method: "item/started",
+        params: {
+          threadId,
+          item: {
+            id: "tool-1",
+            type: "commandExecution",
+            command: ["pnpm", "vitest"],
+            cwd: "/repo",
+            status: "started",
+          },
+        },
+      },
+      {
+        method: "item/commandExecution/outputDelta",
+        params: { threadId, itemId: "tool-1", delta: "running...\n" },
+      },
+      {
+        method: "item/completed",
+        params: {
+          threadId,
+          item: {
+            id: "tool-1",
+            type: "commandExecution",
+            command: ["pnpm", "vitest"],
+            cwd: "/repo",
+            status: "completed",
+            aggregatedOutput: "running...\nok",
+          },
+        },
+      },
+      {
+        method: "item/completed",
+        params: {
+          threadId,
+          item: {
+            id: "msg-2",
+            type: "agentMessage",
+            text: "Done.",
+            status: "completed",
           },
         },
       },

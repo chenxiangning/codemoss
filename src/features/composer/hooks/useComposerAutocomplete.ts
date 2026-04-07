@@ -63,7 +63,7 @@ function resolveAutocompleteState(
   ).sort((a, b) => b.length - a.length);
   let index = cursor - 1;
   while (index >= 0) {
-    const char = text[index];
+    const char = text[index] ?? "";
     if (whitespaceRegex.test(char)) {
       break;
     }
@@ -75,7 +75,7 @@ function resolveAutocompleteState(
       if (text.slice(start, index + 1) !== trigger) {
         continue;
       }
-      const prevChar = start > 0 ? text[start - 1] : "";
+      const prevChar = start > 0 ? (text[start - 1] ?? "") : "";
       if (prevChar && !triggerPrefixRegex.test(prevChar)) {
         continue;
       }
@@ -98,7 +98,7 @@ function resolveAutocompleteState(
 function basename(label: string) {
   const normalized = label.replace(/\\/g, "/");
   const parts = normalized.split("/").filter(Boolean);
-  return parts.length ? parts[parts.length - 1] : label;
+  return parts.length ? (parts[parts.length - 1] ?? label) : label;
 }
 
 function fileParts(label: string) {

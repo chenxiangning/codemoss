@@ -146,9 +146,9 @@ function parseWorktreeError(
   const retryCommand = retryMatch?.[1]?.trim() || null;
 
   if (normalized.startsWith(WORKTREE_PUSH_FAILED_PREFIX)) {
-    const reason = normalized
+    const reason = (normalized
       .slice(WORKTREE_PUSH_FAILED_PREFIX.length)
-      .split("\n")[0]
+      .split("\n")[0] ?? "")
       .trim();
     return {
       message: t("workspace.worktreePublishFailedRecoverable", {

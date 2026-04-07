@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { createPortal } from "react-dom";
 import Bot from "lucide-react/dist/esm/icons/bot";
 import ChevronDown from "lucide-react/dist/esm/icons/chevron-down";
 import ChevronUp from "lucide-react/dist/esm/icons/chevron-up";
@@ -32,7 +33,7 @@ type WorkspaceSessionActivityPanelProps = {
   ) => void;
   onSelectThread: (workspaceId: string, threadId: string) => void;
   liveEditPreviewEnabled?: boolean;
-  onToggleLiveEditPreview?: () => void;
+  onToggleLiveEditPreview?: () => void | Promise<void>;
 };
 
 type ActivityTab = "all" | "command" | "fileChange" | "task" | "explore" | "reasoning";
@@ -48,9 +49,24 @@ type SessionActivityTurnGroup = {
 type StickyChildSessionSummary = SessionActivitySessionSummary & {
   lastSeenAt: number;
 };
+type FollowNudgeContext = {
+  turnKey: string;
+  eventId: string;
+};
+type FollowBubbleGeometry = {
+  top: number;
+  left: number;
+  width: number;
+  arrowLeft: number;
+};
 
 const RUNNING_CARD_MIN_EXPANDED_MS = 2000;
+const FOLLOW_BUBBLE_AUTO_DISMISS_MS = 1000;
 const MAX_STICKY_CHILD_SESSION_COUNT = 24;
+const SOLO_FOLLOW_COACH_DISMISSED_BY_WORKSPACE_STORAGE_KEY =
+  "mossx.sessionActivity.soloFollowCoachDismissedByWorkspace";
+const SOLO_FOLLOW_DISCOVERY_COACH_FLAG_KEY = "mossx.flags.soloFollow.discovery.coachmark";
+const SOLO_FOLLOW_DISCOVERY_NUDGE_FLAG_KEY = "mossx.flags.soloFollow.discovery.nudge";
 const SESSION_PILL_COLOR_PALETTE = [
   { hue: 158, saturation: 66, lightness: 44 },
   { hue: 210, saturation: 72, lightness: 48 },
@@ -68,6 +84,102 @@ const tabIconMap: Record<ActivityTab, ReactNode> = {
   explore: <Search size={14} aria-hidden />,
   reasoning: <span className="codicon codicon-thinking session-activity-tab-codicon" aria-hidden />,
 };
+
+function readSoloFollowCoachDismissedByWorkspace() {
+  if (typeof window === "undefined" || !window.localStorage) {
+    return {} as Record<string, number>;
+  }
+  try {
+    const raw = window.localStorage.getItem(
+      SOLO_FOLLOW_COACH_DISMISSED_BY_WORKSPACE_STORAGE_KEY,
+    );
+    if (!raw) {
+      return {} as Record<string, number>;
+    }
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") {
+      return {} as Record<string, number>;
+    }
+    return Object.fromEntries(
+      Object.entries(parsed as Record<string, unknown>).filter(
+        ([workspaceId, value]) =>
+          typeof workspaceId === "string" &&
+          typeof value === "number" &&
+          Number.isFinite(value) &&
+          value > 0,
+      ),
+    ) as Record<string, number>;
+  } catch {
+    return {} as Record<string, number>;
+  }
+}
+
+function readSoloFollowFeatureFlag(flagKey: string, defaultValue = true) {
+  if (typeof window === "undefined" || !window.localStorage) {
+    return defaultValue;
+  }
+  try {
+    const raw = window.localStorage.getItem(flagKey);
+    if (typeof raw !== "string" || raw.trim() === "") {
+      return defaultValue;
+    }
+    const normalized = raw.trim().toLowerCase();
+    if (["0", "false", "off", "disabled", "no"].includes(normalized)) {
+      return false;
+    }
+    if (["1", "true", "on", "enabled", "yes"].includes(normalized)) {
+      return true;
+    }
+    return defaultValue;
+  } catch {
+    return defaultValue;
+  }
+}
+
+function writeSoloFollowCoachDismissedByWorkspace(nextMap: Record<string, number>) {
+  if (typeof window === "undefined" || !window.localStorage) {
+    return;
+  }
+  try {
+    window.localStorage.setItem(
+      SOLO_FOLLOW_COACH_DISMISSED_BY_WORKSPACE_STORAGE_KEY,
+      JSON.stringify(nextMap),
+    );
+  } catch {
+    // ignore localStorage failures
+  }
+}
+
+function resolveFollowNudgeTurnKey(event: SessionActivityEvent) {
+  if (event.turnId?.trim()) {
+    return event.turnId.trim();
+  }
+  if (typeof event.turnIndex === "number") {
+    return `${event.threadId}:turn-index:${event.turnIndex}`;
+  }
+  return `${event.threadId}:event:${event.eventId}`;
+}
+
+function emitSoloFollowMetric(
+  name: string,
+  payload: { workspaceId: string; threadId: string | null; turnKey?: string } | undefined,
+) {
+  if (typeof window === "undefined") {
+    return;
+  }
+  try {
+    window.dispatchEvent(
+      new CustomEvent("mossx:solo-follow-metric", {
+        detail: {
+          name,
+          ...(payload ?? {}),
+        },
+      }),
+    );
+  } catch {
+    // swallow metric dispatch failures
+  }
+}
 
 function formatSignedCount(value: number | undefined, positivePrefix: "+" | "-") {
   if (!value || value <= 0) {
@@ -127,6 +239,10 @@ function canExpandReasoning(event: SessionActivityEvent) {
   return event.kind === "reasoning" && Boolean(event.reasoningPreview);
 }
 
+function canExpandTask(event: SessionActivityEvent) {
+  return event.kind === "task" && Boolean(event.explorePreview);
+}
+
 function canExpandExplore(event: SessionActivityEvent) {
   if (event.kind !== "explore" || !event.explorePreview) {
     return false;
@@ -138,7 +254,12 @@ function canExpandExplore(event: SessionActivityEvent) {
 }
 
 function canExpandEvent(event: SessionActivityEvent) {
-  return canExpandCommand(event) || canExpandReasoning(event) || canExpandExplore(event);
+  return (
+    canExpandCommand(event) ||
+    canExpandReasoning(event) ||
+    canExpandTask(event) ||
+    canExpandExplore(event)
+  );
 }
 
 function unwrapShellCommand(command: string) {
@@ -295,11 +416,13 @@ function resolveSessionPillStyle(
   index: number,
 ): CSSProperties & Record<string, string> {
   const hashSeed = resolveStringHash(`${session.threadId}:${session.threadName}:${index}`);
-  const paletteEntry = SESSION_PILL_COLOR_PALETTE[hashSeed % SESSION_PILL_COLOR_PALETTE.length];
+  const paletteEntry =
+    SESSION_PILL_COLOR_PALETTE[hashSeed % SESSION_PILL_COLOR_PALETTE.length] ??
+    SESSION_PILL_COLOR_PALETTE[0];
   return {
-    "--session-pill-accent-h": `${paletteEntry.hue}`,
-    "--session-pill-accent-s": `${paletteEntry.saturation}%`,
-    "--session-pill-accent-l": `${paletteEntry.lightness}%`,
+    "--session-pill-accent-h": `${paletteEntry?.hue ?? 214}`,
+    "--session-pill-accent-s": `${paletteEntry?.saturation ?? 72}%`,
+    "--session-pill-accent-l": `${paletteEntry?.lightness ?? 54}%`,
   };
 }
 
@@ -382,9 +505,29 @@ export function WorkspaceSessionActivityPanel({
   );
   const reasoningPreviewScrollContainerByEventIdRef = useRef<Record<string, HTMLDivElement>>({});
   const activityScopeRef = useRef<string | null>(null);
+  const followNudgeScopeRef = useRef<string | null>(null);
+  const followNudgePresentedTurnKeysRef = useRef<Record<string, true>>({});
+  const followNudgeDismissedTurnKeysRef = useRef<Record<string, true>>({});
+  const followEntryExposureScopeRef = useRef<string | null>(null);
+  const panelRootRef = useRef<HTMLDivElement | null>(null);
+  const panelHeaderRef = useRef<HTMLDivElement | null>(null);
+  const liveEditToggleButtonRef = useRef<HTMLButtonElement | null>(null);
   const [stickyChildSessionSummariesByThreadId, setStickyChildSessionSummariesByThreadId] = useState<
     Record<string, StickyChildSessionSummary>
   >({});
+  const [showFollowCoach, setShowFollowCoach] = useState(false);
+  const [followNudgeContext, setFollowNudgeContext] = useState<FollowNudgeContext | null>(null);
+  const [followNudgeError, setFollowNudgeError] = useState<string | null>(null);
+  const [followBubbleGeometry, setFollowBubbleGeometry] = useState<FollowBubbleGeometry | null>(
+    null,
+  );
+  const soloFollowDiscoveryFlags = useMemo(
+    () => ({
+      coach: readSoloFollowFeatureFlag(SOLO_FOLLOW_DISCOVERY_COACH_FLAG_KEY, true),
+      nudge: readSoloFollowFeatureFlag(SOLO_FOLLOW_DISCOVERY_NUDGE_FLAG_KEY, true),
+    }),
+    [],
+  );
 
   const emptyCopy = useMemo(() => {
     if (viewModel.emptyState === "running") {
@@ -459,18 +602,17 @@ export function WorkspaceSessionActivityPanel({
     [viewModel.timeline],
   );
 
-  const tabItems: { id: ActivityTab; label: string }[] = [
-    { id: "all", label: t("activityPanel.tabs.all") },
-    { id: "command", label: t("activityPanel.tabs.command") },
-    { id: "fileChange", label: t("activityPanel.tabs.file") },
-    { id: "task", label: t("activityPanel.tabs.task") },
-    { id: "explore", label: t("activityPanel.tabs.explore") },
-    { id: "reasoning", label: t("activityPanel.tabs.reasoning") },
-  ];
-  const visibleTabItems = useMemo(
-    () => tabItems.filter((tab) => tabCounts[tab.id] > 0),
-    [tabCounts, tabItems],
-  );
+  const visibleTabItems = useMemo(() => {
+    const tabItems: { id: ActivityTab; label: string }[] = [
+      { id: "all", label: t("activityPanel.tabs.all") },
+      { id: "command", label: t("activityPanel.tabs.command") },
+      { id: "fileChange", label: t("activityPanel.tabs.file") },
+      { id: "task", label: t("activityPanel.tabs.task") },
+      { id: "explore", label: t("activityPanel.tabs.explore") },
+      { id: "reasoning", label: t("activityPanel.tabs.reasoning") },
+    ];
+    return tabItems.filter((tab) => tabCounts[tab.id] > 0);
+  }, [tabCounts, t]);
   const relatedSessionSummaries = useMemo(
     () => viewModel.sessionSummaries.filter((session) => session.sessionRole === "child"),
     [viewModel.sessionSummaries],
@@ -519,6 +661,13 @@ export function WorkspaceSessionActivityPanel({
     }
     return latestEvent?.eventId ?? null;
   }, [viewModel.timeline]);
+  const latestCompletedFileChangeEvent = useMemo(
+    () =>
+      viewModel.timeline.find(
+        (event) => event.kind === "fileChange" && event.status === "completed",
+      ) ?? null,
+    [viewModel.timeline],
+  );
 
   useEffect(() => {
     if (tabCounts[activeTab] > 0) {
@@ -537,6 +686,85 @@ export function WorkspaceSessionActivityPanel({
   }, [workspaceId, viewModel.rootThreadId]);
 
   useEffect(() => {
+    const followScope = `${workspaceId ?? "__none__"}:${viewModel.rootThreadId ?? "__none__"}`;
+    if (followNudgeScopeRef.current === followScope) {
+      return;
+    }
+    followNudgeScopeRef.current = followScope;
+    followNudgePresentedTurnKeysRef.current = {};
+    followNudgeDismissedTurnKeysRef.current = {};
+    setFollowNudgeContext(null);
+    setFollowNudgeError(null);
+  }, [workspaceId, viewModel.rootThreadId]);
+
+  useEffect(() => {
+    if (!workspaceId || !onToggleLiveEditPreview || !soloFollowDiscoveryFlags.coach) {
+      setShowFollowCoach(false);
+      return;
+    }
+    if (liveEditPreviewEnabled) {
+      setShowFollowCoach(false);
+      return;
+    }
+    const dismissedMap = readSoloFollowCoachDismissedByWorkspace();
+    setShowFollowCoach(!dismissedMap[workspaceId]);
+  }, [liveEditPreviewEnabled, onToggleLiveEditPreview, soloFollowDiscoveryFlags.coach, workspaceId]);
+
+  useEffect(() => {
+    if (!workspaceId || !onToggleLiveEditPreview) {
+      return;
+    }
+    const scope = `${workspaceId}:${viewModel.rootThreadId ?? "__none__"}`;
+    if (followEntryExposureScopeRef.current === scope) {
+      return;
+    }
+    followEntryExposureScopeRef.current = scope;
+    emitSoloFollowMetric("solo_entry_exposed", {
+      workspaceId,
+      threadId: viewModel.rootThreadId,
+    });
+  }, [onToggleLiveEditPreview, viewModel.rootThreadId, workspaceId]);
+
+  useEffect(() => {
+    if (!workspaceId || !onToggleLiveEditPreview || !soloFollowDiscoveryFlags.nudge) {
+      setFollowNudgeContext(null);
+      return;
+    }
+    if (liveEditPreviewEnabled) {
+      setFollowNudgeContext(null);
+      return;
+    }
+    if (!latestCompletedFileChangeEvent) {
+      return;
+    }
+    const turnKey = resolveFollowNudgeTurnKey(latestCompletedFileChangeEvent);
+    if (followNudgeDismissedTurnKeysRef.current[turnKey]) {
+      return;
+    }
+    if (followNudgePresentedTurnKeysRef.current[turnKey]) {
+      return;
+    }
+    followNudgePresentedTurnKeysRef.current[turnKey] = true;
+    setFollowNudgeContext({
+      turnKey,
+      eventId: latestCompletedFileChangeEvent.eventId,
+    });
+    setFollowNudgeError(null);
+    emitSoloFollowMetric("solo_nudge_shown", {
+      workspaceId,
+      threadId: viewModel.rootThreadId,
+      turnKey,
+    });
+  }, [
+    latestCompletedFileChangeEvent,
+    liveEditPreviewEnabled,
+    onToggleLiveEditPreview,
+    soloFollowDiscoveryFlags.nudge,
+    viewModel.rootThreadId,
+    workspaceId,
+  ]);
+
+  useEffect(() => {
     if (relatedSessionSummaries.length === 0) {
       return;
     }
@@ -545,6 +773,9 @@ export function WorkspaceSessionActivityPanel({
       const next: Record<string, StickyChildSessionSummary> = { ...current };
       for (let index = 0; index < relatedSessionSummaries.length; index += 1) {
         const session = relatedSessionSummaries[index];
+        if (!session) {
+          continue;
+        }
         const existing = current[session.threadId];
         const candidate: StickyChildSessionSummary = {
           ...session,
@@ -796,14 +1027,6 @@ export function WorkspaceSessionActivityPanel({
     }
   }, [expandedExpandableIds, viewModel.timeline]);
 
-  if (!workspaceId) {
-    return (
-      <div className="session-activity-panel">
-        <div className="session-activity-empty">{t("activityPanel.selectWorkspace")}</div>
-      </div>
-    );
-  }
-
   const handleToggleExpand = (
     eventId: string,
     options?: { isRunning?: boolean },
@@ -913,6 +1136,284 @@ export function WorkspaceSessionActivityPanel({
     });
     setManuallyToggledTurnGroupIds((current) => ({ ...current, [groupId]: true }));
   };
+
+  const dismissFollowCoach = () => {
+    if (!workspaceId) {
+      setShowFollowCoach(false);
+      return;
+    }
+    const nextDismissedByWorkspace = {
+      ...readSoloFollowCoachDismissedByWorkspace(),
+      [workspaceId]: Date.now(),
+    };
+    writeSoloFollowCoachDismissedByWorkspace(nextDismissedByWorkspace);
+    setShowFollowCoach(false);
+  };
+
+  const handleToggleLiveFollow = async (
+    source: "header" | "coach" | "nudge",
+  ) => {
+    if (!workspaceId || !onToggleLiveEditPreview) {
+      return false;
+    }
+    setFollowNudgeError(null);
+    try {
+      const maybePromise = onToggleLiveEditPreview();
+      if (
+        maybePromise &&
+        typeof (maybePromise as Promise<void>).then === "function"
+      ) {
+        await maybePromise;
+      }
+      emitSoloFollowMetric("solo_entry_clicked", {
+        workspaceId,
+        threadId: viewModel.rootThreadId,
+      });
+      if (!liveEditPreviewEnabled) {
+        emitSoloFollowMetric("solo_follow_enabled", {
+          workspaceId,
+          threadId: viewModel.rootThreadId,
+          turnKey: followNudgeContext?.turnKey,
+        });
+      }
+      if (source === "coach") {
+        dismissFollowCoach();
+      }
+      if (source === "nudge") {
+        setFollowNudgeContext(null);
+      }
+      return true;
+    } catch {
+      if (source !== "header") {
+        setFollowNudgeError(t("activityPanel.followToggleFailed"));
+      }
+      return false;
+    }
+  };
+
+  const handleFollowNudgeLater = () => {
+    if (followNudgeContext) {
+      followNudgeDismissedTurnKeysRef.current[followNudgeContext.turnKey] = true;
+      if (workspaceId) {
+        emitSoloFollowMetric("solo_nudge_later_clicked", {
+          workspaceId,
+          threadId: viewModel.rootThreadId,
+          turnKey: followNudgeContext.turnKey,
+        });
+      }
+    }
+    setFollowNudgeContext(null);
+    setFollowNudgeError(null);
+  };
+
+  const showFollowCoachBubble =
+    showFollowCoach && Boolean(onToggleLiveEditPreview) && soloFollowDiscoveryFlags.coach;
+  const showFollowNudgeBubble =
+    Boolean(followNudgeContext) &&
+    !liveEditPreviewEnabled &&
+    Boolean(onToggleLiveEditPreview) &&
+    soloFollowDiscoveryFlags.nudge &&
+    !showFollowCoachBubble;
+  const showFollowErrorBubble =
+    Boolean(followNudgeError) &&
+    Boolean(onToggleLiveEditPreview) &&
+    !showFollowCoachBubble;
+  const shouldShowFollowBubble =
+    showFollowCoachBubble || showFollowNudgeBubble || showFollowErrorBubble;
+  const showInlineFollowCopy = showFollowCoachBubble || showFollowNudgeBubble;
+  const followInlineCopyText = showFollowCoachBubble
+    ? t("activityPanel.followCoachBody")
+    : showFollowNudgeBubble
+      ? t("activityPanel.followNudgeBody")
+      : "";
+  const followPrimaryActionLabel = showFollowErrorBubble
+    ? t("activityPanel.followNudgeRetry")
+    : showFollowCoachBubble
+      ? t("activityPanel.followCoachEnable")
+      : t("activityPanel.followNudgeEnable");
+  const followSecondaryActionLabel = showFollowErrorBubble
+    ? ""
+    : showFollowCoachBubble
+      ? t("activityPanel.followCoachDismiss")
+      : t("activityPanel.followNudgeLater");
+
+  useEffect(() => {
+    if (!showFollowCoachBubble && !showFollowNudgeBubble) {
+      return;
+    }
+    const timeoutId = window.setTimeout(() => {
+      if (showFollowCoachBubble) {
+        if (!workspaceId) {
+          setShowFollowCoach(false);
+          return;
+        }
+        const nextDismissedByWorkspace = {
+          ...readSoloFollowCoachDismissedByWorkspace(),
+          [workspaceId]: Date.now(),
+        };
+        writeSoloFollowCoachDismissedByWorkspace(nextDismissedByWorkspace);
+        setShowFollowCoach(false);
+        return;
+      }
+
+      if (showFollowNudgeBubble && followNudgeContext) {
+        followNudgeDismissedTurnKeysRef.current[followNudgeContext.turnKey] = true;
+      }
+      setFollowNudgeContext(null);
+      setFollowNudgeError(null);
+    }, FOLLOW_BUBBLE_AUTO_DISMISS_MS);
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [followNudgeContext, showFollowCoachBubble, showFollowNudgeBubble, workspaceId]);
+
+  useLayoutEffect(() => {
+    if (!shouldShowFollowBubble || typeof window === "undefined") {
+      setFollowBubbleGeometry(null);
+      return;
+    }
+
+    const updateFollowBubbleGeometry = () => {
+      const toggleButton = liveEditToggleButtonRef.current;
+      if (!toggleButton) {
+        return;
+      }
+      const toggleRect = toggleButton.getBoundingClientRect();
+      const headerRect = panelHeaderRef.current?.getBoundingClientRect() ?? null;
+      const panelRect = panelRootRef.current?.getBoundingClientRect() ?? null;
+      const boundaryRect = headerRect ?? panelRect;
+      const viewportWidth = window.innerWidth;
+      const viewportHeight = window.innerHeight;
+      const viewportPadding = 12;
+      const panelEdgeInset = 8;
+      const preferredAnchorInset = 84;
+      const anchorCenterX = toggleRect.left + toggleRect.width / 2;
+      const leftBoundary = Math.max(
+        viewportPadding,
+        boundaryRect ? boundaryRect.left + panelEdgeInset : viewportPadding,
+      );
+      const rightBoundary = Math.min(
+        viewportWidth - viewportPadding,
+        boundaryRect ? boundaryRect.right - panelEdgeInset : viewportWidth - viewportPadding,
+      );
+      const boundaryWidth = Math.max(188, rightBoundary - leftBoundary);
+      const estimatedInlineWidth = showInlineFollowCopy
+        ? Math.ceil(
+            followInlineCopyText.length * 10 +
+              followPrimaryActionLabel.length * 13 +
+              followSecondaryActionLabel.length * 13 +
+              170,
+          )
+        : 300;
+      const bubbleWidth = Math.min(
+        boundaryWidth,
+        Math.max(showInlineFollowCopy ? 300 : 188, estimatedInlineWidth),
+      );
+      const maxLeft = Math.max(leftBoundary, rightBoundary - bubbleWidth);
+      const left = Math.min(Math.max(anchorCenterX - preferredAnchorInset, leftBoundary), maxLeft);
+      const top = Math.min(toggleRect.bottom + 10, viewportHeight - 16);
+      const arrowLeft = Math.min(Math.max(anchorCenterX - left, 24), bubbleWidth - 24);
+      const nextGeometry: FollowBubbleGeometry = {
+        top,
+        left,
+        width: bubbleWidth,
+        arrowLeft,
+      };
+      setFollowBubbleGeometry((current) => {
+        if (
+          current &&
+          Math.abs(current.top - nextGeometry.top) < 0.5 &&
+          Math.abs(current.left - nextGeometry.left) < 0.5 &&
+          Math.abs(current.width - nextGeometry.width) < 0.5 &&
+          Math.abs(current.arrowLeft - nextGeometry.arrowLeft) < 0.5
+        ) {
+          return current;
+        }
+        return nextGeometry;
+      });
+    };
+
+    updateFollowBubbleGeometry();
+    window.addEventListener("resize", updateFollowBubbleGeometry);
+    window.addEventListener("scroll", updateFollowBubbleGeometry, true);
+    return () => {
+      window.removeEventListener("resize", updateFollowBubbleGeometry);
+      window.removeEventListener("scroll", updateFollowBubbleGeometry, true);
+    };
+  }, [
+    followInlineCopyText,
+    followPrimaryActionLabel,
+    followSecondaryActionLabel,
+    shouldShowFollowBubble,
+    showInlineFollowCopy,
+  ]);
+
+  if (!workspaceId) {
+    return (
+      <div className="session-activity-panel">
+        <div className="session-activity-empty">{t("activityPanel.selectWorkspace")}</div>
+      </div>
+    );
+  }
+
+  const followBubbleNode =
+    shouldShowFollowBubble && followBubbleGeometry ? (
+      <div
+        className={`session-activity-follow-bubble is-floating${
+          showFollowErrorBubble ? " is-error" : ""
+        }${
+          showInlineFollowCopy ? " is-inline-layout" : ""
+        }`}
+        style={{
+          top: `${followBubbleGeometry.top}px`,
+          left: `${followBubbleGeometry.left}px`,
+          width: `${followBubbleGeometry.width}px`,
+          "--session-follow-bubble-arrow-left": `${followBubbleGeometry.arrowLeft}px`,
+        } as CSSProperties}
+        role={showFollowErrorBubble ? "alert" : "status"}
+      >
+        {showInlineFollowCopy ? (
+          <p className="session-activity-follow-bubble-inline-copy">
+            <span className="session-activity-follow-bubble-inline-body">
+              {showFollowCoachBubble ? t("activityPanel.followCoachBody") : t("activityPanel.followNudgeBody")}
+            </span>
+          </p>
+        ) : (
+          <>
+            <div className="session-activity-follow-bubble-title">
+              {showFollowErrorBubble ? t("activityPanel.followNudgeErrorTitle") : t("activityPanel.followNudgeTitle")}
+            </div>
+            <p className="session-activity-follow-bubble-copy">{followNudgeError ?? t("activityPanel.followNudgeBody")}</p>
+          </>
+        )}
+        <div className="session-activity-follow-bubble-actions">
+          <button
+            type="button"
+            className="session-activity-follow-bubble-primary"
+            onClick={() => {
+              void handleToggleLiveFollow(showFollowCoachBubble ? "coach" : "nudge");
+            }}
+          >
+            {showFollowErrorBubble
+              ? t("activityPanel.followNudgeRetry")
+              : showFollowCoachBubble
+                ? t("activityPanel.followCoachEnable")
+                : t("activityPanel.followNudgeEnable")}
+          </button>
+          {!showFollowErrorBubble ? (
+            <button
+              type="button"
+              className="session-activity-follow-bubble-secondary"
+              onClick={showFollowCoachBubble ? dismissFollowCoach : handleFollowNudgeLater}
+            >
+              {showFollowCoachBubble
+                ? t("activityPanel.followCoachDismiss")
+                : t("activityPanel.followNudgeLater")}
+            </button>
+          ) : null}
+        </div>
+      </div>
+    ) : null;
 
   const renderTimelineEvent = (event: SessionActivityEvent) => {
     const isExpanded = Boolean(expandedExpandableIds[event.eventId]);
@@ -1127,8 +1628,8 @@ export function WorkspaceSessionActivityPanel({
   };
 
   return (
-    <div className="session-activity-panel">
-      <div className="session-activity-header">
+    <div className="session-activity-panel" ref={panelRootRef}>
+      <div className="session-activity-header" ref={panelHeaderRef}>
         <div className="session-activity-title-group">
           <div className="session-activity-heading-row">
             <div
@@ -1138,17 +1639,20 @@ export function WorkspaceSessionActivityPanel({
             </div>
             {onToggleLiveEditPreview ? (
               <button
+                ref={liveEditToggleButtonRef}
                 type="button"
                 className={`session-activity-live-edit-toggle${
                   liveEditPreviewEnabled ? " is-active" : ""
                 }`}
                 aria-pressed={liveEditPreviewEnabled}
                 aria-label={t("activityPanel.liveEditPreview")}
-                onClick={onToggleLiveEditPreview}
+                onClick={() => {
+                  void handleToggleLiveFollow("header");
+                }}
                 title={t(
                   liveEditPreviewEnabled
                     ? "activityPanel.disableLiveEditPreview"
-                    : "activityPanel.enableLiveEditPreview",
+                    : "activityPanel.liveEditPreviewTooltip",
                 )}
               >
                 <Bot size={15} aria-hidden />
@@ -1180,7 +1684,9 @@ export function WorkspaceSessionActivityPanel({
         </div>
         <div className="session-activity-summary">{headerSummary}</div>
       </div>
-
+      {followBubbleNode && typeof document !== "undefined"
+        ? createPortal(followBubbleNode, document.body)
+        : null}
       {stickyChildSessionSummaries.length > 0 ? (
         <div
           className="session-activity-related-toolbar"

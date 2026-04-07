@@ -144,7 +144,8 @@ export function collectDirPaths(files: GitCommitFileChange[]): Set<string> {
     const parts = file.path.split("/").filter(Boolean);
     let current = "";
     for (let index = 0; index < parts.length - 1; index += 1) {
-      current = current ? `${current}/${parts[index]}` : parts[index];
+      const part = parts[index] ?? "";
+      current = current ? `${current}/${part}` : part;
       paths.add(current);
     }
   }
@@ -164,7 +165,8 @@ export function pickSelectedFileKey(
       return previousKey;
     }
   }
-  return buildFileKey(files[0]);
+  const firstFile = files[0];
+  return firstFile ? buildFileKey(firstFile) : null;
 }
 
 export function buildFileTreeItems(
@@ -189,7 +191,7 @@ export function buildFileTreeItems(
     let node = root;
     let currentPath = "";
     for (let index = 0; index < parts.length - 1; index += 1) {
-      const part = parts[index];
+      const part = parts[index] ?? "";
       currentPath = currentPath ? `${currentPath}/${part}` : part;
       let child = node.dirs.get(part);
       if (!child) {

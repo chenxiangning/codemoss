@@ -64,6 +64,7 @@ describe("TaskCreateModal", () => {
       panelId: "panel-1",
       defaultStatus: "todo" as const,
       engineStatuses,
+      availableTasks: [],
       onSubmit: vi.fn(),
       onCancel: vi.fn(),
     };
@@ -90,6 +91,7 @@ describe("TaskCreateModal", () => {
       panelId: "panel-1",
       defaultStatus: "todo" as const,
       engineStatuses,
+      availableTasks: [],
       onSubmit: vi.fn(),
       onCancel: vi.fn(),
     };
@@ -130,6 +132,7 @@ describe("TaskCreateModal", () => {
       panelId: "panel-1",
       defaultStatus: "todo" as const,
       engineStatuses,
+      availableTasks: [],
       onSubmit: vi.fn(),
       onCancel: vi.fn(),
     };
@@ -153,5 +156,202 @@ describe("TaskCreateModal", () => {
       title: "kanban.task.generateTitleFailed",
       message: "kanban.task.generateTitleTimeout",
     });
+  });
+
+  it("clears blocked reason when updating an edited task", async () => {
+    const onUpdate = vi.fn();
+    const editingTask = {
+      id: "task-1",
+      workspaceId: "ws-1",
+      panelId: "panel-1",
+      title: "Recurring task",
+      description: "desc",
+      status: "todo",
+      engineType: "claude",
+      modelId: "claude-sonnet",
+      branchName: "main",
+      images: [],
+      autoStart: false,
+      sortOrder: 1,
+      threadId: null,
+      schedule: {
+        mode: "recurring",
+        interval: 1,
+        unit: "minutes",
+        nextRunAt: Date.now() + 60_000,
+      },
+      execution: {
+        lastSource: "manual",
+        blockedReason: "manual_blocked",
+      },
+      createdAt: 1,
+      updatedAt: 1,
+    } as any;
+
+    const props = {
+      workspaceId: "ws-1",
+      workspaceBackendId: "ws-1",
+      panelId: "panel-1",
+      defaultStatus: "todo" as const,
+      engineStatuses,
+      availableTasks: [editingTask],
+      onSubmit: vi.fn(),
+      onCancel: vi.fn(),
+      editingTask,
+      onUpdate,
+    };
+
+    const { getByText } = render(<TaskCreateModal {...props} isOpen />);
+    fireEvent.click(getByText("kanban.task.update"));
+
+    await waitFor(() => {
+      expect(onUpdate).toHaveBeenCalled();
+    });
+
+    const updateCall = onUpdate.mock.calls[0] ?? [];
+    const [, changes] = updateCall;
+    expect(changes.execution?.blockedReason).toBeNull();
+  });
+
+  it("shows upstream task type labels in chain selector options", () => {
+    const props = {
+      workspaceId: "ws-1",
+      workspaceBackendId: "ws-1",
+      panelId: "panel-1",
+      defaultStatus: "todo" as const,
+      engineStatuses,
+      availableTasks: [
+        {
+          id: "task-manual",
+          workspaceId: "ws-1",
+          panelId: "panel-1",
+          title: "Manual task",
+          description: "",
+          status: "todo",
+          engineType: "claude",
+          modelId: "claude-sonnet",
+          branchName: "main",
+          images: [],
+          autoStart: false,
+          sortOrder: 1,
+          threadId: null,
+          createdAt: 1,
+          updatedAt: 1,
+        },
+        {
+          id: "task-once",
+          workspaceId: "ws-1",
+          panelId: "panel-1",
+          title: "One-time task",
+          description: "",
+          status: "todo",
+          engineType: "claude",
+          modelId: "claude-sonnet",
+          branchName: "main",
+          images: [],
+          autoStart: false,
+          sortOrder: 2,
+          threadId: null,
+          schedule: {
+            mode: "once",
+            runAt: Date.now() + 60_000,
+          },
+          createdAt: 1,
+          updatedAt: 1,
+        },
+        {
+          id: "task-recurring",
+          workspaceId: "ws-1",
+          panelId: "panel-1",
+          title: "Recurring task",
+          description: "",
+          status: "todo",
+          engineType: "claude",
+          modelId: "claude-sonnet",
+          branchName: "main",
+          images: [],
+          autoStart: false,
+          sortOrder: 3,
+          threadId: null,
+          schedule: {
+            mode: "recurring",
+            interval: 1,
+            unit: "days",
+            nextRunAt: Date.now() + 60_000,
+          },
+          createdAt: 1,
+          updatedAt: 1,
+        },
+      ] as any,
+      onSubmit: vi.fn(),
+      onCancel: vi.fn(),
+    };
+
+    const { getByRole } = render(<TaskCreateModal {...props} isOpen />);
+
+    expect(
+      getByRole("option", { name: "[kanban.task.schedule.manual] Manual task" }),
+    ).toBeTruthy();
+    expect(
+      getByRole("option", { name: "[kanban.task.schedule.once] One-time task" }),
+    ).toBeTruthy();
+    expect(
+      getByRole("option", { name: "[kanban.task.schedule.recurring] Recurring task" }),
+    ).toBeTruthy();
+  });
+
+  it("shows start toggle only for manual schedule mode", () => {
+    const props = {
+      workspaceId: "ws-1",
+      workspaceBackendId: "ws-1",
+      panelId: "panel-1",
+      defaultStatus: "todo" as const,
+      engineStatuses,
+      availableTasks: [],
+      onSubmit: vi.fn(),
+      onCancel: vi.fn(),
+    };
+
+    const { getByRole, queryByText } = render(<TaskCreateModal {...props} isOpen />);
+
+    expect(queryByText("kanban.task.start")).toBeTruthy();
+    fireEvent.click(getByRole("radio", { name: "kanban.task.schedule.once" }));
+    expect(queryByText("kanban.task.start")).toBeNull();
+    fireEvent.click(getByRole("radio", { name: "kanban.task.schedule.manual" }));
+    expect(queryByText("kanban.task.start")).toBeTruthy();
+  });
+
+  it("forces autoStart off when switching to non-manual schedule", async () => {
+    const onSubmit = vi.fn();
+    const props = {
+      workspaceId: "ws-1",
+      workspaceBackendId: "ws-1",
+      panelId: "panel-1",
+      defaultStatus: "inprogress" as const,
+      engineStatuses,
+      availableTasks: [],
+      onSubmit,
+      onCancel: vi.fn(),
+    };
+
+    const { container, getByPlaceholderText, getByRole, getByText } = render(
+      <TaskCreateModal {...props} isOpen />,
+    );
+
+    const startToggle = container.querySelector(".kanban-toggle-input") as HTMLInputElement;
+    expect(startToggle?.checked).toBe(true);
+
+    fireEvent.click(getByRole("radio", { name: "kanban.task.schedule.recurring" }));
+    fireEvent.change(getByPlaceholderText("kanban.task.titlePlaceholder"), {
+      target: { value: "Recurring task" },
+    });
+    fireEvent.click(getByText("kanban.task.create"));
+
+    await waitFor(() => {
+      expect(onSubmit).toHaveBeenCalledTimes(1);
+    });
+
+    expect(onSubmit.mock.calls[0]?.[0]?.autoStart).toBe(false);
+    expect(onSubmit.mock.calls[0]?.[0]?.schedule?.mode).toBe("recurring");
   });
 });

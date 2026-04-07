@@ -82,6 +82,9 @@ function normalizeUserInputQuestion(
     question,
     isOther: asBoolean(input.isOther ?? input.is_other),
     isSecret: asBoolean(input.isSecret ?? input.is_secret),
+    ...(asBoolean(input.multiSelect ?? input.multi_select)
+      ? { multiSelect: true }
+      : {}),
     options: options.length > 0 ? options : undefined,
   };
 }
@@ -157,6 +160,9 @@ export function extractLatestTurnPlan(thread: Record<string, unknown>): TurnPlan
   const turns = Array.isArray(thread.turns) ? (thread.turns as Record<string, unknown>[]) : [];
   for (let index = turns.length - 1; index >= 0; index -= 1) {
     const turn = turns[index];
+    if (!turn) {
+      continue;
+    }
     const turnId = asString(turn.id ?? turn.turnId ?? turn.turn_id ?? `turn-${index + 1}`);
     const explanation = turn.explanation ?? turn.planExplanation ?? turn.plan_explanation ?? null;
     const planRaw = turn.plan ?? turn.steps ?? null;
@@ -205,6 +211,9 @@ export function extractUserInputQueueFromThread(
   const turns = Array.isArray(thread.turns) ? (thread.turns as Record<string, unknown>[]) : [];
   for (let index = 0; index < turns.length; index += 1) {
     const turn = turns[index];
+    if (!turn) {
+      continue;
+    }
     const turnId = asString(
       turn.id ?? turn.turnId ?? turn.turn_id ?? `turn-${index + 1}`,
     ).trim();

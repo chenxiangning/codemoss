@@ -118,6 +118,8 @@ export function useWorkspaceSessionActivity({
               rootThreadName: context.rootThreadName,
               threadSnapshots: context.relevantThreads.map(
                 (threadContext) => nextThreadSnapshotsById[threadContext.thread.id],
+              ).filter(
+                (snapshot): snapshot is NonNullable<typeof snapshot> => Boolean(snapshot),
               ),
             });
           })()
@@ -186,6 +188,9 @@ export function useWorkspaceSessionActivity({
       const resolvedTimeline = [...normalizedTimeline];
       for (let timelineIndex = normalizedTimeline.length - 1; timelineIndex >= 0; timelineIndex -= 1) {
         const event = normalizedTimeline[timelineIndex];
+        if (!event) {
+          continue;
+        }
         const previousOccurredAt = previousOccurredAtByEventId[event.eventId];
         if (typeof previousOccurredAt === "number" && previousOccurredAt > 0) {
           nextOccurredAtByEventId[event.eventId] = previousOccurredAt;

@@ -16,6 +16,7 @@ import type {
   FileItem,
   ManualMemoryItem,
   PermissionMode,
+  PromptItem,
   SkillItem,
 } from './types.js';
 import { ChatInputBoxHeader } from './ChatInputBoxHeader.js';
@@ -43,6 +44,7 @@ import {
   useSpaceKeyListener,
   useResizableChatInputBox,
   useInlineHistoryCompletion,
+  useUndoRedoHistory,
 } from './hooks/index.js';
 import {
   commandToDropdownItem,
@@ -55,13 +57,24 @@ import {
   promptToDropdownItem,
   preloadSlashCommands,
   type AgentItem,
-  type PromptItem,
 } from './providers/index.js';
 import { debounce } from './utils/debounce.js';
-import { setCursorOffset } from './utils/selectionUtils.js';
+import { insertTextAtCursor, setCursorOffset } from './utils/selectionUtils.js';
+import { getVirtualSelectionRange, setVirtualSelectionRange } from './utils/virtualCursorUtils.js';
+import {
+  resolveShortcutPlatform,
+  resolveUndoRedoShortcutAction,
+} from './utils/undoRedoShortcut.js';
+import type { CommitSnapshotOptions, UndoRedoSnapshot } from './hooks/useUndoRedoHistory.js';
 import { perfTimer } from '../../utils/debug.js';
 import { DEBOUNCE_TIMING } from '../../constants/performance.js';
+import { requestPromptCreation } from '../../../prompts/promptEvents';
+import { recordPromptUsage } from '../../../prompts/promptUsage';
 import './styles.css';
+
+const INCREMENTAL_UNDO_REDO_ENABLED = true;
+const INCREMENTAL_UNDO_REDO_MAX_TRANSACTIONS = 100;
+const INCREMENTAL_UNDO_REDO_MERGE_WINDOW_MS = 400;
 
 function manualMemoryToDropdownItem(memory: ManualMemoryItem) {
   const label = memory.title?.trim() || memory.summary?.trim() || memory.id;
@@ -117,7 +130,8 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
     {
       showHeader = true,
       isLoading = false,
-      selectedModel = 'claude-sonnet-4-6',
+      selectedModel = '',
+      models,
       permissionMode = 'bypassPermissions',
       currentProvider = 'claude',
       providerAvailability,
@@ -173,6 +187,7 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
       statusPanelExpanded = true,
       showStatusPanelToggle = true,
       onToggleStatusPanel,
+      workspaceId,
       sdkInstalled = true, // Default to true to avoid disabling input box on initial state
       sdkStatusLoading = false, // SDK status loading state
       onInstallSdk,
@@ -182,6 +197,7 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
       fileCompletionProvider,
       commandCompletionProvider,
       skillCompletionProvider,
+      promptCompletionProvider,
       manualMemoryCompletionProvider,
       onSelectManualMemory,
       onSelectSkill,
@@ -219,6 +235,19 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
     // Shared composing state ref - created early so it can be used by detectAndTriggerCompletion
     // This ref is synced with useIMEComposition's isComposingRef
     const sharedComposingRef = useRef(false);
+    const activeComposingStateRef = useRef(false);
+    const cancelPendingFallbackRef = useRef<() => void>(() => {});
+    const isApplyingUndoRedoRef = useRef(false);
+    const hasInitializedUndoRedoRef = useRef(false);
+    const pendingCommitOptionsRef = useRef<CommitSnapshotOptions | null>(null);
+    const lastBeforeInputTypeRef = useRef<string | undefined>(undefined);
+    const lastBeforeInputSelectionReplaceRef = useRef(false);
+
+    const shortcutPlatform = useMemo(() => resolveShortcutPlatform(), []);
+    const undoRedoHistory = useUndoRedoHistory({
+      maxTransactions: INCREMENTAL_UNDO_REDO_MAX_TRANSACTIONS,
+      mergeWindowMs: INCREMENTAL_UNDO_REDO_MERGE_WINDOW_MS,
+    });
 
     // Text content hook
     const { getTextContent, invalidateCache } = useTextContent({ editableRef });
@@ -232,6 +261,40 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
       getTextContent,
       onCloseCompletions: useCallback(() => closeAllCompletionsRef.current(), []),
     });
+
+    const captureUndoRedoSnapshot = useCallback((): UndoRedoSnapshot => {
+      const text = getTextContent();
+      const editableElement = editableRef.current;
+      if (!editableElement) {
+        const fallbackOffset = text.length;
+        return {
+          text,
+          selectionStart: fallbackOffset,
+          selectionEnd: fallbackOffset,
+        };
+      }
+
+      const selectionRange = getVirtualSelectionRange(editableElement);
+      if (selectionRange) {
+        return {
+          text,
+          selectionStart: selectionRange.start,
+          selectionEnd: selectionRange.end,
+        };
+      }
+
+      const fallbackOffset = text.length;
+      return {
+        text,
+        selectionStart: fallbackOffset,
+        selectionEnd: fallbackOffset,
+      };
+    }, [editableRef, getTextContent]);
+
+    const stageNextCommitOptions = useCallback((options: CommitSnapshotOptions) => {
+      pendingCommitOptionsRef.current = options;
+    }, []);
+
 
     // File reference completion hook
     const fileCompletion = useCompletionDropdown<FileItem>({
@@ -263,6 +326,11 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
         const cursorPos = query.start + replacement.length;
         setCursorOffset(editableRef.current, cursorPos);
 
+        stageNextCommitOptions({
+          source: 'programmatic',
+          forceNewTransaction: true,
+          inputType: 'completion:file',
+        });
         handleInput();
 
         // Tell renderFileTags to place cursor after this file tag
@@ -271,7 +339,7 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
         // Immediately try to render file tags (no need for user to manually input space)
         // Use setTimeout to ensure DOM update and cursor position are ready
         setTimeout(() => {
-          renderFileTags();
+          renderFileTagsWithHistory();
         }, 0);
       },
     });
@@ -291,6 +359,11 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
         editableRef.current.innerText = newText;
         setCursorOffset(editableRef.current, query.start);
 
+        stageNextCommitOptions({
+          source: 'programmatic',
+          forceNewTransaction: true,
+          inputType: 'completion:memory',
+        });
         handleInput();
         onSelectManualMemory?.(memory);
       },
@@ -315,6 +388,11 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
         const cursorPos = query.start + replacement.length;
         setCursorOffset(editableRef.current, cursorPos);
 
+        stageNextCommitOptions({
+          source: 'programmatic',
+          forceNewTransaction: true,
+          inputType: 'completion:command',
+        });
         handleInput();
       },
     });
@@ -338,6 +416,11 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
         const cursorPos = query.start + replacement.length;
         setCursorOffset(editableRef.current, cursorPos);
 
+        stageNextCommitOptions({
+          source: 'programmatic',
+          forceNewTransaction: true,
+          inputType: 'completion:skill',
+        });
         handleInput();
         onSelectSkill?.(skillName);
       },
@@ -369,13 +452,18 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
             // Set cursor to the position where trigger was removed
             setCursorOffset(editableRef.current, query.start);
 
+            stageNextCommitOptions({
+              source: 'programmatic',
+              forceNewTransaction: true,
+              inputType: 'completion:agent-create',
+            });
             handleInput();
           }
           return;
         }
 
         // Select agent: don't insert text, call onAgentSelect callback
-        onAgentSelect?.({ id: agent.id, name: agent.name, prompt: agent.prompt });
+        onAgentSelect?.({ id: agent.id, name: agent.name, prompt: agent.prompt, icon: agent.icon });
 
         // Clear # trigger text from input box
         if (editableRef.current && query) {
@@ -386,6 +474,11 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
           // Set cursor to the position where trigger was removed
           setCursorOffset(editableRef.current, query.start);
 
+          stageNextCommitOptions({
+            source: 'programmatic',
+            forceNewTransaction: true,
+            inputType: 'completion:agent-select',
+          });
           handleInput();
         }
       },
@@ -394,7 +487,7 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
     // Prompt completion hook (! trigger)
     const promptCompletion = useCompletionDropdown<PromptItem>({
       trigger: '!',
-      provider: promptProvider,
+      provider: promptCompletionProvider ?? promptProvider,
       toDropdownItem: promptToDropdownItem,
       onSelect: (prompt, query) => {
         // Skip loading and empty state special items
@@ -407,6 +500,7 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
 
         // Handle create prompt
         if (prompt.id === '__create_new__') {
+          requestPromptCreation({ scope: 'workspace' });
           onOpenPromptSettings?.();
           // Clear ! trigger text from input box
           if (editableRef.current && query) {
@@ -417,10 +511,17 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
             // Set cursor to the position where trigger was removed
             setCursorOffset(editableRef.current, query.start);
 
+            stageNextCommitOptions({
+              source: 'programmatic',
+              forceNewTransaction: true,
+              inputType: 'completion:prompt-create',
+            });
             handleInput();
           }
           return;
         }
+
+        recordPromptUsage(prompt.id);
 
         // Insert prompt content at cursor position
         if (editableRef.current && query) {
@@ -433,6 +534,11 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
           const cursorPos = query.start + prompt.content.length;
           setCursorOffset(editableRef.current, cursorPos);
 
+          stageNextCommitOptions({
+            source: 'programmatic',
+            forceNewTransaction: true,
+            inputType: 'completion:prompt',
+          });
           handleInput();
         }
       },
@@ -465,10 +571,18 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
         editableRef.current.innerHTML = '';
         editableRef.current.style.height = 'auto';
         setHasContent(false);
+        undoRedoHistory.reset({
+          text: '',
+          selectionStart: 0,
+          selectionEnd: 0,
+        });
+        pendingCommitOptionsRef.current = null;
+        lastBeforeInputTypeRef.current = undefined;
+        lastBeforeInputSelectionReplaceRef.current = false;
         // Notify parent component that input is cleared
         onInput?.('');
       }
-    }, [onInput]);
+    }, [onInput, undoRedoHistory]);
 
     /**
      * Adjust input box height
@@ -486,10 +600,33 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
       el.style.overflowY = 'hidden';
     }, []);
 
+    const renderFileTagsWithHistory = useCallback(() => {
+      if (!INCREMENTAL_UNDO_REDO_ENABLED) {
+        renderFileTags();
+        return;
+      }
+
+      const before = captureUndoRedoSnapshot();
+      renderFileTags();
+      const after = captureUndoRedoSnapshot();
+      if (
+        before.text !== after.text ||
+        before.selectionStart !== after.selectionStart ||
+        before.selectionEnd !== after.selectionEnd
+      ) {
+        undoRedoHistory.commitSnapshot(after, {
+          source: 'programmatic',
+          forceNewTransaction: true,
+          inputType: 'render:file-tags',
+          timestamp: Date.now(),
+        });
+      }
+    }, [captureUndoRedoSnapshot, renderFileTags, undoRedoHistory]);
+
     // Create debounced version of renderFileTags
     const debouncedRenderFileTags = useMemo(
-      () => debounce(renderFileTags, DEBOUNCE_TIMING.FILE_TAG_RENDERING_MS),
-      [renderFileTags]
+      () => debounce(renderFileTagsWithHistory, DEBOUNCE_TIMING.FILE_TAG_RENDERING_MS),
+      [renderFileTagsWithHistory]
     );
 
     // Completion trigger detection hook
@@ -540,7 +677,7 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
         // composition, or true after compositionEnd). Our ref is set synchronously
         // by compositionStart/End and keyCode 229 detection, making it the sole
         // reliable source of truth.
-        if (isComposingRef.current) {
+        if (activeComposingStateRef.current) {
           return;
         }
 
@@ -549,7 +686,7 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
         // (which would redundantly call handleInput again) is no longer needed.
         // This prevents: 1) double handleInput calls, 2) debouncedOnInput timer
         // reset that delays parent notification by an extra 100ms.
-        cancelPendingFallback();
+        cancelPendingFallbackRef.current();
 
         // Invalidate cache since content changed
         invalidateCache();
@@ -592,6 +729,34 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
           inlineCompletion.clear();
         }
 
+        if (INCREMENTAL_UNDO_REDO_ENABLED && !isApplyingUndoRedoRef.current) {
+          const stagedOptions = pendingCommitOptionsRef.current;
+          const commitOptions: CommitSnapshotOptions = {
+            source: stagedOptions?.source ?? 'input',
+            inputType: stagedOptions?.inputType ?? lastBeforeInputTypeRef.current,
+            forceNewTransaction: stagedOptions?.forceNewTransaction,
+            selectionReplaced:
+              stagedOptions?.selectionReplaced ??
+              lastBeforeInputSelectionReplaceRef.current,
+            timestamp: stagedOptions?.timestamp ?? Date.now(),
+            isComposing: stagedOptions?.isComposing ?? activeComposingStateRef.current,
+          };
+
+          const snapshot = captureUndoRedoSnapshot();
+          undoRedoHistory.commitSnapshot(
+            {
+              text: isEmpty ? '' : snapshot.text,
+              selectionStart: snapshot.selectionStart,
+              selectionEnd: snapshot.selectionEnd,
+            },
+            commitOptions
+          );
+        }
+
+        pendingCommitOptionsRef.current = null;
+        lastBeforeInputTypeRef.current = undefined;
+        lastBeforeInputSelectionReplaceRef.current = false;
+
         // Notify parent component (use debounced version to reduce re-renders)
         // If determined empty (only zero-width characters), pass empty string to parent
         debouncedOnInput(isEmpty ? '' : text);
@@ -613,7 +778,31 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
         agentCompletion,
         promptCompletion,
         inlineCompletion,
+        captureUndoRedoSnapshot,
+        undoRedoHistory,
       ]
+    );
+
+    const applyUndoRedoSnapshot = useCallback(
+      (snapshot: UndoRedoSnapshot) => {
+        const editableElement = editableRef.current;
+        if (!editableElement) return;
+
+        isApplyingUndoRedoRef.current = true;
+        editableElement.innerText = snapshot.text;
+        invalidateCache();
+        renderFileTags();
+        setVirtualSelectionRange(
+          editableElement,
+          snapshot.selectionStart,
+          snapshot.selectionEnd
+        );
+        handleInput();
+        window.setTimeout(() => {
+          isApplyingUndoRedoRef.current = false;
+        }, 0);
+      },
+      [editableRef, handleInput, invalidateCache, renderFileTags]
     );
 
     /**
@@ -635,9 +824,14 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
       selection?.addRange(range);
 
       // Update state
+      stageNextCommitOptions({
+        source: 'programmatic',
+        forceNewTransaction: true,
+        inputType: 'completion:inline-history',
+      });
       handleInput();
       return true;
-    }, [inlineCompletion, handleInput]);
+    }, [inlineCompletion, handleInput, stageNextCommitOptions]);
 
     // IME composition hook (ref-only, no React state to avoid re-renders during composition)
     const {
@@ -649,12 +843,15 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
     } = useIMEComposition({
       handleInput,
     });
+    activeComposingStateRef.current = isComposingRef.current;
+    cancelPendingFallbackRef.current = cancelPendingFallback;
 
     // Wrap composition handlers to sync sharedComposingRef (used by completion detection)
     // Both refs are now set synchronously — no RAF, no race conditions.
     const handleCompositionStart = useCallback(() => {
       rawHandleCompositionStart();
       sharedComposingRef.current = true;
+      activeComposingStateRef.current = true;
       // Cancel pending space-triggered file tag render to avoid DOM rewrites
       // during active IME composition (can break candidate confirmation).
       debouncedRenderFileTags.cancel();
@@ -663,6 +860,7 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
     const handleCompositionEnd = useCallback(() => {
       rawHandleCompositionEnd();
       sharedComposingRef.current = false;
+      activeComposingStateRef.current = false;
     }, [rawHandleCompositionEnd]);
 
     const { record: recordInputHistory, handleKeyDown: handleHistoryKeyDown } = useInputHistory({
@@ -726,25 +924,55 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
       t,
     });
 
+    const handleUndoRedoAction = useCallback(
+      (action: 'undo' | 'redo') => {
+        if (!INCREMENTAL_UNDO_REDO_ENABLED) {
+          return;
+        }
+        const snapshot = action === 'undo' ? undoRedoHistory.undo() : undoRedoHistory.redo();
+        if (!snapshot) {
+          return;
+        }
+        applyUndoRedoSnapshot(snapshot);
+      },
+      [applyUndoRedoSnapshot, undoRedoHistory]
+    );
+
+    const resolveUndoRedoAction = useCallback(
+      (event: KeyboardEvent) => {
+        if (!INCREMENTAL_UNDO_REDO_ENABLED) {
+          return null;
+        }
+        return resolveUndoRedoShortcutAction(event, shortcutPlatform);
+      },
+      [shortcutPlatform]
+    );
+
     // Prompt enhancer hook
     const {
       isEnhancing,
+      enhancingEngine,
       showEnhancerDialog,
       originalPrompt,
       enhancedPrompt,
+      canUseEnhancedPrompt,
       handleEnhancePrompt,
       handleUseEnhancedPrompt,
       handleKeepOriginalPrompt,
       handleCloseEnhancerDialog,
     } = usePromptEnhancer({
+      workspaceId,
       editableRef,
       getTextContent,
+      currentProvider,
       selectedModel,
       setHasContent,
-      onInput,
+      handleInput,
+      stageNextCommitOptions,
     });
 
     const { onKeyDown: handleKeyDown, onKeyUp: handleKeyUp } = useKeyboardHandler({
+      editableRef,
       isComposingRef,
       lastCompositionEndTimeRef,
       sendShortcut,
@@ -756,6 +984,9 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
       skillCompletion,
       agentCompletion,
       promptCompletion,
+      isIncrementalUndoRedoEnabled: INCREMENTAL_UNDO_REDO_ENABLED,
+      resolveUndoRedoAction,
+      handleUndoRedoAction,
       handleMacCursorMovement,
       handleHistoryKeyDown,
       // Inline completion: Tab key applies suggestion
@@ -777,6 +1008,14 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
       adjustHeight,
       invalidateCache,
     });
+
+    useEffect(() => {
+      if (!INCREMENTAL_UNDO_REDO_ENABLED || hasInitializedUndoRedoRef.current) {
+        return;
+      }
+      hasInitializedUndoRedoRef.current = true;
+      undoRedoHistory.reset(captureUndoRedoSnapshot());
+    }, [captureUndoRedoSnapshot, undoRedoHistory]);
 
     useNativeEventCapture({
       editableRef,
@@ -804,6 +1043,7 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
       handleDrop,
       isDragOver,
       dragPreviewNames,
+      handleDroppedPaths,
     } = usePasteAndDrop({
       disabled,
       editableRef,
@@ -811,13 +1051,14 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
       pathMappingRef,
       getTextContent,
       adjustHeight,
-      renderFileTags,
+      renderFileTags: renderFileTagsWithHistory,
       setHasContent,
       setInternalAttachments,
       onInput,
       fileCompletion,
       commandCompletion,
       handleInput,
+      stageNextCommitOptions,
       flushInput: () => {
         debouncedOnInput.flush();
       },
@@ -837,6 +1078,7 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
       externalAttachments,
       onAddAttachment,
       onRemoveAttachment,
+      onAttachPaths: handleDroppedPaths,
       setInternalAttachments,
     });
 
@@ -887,9 +1129,11 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
       pathMappingRef,
       getTextContent,
       adjustHeight,
-      renderFileTags,
+      renderFileTags: renderFileTagsWithHistory,
       setHasContent,
       onInput,
+      handleInput,
+      stageNextCommitOptions,
       fileCompletion,
       commandCompletion,
       focusInput,
@@ -923,6 +1167,77 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
         focusInput();
       });
     }, [focusInput, nudge]);
+
+    const handleShortcutChipClick = useCallback((trigger: '@' | '@@' | '/' | '$' | '#' | '!') => {
+      const editableElement = editableRef.current;
+      if (!editableElement || disabled) {
+        return;
+      }
+
+      editableElement.focus();
+      const inserted = insertTextAtCursor(trigger, editableElement);
+      if (!inserted) {
+        const currentText = getTextContent();
+        const nextText = `${currentText}${trigger}`;
+        editableElement.innerText = nextText;
+        setCursorOffset(editableElement, nextText.length);
+      }
+
+      stageNextCommitOptions({
+        source: 'programmatic',
+        forceNewTransaction: true,
+        inputType: 'shortcut:chip',
+      });
+      handleInput();
+    }, [disabled, getTextContent, handleInput, stageNextCommitOptions]);
+
+    const settingsShortcutActions = useMemo(
+      () => ([
+        {
+          key: 'file',
+          trigger: '@' as const,
+          label: t('chat.shortcutActionFile'),
+          onClick: () => handleShortcutChipClick('@'),
+        },
+        {
+          key: 'memory',
+          trigger: '@@' as const,
+          label: t('chat.shortcutActionMemory'),
+          onClick: () => handleShortcutChipClick('@@'),
+        },
+        {
+          key: 'command',
+          trigger: '/' as const,
+          label: t('chat.shortcutActionCommand'),
+          onClick: () => handleShortcutChipClick('/'),
+        },
+        {
+          key: 'skill',
+          trigger: '$' as const,
+          label: t('chat.shortcutActionSkill'),
+          onClick: () => handleShortcutChipClick('$'),
+        },
+        {
+          key: 'agent',
+          trigger: '#' as const,
+          label: t('chat.shortcutActionAgent'),
+          onClick: () => handleShortcutChipClick('#'),
+        },
+        {
+          key: 'prompt',
+          trigger: '!' as const,
+          label: t('chat.shortcutActionPrompt'),
+          onClick: () => handleShortcutChipClick('!'),
+        },
+        {
+          key: 'enhance',
+          trigger: '⌘/Ctrl+/' as const,
+          label: t('chat.shortcutActionEnhance'),
+          onClick: handleEnhancePrompt,
+        },
+      ]),
+      [handleEnhancePrompt, handleShortcutChipClick, t],
+    );
 
     return (
       <div className="chat-input-box-wrapper">
@@ -985,6 +1300,7 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
                   ) : null}
                 </div>
               ) : null}
+
               <div
                 ref={editableRef}
                 className="input-editable"
@@ -1017,6 +1333,12 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
                     'inputType' in e.nativeEvent
                       ? (e.nativeEvent as InputEvent).inputType
                       : undefined;
+                  lastBeforeInputTypeRef.current = inputType;
+                  const selectionRange = editableRef.current
+                    ? getVirtualSelectionRange(editableRef.current)
+                    : null;
+                  lastBeforeInputSelectionReplaceRef.current = !!selectionRange &&
+                    selectionRange.start !== selectionRange.end;
                   if (inputType === 'insertParagraph') {
                     if (shiftEnterRef.current) {
                       return;
@@ -1075,6 +1397,7 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
               isLoading={isLoading}
               isEnhancing={isEnhancing}
               selectedModel={selectedModel}
+              models={models}
               permissionMode={permissionMode}
               currentProvider={currentProvider}
               providerAvailability={providerAvailability}
@@ -1112,12 +1435,15 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
               agentCompletion={agentCompletion}
               promptCompletion={promptCompletion}
               selectedManualMemoryIds={selectedManualMemoryIds}
+              shortcutActions={settingsShortcutActions}
               tooltip={tooltip}
               promptEnhancer={{
                 isOpen: showEnhancerDialog,
                 isLoading: isEnhancing,
+                loadingEngine: enhancingEngine,
                 originalPrompt,
                 enhancedPrompt,
+                canUseEnhanced: canUseEnhancedPrompt,
                 onUseEnhanced: handleUseEnhancedPrompt,
                 onKeepOriginal: handleKeepOriginalPrompt,
                 onClose: handleCloseEnhancerDialog,

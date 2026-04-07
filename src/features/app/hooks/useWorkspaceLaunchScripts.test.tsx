@@ -170,7 +170,7 @@ describe("useWorkspaceLaunchScripts", () => {
       }),
     );
 
-    const createdId = createdScripts[0].id;
+    const createdId = createdScripts[0]?.id;
     const workspaceWithCreated = makeWorkspace(createdScripts);
     updateWorkspaceSettings.mockClear();
     updateWorkspaceSettings.mockResolvedValue(workspaceWithCreated);
@@ -188,7 +188,7 @@ describe("useWorkspaceLaunchScripts", () => {
     );
 
     act(() => {
-      editResult.current.onOpenEditor(createdId);
+      editResult.current.onOpenEditor(createdId ?? "created-script");
       editResult.current.onDraftScriptChange("npm run build");
       editResult.current.onDraftIconChange("build");
       editResult.current.onDraftLabelChange("Build");
@@ -226,7 +226,7 @@ describe("useWorkspaceLaunchScripts", () => {
     );
 
     await act(async () => {
-      deleteResult.current.onOpenEditor(createdId);
+      deleteResult.current.onOpenEditor(createdId ?? "created-script");
       await deleteResult.current.onDeleteScript();
     });
 
@@ -253,7 +253,7 @@ describe("useWorkspaceLaunchScripts", () => {
       }),
     );
 
-    expect(result.current.launchScripts[0].icon).toBe("play");
+    expect(result.current.launchScripts[0]?.icon).toBe("play");
 
     act(() => {
       result.current.onOpenEditor("one");

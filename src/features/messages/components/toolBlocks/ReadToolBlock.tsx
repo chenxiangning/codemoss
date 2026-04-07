@@ -7,17 +7,49 @@ import { memo, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { ConversationItem } from '../../../../types';
 import {
+  asRecord,
   parseToolArgs,
   getFirstStringField,
   getFileName,
   resolveToolStatus,
 } from './toolConstants';
 import { FileIcon } from './FileIcon';
+import { Markdown } from '../Markdown';
 
 interface ReadToolBlockProps {
   item: Extract<ConversationItem, { kind: 'tool' }>;
   isExpanded: boolean;
   onToggle: (id: string) => void;
+}
+
+const MARKDOWN_EXTENSIONS = new Set(['md', 'markdown', 'mdx']);
+
+function looksLikeMarkdownOutput(value: string): boolean {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return false;
+  }
+  return (
+    /^#{1,6}\s+/m.test(trimmed) ||
+    /^\s*[-*+]\s+\S+/m.test(trimmed) ||
+    /^\s*\d+\.\s+\S+/m.test(trimmed) ||
+    /^\s*>+\s+\S+/m.test(trimmed) ||
+    /```[\s\S]*```/.test(trimmed) ||
+    (/^\s*\|.+\|\s*$/m.test(trimmed) && /^\s*\|?\s*[-:]{2,}/m.test(trimmed))
+  );
+}
+
+function isMarkdownPath(path: string): boolean {
+  const normalized = path.trim().replace(/\\/g, '/');
+  if (!normalized) {
+    return false;
+  }
+  const fileName = getFileName(normalized).toLowerCase();
+  const ext = fileName.includes('.') ? fileName.split('.').pop() ?? '' : '';
+  if (MARKDOWN_EXTENSIONS.has(ext)) {
+    return true;
+  }
+  return fileName === 'readme' || fileName.startsWith('readme.');
 }
 
 export const ReadToolBlock = memo(function ReadToolBlock({
@@ -28,9 +60,37 @@ export const ReadToolBlock = memo(function ReadToolBlock({
   const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
   const args = useMemo(() => parseToolArgs(item.detail), [item.detail]);
+  const nestedInput = useMemo(() => asRecord(args?.input), [args]);
+  const nestedArgs = useMemo(() => asRecord(args?.arguments), [args]);
 
-  const filePath = getFirstStringField(args, ['file_path', 'path', 'target_file', 'filename']);
+  const pathKeys = ['file_path', 'filePath', 'path', 'target_file', 'targetFile', 'filename', 'file'];
+  const filePath =
+    getFirstStringField(args, pathKeys) ||
+    getFirstStringField(nestedInput, pathKeys) ||
+    getFirstStringField(nestedArgs, pathKeys);
   const fileName = getFileName(filePath);
+
+  const outputKeys = ['output', 'result', 'content', 'text'];
+  const renderedOutput = useMemo(() => {
+    if (item.output && item.output.trim()) {
+      return item.output;
+    }
+    return (
+      getFirstStringField(args, outputKeys) ||
+      getFirstStringField(nestedInput, outputKeys) ||
+      getFirstStringField(nestedArgs, outputKeys)
+    );
+  }, [args, item.output, nestedArgs, nestedInput]);
+
+  const renderAsMarkdown = useMemo(() => {
+    if (!renderedOutput) {
+      return false;
+    }
+    if (isMarkdownPath(filePath)) {
+      return true;
+    }
+    return looksLikeMarkdownOutput(renderedOutput);
+  }, [filePath, renderedOutput]);
 
   const offset = args?.offset as number | undefined;
   const limit = args?.limit as number | undefined;
@@ -45,7 +105,7 @@ export const ReadToolBlock = memo(function ReadToolBlock({
   const iconClass = isDirectory ? 'codicon-folder' : 'codicon-file-code';
   const actionText = isDirectory ? t("tools.readDirectory") : t("tools.readFile");
 
-  const status = resolveToolStatus(item.status, Boolean(item.output));
+  const status = resolveToolStatus(item.status, Boolean(renderedOutput));
   const isCompleted = status === 'completed';
   const isError = status === 'failed';
 
@@ -78,11 +138,24 @@ export const ReadToolBlock = memo(function ReadToolBlock({
         <div className={`tool-status-indicator ${isError ? 'error' : isCompleted ? 'completed' : 'pending'}`} />
       </div>
 
-      {expanded && item.output && (
-        <div className="task-details" style={{ padding: '12px', border: 'none' }}>
-          <div className="task-field-content" style={{ maxHeight: '300px', overflowY: 'auto' }}>
-            {item.output}
-          </div>
+      {expanded && renderedOutput && (
+        <div className="task-details read-tool-details" style={{ border: 'none' }}>
+          {renderAsMarkdown ? (
+            <div className="task-content-wrapper read-tool-markdown-wrapper">
+              <div className="read-tool-rendered-content">
+                <Markdown
+                  value={renderedOutput}
+                  className="markdown read-tool-markdown"
+                />
+              </div>
+            </div>
+          ) : (
+            <div className="task-content-wrapper">
+              <div className="task-field-content" style={{ maxHeight: '300px', overflowY: 'auto' }}>
+                {renderedOutput}
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>

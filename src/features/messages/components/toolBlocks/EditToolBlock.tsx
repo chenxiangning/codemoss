@@ -35,25 +35,44 @@ export const EditToolBlock = memo(function EditToolBlock({
 
   const filePath = pickStringField(args, nestedInput, nestedArgs, EDIT_PATH_KEYS);
   const fileName = getFileName(filePath);
+  const displayPath = fileName || filePath;
 
-  const { diff, hasStructuredDiff } = useMemo(() => {
+  const { diff, hasStructuredDiff, changeKind } = useMemo(() => {
     if (!args && !nestedInput && !nestedArgs) {
-      return { diff: { lines: [], additions: 0, deletions: 0 }, hasStructuredDiff: false };
+      return {
+        diff: { lines: [], additions: 0, deletions: 0 },
+        hasStructuredDiff: false,
+        changeKind: 'modified' as const,
+      };
     }
 
     const oldString = pickStringField(args, nestedInput, nestedArgs, EDIT_OLD_KEYS);
     const newString = pickStringField(args, nestedInput, nestedArgs, EDIT_NEW_KEYS);
     if (oldString || newString) {
-      return { diff: computeDiff(oldString, newString), hasStructuredDiff: true };
+      return {
+        diff: computeDiff(oldString, newString),
+        hasStructuredDiff: true,
+        changeKind: oldString ? ('modified' as const) : ('added' as const),
+      };
     }
 
     const content = pickStringField(args, nestedInput, nestedArgs, EDIT_CONTENT_KEYS);
     if (content) {
-      return { diff: computeDiff('', content), hasStructuredDiff: true };
+      return {
+        diff: computeDiff('', content),
+        hasStructuredDiff: true,
+        changeKind: 'added' as const,
+      };
     }
 
-    return { diff: { lines: [], additions: 0, deletions: 0 }, hasStructuredDiff: false };
+    return {
+      diff: { lines: [], additions: 0, deletions: 0 },
+      hasStructuredDiff: false,
+      changeKind: 'modified' as const,
+    };
   }, [args, nestedArgs, nestedInput]);
+
+  const kindCode = changeKind === 'added' ? 'A' : 'M';
 
   const status = resolveToolStatus(item.status, Boolean(item.output));
   const isCompleted = status === 'completed';
@@ -69,24 +88,19 @@ export const EditToolBlock = memo(function EditToolBlock({
         }}
       >
         <div className="task-title-section">
-          <span className="codicon codicon-edit tool-title-icon" />
+          <span className="codicon codicon-diff tool-title-icon tool-title-icon-file-change" />
           <span className="tool-title-text">{t("tools.editFile")}</span>
-          {fileName && (
-            <span className="tool-title-summary clickable-file" style={{ display: 'flex', alignItems: 'center' }}>
-              <span style={{ marginRight: '4px', display: 'flex', alignItems: 'center', width: '16px', height: '16px' }}>
-                <FileIcon fileName={fileName} size={16} />
+          {displayPath && (
+            <span className="tool-change-summary">
+              <span>1 files</span>
+              <span className="diff-stat-add">+{diff.additions}</span>
+              <span className="diff-stat-del">-{diff.deletions}</span>
+              <span className="tool-change-collapsed-preview" title={filePath || fileName}>
+                <FileIcon fileName={fileName || filePath} size={14} />
+                <span className="tool-change-collapsed-file-name">
+                  {displayPath}
+                </span>
               </span>
-              {fileName}
-            </span>
-          )}
-          {(diff.additions > 0 || diff.deletions > 0) && (
-            <span className="edit-item-diff-stats" style={{ marginLeft: '12px' }}>
-              {diff.additions > 0 && (
-                <span className="diff-stat-add">+{diff.additions}</span>
-              )}
-              {diff.deletions > 0 && (
-                <span className="diff-stat-del">-{diff.deletions}</span>
-              )}
             </span>
           )}
         </div>
@@ -94,40 +108,92 @@ export const EditToolBlock = memo(function EditToolBlock({
       </div>
 
       {expanded && (
-        <div className="task-details" style={{ padding: 0, border: 'none' }}>
-          {hasStructuredDiff && diff.lines.length > 0 ? (
-            <div className="edit-diff-viewer">
-              {diff.lines.map((line, index) => {
-                const lineClass =
-                  line.type === 'deleted'
-                    ? 'is-deleted'
-                    : line.type === 'added'
-                      ? 'is-added'
-                      : '';
+        <div className="task-details tool-change-details edit-tool-change-details" style={{ border: 'none' }}>
+          <div className="task-content-wrapper">
+            {displayPath ? (
+              <div className="tool-change-entry">
+                <div className="tool-change-row">
+                  <span className={`tool-change-kind-badge ${changeKind}`}>
+                    {kindCode}
+                  </span>
+                  <FileIcon fileName={fileName || filePath} size={14} />
+                  <span className="tool-change-file-name" title={filePath || fileName}>
+                    {displayPath}
+                  </span>
+                  <span className="tool-change-file-diff-stats">
+                    <span className="diff-stat-add">+{diff.additions}</span>
+                    <span className="diff-stat-del">-{diff.deletions}</span>
+                  </span>
+                </div>
 
-                return (
-                  <div
-                    key={`${line.type}-${index}`}
-                    className={`edit-diff-line ${lineClass}`}
-                  >
-                    <div className="edit-diff-gutter" />
-                    <div className={`edit-diff-sign ${lineClass}`}>
-                      {line.type === 'deleted' ? '-' : line.type === 'added' ? '+' : ' '}
-                    </div>
-                    <pre className="edit-diff-content">
-                      {line.content}
-                    </pre>
+                {hasStructuredDiff && diff.lines.length > 0 ? (
+                  <div className="tool-change-inline-diff edit-diff-viewer">
+                    {diff.lines.map((line, index) => {
+                      const lineClass =
+                        line.type === 'deleted'
+                          ? 'is-deleted'
+                          : line.type === 'added'
+                            ? 'is-added'
+                            : '';
+
+                      return (
+                        <div
+                          key={`${line.type}-${index}`}
+                          className={`edit-diff-line ${lineClass}`}
+                        >
+                          <div className="edit-diff-gutter" />
+                          <div className={`edit-diff-sign ${lineClass}`}>
+                            {line.type === 'deleted' ? '-' : line.type === 'added' ? '+' : ' '}
+                          </div>
+                          <pre className="edit-diff-content">
+                            {line.content}
+                          </pre>
+                        </div>
+                      );
+                    })}
                   </div>
-                );
-              })}
-            </div>
-          ) : item.output ? (
-            <div style={{ padding: '12px' }}>
-              <div className="task-field-content" style={{ maxHeight: '300px', overflowY: 'auto' }}>
-                {item.output}
+                ) : item.output ? (
+                  <div style={{ padding: '6px 4px 8px' }}>
+                    <div className="task-field-content" style={{ maxHeight: '300px', overflowY: 'auto' }}>
+                      {item.output}
+                    </div>
+                  </div>
+                ) : null}
               </div>
-            </div>
-          ) : null}
+            ) : (
+              hasStructuredDiff && diff.lines.length > 0 ? (
+                <div className="edit-diff-viewer">
+                  {diff.lines.map((line, index) => {
+                    const lineClass =
+                      line.type === 'deleted'
+                        ? 'is-deleted'
+                        : line.type === 'added'
+                          ? 'is-added'
+                          : '';
+
+                    return (
+                      <div
+                        key={`${line.type}-${index}`}
+                        className={`edit-diff-line ${lineClass}`}
+                      >
+                        <div className="edit-diff-gutter" />
+                        <div className={`edit-diff-sign ${lineClass}`}>
+                          {line.type === 'deleted' ? '-' : line.type === 'added' ? '+' : ' '}
+                        </div>
+                        <pre className="edit-diff-content">
+                          {line.content}
+                        </pre>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : item.output ? (
+                <div className="task-field-content" style={{ maxHeight: '300px', overflowY: 'auto' }}>
+                  {item.output}
+                </div>
+              ) : null
+            )}
+          </div>
         </div>
       )}
     </div>

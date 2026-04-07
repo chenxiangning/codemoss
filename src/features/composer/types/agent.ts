@@ -5,6 +5,7 @@ export interface AgentConfig {
   id: string;
   name: string;
   prompt?: string;
+  icon?: string;
   createdAt?: number;
 }
 

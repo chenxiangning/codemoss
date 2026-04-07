@@ -174,9 +174,10 @@ export function WorktreePrompt({
     for (const option of options) {
       const relativePath = getRelativeBranchPath(option);
       const segments = relativePath.split("/").filter(Boolean);
-      const bucketKey = segments.length > 1 ? segments[0].toLowerCase() : ROOT_BUCKET_KEY;
+      const firstSegment = segments[0] ?? "";
+      const bucketKey = segments.length > 1 ? firstSegment.toLowerCase() : ROOT_BUCKET_KEY;
       const bucketLabel =
-        bucketKey === ROOT_BUCKET_KEY ? t("workspace.baseBranchRootGroup") : segments[0].toUpperCase();
+        bucketKey === ROOT_BUCKET_KEY ? t("workspace.baseBranchRootGroup") : firstSegment.toUpperCase();
       const bucketOption: BaseRefBucketOption = {
         option,
         shortName: getShortBranchName(relativePath),

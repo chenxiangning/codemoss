@@ -1,7 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
 import type { AppSettings } from "../../../types";
 import { getAppSettings, runCodexDoctor, updateAppSettings } from "../../../services/tauri";
-import { clampUiScale, UI_SCALE_DEFAULT } from "../../../utils/uiScale";
+import {
+  clampUiScale,
+  sanitizeUiScale,
+  UI_SCALE_DEFAULT,
+} from "../../../utils/uiScale";
 import {
   DEFAULT_CODE_FONT_FAMILY,
   DEFAULT_UI_FONT_FAMILY,
@@ -71,12 +75,24 @@ function normalizeNewWorktreeShortcut(
   return normalized;
 }
 
+function normalizeWebServicePort(value: number | null | undefined): number {
+  if (!Number.isFinite(value)) {
+    return 3080;
+  }
+  const normalized = Math.round(value as number);
+  if (normalized < 1024 || normalized > 65535) {
+    return 3080;
+  }
+  return normalized;
+}
+
 const defaultSettings: AppSettings = {
   codexBin: null,
   codexArgs: null,
   backendMode: "local",
   remoteBackendHost: "127.0.0.1:4732",
   remoteBackendToken: null,
+  webServicePort: 3080,
   systemProxyEnabled: false,
   systemProxyUrl: null,
   defaultAccessMode: "full-access",
@@ -113,6 +129,8 @@ const defaultSettings: AppSettings = {
   notificationSoundCustomPath: "",
   systemNotificationEnabled: true,
   preloadGitDiffs: true,
+  detachedExternalChangeAwarenessEnabled: true,
+  detachedExternalChangeWatcherEnabled: true,
   experimentalCollabEnabled: false,
   experimentalCollaborationModesEnabled: true,
   codexModeEnforcementEnabled: true,
@@ -134,7 +152,7 @@ const defaultSettings: AppSettings = {
   composerFenceAutoWrapPasteMultiline: false,
   composerFenceAutoWrapPasteCodeLike: false,
   composerListContinuation: false,
-  composerCodeBlockCopyUseModifier: false,
+  composerCodeBlockCopyUseModifier: true,
   workspaceGroups: [],
   openAppTargets: DEFAULT_OPEN_APP_TARGETS,
   selectedOpenAppId: DEFAULT_OPEN_APP_ID,
@@ -144,6 +162,7 @@ function normalizeAppSettings(
   settings: AppSettings,
   options?: {
     allowLegacyUserMsgColorFallback?: boolean;
+    fallbackUiScaleToDefault?: boolean;
   },
 ): AppSettings {
   const normalizedUserMsgColor = normalizeHexColor(settings.userMsgColor);
@@ -172,10 +191,13 @@ function normalizeAppSettings(
     ...settings,
     codexBin: settings.codexBin?.trim() ? settings.codexBin.trim() : null,
     codexArgs: settings.codexArgs?.trim() ? settings.codexArgs.trim() : null,
+    webServicePort: normalizeWebServicePort(settings.webServicePort),
     systemProxyUrl: settings.systemProxyUrl?.trim()
       ? settings.systemProxyUrl.trim()
       : null,
-    uiScale: clampUiScale(settings.uiScale),
+    uiScale: options?.fallbackUiScaleToDefault
+      ? sanitizeUiScale(settings.uiScale)
+      : clampUiScale(settings.uiScale),
     theme: allowedThemes.has(settings.theme) ? settings.theme : "system",
     userMsgColor: fallbackUserMsgColor,
     uiFontFamily: normalizeFontFamily(
@@ -191,6 +213,10 @@ function normalizeAppSettings(
       ? settings.notificationSoundId
       : "default",
     notificationSoundCustomPath: settings.notificationSoundCustomPath?.trim() ?? "",
+    detachedExternalChangeAwarenessEnabled:
+      settings.detachedExternalChangeAwarenessEnabled !== false,
+    detachedExternalChangeWatcherEnabled:
+      settings.detachedExternalChangeWatcherEnabled !== false,
     codexModeEnforcementEnabled:
       settings.codexModeEnforcementEnabled !== false,
     // Session activity history recovery now depends on the unified history loader.
@@ -224,6 +250,7 @@ export function useAppSettings() {
               ...response,
             }, {
               allowLegacyUserMsgColorFallback,
+              fallbackUiScaleToDefault: true,
             }),
           );
         }

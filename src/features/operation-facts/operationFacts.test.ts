@@ -102,4 +102,125 @@ describe("operationFacts", () => {
       statusLetter: "D",
     });
   });
+
+  it("falls back to tool output diff when file change entries do not include inline diff", () => {
+    const fileItem = toolItem("file-2-output-only", {
+      toolType: "fileChange",
+      title: "File changes",
+      detail: "M src/App.tsx",
+      status: "completed",
+      output: "@@ -1 +1 @@\n-old\n+new",
+      changes: [{ path: "src/App.tsx", kind: "modified" }],
+    });
+
+    expect(extractFileChangeSummaries([fileItem])).toEqual([
+      {
+        filePath: "src/App.tsx",
+        fileName: "App.tsx",
+        status: "M",
+        additions: 1,
+        deletions: 1,
+      },
+    ]);
+
+    expect(summarizeFileChangeItem(fileItem)).toEqual({
+      summary: "File change · App.tsx",
+      filePath: "src/App.tsx",
+      fileCount: 1,
+      additions: 1,
+      deletions: 1,
+      statusLetter: "M",
+    });
+  });
+
+  it("matches absolute/relative path hints when inferring single-change fallback stats", () => {
+    const fileItem = toolItem("file-2-pathhint-compat", {
+      toolType: "fileChange",
+      title: "File changes",
+      detail: JSON.stringify({
+        input: {
+          file_path: "/repo/src/App.tsx",
+          old_string: "const oldValue = 1;",
+          new_string: "const newValue = 1;",
+        },
+      }),
+      status: "completed",
+      changes: [{ path: "src/App.tsx", kind: "modified" }],
+    });
+
+    expect(extractFileChangeSummaries([fileItem])).toEqual([
+      {
+        filePath: "src/App.tsx",
+        fileName: "App.tsx",
+        status: "M",
+        additions: 1,
+        deletions: 1,
+      },
+    ]);
+
+    expect(summarizeFileChangeItem(fileItem)).toEqual({
+      summary: "File change · App.tsx",
+      filePath: "src/App.tsx",
+      fileCount: 1,
+      additions: 1,
+      deletions: 1,
+      statusLetter: "M",
+    });
+  });
+
+  it("infers replace-like mcp tools as file changes for activity summary", () => {
+    const fileItem = toolItem("file-3", {
+      toolType: "mcpToolCall",
+      title: "Tool: Claude / replace-1774440197988-0 README.md",
+      detail: JSON.stringify({
+        instruction: "update README quickstart",
+        old_string: "curl http://localhost:8080/api/customers",
+        new_string: "curl http://localhost:8080/api/products",
+      }),
+      status: "started",
+    });
+
+    expect(summarizeFileChangeItem(fileItem)).toEqual({
+      summary: "File change · README.md",
+      filePath: "README.md",
+      fileCount: 1,
+      additions: 1,
+      deletions: 1,
+      statusLetter: "M",
+    });
+  });
+
+  it("handles empty-string replace boundaries without fake deletions", () => {
+    const fileItem = toolItem("file-4", {
+      toolType: "mcpToolCall",
+      title: "Tool: Gemini / replace-1774440197988-0 README.md",
+      detail: JSON.stringify({
+        old_string: "",
+        new_string: "one line",
+      }),
+      status: "started",
+    });
+
+    expect(summarizeFileChangeItem(fileItem)).toEqual({
+      summary: "File change · README.md",
+      filePath: "README.md",
+      fileCount: 1,
+      additions: 1,
+      deletions: 0,
+      statusLetter: "M",
+    });
+  });
+
+  it("does not misclassify generic replace tools without file hints", () => {
+    const nonFileTool = toolItem("tool-replace-generic", {
+      toolType: "mcpToolCall",
+      title: "Tool: replace variables in prompt",
+      detail: JSON.stringify({
+        variables: ["A", "B"],
+      }),
+      status: "started",
+    });
+
+    expect(summarizeFileChangeItem(nonFileTool)).toBeNull();
+  });
 });

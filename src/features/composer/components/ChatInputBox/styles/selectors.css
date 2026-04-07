@@ -50,6 +50,13 @@
   border-radius: 50%;
 }
 
+.selector-button.selector-shortcut-button {
+  width: 28px;
+  padding: 0;
+  justify-content: center;
+  border-radius: 50%;
+}
+
 /* Responsive text hiding for selector buttons */
 .selector-button-text {
   white-space: nowrap;
@@ -158,7 +165,9 @@
 }
 
 .selector-dropdown--model {
-  width: 252px;
+  width: max-content;
+  min-width: 252px;
+  max-width: min(90vw, 560px);
 }
 
 .selector-dropdown--mode {
@@ -190,18 +199,47 @@
   transition: background 0.1s;
 }
 
+.selector-option.selector-option-button {
+  border: none;
+  background: transparent;
+  width: calc(100% - 16px);
+  text-align: left;
+}
+
+.selector-option.selector-option-button:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--input-focus-border) 72%, transparent);
+  outline-offset: 1px;
+}
+
 .selector-option:hover {
   background: var(--dropdown-hover-color, #EDEEF1);
 }
 
 .selector-option.selected {
-  color: var(--dropdown-text-color, #0D0D0D);
+  background: var(--dropdown-selected, var(--dropdown-hover-color, #EDEEF1));
+  color: var(--dropdown-selected-text, var(--dropdown-text-color, #0D0D0D));
+}
+
+.selector-option.selected .model-description,
+.selector-option.selected .mode-description {
+  color: color-mix(in srgb, currentColor 78%, transparent);
 }
 
 
 .selector-option .codicon {
   font-size: 14px;
   width: 16px;
+}
+
+.selector-option-agent-icon {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+
+.selector-option-agent-icon svg {
+  width: 100%;
+  height: 100%;
 }
 
 .selector-option .check-mark {
@@ -218,6 +256,12 @@
   font-style: italic;
   font-family: inherit;
   margin-top: 0;
+}
+
+.selector-dropdown--model .selector-option .model-description {
+  white-space: normal;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
 }
 
 .selector-option .mode-description {
@@ -337,6 +381,17 @@
 .selector-usage-reset {
   color: var(--text-secondary);
   font-size: 10px;
+}
+
+.selector-shortcut-trigger {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-weight: 600;
+  color: var(--input-focus-border);
+  min-width: 44px;
+}
+
+.selector-option-shortcut {
+  gap: 10px;
 }
 
 /* Selector toast notification */

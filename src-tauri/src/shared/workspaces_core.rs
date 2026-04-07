@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::future::Future;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use tokio::sync::Mutex;
@@ -18,6 +18,8 @@ use uuid::Uuid;
 pub(crate) const WORKTREE_SETUP_MARKERS_DIR: &str = "worktree-setup";
 pub(crate) const WORKTREE_SETUP_MARKER_EXT: &str = "ran";
 const WORKTREE_VALIDATION_ERROR_PREFIX: &str = "VALIDATION_ERROR";
+const LEGACY_BRAND_WORKSPACE_NAME: &str = "codemoss";
+const CURRENT_BRAND_WORKSPACE_NAME: &str = "mossx";
 
 pub(crate) fn normalize_setup_script(script: Option<String>) -> Option<String> {
     match script {
@@ -35,6 +37,27 @@ pub(crate) fn worktree_setup_marker_path(data_dir: &PathBuf, workspace_id: &str)
 
 pub(crate) fn is_workspace_path_dir_core(path: &str) -> bool {
     PathBuf::from(path).is_dir()
+}
+
+pub(crate) fn normalize_workspace_display_name(name: &str, path: &str) -> String {
+    let path_name = Path::new(path)
+        .file_name()
+        .and_then(|value| value.to_str())
+        .unwrap_or_default();
+    if name.eq_ignore_ascii_case(LEGACY_BRAND_WORKSPACE_NAME)
+        || path_name.eq_ignore_ascii_case(LEGACY_BRAND_WORKSPACE_NAME)
+    {
+        return CURRENT_BRAND_WORKSPACE_NAME.to_string();
+    }
+    name.to_string()
+}
+
+pub(crate) fn workspace_name_from_path(path: &str) -> String {
+    let derived = Path::new(path)
+        .file_name()
+        .and_then(|value| value.to_str())
+        .unwrap_or("Workspace");
+    normalize_workspace_display_name(derived, path)
 }
 
 pub(crate) fn ensure_workspace_path_dir_core(path: &str) -> Result<(), String> {
@@ -58,25 +81,18 @@ pub(crate) async fn list_workspaces_core(
     let sessions = sessions.lock().await;
     let mut result = Vec::new();
     for entry in workspaces.values() {
-        // Determine connected status based on engine type:
-        // - Claude: Always "connected" (no persistent session needed)
-        // - Codex: Check if session exists in sessions HashMap
-        let is_claude_engine = entry
-            .settings
-            .engine_type
-            .as_deref()
-            .map(|e| e.eq_ignore_ascii_case("claude"))
-            .unwrap_or(true); // Default to Claude if not specified
-
-        let connected = if is_claude_engine {
-            true // Claude is always "connected"
-        } else {
+        // Engines using local CLI sessions (Claude/Gemini/OpenCode) are always connected.
+        // Codex requires a persistent app-server process tracked in sessions.
+        let connected = if workspace_requires_persistent_session(entry) {
             sessions.contains_key(&entry.id)
+        } else {
+            true
         };
+        let name = normalize_workspace_display_name(&entry.name, &entry.path);
 
         result.push(WorkspaceInfo {
             id: entry.id.clone(),
-            name: entry.name.clone(),
+            name,
             path: entry.path.clone(),
             codex_bin: entry.codex_bin.clone(),
             connected,
@@ -88,6 +104,15 @@ pub(crate) async fn list_workspaces_core(
     }
     sort_workspaces(&mut result);
     result
+}
+
+pub(crate) fn workspace_requires_persistent_session(entry: &WorkspaceEntry) -> bool {
+    entry
+        .settings
+        .engine_type
+        .as_deref()
+        .map(|value| value.eq_ignore_ascii_case("codex"))
+        .unwrap_or(false)
 }
 
 async fn resolve_entry_and_parent(
@@ -238,11 +263,7 @@ where
         return Err("Workspace path must be a folder.".to_string());
     }
 
-    let name = PathBuf::from(&path)
-        .file_name()
-        .and_then(|s| s.to_str())
-        .unwrap_or("Workspace")
-        .to_string();
+    let name = workspace_name_from_path(&path);
     let entry = WorkspaceEntry {
         id: Uuid::new_v4().to_string(),
         name: name.clone(),
@@ -1337,9 +1358,17 @@ fn sort_workspaces(workspaces: &mut [WorkspaceInfo]) {
 
 #[cfg(test)]
 mod tests {
-    use super::{resolve_base_ref_to_commit, validate_local_branch_name_for_worktree};
+    use super::{
+        list_workspaces_core, normalize_workspace_display_name, resolve_base_ref_to_commit,
+        validate_local_branch_name_for_worktree, workspace_name_from_path,
+        workspace_requires_persistent_session,
+    };
+    use crate::types::{WorkspaceEntry, WorkspaceKind, WorkspaceSettings};
+    use std::collections::HashMap;
     use git2::{Repository, Signature};
     use std::path::{Path, PathBuf};
+    use std::sync::Arc;
+    use tokio::sync::Mutex;
     use uuid::Uuid;
 
     fn init_git_repo() -> PathBuf {
@@ -1371,6 +1400,30 @@ mod tests {
     }
 
     #[test]
+    fn normalize_workspace_display_name_rebrands_legacy_name() {
+        assert_eq!(
+            normalize_workspace_display_name("codemoss", "/Users/test/Desktop/codemoss"),
+            "mossx"
+        );
+        assert_eq!(
+            normalize_workspace_display_name("workspace", "/Users/test/Desktop/codemoss"),
+            "mossx"
+        );
+    }
+
+    #[test]
+    fn workspace_name_from_path_preserves_non_legacy_workspace_names() {
+        assert_eq!(
+            workspace_name_from_path("/Users/test/Desktop/mossx"),
+            "mossx"
+        );
+        assert_eq!(
+            workspace_name_from_path("/Users/test/Desktop/another-repo"),
+            "another-repo"
+        );
+    }
+
+    #[test]
     fn resolve_base_ref_to_commit_returns_commit_sha() {
         let repo_path = init_git_repo();
         let resolved = resolve_base_ref_to_commit(&repo_path, "main").expect("resolve main");
@@ -1383,5 +1436,61 @@ mod tests {
         let error = resolve_base_ref_to_commit(&repo_path, "missing/ref")
             .expect_err("missing ref should fail");
         assert!(error.contains("Base ref not found"));
+    }
+
+    fn workspace_entry(id: &str, engine_type: Option<&str>) -> WorkspaceEntry {
+        let mut settings = WorkspaceSettings::default();
+        settings.engine_type = engine_type.map(ToString::to_string);
+        WorkspaceEntry {
+            id: id.to_string(),
+            name: id.to_string(),
+            path: format!("/tmp/{id}"),
+            codex_bin: None,
+            kind: WorkspaceKind::Main,
+            parent_id: None,
+            worktree: None,
+            settings,
+        }
+    }
+
+    #[test]
+    fn workspace_requires_persistent_session_only_for_codex() {
+        let codex = workspace_entry("ws-codex", Some("codex"));
+        let claude = workspace_entry("ws-claude", Some("claude"));
+        let gemini = workspace_entry("ws-gemini", Some("gemini"));
+        let opencode = workspace_entry("ws-opencode", Some("opencode"));
+
+        assert!(workspace_requires_persistent_session(&codex));
+        assert!(!workspace_requires_persistent_session(&claude));
+        assert!(!workspace_requires_persistent_session(&gemini));
+        assert!(!workspace_requires_persistent_session(&opencode));
+    }
+
+    #[tokio::test]
+    async fn list_workspaces_marks_non_persistent_engines_connected_without_sessions() {
+        let mut workspace_map = HashMap::new();
+        workspace_map.insert(
+            "ws-gemini".to_string(),
+            workspace_entry("ws-gemini", Some("gemini")),
+        );
+        workspace_map.insert(
+            "ws-opencode".to_string(),
+            workspace_entry("ws-opencode", Some("opencode")),
+        );
+        workspace_map.insert(
+            "ws-codex".to_string(),
+            workspace_entry("ws-codex", Some("codex")),
+        );
+
+        let workspaces = Mutex::new(workspace_map);
+        let sessions: Mutex<HashMap<String, Arc<crate::backend::app_server::WorkspaceSession>>> =
+            Mutex::new(HashMap::new());
+
+        let rows = list_workspaces_core(&workspaces, &sessions).await;
+        let by_id: HashMap<_, _> = rows.into_iter().map(|row| (row.id.clone(), row)).collect();
+
+        assert!(by_id.get("ws-gemini").is_some_and(|row| row.connected));
+        assert!(by_id.get("ws-opencode").is_some_and(|row| row.connected));
+        assert!(by_id.get("ws-codex").is_some_and(|row| !row.connected));
     }
 }

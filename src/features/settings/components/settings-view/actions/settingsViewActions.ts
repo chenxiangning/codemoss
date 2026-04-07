@@ -31,7 +31,7 @@ export const COMPOSER_PRESET_CONFIGS: Record<ComposerPreset, ComposerPresetSetti
     composerFenceAutoWrapPasteMultiline: false,
     composerFenceAutoWrapPasteCodeLike: false,
     composerListContinuation: false,
-    composerCodeBlockCopyUseModifier: false,
+    composerCodeBlockCopyUseModifier: true,
   },
   helpful: {
     composerFenceExpandOnSpace: true,
@@ -41,7 +41,7 @@ export const COMPOSER_PRESET_CONFIGS: Record<ComposerPreset, ComposerPresetSetti
     composerFenceAutoWrapPasteMultiline: true,
     composerFenceAutoWrapPasteCodeLike: false,
     composerListContinuation: true,
-    composerCodeBlockCopyUseModifier: false,
+    composerCodeBlockCopyUseModifier: true,
   },
   smart: {
     composerFenceExpandOnSpace: true,
@@ -51,7 +51,7 @@ export const COMPOSER_PRESET_CONFIGS: Record<ComposerPreset, ComposerPresetSetti
     composerFenceAutoWrapPasteMultiline: true,
     composerFenceAutoWrapPasteCodeLike: true,
     composerListContinuation: true,
-    composerCodeBlockCopyUseModifier: false,
+    composerCodeBlockCopyUseModifier: true,
   },
 };
 

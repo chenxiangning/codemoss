@@ -91,8 +91,8 @@ describe("useWorkspaces.renameWorktree", () => {
       await Promise.resolve();
     });
 
-    expect(result.current.workspaces[0].name).toBe("feature/new");
-    expect(result.current.workspaces[0].worktree?.branch).toBe("feature/new");
+    expect(result.current.workspaces[0]?.name).toBe("feature/new");
+    expect(result.current.workspaces[0]?.worktree?.branch).toBe("feature/new");
 
     resolveRename({
       ...worktree,
@@ -105,7 +105,7 @@ describe("useWorkspaces.renameWorktree", () => {
       await renameCall;
     });
 
-    expect(result.current.workspaces[0].path).toBe("/tmp/wt-1-renamed");
+    expect(result.current.workspaces[0]?.path).toBe("/tmp/wt-1-renamed");
   });
 
   it("rolls back optimistic update on failure", async () => {
@@ -133,7 +133,7 @@ describe("useWorkspaces.renameWorktree", () => {
       await Promise.resolve();
     });
 
-    expect(result.current.workspaces[0].name).toBe("feature/new");
+    expect(result.current.workspaces[0]?.name).toBe("feature/new");
 
     rejectRename(new Error("rename failed"));
 
@@ -145,8 +145,8 @@ describe("useWorkspaces.renameWorktree", () => {
       }
     });
 
-    expect(result.current.workspaces[0].name).toBe("feature/old");
-    expect(result.current.workspaces[0].worktree?.branch).toBe("feature/old");
+    expect(result.current.workspaces[0]?.name).toBe("feature/old");
+    expect(result.current.workspaces[0]?.worktree?.branch).toBe("feature/old");
   });
 
   it("exposes upstream rename helper", async () => {

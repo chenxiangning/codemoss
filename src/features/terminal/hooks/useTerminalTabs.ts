@@ -54,11 +54,15 @@ export function useTerminalTabs({
             [workspaceId]: [...existing, { id: terminalId, title }],
           };
         }
-        if (existing[index].title === title) {
+        const currentTab = existing[index];
+        if (!currentTab) {
+          return prev;
+        }
+        if (currentTab.title === title) {
           return prev;
         }
         const nextTabs = existing.slice();
-        nextTabs[index] = { ...existing[index], title };
+        nextTabs[index] = { ...currentTab, title };
         return { ...prev, [workspaceId]: nextTabs };
       });
       setActiveTerminalIdByWorkspace((prev) => ({ ...prev, [workspaceId]: terminalId }));
@@ -77,7 +81,8 @@ export function useTerminalTabs({
           if (active !== terminalId) {
             return prevActive;
           }
-          const nextActive = nextTabs.length > 0 ? nextTabs[nextTabs.length - 1].id : null;
+          const nextActive =
+            nextTabs.length > 0 ? (nextTabs[nextTabs.length - 1]?.id ?? null) : null;
           if (!nextActive) {
             const { [workspaceId]: _, ...rest } = prevActive;
             return rest;

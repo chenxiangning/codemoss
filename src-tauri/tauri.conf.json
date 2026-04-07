@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "CodeMoss",
-  "version": "0.2.10",
+  "version": "0.3.11",
   "identifier": "com.zhukunpenglinyutong.codemoss",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -13,7 +13,7 @@
     "macOSPrivateApi": true,
     "windows": [],
     "security": {
-      "csp": null,
+      "csp": "default-src 'self'; connect-src 'self' ipc: http://ipc.localhost http://127.0.0.1:* ws://127.0.0.1:* https: wss:; img-src 'self' asset: data: blob: https:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval'; font-src 'self' data:; media-src 'self' data: blob:; worker-src 'self' blob:",
       "assetProtocol": {
         "enable": true,
         "scope": [
@@ -34,7 +34,9 @@
       "icons/icon.ico"
     ],
     "resources": {
-      "infoplist/**/*": "./"
+      "infoplist/**/*": "./",
+      "../dist/*": "dist/",
+      "../dist/assets/**/*": "dist/assets/"
     },
     "macOS": {
       "minimumSystemVersion": "10.13",

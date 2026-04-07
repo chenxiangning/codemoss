@@ -65,7 +65,7 @@ function isPathCandidate(
 
 function splitTrailingPunctuation(value: string) {
   let end = value.length;
-  while (end > 0 && TRAILING_PUNCTUATION.has(value[end - 1])) {
+  while (end > 0 && TRAILING_PUNCTUATION.has(value[end - 1] ?? "")) {
     end -= 1;
   }
   return {
@@ -92,7 +92,7 @@ function linkifyText(value: string) {
     }
 
     const leadingContext = value.slice(Math.max(0, matchIndex - 3), matchIndex);
-    const previousChar = matchIndex > 0 ? value[matchIndex - 1] : "";
+    const previousChar = matchIndex > 0 ? (value[matchIndex - 1] ?? "") : "";
     const { path, trailing } = splitTrailingPunctuation(raw);
     if (path && isPathCandidate(path, leadingContext, previousChar)) {
       nodes.push({
@@ -129,6 +129,9 @@ function walk(node: MarkdownNode, parentType?: string) {
 
   for (let index = 0; index < node.children.length; index += 1) {
     const child = node.children[index];
+    if (!child) {
+      continue;
+    }
     if (
       child.type === "text" &&
       typeof child.value === "string" &&

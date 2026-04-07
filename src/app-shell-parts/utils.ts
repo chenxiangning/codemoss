@@ -56,9 +56,21 @@ function getViewportHeight(): number {
   return window.innerHeight;
 }
 
-export function clampGitHistoryPanelHeight(height: number, viewportHeight = getViewportHeight()): number {
-  const maxHeight = Math.max(GIT_HISTORY_PANEL_MIN_HEIGHT, viewportHeight - GIT_HISTORY_PANEL_MIN_TOP_CLEARANCE);
+export function getGitHistoryPanelResizeBounds(viewportHeight = getViewportHeight()) {
+  const maxHeight = Math.max(
+    GIT_HISTORY_PANEL_MIN_HEIGHT,
+    viewportHeight - GIT_HISTORY_PANEL_MIN_TOP_CLEARANCE,
+  );
   const minHeight = Math.min(GIT_HISTORY_PANEL_MIN_HEIGHT, maxHeight);
+  return {
+    viewportHeight,
+    minHeight,
+    maxHeight,
+  };
+}
+
+export function clampGitHistoryPanelHeight(height: number, viewportHeight = getViewportHeight()): number {
+  const { maxHeight, minHeight } = getGitHistoryPanelResizeBounds(viewportHeight);
   return Math.round(Math.min(maxHeight, Math.max(minHeight, height)));
 }
 
@@ -122,14 +134,14 @@ export function extractPlanFromTimelineItems(items: ConversationItem[]): TurnPla
       const withStatus = line.match(/^- \[([^\]]+)\]\s*(.+)$/);
       if (withStatus) {
         return {
-          step: withStatus[2].trim(),
-          status: normalizeTimelinePlanStepStatus(withStatus[1]),
+          step: (withStatus[2] ?? "").trim(),
+          status: normalizeTimelinePlanStepStatus(withStatus[1] ?? ""),
         };
       }
       const bullet = line.match(/^- (.+)$/);
       if (bullet) {
         return {
-          step: bullet[1].trim(),
+          step: (bullet[1] ?? "").trim(),
           status: "pending" as TurnPlanStepStatus,
         };
       }
@@ -158,6 +170,9 @@ export function resolveLockLivePreview(
   const threadItems = items ?? [];
   for (let index = threadItems.length - 1; index >= 0; index -= 1) {
     const item = threadItems[index];
+    if (!item) {
+      continue;
+    }
     if (item.kind === "message") {
       const value = normalizeLockLiveSnippet(item.text);
       if (value) {

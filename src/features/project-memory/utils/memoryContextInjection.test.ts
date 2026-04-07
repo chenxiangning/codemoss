@@ -98,9 +98,9 @@ describe("selectContextMemories", () => {
 
     const selected = selectContextMemories(items);
     expect(selected).toHaveLength(3);
-    expect(selected[0].memory.id).toBe("c");
-    expect(selected[1].memory.id).toBe("a");
-    expect(selected[2].memory.id).toBe("b");
+    expect(selected[0]?.memory.id).toBe("c");
+    expect(selected[1]?.memory.id).toBe("a");
+    expect(selected[2]?.memory.id).toBe("b");
   });
 
   it("limits by max inject count", () => {

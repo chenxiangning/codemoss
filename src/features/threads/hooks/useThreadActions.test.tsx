@@ -1,16 +1,20 @@
 // @vitest-environment jsdom
-import { act, renderHook } from "@testing-library/react";
+import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ConversationItem, WorkspaceInfo } from "../../../types";
 import {
   archiveThread,
   deleteClaudeSession,
+  deleteGeminiSession,
   deleteOpenCodeSession,
+  connectWorkspace,
   forkClaudeSession,
   forkThread,
   getOpenCodeSessionList,
   listClaudeSessions,
+  listGeminiSessions,
   loadClaudeSession,
+  loadGeminiSession,
   loadCodexSession,
   listThreadTitles,
   renameThreadTitleKey,
@@ -31,11 +35,14 @@ import { useThreadActions } from "./useThreadActions";
 
 vi.mock("../../../services/tauri", () => ({
   startThread: vi.fn(),
+  connectWorkspace: vi.fn(),
   forkClaudeSession: vi.fn(),
   forkThread: vi.fn(),
   listClaudeSessions: vi.fn(),
+  listGeminiSessions: vi.fn(),
   getOpenCodeSessionList: vi.fn(),
   loadClaudeSession: vi.fn(),
+  loadGeminiSession: vi.fn(),
   loadCodexSession: vi.fn(),
   listThreadTitles: vi.fn(),
   renameThreadTitleKey: vi.fn(),
@@ -44,6 +51,7 @@ vi.mock("../../../services/tauri", () => ({
   listThreads: vi.fn(),
   archiveThread: vi.fn(),
   deleteClaudeSession: vi.fn(),
+  deleteGeminiSession: vi.fn(),
   deleteOpenCodeSession: vi.fn(),
 }));
 
@@ -71,14 +79,22 @@ describe("useThreadActions", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(listThreadTitles).mockResolvedValue({});
+    vi.mocked(listGeminiSessions).mockResolvedValue([]);
     vi.mocked(getOpenCodeSessionList).mockResolvedValue([]);
     vi.mocked(renameThreadTitleKey).mockResolvedValue(undefined);
     vi.mocked(setThreadTitle).mockResolvedValue("title");
+    vi.mocked(connectWorkspace).mockResolvedValue(undefined);
+    vi.mocked(previewThreadName).mockImplementation((text: string, fallback: string) => {
+      const trimmed = text.trim();
+      return trimmed || fallback;
+    });
     vi.mocked(deleteClaudeSession).mockResolvedValue(undefined);
+    vi.mocked(deleteGeminiSession).mockResolvedValue(undefined);
     vi.mocked(deleteOpenCodeSession).mockResolvedValue({
       deleted: true,
       method: "filesystem",
     });
+    vi.mocked(loadGeminiSession).mockResolvedValue({ messages: [] });
   });
 
   function renderActions(
@@ -96,6 +112,7 @@ describe("useThreadActions", () => {
     const args: Parameters<typeof useThreadActions>[0] = {
       dispatch,
       itemsByThread: {},
+      userInputRequests: [],
       threadsByWorkspace: {},
       activeThreadIdByWorkspace: {},
       threadListCursorByWorkspace: {},
@@ -592,6 +609,83 @@ describe("useThreadActions", () => {
     });
   });
 
+  it("keeps local pending user input queue when unified snapshot has pending ask tool but empty queue", async () => {
+    vi.mocked(buildItemsFromThread).mockImplementation(() => [
+      {
+        id: "ask-tool-1",
+        kind: "tool",
+        toolType: "askuserquestion",
+        title: "Tool: askuserquestion",
+        detail: "",
+        status: "started",
+      },
+      {
+        id: "assistant-after-ask",
+        kind: "message",
+        role: "assistant",
+        text: "请先选择一个选项。",
+      },
+    ]);
+    vi.mocked(loadCodexSession).mockResolvedValue(null);
+    vi.mocked(mergeThreadItems).mockImplementation(
+      (baseItems) => baseItems as ConversationItem[],
+    );
+    vi.mocked(resumeThread).mockResolvedValue({
+      result: {
+        thread: {
+          user_input_queue: [],
+          turns: [{ id: "turn-ask", items: [] }],
+        },
+      },
+    });
+
+    const { result, dispatch } = renderActions({
+      useUnifiedHistoryLoader: true,
+      itemsByThread: {
+        "thread-ask-pending": [
+          {
+            id: "ask-tool-local",
+            kind: "tool",
+            toolType: "askuserquestion",
+            title: "Tool: askuserquestion",
+            detail: "",
+            status: "started",
+          },
+        ],
+      },
+      userInputRequests: [
+        {
+          workspace_id: "ws-1",
+          request_id: "req-local-pending-1",
+          params: {
+            thread_id: "thread-ask-pending",
+            turn_id: "turn-local",
+            item_id: "ask-tool-local",
+            questions: [
+              {
+                id: "q-1",
+                header: "技术兴趣",
+                question: "你对哪些技术领域感兴趣？",
+                isOther: false,
+                isSecret: false,
+                multiSelect: true,
+                options: [{ label: "前端开发", description: "React/Vue" }],
+              },
+            ],
+          },
+        },
+      ],
+    });
+
+    await act(async () => {
+      await result.current.resumeThreadForWorkspace("ws-1", "thread-ask-pending");
+    });
+
+    const dispatchedTypes = dispatch.mock.calls.map((entry) => entry[0]?.type);
+    expect(dispatchedTypes).not.toContain("clearUserInputRequestsForThread");
+    expect(dispatchedTypes).not.toContain("addUserInputRequest");
+  });
+
   it("restores collab parent links from unified codex history snapshots", async () => {
     vi.mocked(resumeThread).mockResolvedValue({
       result: {
@@ -605,7 +699,7 @@ describe("useThreadActions", () => {
         },
       },
     });
-    vi.mocked(loadCodexSession).mockResolvedValue(undefined);
+    vi.mocked(loadCodexSession).mockResolvedValue(null);
     vi.mocked(buildItemsFromThread).mockReturnValue([
       {
         id: "collab-1",
@@ -656,7 +750,7 @@ describe("useThreadActions", () => {
         return null;
       },
     );
-    vi.mocked(loadCodexSession).mockResolvedValue(undefined);
+    vi.mocked(loadCodexSession).mockResolvedValue(null);
     vi.mocked(buildItemsFromThread).mockImplementation((thread) => {
       const firstItemType = (thread as { turns?: Array<{ items?: Array<{ type?: string }> }> })
         .turns?.[0]?.items?.[0]?.type;
@@ -904,6 +998,182 @@ describe("useThreadActions", () => {
     });
   });
 
+  it("matches mac workspace path when thread cwd includes /System/Volumes/Data prefix", async () => {
+    const macWorkspace: WorkspaceInfo = {
+      ...workspace,
+      id: "ws-mac",
+      path: "/Users/chen/project",
+    };
+    vi.mocked(listThreads).mockResolvedValue({
+      result: {
+        data: [
+          {
+            id: "thread-mac-1",
+            cwd: "/System/Volumes/Data/Users/chen/project/src",
+            preview: "Mac data volume path",
+            updated_at: 6400,
+          },
+        ],
+        nextCursor: null,
+      },
+    });
+    vi.mocked(getThreadTimestamp).mockImplementation((thread) => {
+      const value = (thread as Record<string, unknown>).updated_at as number;
+      return value ?? 0;
+    });
+
+    const { result, dispatch } = renderActions();
+
+    await act(async () => {
+      await result.current.listThreadsForWorkspace(macWorkspace);
+    });
+
+    expect(dispatch).toHaveBeenCalledWith({
+      type: "setThreads",
+      workspaceId: "ws-mac",
+      threads: [
+        {
+          id: "thread-mac-1",
+          name: "Mac data volume path",
+          updatedAt: 6400,
+          engineSource: "codex",
+        },
+      ],
+    });
+  });
+
+  it("matches file:// cwd URI on Windows workspace", async () => {
+    const windowsWorkspace: WorkspaceInfo = {
+      ...workspace,
+      id: "ws-win-uri",
+      path: "C:\\Users\\Chen\\project",
+    };
+    vi.mocked(listThreads).mockResolvedValue({
+      result: {
+        data: [
+          {
+            id: "thread-win-uri-1",
+            cwd: "file:///C:/Users/Chen/project/src",
+            preview: "Windows file URI path",
+            updated_at: 6500,
+          },
+        ],
+        nextCursor: null,
+      },
+    });
+    vi.mocked(getThreadTimestamp).mockImplementation((thread) => {
+      const value = (thread as Record<string, unknown>).updated_at as number;
+      return value ?? 0;
+    });
+
+    const { result, dispatch } = renderActions();
+
+    await act(async () => {
+      await result.current.listThreadsForWorkspace(windowsWorkspace);
+    });
+
+    expect(dispatch).toHaveBeenCalledWith({
+      type: "setThreads",
+      workspaceId: "ws-win-uri",
+      threads: [
+        {
+          id: "thread-win-uri-1",
+          name: "Windows file URI path",
+          updatedAt: 6500,
+          engineSource: "codex",
+        },
+      ],
+    });
+  });
+
+  it("matches file://C:/ cwd URI on Windows workspace", async () => {
+    const windowsWorkspace: WorkspaceInfo = {
+      ...workspace,
+      id: "ws-win-uri-host-drive",
+      path: "C:\\Users\\Chen\\project",
+    };
+    vi.mocked(listThreads).mockResolvedValue({
+      result: {
+        data: [
+          {
+            id: "thread-win-uri-host-drive-1",
+            cwd: "file://C:/Users/Chen/project/src",
+            preview: "Windows file URI host drive path",
+            updated_at: 6510,
+          },
+        ],
+        nextCursor: null,
+      },
+    });
+    vi.mocked(getThreadTimestamp).mockImplementation((thread) => {
+      const value = (thread as Record<string, unknown>).updated_at as number;
+      return value ?? 0;
+    });
+
+    const { result, dispatch } = renderActions();
+
+    await act(async () => {
+      await result.current.listThreadsForWorkspace(windowsWorkspace);
+    });
+
+    expect(dispatch).toHaveBeenCalledWith({
+      type: "setThreads",
+      workspaceId: "ws-win-uri-host-drive",
+      threads: [
+        {
+          id: "thread-win-uri-host-drive-1",
+          name: "Windows file URI host drive path",
+          updatedAt: 6510,
+          engineSource: "codex",
+        },
+      ],
+    });
+  });
+
+  it("matches Windows workspace path when thread cwd uses /mnt/c style path", async () => {
+    const windowsWorkspace: WorkspaceInfo = {
+      ...workspace,
+      id: "ws-win-mnt",
+      path: "C:\\Users\\Chen\\project",
+    };
+    vi.mocked(listThreads).mockResolvedValue({
+      result: {
+        data: [
+          {
+            id: "thread-win-mnt-1",
+            cwd: "/mnt/c/Users/Chen/project/src",
+            preview: "Windows mnt path",
+            updated_at: 6600,
+          },
+        ],
+        nextCursor: null,
+      },
+    });
+    vi.mocked(getThreadTimestamp).mockImplementation((thread) => {
+      const value = (thread as Record<string, unknown>).updated_at as number;
+      return value ?? 0;
+    });
+
+    const { result, dispatch } = renderActions();
+
+    await act(async () => {
+      await result.current.listThreadsForWorkspace(windowsWorkspace);
+    });
+
+    expect(dispatch).toHaveBeenCalledWith({
+      type: "setThreads",
+      workspaceId: "ws-win-mnt",
+      threads: [
+        {
+          id: "thread-win-mnt-1",
+          name: "Windows mnt path",
+          updatedAt: 6600,
+          engineSource: "codex",
+        },
+      ],
+    });
+  });
+
   it("filters archived and Codex helper thread entries while keeping vscode sessions", async () => {
     vi.mocked(listThreads).mockResolvedValue({
       result: {
@@ -970,12 +1240,18 @@ describe("useThreadActions", () => {
           name: "Visible thread",
           updatedAt: 6200,
           engineSource: "codex",
+          source: "cli",
+          provider: undefined,
+          sourceLabel: "cli",
         },
         {
           id: "thread-vscode",
           name: "Should keep vscode",
           updatedAt: 6000,
           engineSource: "codex",
+          source: "vscode",
+          provider: undefined,
+          sourceLabel: "vscode",
         },
       ],
     });
@@ -1051,6 +1327,91 @@ describe("useThreadActions", () => {
           engineSource: "opencode",
         },
       ],
+    });
+  });
+
+  it("reconnects workspace and retries list when backend reports not connected", async () => {
+    vi.mocked(listThreads)
+      .mockRejectedValueOnce(new Error("workspace not connected"))
+      .mockResolvedValueOnce({
+        result: {
+          data: [
+            {
+              id: "thread-1",
+              cwd: "/tmp/codex",
+              preview: "Recovered",
+              updated_at: 1000,
+            },
+          ],
+          nextCursor: null,
+        },
+      } as any);
+    vi.mocked(listClaudeSessions).mockResolvedValue([]);
+    vi.mocked(getOpenCodeSessionList).mockResolvedValue([]);
+    vi.mocked(getThreadTimestamp).mockImplementation((thread) => {
+      const value = (thread as Record<string, unknown>).updated_at as number;
+      return value ?? 0;
+    });
+
+    const { result, dispatch } = renderActions();
+
+    await act(async () => {
+      await result.current.listThreadsForWorkspace(workspace);
+    });
+
+    expect(connectWorkspace).toHaveBeenCalledWith("ws-1");
+    expect(listThreads).toHaveBeenCalledTimes(2);
+    expect(dispatch).toHaveBeenCalledWith({
+      type: "setThreads",
+      workspaceId: "ws-1",
+      threads: [
+        {
+          id: "thread-1",
+          name: "Recovered",
+          updatedAt: 1000,
+          engineSource: "codex",
+        },
+      ],
+    });
+  });
+
+  it("refreshes gemini sessions on cold start without gemini signal", async () => {
+    vi.mocked(listThreads).mockResolvedValue({
+      result: {
+        data: [],
+        nextCursor: null,
+      },
+    });
+    vi.mocked(listClaudeSessions).mockResolvedValue([]);
+    vi.mocked(getOpenCodeSessionList).mockResolvedValue([]);
+    vi.mocked(listGeminiSessions).mockResolvedValue([
+      {
+        sessionId: "ses_gemini_1",
+        firstMessage: "Gemini Hello",
+        updatedAt: 1_730_000_100_000,
+      },
+    ]);
+
+    const { result, dispatch } = renderActions();
+
+    await act(async () => {
+      await result.current.listThreadsForWorkspace(workspace);
+    });
+
+    await waitFor(() => {
+      expect(listGeminiSessions).toHaveBeenCalledWith("/tmp/codex", 50);
+      expect(dispatch).toHaveBeenCalledWith({
+        type: "setThreads",
+        workspaceId: "ws-1",
+        threads: [
+          {
+            id: "gemini:ses_gemini_1",
+            name: "Gemini Hello",
+            updatedAt: 1_730_000_100_000,
+            engineSource: "gemini",
+          },
+        ],
+      });
     });
   });
 

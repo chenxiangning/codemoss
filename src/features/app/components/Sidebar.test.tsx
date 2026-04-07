@@ -15,6 +15,7 @@ vi.mock("react-i18next", () => ({
         "sidebar.searchProjects": "Search projects",
         "sidebar.quickNewThread": "New Thread",
         "sidebar.quickAutomation": "Automation",
+        "sidebar.quickAutomationBadge": "new task!",
         "sidebar.quickSearch": "Search",
         "sidebar.quickSkills": "Skills",
         "lockScreen.lock": "Lock",
@@ -245,6 +246,71 @@ describe("Sidebar", () => {
     expect(screen.getByText("Pinned Restored")).toBeTruthy();
   });
 
+  it("removes newly pinned thread from project list immediately", () => {
+    const workspace = {
+      id: "ws-1",
+      name: "codemoss",
+      path: "/tmp/codemoss",
+      connected: true,
+      kind: "main" as const,
+      settings: {
+        sidebarCollapsed: false,
+        worktreeSetupScript: null,
+      },
+    };
+    const thread = {
+      id: "thread-1",
+      name: "Pin Me",
+      updatedAt: 123,
+    };
+    let isPinned = false;
+    const getPinTimestamp = (workspaceId: string, threadId: string) =>
+      workspaceId === "ws-1" && threadId === "thread-1" && isPinned ? 111 : null;
+    const isThreadPinned = (workspaceId: string, threadId: string) =>
+      workspaceId === "ws-1" && threadId === "thread-1" && isPinned;
+
+    const { rerender } = render(
+      <Sidebar
+        {...baseProps}
+        workspaces={[workspace]}
+        groupedWorkspaces={[
+          {
+            id: null,
+            name: "Ungrouped",
+            workspaces: [workspace],
+          },
+        ]}
+        threadsByWorkspace={{ "ws-1": [thread] }}
+        getPinTimestamp={getPinTimestamp}
+        isThreadPinned={isThreadPinned}
+        pinnedThreadsVersion={0}
+      />,
+    );
+
+    expect(screen.getAllByText("Pin Me")).toHaveLength(1);
+
+    isPinned = true;
+    rerender(
+      <Sidebar
+        {...baseProps}
+        workspaces={[workspace]}
+        groupedWorkspaces={[
+          {
+            id: null,
+            name: "Ungrouped",
+            workspaces: [workspace],
+          },
+        ]}
+        threadsByWorkspace={{ "ws-1": [thread] }}
+        getPinTimestamp={getPinTimestamp}
+        isThreadPinned={isThreadPinned}
+        pinnedThreadsVersion={1}
+      />,
+    );
+
+    expect(screen.getAllByText("Pin Me")).toHaveLength(1);
+  });
+
   it("adds running animation class to project icon when any session is processing", () => {
     const workspace = {
       id: "ws-root",
@@ -301,5 +367,87 @@ describe("Sidebar", () => {
     expect(projectIcon?.classList.contains("is-session-running")).toBe(true);
     const worktreeIcon = container.querySelector(".worktree-node-icon");
     expect(worktreeIcon?.classList.contains("is-session-running")).toBe(true);
+  });
+
+  it("keeps group collapse on double click only", () => {
+    const workspace = {
+      id: "ws-1",
+      name: "codemoss",
+      path: "/tmp/codemoss",
+      connected: true,
+      kind: "main" as const,
+      settings: {
+        sidebarCollapsed: true,
+        worktreeSetupScript: null,
+      },
+    };
+
+    const { container } = render(
+      <Sidebar
+        {...baseProps}
+        workspaces={[workspace]}
+        groupedWorkspaces={[
+          {
+            id: "group-1",
+            name: "Group One",
+            workspaces: [workspace],
+          },
+        ]}
+      />,
+    );
+
+    const groupHeader = container.querySelector(".workspace-group-header") as HTMLElement | null;
+    expect(groupHeader).toBeTruthy();
+    if (!groupHeader) {
+      throw new Error("Expected workspace group header");
+    }
+    expect(screen.getByText("codemoss")).toBeTruthy();
+
+    fireEvent.click(groupHeader);
+    expect(screen.getByText("codemoss")).toBeTruthy();
+
+    fireEvent.doubleClick(groupHeader);
+    expect(screen.queryByText("codemoss")).toBeNull();
+  });
+
+  it("selects workspace on single click and toggles collapse on double click", () => {
+    const workspace = {
+      id: "ws-1",
+      name: "codemoss",
+      path: "/tmp/codemoss",
+      connected: true,
+      kind: "main" as const,
+      settings: {
+        sidebarCollapsed: true,
+        worktreeSetupScript: null,
+      },
+    };
+    const onSelectWorkspace = vi.fn();
+    const onToggleWorkspaceCollapse = vi.fn();
+
+    render(
+      <Sidebar
+        {...baseProps}
+        workspaces={[workspace]}
+        groupedWorkspaces={[
+          {
+            id: null,
+            name: "Ungrouped",
+            workspaces: [workspace],
+          },
+        ]}
+        onSelectWorkspace={onSelectWorkspace}
+        onToggleWorkspaceCollapse={onToggleWorkspaceCollapse}
+      />,
+    );
+
+    const workspaceLabel = screen.getByText("codemoss");
+
+    fireEvent.click(workspaceLabel);
+    expect(onSelectWorkspace).toHaveBeenCalledWith("ws-1");
+    expect(onToggleWorkspaceCollapse).not.toHaveBeenCalled();
+
+    fireEvent.doubleClick(workspaceLabel);
+    expect(onToggleWorkspaceCollapse).toHaveBeenCalledWith("ws-1", false);
   });
 });

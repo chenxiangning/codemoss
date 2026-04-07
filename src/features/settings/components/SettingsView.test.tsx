@@ -34,12 +34,29 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
+const workspaceA: WorkspaceInfo = {
+  id: "ws-a",
+  name: "Workspace A",
+  path: "/tmp/ws-a",
+  connected: true,
+  settings: { sidebarCollapsed: false },
+};
+
+const workspaceB: WorkspaceInfo = {
+  id: "ws-b",
+  name: "Workspace B",
+  path: "/tmp/ws-b",
+  connected: true,
+  settings: { sidebarCollapsed: false },
+};
+
 const baseSettings: AppSettings = {
   codexBin: null,
   codexArgs: null,
   backendMode: "local",
   remoteBackendHost: "127.0.0.1:4732",
   remoteBackendToken: null,
+  webServicePort: 3080,
   systemProxyEnabled: false,
   systemProxyUrl: null,
   defaultAccessMode: "current",
@@ -225,6 +242,50 @@ const renderComposerSection = (
   return { onUpdateAppSettings };
 };
 
+describe("SettingsView prompts workspace routing", () => {
+  it("aligns prompt settings workspace picker to the active workspace when opened from prompts", async () => {
+    render(
+      <SettingsView
+        reduceTransparency={false}
+        onToggleTransparency={vi.fn()}
+        appSettings={baseSettings}
+        openAppIconById={{}}
+        onUpdateAppSettings={vi.fn().mockResolvedValue(undefined)}
+        workspaceGroups={[]}
+        groupedWorkspaces={[
+          { id: null, name: "Ungrouped", workspaces: [workspaceA, workspaceB] },
+        ]}
+        allWorkspaces={[workspaceA, workspaceB]}
+        ungroupedLabel="Ungrouped"
+        onClose={vi.fn()}
+        onMoveWorkspace={vi.fn()}
+        onDeleteWorkspace={vi.fn()}
+        onCreateWorkspaceGroup={vi.fn().mockResolvedValue(null)}
+        onRenameWorkspaceGroup={vi.fn().mockResolvedValue(null)}
+        onMoveWorkspaceGroup={vi.fn().mockResolvedValue(null)}
+        onDeleteWorkspaceGroup={vi.fn().mockResolvedValue(null)}
+        onAssignWorkspaceGroup={vi.fn().mockResolvedValue(null)}
+        onRunDoctor={vi.fn().mockResolvedValue(createDoctorResult())}
+        activeWorkspace={workspaceB}
+        activeEngine="codex"
+        onUpdateWorkspaceCodexBin={vi.fn().mockResolvedValue(undefined)}
+        onUpdateWorkspaceSettings={vi.fn().mockResolvedValue(undefined)}
+        scaleShortcutTitle="Scale shortcut"
+        scaleShortcutText="Use Command +/-"
+        onTestNotificationSound={vi.fn()}
+        dictationModelStatus={null}
+        onDownloadDictationModel={vi.fn()}
+        onCancelDictationDownload={vi.fn()}
+        onRemoveDictationModel={vi.fn()}
+        initialSection="prompts"
+      />,
+    );
+
+    const picker = await screen.findByDisplayValue("Workspace B");
+    expect(picker).toBeTruthy();
+  });
+});
+
 describe("SettingsView Display", () => {
   it("keeps codex, dictation, git, and experimental sidebar entries hidden", () => {
     renderDisplaySection();
@@ -233,6 +294,7 @@ describe("SettingsView Display", () => {
     expect(screen.queryByRole("button", { name: "Git" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Codex" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Experimental" })).toBeNull();
+    expect(screen.getByRole("button", { name: "settings.sidebarWebService" })).toBeTruthy();
   });
 
   it("renders codex doctor probe metadata including proxy context", async () => {
@@ -352,25 +414,41 @@ describe("SettingsView Display", () => {
     expect(screen.queryByText("Reduce transparency")).toBeNull();
   });
 
-  it("updates ui scale from the basic font size selector", async () => {
+  it("updates ui scale from slider and save action", async () => {
     const onUpdateAppSettings = vi.fn().mockResolvedValue(undefined);
     renderDisplaySection({ onUpdateAppSettings });
 
-    const fontSizeSelect = screen.getByLabelText("Font size");
+    const fontSizeSlider = screen.getByLabelText("Font size");
 
-    fireEvent.change(fontSizeSelect, { target: { value: "1.4" } });
+    fireEvent.change(fontSizeSlider, { target: { value: "1.36" } });
+    fireEvent.click(screen.getByTestId("settings-ui-scale-save"));
 
     await waitFor(() => {
       expect(onUpdateAppSettings).toHaveBeenCalledWith(
-        expect.objectContaining({ uiScale: 1.4 }),
+        expect.objectContaining({ uiScale: 1.36 }),
       );
     });
 
-    fireEvent.change(fontSizeSelect, { target: { value: "0.8" } });
+    fireEvent.change(fontSizeSlider, { target: { value: "0.8" } });
+    fireEvent.click(screen.getByTestId("settings-ui-scale-save"));
 
     await waitFor(() => {
       expect(onUpdateAppSettings).toHaveBeenCalledWith(
         expect.objectContaining({ uiScale: 0.8 }),
+      );
+    });
+  });
+
+  it("resets ui scale to 100% from settings", async () => {
+    const onUpdateAppSettings = vi.fn().mockResolvedValue(undefined);
+    renderDisplaySection({ onUpdateAppSettings, appSettings: { uiScale: 1.25 } });
+
+    fireEvent.click(screen.getByTestId("settings-ui-scale-reset"));
+    fireEvent.click(screen.getByTestId("settings-ui-scale-save"));
+
+    await waitFor(() => {
+      expect(onUpdateAppSettings).toHaveBeenCalledWith(
+        expect.objectContaining({ uiScale: 1 }),
       );
     });
   });
@@ -528,7 +606,7 @@ describe("SettingsView Display", () => {
     expect(document.querySelector(".settings-basic-proxy-card.is-enabled")).toBeTruthy();
     expect(document.querySelector(".settings-proxy-header-badge")).toBeTruthy();
     expect(document.querySelectorAll(".settings-basic-proxy-card .proxy-status-badge")).toHaveLength(1);
-    expect(screen.getByRole("status").textContent ?? "").toContain(
+    expect((await screen.findByRole("status")).textContent ?? "").toContain(
       "settings.behaviorProxyEnabledSuccess",
     );
   });
@@ -560,7 +638,7 @@ describe("SettingsView Display", () => {
       );
     });
 
-    expect(screen.getByRole("status").textContent ?? "").toContain(
+    expect((await screen.findByRole("status")).textContent ?? "").toContain(
       "settings.behaviorProxyDisabledSuccess",
     );
   });

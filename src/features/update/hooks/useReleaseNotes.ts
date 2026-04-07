@@ -43,12 +43,12 @@ function normalizeDateLabel(raw: string): string {
   const zhMatch = trimmed.match(/^(\d{4})年(\d{1,2})月(\d{1,2})日$/);
   if (zhMatch) {
     const [, year, month, day] = zhMatch;
-    return `${year}/${month.padStart(2, "0")}/${day.padStart(2, "0")}`;
+    return `${year}/${(month ?? "").padStart(2, "0")}/${(day ?? "").padStart(2, "0")}`;
   }
   const isoMatch = trimmed.match(/^(\d{4})[./-](\d{1,2})[./-](\d{1,2})$/);
   if (isoMatch) {
     const [, year, month, day] = isoMatch;
-    return `${year}/${month.padStart(2, "0")}/${day.padStart(2, "0")}`;
+    return `${year}/${(month ?? "").padStart(2, "0")}/${(day ?? "").padStart(2, "0")}`;
   }
   return trimmed;
 }

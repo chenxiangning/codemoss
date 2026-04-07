@@ -113,6 +113,41 @@ fn spawn_terminal_reader(
     });
 }
 
+async fn kill_terminal_session(session: Arc<TerminalSession>) {
+    let mut child = session.child.lock().await;
+    let _ = child.kill();
+}
+
+pub(crate) async fn cleanup_terminal_sessions_for_workspace(state: &AppState, workspace_id: &str) {
+    let removed_sessions = {
+        let mut sessions = state.terminal_sessions.lock().await;
+        let keys_to_remove: Vec<String> = sessions
+            .keys()
+            .filter(|key| key.starts_with(&format!("{workspace_id}:")))
+            .cloned()
+            .collect();
+        keys_to_remove
+            .into_iter()
+            .filter_map(|key| sessions.remove(&key))
+            .collect::<Vec<_>>()
+    };
+
+    for session in removed_sessions {
+        kill_terminal_session(session).await;
+    }
+}
+
+pub(crate) async fn cleanup_all_terminal_sessions(state: &AppState) {
+    let removed_sessions = {
+        let mut sessions = state.terminal_sessions.lock().await;
+        sessions.drain().map(|(_, session)| session).collect::<Vec<_>>()
+    };
+
+    for session in removed_sessions {
+        kill_terminal_session(session).await;
+    }
+}
+
 async fn get_workspace_path(
     workspace_id: &str,
     state: &State<'_, AppState>,
@@ -266,7 +301,6 @@ pub(crate) async fn terminal_close(
     let session = sessions
         .remove(&key)
         .ok_or_else(|| "Terminal session not found".to_string())?;
-    let mut child = session.child.lock().await;
-    let _ = child.kill();
+    kill_terminal_session(session).await;
     Ok(())
 }

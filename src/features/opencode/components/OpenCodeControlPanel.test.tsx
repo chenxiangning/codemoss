@@ -124,7 +124,11 @@ describe("OpenCodeControlPanel", () => {
     expect(onRunOpenCodeCommand).toHaveBeenCalledWith("/status");
 
     fireEvent.click(screen.getByRole("tab", { name: "Sessions" }));
-    fireEvent.click(screen.getAllByRole("button", { name: "恢复" })[0]);
+    const resumeButton = screen.getAllByRole("button", { name: "恢复" })[0];
+    if (!resumeButton) {
+      throw new Error("Resume button not found");
+    }
+    fireEvent.click(resumeButton);
     expect(onRunOpenCodeCommand).toHaveBeenCalledWith("/resume ses_1234567890");
   });
 

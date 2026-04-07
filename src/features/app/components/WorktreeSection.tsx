@@ -46,6 +46,7 @@ type WorktreeSectionProps = {
   getThreadTime: (thread: ThreadSummary) => string | null;
   isThreadPinned: (workspaceId: string, threadId: string) => boolean;
   isThreadAutoNaming: (workspaceId: string, threadId: string) => boolean;
+  onToggleThreadPin: (workspaceId: string, threadId: string) => void;
   getPinTimestamp: (workspaceId: string, threadId: string) => number | null;
   onSelectWorkspace: (id: string) => void;
   onConnectWorkspace: (workspace: WorkspaceInfo) => void;
@@ -89,6 +90,7 @@ export function WorktreeSection({
   getThreadTime,
   isThreadPinned,
   isThreadAutoNaming,
+  onToggleThreadPin,
   getPinTimestamp,
   onSelectWorkspace,
   onConnectWorkspace,
@@ -146,8 +148,17 @@ export function WorktreeSection({
       <button
         type="button"
         className={`worktree-header ${isSectionCollapsed ? "collapsed" : "expanded"}`}
-        onClick={() => {
+        onDoubleClick={(event) => {
+          if (event.button !== 0) {
+            return;
+          }
           onToggleSectionCollapse(parentWorkspaceId);
+        }}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            onToggleSectionCollapse(parentWorkspaceId);
+          }
         }}
         aria-expanded={!isSectionCollapsed}
         aria-label={isSectionCollapsed ? "Expand worktrees" : "Collapse worktrees"}
@@ -227,6 +238,7 @@ export function WorktreeSection({
                     getThreadTime={getThreadTime}
                     isThreadPinned={isThreadPinned}
                     isThreadAutoNaming={isThreadAutoNaming}
+                    onToggleThreadPin={onToggleThreadPin}
                     onToggleExpanded={onToggleExpanded}
                     onLoadOlderThreads={onLoadOlderThreads}
                     onSelectThread={onSelectThread}

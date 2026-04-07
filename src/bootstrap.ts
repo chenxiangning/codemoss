@@ -18,6 +18,7 @@ import "./styles/diff-viewer.css";
 import "./styles/file-tree.css";
 import "./styles/runtime-console.css";
 import "./styles/file-view-panel.css";
+import "./styles/detached-file-explorer.css";
 import "./styles/panel-tabs.css";
 import "./styles/session-activity.css";
 import "./styles/prompts.css";

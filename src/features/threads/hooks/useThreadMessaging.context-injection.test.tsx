@@ -47,6 +47,7 @@ vi.mock("../../../services/tauri", () => ({
   interruptTurn: vi.fn(),
   listMcpServerStatus: vi.fn(),
   engineSendMessage: vi.fn(),
+  engineInterruptTurn: vi.fn(),
   engineInterrupt: vi.fn(),
   projectMemoryCaptureAuto: vi.fn(),
 }));
@@ -77,6 +78,7 @@ function buildHook(engine: "claude" | "codex") {
       threadStatusById: {},
       itemsByThread: {},
       activeTurnIdByThread: {},
+      tokenUsageByThread: {},
       rateLimitsByWorkspace: {},
       pendingInterruptsRef: { current: new Set<string>() },
       interruptedThreadsRef: { current: new Set<string>() },

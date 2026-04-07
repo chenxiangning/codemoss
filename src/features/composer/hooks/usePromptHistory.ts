@@ -193,7 +193,7 @@ export function usePromptHistory({
         draftBeforeHistoryRef.current = text;
         const nextIndex = history.length - 1;
         setHistoryIndex(nextIndex);
-        applyHistoryValue(history[nextIndex]);
+        applyHistoryValue(history[nextIndex] ?? draftBeforeHistoryRef.current);
         return;
       }
 
@@ -201,7 +201,7 @@ export function usePromptHistory({
         const nextIndex = Math.max(0, historyIndex - 1);
         if (nextIndex !== historyIndex) {
           setHistoryIndex(nextIndex);
-          applyHistoryValue(history[nextIndex]);
+          applyHistoryValue(history[nextIndex] ?? draftBeforeHistoryRef.current);
         }
         return;
       }
@@ -214,7 +214,7 @@ export function usePromptHistory({
 
       const nextIndex = historyIndex + 1;
       setHistoryIndex(nextIndex);
-      applyHistoryValue(history[nextIndex]);
+      applyHistoryValue(history[nextIndex] ?? draftBeforeHistoryRef.current);
     },
     [
       applyHistoryValue,

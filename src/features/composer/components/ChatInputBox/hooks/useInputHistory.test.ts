@@ -134,8 +134,8 @@ describe('useInputHistory pure functions', () => {
       localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(['hello', 'world']));
       const result = loadHistoryWithImportance();
       expect(result).toHaveLength(2);
-      expect(result[0].importance).toBe(1);
-      expect(result[1].importance).toBe(1);
+      expect(result[0]?.importance).toBe(1);
+      expect(result[1]?.importance).toBe(1);
     });
 
     it('uses stored counts for importance', () => {
@@ -150,16 +150,16 @@ describe('useInputHistory pure functions', () => {
       localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(['low', 'high', 'mid']));
       localStorage.setItem(HISTORY_COUNTS_KEY, JSON.stringify({ low: 1, high: 10, mid: 5 }));
       const result = loadHistoryWithImportance();
-      expect(result[0].text).toBe('high');
-      expect(result[1].text).toBe('mid');
-      expect(result[2].text).toBe('low');
+      expect(result[0]?.text).toBe('high');
+      expect(result[1]?.text).toBe('mid');
+      expect(result[2]?.text).toBe('low');
     });
 
     it('includes timestamps when available', () => {
       localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(['hello']));
       localStorage.setItem(HISTORY_TIMESTAMPS_KEY, JSON.stringify({ hello: '2024-01-01T00:00:00Z' }));
       const result = loadHistoryWithImportance();
-      expect(result[0].timestamp).toBe('2024-01-01T00:00:00Z');
+      expect(result[0]?.timestamp).toBe('2024-01-01T00:00:00Z');
     });
   });
 

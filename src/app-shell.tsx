@@ -9,7 +9,6 @@ import {
   useMemo,
   useRef,
   useState,
-  type PointerEvent as ReactPointerEvent,
 } from "react";
 import { useTranslation } from "react-i18next";
 import { AppLayout } from "./features/app/components/AppLayout";
@@ -52,6 +51,7 @@ import {
 } from "./features/layout/components/SidebarToggleControls";
 import { useAppSettingsController } from "./features/app/hooks/useAppSettingsController";
 import { useUpdaterController } from "./features/app/hooks/useUpdaterController";
+import { useGitHistoryPanelResize } from "./features/app/hooks/useGitHistoryPanelResize";
 import { useReleaseNotes } from "./features/update/hooks/useReleaseNotes";
 import { useErrorToasts } from "./features/notifications/hooks/useErrorToasts";
 import { useComposerShortcuts } from "./features/composer/hooks/useComposerShortcuts";
@@ -61,6 +61,7 @@ import { useDictationController } from "./features/app/hooks/useDictationControl
 import { useComposerController } from "./features/app/hooks/useComposerController";
 import { useComposerInsert } from "./features/app/hooks/useComposerInsert";
 import { useEngineController } from "./features/engine/hooks/useEngineController";
+import { resolveClaudePendingThreadModelRefreshKey } from "./features/engine/utils/claudeModelRefresh";
 import { useRenameThreadPrompt } from "./features/threads/hooks/useRenameThreadPrompt";
 import { useDeleteThreadPrompt } from "./features/threads/hooks/useDeleteThreadPrompt";
 import { useWorktreePrompt } from "./features/workspaces/hooks/useWorktreePrompt";
@@ -114,10 +115,12 @@ import type { SearchContentFilter, SearchResult, SearchScope } from "./features/
 import { toggleSearchContentFilters } from "./features/search/utils/contentFilters";
 import { resolveSearchScopeOnOpen } from "./features/search/utils/scope";
 import {
-  getSelectedAgentConfig,
+  buildDetachedFileExplorerSession,
+  openOrFocusDetachedFileExplorer,
+} from "./features/files/detachedFileExplorer";
+import {
   getOpenCodeAgentsList,
   ensureWorkspacePathDir,
-  setSelectedAgentConfig,
   getWorkspaceFiles,
   pickWorkspacePath,
   readPanelLockPasswordFile,
@@ -132,7 +135,6 @@ import type {
   OpenCodeAgentOption,
   RequestUserInputRequest,
   RequestUserInputResponse,
-  SelectedAgentOption,
   WorkspaceInfo,
 } from "./types";
 import { getClientStoreSync, writeClientStoreValue } from "./services/clientStorage";
@@ -141,22 +143,19 @@ import { useCodeCssVars } from "./features/app/hooks/useCodeCssVars";
 import { useAccountSwitching } from "./features/app/hooks/useAccountSwitching";
 import { useMenuLocalization } from "./features/app/hooks/useMenuLocalization";
 import { sendSystemNotification, setNotificationActionHandler } from "./services/systemNotification";
+import { pushErrorToast } from "./services/toasts";
 import { ReleaseNotesModal } from "./features/update/components/ReleaseNotesModal";
 import { requestVendorModelManager } from "./features/vendors/modelManagerRequest";
 import {
   PANEL_LOCK_INITIAL_PASSWORD,
   LOCK_LIVE_SESSION_LIMIT,
   OPENCODE_VARIANT_OPTIONS,
-  GIT_HISTORY_PANEL_MAX_SNAP_THRESHOLD,
-  GIT_HISTORY_PANEL_CLOSE_THRESHOLD,
   LOCAL_PLAN_APPLY_REQUEST_PREFIX,
   PLAN_APPLY_ACTION_QUESTION_ID,
   PLAN_APPLY_EXECUTE_PROMPT,
   CODE_MODE_RESUME_PROMPT,
   type ThreadCompletionTracker,
   extractFirstUserInputAnswer,
-  clampGitHistoryPanelHeight,
-  getDefaultGitHistoryPanelHeight,
   isJankDebugEnabled,
   extractPlanFromTimelineItems,
   resolveLockLivePreview,
@@ -165,14 +164,18 @@ import { useAppShellSearchAndComposerSection } from "./app-shell-parts/useAppShe
 import { useAppShellSections } from "./app-shell-parts/useAppShellSections";
 import { useAppShellLayoutNodesSection } from "./app-shell-parts/useAppShellLayoutNodesSection";
 import { renderAppShell } from "./app-shell-parts/renderAppShell";
+import { useSelectedAgentSession } from "./app-shell-parts/useSelectedAgentSession";
 import {
   RADAR_STORE_NAME,
   SESSION_RADAR_RECENT_STORAGE_KEY,
   type PersistedRadarRecentEntry,
   buildRadarCompletionId,
-  parsePersistedRadarRecentEntry,
+  dispatchSessionRadarHistoryUpdatedEvent,
+  mergePersistedRadarRecentEntries,
   resolveLatestUserMessage,
 } from "./features/session-activity/utils/sessionRadarPersistence";
+
+const DEFAULT_CLAUDE_MODEL_ID = "claude-sonnet-4-6";
 
 const SettingsView = lazy(() =>
   import("./features/settings/components/SettingsView").then((module) => ({
@@ -185,12 +188,6 @@ const GitHubPanelData = lazy(() =>
     default: module.GitHubPanelData,
   })),
 );
-
-const GIT_HISTORY_PANEL_MIN_HEIGHT = 260;
-const GIT_HISTORY_PANEL_MIN_TOP_CLEARANCE = 44;
-function getViewportHeight(): number {
-  return typeof window === "undefined" ? 0 : window.innerHeight;
-}
 
 export function AppShell() {
   const { t } = useTranslation();
@@ -312,15 +309,19 @@ export function AppShell() {
     toggleDebugPanelShortcut: appSettings.toggleDebugPanelShortcut,
     toggleTerminalShortcut: appSettings.toggleTerminalShortcut,
   });
-  const [gitHistoryPanelHeight, setGitHistoryPanelHeight] = useState(() => {
-    const stored = getClientStoreSync<number>("layout", "gitHistoryPanelHeight");
-    if (typeof stored === "number" && Number.isFinite(stored)) {
-      return clampGitHistoryPanelHeight(stored);
-    }
-    return getDefaultGitHistoryPanelHeight();
-  });
+  const [appMode, setAppMode] = useState<AppMode>("chat");
   const appRootRef = useRef<HTMLDivElement | null>(null);
-  const gitHistoryPanelHeightRef = useRef(gitHistoryPanelHeight);
+  const {
+    gitHistoryPanelHeight,
+    gitHistoryPanelHeightRef,
+    onGitHistoryPanelResizeStart,
+    setGitHistoryPanelHeight,
+  } = useGitHistoryPanelResize({
+    appRootRef,
+    onClosePanel: () => {
+      setAppMode("chat");
+    },
+  });
 
   const resetSoloSplitToHalf = useCallback(() => {
     window.requestAnimationFrame(() => {
@@ -330,113 +331,6 @@ export function AppShell() {
       setRightPanelWidth(Math.floor(mainWidth / 2));
     });
   }, [setRightPanelWidth]);
-
-  useEffect(() => {
-    gitHistoryPanelHeightRef.current = gitHistoryPanelHeight;
-  }, [gitHistoryPanelHeight]);
-  useEffect(() => {
-    writeClientStoreValue("layout", "gitHistoryPanelHeight", gitHistoryPanelHeight);
-  }, [gitHistoryPanelHeight]);
-  useEffect(() => {
-    const handleResize = () => {
-      setGitHistoryPanelHeight((current) => clampGitHistoryPanelHeight(current));
-    };
-    window.addEventListener("resize", handleResize);
-    return () => {
-      window.removeEventListener("resize", handleResize);
-    };
-  }, []);
-  const onGitHistoryPanelResizeStart = useCallback(
-    (event: ReactPointerEvent<HTMLDivElement>) => {
-      event.preventDefault();
-      event.stopPropagation();
-      const pointerId = event.pointerId;
-      const startY = event.clientY;
-      const startHeight = gitHistoryPanelHeightRef.current;
-      const viewportHeight = getViewportHeight();
-      const maxHeight = Math.max(
-        GIT_HISTORY_PANEL_MIN_HEIGHT,
-        viewportHeight - GIT_HISTORY_PANEL_MIN_TOP_CLEARANCE,
-      );
-      const minHeight = Math.min(GIT_HISTORY_PANEL_MIN_HEIGHT, maxHeight);
-      const dragHandle = event.currentTarget;
-      const appRoot = appRootRef.current;
-      let latestRawHeight = startHeight;
-      let latestClampedHeight = clampGitHistoryPanelHeight(startHeight, viewportHeight);
-      let animationFrameId: number | null = null;
-
-      const flushDraggedHeight = () => {
-        animationFrameId = null;
-        if (appRoot) {
-          appRoot.style.setProperty(
-            "--git-history-panel-height",
-            `${latestClampedHeight}px`,
-          );
-        }
-      };
-
-      const scheduleDraggedHeightFlush = () => {
-        if (animationFrameId !== null) {
-          return;
-        }
-        animationFrameId = window.requestAnimationFrame(flushDraggedHeight);
-      };
-
-      dragHandle.setPointerCapture(pointerId);
-      document.body.dataset.gitHistoryResizing = "true";
-
-      const handlePointerMove = (moveEvent: globalThis.PointerEvent) => {
-        if (moveEvent.pointerId !== pointerId) {
-          return;
-        }
-        const delta = moveEvent.clientY - startY;
-        const nextHeight = startHeight - delta;
-        latestRawHeight = nextHeight;
-        latestClampedHeight = clampGitHistoryPanelHeight(nextHeight, viewportHeight);
-        scheduleDraggedHeightFlush();
-      };
-
-      const handlePointerUp = (upEvent: globalThis.PointerEvent) => {
-        if (upEvent.pointerId !== pointerId) {
-          return;
-        }
-        window.removeEventListener("pointermove", handlePointerMove);
-        window.removeEventListener("pointerup", handlePointerUp);
-        window.removeEventListener("pointercancel", handlePointerUp);
-        if (dragHandle.hasPointerCapture(pointerId)) {
-          dragHandle.releasePointerCapture(pointerId);
-        }
-        if (animationFrameId !== null) {
-          window.cancelAnimationFrame(animationFrameId);
-          flushDraggedHeight();
-        }
-        document.body.style.cursor = "";
-        document.body.style.userSelect = "";
-        document.body.style.webkitUserSelect = "";
-        delete document.body.dataset.gitHistoryResizing;
-
-        if (latestRawHeight <= minHeight - GIT_HISTORY_PANEL_CLOSE_THRESHOLD) {
-          setAppMode("chat");
-          return;
-        }
-
-        if (latestRawHeight >= maxHeight - GIT_HISTORY_PANEL_MAX_SNAP_THRESHOLD) {
-          setGitHistoryPanelHeight(maxHeight);
-          return;
-        }
-
-        setGitHistoryPanelHeight(latestClampedHeight);
-      };
-
-      window.addEventListener("pointermove", handlePointerMove);
-      window.addEventListener("pointerup", handlePointerUp);
-      window.addEventListener("pointercancel", handlePointerUp);
-      document.body.style.cursor = "row-resize";
-      document.body.style.userSelect = "none";
-      document.body.style.webkitUserSelect = "none";
-    },
-    [],
-  );
 
   const {
     settingsOpen,
@@ -448,7 +342,12 @@ export function AppShell() {
 
   const handleOpenModelSettings = useCallback(
     (providerId?: string) => {
-      const target = providerId === "codex" ? "codex" : "claude";
+      const target =
+        providerId === "codex"
+          ? "codex"
+          : providerId === "gemini"
+            ? "gemini"
+            : "claude";
       requestVendorModelManager({ target, addMode: true });
       openSettings("providers");
     },
@@ -754,6 +653,7 @@ export function AppShell() {
     setActiveEngine,
     engineModelsAsOptions,
     engineStatuses,
+    refreshEngines,
   } = useEngineController({ activeWorkspace, onDebug: addDebugEntry });
   const [openCodeAgents, setOpenCodeAgents] = useState<OpenCodeAgentOption[]>([]);
   const [openCodeAgentByThreadId, setOpenCodeAgentByThreadId] = useState<Record<string, string | null>>({});
@@ -766,69 +666,6 @@ export function AppShell() {
   const [openCodeDefaultVariantByWorkspace, setOpenCodeDefaultVariantByWorkspace] = useState<
     Record<string, string | null>
   >({});
-  const [selectedAgent, setSelectedAgent] = useState<SelectedAgentOption | null>(null);
-
-  const reloadSelectedAgent = useCallback(async () => {
-    try {
-      const selected = await getSelectedAgentConfig();
-      const agent = selected.agent;
-      setSelectedAgent(
-        agent
-          ? {
-              id: agent.id,
-              name: agent.name,
-              prompt: agent.prompt ?? null,
-            }
-          : null,
-      );
-    } catch (error) {
-      addDebugEntry({
-        id: `${Date.now()}-agent-selected-load-error`,
-        timestamp: Date.now(),
-        source: "error",
-        label: "agent/selected load error",
-        payload: error instanceof Error ? error.message : String(error),
-      });
-    }
-  }, [addDebugEntry]);
-
-  const handleSelectAgent = useCallback(
-    (agent: SelectedAgentOption | null) => {
-      const normalized =
-        agent && agent.id.trim().length > 0
-          ? {
-              id: agent.id.trim(),
-              name: agent.name.trim(),
-              prompt: agent.prompt ?? null,
-            }
-          : null;
-      setSelectedAgent(normalized);
-      void setSelectedAgentConfig(normalized?.id ?? null)
-        .then((result) => {
-          if (!result.agent) {
-            if (!normalized) {
-              setSelectedAgent(null);
-            }
-            return;
-          }
-          setSelectedAgent({
-            id: result.agent.id,
-            name: result.agent.name,
-            prompt: result.agent.prompt ?? null,
-          });
-        })
-        .catch((error) => {
-          addDebugEntry({
-            id: `${Date.now()}-agent-selected-save-error`,
-            timestamp: Date.now(),
-            source: "error",
-            label: "agent/selected save error",
-            payload: error instanceof Error ? error.message : String(error),
-          });
-        });
-    },
-    [addDebugEntry],
-  );
 
   useEffect(() => {
     if (activeEngine !== "opencode") {
@@ -871,8 +708,6 @@ export function AppShell() {
     };
   }, [activeEngine, addDebugEntry]);
 
-  // --- Kanban mode ---
-  const [appMode, setAppMode] = useState<AppMode>("chat");
   const handleAppModeChange = useCallback(
     (mode: AppMode) => {
       setAppMode(mode);
@@ -931,9 +766,6 @@ export function AppShell() {
     if (activeEngine === "codex") {
       return;
     }
-    if (activeEngine === "claude") {
-      return;
-    }
     if (engineModelsAsOptions.length === 0) {
       return;
     }
@@ -961,15 +793,12 @@ export function AppShell() {
     if (activeEngine === "codex") {
       return selectedModelId;
     }
-    if (activeEngine === "claude") {
-      return (
-        engineSelectedModelIdByType[activeEngine] ??
-        "claude-sonnet-4-6"
-      );
-    }
     const engineSelection = engineSelectedModelIdByType[activeEngine] ?? null;
     if (engineModelsAsOptions.length === 0) {
-      return null;
+      if (activeEngine === "claude") {
+        return engineSelection ?? DEFAULT_CLAUDE_MODEL_ID;
+      }
+      return engineSelection;
     }
     const validModel = engineModelsAsOptions.find(
       (model) => model.id === engineSelection,
@@ -1098,6 +927,31 @@ export function AppShell() {
   const alertError = useCallback((error: unknown) => {
     alert(error instanceof Error ? error.message : String(error));
   }, []);
+  const handleOpenDetachedFileExplorer = useCallback(
+    async (initialFilePath?: string | null) => {
+      if (!activeWorkspace) {
+        return;
+      }
+      try {
+        await openOrFocusDetachedFileExplorer(
+          buildDetachedFileExplorerSession({
+            workspaceId: activeWorkspace.id,
+            workspacePath: activeWorkspace.path,
+            workspaceName: activeWorkspace.name,
+            gitRoot: activeWorkspace.settings.gitRoot ?? null,
+            initialFilePath,
+          }),
+        );
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        pushErrorToast({
+          title: t("files.openDetachedExplorer"),
+          message,
+        });
+      }
+    },
+    [activeWorkspace, t],
+  );
   const {
     applyWorktreeChanges: handleApplyWorktreeChanges,
     revertAllGitChanges: handleRevertAllGitChanges,
@@ -1257,8 +1111,7 @@ export function AppShell() {
     selectedEffort: resolvedEffort,
     resolvedModel,
   });
-  const threadAccessMode =
-    accessMode === "default" ? "current" : accessMode;
+  const threadAccessMode = accessMode;
 
   const {
     setActiveThreadId,
@@ -1302,12 +1155,14 @@ export function AppShell() {
     startMcp,
     startSpecRoot,
     startStatus,
+    startContext,
     startFast,
     startMode,
     startExport,
     startImport,
     startLsp,
     startShare,
+    resolveCanonicalThreadId,
     reviewPrompt,
     closeReviewPrompt,
     showPresetStep,
@@ -1352,6 +1207,45 @@ export function AppShell() {
     resolveCollaborationRuntimeMode,
     onCollaborationModeResolved: handleCollaborationModeResolved,
   });
+
+  const {
+    selectedAgent,
+    selectedAgentRef,
+    handleSelectAgent,
+    reloadSelectedAgent,
+    reloadAgentCatalog,
+  } = useSelectedAgentSession({
+    activeThreadId,
+    activeWorkspaceId,
+    resolveCanonicalThreadId,
+    onDebug: addDebugEntry,
+  });
+
+  const claudeModelRefreshThreadKeyRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    const refreshKey = resolveClaudePendingThreadModelRefreshKey({
+      activeEngine,
+      activeThreadId,
+      activeWorkspaceId,
+    });
+    if (!refreshKey) {
+      return;
+    }
+    if (claudeModelRefreshThreadKeyRef.current === refreshKey) {
+      return;
+    }
+    claudeModelRefreshThreadKeyRef.current = refreshKey;
+    addDebugEntry({
+      id: `${Date.now()}-claude-model-refresh-on-new-thread`,
+      timestamp: Date.now(),
+      source: "client",
+      label: "engine/models refresh on new claude thread",
+      payload: { workspaceId: activeWorkspaceId, threadId: activeThreadId },
+    });
+    void refreshEngines();
+  }, [activeEngine, activeThreadId, activeWorkspaceId, addDebugEntry, refreshEngines]);
+
   const handleUserInputSubmitWithPlanApply = useCallback(
     async (
       request: RequestUserInputRequest,
@@ -1449,15 +1343,41 @@ export function AppShell() {
         return;
       }
       const force = options?.force ?? false;
-      if (!force && hydratedThreadListWorkspaceIdsRef.current.has(workspaceId)) {
+      const existingThreads = threadsByWorkspace[workspaceId] ?? [];
+      const isLoading = threadListLoadingByWorkspace[workspaceId] ?? false;
+      const hasAnyThreadData = existingThreads.length > 0;
+      const hasHydratedThreadList =
+        hydratedThreadListWorkspaceIdsRef.current.has(workspaceId);
+      if (
+        !force &&
+        (isLoading ||
+          (hasHydratedThreadList && hasAnyThreadData))
+      ) {
         return;
       }
       void listThreadsForWorkspaceTracked(workspace, {
         preserveState: options?.preserveState,
       });
     },
-    [listThreadsForWorkspaceTracked, workspacesById],
+    [
+      listThreadsForWorkspaceTracked,
+      threadListLoadingByWorkspace,
+      threadsByWorkspace,
+      workspacesById,
+    ],
   );
+  const autoHydratedActiveWorkspaceIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!activeWorkspaceId) {
+      autoHydratedActiveWorkspaceIdRef.current = null;
+      return;
+    }
+    if (autoHydratedActiveWorkspaceIdRef.current === activeWorkspaceId) {
+      return;
+    }
+    autoHydratedActiveWorkspaceIdRef.current = activeWorkspaceId;
+    ensureWorkspaceThreadListLoaded(activeWorkspaceId, { preserveState: true });
+  }, [activeWorkspaceId, ensureWorkspaceThreadListLoaded]);
   const handleEnsureWorkspaceThreadsForSettings = useCallback(
     (workspaceId: string) => {
       ensureWorkspaceThreadListLoaded(workspaceId, { preserveState: true });
@@ -1481,42 +1401,44 @@ export function AppShell() {
   useEffect(() => {
     activeThreadIdRef.current = activeThreadId ?? null;
   }, [activeThreadId]);
-  const previousThreadIdRef = useRef<string | null>(null);
+  const previousOpenCodeThreadIdRef = useRef<string | null>(null);
   useEffect(() => {
-    const previous = previousThreadIdRef.current;
+    const previousThreadId = previousOpenCodeThreadIdRef.current;
     if (
-      previous &&
+      previousThreadId &&
       activeThreadId &&
-      previous !== activeThreadId &&
-      previous.startsWith("opencode-pending-") &&
+      previousThreadId !== activeThreadId &&
+      previousThreadId.startsWith("opencode-pending-") &&
       activeThreadId.startsWith("opencode:")
     ) {
       setOpenCodeAgentByThreadId((prev) => {
-        if (!(previous in prev) || activeThreadId in prev) {
+        if (!(previousThreadId in prev) || activeThreadId in prev) {
           return prev;
         }
-        return { ...prev, [activeThreadId]: prev[previous] ?? null };
+        return { ...prev, [activeThreadId]: prev[previousThreadId] ?? null };
       });
       setOpenCodeVariantByThreadId((prev) => {
-        if (!(previous in prev) || activeThreadId in prev) {
+        if (!(previousThreadId in prev) || activeThreadId in prev) {
           return prev;
         }
-        return { ...prev, [activeThreadId]: prev[previous] ?? null };
+        return { ...prev, [activeThreadId]: prev[previousThreadId] ?? null };
       });
     }
-    previousThreadIdRef.current = activeThreadId ?? null;
-  }, [activeThreadId]);
+    previousOpenCodeThreadIdRef.current = activeThreadId ?? null;
+  }, [
+    activeThreadId,
+  ]);
 
   useEffect(() => {
-    void reloadSelectedAgent();
-  }, [activeThreadId, reloadSelectedAgent]);
+    void reloadAgentCatalog();
+  }, [reloadAgentCatalog]);
 
   useEffect(() => {
     if (!settingsOpen) {
       forceRefreshAgents();
-      void reloadSelectedAgent();
+      void reloadAgentCatalog();
     }
-  }, [reloadSelectedAgent, settingsOpen]);
+  }, [reloadAgentCatalog, settingsOpen]);
 
   const selectedOpenCodeAgent = useMemo(
     () => resolveOpenCodeAgentForThread(activeThreadId),
@@ -2098,6 +2020,7 @@ export function AppShell() {
     startMcp,
     startSpecRoot,
     startStatus,
+    startContext,
     startFast,
     startMode,
     startExport,
@@ -2433,27 +2356,9 @@ export function AppShell() {
       return;
     }
 
-    const rawPersistedRecent = getClientStoreSync<unknown>(
-      RADAR_STORE_NAME,
-      SESSION_RADAR_RECENT_STORAGE_KEY,
-    );
-    const persistedRecentList = Array.isArray(rawPersistedRecent)
-      ? rawPersistedRecent
-          .map(parsePersistedRadarRecentEntry)
-          .filter((entry): entry is PersistedRadarRecentEntry => Boolean(entry))
-      : [];
-    const mergedById = new Map<string, PersistedRadarRecentEntry>();
-    for (const entry of persistedRecentList) {
-      mergedById.set(entry.id, entry);
-    }
-    for (const entry of completed) {
-      const previous = mergedById.get(entry.id);
-      if (!previous || previous.completedAt <= entry.completedAt) {
-        mergedById.set(entry.id, entry);
-      }
-    }
-    const nextPersistedRecent = Array.from(mergedById.values()).sort(
-      (left, right) => right.completedAt - left.completedAt,
+    const nextPersistedRecent = mergePersistedRadarRecentEntries(
+      getClientStoreSync<unknown>(RADAR_STORE_NAME, SESSION_RADAR_RECENT_STORAGE_KEY),
+      completed,
     );
     writeClientStoreValue(
       RADAR_STORE_NAME,
@@ -2461,6 +2366,7 @@ export function AppShell() {
       nextPersistedRecent,
       { immediate: true },
     );
+    dispatchSessionRadarHistoryUpdatedEvent();
 
     // Send a system notification for each completed session.
     if (appSettings.systemNotificationEnabled) {
@@ -2901,7 +2807,7 @@ export function AppShell() {
     handleCloseFileTab, handleCollaborationModeResolved, handleCommit, handleCommitAndPush, handleCommitAndSync, handleCommitMessageChange, handleCopyDebug, handleCopyThread,
     handleCreateBranch, handleCreatePrompt, handleDebugClick, handleDeletePrompt, handleDeleteQueued, handleDeleteThreadPromptCancel, handleDeleteThreadPromptConfirm, handleDraftChange,
     handleDropWorkspacePaths, handleEditQueued, handleEnsureWorkspaceThreadsForSettings, handleExitEditor, handleGenerateCommitMessage, handleGitIssuesChange, handleGitPanelModeChange, handleGitPullRequestCommentsChange,
-    handleGitPullRequestDiffsChange, handleGitPullRequestsChange, handleInsertComposerText, handleLockPanel, handleMovePrompt, handleOpenFile, handleOpenModelSettings, handleOpenRenameWorktree,
+    handleGitPullRequestDiffsChange, handleGitPullRequestsChange, handleInsertComposerText, handleLockPanel, handleMovePrompt, handleOpenDetachedFileExplorer, handleOpenFile, handleOpenModelSettings, handleOpenRenameWorktree,
     handlePickGitRoot, handlePointerMove, handlePointerUp, handlePush, handleRenamePromptCancel, handleRenamePromptChange, handleRenamePromptConfirm, handleRenameThread,
     handleRenameWorktreeCancel, handleRenameWorktreeChange, handleRenameWorktreeConfirm, handleResize, handleRevealGeneralPrompts, handleRevealWorkspacePrompts, handleRevertAllGitChanges, handleRevertGitFile,
     handleReviewPromptKeyDown, handleSelectAgent, handleSelectCommit, handleSelectDiff, handleSelectModel, handleSelectOpenAppId, handleSelectOpenCodeAgent, handleSelectOpenCodeVariant,
@@ -2923,17 +2829,18 @@ export function AppShell() {
     openCodeVariantByThreadId, openDeleteThreadPrompt, openFileTabs, openPlanPanel, openReleaseNotes, openRenamePrompt, openRenameWorktreePrompt, openSettings,
     openTerminal, openWorktreePrompt, path, payload, perfSnapshotRef, persistProjectCopiesFolder, pickImages, pinThread,
     pinnedThreadsVersion, planByThread, planPanelHeight, pointerId, prefillDraft, prevFiles, previous, previousAgentTimestamp,
-    previousDurationMs, previousThreadIdRef, previousTracker, prompts, pushError, pushLoading, queueGitStatusRefresh, queueMessage,
+    previousDurationMs, previousTracker, prompts, pushError, pushLoading, queueGitStatusRefresh, queueMessage,
     queueSaveSettings, rafId, rateLimitsByWorkspace, reasoningOptions, reasoningSupported, recentThreads, reduceTransparency, refreshAccountInfo,
     refreshAccountRateLimits, refreshFiles, refreshGitDiffs, refreshGitLog, refreshGitStatus, refreshThread, refreshWorkspaces, releaseNotesActiveIndex,
     releaseNotesEntries, releaseNotesError, releaseNotesLoading, releaseNotesOpen, reloadSelectedAgent, removeImage, removeImagesForThread, removeThread,
     removeWorkspace, removeWorktree, renamePrompt, renameThread, renameWorkspaceGroup, renameWorktree, renameWorktreeNotice, renameWorktreePrompt,
     renameWorktreeUpstream, renameWorktreeUpstreamPrompt, requestId, requestThreadId, resetGitHubPanelState, resetSoloSplitToHalf, resetWorkspaceThreads, resolveCloneProjectContext,
-    resolveCollaborationRuntimeMode, resolveCollaborationUiMode, resolveOpenCodeAgentForThread, resolveOpenCodeVariantForThread, resolvedEffort, resolvedModel, response, restartTerminalSession,
+    resolveCanonicalThreadId, resolveCollaborationRuntimeMode, resolveCollaborationUiMode, resolveOpenCodeAgentForThread, resolveOpenCodeVariantForThread, resolvedEffort, resolvedModel, response, restartTerminalSession,
     result, resumePrompt, retryReleaseNotesLoad, reviewPrompt, rightPanelCollapsed, rightPanelWidth, runtimeMode, runtimeRunState,
     scaleShortcutText, scaleShortcutTitle, scanGitRoots, scheduleDraggedHeightFlush, scopedKanbanTasks, searchContentFilters, searchPaletteQuery, searchPaletteSelectedIndex,
     searchResults, searchScope, selectBranch, selectBranchAtIndex, selectCommit, selectCommitAtIndex, selectHome, selectWorkspace,
     selected, selectedAgent, selectedAnswer, selectedCollaborationMode, selectedCollaborationModeId, selectedCommitSha, selectedDiffPath, selectedEffort,
+    selectedAgentRef,
     selectedKanbanTaskId, selectedModelId, selectedOpenCodeAgent, selectedOpenCodeVariant, selectedPath, selectedPullRequest, selection, sendUserMessage,
     sendUserMessageToThread, sessions, setAccessMode, setActiveEditorLineRange, setActiveEngine, setActiveTab, setActiveThreadId, setActiveWorkspaceId,
     setAppMode, setAppSettings, setCenterMode, setCodexCollaborationMode, setCollaborationRuntimeModeByThread, setCollaborationUiModeByThread, setComposerInsert, setDebugOpen,
@@ -2941,7 +2848,7 @@ export function AppShell() {
     setGitPanelMode, setGitRootScanDepth, setGlobalSearchFilesByWorkspace, setHighlightedBranchIndex, setHighlightedCommitIndex, setHighlightedPresetIndex, setIsEditorFileMaximized, setIsPanelLocked,
     setIsPlanPanelDismissed, setIsSearchPaletteOpen, setKanbanViewState, setLiveEditPreviewEnabled, setOpenCodeAgentByThreadId, setOpenCodeAgents, setOpenCodeDefaultAgentByWorkspace, setOpenCodeDefaultVariantByWorkspace,
     setOpenCodeVariantByThreadId, setPrefillDraft, setReduceTransparency, setRightPanelWidth, setSearchContentFilters, setSearchPaletteQuery, setSearchPaletteSelectedIndex, setSearchScope,
-    setSelectedAgent, setSelectedCollaborationModeId, setSelectedCommitSha, setSelectedDiffPath, setSelectedEffort, setSelectedKanbanTaskId, setSelectedModelId, setSelectedPullRequest,
+    setSelectedCollaborationModeId, setSelectedCommitSha, setSelectedDiffPath, setSelectedEffort, setSelectedKanbanTaskId, setSelectedModelId, setSelectedPullRequest,
     setWorkspaceHomeWorkspaceId, settingsHighlightTarget, settingsOpen, settingsSection, shouldForceResumeInCode, shouldImplementPlan, shouldLoadDiffs, shouldLoadGitHubPanelData,
     showDebugButton, showGitHistory, showHome, showKanban, showNextReleaseNotes, showPresetStep, showPreviousReleaseNotes, showWorkspaceHome,
     sidebarCollapsed, sidebarWidth, skills, snapshot, startExport, startFast, startFork, startHeight,

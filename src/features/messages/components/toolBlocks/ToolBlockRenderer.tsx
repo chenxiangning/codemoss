@@ -22,10 +22,13 @@ import { RequestUserInputSubmittedBlock } from './RequestUserInputSubmittedBlock
 
 interface ToolBlockRendererProps {
   item: Extract<ConversationItem, { kind: 'tool' }>;
+  workspaceId?: string | null;
   isExpanded: boolean;
   onToggle: (id: string) => void;
   onRequestAutoScroll?: () => void;
   activeCollaborationModeId?: string | null;
+  activeEngine?: "claude" | "codex" | "gemini" | "opencode";
+  hasPendingUserInputRequest?: boolean;
   onOpenDiffPath?: (path: string) => void;
 }
 
@@ -35,10 +38,13 @@ interface ToolBlockRendererProps {
  */
 export const ToolBlockRenderer = memo(function ToolBlockRenderer({
   item,
+  workspaceId = null,
   isExpanded,
   onToggle,
   onRequestAutoScroll,
   activeCollaborationModeId,
+  activeEngine,
+  hasPendingUserInputRequest = false,
   onOpenDiffPath,
 }: ToolBlockRendererProps) {
   const toolName = extractToolName(item.title);
@@ -107,9 +113,12 @@ export const ToolBlockRenderer = memo(function ToolBlockRenderer({
   return (
     <GenericToolBlock
       item={item}
+      workspaceId={workspaceId}
       isExpanded={isExpanded}
       onToggle={onToggle}
       activeCollaborationModeId={activeCollaborationModeId}
+      activeEngine={activeEngine}
+      hasPendingUserInputRequest={hasPendingUserInputRequest}
       onOpenDiffPath={onOpenDiffPath}
     />
   );

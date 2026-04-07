@@ -23,9 +23,12 @@ export function WorkspaceGroup({
       {showHeader && (
         <div
           className={`workspace-group-header${isToggleable ? " is-toggleable" : ""}`}
-          onClick={
+          onDoubleClick={
             toggleId
-              ? () => {
+              ? (event) => {
+                  if (event.button !== 0) {
+                    return;
+                  }
                   onToggleCollapse(toggleId);
                 }
               : undefined
@@ -58,6 +61,9 @@ export function WorkspaceGroup({
                   return;
                 }
                 onToggleCollapse(toggleId);
+              }}
+              onDoubleClick={(event) => {
+                event.stopPropagation();
               }}
               aria-label={isCollapsed ? "Expand group" : "Collapse group"}
               aria-expanded={!isCollapsed}

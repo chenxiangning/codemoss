@@ -88,7 +88,7 @@ export function useInlineHistoryCompletion({
         return a.length - b.length;
       });
 
-      return matches[0];
+      return matches[0] ?? null;
     },
     [enabled, minQueryLength],
   );

@@ -28,6 +28,6 @@ export function formatCollaborationModeLabel(value: string) {
   return normalized
     .split(" ")
     .filter(Boolean)
-    .map((word) => `${word[0].toUpperCase()}${word.slice(1)}`)
+    .map((word) => `${(word[0] ?? "").toUpperCase()}${word.slice(1)}`)
     .join(" ");
 }

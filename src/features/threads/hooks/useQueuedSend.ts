@@ -38,6 +38,7 @@ type UseQueuedSendOptions = {
   startMcp: (text: string) => Promise<void>;
   startSpecRoot: (text: string) => Promise<void>;
   startStatus: (text: string) => Promise<void>;
+  startContext: (text: string) => Promise<void>;
   startExport: (text: string) => Promise<void>;
   startImport: (text: string) => Promise<void>;
   startLsp: (text: string) => Promise<void>;
@@ -68,12 +69,14 @@ type UseQueuedSendResult = {
 type SlashCommandKind =
   | "fork"
   | "fast"
+  | "clear"
   | "mcp"
   | "new"
   | "resume"
   | "specRoot"
   | "review"
   | "status"
+  | "context"
   | "export"
   | "import"
   | "lsp"
@@ -85,6 +88,22 @@ type SlashCommandKind =
 
 const MODE_QUERY_DENYLIST =
   /(区别|差别|不同|怎么|如何|为什么|为何|影响|不影响|约束|规则|行为|能力|planfirst|agents\.?md)/i;
+
+function readSlashCommandToken(text: string): string | null {
+  const trimmed = text.trim();
+  if (!trimmed.startsWith("/")) {
+    return null;
+  }
+  const withoutSlash = trimmed.slice(1);
+  if (!withoutSlash) {
+    return null;
+  }
+  const firstToken = withoutSlash.split(/\s+/, 1)[0]?.trim();
+  if (!firstToken) {
+    return null;
+  }
+  return firstToken.toLowerCase();
+}
 
 function isImplicitModeQuery(text: string): boolean {
   const trimmed = text.trim();
@@ -109,52 +128,59 @@ function isImplicitModeQuery(text: string): boolean {
 }
 
 function parseSlashCommand(text: string): SlashCommandKind | null {
-  if (/^\/fork\b/i.test(text)) {
+  const commandToken = readSlashCommandToken(text);
+  if (commandToken === "fork") {
     return "fork";
   }
-  if (/^\/fast\b/i.test(text)) {
+  if (commandToken === "fast") {
     return "fast";
   }
-  if (/^\/mcp\b/i.test(text)) {
+  if (commandToken === "clear" || commandToken === "reset") {
+    return "clear";
+  }
+  if (commandToken === "mcp") {
     return "mcp";
   }
-  if (/^\/review\b/i.test(text)) {
+  if (commandToken === "review") {
     return "review";
   }
-  if (/^\/new\b/i.test(text)) {
+  if (commandToken === "new") {
     return "new";
   }
-  if (/^\/resume\b/i.test(text)) {
+  if (commandToken === "resume") {
     return "resume";
   }
-  if (/^\/spec-root\b/i.test(text)) {
+  if (commandToken === "spec-root") {
     return "specRoot";
   }
-  if (/^\/status\b/i.test(text)) {
+  if (commandToken === "status") {
     return "status";
   }
-  if (/^\/export\b/i.test(text)) {
+  if (commandToken === "context") {
+    return "context";
+  }
+  if (commandToken === "export") {
     return "export";
   }
-  if (/^\/import\b/i.test(text)) {
+  if (commandToken === "import") {
     return "import";
   }
-  if (/^\/lsp\b/i.test(text)) {
+  if (commandToken === "lsp") {
     return "lsp";
   }
-  if (/^\/share\b/i.test(text)) {
+  if (commandToken === "share") {
     return "share";
   }
-  if (/^\/plan\b/i.test(text)) {
+  if (commandToken === "plan") {
     return "plan";
   }
-  if (/^\/default\b/i.test(text)) {
+  if (commandToken === "default") {
     return "defaultMode";
   }
-  if (/^\/code\b/i.test(text)) {
+  if (commandToken === "code") {
     return "code";
   }
-  if (/^\/mode\b/i.test(text)) {
+  if (commandToken === "mode") {
     return "mode";
   }
   return null;
@@ -175,6 +201,9 @@ function canExecuteSlashCommand(
   activeEngine: EngineType,
 ): command is SlashCommandKind {
   if (!command) {
+    return false;
+  }
+  if (command === "clear" && activeEngine !== "claude") {
     return false;
   }
   if (isCodexOnlyCommand(command) && activeEngine !== "codex") {
@@ -200,6 +229,7 @@ export function useQueuedSend({
   startMcp,
   startSpecRoot,
   startStatus,
+  startContext,
   startExport,
   startImport,
   startLsp,
@@ -342,6 +372,10 @@ export function useQueuedSend({
         await startStatus(trimmed);
         return true;
       }
+      if (command === "context") {
+        await startContext(trimmed);
+        return true;
+      }
       if (command === "export") {
         await startExport(trimmed);
         return true;
@@ -356,6 +390,19 @@ export function useQueuedSend({
       }
       if (command === "share") {
         await startShare(trimmed);
+        return true;
+      }
+      if (command === "clear" && activeWorkspace) {
+        const threadId = await startThreadForWorkspace(activeWorkspace.id, { engine: activeEngine });
+        const rest = trimmed.replace(/^\/(?:clear|reset)\b/i, "").trim();
+        const effectiveOptions = withCodexCollaborationMode(options);
+        if (threadId && rest) {
+          if (effectiveOptions) {
+            await sendUserMessageToThread(activeWorkspace, threadId, rest, [], effectiveOptions);
+          } else {
+            await sendUserMessageToThread(activeWorkspace, threadId, rest, []);
+          }
+        }
         return true;
       }
       if (command === "new" && activeWorkspace) {
@@ -385,6 +432,7 @@ export function useQueuedSend({
       startMcp,
       startSpecRoot,
       startStatus,
+      startContext,
       startExport,
       startImport,
       startLsp,
@@ -581,6 +629,9 @@ export function useQueuedSend({
     }
     const threadId = activeThreadId;
     const nextItem = queue[0];
+    if (!nextItem) {
+      return;
+    }
     setInFlightByThread((prev) => ({ ...prev, [threadId]: nextItem }));
     setHasStartedByThread((prev) => ({ ...prev, [threadId]: false }));
     setQueuedByThread((prev) => ({

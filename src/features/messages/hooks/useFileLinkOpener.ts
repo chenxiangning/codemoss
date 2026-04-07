@@ -41,7 +41,7 @@ function resolveFilePath(path: string, workspacePath?: string | null) {
 function stripLineSuffix(path: string) {
   const withoutHashLine = path.replace(/#L?\d+(?:C\d+)?$/i, "");
   const match = withoutHashLine.match(/^(.*?)(?::\d+(?::\d+)?)?$/);
-  return match ? match[1] : withoutHashLine;
+  return match ? (match[1] ?? withoutHashLine) : withoutHashLine;
 }
 
 function revealLabel() {

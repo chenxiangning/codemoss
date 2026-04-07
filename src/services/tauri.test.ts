@@ -21,6 +21,7 @@ import {
   runSpecCommand,
   resetGitCommit,
   listWorkspaces,
+  reloadCodexRuntimeConfig,
   openWorkspaceIn,
   openNewWindow,
   readAgentMd,
@@ -41,10 +42,14 @@ import {
   getOpenCodeLspDefinition,
   getOpenCodeLspReferences,
   getOpenCodeStatusSnapshot,
+  detectEngines,
+  engineSendMessage,
   listExternalSpecTree,
   setOpenCodeMcpToggle,
   readExternalSpecFile,
+  readExternalAbsoluteFile,
   writeExternalSpecFile,
+  writeExternalAbsoluteFile,
   engineSendMessageSync,
 } from "./tauri";
 
@@ -52,9 +57,26 @@ vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(),
 }));
 
+function setWebRuntimeFlag(value: boolean) {
+  const globalRef = globalThis as any;
+  if (!globalRef.window) {
+    globalRef.window = {};
+  }
+  globalRef.window.__MOSSX_WEB_SERVICE__ = value;
+}
+
+function clearWebRuntimeFlag() {
+  const globalRef = globalThis as any;
+  if (!globalRef.window) {
+    return;
+  }
+  delete globalRef.window.__MOSSX_WEB_SERVICE__;
+}
+
 describe("tauri invoke wrappers", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    clearWebRuntimeFlag();
   });
 
   it("uses codex_bin for addWorkspace", async () => {
@@ -85,6 +107,20 @@ describe("tauri invoke wrappers", () => {
     expect(invokeMock).toHaveBeenCalledWith("get_git_status", {
       workspaceId: "ws-1",
     });
+  });
+
+  it("invokes codex runtime reload command", async () => {
+    const invokeMock = vi.mocked(invoke);
+    invokeMock.mockResolvedValueOnce({
+      status: "applied",
+      stage: "swapped",
+      restartedSessions: 2,
+      message: null,
+    });
+
+    await reloadCodexRuntimeConfig();
+
+    expect(invokeMock).toHaveBeenCalledWith("reload_codex_runtime_config");
   });
 
   it("maps workspace_id to workspaceId for GitHub issues", async () => {
@@ -379,6 +415,24 @@ describe("tauri invoke wrappers", () => {
     });
   });
 
+  it("maps read external absolute file payload", async () => {
+    const invokeMock = vi.mocked(invoke);
+    invokeMock.mockResolvedValueOnce({
+      content: "# skill",
+      truncated: false,
+    });
+
+    await readExternalAbsoluteFile(
+      "ws-41",
+      "/Users/demo/.codex/skills/openspec-apply-change/SKILL.md",
+    );
+
+    expect(invokeMock).toHaveBeenCalledWith("read_external_absolute_file", {
+      workspaceId: "ws-41",
+      path: "/Users/demo/.codex/skills/openspec-apply-change/SKILL.md",
+    });
+  });
+
   it("maps write external spec file payload", async () => {
     const invokeMock = vi.mocked(invoke);
     invokeMock.mockResolvedValueOnce({});
@@ -395,6 +449,23 @@ describe("tauri invoke wrappers", () => {
       specRoot: "/tmp/external-spec-root",
       path: "openspec/project.md",
       content: "# Project Context",
+    });
+  });
+
+  it("maps write external absolute file payload", async () => {
+    const invokeMock = vi.mocked(invoke);
+    invokeMock.mockResolvedValueOnce({});
+
+    await writeExternalAbsoluteFile(
+      "ws-41",
+      "/Users/demo/.codex/skills/openspec-apply-change/SKILL.md",
+      "# Updated skill",
+    );
+
+    expect(invokeMock).toHaveBeenCalledWith("write_external_absolute_file", {
+      workspaceId: "ws-41",
+      path: "/Users/demo/.codex/skills/openspec-apply-change/SKILL.md",
+      content: "# Updated skill",
     });
   });
 
@@ -913,6 +984,38 @@ describe("tauri invoke wrappers", () => {
       agent: null,
       variant: null,
       customSpecRoot: "/tmp/external-openspec",
+    });
+  });
+
+  it("falls back to codex-only engine statuses in web runtime when detect command is unavailable", async () => {
+    const invokeMock = vi.mocked(invoke);
+    setWebRuntimeFlag(true);
+    invokeMock.mockRejectedValueOnce(new Error("unknown method: detect_engines"));
+
+    const statuses = await detectEngines();
+    const codexStatus = statuses.find((entry) => entry.engineType === "codex");
+    const claudeStatus = statuses.find((entry) => entry.engineType === "claude");
+
+    expect(codexStatus?.installed).toBe(true);
+    expect(claudeStatus?.installed).toBe(false);
+    expect(claudeStatus?.error).toContain("Codex CLI");
+  });
+
+  it("returns a friendly error when web runtime tries unsupported CLI engine", async () => {
+    const invokeMock = vi.mocked(invoke);
+    setWebRuntimeFlag(true);
+
+    const response = await engineSendMessage("ws-web", {
+      text: "hello",
+      engine: "claude",
+    });
+
+    expect(invokeMock).not.toHaveBeenCalledWith("engine_send_message", expect.anything());
+    expect(response).toEqual({
+      error: {
+        message:
+          "Web 服务当前仅支持 Codex CLI。请切换到 Codex CLI（Web service currently supports Codex CLI only）.",
+      },
     });
   });
 });

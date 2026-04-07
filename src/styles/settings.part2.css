@@ -680,6 +680,65 @@
   min-width: 42px;
 }
 
+.settings-workspace-picker--section {
+  margin: 0 0 8px;
+  align-items: flex-start;
+}
+
+.settings-workspace-picker--section .settings-select-wrap {
+  width: min(360px, 100%);
+}
+
+.settings-workspace-picker--prompt {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  width: min(420px, 100%);
+  margin: 4px 0 14px;
+}
+
+.settings-workspace-picker--prompt .settings-workspace-picker-label {
+  min-width: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  letter-spacing: 0.02em;
+}
+
+.settings-workspace-picker--prompt .settings-select-wrap {
+  width: 100%;
+}
+
+.settings-prompt-search-row {
+  width: 100%;
+  margin-bottom: 10px;
+}
+
+.settings-prompt-search-row .settings-input,
+.settings-prompt-search-row input {
+  width: 100%;
+}
+
+.settings-prompt-toolbar--primary {
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.settings-prompt-filter-wrap {
+  flex: 0 0 128px;
+  width: 128px;
+}
+
+.settings-prompt-filter-wrap .settings-select {
+  width: 100%;
+  min-height: 38px;
+  padding: 8px 34px 8px 12px;
+  font-size: 13px;
+  border-radius: 12px;
+}
+
 .settings-prompt-toolbar--secondary {
   margin-top: -2px;
 }
@@ -1538,68 +1597,6 @@
   color: var(--text-muted);
 }
 
-.settings-search-field {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 220px;
-}
-
-.settings-search-field > svg {
-  color: var(--text-faint);
-}
-
-.settings-skills-list {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-  gap: 8px;
-}
-
-.settings-skills-card {
-  border: 1px solid var(--border-muted);
-  border-radius: 10px;
-  background: var(--surface-card);
-  padding: 10px 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.settings-skills-card-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.settings-skills-name {
-  font-size: 13px;
-  color: var(--text-strong);
-  font-weight: 600;
-}
-
-.settings-skills-source {
-  font-size: 11px;
-  color: var(--text-muted);
-  border-radius: 999px;
-  border: 1px solid var(--border-muted);
-  padding: 2px 8px;
-}
-
-.settings-skills-description {
-  font-size: 12px;
-  color: var(--text-subtle);
-}
-
-.settings-skills-path {
-  font-size: 11px;
-  color: var(--text-faint);
-  word-break: break-all;
-}
-
-.settings-skills-actions {
-  display: flex;
-}
 
 .settings-prompt-editor-card,
 .settings-prompt-card {
@@ -2587,6 +2584,31 @@
 .settings-section-basic .settings-field.settings-basic-item > .settings-basic-theme-selector {
   grid-area: control;
   width: 100%;
+}
+
+.settings-section-basic .settings-scale-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.settings-section-basic .settings-scale-control .settings-select-wrap {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.settings-section-basic .settings-scale-control .settings-input--range {
+  flex: 1 1 140px;
+  min-width: 140px;
+}
+
+.settings-section-basic .settings-scale-value {
+  min-width: 54px;
+  text-align: right;
+  font-size: 12px;
+  color: var(--settings-basic-text-muted);
+  font-variant-numeric: tabular-nums;
 }
 
 .settings-section-basic .settings-field.settings-basic-item > .settings-help {

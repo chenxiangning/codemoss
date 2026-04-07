@@ -24,4 +24,28 @@ describe("Markdown file links", () => {
       "/Users/test/Library/Application Support/repo/src-tauri/src/codex/collaboration_policy.rs#L42",
     );
   });
+
+  it("renders image tags declared with <image>url</image>", () => {
+    const { container } = render(<Markdown value="<image>https://example.com/a.png</image>" />);
+
+    const img = container.querySelector("img") as HTMLImageElement | null;
+    expect(img).toBeTruthy();
+    if (!img) {
+      return;
+    }
+    expect(img.src).toContain("https://example.com/a.png");
+  });
+
+  it("does not transform <image> tag inside code fences", () => {
+    const { container } = render(
+      <Markdown
+        value={"```text\n<image>https://example.com/a.png</image>\n```"}
+      />,
+    );
+
+    expect(container.querySelector("img")).toBeNull();
+    expect(
+      screen.getByText("<image>https://example.com/a.png</image>"),
+    ).toBeTruthy();
+  });
 });

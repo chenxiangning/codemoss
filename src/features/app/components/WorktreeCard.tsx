@@ -62,6 +62,12 @@ export function WorktreeCard({
   const worktreeBranch = worktree.worktree?.branch ?? "";
   const displayName = worktreeBranch || worktree.name;
   const parsedName = parseWorktreeName(displayName);
+  const handleSelectWorkspace = () => {
+    onSelectWorkspace(worktree.id);
+  };
+  const handleToggleCollapse = () => {
+    onToggleWorkspaceCollapse(worktree.id, !worktreeCollapsed);
+  };
 
   return (
     <div className={`worktree-card${isDeleting ? " deleting" : ""}`}>
@@ -78,9 +84,14 @@ export function WorktreeCard({
         aria-disabled={isDeleting}
         onClick={() => {
           if (!isDeleting) {
-            onSelectWorkspace(worktree.id);
-            onToggleWorkspaceCollapse(worktree.id, !worktreeCollapsed);
+            handleSelectWorkspace();
           }
+        }}
+        onDoubleClick={(event) => {
+          if (isDeleting || event.button !== 0) {
+            return;
+          }
+          handleToggleCollapse();
         }}
         onContextMenu={(event) => {
           if (!isDeleting) {
@@ -94,8 +105,8 @@ export function WorktreeCard({
           }
           if (event.key === "Enter" || event.key === " ") {
             event.preventDefault();
-            onSelectWorkspace(worktree.id);
-            onToggleWorkspaceCollapse(worktree.id, !worktreeCollapsed);
+            handleSelectWorkspace();
+            handleToggleCollapse();
           }
         }}
       >
@@ -145,7 +156,10 @@ export function WorktreeCard({
                 className={`worktree-toggle ${worktreeCollapsed ? "" : "expanded"}`}
                 onClick={(event) => {
                   event.stopPropagation();
-                  onToggleWorkspaceCollapse(worktree.id, !worktreeCollapsed);
+                  handleToggleCollapse();
+                }}
+                onDoubleClick={(event) => {
+                  event.stopPropagation();
                 }}
                 data-tauri-drag-region="false"
                 aria-label={worktreeCollapsed ? "Show agents" : "Hide agents"}
@@ -159,6 +173,9 @@ export function WorktreeCard({
                   onClick={(event) => {
                     event.stopPropagation();
                     onConnectWorkspace(worktree);
+                  }}
+                  onDoubleClick={(event) => {
+                    event.stopPropagation();
                   }}
                 >
                   connect

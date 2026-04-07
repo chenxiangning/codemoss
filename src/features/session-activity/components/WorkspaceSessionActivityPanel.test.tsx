@@ -4,6 +4,18 @@ import { afterEach as afterEachTest, describe, expect, it, vi } from "vitest";
 import type { WorkspaceSessionActivityViewModel } from "../types";
 import { WorkspaceSessionActivityPanel } from "./WorkspaceSessionActivityPanel";
 
+const SOLO_FOLLOW_COACH_DISMISSED_BY_WORKSPACE_STORAGE_KEY =
+  "mossx.sessionActivity.soloFollowCoachDismissedByWorkspace";
+
+function dismissSoloFollowCoachForWorkspace(workspaceId: string) {
+  window.localStorage.setItem(
+    SOLO_FOLLOW_COACH_DISMISSED_BY_WORKSPACE_STORAGE_KEY,
+    JSON.stringify({
+      [workspaceId]: Date.now(),
+    }),
+  );
+}
+
 function getEventNode(container: HTMLElement, kind: string) {
   return container.querySelector(`.session-activity-event-${kind}`) as HTMLElement | null;
 }
@@ -135,6 +147,7 @@ function createViewModel(): WorkspaceSessionActivityViewModel {
 describe("WorkspaceSessionActivityPanel", () => {
   afterEachTest(() => {
     cleanup();
+    window.localStorage.removeItem(SOLO_FOLLOW_COACH_DISMISSED_BY_WORKSPACE_STORAGE_KEY);
   });
 
   it("routes file cards to the correct jump target", () => {
@@ -524,6 +537,57 @@ describe("WorkspaceSessionActivityPanel", () => {
     expect(screen.getByRole("button", { name: /Search · activity panel/i })).toBeTruthy();
     expect(screen.queryByRole("button", { name: /Run focused test suite/i })).toBeNull();
     expect(screen.queryByRole("button", { name: /Task · Audit current panel/i })).toBeNull();
+  });
+
+  it("allows expanding task events when inspection preview is available", () => {
+    const viewModel = createViewModel();
+    viewModel.timeline = [
+      {
+        eventId: "task:search-preview-1",
+        turnId: "turn-2",
+        turnIndex: 2,
+        threadId: "root-thread",
+        threadName: "Root session",
+        sessionRole: "root",
+        relationshipSource: "directParent",
+        kind: "task",
+        occurredAt: 99,
+        summary: "Search · AGENTS.md",
+        status: "completed",
+        explorePreview: "https://developers.openai.com/codex/guides/agents-md",
+        jumpTarget: { type: "thread", threadId: "root-thread" },
+      },
+    ];
+    viewModel.isProcessing = false;
+    viewModel.emptyState = "completed";
+    viewModel.sessionSummaries = [
+      {
+        threadId: "root-thread",
+        threadName: "Root session",
+        sessionRole: "root",
+        relationshipSource: "directParent",
+        eventCount: 1,
+        isProcessing: false,
+      },
+    ];
+
+    const { container } = render(
+      <WorkspaceSessionActivityPanel
+        workspaceId="workspace-1"
+        viewModel={viewModel}
+        onOpenDiffPath={vi.fn()}
+        onSelectThread={vi.fn()}
+      />,
+    );
+
+    const toggle = getPreviewToggleForKind(container, "task");
+    expect(toggle).toBeTruthy();
+    if (!toggle) {
+      return;
+    }
+    fireEvent.click(toggle);
+
+    expect(getPreviewTextForKind(container, "task")?.textContent).toContain("agents-md");
   });
 
   it("keeps completed explore run entries collapsed even when they carry command metadata", () => {
@@ -1633,8 +1697,213 @@ describe("WorkspaceSessionActivityPanel", () => {
     expect(toggle.getAttribute("aria-pressed")).toBe("false");
     expect(toggle.className).toContain("session-activity-live-edit-toggle");
     expect(toggle.className).not.toContain("is-active");
-    expect(toggle.getAttribute("title")).toBe("activityPanel.enableLiveEditPreview");
+    expect(toggle.getAttribute("title")).toBe("activityPanel.liveEditPreviewTooltip");
     fireEvent.click(toggle);
+    expect(onToggleLiveEditPreview).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows follow coach once and remembers dismissal per workspace", () => {
+    const onToggleLiveEditPreview = vi.fn();
+    const viewModel = createViewModel();
+    const view = render(
+      <WorkspaceSessionActivityPanel
+        workspaceId="workspace-1"
+        viewModel={viewModel}
+        onOpenDiffPath={vi.fn()}
+        onSelectThread={vi.fn()}
+        liveEditPreviewEnabled={false}
+        onToggleLiveEditPreview={onToggleLiveEditPreview}
+      />,
+    );
+
+    expect(screen.getByText("activityPanel.followCoachBody")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "activityPanel.followCoachDismiss" }));
+    expect(screen.queryByText("activityPanel.followCoachBody")).toBeNull();
+
+    view.rerender(
+      <WorkspaceSessionActivityPanel
+        workspaceId="workspace-1"
+        viewModel={viewModel}
+        onOpenDiffPath={vi.fn()}
+        onSelectThread={vi.fn()}
+        liveEditPreviewEnabled={false}
+        onToggleLiveEditPreview={onToggleLiveEditPreview}
+      />,
+    );
+
+    expect(screen.queryByText("activityPanel.followCoachBody")).toBeNull();
+  });
+
+  it("auto-dismisses follow coach after 3 seconds", () => {
+    vi.useFakeTimers();
+    try {
+      const onToggleLiveEditPreview = vi.fn();
+      const viewModel = createViewModel();
+      const view = render(
+        <WorkspaceSessionActivityPanel
+          workspaceId="workspace-1"
+          viewModel={viewModel}
+          onOpenDiffPath={vi.fn()}
+          onSelectThread={vi.fn()}
+          liveEditPreviewEnabled={false}
+          onToggleLiveEditPreview={onToggleLiveEditPreview}
+        />,
+      );
+
+      expect(screen.getByText("activityPanel.followCoachBody")).toBeTruthy();
+
+      act(() => {
+        vi.advanceTimersByTime(3000);
+      });
+
+      expect(screen.queryByText("activityPanel.followCoachBody")).toBeNull();
+
+      view.rerender(
+        <WorkspaceSessionActivityPanel
+          workspaceId="workspace-1"
+          viewModel={viewModel}
+          onOpenDiffPath={vi.fn()}
+          onSelectThread={vi.fn()}
+          liveEditPreviewEnabled={false}
+          onToggleLiveEditPreview={onToggleLiveEditPreview}
+        />,
+      );
+
+      expect(screen.queryByText("activityPanel.followCoachBody")).toBeNull();
+      expect(onToggleLiveEditPreview).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("shows follow nudge for file-change and suppresses repeats within the same turn", () => {
+    const onToggleLiveEditPreview = vi.fn();
+    const viewModel = createViewModel();
+    dismissSoloFollowCoachForWorkspace("workspace-1");
+    const view = render(
+      <WorkspaceSessionActivityPanel
+        workspaceId="workspace-1"
+        viewModel={viewModel}
+        onOpenDiffPath={vi.fn()}
+        onSelectThread={vi.fn()}
+        liveEditPreviewEnabled={false}
+        onToggleLiveEditPreview={onToggleLiveEditPreview}
+      />,
+    );
+
+    expect(screen.getByText("activityPanel.followNudgeBody")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "activityPanel.followNudgeLater" }));
+    expect(screen.queryByText("activityPanel.followNudgeBody")).toBeNull();
+
+    view.rerender(
+      <WorkspaceSessionActivityPanel
+        workspaceId="workspace-1"
+        viewModel={viewModel}
+        onOpenDiffPath={vi.fn()}
+        onSelectThread={vi.fn()}
+        liveEditPreviewEnabled={false}
+        onToggleLiveEditPreview={onToggleLiveEditPreview}
+      />,
+    );
+
+    expect(screen.queryByText("activityPanel.followNudgeBody")).toBeNull();
+
+    const nextTurnViewModel = createViewModel();
+    nextTurnViewModel.timeline = [
+      {
+        eventId: "file:file-2",
+        turnId: "turn-3",
+        turnIndex: 3,
+        threadId: "root-thread",
+        threadName: "Root session",
+        sessionRole: "root",
+        relationshipSource: "directParent",
+        kind: "fileChange",
+        occurredAt: 40,
+        summary: "File change · src/NewFile.ts",
+        status: "completed",
+        fileChangeStatusLetter: "A",
+        jumpTarget: { type: "file", path: "src/NewFile.ts", line: 3 },
+        additions: 6,
+        deletions: 0,
+        filePath: "src/NewFile.ts",
+      },
+      ...nextTurnViewModel.timeline,
+    ];
+
+    view.rerender(
+      <WorkspaceSessionActivityPanel
+        workspaceId="workspace-1"
+        viewModel={nextTurnViewModel}
+        onOpenDiffPath={vi.fn()}
+        onSelectThread={vi.fn()}
+        liveEditPreviewEnabled={false}
+        onToggleLiveEditPreview={onToggleLiveEditPreview}
+      />,
+    );
+
+    expect(screen.getByText("activityPanel.followNudgeBody")).toBeTruthy();
+  });
+
+  it("auto-dismisses follow nudge after 3 seconds", () => {
+    vi.useFakeTimers();
+    try {
+      const onToggleLiveEditPreview = vi.fn();
+      const viewModel = createViewModel();
+      dismissSoloFollowCoachForWorkspace("workspace-1");
+      const view = render(
+        <WorkspaceSessionActivityPanel
+          workspaceId="workspace-1"
+          viewModel={viewModel}
+          onOpenDiffPath={vi.fn()}
+          onSelectThread={vi.fn()}
+          liveEditPreviewEnabled={false}
+          onToggleLiveEditPreview={onToggleLiveEditPreview}
+        />,
+      );
+
+      expect(screen.getByText("activityPanel.followNudgeBody")).toBeTruthy();
+
+      act(() => {
+        vi.advanceTimersByTime(3000);
+      });
+
+      expect(screen.queryByText("activityPanel.followNudgeBody")).toBeNull();
+
+      view.rerender(
+        <WorkspaceSessionActivityPanel
+          workspaceId="workspace-1"
+          viewModel={viewModel}
+          onOpenDiffPath={vi.fn()}
+          onSelectThread={vi.fn()}
+          liveEditPreviewEnabled={false}
+          onToggleLiveEditPreview={onToggleLiveEditPreview}
+        />,
+      );
+
+      expect(screen.queryByText("activityPanel.followNudgeBody")).toBeNull();
+      expect(onToggleLiveEditPreview).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("enables live follow from nudge action", () => {
+    const onToggleLiveEditPreview = vi.fn();
+    dismissSoloFollowCoachForWorkspace("workspace-1");
+    render(
+      <WorkspaceSessionActivityPanel
+        workspaceId="workspace-1"
+        viewModel={createViewModel()}
+        onOpenDiffPath={vi.fn()}
+        onSelectThread={vi.fn()}
+        liveEditPreviewEnabled={false}
+        onToggleLiveEditPreview={onToggleLiveEditPreview}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "activityPanel.followNudgeEnable" }));
     expect(onToggleLiveEditPreview).toHaveBeenCalledTimes(1);
   });
 

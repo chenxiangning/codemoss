@@ -1,9 +1,28 @@
-import { computeDiff } from "../features/messages/utils/diffUtils";
 import type { ConversationItem } from "../types";
+import { normalizeAgentIcon } from "./agentIcons";
+import { summarizeExploration } from "./threadItemsExploreSummary";
+import {
+  inferFileChangesFromCommandExecutionArtifacts,
+  inferFileChangesFromPayload,
+  mergeToolChanges,
+  normalizeFileChangeKind,
+  shouldPreferExplicitFileChangeOutput,
+} from "./threadItemsFileChanges";
 
 const MAX_ITEM_TEXT = 20000;
-const TOOL_OUTPUT_RECENT_ITEMS = 40;
+const TOOL_OUTPUT_RECENT_ITEMS = 12;
+const NO_TRUNCATE_TOOL_OUTPUT_RECENT_ITEMS = 4;
 const NO_TRUNCATE_TOOL_TYPES = new Set(["fileChange", "commandExecution"]);
+const MAX_DEFAULT_THREAD_TITLE_CHARS = 10;
+const USER_INPUT_BLOCK_MARKER_REGEX = /\[User Input\]\s*/g;
+const AGENT_PROMPT_BLOCK_AT_TAIL_REGEX =
+  /(?:\r?\n){2}##\s*Agent Role and Instructions\s*(?:\r?\n){2}([\s\S]*)$/;
+const AGENT_PROMPT_NAME_LINE_REGEX =
+  /^(?:agent\s*name|selected\s*agent|智能体(?:名称|标题)?|agent)\s*[:：]\s*(.+)$/i;
+const AGENT_PROMPT_ICON_LINE_REGEX =
+  /^(?:agent\s*icon|selected\s*agent\s*icon|智能体图标|agent\s*icon\s*id)\s*[:：]\s*(.+)$/i;
+const TITLE_INJECTED_LINE_PREFIX_REGEX =
+  /^\[(?:System|Session Spec Link|Spec Root Priority|Skill Prompt|Commons Prompt)\][^\n]*(?:\r?\n|$)/i;
 const EDIT_TOOL_TYPE_HINTS = new Set([
   "edit",
   "edit_file",
@@ -18,42 +37,6 @@ const EDIT_TOOL_TYPE_HINTS = new Set([
   "file_write",
   "notebookedit",
   "create_file",
-]);
-const READ_COMMANDS = new Set(["cat", "sed", "head", "tail", "less", "more", "nl", "wc", "bat"]);
-const LIST_COMMANDS = new Set(["ls", "tree", "find", "fd", "dir"]);
-const SEARCH_COMMANDS = new Set(["rg", "grep", "ripgrep", "findstr", "ag", "ack"]);
-const FILE_CHANGE_PATH_KEYS = [
-  "path",
-  "file_path",
-  "filePath",
-  "target_file",
-  "targetFile",
-  "filename",
-  "notebook_path",
-  "notebookPath",
-];
-const FILE_CHANGE_STATUS_KEYS = ["kind", "status", "type", "action", "operation", "op"];
-const FILE_CHANGE_DIFF_KEYS = ["diff", "patch", "unifiedDiff", "unified_diff"];
-const FILE_CHANGE_PATCH_KEYS = ["patch", "input", "diff"];
-const FILE_CHANGE_LIST_KEYS = ["files", "changes", "edits"];
-const PATH_HINT_REGEX = /[\\/]/;
-const PATHLIKE_REGEX = /(\.[a-z0-9]+$)|(^\.{1,2}$)/i;
-const GLOB_HINT_REGEX = /[*?[\]{}]/;
-const RG_FLAGS_WITH_VALUES = new Set([
-  "-g",
-  "--glob",
-  "--iglob",
-  "-t",
-  "--type",
-  "--type-add",
-  "--type-not",
-  "-m",
-  "--max-count",
-  "-A",
-  "-B",
-  "-C",
-  "--context",
-  "--max-depth",
 ]);
 const PROJECT_MEMORY_BLOCK_REGEX = /^<project-memory\b[\s\S]*?<\/project-memory>\s*/i;
 const PROJECT_MEMORY_LINE_PREFIX_REGEX =
@@ -159,6 +142,25 @@ function asNumber(value: unknown) {
   return null;
 }
 
+function asBoolean(value: unknown): boolean | null {
+  if (typeof value === "boolean") {
+    return value;
+  }
+  if (typeof value === "number") {
+    return value === 1 ? true : value === 0 ? false : null;
+  }
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === "true" || normalized === "1" || normalized === "yes") {
+      return true;
+    }
+    if (normalized === "false" || normalized === "0" || normalized === "no") {
+      return false;
+    }
+  }
+  return null;
+}
+
 function formatPlanSteps(value: unknown) {
   if (!Array.isArray(value)) {
     return "";
@@ -259,8 +261,9 @@ function joinReasoningFragments(parts: string[]) {
   if (fragments.length === 0) {
     return "";
   }
+  const firstFragment = fragments[0] ?? "";
   if (fragments.length === 1) {
-    return fragments[0];
+    return firstFragment;
   }
   return fragments.slice(1).reduce((combined, fragment) => {
     const previousChar = combined[combined.length - 1] ?? "";
@@ -269,7 +272,7 @@ function joinReasoningFragments(parts: string[]) {
       /[A-Za-z0-9]/.test(previousChar) &&
       /[A-Za-z0-9]/.test(nextChar);
     return shouldInsertSpace ? `${combined} ${fragment}` : `${combined}${fragment}`;
-  }, fragments[0]);
+  }, firstFragment);
 }
 
 function extractReasoningText(value: unknown): string {
@@ -349,6 +352,9 @@ function findDuplicateReasoningSnapshotIndex(
   }
   for (let index = list.length - 1; index >= 0; index -= 1) {
     const candidate = list[index];
+    if (!candidate) {
+      continue;
+    }
     if (candidate.kind === "message" && candidate.role === "user") {
       break;
     }
@@ -387,6 +393,261 @@ function truncateText(text: string, maxLength = MAX_ITEM_TEXT) {
   }
   const sliceLength = Math.max(0, maxLength - 3);
   return `${text.slice(0, sliceLength)}...`;
+}
+
+type AskUserQuestionOption = {
+  label: string;
+  description: string;
+};
+
+type AskUserQuestionTemplate = {
+  id: string;
+  header: string;
+  question: string;
+  options?: AskUserQuestionOption[];
+};
+
+type AskUserQuestionAnswer = {
+  selectedOptions: string[];
+  note: string;
+};
+
+type AskUserQuestionAnswerParseResult = {
+  rawSelectionText: string;
+  answers: AskUserQuestionAnswer[];
+};
+
+function parseJsonRecordFromText(value: string): Record<string, unknown> | null {
+  const trimmed = value.trim();
+  if (!trimmed.startsWith("{") || !trimmed.endsWith("}")) {
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(trimmed);
+    return asRecord(parsed);
+  } catch {
+    return null;
+  }
+}
+
+function isAskUserQuestionToolItem(item: Extract<ConversationItem, { kind: "tool" }>) {
+  const toolType = asString(item.toolType).trim().toLowerCase();
+  if (toolType === "askuserquestion" || toolType === "ask_user_question") {
+    return true;
+  }
+  const title = asString(item.title).toLowerCase();
+  if (title.includes("askuserquestion") || title.includes("ask_user_question")) {
+    return true;
+  }
+  if (toolType === "mcptoolcall") {
+    return title.includes("askuserquestion") || title.includes("ask_user_question");
+  }
+  return false;
+}
+
+function parseAskUserQuestionTemplatesFromDetail(detail: string): AskUserQuestionTemplate[] {
+  const record = parseJsonRecordFromText(detail);
+  if (!record) {
+    return [];
+  }
+  const hasSingleQuestionShape =
+    "question" in record ||
+    "prompt" in record ||
+    "header" in record ||
+    "title" in record ||
+    "options" in record;
+  const rawQuestions = Array.isArray(record.questions)
+    ? record.questions
+    : hasSingleQuestionShape
+      ? [record]
+      : [];
+  const templates: AskUserQuestionTemplate[] = [];
+  rawQuestions.forEach((entry, index) => {
+    const question = asRecord(entry);
+    if (!question) {
+      return;
+    }
+    const id = asString(question.id ?? `q-${index}`).trim() || `q-${index}`;
+    const header = asString(question.header ?? question.title ?? "").trim();
+    const questionText = asString(question.question ?? question.prompt ?? "").trim();
+    const rawOptions = Array.isArray(question.options) ? question.options : [];
+    const options = rawOptions
+      .map((rawOption) => {
+        const option = asRecord(rawOption);
+        if (!option) {
+          return null;
+        }
+        const label = asString(option.label ?? "").trim();
+        const description = asString(option.description ?? "").trim();
+        if (!label && !description) {
+          return null;
+        }
+        return { label, description };
+      })
+      .filter((option): option is AskUserQuestionOption => option !== null);
+    if (!questionText && options.length === 0) {
+      return;
+    }
+    templates.push({
+      id,
+      header,
+      question: questionText,
+      options: options.length > 0 ? options : undefined,
+    });
+  });
+  return templates;
+}
+
+function parseAskUserAnswerParts(raw: string): AskUserQuestionAnswer {
+  const segments = raw
+    .split(/[,，、]/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+  const selectedOptions: string[] = [];
+  let note = "";
+  for (const segment of segments) {
+    if (/^user_note\s*:/i.test(segment)) {
+      const parsedNote = segment.replace(/^user_note\s*:/i, "").trim();
+      if (parsedNote) {
+        note = parsedNote;
+      }
+      continue;
+    }
+    selectedOptions.push(segment);
+  }
+  return { selectedOptions, note };
+}
+
+function parseAskUserQuestionAnswerText(text: string): AskUserQuestionAnswerParseResult | null {
+  const trimmed = text.trim();
+  if (!trimmed) {
+    return null;
+  }
+  if (/^The user dismissed the question without selecting an option\.?$/i.test(trimmed)) {
+    return {
+      rawSelectionText: "",
+      answers: [{ selectedOptions: [], note: "" }],
+    };
+  }
+  const answeredMatch = trimmed.match(
+    /^The user answered the AskUserQuestion[:：]\s*([\s\S]*?)(?:[。.]?\s*Please continue based on this selection\.?)$/i,
+  );
+  if (!answeredMatch) {
+    return null;
+  }
+  const rawSelectionText = asString(answeredMatch[1] ?? "").trim();
+  if (!rawSelectionText) {
+    return null;
+  }
+  const baseSegments = rawSelectionText
+    .split(/[;；]/)
+    .map((segment) => segment.trim())
+    .filter(Boolean);
+  if (baseSegments.length === 0) {
+    return null;
+  }
+  return {
+    rawSelectionText,
+    answers: baseSegments.map((segment) => parseAskUserAnswerParts(segment)),
+  };
+}
+
+function buildRequestUserInputSubmittedDetail(
+  templates: AskUserQuestionTemplate[],
+  parsedAnswer: AskUserQuestionAnswerParseResult,
+) {
+  const payload = {
+    schema: "requestUserInputSubmitted/v1",
+    submittedAt: Date.now(),
+    questions: templates.map((template, index) => ({
+      id: template.id || `q-${index}`,
+      header: template.header,
+      question: template.question,
+      options: template.options,
+      selectedOptions: parsedAnswer.answers[index]?.selectedOptions ?? [],
+      note: parsedAnswer.answers[index]?.note ?? "",
+    })),
+  };
+  return JSON.stringify(payload);
+}
+
+function normalizeAskUserQuestionHistoryItems(items: ConversationItem[]) {
+  if (items.length === 0) {
+    return items;
+  }
+  const normalized: ConversationItem[] = [];
+  const askToolOrder: string[] = [];
+  const askTemplatesByToolId = new Map<string, AskUserQuestionTemplate[]>();
+  const askToolIndexById = new Map<string, number>();
+  const existingSubmittedToolIds = new Set<string>();
+
+  for (const item of items) {
+    if (item.kind === "tool" && item.toolType === "requestUserInputSubmitted") {
+      const submittedId = item.id;
+      const prefix = "request-user-input-submitted-";
+      if (submittedId.startsWith(prefix) && submittedId.length > prefix.length) {
+        existingSubmittedToolIds.add(submittedId.slice(prefix.length));
+      }
+    }
+  }
+
+  const consumeAskToolId = () => {
+    while (askToolOrder.length > 0) {
+      const candidate = askToolOrder.shift() ?? "";
+      if (!candidate) {
+        continue;
+      }
+      return candidate;
+    }
+    return "";
+  };
+
+  for (const item of items) {
+    if (item.kind === "tool" && isAskUserQuestionToolItem(item)) {
+      askToolOrder.push(item.id);
+      askTemplatesByToolId.set(item.id, parseAskUserQuestionTemplatesFromDetail(item.detail));
+      askToolIndexById.set(item.id, normalized.length);
+      normalized.push(item);
+      continue;
+    }
+
+    if (item.kind === "message" && item.role === "user") {
+      const parsedAnswer = parseAskUserQuestionAnswerText(item.text);
+      if (parsedAnswer) {
+        const matchedToolId = consumeAskToolId();
+        if (matchedToolId) {
+          const askToolIndex = askToolIndexById.get(matchedToolId);
+          if (askToolIndex !== undefined) {
+            const askItem = normalized[askToolIndex];
+            if (askItem?.kind === "tool") {
+              normalized[askToolIndex] = {
+                ...askItem,
+                status: "completed",
+                output: parsedAnswer.rawSelectionText || askItem.output,
+              };
+            }
+          }
+          if (!existingSubmittedToolIds.has(matchedToolId)) {
+            const templates = askTemplatesByToolId.get(matchedToolId) ?? [];
+            normalized.push({
+              id: `request-user-input-submitted-${matchedToolId}`,
+              kind: "tool",
+              toolType: "requestUserInputSubmitted",
+              title: "请求输入",
+              detail: buildRequestUserInputSubmittedDetail(templates, parsedAnswer),
+              status: "completed",
+              output: parsedAnswer.rawSelectionText,
+            });
+          }
+          continue;
+        }
+      }
+    }
+
+    normalized.push(item);
+  }
+
+  return normalized;
 }
 
 function normalizeToolHint(value: string) {
@@ -686,7 +947,8 @@ function collapseRepeatedAssistantFullText(value: string) {
     }
     let nonSpaceCount = 0;
     for (let index = 0; index < trimmed.length; index += 1) {
-      if (!/\s/.test(trimmed[index])) {
+      const currentChar = trimmed[index];
+      if (currentChar && !/\s/.test(currentChar)) {
         nonSpaceCount += 1;
       }
       if (nonSpaceCount >= chunkLength) {
@@ -1167,198 +1429,21 @@ function extractWebSearchQuery(item: Record<string, unknown>): string {
   return "";
 }
 
-function normalizeFileChangeKind(rawKind: unknown): string | undefined {
-  const normalized = asString(rawKind).trim().toLowerCase();
+function isSuccessfulCommandExecution(status: string): boolean {
+  const normalized = status.trim().toLowerCase();
   if (!normalized) {
-    return undefined;
+    return false;
   }
-  if (["a", "add", "added", "create", "created", "new"].includes(normalized)) {
-    return "add";
-  }
-  if (["d", "del", "delete", "deleted", "remove", "removed"].includes(normalized)) {
-    return "delete";
-  }
-  if (["r", "rename", "renamed", "move", "moved"].includes(normalized)) {
-    return "rename";
-  }
-  if (["m", "mod", "modify", "modified", "update", "updated", "edit", "edited"].includes(normalized)) {
-    return "modified";
-  }
-  return normalized;
+  return ["completed", "success", "succeeded", "ok"].includes(normalized);
 }
 
-function parsePatchFileEntries(text: string): Array<{ path: string; kind?: string }> {
-  if (!text.trim()) {
-    return [];
-  }
-  const entries: Array<{ path: string; kind?: string }> = [];
-  const lines = text.split(/\r?\n/);
-  for (const line of lines) {
-    const trimmed = line.trim();
-    let matched = "";
-    let kind: string | undefined;
-    if (trimmed.startsWith("*** Add File: ")) {
-      matched = trimmed.slice("*** Add File: ".length).trim();
-      kind = "add";
-    } else if (trimmed.startsWith("*** Update File: ")) {
-      matched = trimmed.slice("*** Update File: ".length).trim();
-      kind = "modified";
-    } else if (trimmed.startsWith("*** Delete File: ")) {
-      matched = trimmed.slice("*** Delete File: ".length).trim();
-      kind = "delete";
-    } else if (trimmed.startsWith("+++ b/")) {
-      matched = trimmed.slice("+++ b/".length).trim();
-      kind = "modified";
-    } else if (trimmed.startsWith("--- a/")) {
-      matched = trimmed.slice("--- a/".length).trim();
-      kind = "modified";
-    }
-    if (!matched || matched === "/dev/null") {
-      continue;
-    }
-    entries.push({ path: matched, kind });
-  }
-  return entries;
+function isApplyPatchCommand(command: string): boolean {
+  const normalized = command.toLowerCase();
+  return /(?:^|[\s;&|])apply_patch(?:\s|$)/.test(normalized);
 }
 
-function inferFileChangesFromPayload(
-  value: unknown,
-): Array<{ path: string; kind?: string; diff?: string }> {
-  const byPath = new Map<string, { path: string; kind?: string; diff?: string }>();
-  const merge = (path: string, kind?: string, diff?: string) => {
-    const normalizedPath = path.trim();
-    if (!normalizedPath) {
-      return;
-    }
-    const current = byPath.get(normalizedPath);
-    const nextKind = normalizeFileChangeKind(kind);
-    const nextDiff = asString(diff).trim();
-    if (!current) {
-      byPath.set(normalizedPath, {
-        path: normalizedPath,
-        kind: nextKind || undefined,
-        diff: nextDiff || undefined,
-      });
-      return;
-    }
-    if (!current.kind && nextKind) {
-      current.kind = nextKind;
-    }
-    if (!current.diff && nextDiff) {
-      current.diff = nextDiff;
-    }
-  };
-
-  const visit = (payload: unknown) => {
-    if (payload === null || payload === undefined) {
-      return;
-    }
-    if (typeof payload === "string") {
-      for (const parsed of parsePatchFileEntries(payload)) {
-        merge(parsed.path, parsed.kind);
-      }
-      return;
-    }
-    if (Array.isArray(payload)) {
-      payload.forEach(visit);
-      return;
-    }
-    const record = asRecord(payload);
-    if (!record) {
-      return;
-    }
-    const path = getFirstStringField(record, FILE_CHANGE_PATH_KEYS);
-    if (path) {
-      const kind = getFirstStringField(record, FILE_CHANGE_STATUS_KEYS);
-      const diff =
-        getFirstStringField(record, FILE_CHANGE_DIFF_KEYS) ||
-        buildSyntheticDiffFromRecord(path, record);
-      merge(path, kind || "modified", diff);
-    }
-    for (const listKey of FILE_CHANGE_LIST_KEYS) {
-      const nested = record[listKey];
-      if (Array.isArray(nested)) {
-        nested.forEach(visit);
-      }
-    }
-    for (const patchKey of FILE_CHANGE_PATCH_KEYS) {
-      const patchValue = record[patchKey];
-      if (typeof patchValue !== "string") {
-        continue;
-      }
-      for (const parsed of parsePatchFileEntries(patchValue)) {
-        merge(parsed.path, parsed.kind);
-      }
-    }
-  };
-
-  visit(value);
-  return Array.from(byPath.values());
-}
-
-function buildSyntheticDiffFromRecord(
-  filePath: string,
-  record: Record<string, unknown>,
-): string | undefined {
-  const oldString = typeof record.old_string === "string" ? record.old_string : "";
-  const newStringCandidate =
-    typeof record.new_string === "string"
-      ? record.new_string
-      : typeof record.content === "string"
-        ? record.content
-        : "";
-  const hasStructuredEditPayload =
-    typeof record.old_string === "string" ||
-    typeof record.new_string === "string" ||
-    typeof record.content === "string";
-  if (!hasStructuredEditPayload) {
-    return undefined;
-  }
-  return buildSyntheticUnifiedDiff(filePath, oldString, newStringCandidate);
-}
-
-function buildSyntheticUnifiedDiff(
-  filePath: string,
-  oldContent: string,
-  newContent: string,
-): string | undefined {
-  const normalizedOldContent = normalizeDiffContent(oldContent);
-  const normalizedNewContent = normalizeDiffContent(newContent);
-  if (normalizedOldContent === normalizedNewContent) {
-    return undefined;
-  }
-  const oldLines = splitDiffContentLines(normalizedOldContent);
-  const newLines = splitDiffContentLines(normalizedNewContent);
-  const diffResult = computeDiff(normalizedOldContent, normalizedNewContent);
-  const diffLines = diffResult.lines.map((line) => {
-    if (line.type === "added") {
-      return `+${line.content}`;
-    }
-    if (line.type === "deleted") {
-      return `-${line.content}`;
-    }
-    return ` ${line.content}`;
-  });
-  const oldHeader = oldLines.length === 0 ? "0,0" : `1,${oldLines.length}`;
-  const newHeader = newLines.length === 0 ? "0,0" : `1,${newLines.length}`;
-  return [
-    `diff --git a/${filePath} b/${filePath}`,
-    `--- a/${filePath}`,
-    `+++ b/${filePath}`,
-    `@@ -${oldHeader} +${newHeader} @@`,
-    ...diffLines,
-  ].join("\n");
-}
-
-function normalizeDiffContent(value: string): string {
-  return value.replace(/\r\n?/g, "\n");
-}
-
-function splitDiffContentLines(value: string): string[] {
-  if (!value) {
-    return [];
-  }
-  return value.split("\n");
+function hasApplyPatchSuccessSignal(output: string): boolean {
+  return /success\.\s*updated the following files:/i.test(output);
 }
 
 function formatCollabAgentStates(value: unknown) {
@@ -1431,305 +1516,6 @@ export function normalizeItem(item: ConversationItem): ConversationItem {
   return item;
 }
 
-function cleanCommandText(commandText: string) {
-  if (!commandText) {
-    return "";
-  }
-  const trimmed = commandText.trim();
-  const shellMatch = trimmed.match(
-    /^(?:\/\S+\/)?(?:bash|zsh|sh|fish)(?:\.exe)?\s+-lc\s+(?:(['"])([\s\S]+)\1|([\s\S]+))$/,
-  );
-  const inner = shellMatch ? (shellMatch[2] ?? shellMatch[3] ?? "") : trimmed;
-  const cdMatch = inner.match(
-    /^\s*cd\s+[^&;]+(?:\s*&&\s*|\s*;\s*)([\s\S]+)$/i,
-  );
-  const stripped = cdMatch ? cdMatch[1] : inner;
-  return stripped.trim();
-}
-
-function tokenizeCommand(command: string) {
-  const tokens: string[] = [];
-  const regex = /"([^"]*)"|'([^']*)'|`([^`]*)`|(\S+)/g;
-  let match: RegExpExecArray | null = regex.exec(command);
-  while (match) {
-    const [, doubleQuoted, singleQuoted, backticked, bare] = match;
-    const value = doubleQuoted ?? singleQuoted ?? backticked ?? bare ?? "";
-    if (value) {
-      tokens.push(value);
-    }
-    match = regex.exec(command);
-  }
-  return tokens;
-}
-
-function splitCommandSegments(command: string) {
-  return command
-    .split(/\s*(?:&&|;)\s*/g)
-    .map((segment) => trimAtPipe(segment))
-    .map((segment) => segment.trim())
-    .filter(Boolean);
-}
-
-function trimAtPipe(command: string) {
-  if (!command) {
-    return "";
-  }
-  let inSingle = false;
-  let inDouble = false;
-  for (let index = 0; index < command.length; index += 1) {
-    const char = command[index];
-    if (char === "'" && !inDouble) {
-      inSingle = !inSingle;
-      continue;
-    }
-    if (char === '"' && !inSingle) {
-      inDouble = !inDouble;
-      continue;
-    }
-    if (char !== "|" || inSingle || inDouble) {
-      continue;
-    }
-    const prev = index > 0 ? command[index - 1] : "";
-    const next = index + 1 < command.length ? command[index + 1] : "";
-    const prevIsSpace = prev === "" || /\s/.test(prev);
-    const nextIsSpace = next === "" || /\s/.test(next);
-    if (!prevIsSpace || !nextIsSpace) {
-      continue;
-    }
-    return command.slice(0, index).trim();
-  }
-  return command.trim();
-}
-
-function isOptionToken(token: string) {
-  return token.startsWith("-");
-}
-
-function isPathLike(token: string) {
-  if (!token || isOptionToken(token)) {
-    return false;
-  }
-  if (GLOB_HINT_REGEX.test(token)) {
-    return false;
-  }
-  return PATH_HINT_REGEX.test(token) || PATHLIKE_REGEX.test(token);
-}
-
-function collectNonFlagOperands(tokens: string[], commandName: string) {
-  const operands: string[] = [];
-  for (let index = 1; index < tokens.length; index += 1) {
-    const token = tokens[index];
-    if (isOptionToken(token)) {
-      if (commandName === "rg" && RG_FLAGS_WITH_VALUES.has(token)) {
-        index += 1;
-      }
-      continue;
-    }
-    operands.push(token);
-  }
-  return operands;
-}
-
-function findPathTokens(tokens: string[]) {
-  const commandName = tokens[0]?.toLowerCase() ?? "";
-  const positional = collectNonFlagOperands(tokens, commandName);
-  const pathLike = positional.filter(isPathLike);
-  return pathLike.length > 0 ? pathLike : positional;
-}
-
-function normalizeCommandStatus(status?: string) {
-  const normalized = (status ?? "").toLowerCase();
-  return /(pending|running|processing|started|in[_ -]?progress|inprogress)/.test(
-    normalized,
-  )
-    ? "exploring"
-    : "explored";
-}
-
-function isFailedStatus(status?: string) {
-  const normalized = (status ?? "").toLowerCase();
-  return /(fail|error)/.test(normalized);
-}
-
-type ExploreEntry = Extract<ConversationItem, { kind: "explore" }>["entries"][number];
-type ExploreItem = Extract<ConversationItem, { kind: "explore" }>;
-
-function parseSearch(tokens: string[]): ExploreEntry | null {
-  const commandName = tokens[0]?.toLowerCase() ?? "";
-  const hasFilesFlag = tokens.some((token) => token === "--files");
-  if (tokens[0] === "rg" && hasFilesFlag) {
-    const paths = findPathTokens(tokens);
-    const path = paths[paths.length - 1] || "rg --files";
-    return { kind: "list", label: path };
-  }
-  const positional = collectNonFlagOperands(tokens, commandName);
-  if (positional.length === 0) {
-    return null;
-  }
-  const query = positional[0];
-  const rawPath = positional.length > 1 ? positional[1] : "";
-  const path =
-    commandName === "rg" ? rawPath : rawPath && isPathLike(rawPath) ? rawPath : "";
-  const label = path ? `${query} in ${path}` : query;
-  return { kind: "search", label };
-}
-
-function parseRead(tokens: string[]): ExploreEntry[] | null {
-  const paths = findPathTokens(tokens).filter(Boolean);
-  if (paths.length === 0) {
-    return null;
-  }
-  const entries = paths.map((path) => {
-    const name = path.split(/[\\/]/g).filter(Boolean).pop() ?? path;
-    return name && name !== path
-      ? ({ kind: "read", label: name, detail: path } satisfies ExploreEntry)
-      : ({ kind: "read", label: path } satisfies ExploreEntry);
-  });
-  const seen = new Set<string>();
-  const deduped: ExploreEntry[] = [];
-  for (const entry of entries) {
-    const key = entry.detail ? `${entry.label}|${entry.detail}` : entry.label;
-    if (seen.has(key)) {
-      continue;
-    }
-    seen.add(key);
-    deduped.push(entry);
-  }
-  return deduped;
-}
-
-function parseList(tokens: string[]): ExploreEntry {
-  const paths = findPathTokens(tokens);
-  const path = paths[paths.length - 1];
-  return { kind: "list", label: path || tokens[0] };
-}
-
-function parseCommandSegment(command: string): ExploreEntry[] | null {
-  const tokens = tokenizeCommand(command);
-  if (tokens.length === 0) {
-    return null;
-  }
-  const commandName = tokens[0].toLowerCase();
-  if (READ_COMMANDS.has(commandName)) {
-    return parseRead(tokens);
-  }
-  if (LIST_COMMANDS.has(commandName)) {
-    return [parseList(tokens)];
-  }
-  if (SEARCH_COMMANDS.has(commandName)) {
-    const entry = parseSearch(tokens);
-    return entry ? [entry] : null;
-  }
-  return null;
-}
-
-function coalesceReadEntries(entries: ExploreEntry[]) {
-  const result: ExploreEntry[] = [];
-  const seenReads = new Set<string>();
-
-  for (const entry of entries) {
-    if (entry.kind !== "read") {
-      result.push(entry);
-      continue;
-    }
-    const key = entry.detail ? `${entry.label}|${entry.detail}` : entry.label;
-    if (seenReads.has(key)) {
-      continue;
-    }
-    seenReads.add(key);
-    result.push(entry);
-  }
-  return result;
-}
-
-function mergeExploreEntries(base: ExploreEntry[], next: ExploreEntry[]) {
-  const merged = [...base, ...next];
-  const seen = new Set<string>();
-  const deduped: ExploreEntry[] = [];
-  for (const entry of merged) {
-    const key = `${entry.kind}|${entry.label}|${entry.detail ?? ""}`;
-    if (seen.has(key)) {
-      continue;
-    }
-    seen.add(key);
-    deduped.push(entry);
-  }
-  return deduped;
-}
-
-function summarizeCommandExecution(item: Extract<ConversationItem, { kind: "tool" }>) {
-  if (isFailedStatus(item.status)) {
-    return null;
-  }
-  const rawCommand = item.title.replace(/^Command:\s*/i, "").trim();
-  const cleaned = cleanCommandText(rawCommand);
-  if (!cleaned) {
-    return null;
-  }
-  const segments = splitCommandSegments(cleaned);
-  if (segments.length === 0) {
-    return null;
-  }
-  const entries: ExploreEntry[] = [];
-  for (const segment of segments) {
-    const parsed = parseCommandSegment(segment);
-    if (!parsed) {
-      return null;
-    }
-    entries.push(...parsed);
-  }
-  if (entries.length === 0) {
-    return null;
-  }
-  const coalescedEntries = coalesceReadEntries(entries);
-  const status: ExploreItem["status"] = normalizeCommandStatus(item.status);
-  const summary: ExploreItem = {
-    id: item.id,
-    kind: "explore",
-    status,
-    entries: coalescedEntries,
-  };
-  return summary;
-}
-
-function summarizeExploration(items: ConversationItem[]) {
-  const result: ConversationItem[] = [];
-
-  for (const item of items) {
-    if (item.kind === "explore") {
-      const last = result[result.length - 1];
-      if (last?.kind === "explore" && last.status === item.status) {
-        result[result.length - 1] = {
-          ...last,
-          entries: mergeExploreEntries(last.entries, item.entries),
-        };
-        continue;
-      }
-      result.push(item);
-      continue;
-    }
-    if (item.kind === "tool" && item.toolType === "commandExecution") {
-      const summary = summarizeCommandExecution(item);
-      if (!summary) {
-        result.push(item);
-        continue;
-      }
-      const last = result[result.length - 1];
-      if (last?.kind === "explore" && last.status === summary.status) {
-        result[result.length - 1] = {
-          ...last,
-          entries: mergeExploreEntries(last.entries, summary.entries),
-        };
-        continue;
-      }
-      result.push(summary);
-      continue;
-    }
-    result.push(item);
-  }
-  return result;
-}
-
 function mergeToolItemPreservingSnapshot(
   existing: Extract<ConversationItem, { kind: "tool" }>,
   incoming: Extract<ConversationItem, { kind: "tool" }>,
@@ -1768,7 +1554,13 @@ export function prepareThreadItems(items: ConversationItem[]) {
       coalesced.push(item);
       continue;
     }
-    coalesced[index] = mergeSameKindItem(coalesced[index], item);
+    const existing = coalesced[index];
+    if (!existing) {
+      coalescedIndexByKey.set(key, coalesced.length);
+      coalesced.push(item);
+      continue;
+    }
+    coalesced[index] = mergeSameKindItem(existing, item);
   }
   const filtered: ConversationItem[] = [];
   for (const item of coalesced) {
@@ -1792,10 +1584,21 @@ export function prepareThreadItems(items: ConversationItem[]) {
     }
     filtered.push(item);
   }
-  const summarized = summarizeExploration(filtered);
+  const normalizedAskUserItems = normalizeAskUserQuestionHistoryItems(filtered);
+  const summarized = summarizeExploration(normalizedAskUserItems);
   const cutoff = Math.max(0, summarized.length - TOOL_OUTPUT_RECENT_ITEMS);
+  const noTruncateCutoff = Math.max(
+    0,
+    summarized.length - NO_TRUNCATE_TOOL_OUTPUT_RECENT_ITEMS,
+  );
   return summarized.map((item, index) => {
-    if (index >= cutoff || item.kind !== "tool") {
+    if (item.kind !== "tool") {
+      return item;
+    }
+    const isOlderToolItem = index < cutoff;
+    const allowNoTruncate =
+      NO_TRUNCATE_TOOL_TYPES.has(item.toolType) && index >= noTruncateCutoff;
+    if (!isOlderToolItem || allowNoTruncate) {
       return item;
     }
     const output = item.output ? truncateText(item.output) : item.output;
@@ -1820,7 +1623,11 @@ export function upsertItem(list: ConversationItem[], item: ConversationItem) {
     return [...list, item];
   }
   const next = [...list];
-  next[index] = mergeSameKindItem(next[index], item);
+  const existing = next[index];
+  if (!existing) {
+    return [...list, item];
+  }
+  next[index] = mergeSameKindItem(existing, item);
   return next;
 }
 
@@ -1850,11 +1657,159 @@ export function getThreadTimestamp(thread: Record<string, unknown>) {
 }
 
 export function previewThreadName(text: string, fallback: string) {
-  const trimmed = text.trim();
-  if (!trimmed) {
+  const strippedAgentPrompt = stripAgentPromptBlockFromTail(text);
+  const strippedModeFallback = stripModeFallbackBlock(strippedAgentPrompt);
+  const strippedMemory = stripInjectedProjectMemoryBlock(strippedModeFallback);
+  const extractedUserInput = extractLatestUserInputTextPreserveFormatting(strippedMemory);
+  const strippedInjectedPrefix = stripInjectedPrefixLines(extractedUserInput);
+  const collapsed = strippedInjectedPrefix.replace(/\s+/g, " ").trim();
+  if (!collapsed) {
     return fallback;
   }
-  return trimmed;
+  const clipped = clipByChars(collapsed, MAX_DEFAULT_THREAD_TITLE_CHARS).trim();
+  return clipped || fallback;
+}
+
+function extractAssistantFinalFlag(item: Record<string, unknown>): boolean | undefined {
+  const candidates: unknown[] = [
+    item.isFinal,
+    item.is_final,
+    item.final,
+    item.isFinalMessage,
+    item.is_final_message,
+  ];
+  const metadata =
+    item.metadata && typeof item.metadata === "object" && !Array.isArray(item.metadata)
+      ? (item.metadata as Record<string, unknown>)
+      : null;
+  if (metadata) {
+    candidates.push(
+      metadata.isFinal,
+      metadata.is_final,
+      metadata.final,
+      metadata.isFinalMessage,
+      metadata.is_final_message,
+    );
+  }
+  for (const candidate of candidates) {
+    const parsed = asBoolean(candidate);
+    if (parsed !== null) {
+      return parsed;
+    }
+  }
+  return undefined;
+}
+
+function parseTimestampLikeMs(value: unknown): number | undefined {
+  if (typeof value === "number" && Number.isFinite(value) && value > 0) {
+    return value < 1_000_000_000_000 ? value * 1000 : value;
+  }
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  const normalized = value.trim();
+  if (!normalized) {
+    return undefined;
+  }
+  const numeric = Number(normalized);
+  if (Number.isFinite(numeric) && numeric > 0) {
+    return numeric < 1_000_000_000_000 ? numeric * 1000 : numeric;
+  }
+  const parsed = Date.parse(normalized);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return undefined;
+  }
+  return parsed;
+}
+
+function extractFinalCompletedAtMs(item: Record<string, unknown>): number | undefined {
+  const metadata =
+    item.metadata && typeof item.metadata === "object" && !Array.isArray(item.metadata)
+      ? (item.metadata as Record<string, unknown>)
+      : null;
+  const candidates: unknown[] = [
+    item.finalCompletedAt,
+    item.final_completed_at,
+    item.completedAt,
+    item.completed_at,
+  ];
+  if (metadata) {
+    candidates.push(
+      metadata.finalCompletedAt,
+      metadata.final_completed_at,
+      metadata.completedAt,
+      metadata.completed_at,
+    );
+  }
+  for (const candidate of candidates) {
+    const parsed = parseTimestampLikeMs(candidate);
+    if (typeof parsed === "number") {
+      return parsed;
+    }
+  }
+  return undefined;
+}
+
+function extractFinalDurationMs(item: Record<string, unknown>): number | undefined {
+  const metadata =
+    item.metadata && typeof item.metadata === "object" && !Array.isArray(item.metadata)
+      ? (item.metadata as Record<string, unknown>)
+      : null;
+  const candidates: unknown[] = [
+    item.finalDurationMs,
+    item.final_duration_ms,
+    item.durationMs,
+    item.duration_ms,
+  ];
+  if (metadata) {
+    candidates.push(
+      metadata.finalDurationMs,
+      metadata.final_duration_ms,
+      metadata.durationMs,
+      metadata.duration_ms,
+    );
+  }
+  for (const candidate of candidates) {
+    const parsed = asNumber(candidate);
+    if (parsed !== null && parsed >= 0) {
+      return parsed;
+    }
+  }
+  return undefined;
+}
+
+function extractHistoryItemTimestampMs(item: Record<string, unknown>): number | undefined {
+  const metadata =
+    item.metadata && typeof item.metadata === "object" && !Array.isArray(item.metadata)
+      ? (item.metadata as Record<string, unknown>)
+      : null;
+  const candidates: unknown[] = [
+    item.timestamp,
+    item.timestamp_ms,
+    item.timestampMs,
+    item.createdAt,
+    item.created_at,
+    item.updatedAt,
+    item.updated_at,
+  ];
+  if (metadata) {
+    candidates.push(
+      metadata.timestamp,
+      metadata.timestamp_ms,
+      metadata.timestampMs,
+      metadata.createdAt,
+      metadata.created_at,
+      metadata.updatedAt,
+      metadata.updated_at,
+    );
+  }
+  for (const candidate of candidates) {
+    const parsed = parseTimestampLikeMs(candidate);
+    if (typeof parsed === "number") {
+      return parsed;
+    }
+  }
+  return undefined;
 }
 
 export function buildConversationItem(
@@ -1879,6 +1834,8 @@ export function buildConversationItem(
       item,
       fallbackCollaborationMode,
     );
+    const selectedAgentName = extractSelectedAgentNameFromUserMessageItem(item, text);
+    const selectedAgentIcon = extractSelectedAgentIconFromUserMessageItem(item, text);
     return {
       id,
       kind: "message",
@@ -1886,6 +1843,8 @@ export function buildConversationItem(
       text,
       images: images.length > 0 ? images : undefined,
       collaborationMode,
+      selectedAgentName,
+      selectedAgentIcon,
     };
   }
   if (type === "reasoning") {
@@ -1962,7 +1921,52 @@ export function buildConversationItem(
           },
         )
       : "";
+    const status = asString(item.status ?? "");
+    const output = stringifyUnknown(
+      item.aggregatedOutput ??
+        item.output ??
+        item.result ??
+        item.stdout ??
+        item.stderr ??
+        item.text ??
+        item.error ??
+        "",
+    );
     const durationMs = asNumber(item.durationMs ?? item.duration_ms);
+    const shouldTreatAsApplyPatchFileChange =
+      command &&
+      isApplyPatchCommand(command) &&
+      (isSuccessfulCommandExecution(status) || hasApplyPatchSuccessSignal(output));
+    if (shouldTreatAsApplyPatchFileChange) {
+      const normalizedChanges = inferFileChangesFromCommandExecutionArtifacts(command, output);
+      if (normalizedChanges.length > 0) {
+        const formattedChanges = normalizedChanges
+          .map((change) => {
+            const prefix =
+              change.kind === "add"
+                ? "A"
+                : change.kind === "delete"
+                  ? "D"
+                  : change.kind === "rename"
+                    ? "R"
+                    : change.kind
+                      ? "M"
+                      : "";
+            return [prefix, change.path].filter(Boolean).join(" ");
+          })
+          .filter(Boolean);
+        return {
+          id,
+          kind: "tool",
+          toolType: "fileChange",
+          title: "File changes",
+          detail: formattedChanges.join(", ") || "Pending changes",
+          status,
+          output,
+          changes: normalizedChanges,
+        };
+      }
+    }
     const titleText = description || command;
     return {
       id,
@@ -1970,17 +1974,8 @@ export function buildConversationItem(
       toolType: type,
       title: titleText ? `Command: ${titleText}` : "Command",
       detail: detailPayload || cwd,
-      status: asString(item.status ?? ""),
-      output: stringifyUnknown(
-        item.aggregatedOutput ??
-          item.output ??
-          item.result ??
-          item.stdout ??
-          item.stderr ??
-          item.text ??
-          item.error ??
-          "",
-      ),
+      status,
+      output,
       durationMs,
     };
   }
@@ -2053,6 +2048,8 @@ export function buildConversationItem(
       .map((change) => change.diff ?? "")
       .filter(Boolean)
       .join("\n\n");
+    const explicitOutput = asString(item.aggregatedOutput ?? item.output ?? item.text ?? "");
+    const preferExplicitOutput = shouldPreferExplicitFileChangeOutput(explicitOutput);
     return {
       id,
       kind: "tool",
@@ -2060,7 +2057,7 @@ export function buildConversationItem(
       title: "File changes",
       detail: paths || "Pending changes",
       status: asString(item.status ?? ""),
-      output: diffOutput || asString(item.aggregatedOutput ?? item.output ?? item.text ?? ""),
+      output: preferExplicitOutput ? explicitOutput : diffOutput || explicitOutput,
       changes: normalizedChanges,
     };
   }
@@ -2173,12 +2170,16 @@ function stripInjectedProjectMemoryBlock(text: string) {
   if (!text) {
     return "";
   }
-  let normalized = text.trimStart();
-  while (PROJECT_MEMORY_BLOCK_REGEX.test(normalized)) {
-    normalized = normalized.replace(PROJECT_MEMORY_BLOCK_REGEX, "").trimStart();
+  let normalized = text;
+  let changed = false;
+  let trimmedLeading = normalized.trimStart();
+  while (PROJECT_MEMORY_BLOCK_REGEX.test(trimmedLeading)) {
+    normalized = trimmedLeading.replace(PROJECT_MEMORY_BLOCK_REGEX, "");
+    changed = true;
+    trimmedLeading = normalized.trimStart();
   }
 
-  const blocks = normalized.split(MESSAGE_PARAGRAPH_BREAK_SPLIT_REGEX);
+  const blocks = normalized.trimStart().split(MESSAGE_PARAGRAPH_BREAK_SPLIT_REGEX);
   if (blocks.length >= 2) {
     const firstBlock = blocks[0] ?? "";
     const firstBlockLines = firstBlock
@@ -2190,10 +2191,14 @@ function stripInjectedProjectMemoryBlock(text: string) {
       firstBlockLines.length <= MAX_INJECTED_MEMORY_LINES &&
       firstBlockLines.every((line) => PROJECT_MEMORY_LINE_PREFIX_REGEX.test(line));
     if (looksLikeInjectedMemoryLines) {
-      normalized = blocks.slice(1).join("\n\n").trimStart();
+      normalized = blocks.slice(1).join("\n\n");
+      changed = true;
     }
   }
-  return normalized.trim();
+  if (!changed) {
+    return text;
+  }
+  return normalized.trimStart();
 }
 
 function stripModeFallbackBlock(text: string) {
@@ -2208,25 +2213,262 @@ function stripModeFallbackBlock(text: string) {
   return extracted || text;
 }
 
+function extractLatestUserInputTextPreserveFormatting(text: string): string {
+  const userInputMatches = [...text.matchAll(USER_INPUT_BLOCK_MARKER_REGEX)];
+  if (userInputMatches.length === 0) {
+    return text;
+  }
+  const lastMatch = userInputMatches[userInputMatches.length - 1];
+  if (!lastMatch) {
+    return text;
+  }
+  const markerIndex = lastMatch.index ?? -1;
+  if (markerIndex < 0) {
+    return text;
+  }
+  const markerLength = lastMatch[0]?.length ?? 0;
+  const extractedRaw = text.slice(markerIndex + markerLength);
+  const extracted = extractedRaw.replace(/^\r?\n/, "").replace(/^ /, "");
+  return extracted.trim().length > 0 ? extracted : text;
+}
+
+function stripAgentPromptBlockFromTail(text: string): string {
+  const match = AGENT_PROMPT_BLOCK_AT_TAIL_REGEX.exec(text);
+  if (!match || typeof match.index !== "number" || match.index < 0) {
+    return text;
+  }
+  const baseText = text.slice(0, match.index).replace(/\s+$/, "");
+  return baseText || text;
+}
+
+function normalizeSelectedAgentName(value: unknown): string | null {
+  const text = asString(value).trim();
+  if (!text) {
+    return null;
+  }
+  const normalized = text.replace(/^#+\s*/, "").trim();
+  return normalized || null;
+}
+
+function extractAgentNameFromPromptLine(value: string | null): string | null {
+  const normalized = normalizeSelectedAgentName(value);
+  if (!normalized) {
+    return null;
+  }
+  const namedMatch = AGENT_PROMPT_NAME_LINE_REGEX.exec(normalized);
+  if (namedMatch?.[1]) {
+    return normalizeSelectedAgentName(namedMatch[1]);
+  }
+  const firstClause = normalized.split(/[,:，；;：。！？!?]/)[0]?.trim() ?? "";
+  if (firstClause && firstClause.length <= 24) {
+    return firstClause;
+  }
+  return null;
+}
+
+function extractSelectedAgentNameFromPromptText(text: string): string | null {
+  const match = AGENT_PROMPT_BLOCK_AT_TAIL_REGEX.exec(text);
+  if (!match) {
+    return null;
+  }
+  const tailText = match[1] ?? "";
+  if (!tailText.trim()) {
+    return null;
+  }
+  const firstLine =
+    tailText
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .find((line) => line.length > 0) ?? null;
+  return extractAgentNameFromPromptLine(firstLine);
+}
+
+function extractSelectedAgentIconFromPromptText(text: string): string | null {
+  const match = AGENT_PROMPT_BLOCK_AT_TAIL_REGEX.exec(text);
+  if (!match) {
+    return null;
+  }
+  const tailText = match[1] ?? "";
+  if (!tailText.trim()) {
+    return null;
+  }
+  for (const line of tailText.split(/\r?\n/)) {
+    const trimmedLine = line.trim();
+    if (!trimmedLine) {
+      continue;
+    }
+    const iconMatch = AGENT_PROMPT_ICON_LINE_REGEX.exec(trimmedLine);
+    if (!iconMatch?.[1]) {
+      continue;
+    }
+    const normalized = normalizeAgentIcon(iconMatch[1]);
+    if (normalized) {
+      return normalized;
+    }
+  }
+  return null;
+}
+
+function extractRawUserMessageTextCandidates(item: Record<string, unknown>): string[] {
+  const candidates: string[] = [];
+  const directText = asString(item.text);
+  if (directText.trim()) {
+    candidates.push(directText);
+  }
+  const content = Array.isArray(item.content) ? item.content : [];
+  for (const entry of content) {
+    const record = asRecord(entry);
+    if (!record) {
+      continue;
+    }
+    const text = asString(record.text ?? record.value ?? record.content ?? "");
+    if (text.trim()) {
+      candidates.push(text);
+    }
+  }
+  return candidates;
+}
+
+function extractSelectedAgentNameFromUserMessageItem(
+  item: Record<string, unknown>,
+  text: string,
+): string | null {
+  const metadata = asRecord(item.metadata);
+  const explicitNameCandidates: unknown[] = [
+    item.selectedAgentName,
+    item.selected_agent_name,
+    item.agentName,
+    item.agent_name,
+    asRecord(item.selectedAgent)?.name,
+    asRecord(item.selected_agent)?.name,
+    metadata?.selectedAgentName,
+    metadata?.selected_agent_name,
+    metadata?.agentName,
+    metadata?.agent_name,
+  ];
+  for (const candidate of explicitNameCandidates) {
+    const normalized = normalizeSelectedAgentName(candidate);
+    if (normalized) {
+      return normalized;
+    }
+  }
+  const promptTextCandidates = [text, ...extractRawUserMessageTextCandidates(item)];
+  for (const candidate of promptTextCandidates) {
+    const extracted = extractSelectedAgentNameFromPromptText(candidate);
+    if (extracted) {
+      return extracted;
+    }
+  }
+  return null;
+}
+
+function extractSelectedAgentIconFromUserMessageItem(
+  item: Record<string, unknown>,
+  text: string,
+): string | null {
+  const metadata = asRecord(item.metadata);
+  const explicitIconCandidates: unknown[] = [
+    item.selectedAgentIcon,
+    item.selected_agent_icon,
+    item.agentIcon,
+    item.agent_icon,
+    asRecord(item.selectedAgent)?.icon,
+    asRecord(item.selected_agent)?.icon,
+    metadata?.selectedAgentIcon,
+    metadata?.selected_agent_icon,
+    metadata?.agentIcon,
+    metadata?.agent_icon,
+  ];
+  for (const candidate of explicitIconCandidates) {
+    const normalized = normalizeAgentIcon(candidate);
+    if (normalized) {
+      return normalized;
+    }
+  }
+  const promptTextCandidates = [text, ...extractRawUserMessageTextCandidates(item)];
+  for (const candidate of promptTextCandidates) {
+    const extracted = extractSelectedAgentIconFromPromptText(candidate);
+    if (extracted) {
+      return extracted;
+    }
+  }
+  return null;
+}
+
+function stripInjectedPrefixLines(text: string): string {
+  let normalized = text.trimStart();
+  while (TITLE_INJECTED_LINE_PREFIX_REGEX.test(normalized)) {
+    normalized = normalized.replace(TITLE_INJECTED_LINE_PREFIX_REGEX, "").trimStart();
+  }
+  return normalized;
+}
+
+function clipByChars(text: string, maxChars: number): string {
+  return Array.from(text).slice(0, maxChars).join("");
+}
+
 function parseUserInputs(inputs: Array<Record<string, unknown>>) {
   const textParts: string[] = [];
   const images: string[] = [];
   let collaborationMode: "plan" | "code" | null = null;
+
+  const needsSeparatorBetween = (previous: string, next: string) => {
+    if (!previous || !next) {
+      return false;
+    }
+    if (/\s$/.test(previous) || /^\s/.test(next)) {
+      return false;
+    }
+    if (/\$[^\s]+$/.test(previous.trimEnd())) {
+      return true;
+    }
+    const previousChar = previous[previous.length - 1] ?? "";
+    const nextChar = next[0] ?? "";
+    return /[A-Za-z0-9]/.test(previousChar) && /[A-Za-z0-9]/.test(nextChar);
+  };
+
+  const appendTextPart = (value: string) => {
+    if (!value) {
+      return;
+    }
+    const previous = textParts[textParts.length - 1] ?? "";
+    if (needsSeparatorBetween(previous, value)) {
+      textParts.push(` ${value}`);
+      return;
+    }
+    textParts.push(value);
+  };
+
+  const appendSkillPart = (name: string) => {
+    if (!name) {
+      return;
+    }
+    const token = `$${name}`;
+    const previous = textParts[textParts.length - 1] ?? "";
+    if (!previous) {
+      textParts.push(token);
+      return;
+    }
+    if (/\s$/.test(previous)) {
+      textParts.push(token);
+      return;
+    }
+    textParts.push(` ${token}`);
+  };
+
   inputs.forEach((input) => {
     const type = asString(input.type);
     if (type === "text") {
       const text = asString(input.text);
       if (text) {
         collaborationMode = collaborationMode ?? extractModeFallbackMode(text);
-        textParts.push(stripModeFallbackBlock(stripInjectedProjectMemoryBlock(text)));
+        appendTextPart(stripModeFallbackBlock(stripInjectedProjectMemoryBlock(text)));
       }
       return;
     }
     if (type === "skill") {
       const name = asString(input.name);
-      if (name) {
-        textParts.push(`$${name}`);
-      }
+      appendSkillPart(name);
       return;
     }
     if (type === "image" || type === "localImage") {
@@ -2237,7 +2479,7 @@ function parseUserInputs(inputs: Array<Record<string, unknown>>) {
     }
   });
   return {
-    text: textParts.join(" ").trim(),
+    text: textParts.join("").trim(),
     images,
     collaborationMode,
   };
@@ -2262,6 +2504,8 @@ export function buildConversationItemFromThreadItem(
       item,
       fallbackCollaborationMode,
     );
+    const selectedAgentName = extractSelectedAgentNameFromUserMessageItem(item, text);
+    const selectedAgentIcon = extractSelectedAgentIconFromUserMessageItem(item, text);
     return {
       id,
       kind: "message",
@@ -2269,14 +2513,22 @@ export function buildConversationItemFromThreadItem(
       text,
       images: images.length > 0 ? images : undefined,
       collaborationMode,
+      selectedAgentName,
+      selectedAgentIcon,
     };
   }
   if (type === "agentMessage") {
+    const isFinal = extractAssistantFinalFlag(item);
+    const finalCompletedAt = extractFinalCompletedAtMs(item);
+    const finalDurationMs = extractFinalDurationMs(item);
     return {
       id,
       kind: "message",
       role: "assistant",
       text: asString(item.text),
+      ...(typeof isFinal === "boolean" ? { isFinal } : {}),
+      ...(typeof finalCompletedAt === "number" ? { finalCompletedAt } : {}),
+      ...(typeof finalDurationMs === "number" ? { finalDurationMs } : {}),
     };
   }
   if (type === "reasoning") {
@@ -2302,12 +2554,56 @@ export function buildItemsFromThread(thread: Record<string, unknown>) {
   const items: ConversationItem[] = [];
   turns.forEach((turn) => {
     const turnRecord = turn as Record<string, unknown>;
+    const turnCompletedAtMs =
+      parseTimestampLikeMs(
+        turnRecord.completedAt ??
+          turnRecord.completed_at ??
+          turnRecord.updatedAt ??
+          turnRecord.updated_at ??
+          turnRecord.createdAt ??
+          turnRecord.created_at ??
+          null,
+      );
+    const turnDurationMsRaw = asNumber(
+      turnRecord.durationMs ??
+        turnRecord.duration_ms ??
+        turnRecord.duration ??
+        null,
+    );
+    const turnDurationMs = turnDurationMsRaw !== null && turnDurationMsRaw >= 0
+      ? turnDurationMsRaw
+      : undefined;
     const turnItems = Array.isArray(turnRecord.items)
       ? (turnRecord.items as Record<string, unknown>[])
       : [];
+    let lastAssistantMessageIndexInTurn = -1;
+    let finalAssistantMessageIndexInTurn = -1;
+    let hasExplicitFinalAssistantInTurn = false;
+    let turnStartedAtMs: number | undefined;
+    const assistantTimestampByIndex = new Map<number, number>();
     turnItems.forEach((item) => {
-      const converted = buildConversationItemFromThreadItem(item);
+      const itemRecord = item as Record<string, unknown>;
+      const converted = buildConversationItemFromThreadItem(itemRecord);
       if (converted) {
+        const convertedIndex = items.length;
+        const itemTimestampMs = extractHistoryItemTimestampMs(itemRecord);
+        if (
+          converted.kind === "message" &&
+          converted.role === "user" &&
+          typeof itemTimestampMs === "number"
+        ) {
+          turnStartedAtMs = itemTimestampMs;
+        }
+        if (converted.kind === "message" && converted.role === "assistant") {
+          if (converted.isFinal === true) {
+            hasExplicitFinalAssistantInTurn = true;
+            finalAssistantMessageIndexInTurn = convertedIndex;
+          }
+          lastAssistantMessageIndexInTurn = convertedIndex;
+          if (typeof itemTimestampMs === "number") {
+            assistantTimestampByIndex.set(convertedIndex, itemTimestampMs);
+          }
+        }
         if (converted.kind === "reasoning") {
           const duplicateIndex = findDuplicateReasoningSnapshotIndex(items, converted);
           if (duplicateIndex >= 0 && items[duplicateIndex]?.kind === "reasoning") {
@@ -2321,6 +2617,52 @@ export function buildItemsFromThread(thread: Record<string, unknown>) {
         items.push(converted);
       }
     });
+    if (!hasExplicitFinalAssistantInTurn && lastAssistantMessageIndexInTurn >= 0) {
+      const lastAssistant = items[lastAssistantMessageIndexInTurn];
+      if (
+        lastAssistant &&
+        lastAssistant.kind === "message" &&
+        lastAssistant.role === "assistant" &&
+        lastAssistant.isFinal !== true
+      ) {
+        items[lastAssistantMessageIndexInTurn] = {
+          ...lastAssistant,
+          isFinal: true,
+        };
+        finalAssistantMessageIndexInTurn = lastAssistantMessageIndexInTurn;
+      }
+    }
+    if (finalAssistantMessageIndexInTurn >= 0) {
+      const finalAssistant = items[finalAssistantMessageIndexInTurn];
+      if (finalAssistant && finalAssistant.kind === "message" && finalAssistant.role === "assistant") {
+        const completedAtCandidates = [
+          finalAssistant.finalCompletedAt,
+          assistantTimestampByIndex.get(finalAssistantMessageIndexInTurn),
+          turnCompletedAtMs,
+        ].filter((value): value is number => typeof value === "number" && value > 0);
+        const completedAt =
+          completedAtCandidates.length > 0 ? Math.max(...completedAtCandidates) : undefined;
+        const durationCandidates = [
+          finalAssistant.finalDurationMs,
+          turnDurationMs,
+          typeof completedAt === "number" && typeof turnStartedAtMs === "number"
+            ? Math.max(0, completedAt - turnStartedAtMs)
+            : undefined,
+        ].filter((value): value is number => typeof value === "number" && value >= 0);
+        const durationMs =
+          durationCandidates.length > 0 ? Math.max(...durationCandidates) : undefined;
+        if (
+          completedAt !== finalAssistant.finalCompletedAt ||
+          durationMs !== finalAssistant.finalDurationMs
+        ) {
+          items[finalAssistantMessageIndexInTurn] = {
+            ...finalAssistant,
+            ...(typeof completedAt === "number" ? { finalCompletedAt: completedAt } : {}),
+            ...(typeof durationMs === "number" ? { finalDurationMs: durationMs } : {}),
+          };
+        }
+      }
+    }
   });
   return items;
 }
@@ -2353,28 +2695,63 @@ function chooseRicherItem(remote: ConversationItem, local: ConversationItem) {
     if (remote.role !== local.role) {
       return remote;
     }
+    const withFinalFlag = (
+      candidate: Extract<ConversationItem, { kind: "message" }>,
+    ): Extract<ConversationItem, { kind: "message" }> => {
+      if (candidate.role !== "assistant") {
+        return candidate;
+      }
+      const isFinal = Boolean(candidate.isFinal || remote.isFinal || local.isFinal);
+      const completedAtCandidates = [
+        candidate.finalCompletedAt,
+        remote.finalCompletedAt,
+        local.finalCompletedAt,
+      ].filter((value): value is number => typeof value === "number" && value > 0);
+      const mergedCompletedAt =
+        completedAtCandidates.length > 0 ? Math.max(...completedAtCandidates) : undefined;
+      const durationCandidates = [
+        candidate.finalDurationMs,
+        remote.finalDurationMs,
+        local.finalDurationMs,
+      ].filter((value): value is number => typeof value === "number" && value >= 0);
+      const mergedDurationMs =
+        durationCandidates.length > 0 ? Math.max(...durationCandidates) : undefined;
+      if (
+        (candidate.isFinal ?? false) === isFinal &&
+        candidate.finalCompletedAt === mergedCompletedAt &&
+        candidate.finalDurationMs === mergedDurationMs
+      ) {
+        return candidate;
+      }
+      return {
+        ...candidate,
+        isFinal,
+        ...(mergedCompletedAt !== undefined ? { finalCompletedAt: mergedCompletedAt } : {}),
+        ...(mergedDurationMs !== undefined ? { finalDurationMs: mergedDurationMs } : {}),
+      };
+    };
     if (remote.role !== "assistant") {
       return local.text.length > remote.text.length ? local : remote;
     }
     const remoteScored = scoreAssistantMessageReadability(remote.text);
     const localScored = scoreAssistantMessageReadability(local.text);
     if (localScored.score < remoteScored.score) {
-      return { ...local, text: localScored.normalized };
+      return withFinalFlag({ ...local, text: localScored.normalized });
     }
     if (remoteScored.score < localScored.score) {
-      return { ...remote, text: remoteScored.normalized };
+      return withFinalFlag({ ...remote, text: remoteScored.normalized });
     }
     if (
       compactMessageText(remoteScored.normalized) ===
       compactMessageText(localScored.normalized)
     ) {
       return localScored.normalized.length >= remoteScored.normalized.length
-        ? { ...local, text: localScored.normalized }
-        : { ...remote, text: remoteScored.normalized };
+        ? withFinalFlag({ ...local, text: localScored.normalized })
+        : withFinalFlag({ ...remote, text: remoteScored.normalized });
     }
     return localScored.normalized.length > remoteScored.normalized.length
-      ? { ...local, text: localScored.normalized }
-      : { ...remote, text: remoteScored.normalized };
+      ? withFinalFlag({ ...local, text: localScored.normalized })
+      : withFinalFlag({ ...remote, text: remoteScored.normalized });
   }
   if (remote.kind === "reasoning" && local.kind === "reasoning") {
     const remoteLength = remote.summary.length + remote.content.length;
@@ -2389,7 +2766,7 @@ function chooseRicherItem(remote: ConversationItem, local: ConversationItem) {
       ...base,
       status: remote.status ?? local.status,
       output: localLength > remoteLength ? local.output : remote.output,
-      changes: remote.changes ?? local.changes,
+      changes: mergeToolChanges(remote.changes, local.changes),
     };
   }
   if (remote.kind === "diff" && local.kind === "diff") {

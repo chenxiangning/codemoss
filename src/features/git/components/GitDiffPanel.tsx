@@ -1,4 +1,5 @@
 import type { GitHubIssue, GitHubPullRequest, GitLogEntry } from "../../../types";
+import type { CommitMessageEngine, CommitMessageLanguage } from "../../../services/tauri";
 import type {
   KeyboardEvent as ReactKeyboardEvent,
   MouseEvent as ReactMouseEvent,
@@ -18,11 +19,13 @@ import ChevronsUpDown from "lucide-react/dist/esm/icons/chevrons-up-down";
 import CircleCheckBig from "lucide-react/dist/esm/icons/circle-check-big";
 import FolderTree from "lucide-react/dist/esm/icons/folder-tree";
 import GitPullRequest from "lucide-react/dist/esm/icons/git-pull-request";
+import HardDrive from "lucide-react/dist/esm/icons/hard-drive";
 import History from "lucide-react/dist/esm/icons/history";
 import LayoutGrid from "lucide-react/dist/esm/icons/layout-grid";
 import MessageSquareWarning from "lucide-react/dist/esm/icons/message-square-warning";
 import Minus from "lucide-react/dist/esm/icons/minus";
 import Plus from "lucide-react/dist/esm/icons/plus";
+import Search from "lucide-react/dist/esm/icons/search";
 import SquarePen from "lucide-react/dist/esm/icons/square-pen";
 import Undo2 from "lucide-react/dist/esm/icons/undo-2";
 import Upload from "lucide-react/dist/esm/icons/upload";
@@ -33,6 +36,7 @@ import { matchesShortcut } from "../../../utils/shortcuts";
 import { formatRelativeTime } from "../../../utils/time";
 import type { PanelTabId } from "../../layout/components/PanelTabs";
 import FileIcon from "../../../components/FileIcon";
+import { CommitMessageEngineIcon } from "./CommitMessageEngineIcon";
 import { GitDiffViewer } from "./GitDiffViewer";
 
 type GitDiffPanelProps = {
@@ -125,7 +129,10 @@ type GitDiffPanelProps = {
   commitMessageLoading?: boolean;
   commitMessageError?: string | null;
   onCommitMessageChange?: (value: string) => void;
-  onGenerateCommitMessage?: () => void | Promise<void>;
+  onGenerateCommitMessage?: (
+    language?: CommitMessageLanguage,
+    engine?: CommitMessageEngine,
+  ) => void | Promise<void>;
   // Git operations
   onCommit?: () => void | Promise<void>;
   onCommitAndPush?: () => void | Promise<void>;
@@ -148,9 +155,12 @@ type ModeMenuLayout = {
 };
 
 function splitPath(path: string) {
-  const parts = path.split("/");
+  const parts = path.replace(/\\/g, "/").split("/").filter(Boolean);
+  if (parts.length === 0) {
+    return { name: "", dir: "" };
+  }
   if (parts.length === 1) {
-    return { name: path, dir: "" };
+    return { name: parts[0] ?? "", dir: "" };
   }
   return { name: parts[parts.length - 1], dir: parts.slice(0, -1).join("/") };
 }
@@ -393,7 +403,7 @@ function DiffFileRow({
 }: DiffFileRowProps) {
   const { t } = useTranslation();
   const { name, dir } = splitPath(file.path);
-  const { base, extension } = splitNameAndExtension(name);
+  const { base, extension } = splitNameAndExtension(name ?? "");
   const statusSymbol = getStatusSymbol(file.status);
   const statusClass = getStatusClass(file.status);
   const showStage = section === "unstaged" && Boolean(onStageFile);
@@ -709,10 +719,13 @@ export function buildDiffTree(
     files: [],
   };
   for (const file of files) {
-    const parts = file.path.split("/");
+    const parts = file.path.replace(/\\/g, "/").split("/").filter(Boolean);
+    if (parts.length === 0) {
+      continue;
+    }
     let node = root;
     for (let index = 0; index < parts.length - 1; index += 1) {
-      const segment = parts[index];
+      const segment = parts[index] ?? "";
       const nextKey = `${node.key}${segment}/`;
       let child = node.folders.get(segment);
       if (!child) {
@@ -723,6 +736,9 @@ export function buildDiffTree(
           files: [],
         };
         node.folders.set(segment, child);
+      }
+      if (!child) {
+        break;
       }
       node = child;
     }
@@ -814,6 +830,9 @@ function DiffTreeSection({
     }
     for (let index = currentIndex - 1; index >= 0; index -= 1) {
       const candidate = nodes[index];
+      if (!candidate) {
+        continue;
+      }
       const candidateDepth = Number(candidate.dataset.treeDepth ?? "0");
       if (!Number.isFinite(candidateDepth)) {
         continue;
@@ -1326,7 +1345,7 @@ export function GitDiffPanel({
   onScanGitRoots,
   onSelectGitRoot,
   onClearGitRoot,
-  onPickGitRoot,
+  onPickGitRoot: _onPickGitRoot,
   commitMessage = "",
   commitMessageLoading = false,
   commitMessageError = null,
@@ -1359,6 +1378,15 @@ export function GitDiffPanel({
   const [isPreviewModalMaximized, setIsPreviewModalMaximized] = useState(false);
   const [previewHeaderControlsTarget, setPreviewHeaderControlsTarget] = useState<HTMLDivElement | null>(null);
   const [isModeMenuOpen, setIsModeMenuOpen] = useState(false);
+  const [commitMessageMenuEngine, setCommitMessageMenuEngine] = useState<CommitMessageEngine>("claude");
+  const [isGitRootPanelOpen, setIsGitRootPanelOpen] = useState(
+    () =>
+      isMissingRepo(error) ||
+      gitRootScanLoading ||
+      gitRootScanHasScanned ||
+      Boolean(gitRootScanError) ||
+      gitRootCandidates.length > 0,
+  );
   const [modeMenuLayout, setModeMenuLayout] = useState<ModeMenuLayout>({
     align: "right",
     width: 246,
@@ -1416,7 +1444,13 @@ export function GitDiffPanel({
     [t],
   );
   const currentModeOption = useMemo(
-    () => modeOptions.find((option) => option.value === mode) ?? modeOptions[0],
+    () =>
+      modeOptions.find((option) => option.value === mode) ??
+      modeOptions[0] ?? {
+        value: "diff" as const,
+        label: t("git.changesMode"),
+        description: t("git.changesModeDescription"),
+      },
     [mode, modeOptions],
   );
 
@@ -1608,6 +1642,27 @@ export function GitDiffPanel({
   useEffect(() => {
     setIsModeMenuOpen(false);
   }, [mode]);
+
+  const shouldAutoOpenGitRootPanel =
+    isMissingRepo(error) ||
+    gitRootScanLoading ||
+    Boolean(gitRootScanError) ||
+    gitRootCandidates.length > 0;
+  const shouldAutoCollapseGitRootPanelAfterScan =
+    gitRootScanHasScanned &&
+    !gitRootScanLoading &&
+    !gitRootScanError &&
+    gitRootCandidates.length === 0;
+
+  useEffect(() => {
+    if (shouldAutoOpenGitRootPanel) {
+      setIsGitRootPanelOpen(true);
+      return;
+    }
+    if (shouldAutoCollapseGitRootPanelAfterScan) {
+      setIsGitRootPanelOpen(false);
+    }
+  }, [shouldAutoCollapseGitRootPanelAfterScan, shouldAutoOpenGitRootPanel]);
 
   useEffect(() => {
     if (mode !== "diff" || !onGitDiffListViewChange) {
@@ -1914,12 +1969,17 @@ export function GitDiffPanel({
       : fileStatus;
   const compactTreeMetaNode = hasDiffTotals ? diffTotalsNode : <span>{fileStatus}</span>;
   const hasGitRoot = Boolean(gitRoot && gitRoot.trim());
-  const showGitRootPanel =
-    isMissingRepo(error) ||
-    gitRootScanLoading ||
-    gitRootScanHasScanned ||
-    Boolean(gitRootScanError) ||
-    gitRootCandidates.length > 0;
+  const activeRootPath = (gitRoot ?? "").trim() || (workspacePath ?? "").trim() || (workspaceId ?? "").trim();
+  const activeRootPathDisplay = activeRootPath || t("git.unknown");
+  const showActiveRootSummary = mode !== "issues";
+  const rootAlertText =
+    mode === "diff"
+      ? isMissingRepo(error)
+        ? t("git.noRepositoriesFound")
+        : error
+          ? t("git.statusUnavailable")
+          : null
+      : null;
   const normalizedGitRoot = normalizeRootPath(gitRoot);
   const normalizedWorkspacePath = normalizeRootPath(workspacePath);
   const repositoryRootName =
@@ -1938,6 +1998,70 @@ export function GitDiffPanel({
     <Check size={12} aria-hidden />
   ) : (
     <Upload size={12} aria-hidden />
+  );
+  const showCommitMessageLanguageMenu = useCallback(
+    async (engine: CommitMessageEngine, position: LogicalPosition) => {
+      if (!onGenerateCommitMessage || commitMessageLoading || commitLoading || !canGenerateCommitMessage) {
+        return;
+      }
+      const items = [
+        await MenuItem.new({
+          text: t("git.generateCommitMessageChinese"),
+          action: async () => {
+            setCommitMessageMenuEngine(engine);
+            await onGenerateCommitMessage("zh", engine);
+          },
+        }),
+        await MenuItem.new({
+          text: t("git.generateCommitMessageEnglish"),
+          action: async () => {
+            setCommitMessageMenuEngine(engine);
+            await onGenerateCommitMessage("en", engine);
+          },
+        }),
+      ];
+      const menu = await Menu.new({ items });
+      const window = getCurrentWindow();
+      await menu.popup(position, window);
+    },
+    [canGenerateCommitMessage, commitLoading, commitMessageLoading, onGenerateCommitMessage, t],
+  );
+  const showCommitMessageEngineMenu = useCallback(
+    async (event: ReactMouseEvent<HTMLButtonElement>) => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (!onGenerateCommitMessage || commitMessageLoading || commitLoading || !canGenerateCommitMessage) {
+        return;
+      }
+      const position = new LogicalPosition(event.clientX, event.clientY);
+      const engineItems: Array<{ engine: CommitMessageEngine; label: string }> = [
+        { engine: "codex", label: t("git.generateCommitMessageEngineCodex") },
+        { engine: "claude", label: t("git.generateCommitMessageEngineClaude") },
+        { engine: "gemini", label: t("git.generateCommitMessageEngineGemini") },
+        { engine: "opencode", label: t("git.generateCommitMessageEngineOpenCode") },
+      ];
+      const items = await Promise.all(
+        engineItems.map(async ({ engine, label }) =>
+          MenuItem.new({
+            text: label,
+            action: async () => {
+              await showCommitMessageLanguageMenu(engine, position);
+            },
+          }),
+        ),
+      );
+      const menu = await Menu.new({ items });
+      const window = getCurrentWindow();
+      await menu.popup(position, window);
+    },
+    [
+      canGenerateCommitMessage,
+      commitLoading,
+      commitMessageLoading,
+      onGenerateCommitMessage,
+      showCommitMessageLanguageMenu,
+      t,
+    ],
   );
   return (
     <aside className="diff-panel" ref={panelRef}>
@@ -2074,9 +2198,31 @@ export function GitDiffPanel({
           )}
         </div>
       </div>
+      {showActiveRootSummary && (
+        <div className="git-root-current">
+          <span className="git-root-label">{t("git.path")}</span>
+          <span className="git-root-path" title={activeRootPathDisplay}>
+            {activeRootPathDisplay}
+          </span>
+          {rootAlertText && <span className="git-root-inline-alert">{rootAlertText}</span>}
+          {onScanGitRoots && (
+            <button
+              type="button"
+              className="ghost git-root-button git-root-button--toggle"
+              onClick={() => setIsGitRootPanelOpen((open) => !open)}
+              aria-label={t("git.change")}
+              title={t("git.change")}
+              aria-expanded={isGitRootPanelOpen}
+            >
+              <ArrowLeftRight className="git-root-button-icon" aria-hidden />
+              <span>{t("git.change")}</span>
+            </button>
+          )}
+        </div>
+      )}
       {mode === "diff" ? (
         <>
-          {!useUnifiedDiffSummary ? <div className="diff-status">{diffStatusNode}</div> : null}
+          {!useUnifiedDiffSummary && !rootAlertText ? <div className="diff-status">{diffStatusNode}</div> : null}
           {worktreeApplyError && <div className="diff-error">{worktreeApplyError}</div>}
         </>
       ) : mode === "log" ? (
@@ -2115,85 +2261,60 @@ export function GitDiffPanel({
           </div>
         </>
       )}
-      {(mode === "diff" || mode === "log") && !useUnifiedDiffSummary ? (
+      {(mode === "diff" || mode === "log") && !useUnifiedDiffSummary && !rootAlertText ? (
         <div className="diff-branch">{branchName || t("git.unknown")}</div>
       ) : null}
-      {mode !== "issues" && hasGitRoot && !useUnifiedDiffSummary && (
-        <div className="git-root-current">
-          <span className="git-root-label">{t("git.path")}</span>
-          <span className="git-root-path" title={gitRoot ?? ""}>
-            {gitRoot}
-          </span>
-          {onScanGitRoots && (
-            <button
-              type="button"
-              className="ghost git-root-button git-root-button--icon"
-              onClick={onScanGitRoots}
-              disabled={gitRootScanLoading}
-            >
-              <ArrowLeftRight className="git-root-button-icon" aria-hidden />
-              {t("git.change")}
-            </button>
-          )}
-        </div>
-      )}
       {mode === "diff" ? (
         <div className="diff-list" onClick={handleDiffListClick}>
-          {error && <div className="diff-error">{error}</div>}
-          {showGitRootPanel && (
-            <div className="git-root-panel">
-              <div className="git-root-title">{t("git.chooseRepo")}</div>
-              <div className="git-root-actions">
-                <button
-                  type="button"
-                  className="ghost git-root-button"
-                  onClick={onScanGitRoots}
-                  disabled={!onScanGitRoots || gitRootScanLoading}
-                >
-                  {t("git.scanWorkspace")}
-                </button>
-                <label className="git-root-depth">
-                  <span>{t("git.depth")}</span>
-                  <select
-                    className="git-root-select"
-                    value={gitRootScanDepth}
-                    onChange={(event) => {
-                      const value = Number(event.target.value);
-                      if (!Number.isNaN(value)) {
-                        onGitRootScanDepthChange?.(value);
-                      }
-                    }}
-                    disabled={gitRootScanLoading}
-                  >
-                    {DEPTH_OPTIONS.map((depth) => (
-                      <option key={depth} value={depth}>
-                        {depth}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                {onPickGitRoot && (
+          {isGitRootPanelOpen && (
+            <div className="git-root-panel" id="git-root-panel">
+              <div className="git-root-toolbar">
+                <div className="git-root-title">{t("git.chooseRepo")}</div>
+                <div className="git-root-actions">
                   <button
                     type="button"
-                    className="ghost git-root-button"
-                    onClick={() => {
-                      void onPickGitRoot();
-                    }}
-                    disabled={gitRootScanLoading}
+                    className="ghost git-root-button git-root-button--scan"
+                    onClick={onScanGitRoots}
+                    disabled={!onScanGitRoots || gitRootScanLoading}
                   >
-                    {t("git.pickFolder")}
+                    <Search className="git-root-button-icon" aria-hidden />
+                    {t("git.scanWorkspace")}
                   </button>
-                )}
-                {hasGitRoot && onClearGitRoot && (
-                  <button
-                    type="button"
-                    className="ghost git-root-button"
-                    onClick={onClearGitRoot}
-                    disabled={gitRootScanLoading}
-                  >
-                    {t("git.useWorkspaceRoot")}
-                  </button>
-                )}
+                  <label className="git-root-depth">
+                    <span>{t("git.depth")}</span>
+                    <select
+                      className="git-root-select"
+                      value={gitRootScanDepth}
+                      onChange={(event) => {
+                        const value = Number(event.target.value);
+                        if (!Number.isNaN(value)) {
+                          onGitRootScanDepthChange?.(value);
+                        }
+                      }}
+                      disabled={gitRootScanLoading}
+                    >
+                      {DEPTH_OPTIONS.map((depth) => (
+                        <option key={depth} value={depth}>
+                          {depth}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  {hasGitRoot && onClearGitRoot && (
+                    <button
+                      type="button"
+                      className="ghost git-root-button git-root-button--workspace-root"
+                      onClick={() => {
+                        onClearGitRoot();
+                        setIsGitRootPanelOpen(false);
+                      }}
+                      disabled={gitRootScanLoading}
+                    >
+                      <HardDrive className="git-root-button-icon" aria-hidden />
+                      {t("git.useWorkspaceRoot")}
+                    </button>
+                  )}
+                </div>
               </div>
               {gitRootScanLoading && (
                 <div className="diff-empty">{t("git.scanningRepositories")}</div>
@@ -2216,7 +2337,10 @@ export function GitDiffPanel({
                       key={path}
                       type="button"
                       className={`git-root-item ${isActive ? "active" : ""}`}
-                      onClick={() => onSelectGitRoot?.(path)}
+                      onClick={() => {
+                        onSelectGitRoot?.(path);
+                        setIsGitRootPanelOpen(false);
+                      }}
                     >
                       <span className="git-root-path">{path}</span>
                       {isActive && <span className="git-root-tag">{t("git.active")}</span>}
@@ -2240,14 +2364,12 @@ export function GitDiffPanel({
                 />
                 <button
                   type="button"
-                  className="commit-message-generate-button"
-                  onClick={() => {
-                    if (!canGenerateCommitMessage) {
-                      return;
-                    }
-                    void onGenerateCommitMessage?.();
+                  className={`commit-message-generate-button${commitMessageLoading ? " commit-message-generate-button--loading" : ""}`}
+                  onClick={(event) => {
+                    void showCommitMessageEngineMenu(event);
                   }}
                   disabled={commitMessageLoading || !canGenerateCommitMessage}
+                  aria-haspopup="menu"
                   title={
                     stagedFiles.length > 0
                       ? "Generate commit message from staged changes"
@@ -2255,49 +2377,11 @@ export function GitDiffPanel({
                   }
                   aria-label="Generate commit message"
                 >
-                  {commitMessageLoading ? (
-                    <svg
-                      className="commit-message-loader"
-                      width={14}
-                      height={14}
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth={2}
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      aria-hidden
-                    >
-                      <path d="M12 2v4" />
-                      <path d="m16.2 7.8 2.9-2.9" />
-                      <path d="M18 12h4" />
-                      <path d="m16.2 16.2 2.9 2.9" />
-                      <path d="M12 18v4" />
-                      <path d="m4.9 19.1 2.9-2.9" />
-                      <path d="M2 12h4" />
-                      <path d="m4.9 4.9 2.9 2.9" />
-                    </svg>
-                  ) : (
-                    <svg
-                      width={14}
-                      height={14}
-                      viewBox="0 0 24 24"
-                      fill="currentColor"
-                      stroke="currentColor"
-                      strokeWidth={2}
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      aria-hidden
-                    >
-                      <path
-                        d="M11.017 2.814a1 1 0 0 1 1.966 0l1.051 5.558a2 2 0 0 0 1.594 1.594l5.558 1.051a1 1 0 0 1 0 1.966l-5.558 1.051a2 2 0 0 0-1.594 1.594l-1.051 5.558a1 1 0 0 1-1.966 0l-1.051-5.558a2 2 0 0 0-1.594-1.594l-5.558-1.051a1 1 0 0 1 0-1.966l5.558-1.051a2 2 0 0 0 1.594-1.594z"
-                        stroke="none"
-                      />
-                      <path d="M20 2v4" fill="none" />
-                      <path d="M22 4h-4" fill="none" />
-                      <circle cx="4" cy="20" r="2" fill="none" />
-                    </svg>
-                  )}
+                  <CommitMessageEngineIcon
+                    engine={commitMessageMenuEngine}
+                    size={14}
+                    className={`commit-message-engine-icon${commitMessageLoading ? " commit-message-engine-icon--spinning" : ""}`}
+                  />
                 </button>
               </div>
               {commitMessageError && (

@@ -21,6 +21,21 @@ function createEditTool(id: string, path: string): Extract<ConversationItem, { k
   };
 }
 
+function createAskUserQuestionTool(
+  id: string,
+): Extract<ConversationItem, { kind: "tool" }> {
+  return {
+    id,
+    kind: "tool",
+    toolType: "toolCall",
+    title: "Tool: askuserquestion",
+    detail: JSON.stringify({
+      question: "Need confirmation",
+    }),
+    status: "completed",
+  };
+}
+
 describe("chat canvas smoke", () => {
   beforeAll(() => {
     if (!HTMLElement.prototype.scrollIntoView) {
@@ -174,5 +189,42 @@ describe("chat canvas smoke", () => {
     expect(screen.getByText("Replay this step?")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Plan" })).toBeNull();
     expect(screen.queryByText("Compare parity")).toBeNull();
+  });
+
+  it("keeps claude askuserquestion tool row as trace without plan-mode hint when pending request exists", () => {
+    const request: RequestUserInputRequest = {
+      workspace_id: "ws-claude",
+      request_id: "req-claude-1",
+      params: {
+        thread_id: "claude:thread-1",
+        turn_id: "turn-claude-1",
+        item_id: "ask-claude-1",
+        questions: [
+          {
+            id: "q-claude-1",
+            header: "Confirm",
+            question: "Continue on claude?",
+          },
+        ],
+      },
+    };
+
+    render(
+      <Messages
+        items={[createAskUserQuestionTool("tool-ask-1")]}
+        threadId="claude:thread-1"
+        workspaceId="ws-claude"
+        isThinking={false}
+        activeEngine="claude"
+        activeCollaborationModeId="code"
+        onUserInputSubmit={vi.fn()}
+        userInputRequests={[request]}
+        openTargets={[]}
+        selectedOpenAppId=""
+      />,
+    );
+
+    expect(screen.getByText("Continue on claude?")).toBeTruthy();
+    expect(screen.queryByText("This feature requires Plan mode")).toBeNull();
   });
 });

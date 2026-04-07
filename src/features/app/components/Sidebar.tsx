@@ -354,6 +354,9 @@ export function Sidebar({
       workspaceId: string;
       rows: ThreadRow[];
     }> = [];
+    if (pinnedThreadsVersion < 0) {
+      return [];
+    }
 
     workspaces.forEach((workspace) => {
       if (!isWorkspaceMatch(workspace)) {
@@ -686,6 +689,14 @@ export function Sidebar({
     });
   }, [t]);
 
+  const handleToggleThreadPin = useCallback((workspaceId: string, threadId: string) => {
+    if (isThreadPinned(workspaceId, threadId)) {
+      unpinThread(workspaceId, threadId);
+      return;
+    }
+    pinThread(workspaceId, threadId);
+  }, [isThreadPinned, pinThread, unpinThread]);
+
   const renderWorkspaceEntry = useCallback((entry: WorkspaceInfo) => {
     const threads = threadsByWorkspace[entry.id] ?? [];
     const isCollapsed = entry.settings.sidebarCollapsed;
@@ -756,6 +767,7 @@ export function Sidebar({
             getThreadTime={getThreadTime}
             isThreadPinned={isThreadPinned}
             isThreadAutoNaming={isThreadAutoNaming}
+            onToggleThreadPin={handleToggleThreadPin}
             getPinTimestamp={getPinTimestamp}
             onSelectWorkspace={onSelectWorkspace}
             onConnectWorkspace={onConnectWorkspace}
@@ -789,6 +801,7 @@ export function Sidebar({
             getThreadTime={getThreadTime}
             isThreadPinned={isThreadPinned}
             isThreadAutoNaming={isThreadAutoNaming}
+            onToggleThreadPin={handleToggleThreadPin}
             onToggleExpanded={handleToggleExpanded}
             onLoadOlderThreads={onLoadOlderThreads}
             onSelectThread={onSelectThread}
@@ -817,6 +830,7 @@ export function Sidebar({
     getPinTimestamp,
     getThreadRows,
     getThreadTime,
+    handleToggleThreadPin,
     handleToggleExpanded,
     handleToggleWorktreeSection,
     isThreadAutoNaming,
@@ -833,6 +847,8 @@ export function Sidebar({
     showThreadMenu,
     showWorkspaceMenu,
     showWorktreeMenu,
+    systemProxyEnabled,
+    systemProxyUrl,
     onToggleWorkspaceCollapse,
     renderHighlightedName,
     threadListCursorByWorkspace,
@@ -935,7 +951,12 @@ export function Sidebar({
                 <path d="M13 15.25H17.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
                 <path d="M15.25 17.5V13" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
               </svg>
-              <span className="sidebar-primary-nav-text">{t("sidebar.quickAutomation")}</span>
+              <span className="sidebar-primary-nav-text-with-badge">
+                <span className="sidebar-primary-nav-text">{t("sidebar.quickAutomation")}</span>
+                <span className="sidebar-primary-nav-badge" aria-hidden>
+                  {t("sidebar.quickAutomationBadge")}
+                </span>
+              </span>
             </button>
             <button
               type="button"
@@ -974,6 +995,7 @@ export function Sidebar({
                   getThreadTime={getThreadTime}
                   isThreadPinned={isThreadPinned}
                   isThreadAutoNaming={isThreadAutoNaming}
+                  onToggleThreadPin={handleToggleThreadPin}
                   onSelectThread={onSelectThread}
                   onShowThreadMenu={showThreadMenu}
                   deleteConfirmThreadId={deleteConfirmThreadId}

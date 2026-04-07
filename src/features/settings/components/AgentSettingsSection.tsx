@@ -1,8 +1,14 @@
-import { useEffect } from "react";
+import { useCallback, useEffect, useMemo, useRef, type KeyboardEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Pencil } from "lucide-react";
 import Trash2 from "lucide-react/dist/esm/icons/trash-2";
+import { AgentIcon } from "../../../components/AgentIcon";
+import {
+  AGENT_ICON_GROUPS,
+  DEFAULT_AGENT_ICON,
+  resolveAgentIcon,
+} from "../../../utils/agentIcons";
 import { useAgentManagement } from "../hooks/useAgentManagement";
 
 export type AgentSettingsSectionProps = {
@@ -37,6 +43,60 @@ export function AgentSettingsSection({ active }: AgentSettingsSectionProps) {
     hasImportConflicts,
     handleConfirmImportAgents,
   } = useAgentManagement();
+  const agentIconGroupRef = useRef<HTMLDivElement | null>(null);
+  const flatAgentIcons = useMemo(
+    () => AGENT_ICON_GROUPS.flatMap((group) => group.icons),
+    [],
+  );
+  const selectedDialogIcon = resolveAgentIcon(agentDialog.icon, DEFAULT_AGENT_ICON);
+  const updateDialogIcon = useCallback(
+    (icon: string) => {
+      setAgentDialog((prev) => ({
+        ...prev,
+        icon,
+      }));
+    },
+    [setAgentDialog],
+  );
+  const focusAgentIcon = useCallback((icon: string) => {
+    const target = agentIconGroupRef.current?.querySelector<HTMLButtonElement>(
+      `[data-agent-icon="${icon}"]`,
+    );
+    target?.focus();
+  }, []);
+  const handleAgentIconOptionKeyDown = useCallback(
+    (event: KeyboardEvent<HTMLButtonElement>, iconClass: string) => {
+      const currentIndex = flatAgentIcons.findIndex((icon) => icon === iconClass);
+      if (currentIndex < 0) {
+        return;
+      }
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        updateDialogIcon(iconClass);
+        return;
+      }
+      let nextIndex = currentIndex;
+      if (event.key === "ArrowRight" || event.key === "ArrowDown") {
+        nextIndex = (currentIndex + 1) % flatAgentIcons.length;
+      } else if (event.key === "ArrowLeft" || event.key === "ArrowUp") {
+        nextIndex = (currentIndex - 1 + flatAgentIcons.length) % flatAgentIcons.length;
+      } else if (event.key === "Home") {
+        nextIndex = 0;
+      } else if (event.key === "End") {
+        nextIndex = flatAgentIcons.length - 1;
+      } else {
+        return;
+      }
+      event.preventDefault();
+      const nextIcon = flatAgentIcons[nextIndex];
+      if (!nextIcon) {
+        return;
+      }
+      updateDialogIcon(nextIcon);
+      focusAgentIcon(nextIcon);
+    },
+    [flatAgentIcons, focusAgentIcon, updateDialogIcon],
+  );
 
   useEffect(() => {
     if (active) {
@@ -120,7 +180,12 @@ export function AgentSettingsSection({ active }: AgentSettingsSectionProps) {
                 <div key={agent.id} className="settings-agent-card">
                   <div className="settings-agent-card-main">
                     <div className="settings-agent-card-title">
-                      <span className="codicon codicon-robot" />
+                      <AgentIcon
+                        icon={agent.icon}
+                        seed={agent.id || agent.name}
+                        fallback={DEFAULT_AGENT_ICON}
+                        size={20}
+                      />
                       <span>{agent.name}</span>
                     </div>
                     {agent.prompt && (
@@ -191,6 +256,49 @@ export function AgentSettingsSection({ active }: AgentSettingsSectionProps) {
                   }
                 />
                 <div className="settings-agent-counter">{agentDialog.name.length}/20</div>
+              </div>
+              <div className="vendor-form-group">
+                <label>{t("settings.agent.dialog.icon")}</label>
+                <div
+                  className="settings-agent-icon-groups"
+                  role="radiogroup"
+                  aria-label={t("settings.agent.dialog.icon")}
+                  ref={agentIconGroupRef}
+                >
+                  {AGENT_ICON_GROUPS.map((group) => (
+                    <div key={group.id} className="settings-agent-icon-group">
+                      <div className="settings-agent-icon-group-label">
+                        {t(group.labelI18nKey)}
+                      </div>
+                      <div className="settings-agent-icon-grid">
+                        {group.icons.map((iconClass) => {
+                          const isSelected = selectedDialogIcon === iconClass;
+                          const iconTitle = iconClass.replace("codicon-", "");
+                          const iconAriaLabel = `${t(group.labelI18nKey)} ${iconTitle}`;
+                          return (
+                            <button
+                              key={iconClass}
+                              type="button"
+                              className={`settings-agent-icon-option${isSelected ? " is-selected" : ""}`}
+                              role="radio"
+                              onClick={() => updateDialogIcon(iconClass)}
+                              onKeyDown={(event) =>
+                                handleAgentIconOptionKeyDown(event, iconClass)
+                              }
+                              aria-checked={isSelected}
+                              aria-label={iconAriaLabel}
+                              tabIndex={isSelected ? 0 : -1}
+                              title={iconTitle}
+                              data-agent-icon={iconClass}
+                            >
+                              <AgentIcon icon={iconClass} size={27} />
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
               <div className="vendor-form-group">
                 <label htmlFor="agent-prompt-input">{t("settings.agent.dialog.prompt")}</label>

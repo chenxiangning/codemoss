@@ -198,8 +198,8 @@ function extractAgentMessageDeltaPayload(
   const threadId = extractThreadIdFromParams(params);
   if (
     isTextAliasMethod &&
-    !threadId.startsWith("claude:") &&
-    !threadId.startsWith("claude-pending-")
+    !isClaudeThreadId(threadId) &&
+    !isGeminiThreadId(threadId)
   ) {
     return null;
   }
@@ -212,7 +212,7 @@ function extractAgentMessageDeltaPayload(
       partObj.item_id ??
       turn.itemId ??
       turn.item_id ??
-      turn.id ??
+      (!isTextAliasMethod ? turn.id : "") ??
       "",
   ).trim();
   const itemId =
@@ -252,6 +252,34 @@ function toNumber(value: unknown): number {
     }
   }
   return 0;
+}
+
+function isClaudeThreadId(threadId: string): boolean {
+  return threadId.startsWith("claude:") || threadId.startsWith("claude-pending-");
+}
+
+function isGeminiThreadId(threadId: string): boolean {
+  return threadId.startsWith("gemini:") || threadId.startsWith("gemini-pending-");
+}
+
+function isAgentMessageSnapshotMethod(method: string): boolean {
+  return method === "item/started" || method === "item/updated";
+}
+
+function shouldIgnoreAgentMessageSnapshot(params: {
+  threadId: string;
+  itemType: string;
+  method: string;
+  threadAgentDeltaSeenRef: MutableRefObject<Record<string, true>>;
+}): boolean {
+  const { threadId, itemType, method, threadAgentDeltaSeenRef } = params;
+  if (itemType !== "agentMessage" || !isAgentMessageSnapshotMethod(method)) {
+    return false;
+  }
+  if (isClaudeThreadId(threadId)) {
+    return true;
+  }
+  return Boolean(threadAgentDeltaSeenRef.current[threadId]);
 }
 
 function extractTokenUsageFromNormalizedEvent(
@@ -298,6 +326,47 @@ function extractTokenUsageFromNormalizedEvent(
   };
 }
 
+type ThreadAgentCompletedItemTracker = Record<string, Record<string, true>>;
+
+function resolveAgentCompletionKey(itemId: string, text: string): string {
+  const normalizedItemId = itemId.trim();
+  if (normalizedItemId) {
+    return `item:${normalizedItemId}`;
+  }
+  const normalizedText = text.trim();
+  if (normalizedText) {
+    return `text:${normalizedText}`;
+  }
+  return "";
+}
+
+function hasThreadAgentCompletion(
+  trackerRef: MutableRefObject<ThreadAgentCompletedItemTracker>,
+  threadId: string,
+): boolean {
+  const threadTracker = trackerRef.current[threadId];
+  return Boolean(threadTracker && Object.keys(threadTracker).length > 0);
+}
+
+function markThreadAgentCompletionSeen(
+  trackerRef: MutableRefObject<ThreadAgentCompletedItemTracker>,
+  threadId: string,
+  itemId: string,
+  text: string,
+): boolean {
+  const completionKey = resolveAgentCompletionKey(itemId, text);
+  if (!completionKey) {
+    return true;
+  }
+  const threadTracker = trackerRef.current[threadId] ?? {};
+  if (threadTracker[completionKey]) {
+    return false;
+  }
+  threadTracker[completionKey] = true;
+  trackerRef.current[threadId] = threadTracker;
+  return true;
+}
+
 function routeNormalizedRealtimeEvent({
   handlers,
   workspaceId,
@@ -309,7 +378,7 @@ function routeNormalizedRealtimeEvent({
   workspaceId: string;
   event: NormalizedThreadEvent;
   threadAgentDeltaSeenRef: MutableRefObject<Record<string, true>>;
-  threadAgentCompletedSeenRef: MutableRefObject<Record<string, true>>;
+  threadAgentCompletedSeenRef: MutableRefObject<ThreadAgentCompletedItemTracker>;
 }): boolean {
   const threadId = event.threadId;
   const itemId = event.item.id;
@@ -337,6 +406,18 @@ function routeNormalizedRealtimeEvent({
       }
       return false;
     case "appendAgentMessageDelta": {
+      if (
+        shouldIgnoreAgentMessageSnapshot({
+          threadId,
+          itemType: "agentMessage",
+          method: event.sourceMethod,
+          threadAgentDeltaSeenRef,
+        })
+      ) {
+        // Claude always ignores snapshot-as-delta aliases.
+        // Other engines only ignore them after a real streaming delta has already arrived.
+        return true;
+      }
       const delta = event.delta ?? (event.item.kind === "message" ? event.item.text : "");
       if (!delta) {
         return false;
@@ -359,7 +440,7 @@ function routeNormalizedRealtimeEvent({
       if (tokenUsage) {
         handlers.onThreadTokenUsageUpdated?.(workspaceId, threadId, tokenUsage);
       }
-      if (threadAgentCompletedSeenRef.current[threadId]) {
+      if (!markThreadAgentCompletionSeen(threadAgentCompletedSeenRef, threadId, itemId, text)) {
         return true;
       }
       handlers.onAgentMessageCompleted?.({
@@ -368,7 +449,6 @@ function routeNormalizedRealtimeEvent({
         itemId,
         text,
       });
-      threadAgentCompletedSeenRef.current[threadId] = true;
       return true;
     }
     case "appendReasoningSummaryDelta": {
@@ -418,7 +498,7 @@ function tryRouteNormalizedRealtimeEvent({
   workspaceId: string;
   message: Record<string, unknown>;
   threadAgentDeltaSeenRef: MutableRefObject<Record<string, true>>;
-  threadAgentCompletedSeenRef: MutableRefObject<Record<string, true>>;
+  threadAgentCompletedSeenRef: MutableRefObject<ThreadAgentCompletedItemTracker>;
 }): boolean {
   const params = (message.params as Record<string, unknown> | undefined) ?? {};
   const turn = (params.turn as Record<string, unknown> | undefined) ?? {};
@@ -455,7 +535,7 @@ export function useAppServerEvents(
   options: UseAppServerEventsOptions = {},
 ) {
   const threadAgentDeltaSeenRef = useRef<Record<string, true>>({});
-  const threadAgentCompletedSeenRef = useRef<Record<string, true>>({});
+  const threadAgentCompletedSeenRef = useRef<ThreadAgentCompletedItemTracker>({});
   useEffect(() => {
     const useNormalizedRealtimeAdapters = options.useNormalizedRealtimeAdapters === true;
     const unlisten = subscribeAppServerEvents((payload) => {
@@ -558,8 +638,18 @@ export function useAppServerEvents(
         return;
       }
 
-      if (method === "item/tool/requestUserInput" && hasRequestId) {
+      if (method === "item/tool/requestUserInput") {
         const params = (message.params as Record<string, unknown>) ?? {};
+        // Prefer explicit requestId fields for requestUserInput events.
+        // Some runtimes may use top-level message.id for transport-level ids.
+        const requestIdValue = params.requestId ?? params.request_id ?? message.id;
+        const requestId =
+          typeof requestIdValue === "number" || typeof requestIdValue === "string"
+            ? requestIdValue
+            : null;
+        if (requestId === null) {
+          return;
+        }
         const fallbackThreadId = handlers.getActiveCodexThreadId?.(workspace_id) ?? "";
         const resolvedThreadId =
           extractThreadIdFromParams(params) || fallbackThreadId;
@@ -587,6 +677,9 @@ export function useAppServerEvents(
               question: String(question.question ?? ""),
               isOther: Boolean(question.isOther ?? question.is_other),
               isSecret: Boolean(question.isSecret ?? question.is_secret),
+              ...((question.multiSelect ?? question.multi_select)
+                ? { multiSelect: true }
+                : {}),
               options: options.length ? options : undefined,
             };
           })
@@ -751,7 +844,10 @@ export function useAppServerEvents(
         const turnId = String(turn?.id ?? params.turnId ?? params.turn_id ?? "");
         if (threadId) {
           const seenDelta = Boolean(threadAgentDeltaSeenRef.current[threadId]);
-          const seenCompleted = Boolean(threadAgentCompletedSeenRef.current[threadId]);
+          const seenCompleted = hasThreadAgentCompletion(
+            threadAgentCompletedSeenRef,
+            threadId,
+          );
           const result = (params.result as Record<string, unknown> | undefined) ?? undefined;
           const textFromResult = [
             typeof params.text === "string" ? params.text : "",
@@ -763,13 +859,22 @@ export function useAppServerEvents(
             .map((item) => item.trim())
             .find((item) => item.length > 0);
           if (!seenDelta && !seenCompleted && textFromResult) {
-            handlers.onAgentMessageCompleted?.({
-              workspaceId: workspace_id,
-              threadId,
-              itemId: turnId || `assistant-final-${Date.now()}`,
-              text: textFromResult,
-            });
-            threadAgentCompletedSeenRef.current[threadId] = true;
+            const fallbackItemId = turnId || `assistant-final-${Date.now()}`;
+            if (
+              markThreadAgentCompletionSeen(
+                threadAgentCompletedSeenRef,
+                threadId,
+                fallbackItemId,
+                textFromResult,
+              )
+            ) {
+              handlers.onAgentMessageCompleted?.({
+                workspaceId: workspace_id,
+                threadId,
+                itemId: fallbackItemId,
+                text: textFromResult,
+              });
+            }
           }
           delete threadAgentDeltaSeenRef.current[threadId];
           delete threadAgentCompletedSeenRef.current[threadId];
@@ -1050,14 +1155,21 @@ export function useAppServerEvents(
         if (threadId && item?.type === "agentMessage") {
           const itemId = String(item.id ?? "");
           const text = String(item.text ?? "");
-          if (itemId && !threadAgentCompletedSeenRef.current[threadId]) {
+          if (
+            itemId &&
+            markThreadAgentCompletionSeen(
+              threadAgentCompletedSeenRef,
+              threadId,
+              itemId,
+              text,
+            )
+          ) {
             handlers.onAgentMessageCompleted?.({
               workspaceId: workspace_id,
               threadId,
               itemId,
               text,
             });
-            threadAgentCompletedSeenRef.current[threadId] = true;
           }
         }
         return;
@@ -1074,6 +1186,16 @@ export function useAppServerEvents(
               )
             : undefined;
         if (threadId && item) {
+          if (
+            shouldIgnoreAgentMessageSnapshot({
+              threadId,
+              itemType: String(item.type ?? ""),
+              method,
+              threadAgentDeltaSeenRef,
+            })
+          ) {
+            return;
+          }
           handlers.onItemStarted?.(workspace_id, threadId, item);
         }
         return;
@@ -1090,6 +1212,16 @@ export function useAppServerEvents(
               )
             : undefined;
         if (threadId && item) {
+          if (
+            shouldIgnoreAgentMessageSnapshot({
+              threadId,
+              itemType: String(item.type ?? ""),
+              method,
+              threadAgentDeltaSeenRef,
+            })
+          ) {
+            return;
+          }
           handlers.onItemUpdated?.(workspace_id, threadId, item);
         }
         return;

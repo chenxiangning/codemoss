@@ -8,6 +8,7 @@
 export const STORAGE_KEYS = {
   CODEX_CUSTOM_MODELS: 'codex-custom-models',
   CLAUDE_CUSTOM_MODELS: 'claude-custom-models',
+  GEMINI_CUSTOM_MODELS: 'gemini-custom-models',
   /** @deprecated Use STORAGE_KEYS from features/models/constants instead for model mapping */
   CLAUDE_MODEL_MAPPING: 'claude-model-mapping',
 } as const;
@@ -101,7 +102,31 @@ export interface CodexProviderConfig {
   customModels?: CodexCustomModel[];
 }
 
-export type VendorTab = "claude" | "codex";
+export const GEMINI_AUTH_MODES = [
+  "custom",
+  "login_google",
+  "gemini_api_key",
+  "vertex_adc",
+  "vertex_service_account",
+  "vertex_api_key",
+] as const;
+
+export type GeminiAuthMode = (typeof GEMINI_AUTH_MODES)[number];
+
+export interface GeminiVendorDraft {
+  enabled: boolean;
+  envText: string;
+  authMode: GeminiAuthMode;
+  apiBaseUrl: string;
+  geminiApiKey: string;
+  googleApiKey: string;
+  googleCloudProject: string;
+  googleCloudLocation: string;
+  googleApplicationCredentials: string;
+  model: string;
+}
+
+export type VendorTab = "claude" | "codex" | "gemini";
 
 export interface ClaudeProviderPreset {
   id: string;

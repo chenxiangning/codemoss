@@ -13,10 +13,17 @@ import { CodexProviderDialog } from "./CodexProviderDialog";
 import { DeleteConfirmDialog } from "./DeleteConfirmDialog";
 import { CustomModelDialog } from "./CustomModelDialog";
 import { CurrentClaudeConfigCard } from "./CurrentClaudeConfigCard";
+import { CurrentCodexGlobalConfigCard } from "./CurrentCodexGlobalConfigCard";
+import { GeminiVendorPanel } from "./GeminiVendorPanel";
 import {
   consumeVendorModelManagerRequest,
   VENDOR_MODEL_MANAGER_REQUEST_EVENT,
 } from "../modelManagerRequest";
+import {
+  readGlobalCodexAuthJson,
+  readGlobalCodexConfigToml,
+} from "../../../services/tauri";
+import { EngineIcon } from "../../engine/components/EngineIcon";
 import { Tabs, TabsList, TabsTab, TabsPanel } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 
@@ -26,6 +33,12 @@ const LEGACY_CLAUDE_MAPPING_KEYS = [
 ];
 const CODEX_PLUGIN_MODELS_MIGRATION_MARKER =
   "codemoss-codex-plugin-models-migrated-v1";
+type ModelDialogTarget = "claude" | "codex" | "gemini";
+type VendorSettingsPanelProps = {
+  codexReloadStatus: "idle" | "reloading" | "applied" | "failed";
+  codexReloadMessage: string | null;
+  handleReloadCodexRuntimeConfig: () => Promise<void>;
+};
 
 function collectProviderCustomModels(
   providers: CodexProviderConfig[],
@@ -54,12 +67,26 @@ function collectProviderCustomModels(
   return merged;
 }
 
-export function VendorSettingsPanel() {
+export function VendorSettingsPanel({
+  codexReloadStatus,
+  codexReloadMessage,
+  handleReloadCodexRuntimeConfig,
+}: VendorSettingsPanelProps) {
   const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState<VendorTab>("claude");
-  const [dialogTarget, setDialogTarget] = useState<VendorTab>("claude");
+  const [dialogTarget, setDialogTarget] = useState<ModelDialogTarget>("claude");
   const [modelDialogOpen, setModelDialogOpen] = useState(false);
   const [modelDialogAddMode, setModelDialogAddMode] = useState(false);
+  const [codexGlobalConfigContent, setCodexGlobalConfigContent] = useState("");
+  const [codexGlobalConfigExists, setCodexGlobalConfigExists] = useState(false);
+  const [codexGlobalConfigTruncated, setCodexGlobalConfigTruncated] = useState(false);
+  const [codexGlobalConfigLoading, setCodexGlobalConfigLoading] = useState(false);
+  const [codexGlobalConfigError, setCodexGlobalConfigError] = useState<string | null>(null);
+  const [codexAuthConfigContent, setCodexAuthConfigContent] = useState("");
+  const [codexAuthConfigExists, setCodexAuthConfigExists] = useState(false);
+  const [codexAuthConfigTruncated, setCodexAuthConfigTruncated] = useState(false);
+  const [codexAuthConfigLoading, setCodexAuthConfigLoading] = useState(false);
+  const [codexAuthConfigError, setCodexAuthConfigError] = useState<string | null>(null);
   const didRunLegacyMigrationRef = useRef(false);
   const didSeedCodexPluginModelsRef = useRef(false);
 
@@ -67,8 +94,9 @@ export function VendorSettingsPanel() {
   const codex = useCodexProviderManagement();
   const claudeModels = usePluginModels(STORAGE_KEYS.CLAUDE_CUSTOM_MODELS);
   const codexModels = usePluginModels(STORAGE_KEYS.CODEX_CUSTOM_MODELS);
+  const geminiModels = usePluginModels(STORAGE_KEYS.GEMINI_CUSTOM_MODELS);
 
-  const openModelDialog = useCallback((target: VendorTab, addMode = false) => {
+  const openModelDialog = useCallback((target: ModelDialogTarget, addMode = false) => {
     setDialogTarget(target);
     setModelDialogAddMode(addMode);
     setModelDialogOpen(true);
@@ -79,12 +107,56 @@ export function VendorSettingsPanel() {
     setModelDialogAddMode(false);
   }, []);
 
+  const loadCodexGlobalConfig = useCallback(async () => {
+    setCodexGlobalConfigLoading(true);
+    setCodexAuthConfigLoading(true);
+    setCodexGlobalConfigError(null);
+    setCodexAuthConfigError(null);
+    const [configResult, authResult] = await Promise.allSettled([
+      readGlobalCodexConfigToml(),
+      readGlobalCodexAuthJson(),
+    ]);
+
+    if (configResult.status === "fulfilled") {
+      setCodexGlobalConfigContent(configResult.value.content);
+      setCodexGlobalConfigExists(configResult.value.exists);
+      setCodexGlobalConfigTruncated(configResult.value.truncated);
+    } else {
+      const error = configResult.reason;
+      setCodexGlobalConfigError(
+        error instanceof Error ? error.message : String(error),
+      );
+      setCodexGlobalConfigContent("");
+      setCodexGlobalConfigExists(false);
+      setCodexGlobalConfigTruncated(false);
+    }
+    setCodexGlobalConfigLoading(false);
+
+    if (authResult.status === "fulfilled") {
+      setCodexAuthConfigContent(authResult.value.content);
+      setCodexAuthConfigExists(authResult.value.exists);
+      setCodexAuthConfigTruncated(authResult.value.truncated);
+    } else {
+      const error = authResult.reason;
+      setCodexAuthConfigError(error instanceof Error ? error.message : String(error));
+      setCodexAuthConfigContent("");
+      setCodexAuthConfigExists(false);
+      setCodexAuthConfigTruncated(false);
+    }
+    setCodexAuthConfigLoading(false);
+  }, []);
+
   const applyPendingModelManagerRequest = useCallback(() => {
     const request = consumeVendorModelManagerRequest();
     if (!request) {
       return;
     }
-    const target: VendorTab = request.target === "codex" ? "codex" : "claude";
+    const target: ModelDialogTarget =
+      request.target === "codex"
+        ? "codex"
+        : request.target === "gemini"
+          ? "gemini"
+          : "claude";
     setActiveTab(target);
     openModelDialog(target, Boolean(request.addMode));
   }, [openModelDialog]);
@@ -100,6 +172,10 @@ export function VendorSettingsPanel() {
       );
     };
   }, [applyPendingModelManagerRequest]);
+
+  useEffect(() => {
+    void loadCodexGlobalConfig();
+  }, [loadCodexGlobalConfig]);
 
   useEffect(() => {
     if (didRunLegacyMigrationRef.current) {
@@ -182,7 +258,11 @@ export function VendorSettingsPanel() {
   }, [codex.codexProviders, codexModels.models.length, codexModels.updateModels]);
 
   const currentDialogModels =
-    dialogTarget === "codex" ? codexModels.models : claudeModels.models;
+    dialogTarget === "codex"
+      ? codexModels.models
+      : dialogTarget === "gemini"
+        ? geminiModels.models
+        : claudeModels.models;
 
   const handleDialogModelsChange = useCallback(
     (models: CodexCustomModel[]) => {
@@ -190,9 +270,13 @@ export function VendorSettingsPanel() {
         codexModels.updateModels(models);
         return;
       }
+      if (dialogTarget === "gemini") {
+        geminiModels.updateModels(models);
+        return;
+      }
       claudeModels.updateModels(models);
     },
-    [claudeModels, codexModels, dialogTarget],
+    [claudeModels, codexModels, dialogTarget, geminiModels],
   );
 
   return (
@@ -206,10 +290,22 @@ export function VendorSettingsPanel() {
       >
         <TabsList className="vendor-tabs">
           <TabsTab className="vendor-tab" value="claude">
-            Claude Code
+            <span className="vendor-tab-label">
+              <EngineIcon engine="claude" size={14} />
+              <span>Claude Code</span>
+            </span>
           </TabsTab>
           <TabsTab className="vendor-tab" value="codex">
-            Codex
+            <span className="vendor-tab-label">
+              <EngineIcon engine="codex" size={14} />
+              <span>Codex</span>
+            </span>
+          </TabsTab>
+          <TabsTab className="vendor-tab" value="gemini">
+            <span className="vendor-tab-label">
+              <EngineIcon engine="gemini" size={14} />
+              <span>Gemini CLI</span>
+            </span>
           </TabsTab>
         </TabsList>
 
@@ -246,6 +342,7 @@ export function VendorSettingsPanel() {
                   openModelDialog("claude");
                 }}
               >
+                <PackagePlus size={14} />
                 {t("settings.vendor.manageModels")}
               </Button>
             </div>
@@ -280,6 +377,60 @@ export function VendorSettingsPanel() {
 
         <TabsPanel value="codex">
           <div className="vendor-tab-content">
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={async () => {
+                  try {
+                    await handleReloadCodexRuntimeConfig();
+                  } finally {
+                    await loadCodexGlobalConfig();
+                  }
+                }}
+                disabled={codexReloadStatus === "reloading"}
+              >
+                {codexReloadStatus === "reloading"
+                  ? t("settings.codexRuntimeReloading")
+                  : t("settings.codexRuntimeReload")}
+              </Button>
+              <span
+                style={{
+                  fontSize: 13,
+                  color: "var(--text-secondary)",
+                  lineHeight: 1.4,
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {t("settings.codexRuntimeReloadHint")}
+              </span>
+            </div>
+            {codexReloadStatus !== "idle" && (
+              <div className="settings-help">
+                {codexReloadStatus === "failed"
+                  ? t("settings.codexRuntimeReloadFailed")
+                  : t("settings.codexRuntimeReloadApplied")}
+                {codexReloadMessage ? `: ${codexReloadMessage}` : ""}
+              </div>
+            )}
+            {codex.codexProviderError && (
+              <div className="settings-help">
+                {t("settings.vendor.codexProviderActionFailed")}:{" "}
+                {codex.codexProviderError}
+              </div>
+            )}
+            <CurrentCodexGlobalConfigCard
+              configLoading={codexGlobalConfigLoading}
+              configContent={codexGlobalConfigContent}
+              configExists={codexGlobalConfigExists}
+              configTruncated={codexGlobalConfigTruncated}
+              configError={codexGlobalConfigError}
+              authLoading={codexAuthConfigLoading}
+              authContent={codexAuthConfigContent}
+              authExists={codexAuthConfigExists}
+              authTruncated={codexAuthConfigTruncated}
+              authError={codexAuthConfigError}
+            />
             <div
               className="vendor-plugin-model-entry"
               role="button"
@@ -311,6 +462,7 @@ export function VendorSettingsPanel() {
                   openModelDialog("codex");
                 }}
               >
+                <PackagePlus size={14} />
                 {t("settings.vendor.manageModels")}
               </Button>
             </div>
@@ -336,6 +488,48 @@ export function VendorSettingsPanel() {
             />
           </div>
         </TabsPanel>
+
+        <TabsPanel value="gemini">
+          <div className="vendor-tab-content">
+            <div
+              className="vendor-plugin-model-entry"
+              role="button"
+              tabIndex={0}
+              onClick={() => openModelDialog("gemini")}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  openModelDialog("gemini");
+                }
+              }}
+            >
+              <div className="vendor-plugin-model-entry-main">
+                <PackagePlus size={16} />
+                <span className="vendor-plugin-model-entry-title">
+                  {t("settings.vendor.pluginModels")}
+                </span>
+                {geminiModels.models.length > 0 && (
+                  <span className="vendor-plugin-model-entry-count">
+                    {geminiModels.models.length}
+                  </span>
+                )}
+              </div>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  openModelDialog("gemini");
+                }}
+              >
+                <PackagePlus size={14} />
+                {t("settings.vendor.manageModels")}
+              </Button>
+            </div>
+            <GeminiVendorPanel />
+          </div>
+        </TabsPanel>
+
       </Tabs>
 
       <CustomModelDialog

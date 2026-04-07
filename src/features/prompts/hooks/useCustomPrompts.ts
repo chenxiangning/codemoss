@@ -9,6 +9,10 @@ import {
   movePrompt as movePromptService,
   updatePrompt as updatePromptService,
 } from "../../../services/tauri";
+import {
+  dispatchCustomPromptsChanged,
+  subscribeCustomPromptsChanged,
+} from "../promptEvents";
 
 type UseCustomPromptsOptions = {
   activeWorkspace: WorkspaceInfo | null;
@@ -61,40 +65,7 @@ export function useCustomPrompts({ activeWorkspace, onDebug }: UseCustomPromptsO
         label: "prompts/list response",
         payload: response,
       });
-      const responsePayload = response as any;
-      let rawPrompts: any[] = [];
-      if (Array.isArray(response)) {
-        rawPrompts = response;
-      } else if (Array.isArray(responsePayload?.prompts)) {
-        rawPrompts = responsePayload.prompts;
-      } else if (Array.isArray(responsePayload?.result?.prompts)) {
-        rawPrompts = responsePayload.result.prompts;
-      } else if (Array.isArray(responsePayload?.result)) {
-        rawPrompts = responsePayload.result;
-      }
-      const data: CustomPromptOption[] = rawPrompts.map((item: any) => {
-        let argumentHint: string | undefined;
-        if (item.argumentHint) {
-          argumentHint = String(item.argumentHint);
-        } else if (item.argument_hint) {
-          argumentHint = String(item.argument_hint);
-        }
-
-        let scope: CustomPromptOption["scope"];
-        if (item.scope === "workspace" || item.scope === "global") {
-          scope = item.scope;
-        }
-
-        return {
-          name: String(item.name ?? ""),
-          path: String(item.path ?? ""),
-          description: item.description ? String(item.description) : undefined,
-          argumentHint,
-          content: String(item.content ?? ""),
-          scope,
-        };
-      });
-      setPrompts(data);
+      setPrompts(Array.isArray(response) ? response : []);
       lastFetchedWorkspaceId.current = workspaceId;
     } catch (error) {
       logPromptError("client-prompts-list-error", "prompts/list error", error);
@@ -111,6 +82,18 @@ export function useCustomPrompts({ activeWorkspace, onDebug }: UseCustomPromptsO
       return;
     }
     refreshPrompts();
+  }, [isConnected, refreshPrompts, workspaceId]);
+
+  useEffect(() => {
+    if (!workspaceId || !isConnected) {
+      return;
+    }
+    return subscribeCustomPromptsChanged((changedWorkspaceId) => {
+      if (changedWorkspaceId !== workspaceId) {
+        return;
+      }
+      void refreshPrompts();
+    });
   }, [isConnected, refreshPrompts, workspaceId]);
 
   const promptOptions = useMemo(
@@ -137,6 +120,7 @@ export function useCustomPrompts({ activeWorkspace, onDebug }: UseCustomPromptsO
       try {
         await createPromptService(id, data);
         await refreshPrompts();
+        dispatchCustomPromptsChanged(id);
       } catch (error) {
         logPromptError("client-prompts-create-error", "prompts/create error", error);
         throw error;
@@ -157,6 +141,7 @@ export function useCustomPrompts({ activeWorkspace, onDebug }: UseCustomPromptsO
       try {
         await updatePromptService(id, data);
         await refreshPrompts();
+        dispatchCustomPromptsChanged(id);
       } catch (error) {
         logPromptError("client-prompts-update-error", "prompts/update error", error);
         throw error;
@@ -171,6 +156,7 @@ export function useCustomPrompts({ activeWorkspace, onDebug }: UseCustomPromptsO
       try {
         await deletePromptService(id, path);
         await refreshPrompts();
+        dispatchCustomPromptsChanged(id);
       } catch (error) {
         logPromptError("client-prompts-delete-error", "prompts/delete error", error);
         throw error;
@@ -185,6 +171,7 @@ export function useCustomPrompts({ activeWorkspace, onDebug }: UseCustomPromptsO
       try {
         await movePromptService(id, data);
         await refreshPrompts();
+        dispatchCustomPromptsChanged(id);
       } catch (error) {
         logPromptError("client-prompts-move-error", "prompts/move error", error);
         throw error;

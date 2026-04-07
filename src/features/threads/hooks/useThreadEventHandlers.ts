@@ -12,7 +12,9 @@ import { useThreadItemEvents } from "./useThreadItemEvents";
 import { useThreadTurnEvents } from "./useThreadTurnEvents";
 import { useThreadUserInputEvents } from "./useThreadUserInputEvents";
 import { stripBackendErrorPrefix } from "../utils/networkErrors";
+import { captureClaudeMcpRuntimeSnapshotFromRaw } from "../utils/claudeMcpRuntimeSnapshot";
 import type { ThreadAction } from "./useThreadsReducer";
+import { isDebugLightPathEnabled } from "../utils/realtimePerfFlags";
 
 type ThreadEventHandlersOptions = {
   activeThreadId: string | null;
@@ -59,8 +61,9 @@ type ThreadEventHandlersOptions = {
   ) => Promise<void>;
   resolvePendingThreadForSession?: (
     workspaceId: string,
-    engine: "claude" | "opencode",
+    engine: "claude" | "gemini" | "opencode",
   ) => string | null;
+  getActiveTurnIdForThread?: (threadId: string) => string | null;
   renamePendingMemoryCaptureKey: (
     oldThreadId: string,
     newThreadId: string,
@@ -75,6 +78,41 @@ type ThreadEventHandlersOptions = {
     event: CollaborationModeResolvedRequest,
   ) => void;
 };
+
+function isThreadSessionMirrorEnabled() {
+  if (typeof window === "undefined") {
+    return false;
+  }
+  try {
+    const value = window.localStorage.getItem("mossx.debug.threadSessionMirror");
+    if (!value) {
+      return false;
+    }
+    const normalized = value.trim().toLowerCase();
+    return normalized === "1" || normalized === "true" || normalized === "on";
+  } catch {
+    return false;
+  }
+}
+
+function shouldEmitServerDebugEntry(method: string) {
+  if (!isDebugLightPathEnabled()) {
+    return true;
+  }
+  return (
+    method === "error" ||
+    method === "turn/error" ||
+    method === "codex/stderr" ||
+    method === "turn/started" ||
+    method === "turn/completed" ||
+    method === "thread/started" ||
+    method === "thread/compacting" ||
+    method === "thread/compacted" ||
+    method === "thread/compactionFailed" ||
+    method.includes("warn") ||
+    method.includes("warning")
+  );
+}
 
 export function useThreadEventHandlers({
   activeThreadId,
@@ -99,6 +137,7 @@ export function useThreadEventHandlers({
   renameAutoTitlePendingKey,
   renameThreadTitleMapping,
   resolvePendingThreadForSession,
+  getActiveTurnIdForThread,
   renamePendingMemoryCaptureKey,
   onAgentMessageCompletedExternal,
   onCollaborationModeResolved,
@@ -248,6 +287,7 @@ export function useThreadEventHandlers({
     onContextCompactionFailed,
     onThreadSessionIdUpdated,
   } = useThreadTurnEvents({
+    activeThreadId,
     dispatch,
     getCustomName,
     isAutoTitlePending,
@@ -264,6 +304,7 @@ export function useThreadEventHandlers({
     renameAutoTitlePendingKey,
     renameThreadTitleMapping,
     resolvePendingThreadForSession,
+    getActiveTurnIdForThread,
     renamePendingMemoryCaptureKey,
     onDebug,
   });
@@ -294,13 +335,23 @@ export function useThreadEventHandlers({
       const method = String(event.message?.method ?? "");
       const params = (event.message?.params as Record<string, unknown> | undefined) ?? {};
       const inferredSource = method === "codex/stderr" ? "stderr" : "event";
-      onDebug?.({
-        id: `${Date.now()}-server-event`,
-        timestamp: Date.now(),
-        source: inferredSource,
-        label: method || "event",
-        payload: event,
-      });
+      const mirrorEnabled = isThreadSessionMirrorEnabled();
+      if (onDebug && (mirrorEnabled || shouldEmitServerDebugEntry(method))) {
+        onDebug({
+          id: `${Date.now()}-server-event`,
+          timestamp: Date.now(),
+          source: inferredSource,
+          label: method || "event",
+          payload: mirrorEnabled
+            ? event
+            : {
+                workspaceId: event.workspace_id,
+                method: method || "event",
+                threadId: String(params.threadId ?? params.thread_id ?? ""),
+                turnId: String(params.turnId ?? params.turn_id ?? ""),
+              },
+        });
+      }
 
       if (method === "codex/stderr") {
         const rawMessage = String(params.message ?? "").trim();
@@ -311,6 +362,28 @@ export function useThreadEventHandlers({
             source: "stderr",
             label: "stderr/raw",
             payload: stripBackendErrorPrefix(rawMessage),
+          });
+        }
+      }
+
+      if (method === "claude/raw") {
+        const snapshot = captureClaudeMcpRuntimeSnapshotFromRaw(
+          event.workspace_id,
+          params,
+        );
+        if (snapshot && onDebug) {
+          onDebug({
+            id: `${Date.now()}-claude-mcp-snapshot`,
+            timestamp: Date.now(),
+            source: "event",
+            label: "claude/mcp-runtime-snapshot",
+            payload: {
+              workspaceId: snapshot.workspaceId,
+              sessionId: snapshot.sessionId,
+              capturedAt: snapshot.capturedAt,
+              toolsCount: snapshot.tools.length,
+              servers: snapshot.mcpServers,
+            },
           });
         }
       }

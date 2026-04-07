@@ -170,6 +170,9 @@ export function findNextPromptArgCursor(text: string, cursor: number) {
   }
   for (let i = 0; i < ranges.length; i += 1) {
     const range = ranges[i];
+    if (!range) {
+      continue;
+    }
     if (cursor >= range.start && cursor <= range.end) {
       return ranges[i + 1]?.start ?? null;
     }

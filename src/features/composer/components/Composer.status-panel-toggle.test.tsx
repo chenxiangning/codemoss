@@ -138,6 +138,16 @@ describe("Composer status panel toggle visibility", () => {
     ).toBe("true");
   });
 
+  it("shows status panel toggle on gemini engine", () => {
+    render(<ComposerHarness selectedEngine="gemini" />);
+    expect(screen.getByTestId("status-panel")).not.toBeNull();
+    expect(
+      screen
+        .getByTestId("chat-input-box-adapter")
+        .getAttribute("data-show-status-panel-toggle"),
+    ).toBe("true");
+  });
+
   it("renders review preset prompt in ChatInputBoxAdapter flow", () => {
     const { container } = render(<ComposerHarness selectedEngine="codex" />);
     expect(container.querySelector(".review-inline")).toBeTruthy();

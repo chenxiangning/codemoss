@@ -63,8 +63,9 @@ export function createTextFragment(text: string): DocumentFragment {
     if (i > 0) {
       fragment.appendChild(document.createElement('br'));
     }
-    if (lines[i]) {
-      fragment.appendChild(document.createTextNode(lines[i]));
+    const line = lines[i] ?? '';
+    if (line) {
+      fragment.appendChild(document.createTextNode(line));
     }
   }
   return fragment;

@@ -750,6 +750,9 @@ fn parse_codex_session_summary(
     let mut usage = LocalUsageUsageData::default();
     let mut summary: Option<String> = None;
     let mut model: Option<String> = None;
+    let mut source: Option<String> = None;
+    let mut provider: Option<String> = None;
+    let mut canonical_session_id: Option<String> = None;
     let mut first_timestamp = 0_i64;
     let mut previous_totals: Option<UsageTotals> = None;
     let mut match_known = workspace_path.is_none();
@@ -778,6 +781,9 @@ fn parse_codex_session_summary(
             .unwrap_or("");
 
         if entry_type == "session_meta" || entry_type == "turn_context" {
+            if canonical_session_id.is_none() {
+                canonical_session_id = extract_session_id_from_session_value(&value);
+            }
             if let Some(cwd) = extract_cwd(&value) {
                 if let Some(filter) = workspace_path {
                     matches_workspace = path_matches_workspace(&cwd, filter);
@@ -786,6 +792,14 @@ fn parse_codex_session_summary(
                         break;
                     }
                 }
+            }
+            let (detected_source, detected_provider) =
+                extract_source_provider_from_session_value(&value);
+            if source.is_none() {
+                source = detected_source;
+            }
+            if provider.is_none() {
+                provider = detected_provider;
             }
         }
 
@@ -924,11 +938,12 @@ fn parse_codex_session_summary(
         return Ok(None);
     }
 
-    let session_id = path
-        .file_stem()
-        .and_then(|name| name.to_str())
-        .unwrap_or_default()
-        .to_string();
+    let session_id = canonical_session_id.unwrap_or_else(|| {
+        path.file_stem()
+            .and_then(|name| name.to_str())
+            .unwrap_or_default()
+            .to_string()
+    });
     let model = model.unwrap_or_else(|| "gpt-5.1".to_string());
     let cost = calculate_usage_cost(&usage, codex_cost_rates());
     let timestamp = if first_timestamp > 0 {
@@ -947,7 +962,141 @@ fn parse_codex_session_summary(
         usage,
         cost,
         summary,
+        source,
+        provider,
     }))
+}
+
+fn normalize_non_empty_string(value: Option<&str>) -> Option<String> {
+    value
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string)
+}
+
+fn extract_session_id_from_session_value(value: &Value) -> Option<String> {
+    let root = value.as_object()?;
+    let payload = root.get("payload").and_then(Value::as_object);
+    let session_meta = payload
+        .and_then(|payload| payload.get("session_meta"))
+        .and_then(Value::as_object)
+        .or_else(|| {
+            payload
+                .and_then(|payload| payload.get("sessionMeta"))
+                .and_then(Value::as_object)
+        });
+
+    normalize_non_empty_string(
+        root.get("session_id")
+            .or_else(|| root.get("sessionId"))
+            .or_else(|| root.get("id"))
+            .and_then(Value::as_str),
+    )
+    .or_else(|| {
+        payload.and_then(|item| read_string_from_object(item, &["id", "session_id", "sessionId"]))
+    })
+    .or_else(|| {
+        session_meta
+            .and_then(|item| read_string_from_object(item, &["id", "session_id", "sessionId"]))
+    })
+}
+
+fn read_string_from_object(
+    object: &serde_json::Map<String, Value>,
+    keys: &[&str],
+) -> Option<String> {
+    for key in keys {
+        if let Some(found) = normalize_non_empty_string(object.get(*key).and_then(Value::as_str)) {
+            return Some(found);
+        }
+    }
+    None
+}
+
+fn normalize_originator_source(value: Option<String>) -> Option<String> {
+    let value = value?;
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    let lower = trimmed.to_ascii_lowercase();
+    if lower == "mossx" || lower == "codemoss" {
+        return Some("mossx".to_string());
+    }
+    if lower == "codex_cli_rs" {
+        return Some("cli".to_string());
+    }
+    if lower.contains("codex desktop") {
+        return Some("desktop".to_string());
+    }
+    Some(trimmed.to_string())
+}
+
+fn extract_source_provider_from_session_value(value: &Value) -> (Option<String>, Option<String>) {
+    let Some(root) = value.as_object() else {
+        return (None, None);
+    };
+    let payload = root.get("payload").and_then(Value::as_object);
+    let session_meta = payload
+        .and_then(|payload| payload.get("session_meta"))
+        .and_then(Value::as_object)
+        .or_else(|| {
+            payload
+                .and_then(|payload| payload.get("sessionMeta"))
+                .and_then(Value::as_object)
+        });
+    let originator = normalize_originator_source(
+        read_string_from_object(root, &["originator", "origin", "client", "app"])
+            .or_else(|| {
+                payload.and_then(|item| read_string_from_object(item, &["originator", "origin"]))
+            })
+            .or_else(|| {
+                session_meta
+                    .and_then(|item| read_string_from_object(item, &["originator", "origin"]))
+            }),
+    );
+
+    let source = read_string_from_object(root, &["source", "sessionSource"])
+        .or_else(|| {
+            payload.and_then(|item| read_string_from_object(item, &["source", "sessionSource"]))
+        })
+        .or_else(|| {
+            session_meta
+                .and_then(|item| read_string_from_object(item, &["source", "sessionSource"]))
+        });
+    let source = match (source, originator) {
+        (Some(source), Some(originator))
+            if source.eq_ignore_ascii_case("vscode")
+                && !originator.eq_ignore_ascii_case("vscode") =>
+        {
+            Some(originator)
+        }
+        (None, Some(originator)) => Some(originator),
+        (source, _) => source,
+    };
+
+    let provider = read_string_from_object(
+        root,
+        &["provider", "providerId", "model_provider", "modelProvider"],
+    )
+    .or_else(|| {
+        payload.and_then(|item| {
+            read_string_from_object(
+                item,
+                &["provider", "providerId", "model_provider", "modelProvider"],
+            )
+        })
+    })
+    .or_else(|| {
+        session_meta.and_then(|item| {
+            read_string_from_object(
+                item,
+                &["provider", "providerId", "model_provider", "modelProvider"],
+            )
+        })
+    });
+
+    (source, provider)
 }
 
 fn truncate_summary(text: &str) -> Option<String> {
@@ -1126,6 +1275,8 @@ fn parse_claude_session_summary(path: &Path) -> Result<Option<LocalUsageSessionS
         usage,
         cost: total_cost,
         summary,
+        source: None,
+        provider: None,
     }))
 }
 
@@ -2135,6 +2286,107 @@ mod tests {
             entries[1]["payload"]["type"],
             Value::String("reasoning".to_string())
         );
+    }
+
+    #[test]
+    fn parse_codex_session_summary_extracts_source_provider_metadata() {
+        let root = make_temp_sessions_root();
+        let day_key = "2026-01-19";
+        let workspace_path = Path::new("/tmp/project-alpha");
+        let session_path = write_named_session_file(
+            &root,
+            day_key,
+            "session-source-meta",
+            &[
+                r#"{"timestamp":"2026-01-19T12:00:00.000Z","type":"session_meta","payload":{"cwd":"/tmp/project-alpha","source":"custom","provider":"openai"}}"#
+                    .to_string(),
+                r#"{"timestamp":"2026-01-19T12:00:01.000Z","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":12,"cached_input_tokens":0,"output_tokens":4}}}}"#
+                    .to_string(),
+            ],
+        );
+
+        let summary = parse_codex_session_summary(session_path.as_path(), Some(workspace_path))
+            .expect("parse summary")
+            .expect("summary exists");
+
+        assert_eq!(summary.source.as_deref(), Some("custom"));
+        assert_eq!(summary.provider.as_deref(), Some("openai"));
+    }
+
+    #[test]
+    fn parse_codex_session_summary_prefers_session_meta_id_over_rollout_filename() {
+        let root = make_temp_sessions_root();
+        let day_key = "2026-01-19";
+        let workspace_path = Path::new("/tmp/project-alpha");
+        let session_path = write_named_session_file(
+            &root,
+            day_key,
+            "rollout-2026-01-19T12-00-00-session-alpha",
+            &[
+                r#"{"timestamp":"2026-01-19T12:00:00.000Z","type":"session_meta","payload":{"id":"session-alpha","cwd":"/tmp/project-alpha","source":"custom","provider":"openai"}}"#
+                    .to_string(),
+                r#"{"timestamp":"2026-01-19T12:00:01.000Z","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":12,"cached_input_tokens":0,"output_tokens":4}}}}"#
+                    .to_string(),
+            ],
+        );
+
+        let summary = parse_codex_session_summary(session_path.as_path(), Some(workspace_path))
+            .expect("parse summary")
+            .expect("summary exists");
+
+        assert_eq!(summary.session_id, "session-alpha");
+    }
+
+    #[test]
+    fn parse_codex_session_summary_falls_back_to_filename_when_session_meta_id_missing() {
+        let root = make_temp_sessions_root();
+        let day_key = "2026-01-19";
+        let workspace_path = Path::new("/tmp/project-alpha");
+        let session_path = write_named_session_file(
+            &root,
+            day_key,
+            "rollout-2026-01-19T12-00-00-session-alpha",
+            &[
+                r#"{"timestamp":"2026-01-19T12:00:00.000Z","type":"session_meta","payload":{"cwd":"/tmp/project-alpha","source":"custom","provider":"openai"}}"#
+                    .to_string(),
+                r#"{"timestamp":"2026-01-19T12:00:01.000Z","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":12,"cached_input_tokens":0,"output_tokens":4}}}}"#
+                    .to_string(),
+            ],
+        );
+
+        let summary = parse_codex_session_summary(session_path.as_path(), Some(workspace_path))
+            .expect("parse summary")
+            .expect("summary exists");
+
+        assert_eq!(
+            summary.session_id,
+            "rollout-2026-01-19T12-00-00-session-alpha"
+        );
+    }
+
+    #[test]
+    fn parse_codex_session_summary_prefers_originator_over_vscode_source() {
+        let root = make_temp_sessions_root();
+        let day_key = "2026-01-19";
+        let workspace_path = Path::new("/tmp/project-alpha");
+        let session_path = write_named_session_file(
+            &root,
+            day_key,
+            "session-originator-meta",
+            &[
+                r#"{"timestamp":"2026-01-19T12:00:00.000Z","type":"session_meta","payload":{"cwd":"/tmp/project-alpha","source":"vscode","originator":"mossx","model_provider":"openai"}}"#
+                    .to_string(),
+                r#"{"timestamp":"2026-01-19T12:00:01.000Z","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":12,"cached_input_tokens":0,"output_tokens":4}}}}"#
+                    .to_string(),
+            ],
+        );
+
+        let summary = parse_codex_session_summary(session_path.as_path(), Some(workspace_path))
+            .expect("parse summary")
+            .expect("summary exists");
+
+        assert_eq!(summary.source.as_deref(), Some("mossx"));
+        assert_eq!(summary.provider.as_deref(), Some("openai"));
     }
 
     #[cfg(windows)]

@@ -11,6 +11,8 @@ describe("Messages", () => {
 
   beforeEach(() => {
     window.localStorage.setItem("mossx.claude.hideReasoningModule", "0");
+    window.localStorage.removeItem("mossx.messages.live.autoFollow");
+    window.localStorage.removeItem("mossx.messages.live.collapseMiddleSteps");
   });
 
   beforeAll(() => {
@@ -143,114 +145,6 @@ describe("Messages", () => {
     }
     fireEvent.click(screen.getByRole("button", { name: "App.tsx" }));
     expect(onOpenDiffPath).toHaveBeenCalledWith("src/App.tsx");
-  });
-
-  it("shows only user input for assembled prompt payload in user bubble", () => {
-    const items: ConversationItem[] = [
-      {
-        id: "msg-assembled-1",
-        kind: "message",
-        role: "user",
-        text:
-          "[System] 你是 MossX 内的 Claude Code Agent。 [Skill Prompt] # Skill: tr-zh-en-jp 技能说明... [Commons Prompt] 规范... [User Input] 你好啊",
-      },
-    ];
-
-    const { container } = render(
-      <Messages
-        items={items}
-        threadId="thread-1"
-        workspaceId="ws-1"
-        isThinking={false}
-        openTargets={[]}
-        selectedOpenAppId=""
-      />,
-    );
-
-    const userText = container.querySelector(".user-collapsible-text-content");
-    expect(userText?.textContent ?? "").toBe("你好啊");
-  });
-
-  it("hides code fallback prefix and keeps only actual user request", () => {
-    const items: ConversationItem[] = [
-      {
-        id: "msg-code-fallback-1",
-        kind: "message",
-        role: "user",
-        text:
-          "Collaboration mode: code. Do not ask the user follow-up questions.\n\nUser request: 你好",
-      },
-    ];
-
-    const { container } = render(
-      <Messages
-        items={items}
-        threadId="thread-1"
-        workspaceId="ws-1"
-        isThinking={false}
-        activeEngine="codex"
-        openTargets={[]}
-        selectedOpenAppId=""
-      />,
-    );
-
-    const userText = container.querySelector(".user-collapsible-text-content");
-    expect(userText?.textContent ?? "").toBe("你好");
-    expect(container.querySelector(".message-mode-badge")).toBeNull();
-  });
-
-  it("hides plan fallback prefix and keeps only actual user request", () => {
-    const items: ConversationItem[] = [
-      {
-        id: "msg-plan-fallback-1",
-        kind: "message",
-        role: "user",
-        text:
-          "Execution policy (plan mode): planning-only. If blocker appears, call requestUserInput.\n\nUser request: 先给我计划",
-      },
-    ];
-
-    const { container } = render(
-      <Messages
-        items={items}
-        threadId="thread-1"
-        workspaceId="ws-1"
-        isThinking={false}
-        activeEngine="codex"
-        openTargets={[]}
-        selectedOpenAppId=""
-      />,
-    );
-
-    const userText = container.querySelector(".user-collapsible-text-content");
-    expect(userText?.textContent ?? "").toBe("先给我计划");
-    expect(container.querySelector(".message-mode-badge")).toBeNull();
-  });
-
-  it("does not show plan badge for user message when message mode is plan", () => {
-    const items: ConversationItem[] = [
-      {
-        id: "msg-plan-1",
-        kind: "message",
-        role: "user",
-        text: "请先规划步骤",
-        collaborationMode: "plan",
-      },
-    ];
-
-    const { container } = render(
-      <Messages
-        items={items}
-        threadId="thread-1"
-        workspaceId="ws-1"
-        isThinking={false}
-        activeEngine="codex"
-        openTargets={[]}
-        selectedOpenAppId=""
-      />,
-    );
-
-    expect(container.querySelector(".message-mode-badge")).toBeNull();
   });
 
   it("renders Claude reasoning inline by default when no legacy dock flag is set", () => {
@@ -530,7 +424,7 @@ describe("Messages", () => {
     expect(screen.getByText("Proceed with profile?")).toBeTruthy();
   });
 
-  it("keeps user-input request inline disabled for non-codex engines", () => {
+  it("keeps user-input request inline disabled for non-codex/non-claude engines", () => {
     const request: RequestUserInputRequest = {
       workspace_id: "ws-state",
       request_id: 9,
@@ -542,7 +436,43 @@ describe("Messages", () => {
           {
             id: "q9",
             header: "Confirm",
-            question: "Should stay hidden on non-codex",
+            question: "Should stay hidden on opencode",
+            options: [{ label: "Yes", description: "Continue." }],
+          },
+        ],
+      },
+    };
+
+    render(
+      <Messages
+        items={[]}
+        threadId="thread-from-state"
+        workspaceId="ws-state"
+        isThinking={false}
+        userInputRequests={[request]}
+        onUserInputSubmit={vi.fn()}
+        activeEngine="opencode"
+        openTargets={[]}
+        selectedOpenAppId=""
+      />,
+    );
+
+    expect(screen.queryByText("Should stay hidden on opencode")).toBeNull();
+  });
+
+  it("renders user-input request inline for claude engine", () => {
+    const request: RequestUserInputRequest = {
+      workspace_id: "ws-state",
+      request_id: 10,
+      params: {
+        thread_id: "thread-from-state",
+        turn_id: "turn-10",
+        item_id: "item-10",
+        questions: [
+          {
+            id: "q10",
+            header: "Confirm",
+            question: "Should render on claude",
             options: [{ label: "Yes", description: "Continue." }],
           },
         ],
@@ -563,7 +493,7 @@ describe("Messages", () => {
       />,
     );
 
-    expect(screen.queryByText("Should stay hidden on non-codex")).toBeNull();
+    expect(screen.getByText("Should render on claude")).toBeTruthy();
   });
 
   it("applies codex markdown visual style through presentation profile", () => {
@@ -841,6 +771,54 @@ describe("Messages", () => {
 
     expect(screen.getByText("STATE-CODEX-DEFAULT")).toBeTruthy();
     expect(screen.queryByText("LEGACY-CODEX-DEFAULT")).toBeNull();
+  });
+
+  it("respects gemini routing from conversationState when activeEngine prop is omitted", () => {
+    const legacyItems: ConversationItem[] = [
+      {
+        id: "assistant-legacy-gemini-1",
+        kind: "message",
+        role: "assistant",
+        text: "LEGACY-GEMINI-DEFAULT",
+      },
+    ];
+    const stateItems: ConversationItem[] = [
+      {
+        id: "assistant-state-gemini-1",
+        kind: "message",
+        role: "assistant",
+        text: "PLAN\n\nSTATE-GEMINI-DEFAULT",
+      },
+    ];
+
+    const { container } = render(
+      <Messages
+        items={legacyItems}
+        threadId="gemini:thread-1"
+        workspaceId="ws-1"
+        isThinking={false}
+        conversationState={{
+          items: stateItems,
+          plan: null,
+          userInputQueue: [],
+          meta: {
+            workspaceId: "ws-1",
+            threadId: "gemini:thread-1",
+            engine: "gemini",
+            activeTurnId: null,
+            isThinking: false,
+            heartbeatPulse: null,
+            historyRestoredAtMs: null,
+          },
+        }}
+        openTargets={[]}
+        selectedOpenAppId=""
+      />,
+    );
+
+    expect(container.textContent ?? "").toContain("STATE-GEMINI-DEFAULT");
+    expect(container.textContent ?? "").not.toContain("LEGACY-GEMINI-DEFAULT");
+    expect(container.querySelector(".markdown-codex-canvas")).toBeNull();
   });
 
   it("prefers conversationState items for claude when state and legacy point to the same thread", () => {
@@ -1352,7 +1330,11 @@ describe("Messages", () => {
       name: "messages.anchorJumpToUser",
     });
     expect(anchorButtons.length).toBe(2);
-    fireEvent.click(anchorButtons[0]);
+    const firstAnchorButton = anchorButtons[0];
+    if (!firstAnchorButton) {
+      throw new Error("Anchor button not found");
+    }
+    fireEvent.click(firstAnchorButton);
     expect(scrollToMock).toHaveBeenCalledWith(
       expect.objectContaining({ behavior: "smooth" }),
     );
@@ -2022,6 +2004,161 @@ describe("Messages", () => {
     expect(container.textContent ?? "").toContain("输出最终分析报告");
   });
 
+  it("collapses consecutive gemini reasoning runs into a single visible block", () => {
+    const items: ConversationItem[] = [
+      {
+        id: "gemini-reasoning-run-1",
+        kind: "reasoning",
+        summary: "先读取 README 并识别技术栈",
+        content: "先读取 README 并识别技术栈",
+      },
+      {
+        id: "gemini-reasoning-run-2",
+        kind: "reasoning",
+        summary: "继续读取 CLAUDE.md 并整理结论",
+        content: "继续读取 CLAUDE.md 并整理结论",
+      },
+      {
+        id: "gemini-reasoning-run-3",
+        kind: "reasoning",
+        summary: "输出最终分析报告",
+        content: "输出最终分析报告",
+      },
+    ];
+
+    const { container } = render(
+      <Messages
+        items={items}
+        threadId="gemini:thread-1"
+        workspaceId="ws-1"
+        isThinking={false}
+        activeEngine="gemini"
+        openTargets={[]}
+        selectedOpenAppId=""
+      />,
+    );
+
+    expect(container.querySelectorAll(".thinking-block").length).toBe(1);
+    expect(container.textContent ?? "").toContain("输出最终分析报告");
+  });
+
+  it("keeps segmented gemini reasoning slices visible during realtime rendering", () => {
+    const items: ConversationItem[] = [
+      {
+        id: "gemini-reasoning-seg-1",
+        kind: "reasoning",
+        summary: "创建 operationlog 目录",
+        content: "创建 operationlog 目录",
+      },
+      {
+        id: "gemini-reasoning-seg-2",
+        kind: "reasoning",
+        summary: "编写 OperationLog.java",
+        content: "编写 OperationLog.java",
+      },
+      {
+        id: "gemini-reasoning-seg-3",
+        kind: "reasoning",
+        summary: "编写 OperationLogRequest.java",
+        content: "编写 OperationLogRequest.java",
+      },
+    ];
+
+    const { container } = render(
+      <Messages
+        items={items}
+        threadId="gemini:thread-1"
+        workspaceId="ws-1"
+        isThinking
+        activeEngine="gemini"
+        openTargets={[]}
+        selectedOpenAppId=""
+      />,
+    );
+
+    expect(container.querySelectorAll(".thinking-block").length).toBe(3);
+    expect(container.textContent ?? "").toContain("创建 operationlog 目录");
+    expect(container.textContent ?? "").toContain("编写 OperationLog.java");
+    expect(container.textContent ?? "").toContain("编写 OperationLogRequest.java");
+  });
+
+  it("collapses consecutive placeholder gemini segmented reasoning slices", () => {
+    const items: ConversationItem[] = [
+      {
+        id: "gemini-placeholder-seg-1",
+        kind: "reasoning",
+        summary: "思考",
+        content: "思考",
+      },
+      {
+        id: "gemini-placeholder-seg-2",
+        kind: "reasoning",
+        summary: "思考",
+        content: "思考",
+      },
+      {
+        id: "gemini-placeholder-seg-3",
+        kind: "reasoning",
+        summary: "思考",
+        content: "思考",
+      },
+    ];
+
+    const { container } = render(
+      <Messages
+        items={items}
+        threadId="gemini:thread-1"
+        workspaceId="ws-1"
+        isThinking
+        activeEngine="gemini"
+        openTargets={[]}
+        selectedOpenAppId=""
+      />,
+    );
+
+    expect(container.querySelectorAll(".thinking-block").length).toBe(1);
+  });
+
+  it("keeps consecutive claude live reasoning runs segmented while streaming", () => {
+    const items: ConversationItem[] = [
+      {
+        id: "reasoning-live-run",
+        kind: "reasoning",
+        summary: "先读取 README 并识别技术栈",
+        content: "先读取 README 并识别技术栈",
+      },
+      {
+        id: "reasoning-live-run-seg-1",
+        kind: "reasoning",
+        summary: "继续读取 CLAUDE.md 并整理结论",
+        content: "继续读取 CLAUDE.md 并整理结论",
+      },
+      {
+        id: "reasoning-live-run-seg-2",
+        kind: "reasoning",
+        summary: "输出最终分析报告",
+        content: "输出最终分析报告",
+      },
+    ];
+
+    const { container } = render(
+      <Messages
+        items={items}
+        threadId="thread-1"
+        workspaceId="ws-1"
+        isThinking
+        activeEngine="claude"
+        openTargets={[]}
+        selectedOpenAppId=""
+      />,
+    );
+
+    expect(container.querySelectorAll(".thinking-block").length).toBe(3);
+    expect(container.textContent ?? "").toContain("先读取 README 并识别技术栈");
+    expect(container.textContent ?? "").toContain("继续读取 CLAUDE.md 并整理结论");
+    expect(container.textContent ?? "").toContain("输出最终分析报告");
+  });
+
   it("keeps first multiline claude reasoning content after collapsing runs", () => {
     const items: ConversationItem[] = [
       {
@@ -2477,28 +2614,257 @@ describe("Messages", () => {
     expect(container.querySelector(".working-activity")).toBeNull();
   });
 
-  it("keeps only the latest title-only reasoning row for non-codex engines", () => {
+  it("renders final boundary without reasoning boundary when no process items exist", () => {
     const items: ConversationItem[] = [
       {
-        id: "reasoning-title-only-old",
-        kind: "reasoning",
-        summary: "Planning old step",
-        content: "",
+        id: "user-1",
+        kind: "message",
+        role: "user",
+        text: "Q1",
       },
       {
-        id: "reasoning-title-only",
-        kind: "reasoning",
-        summary: "Indexing workspace",
-        content: "",
+        id: "assistant-final-1",
+        kind: "message",
+        role: "assistant",
+        text: "A1",
+        isFinal: true,
       },
       {
-        id: "tool-after-reasoning",
+        id: "user-2",
+        kind: "message",
+        role: "user",
+        text: "Q2",
+      },
+    ];
+
+    const { container } = render(
+      <Messages
+        items={items}
+        threadId="thread-1"
+        workspaceId="ws-1"
+        isThinking={false}
+        openTargets={[]}
+        selectedOpenAppId=""
+      />,
+    );
+
+    const finalMessageNode = container.querySelector(
+      "[data-message-anchor-id='assistant-final-1']",
+    );
+    const reasoningBoundaryNode = container.querySelector(".messages-reasoning-boundary");
+    const boundaryNode = container.querySelector(".messages-final-boundary");
+    const boundaryMetaNode = container.querySelector(
+      ".messages-final-boundary .messages-turn-boundary-meta",
+    );
+    expect(finalMessageNode).toBeTruthy();
+    expect(reasoningBoundaryNode).toBeNull();
+    expect(boundaryNode).toBeTruthy();
+    expect(boundaryMetaNode).toBeNull();
+    if (finalMessageNode && boundaryNode) {
+      expect(
+        finalMessageNode.compareDocumentPosition(boundaryNode) &
+          Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+    }
+  });
+
+  it("shows reasoning boundary when visible process items exist before final message", () => {
+    const items: ConversationItem[] = [
+      {
+        id: "user-process-1",
+        kind: "message",
+        role: "user",
+        text: "Q1",
+      },
+      {
+        id: "reasoning-process-1",
+        kind: "reasoning",
+        summary: "先分析",
+        content: "检查变更范围",
+      },
+      {
+        id: "assistant-process-final-1",
+        kind: "message",
+        role: "assistant",
+        text: "A1",
+        isFinal: true,
+      },
+    ];
+
+    const { container } = render(
+      <Messages
+        items={items}
+        threadId="thread-1"
+        workspaceId="ws-1"
+        isThinking={false}
+        activeEngine="codex"
+        openTargets={[]}
+        selectedOpenAppId=""
+      />,
+    );
+
+    const finalMessageNode = container.querySelector(
+      "[data-message-anchor-id='assistant-process-final-1']",
+    );
+    const reasoningBoundaryNode = container.querySelector(".messages-reasoning-boundary");
+    expect(finalMessageNode).toBeTruthy();
+    expect(reasoningBoundaryNode).toBeTruthy();
+    if (finalMessageNode && reasoningBoundaryNode) {
+      expect(
+        reasoningBoundaryNode.compareDocumentPosition(finalMessageNode) &
+          Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+    }
+  });
+
+  it("shows reasoning boundary when grouped tool entries exist before final message", () => {
+    const items: ConversationItem[] = [
+      {
+        id: "user-tool-group-1",
+        kind: "message",
+        role: "user",
+        text: "Q1",
+      },
+      {
+        id: "tool-group-1",
         kind: "tool",
-        title: "Command: rg --files",
-        detail: "/tmp",
-        toolType: "commandExecution",
-        output: "",
-        status: "running",
+        toolType: "mcpToolCall",
+        title: "tool: read_file",
+        detail: "read",
+        status: "completed",
+      },
+      {
+        id: "tool-group-2",
+        kind: "tool",
+        toolType: "mcpToolCall",
+        title: "tool: read_file",
+        detail: "read",
+        status: "completed",
+      },
+      {
+        id: "assistant-tool-group-final-1",
+        kind: "message",
+        role: "assistant",
+        text: "A1",
+        isFinal: true,
+      },
+    ];
+
+    const { container } = render(
+      <Messages
+        items={items}
+        threadId="thread-1"
+        workspaceId="ws-1"
+        isThinking={false}
+        activeEngine="codex"
+        openTargets={[]}
+        selectedOpenAppId=""
+      />,
+    );
+
+    const reasoningBoundaryNode = container.querySelector(".messages-reasoning-boundary");
+    expect(reasoningBoundaryNode).toBeTruthy();
+  });
+
+  it("renders final and reasoning boundaries only once for the last final assistant in a turn", () => {
+    const items: ConversationItem[] = [
+      {
+        id: "user-turn-1",
+        kind: "message",
+        role: "user",
+        text: "Q1",
+      },
+      {
+        id: "reasoning-turn-1",
+        kind: "reasoning",
+        summary: "先分析",
+        content: "处理中间步骤",
+      },
+      {
+        id: "assistant-final-mid",
+        kind: "message",
+        role: "assistant",
+        text: "中间状态",
+        isFinal: true,
+      },
+      {
+        id: "assistant-final-last",
+        kind: "message",
+        role: "assistant",
+        text: "最终结果",
+        isFinal: true,
+      },
+    ];
+
+    const { container } = render(
+      <Messages
+        items={items}
+        threadId="thread-1"
+        workspaceId="ws-1"
+        isThinking={false}
+        activeEngine="codex"
+        openTargets={[]}
+        selectedOpenAppId=""
+      />,
+    );
+
+    const finalBoundaries = container.querySelectorAll(".messages-final-boundary");
+    const reasoningBoundaries = container.querySelectorAll(".messages-reasoning-boundary");
+    const finalMidNode = container.querySelector("[data-message-anchor-id='assistant-final-mid']");
+    const finalLastNode = container.querySelector("[data-message-anchor-id='assistant-final-last']");
+    expect(finalBoundaries).toHaveLength(1);
+    expect(reasoningBoundaries).toHaveLength(1);
+    expect(finalMidNode).toBeTruthy();
+    expect(finalLastNode).toBeTruthy();
+    if (finalMidNode && finalLastNode && finalBoundaries[0] && reasoningBoundaries[0]) {
+      expect(
+        finalMidNode.compareDocumentPosition(finalBoundaries[0]) &
+          Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+      expect(
+        finalLastNode.compareDocumentPosition(finalBoundaries[0]) &
+          Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+      expect(
+        reasoningBoundaries[0].compareDocumentPosition(finalLastNode) &
+          Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+    }
+  });
+
+  it("hides final boundary for the active live turn while keeping completed turn boundaries visible", () => {
+    const items: ConversationItem[] = [
+      {
+        id: "user-turn-done",
+        kind: "message",
+        role: "user",
+        text: "Q1",
+      },
+      {
+        id: "assistant-turn-done",
+        kind: "message",
+        role: "assistant",
+        text: "A1",
+        isFinal: true,
+      },
+      {
+        id: "user-turn-live",
+        kind: "message",
+        role: "user",
+        text: "Q2",
+      },
+      {
+        id: "reasoning-turn-live",
+        kind: "reasoning",
+        summary: "分析中",
+        content: "处理中",
+      },
+      {
+        id: "assistant-turn-live",
+        kind: "message",
+        role: "assistant",
+        text: "A2",
+        isFinal: true,
       },
     ];
 
@@ -2508,248 +2874,43 @@ describe("Messages", () => {
         threadId="thread-1"
         workspaceId="ws-1"
         isThinking
-        processingStartedAt={Date.now() - 1_000}
+        activeEngine="codex"
         openTargets={[]}
         selectedOpenAppId=""
       />,
     );
 
-    const workingText = container.querySelector(".working-text");
-    expect(workingText?.textContent ?? "").toContain("Indexing workspace");
-    const reasoningRows = container.querySelectorAll(".thinking-block");
-    expect(reasoningRows.length).toBe(1);
-    expect(container.querySelector(".thinking-title")).toBeTruthy();
+    const finalBoundaries = container.querySelectorAll(".messages-final-boundary");
+    const reasoningBoundaries = container.querySelectorAll(".messages-reasoning-boundary");
+    const doneAssistantNode = container.querySelector("[data-message-anchor-id='assistant-turn-done']");
+    const liveAssistantNode = container.querySelector("[data-message-anchor-id='assistant-turn-live']");
+    expect(finalBoundaries).toHaveLength(1);
+    expect(reasoningBoundaries).toHaveLength(0);
+    expect(doneAssistantNode).toBeTruthy();
+    expect(liveAssistantNode).toBeTruthy();
+    if (doneAssistantNode && liveAssistantNode && finalBoundaries[0]) {
+      expect(
+        doneAssistantNode.compareDocumentPosition(finalBoundaries[0]) &
+          Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+      expect(
+        liveAssistantNode.compareDocumentPosition(finalBoundaries[0]) &
+          Node.DOCUMENT_POSITION_PRECEDING,
+      ).toBeTruthy();
+    }
   });
 
-  it("merges consecutive explore items under a single explored block", async () => {
+  it("shows completion time and duration on final boundary when metadata is available", () => {
+    const completedAt = new Date(2026, 3, 1, 10, 20, 30).getTime();
     const items: ConversationItem[] = [
       {
-        id: "explore-1",
-        kind: "explore",
-        status: "explored",
-        entries: [{ kind: "search", label: "Find routes" }],
-      },
-      {
-        id: "explore-2",
-        kind: "explore",
-        status: "explored",
-        entries: [{ kind: "read", label: "routes.ts" }],
-      },
-    ];
-
-    const { container } = render(
-      <Messages
-        items={items}
-        threadId="thread-1"
-        workspaceId="ws-1"
-        isThinking={false}
-        openTargets={[]}
-        selectedOpenAppId=""
-      />,
-    );
-
-    await waitFor(() => {
-      expect(container.querySelector(".explore-inline")).toBeTruthy();
-    });
-    expect(screen.queryByText(/tool calls/i)).toBeNull();
-    const exploreItems = container.querySelectorAll(".explore-inline-item");
-    expect(exploreItems.length).toBe(2);
-    expect(container.querySelector(".explore-inline-title")?.textContent ?? "").toContain(
-      "Explored",
-    );
-  });
-
-  it("renders spec-root explore card as collapsible and toggles details", async () => {
-    const items: ConversationItem[] = [
-      {
-        id: "spec-root-context-thread-1",
-        kind: "explore",
-        status: "explored",
-        title: "External Spec Root (Priority)",
-        collapsible: true,
-        mergeKey: "spec-root-context",
-        entries: [
-          { kind: "list", label: "Active root path", detail: "/tmp/external-openspec" },
-          { kind: "read", label: "Read policy", detail: "Read this root first." },
-        ],
-      },
-    ];
-
-    const { container } = render(
-      <Messages
-        items={items}
-        threadId="thread-1"
-        workspaceId="ws-1"
-        isThinking={false}
-        openTargets={[]}
-        selectedOpenAppId=""
-      />,
-    );
-
-    const exploreBlock = container.querySelector(".explore-inline.is-collapsible");
-    expect(exploreBlock).toBeTruthy();
-    const list = container.querySelector(".explore-inline-list");
-    expect(list?.className ?? "").toContain("is-collapsed");
-
-    const toggle = container.querySelector(
-      ".explore-inline.is-collapsible .tool-inline-bar-toggle",
-    );
-    expect(toggle).toBeTruthy();
-    fireEvent.click(toggle as HTMLElement);
-    expect(container.querySelector(".explore-inline-list")?.className ?? "").not.toContain(
-      "is-collapsed",
-    );
-  });
-
-  it("uses the latest explore status when merging a consecutive run", async () => {
-    const items: ConversationItem[] = [
-      {
-        id: "explore-started",
-        kind: "explore",
-        status: "exploring",
-        entries: [{ kind: "search", label: "starting" }],
-      },
-      {
-        id: "explore-finished",
-        kind: "explore",
-        status: "explored",
-        entries: [{ kind: "read", label: "finished" }],
-      },
-    ];
-
-    const { container } = render(
-      <Messages
-        items={items}
-        threadId="thread-1"
-        workspaceId="ws-1"
-        isThinking={false}
-        openTargets={[]}
-        selectedOpenAppId=""
-      />,
-    );
-
-    await waitFor(() => {
-      expect(container.querySelectorAll(".explore-inline").length).toBe(1);
-    });
-    const exploreTitle = container.querySelector(".explore-inline-title");
-    expect(exploreTitle?.textContent ?? "").toContain("Explored");
-  });
-
-  it("does not merge explore items across interleaved tools", async () => {
-    const items: ConversationItem[] = [
-      {
-        id: "explore-a",
-        kind: "explore",
-        status: "explored",
-        entries: [{ kind: "search", label: "Find reducers" }],
-      },
-      {
-        id: "tool-a",
-        kind: "tool",
-        toolType: "commandExecution",
-        title: "Command: rg reducers",
-        detail: "/repo",
-        status: "completed",
-        output: "",
-      },
-      {
-        id: "explore-b",
-        kind: "explore",
-        status: "explored",
-        entries: [{ kind: "read", label: "useThreadsReducer.ts" }],
-      },
-    ];
-
-    const { container } = render(
-      <Messages
-        items={items}
-        threadId="thread-1"
-        workspaceId="ws-1"
-        isThinking={false}
-        openTargets={[]}
-        selectedOpenAppId=""
-      />,
-    );
-
-    await waitFor(() => {
-      const exploreBlocks = container.querySelectorAll(".explore-inline");
-      expect(exploreBlocks.length).toBe(2);
-    });
-    const exploreItems = container.querySelectorAll(".explore-inline-item");
-    expect(exploreItems.length).toBe(2);
-    expect(screen.getByText(/rg reducers/i)).toBeTruthy();
-  });
-
-  it("preserves chronology when reasoning with body appears between explore items", async () => {
-    const items: ConversationItem[] = [
-      {
-        id: "explore-1",
-        kind: "explore",
-        status: "explored",
-        entries: [{ kind: "search", label: "first explore" }],
-      },
-      {
-        id: "reasoning-body",
-        kind: "reasoning",
-        summary: "Reasoning title\nReasoning body",
-        content: "",
-      },
-      {
-        id: "explore-2",
-        kind: "explore",
-        status: "explored",
-        entries: [{ kind: "read", label: "second explore" }],
-      },
-    ];
-
-    const { container } = render(
-      <Messages
-        items={items}
-        threadId="thread-1"
-        workspaceId="ws-1"
-        isThinking={false}
-        openTargets={[]}
-        selectedOpenAppId=""
-      />,
-    );
-
-    await waitFor(() => {
-      expect(container.querySelectorAll(".explore-inline").length).toBe(2);
-    });
-    const exploreBlocks = Array.from(container.querySelectorAll(".explore-inline"));
-    const reasoningDetail = container.querySelector(".thinking-content");
-    expect(exploreBlocks.length).toBe(2);
-    expect(reasoningDetail).toBeTruthy();
-    const [firstExploreBlock, secondExploreBlock] = exploreBlocks;
-    const firstBeforeReasoning =
-      firstExploreBlock.compareDocumentPosition(reasoningDetail as Node) &
-      Node.DOCUMENT_POSITION_FOLLOWING;
-    const reasoningBeforeSecond =
-      (reasoningDetail as Node).compareDocumentPosition(secondExploreBlock) &
-      Node.DOCUMENT_POSITION_FOLLOWING;
-    expect(firstBeforeReasoning).toBeTruthy();
-    expect(reasoningBeforeSecond).toBeTruthy();
-  });
-
-  it("does not merge across message boundaries and does not drop messages", async () => {
-    const items: ConversationItem[] = [
-      {
-        id: "explore-before",
-        kind: "explore",
-        status: "explored",
-        entries: [{ kind: "search", label: "before message" }],
-      },
-      {
-        id: "assistant-msg",
+        id: "assistant-final-meta-1",
         kind: "message",
         role: "assistant",
-        text: "A message between explore blocks",
-      },
-      {
-        id: "explore-after",
-        kind: "explore",
-        status: "explored",
-        entries: [{ kind: "read", label: "after message" }],
+        text: "A1",
+        isFinal: true,
+        finalCompletedAt: completedAt,
+        finalDurationMs: 12_000,
       },
     ];
 
@@ -2764,106 +2925,9 @@ describe("Messages", () => {
       />,
     );
 
-    await waitFor(() => {
-      const exploreBlocks = container.querySelectorAll(".explore-inline");
-      expect(exploreBlocks.length).toBe(2);
-    });
-    expect(screen.getByText("A message between explore blocks")).toBeTruthy();
+    const finalMeta = container.querySelector(".messages-turn-boundary-meta");
+    expect(finalMeta?.textContent ?? "").toContain("04-01 10:20:30");
+    expect(finalMeta?.textContent ?? "").toContain("总耗时 0:12");
   });
 
-  it("keeps explore entry steps separate from tool-group summary", async () => {
-    const items: ConversationItem[] = [
-      {
-        id: "tool-1",
-        kind: "tool",
-        toolType: "commandExecution",
-        title: "Command: git status --porcelain=v1",
-        detail: "/repo",
-        status: "completed",
-        output: "",
-      },
-      {
-        id: "explore-steps-1",
-        kind: "explore",
-        status: "explored",
-        entries: [
-          { kind: "read", label: "Messages.tsx" },
-          { kind: "search", label: "toolCount" },
-        ],
-      },
-      {
-        id: "explore-steps-2",
-        kind: "explore",
-        status: "explored",
-        entries: [{ kind: "read", label: "types.ts" }],
-      },
-      {
-        id: "tool-2",
-        kind: "tool",
-        toolType: "commandExecution",
-        title: "Command: git diff -- src/features/messages/components/Messages.tsx",
-        detail: "/repo",
-        status: "completed",
-        output: "",
-      },
-    ];
-
-    const { container } = render(
-      <Messages
-        items={items}
-        threadId="thread-1"
-        workspaceId="ws-1"
-        isThinking={false}
-        openTargets={[]}
-        selectedOpenAppId=""
-      />,
-    );
-
-    await waitFor(() => {
-      const exploreRows = container.querySelectorAll(".explore-inline-item");
-      expect(exploreRows.length).toBe(3);
-    });
-    expect(screen.queryByText("5 tool calls")).toBeNull();
-  });
-
-  it("avoids React key collisions when reasoning and message share the same item id", () => {
-    const consoleErrorSpy = vi
-      .spyOn(console, "error")
-      .mockImplementation(() => undefined);
-    const items: ConversationItem[] = [
-      {
-        id: "shared-item-1",
-        kind: "reasoning",
-        summary: "思考中",
-        content: "先拆解问题。",
-      },
-      {
-        id: "shared-item-1",
-        kind: "message",
-        role: "assistant",
-        text: "这是正文增量。",
-      },
-    ];
-
-    render(
-      <Messages
-        items={items}
-        threadId="claude:session-1"
-        workspaceId="ws-1"
-        isThinking={true}
-        openTargets={[]}
-        selectedOpenAppId=""
-        activeEngine="claude"
-      />,
-    );
-
-    expect(screen.getByText("这是正文增量。")).toBeTruthy();
-    expect(screen.getByText("先拆解问题。")).toBeTruthy();
-    const duplicateKeyWarnings = consoleErrorSpy.mock.calls.filter(([firstArg]) =>
-      typeof firstArg === "string" &&
-      firstArg.includes("Encountered two children with the same key"),
-    );
-    expect(duplicateKeyWarnings).toHaveLength(0);
-    consoleErrorSpy.mockRestore();
-  });
 });

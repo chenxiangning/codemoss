@@ -1,12 +1,17 @@
 import type { DropdownItemData } from "../types";
 import i18n from "../../../i18n/config";
 import { listAgentConfigs } from "../../../../../services/tauri";
+import {
+  getAgentIconRenderValue,
+  resolveAgentIconForAgent,
+} from "../../../../../utils/agentIcons";
 import { debugError, debugLog, debugWarn } from "../../../utils/debug.js";
 
 export interface AgentItem {
   id: string;
   name: string;
   prompt?: string;
+  icon?: string;
 }
 
 type LoadingState = "idle" | "loading" | "success" | "failed";
@@ -28,6 +33,7 @@ function normalizeAgents(items: AgentItem[]): AgentItem[] {
       id: String(item.id ?? "").trim(),
       name: String(item.name ?? "").trim(),
       prompt: item.prompt?.trim() || undefined,
+      icon: resolveAgentIconForAgent(item, "codicon-robot"),
     }))
     .filter((item) => item.id.length > 0 && item.name.length > 0);
 }
@@ -59,6 +65,7 @@ async function refreshAgents(force = false): Promise<void> {
           id: agent.id,
           name: agent.name,
           prompt: agent.prompt ?? undefined,
+          icon: agent.icon ?? undefined,
         })),
       );
       loadingState = "success";
@@ -181,7 +188,11 @@ export function agentToDropdownItem(agent: AgentItem): DropdownItemData {
         ? `${agent.prompt.slice(0, 60)}...`
         : agent.prompt
       : undefined,
-    icon: "codicon-robot",
+    icon: getAgentIconRenderValue(
+      agent.icon,
+      agent.id || agent.name,
+      "codicon-robot",
+    ),
     type: "agent",
     data: { agent },
   };

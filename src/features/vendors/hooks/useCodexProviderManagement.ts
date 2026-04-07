@@ -5,6 +5,7 @@ import {
   addCodexProvider,
   updateCodexProvider,
   deleteCodexProvider,
+  reloadCodexRuntimeConfig,
   switchCodexProvider,
 } from "../../../services/tauri";
 
@@ -18,11 +19,22 @@ export interface DeleteCodexConfirmState {
   provider: CodexProviderConfig | null;
 }
 
+function getErrorMessage(error: unknown, fallback: string): string {
+  if (error instanceof Error && error.message.trim().length > 0) {
+    return error.message.trim();
+  }
+  if (typeof error === "string" && error.trim().length > 0) {
+    return error.trim();
+  }
+  return fallback;
+}
+
 export function useCodexProviderManagement() {
   const [codexProviders, setCodexProviders] = useState<CodexProviderConfig[]>(
     [],
   );
   const [codexLoading, setCodexLoading] = useState(false);
+  const [codexProviderError, setCodexProviderError] = useState<string | null>(null);
 
   const [codexProviderDialog, setCodexProviderDialog] =
     useState<CodexProviderDialogState>({
@@ -41,8 +53,11 @@ export function useCodexProviderManagement() {
     try {
       const list = await getCodexProviders();
       setCodexProviders(list);
-    } catch {
-      // ignore
+      setCodexProviderError(null);
+    } catch (error) {
+      setCodexProviderError(
+        getErrorMessage(error, "Failed to load Codex providers."),
+      );
     } finally {
       setCodexLoading(false);
     }
@@ -79,9 +94,12 @@ export function useCodexProviderManagement() {
         }
 
         setCodexProviderDialog({ isOpen: false, provider: null });
+        setCodexProviderError(null);
         await loadCodexProviders();
-      } catch {
-        // ignore
+      } catch (error) {
+        setCodexProviderError(
+          getErrorMessage(error, "Failed to save Codex provider."),
+        );
       }
     },
     [codexProviderDialog.provider, loadCodexProviders],
@@ -91,9 +109,13 @@ export function useCodexProviderManagement() {
     async (id: string) => {
       try {
         await switchCodexProvider(id);
+        await reloadCodexRuntimeConfig();
+        setCodexProviderError(null);
         await loadCodexProviders();
-      } catch {
-        // ignore
+      } catch (error) {
+        setCodexProviderError(
+          getErrorMessage(error, "Failed to switch Codex provider."),
+        );
       }
     },
     [loadCodexProviders],
@@ -112,9 +134,12 @@ export function useCodexProviderManagement() {
 
     try {
       await deleteCodexProvider(provider.id);
+      setCodexProviderError(null);
       await loadCodexProviders();
-    } catch {
-      // ignore
+    } catch (error) {
+      setCodexProviderError(
+        getErrorMessage(error, "Failed to delete Codex provider."),
+      );
     }
     setDeleteCodexConfirm({ isOpen: false, provider: null });
   }, [deleteCodexConfirm.provider, loadCodexProviders]);
@@ -126,6 +151,7 @@ export function useCodexProviderManagement() {
   return {
     codexProviders,
     codexLoading,
+    codexProviderError,
     codexProviderDialog,
     deleteCodexConfirm,
     loadCodexProviders,

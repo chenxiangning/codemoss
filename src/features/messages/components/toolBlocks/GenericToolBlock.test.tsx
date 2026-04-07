@@ -2,6 +2,7 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ConversationItem } from "../../../../types";
+import * as diffParser from "../../../../utils/diff";
 import { GenericToolBlock } from "./GenericToolBlock";
 
 const askUserItem: Extract<ConversationItem, { kind: "tool" }> = {
@@ -36,6 +37,33 @@ const fileChangeWithOutputItem: Extract<ConversationItem, { kind: "tool" }> = {
   changes: [
     { path: "src/App.tsx", kind: "modified", diff: "@@ -1 +1 @@\n-old\n+new" },
   ],
+};
+
+const fileChangeWithoutInlineDiffItem: Extract<ConversationItem, { kind: "tool" }> = {
+  id: "tool-2-output-fallback",
+  kind: "tool",
+  toolType: "fileChange",
+  title: "File changes",
+  detail: "{}",
+  status: "completed",
+  output: "@@ -1 +1 @@\n-old\n+new",
+  changes: [{ path: "src/App.tsx", kind: "modified" }],
+};
+
+const fileChangePathHintCompatItem: Extract<ConversationItem, { kind: "tool" }> = {
+  id: "tool-2-pathhint-compat",
+  kind: "tool",
+  toolType: "fileChange",
+  title: "File changes",
+  detail: JSON.stringify({
+    input: {
+      file_path: "/repo/src/App.tsx",
+      old_string: "const oldValue = 1;",
+      new_string: "const newValue = 1;",
+    },
+  }),
+  status: "completed",
+  changes: [{ path: "src/App.tsx", kind: "modified" }],
 };
 
 const markdownOutputItem: Extract<ConversationItem, { kind: "tool" }> = {
@@ -90,6 +118,35 @@ describe("GenericToolBlock", () => {
     expect(screen.queryByText("This feature requires Plan mode")).toBeNull();
   });
 
+  it("hides plan-mode hint for claude askuserquestion when pending user input exists", () => {
+    render(
+      <GenericToolBlock
+        item={askUserItem}
+        isExpanded={false}
+        onToggle={vi.fn()}
+        activeCollaborationModeId="code"
+        activeEngine="claude"
+        hasPendingUserInputRequest
+      />,
+    );
+
+    expect(screen.queryByText("This feature requires Plan mode")).toBeNull();
+  });
+
+  it("hides plan-mode hint for claude askuserquestion in history without pending request", () => {
+    render(
+      <GenericToolBlock
+        item={askUserItem}
+        isExpanded={false}
+        onToggle={vi.fn()}
+        activeCollaborationModeId="code"
+        activeEngine="claude"
+      />,
+    );
+
+    expect(screen.queryByText("This feature requires Plan mode")).toBeNull();
+  });
+
   it("shows blocked suggestion for modeBlocked askuserquestion item", () => {
     const view = render(
       <GenericToolBlock
@@ -110,8 +167,8 @@ describe("GenericToolBlock", () => {
     expect(rawPre?.textContent ?? "").toContain("Switch to Plan mode");
   });
 
-  it("shows file-change summary and detail metrics", () => {
-    render(
+  it("shows file-change summary and per-file detail stats", () => {
+    const view = render(
       <GenericToolBlock
         item={fileChangeItem}
         isExpanded
@@ -122,13 +179,30 @@ describe("GenericToolBlock", () => {
     expect(screen.getAllByText("2 files").length).toBeGreaterThan(0);
     expect(screen.getAllByText("+2").length).toBeGreaterThan(0);
     expect(screen.getAllByText("-1").length).toBeGreaterThan(0);
-    expect(screen.getByText("A 1")).toBeTruthy();
-    expect(screen.getByText("M 1")).toBeTruthy();
+    expect(view.container.querySelector(".tool-change-metrics")).toBeNull();
+    expect(view.container.querySelectorAll(".tool-change-kind-badge.added").length).toBe(1);
+    expect(view.container.querySelectorAll(".tool-change-kind-badge.modified").length).toBe(1);
     expect(screen.getByText("-0")).toBeTruthy();
     expect(screen.getAllByText("+1").length).toBeGreaterThan(1);
   });
 
-  it("keeps only file list for file changes and hides raw diff output", () => {
+  it("shows first file icon/name in collapsed file-change summary", () => {
+    const parseDiffSpy = vi.spyOn(diffParser, "parseDiff");
+    render(
+      <GenericToolBlock
+        item={fileChangeItem}
+        isExpanded={false}
+        onToggle={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("App.tsx")).toBeTruthy();
+    expect(screen.getByText("+1 more")).toBeTruthy();
+    expect(parseDiffSpy).not.toHaveBeenCalled();
+    parseDiffSpy.mockRestore();
+  });
+
+  it("shows inline diff preview for file changes and hides raw diff output pane", () => {
     render(
       <GenericToolBlock
         item={fileChangeWithOutputItem}
@@ -139,7 +213,36 @@ describe("GenericToolBlock", () => {
 
     expect(screen.getByText("App.tsx")).toBeTruthy();
     expect(document.querySelector(".tool-output-raw-pre")).toBeNull();
-    expect(screen.queryByText("@@ -1 +1 @@")).toBeNull();
+    expect(screen.getByText("-1 +1")).toBeTruthy();
+    expect(document.querySelector(".tool-change-inline-diff")).toBeTruthy();
+  });
+
+  it("falls back to output diff stats when change rows omit inline diff", () => {
+    render(
+      <GenericToolBlock
+        item={fileChangeWithoutInlineDiffItem}
+        isExpanded
+        onToggle={vi.fn()}
+      />,
+    );
+
+    expect(screen.getAllByText("+1").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("-1").length).toBeGreaterThan(0);
+    expect(document.querySelector(".tool-output-raw-pre")).toBeNull();
+    expect(screen.getByText("-1 +1")).toBeTruthy();
+  });
+
+  it("matches path hints with absolute/relative compatibility for stats fallback", () => {
+    render(
+      <GenericToolBlock
+        item={fileChangePathHintCompatItem}
+        isExpanded
+        onToggle={vi.fn()}
+      />,
+    );
+
+    expect(screen.getAllByText("+1").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("-1").length).toBeGreaterThan(0);
   });
 
   it("opens diff path when clicking file-change row link without toggling card", () => {

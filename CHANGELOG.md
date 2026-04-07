@@ -2,7 +2,483 @@
 
 ---
 
-##### **2026年3月19日（v0.2.10）**
+##### **2026年4月7日（v0.3.10）**
+
+中文：
+
+✨ Features
+- 输入区快捷动作改为独立图标入口，并新增二级菜单，减少常用操作路径
+- 优化提示词选择与设置页交互，提升提示词管理效率
+- Git 提交信息支持按语言生成中英文内容，便于跨语种协作
+- Git 提交信息新增按引擎生成策略并规范化 AI 输出，提升不同模型下提交文案一致性
+
+🔧 Improvements
+- 拆分超大文件并收口模块职责，降低维护成本并改善后续迭代稳定性
+
+🐛 Fixes
+- 修复快捷动作无障碍属性与“创建提示词”事件链路，避免交互失效
+- 修复 prompt enhancement 在多 workspace 下偶发不生效问题，提升增强链路稳定性
+- 修复本地图像预览回退异常，并收紧本地文件读取边界
+- 修复 Gemini 截图链路在 Windows 下的路径兼容问题
+- 修复 Gemini 超长 prompt 触发命令行长度限制的问题，改为通过 stdin 传输
+
+English:
+
+✨ Features
+- Convert composer quick actions into a dedicated icon entry and add a secondary menu to shorten frequent action paths
+- Improve prompt selection and settings interactions for smoother prompt management
+- Support language-aware Git commit message generation in both Chinese and English for cross-language collaboration
+- Add engine-aware Git commit message generation and normalize AI output for more consistent commit text across models
+
+🔧 Improvements
+- Split oversized files and tighten module responsibilities to reduce maintenance cost and improve iteration stability
+
+🐛 Fixes
+- Fix accessibility attributes and the prompt-creation event chain for composer quick actions to prevent interaction failures
+- Fix occasional prompt-enhancement failures across workspaces to improve enhancement reliability
+- Fix local image preview fallback issues and tighten local file-read boundaries
+- Fix Windows path compatibility in the Gemini screenshot flow
+- Fix Gemini long-prompt failures caused by command-line length limits by switching to stdin transport
+
+---
+
+##### **2026年4月4日（v0.3.9）**
+
+中文：
+
+✨ Features
+- 侧边栏新增悬停图钉交互，并支持固定区一键取消固定，提升会话管理效率
+- 优化引擎核心流程，增强多模块协同下的性能与稳定性
+
+🔧 Improvements
+- 将 `/review` 命令匹配逻辑升级为命令头严格匹配，并兼容 review-like 自定义命令
+- 加固线程路径匹配的 Win/mac 跨平台兼容性，降低路径判定偏差
+
+🐛 Fixes
+- 修复 Gemini `sessionId` 提取过严导致的会话续传失败与消息拆会话问题
+- 修复固定会话后项目列表残留与刷新延迟问题
+- 修复深色主题下最终消息与推理边界不可见问题，并补齐兼容回退
+- 修复多会话 stop 误伤及首次 stop 不生效问题
+- 修复 Claude 自定义命令列表空响应场景下的重试与回退稳定性
+- 修复 Gemini pending 会话上下文无法连续关联问题
+
+English:
+
+✨ Features
+- Add hover-to-pin interactions in the sidebar and one-click unpin for the pinned section to improve session management
+- Optimize core engine flow to improve multi-module performance and runtime stability
+
+🔧 Improvements
+- Tighten `/review` parsing with strict command-head matching while keeping compatibility with review-like custom commands
+- Harden cross-platform thread-path matching for Win/mac to reduce path-resolution drift
+
+🐛 Fixes
+- Fix overly strict Gemini `sessionId` extraction that caused resume failures and message split sessions
+- Fix stale project-list residues and delayed refresh after pinning sessions
+- Fix invisible final/reasoning boundaries in dark theme and add compatibility fallback rendering
+- Fix multi-session stop collateral impact and first-stop ineffective behavior
+- Harden retry and fallback behavior when Claude custom command list responses are empty
+- Fix broken continuity for Gemini pending-session context association
+
+---
+
+##### **2026年4月1日（v0.3.7）**
+
+中文：
+
+✨ Features
+- 新增智能体会话隔离机制，并收口首轮会话链路，减少跨会话上下文串扰
+- 完成智能体图标全链路接入（设置、输入区、消息区、线程历史），提升多智能体识别效率
+- 增强 Codex 运行时配置热刷新能力，并支持历史会话输出折叠，降低长会话浏览噪音
+- 统一 assistant final 边界元数据并优化历史恢复链路，提升历史回放一致性
+
+🔧 Improvements
+- 拆分 `Messages` 超大组件与对应测试用例，降低单文件复杂度并提升维护效率
+- 系统性收紧 `noUncheckedIndexedAccess` 与线程条目链路类型边界，减少隐式空值与索引越界风险
+
+🐛 Fixes
+- 修复消息渲染链路中“注入式智能体提示”泄漏到用户正文的问题，避免内容污染
+- 修复代码复制语义混淆：区分纯文本复制与带 fenced code block 的复制路径
+- 修复线程历史中已选智能体上下文丢失问题，保证回放后会话身份连续
+- 修复外部文件访问边界与终端会话清理链路，降低残留会话与越界访问风险
+- 修复智能体图标与名称显示不一致问题
+- 修复 worktree push 在失败原因为空值时的兼容性问题
+
+English:
+
+✨ Features
+- Introduce agent-session isolation and stabilize first-turn routing to reduce cross-session context bleed
+- Complete end-to-end agent icon integration across settings, composer, message rendering, and thread history for faster multi-agent recognition
+- Enhance Codex runtime config hot-refresh and add collapsible history output to reduce noise in long sessions
+- Unify assistant-final boundary metadata and improve history recovery consistency during replay
+
+🔧 Improvements
+- Split oversized `Messages` module and related test suites to lower file complexity and improve maintainability
+- Tighten `noUncheckedIndexedAccess` and thread-item type boundaries to reduce implicit-null and index-access risks
+
+🐛 Fixes
+- Fix injected agent prompts leaking into user-visible message text
+- Fix code-copy behavior by separating plain-text copy from fenced code copy flows
+- Fix loss of selected-agent context when restoring thread history
+- Tighten external file-access constraints and clean up terminal sessions to reduce residual-session risk
+- Fix mismatches between displayed agent icon and agent name
+- Fix worktree push flow to handle empty failure reasons safely
+
+---
+
+##### **2026年3月30日（v0.3.6）**
+
+English:
+
+✨ Features
+- Redesign Skills management into a tree-based global browser that unifies multi-source skill directories, and add in-panel editing/saving with structured preview so users can inspect and update skills without leaving Settings
+- Complete missing Web Git RPC coverage in the local daemon and split `daemon_state` into dedicated modules, making Web-mode Git actions more complete while improving daemon lifecycle maintainability
+- Harden multi-engine history-chain recovery in Web mode by reorganizing oversized bridge/runtime paths, reducing replay fragility after interruptions and improving cross-engine continuity
+- Rework realtime message-canvas controls into clearer control groups/constants and keep focus-follow behavior stable during live updates
+- Enhance Session Activity by exposing `search_query` tool-chain details, strengthening history replay recovery, and adding date-group bulk delete for faster cleanup
+- Improve repo-awareness across detached file tree, file view, and Session Activity so sub-repo Git state mapping and diff targets resolve against the correct `gitRoot`
+- Support Claude custom model passthrough and dynamic model discovery, enabling newly configured models to appear and be selected without manual patching
+- Optimize tool-block file-change summaries and Markdown rendering so long command/tool outputs are easier to scan inside conversations
+- Convert successful `apply_patch` command-execution items into structured `File changes` cards in thread activity, including inferred file path/kind and richer change detail rendering
+- Unify `File changes` and `Batch` icon semantics with theme-aware color refinement for clearer visual scanning
+- Refresh the home-chat welcome area with client iconography and adjusted landing styles for stronger first-screen hierarchy
+
+🔧 Improvements
+- Align file-tree Git folder status coloring with actual changed-path semantics, including test and style alignment, so folder-level change scanning is more predictable and visually consistent
+- Migrate message-flow tests into modular suites and harden realtime control-button compatibility to reduce UI regression risk
+- Refactor `threadItems` by extracting exploration summarization and file-change inference into dedicated utility modules, reducing monolith complexity while preserving behavior
+- Move the live middle-step collapsed hint closer to the input/working-indicator zone, improving visibility during thinking-state streaming
+- Keep failed or non-executed patch command entries as regular `commandExecution` items so only real edits are promoted into file-change cards
+
+🐛 Fixes
+- Fix local web-service auto-start failures caused by daemon binary discovery issues by adding a more robust binary-location fallback path in bootstrap logic
+- Fix non-default project history fetching getting stuck after a single failed request by correcting error-state reset behavior in the Web loading chain
+- Fix packaged-build white screen issues caused by missing/incorrect Web static resource resolution by repairing runtime static path wiring
+- Fix duplicated skill chips/tokens when selecting same-name skills from multi-source entries (global/project overlap) by tightening token grouping and de-dup assembly logic
+- Reduce noisy "missing file" alerts from detached file-window monitoring to avoid unnecessary disruption
+- Fix screenshot-message side effects that could trigger unintended session switching and history-chain breaks in Claude threads
+- Fix Claude custom models being reset unexpectedly and refresh the model list when opening a new session so the configured selection remains available
+- Fix realtime focus-follow regressions and preserve stable interaction context while streaming updates
+
+中文：
+
+✨ Features
+- 将 Skills 管理重构为树形全局浏览器，统一聚合多来源技能目录，并补齐面板内编辑/保存与结构化预览能力，减少在设置与文件系统之间来回切换
+- 补齐本地 daemon 在 Web 模式下缺失的 Git RPC 覆盖，并拆分 `daemon_state` 为独立职责模块，在提升 Git 操作完整度的同时改善 daemon 生命周期可维护性
+- 通过重组多引擎桥接与运行时链路、拆分超大 Web 模块，加固 Web 模式历史链路恢复能力，降低跨引擎会话回放在中断后的脆弱性
+- 重构消息实时幕布控制为更清晰的控制组与常量映射，并保持焦点跟随链路稳定，保证实时更新时交互上下文不漂移
+- 增强 Session Activity：补齐 `search_query` 工具链路展示、加固历史回放恢复能力，并支持按日期分组一键批量删除
+- 打通 detached/file-tree/file-view/Session Activity 的仓库感知链路，完善子仓库 `gitRoot` 状态映射与 diff 目标定位
+- 支持 Claude 自定义模型透传与动态模型发现，让新增模型配置可以直接被会话选择使用
+- 优化工具块中的文件变更摘要与 Markdown 渲染体验，提升长输出、多文件场景下的可读性
+- 在线程活动中，将成功执行的 `apply_patch` 命令自动转换为结构化 `File changes` 卡片，补齐变更文件路径、变更类型与更丰富的差异展示
+- 统一 `File changes` 与 `Batch` 图标语义并优化主题配色映射，提升工具卡视觉辨识度
+- 优化首页欢迎区首屏层次：新增客户端图标并调整欢迎样式编排
+
+🔧 Improvements
+- 对齐文件树 Git 文件夹状态着色与实际变更路径语义，并同步测试与样式表现，使目录级变更扫描更可预测、视觉反馈更一致
+- 将消息链路测试迁移为模块化结构，并加固实时控制按钮兼容性，降低后续 UI 演进时的回归风险
+- 重构 `threadItems`：将探索摘要与文件变更推断逻辑拆分为独立工具模块，降低单文件复杂度并保持原有行为一致
+- 调整实时中间步骤折叠提示的渲染位置，使其更贴近输入区与工作指示器，提升思考态流式阶段的可见性
+- 对失败执行或仅包含 patch 文本但未真正执行 `apply_patch` 的场景，保持原有 `commandExecution` 展示，避免误判为文件变更
+
+🐛 Fixes
+- 修复本地 web-service 自动启动时 daemon 二进制定位失败的问题：在 bootstrap 链路增加更稳健的二进制定位兜底路径
+- 修复非默认项目历史拉取在单次失败后进入“锁死”状态的问题：纠正 Web 侧失败状态复位逻辑，恢复后续请求可继续执行
+- 修复安装包场景下 Web 静态资源解析缺失/错误导致白屏的问题：修正运行时静态资源路径装配链路
+- 修复同名 Skill 在多来源（global/project）并存时选择后出现重复 skill chip/token 的问题：收紧 token 分组键与去重组装逻辑
+- 修复 detached 文件窗口监控链路“文件缺失”告警噪声过高的问题，减少非必要打断
+- 修复截图消息导致 Claude 线程会话误切换与历史链路断裂的问题
+- 修复 Claude 自定义模型被意外重置的问题，并在新会话中自动刷新模型列表，保证配置后的模型可持续可见
+- 修复实时更新中的焦点跟随回归，保证流式阶段的交互上下文稳定
+
+---
+
+##### **2026年3月28日（v0.3.5）**
+
+English:
+
+✨ Features
+- Add detached file explorer window for independent file browsing and operations
+- Support cross-window drag-and-drop from detached file tree into main chat composer
+- Align detached file tree interactions with Git semantics for consistent file operations
+- Improve file-view interaction details and external-change awareness signals
+
+🔧 Improvements
+- Split Git History panel resize control into a dedicated module to improve maintainability and isolate runtime risks
+
+🐛 Fixes
+- Fix Claude model selection regression where 4.6 could fall back to 4.5 unexpectedly
+- Fix Claude session resume path and default-model fallback behavior
+- Deduplicate Codex agent real-time message snapshots to prevent repeated rendering
+- Fix misleading drag cursor affordance on file-tree rows
+
+中文：
+
+✨ Features
+- 新增独立文件窗口（detached file explorer），支持脱离主界面进行文件浏览与操作
+- 支持 detached 文件树跨窗口拖拽落入主聊天输入框
+- 对齐 detached 文件树交互与 Git 语义，统一文件操作体验
+- 优化文件视图交互细节并增强外部变更感知提示
+
+🔧 Improvements
+- 拆分 Git History 面板尺寸控制为独立模块，提升可维护性并隔离运行时风险
+
+🐛 Fixes
+- 修复 Claude 模型选择链路回归：4.6 可能被意外回退到 4.5
+- 修复 Claude 会话续传链路与默认模型回退问题
+- 去重 Codex agent 实时消息快照，避免正文重复渲染
+- 修复文件树行级光标拖拽提示误导问题
+
+---
+
+##### **2026年3月25日（v0.3.4）**
+
+English:
+
+✨ Features
+- Add Gemini CLI vendor configuration and preflight checks
+- Implement Gemini real-time/history session rendering with multi-engine boundary isolation
+- Complete Gemini real-time body streaming and unify file-change activity display
+- Support Claude real-time thinking canvas segmented rendering
+- Unify attachment selection and drag-drop routing with support for non-image inline references
+- Enhance Gemini config panel interaction and styling, add model management button icons
+- Adjust Gemini default models and add preset model options
+- Support Kanban background execution and fix engine model leakage
+- Add per-item delete and unread control for Session Activity radar recent-completion entries
+
+🔧 Improvements
+- Rebrand codemoss to mossx and localize WeChat QR asset
+- Split oversized files to satisfy large-file governance gate and improve maintainability
+
+🐛 Fixes
+- Fix Gemini session loss and auto-recovery after stop
+- Fix image message session isolation and history image path resolution
+- Isolate Gemini image reference handling and history extraction
+- Split Claude and Gemini image attachment normalization
+- Align Gemini real-time thinking segmentation with tool rendering
+- Refine Gemini placeholder thinking slice positioning
+- Align Gemini real-time toolCalls rendering with thinking slice display
+- Fix Gemini thinking paragraph override and complete reducer module splitting
+- Correct Gemini real-time thinking point insertion order and preserve late-arrival fallback
+- Fix Claude/Gemini image attachment loss in real-time and history paths
+- Fix Gemini real-time/history dialogue thinking position misalignment and unify left-right rendering rules
+- Fix Gemini real-time/history rendering semantic drift and improve vendor config availability
+- Fix Gemini preflight Windows compatibility and path hints
+- Fix Claude thinking toggle state read/write inconsistency under local provider
+- Fix Kanban background periodic task incorrectly switching global dialogue engine
+- Fix silent session duration refresh and recovery flow regression
+
+中文：
+
+✨ Features
+- 新增 Gemini CLI 供应商配置与预检能力
+- 复刻 Gemini 实时/历史会话并完善多引擎边界隔离
+- 补齐 Gemini 实时正文流并统一文件变更活动展示
+- 支持 Claude 实时思考幕布分段渲染
+- 统一附件选择与拖拽分流链路，支持非图片内联引用
+- 优化 Gemini 配置面板交互与样式，并补齐模型管理按钮图标
+- 调整 Gemini 模型默认值并补充预置模型
+- 支持看板后台执行并修复引擎模型泄露
+- Session Activity 雷达区最近完成项支持单条删除与未读控制
+
+🔧 Improvements
+- 品牌重塑：codemoss → mossx，本地化微信二维码资源
+- 拆分超限大文件并通过 large-file 治理门禁
+
+🐛 Fixes
+- 修复 Gemini 停止后会话丢失与自动恢复问题
+- 修复图片消息会话隔离与历史图片路径解析
+- 隔离 Gemini 图片引用处理与历史提取
+- 分离 Claude 和 Gemini 图片附件规范化
+- 对齐 Gemini 实时思考分段与工具渲染
+- 精修 Gemini 占位思考切片点位
+- 对齐 Gemini 实时 toolCalls 渲染与思考切片展示
+- 修复 Gemini 思考段落覆盖并完成 reducer 模块拆分
+- 修正 Gemini 实时思考点穿插顺序并保留晚到兜底
+- 修复 Claude/Gemini 图片附件在实时与历史链路丢失
+- 修复 Gemini 实时与历史对话思考点位错位并统一左右渲染规则
+- 修复 Gemini 实时/历史渲染语义偏差并完善供应商配置可用性
+- 修复 Gemini 预检的 Win 兼容性与路径提示
+- 修复 Claude 思考开关在本地 provider 下状态读取与写入不一致
+- 修复看板后台周期任务误切换全局对话引擎
+- 修复静默会话时长刷新与恢复链路回归
+
+---
+
+##### **2026年3月23日（v0.3.3）**
+
+English:
+
+✨ Features
+- Add automatic compact-recovery for overlong Claude prompts and map compact events into session activity for better continuity
+- Support per-item delete and unread-state control for Session Activity radar "recent completed" entries
+
+🔧 Improvements
+- Split Claude lifecycle, auto-compact retry, and AskUserQuestion/user-input handling into dedicated modules to satisfy large-file governance and improve maintainability
+
+⚡ Performance
+- Reduce CPU peak in multi-session realtime chat and improve stability boundaries
+
+🐛 Fixes
+- Fix duplicated real-time body rendering in Claude chat streaming path
+- Fix multiline resume-input handling for AskUserQuestion on Windows/macOS and add snapshot-only regression coverage
+- Harden strict `request_id -> turn_id` routing in AskUserQuestion response flow to reduce cross-session/cross-turn answer leakage risk
+- Fix regression in silent-session duration refresh and recovery flow
+- Align local command behavior between `/clear` and `/reset`
+- Fix race between task-start switch and auto-start during Kanban task creation
+- Unify Windows top-left sidebar style and remove project-page whitespace
+- Preserve Claude session continuity in long-running chats
+
+中文：
+
+✨ Features
+- 新增 Claude 超长 Prompt 自动 compact 恢复能力，并将 compact 事件映射到会话活动链路，提升长会话连续性
+- Session Activity 雷达最近完成项支持单条删除与未读控制
+
+🔧 Improvements
+- 将 Claude 生命周期、自动 compact 重试、AskUserQuestion/用户输入处理拆分为独立模块，满足 large-file 治理门禁并提升可维护性
+
+⚡ Performance
+- 降低多会话实时对话 CPU 峰值，并补齐稳定性边界
+
+🐛 Fixes
+- 修复 Claude 聊天流式链路中实时正文重复渲染问题
+- 修复 AskUserQuestion 在 Windows/macOS 下多行 resume 输入处理异常，并补齐 snapshot-only 回归覆盖
+- 加固 AskUserQuestion 响应链路的 `request_id -> turn_id` 严格路由，降低多会话/多轮场景下答案串线风险
+- 修复静默会话时长刷新与恢复链路回归
+- 对齐 `/clear` 与 `/reset` 的本地命令行为
+- 修复 Kanban 创建任务时“开始开关”与自动启动竞态
+- 统一 Windows 侧栏左上区域样式并移除项目页留白
+- 修复长会话场景下 Claude session 连续性问题
+
+---
+
+##### **2026年3月22日（v0.3.2）**
+
+English:
+
+✨ Features
+- Deliver Phase 1 of Kanban scheduling and chained-task governance to improve multi-task flow control
+- Optimize serial scheduling rules and introduce a clearer Kanban label taxonomy
+- Enhance group-level batch operations and task-creation interactions in Kanban workflows
+- Support left-double-click expand/collapse behavior for workspace tree groups
+- Improve Session Activity hint bubbles and tabbar presentation details
+- Refine workspace project dropdown visuals and complete worktree list rendering
+- Integrate OpenApp button into main header and improve project-area hover visibility interactions
+- Add desktop topbar session tabs with global recent-session switching/closing workflow
+- Add `/context` command and `<image>` tag parsing/rendering in chat for richer context-injection and multimodal flows
+
+🔧 Improvements
+- Add `windows-latest` doctor + integration CI gate for stronger cross-platform release confidence
+- Harden Windows compatibility checks by making lint/runtime contract `no-undef` verification Windows-safe
+- Refine main-header layout composition for session tabs while keeping sidebar topbar compact
+- Split oversized Claude/message modules to satisfy large-file governance gate and improve maintainability
+
+🐛 Fixes
+- Fix scheduler lock contention and drag-sort anomalies under filtered Kanban views
+- Fix batch-complete confirmation bypass and outside-click handling in grouped operations
+- Enforce second-step confirmation for batch completion and polish confirm-modal behavior/styles
+- Fix Hook dependency warnings and stabilize session-panel memo dependency behavior
+- Fix non-Windows title-bar drag behavior and fullscreen boundary handling
+- Stabilize cross-platform tab eviction ordering by replacing locale-based tie-break with code-unit comparison
+- Expand keyboard activation compatibility for session tabs (`Space`, ` `, `Spacebar`, `Enter`)
+- Fix AskUserQuestion rendering inconsistency between live updates and history replay
+- Fix AskUserInput multi-select parsing path to remove lint blocking and stabilize tool-event handling
+- Fix Windows external image drag-drop in Composer by normalizing high-DPI drop coordinates, routing image paths to attachments, and hardening hook hot-reload stability
+
+中文：
+
+✨ Features
+- 完成 Kanban 调度与串联任务治理第一阶段落地，提升多任务流转可控性
+- 优化串行调度规则并完善看板标签体系，提升任务组织清晰度
+- 增强分组级批量操作与任务创建交互体验
+- 工作区树支持左键双击展开/折叠分组
+- 优化 Session Activity 提示气泡与标签栏展示细节
+- 优化工作区项目下拉外观并补全工作树列表渲染
+- 在主标题区融合 OpenApp 按钮并增强项目区域悬停显隐交互
+- 新增桌面端顶部会话标签，支持最近会话全局切换与关闭
+- 新增 `/context` 命令与 `<image>` 标签解析渲染，增强上下文注入与多模态消息链路
+
+🔧 Improvements
+- 新增 `windows-latest` 的 doctor + integration CI 门禁，提升跨平台发布稳定性
+- 调整 lint/运行时契约 `no-undef` 校验为 Windows 兼容实现
+- 优化主标题区布局编排，兼容顶部会话标签并保持侧栏顶部区域紧凑
+- 拆分 Claude/消息相关大文件，满足 large-file 治理门禁并提升可维护性
+
+🐛 Fixes
+- 修复过滤视图下调度锁竞争与拖拽排序异常
+- 修复分组批量完成流程中的确认放行与菜单外点击兼容问题
+- 修复批量完成缺少二次确认的问题并优化确认弹窗样式与行为
+- 修复 Hook 依赖告警并稳定会话面板 memo 依赖
+- 修复非 Windows 场景标题栏拖拽异常与全屏边界处理
+- 修复标签淘汰 tie-break 的 locale 依赖问题，统一为 code-unit 比较确保 Win/mac 一致
+- 修复会话标签键盘激活兼容性，补齐 `Space`/空格字符/`Spacebar`/`Enter`
+- 修复 AskUserQuestion 在实时更新与历史回放中的渲染不一致
+- 修复 AskUserInput multi-select 解析链路，解除 lint 阻塞并稳定工具事件处理
+- 修复 Composer 在 Windows 外部图片拖拽场景下无法稳定落入的问题：补齐高 DPI 坐标归一化、图片路径按附件处理，并加固 Hook 热更新稳定性
+
+---
+
+##### **2026年3月20日（v0.3.1）**
+
+English:
+
+✨ Features
+- Add Session Radar history management in Settings > Other, with batch delete support for completed radar entries
+- Persist Session Radar deletion to local client store (`leida`) instead of UI-only removal
+- Enhance Session Radar recent-completion cards with click-to-expand behavior while preserving direct session navigation
+- Improve recent-completion readability with compact copy and clearer project identity cues
+- Support opening absolute paths outside project root from session activity file-change entries
+- Add shell-script group rendering and edge-case compatibility in file views
+- Add persistent UI zoom slider in Settings with unified range control (80%-260%)
+- Improve Session Activity real-time-follow guide overlay and assistant-entry discoverability
+
+🔧 Improvements
+- Introduce locked + atomic client-store write path and key-level patch updates to reduce stale overwrite risk across concurrent clients
+- Extract Settings "Other" section into a dedicated module and factor Radar persistence merge/event helpers for better maintainability
+- Improve Session Radar refresh flow through explicit history-updated event propagation after write/delete actions
+- Align sidebar group/project icon axis and unify mode-navigation text color with better Chinese font appearance
+- Refine model selector popup width behavior to avoid text overflow
+
+🐛 Fixes
+- Fix deleted Session Radar records reappearing after app restart
+- Fix multi-client writeback race that could restore previously deleted radar history
+- Fix large-file governance regression by replacing line-compression workaround with structural module splitting
+- Fix ChatInputBox undo/redo behavior and align shortcuts (`Ctrl+Z`/`Ctrl+Shift+Z`, `Cmd+Z`/`Cmd+Shift+Z`) across platforms
+- Remove redundant bottom border on unselected Git view-switch buttons
+- Fix branch-switch validation and regression handling under dirty worktree states
+
+中文：
+
+✨ Features
+- 在设置页“其他设置”新增 Session Radar 历史管理，支持对已完成雷达记录进行批量删除
+- 会话雷达删除改为真实落盘到本地客户端存储（`leida`），不再只是界面层移除
+- 优化 Session Radar 最近完成卡片交互：支持点击展开且保留会话跳转能力
+- 精简最近完成卡片文案并强化项目标识，提升扫读效率
+- 支持从会话活动文件变更中打开项目外绝对路径文件
+- 补齐文件视图中 shell 脚本分组渲染并增强边界兼容性
+- 设置页新增 UI 缩放滑条并统一缩放范围到 80%-260%
+- 优化 Session Activity 实时跟随引导浮层与机器人入口可发现性
+
+🔧 Improvements
+- 客户端存储写入链路增加加锁与原子写，并支持按 key 的 patch 更新，降低多客户端并发下旧数据覆盖风险
+- 将设置页“其他设置”区块抽离为独立模块，并提取雷达持久化合并/事件辅助函数，提升可维护性
+- 删除与写入后通过显式历史更新事件驱动刷新，优化 Session Radar 视图同步链路
+- 侧栏分组/项目图标轴线对齐，统一模式导航文案颜色并优化中文字体观感
+- 优化模型选择弹窗宽度自适应策略，避免文案溢出
+
+🐛 Fixes
+- 修复删除后的 Session Radar 记录在应用重启后回弹的问题
+- 修复多客户端并发写回导致已删除雷达历史被恢复的问题
+- 修复大文件治理回归，移除“压缩换行”临时方案并改为结构化拆分
+- 修复 ChatInputBox 撤销重做行为，并统一跨平台快捷键（`Ctrl+Z`/`Ctrl+Shift+Z`、`Cmd+Z`/`Cmd+Shift+Z`）
+- 修复 Git 视图切换中未选中按钮残留底部边线问题
+- 修复 dirty worktree 场景下分支切换校验与回归问题
+
+---
+
+##### **2026年3月19日（v0.3.0）**
 
 English:
 
@@ -15,10 +491,12 @@ English:
 🔧 Improvements
 - Refine Session Radar read-state icon behavior and selected-state colors under dark theme
 - Polish selected icon style for panel tabs with cleaner border-only visual feedback
+- Refactor Session Radar persistence helpers to reduce large-file pressure and improve maintainability
 
 🐛 Fixes
 - Fix composer input overflow caused by long `MessageQueue` text blocks
 - Fix `MessageQueue` queue type reference mismatch in chat input path
+- Preserve raw user input format and restrict Spec prompt injection to first-turn only
 - Fix dual-display fullscreen drag freeze issue on Windows
 - Fix file tree root collapse interaction and drag cursor compatibility
 - Fix session badge and `Default` label contrast across light/dark themes
@@ -36,10 +514,12 @@ English:
 🔧 Improvements
 - 优化 Session Radar 已读状态图标表现与深色主题选中色彩
 - 调整面板 Tab 图标选中态为更简洁的无背景边框风格
+- 抽离 Session Radar 持久化辅助逻辑，降低大文件压力并提升可维护性
 
 🐛 Fixes
 - 修复长文本 `MessageQueue` 场景下输入区布局溢出问题
 - 修复聊天输入链路中 `MessageQueue` 队列类型引用错误
+- 修复用户输入原始格式被破坏，并将 Spec 提示词注入限定为仅首轮
 - 修复 Windows 双屏全屏拖拽导致白屏卡死问题
 - 修复文件树根目录折叠交互并优化拖拽抓取光标兼容性
 - 修复深浅主题下会话徽标与 `Default` 标签对比度问题

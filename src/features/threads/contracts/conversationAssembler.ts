@@ -55,7 +55,8 @@ function sliceByComparableLength(text: string, targetLength: number): string {
   }
   let compactLength = 0;
   for (let index = 0; index < text.length; index += 1) {
-    if (!/\s/.test(text[index])) {
+    const currentChar = text[index] ?? "";
+    if (!/\s/.test(currentChar)) {
       compactLength += 1;
     }
     if (compactLength >= targetLength) {

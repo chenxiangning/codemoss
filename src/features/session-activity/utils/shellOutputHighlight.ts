@@ -317,11 +317,12 @@ export function normalizeCommandMarkdownOutput(output: string) {
     let separatorStart = -1;
     const maxProbe = Math.min(tokens.length, startIndex + 8);
     for (let index = startIndex; index < maxProbe; index += 1) {
-      if (isSeparatorToken(tokens[index])) {
+      const token = tokens[index] ?? "";
+      if (isSeparatorToken(token)) {
         separatorStart = index;
         break;
       }
-      if (index > startIndex && (isHeadingToken(tokens[index]) || isFenceToken(tokens[index]))) {
+      if (index > startIndex && (isHeadingToken(token) || isFenceToken(token))) {
         return null;
       }
     }
@@ -330,7 +331,7 @@ export function normalizeCommandMarkdownOutput(output: string) {
     }
 
     let separatorEnd = separatorStart;
-    while (separatorEnd < tokens.length && isSeparatorToken(tokens[separatorEnd])) {
+    while (separatorEnd < tokens.length && isSeparatorToken(tokens[separatorEnd] ?? "")) {
       separatorEnd += 1;
     }
 
@@ -351,19 +352,22 @@ export function normalizeCommandMarkdownOutput(output: string) {
       if (candidate.some((cell) => isSeparatorToken(cell) || isFenceToken(cell) || isHeadingToken(cell))) {
         break;
       }
-      if (looksLikeSectionBoundary(candidate[0], candidate[1])) {
+      if (looksLikeSectionBoundary(candidate[0] ?? "", candidate[1] ?? "")) {
         break;
       }
       if (
         columnCount === 2 &&
-        looksLikeSectionLabel(candidate[0]) &&
-        looksLikeSectionLabel(candidate[1])
+        looksLikeSectionLabel(candidate[0] ?? "") &&
+        looksLikeSectionLabel(candidate[1] ?? "")
       ) {
         break;
       }
       rows.push(`| ${candidate.join(" | ")} |`);
       cursor += columnCount;
-      if (cursor < tokens.length && (isHeadingToken(tokens[cursor]) || isFenceToken(tokens[cursor]))) {
+      if (
+        cursor < tokens.length &&
+        (isHeadingToken(tokens[cursor] ?? "") || isFenceToken(tokens[cursor] ?? ""))
+      ) {
         break;
       }
     }
@@ -400,11 +404,11 @@ export function normalizeCommandMarkdownOutput(output: string) {
     if (isFenceStartToken(current)) {
       lines.push(current);
       index += 1;
-      while (index < tokens.length && !isFenceEndToken(tokens[index])) {
-        lines.push(tokens[index]);
+      while (index < tokens.length && !isFenceEndToken(tokens[index] ?? "")) {
+        lines.push(tokens[index] ?? "");
         index += 1;
       }
-      if (index < tokens.length && isFenceEndToken(tokens[index])) {
+      if (index < tokens.length && isFenceEndToken(tokens[index] ?? "")) {
         lines.push("```");
         index += 1;
       } else if (lines[lines.length - 1] !== "```") {
@@ -429,7 +433,7 @@ export function normalizeCommandMarkdownOutput(output: string) {
     if (
       index + 1 < tokens.length &&
       !hasTreeGlyph(current) &&
-      hasTreeGlyph(tokens[index + 1]) &&
+      hasTreeGlyph(tokens[index + 1] ?? "") &&
       !isHeadingToken(current)
     ) {
       lines.push(current);
@@ -593,8 +597,8 @@ export function renderCodeOutputHtml(output: string, language: string | null) {
       }
       const numberedLineMatch = line.match(/^(\s*\d+)(\s+)([\s\S]*)$/);
       if (numberedLineMatch) {
-        const highlighted = highlightLine(numberedLineMatch[3], language);
-        return `<span class="session-activity-code-line-number">${numberedLineMatch[1]}</span>${numberedLineMatch[2]}${highlighted}`;
+        const highlighted = highlightLine(numberedLineMatch[3] ?? "", language);
+        return `<span class="session-activity-code-line-number">${numberedLineMatch[1] ?? ""}</span>${numberedLineMatch[2] ?? ""}${highlighted}`;
       }
       return highlightLine(line, language);
     })

@@ -81,8 +81,13 @@ export type ConversationItem =
       kind: "message";
       role: "user" | "assistant";
       text: string;
+      isFinal?: boolean;
+      finalCompletedAt?: number;
+      finalDurationMs?: number;
       images?: string[];
       collaborationMode?: "plan" | "code" | null;
+      selectedAgentName?: string | null;
+      selectedAgentIcon?: string | null;
     }
   | { id: string; kind: "reasoning"; summary: string; content: string }
   | { id: string; kind: "diff"; title: string; diff: string; status?: string }
@@ -112,7 +117,10 @@ export type ThreadSummary = {
   id: string;
   name: string;
   updatedAt: number;
-  engineSource?: "codex" | "claude" | "opencode";
+  engineSource?: "codex" | "claude" | "gemini" | "opencode";
+  source?: string;
+  provider?: string;
+  sourceLabel?: string;
 };
 
 export type ReviewTarget =
@@ -156,6 +164,7 @@ export type AppSettings = {
   backendMode: BackendMode;
   remoteBackendHost: string;
   remoteBackendToken: string | null;
+  webServicePort: number;
   systemProxyEnabled: boolean;
   systemProxyUrl: string | null;
   defaultAccessMode: AccessMode;
@@ -192,6 +201,8 @@ export type AppSettings = {
   notificationSoundCustomPath: string;
   systemNotificationEnabled: boolean;
   preloadGitDiffs: boolean;
+  detachedExternalChangeAwarenessEnabled?: boolean;
+  detachedExternalChangeWatcherEnabled?: boolean;
   experimentalCollabEnabled: boolean;
   experimentalCollaborationModesEnabled: boolean;
   codexModeEnforcementEnabled?: boolean;
@@ -282,6 +293,7 @@ export type RequestUserInputQuestion = {
   question: string;
   isOther?: boolean;
   isSecret?: boolean;
+  multiSelect?: boolean;
   options?: RequestUserInputOption[];
 };
 
@@ -740,12 +752,14 @@ export type SelectedAgentOption = {
   id: string;
   name: string;
   prompt?: string | null;
+  icon?: string | null;
 };
 
 export type AgentConfig = {
   id: string;
   name: string;
   prompt?: string | null;
+  icon?: string | null;
   createdAt?: number | null;
 };
 

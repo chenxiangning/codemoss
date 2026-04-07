@@ -58,60 +58,59 @@ export function useCollaborationModes({
         payload: response,
       });
       const rawData = response.result?.data ?? response.data ?? [];
-      const data: CollaborationModeOption[] = rawData
-        .map((item: Record<string, unknown>) => {
-          if (!item || typeof item !== "object") {
-            return null;
-          }
-          const mode = String(item.mode ?? item.name ?? "");
-          if (!mode) {
-            return null;
-          }
-          const normalizedModeRaw = mode.trim().toLowerCase();
-          const normalizedMode =
-            normalizedModeRaw === "default" ? "code" : normalizedModeRaw;
-          if (normalizedMode && normalizedMode !== "plan" && normalizedMode !== "code") {
-            return null;
-          }
+      const data: CollaborationModeOption[] = [];
+      for (const rawItem of rawData) {
+        if (!rawItem || typeof rawItem !== "object") {
+          continue;
+        }
+        const item = rawItem as Record<string, unknown>;
+        const mode = String(item.mode ?? item.name ?? "");
+        if (!mode) {
+          continue;
+        }
+        const normalizedModeRaw = mode.trim().toLowerCase();
+        const normalizedMode =
+          normalizedModeRaw === "default" ? "code" : normalizedModeRaw;
+        if (normalizedMode && normalizedMode !== "plan" && normalizedMode !== "code") {
+          continue;
+        }
 
-          const rawSettings =
-            item.settings && typeof item.settings === "object" && !Array.isArray(item.settings)
-              ? (item.settings as Record<string, unknown>)
-              : null;
-          const settings = rawSettings ?? {
-            model: item.model ?? null,
-            reasoning_effort:
-              item.reasoning_effort ?? item.reasoningEffort ?? null,
-            developer_instructions:
-              item.developer_instructions ??
-              item.developerInstructions ??
-              null,
-          };
+        const rawSettings =
+          item.settings && typeof item.settings === "object" && !Array.isArray(item.settings)
+            ? (item.settings as Record<string, unknown>)
+            : null;
+        const settings = rawSettings ?? {
+          model: item.model ?? null,
+          reasoning_effort:
+            item.reasoning_effort ?? item.reasoningEffort ?? null,
+          developer_instructions:
+            item.developer_instructions ??
+            item.developerInstructions ??
+            null,
+        };
 
-          const model = String(settings.model ?? "");
-          const reasoningEffort = settings.reasoning_effort ?? null;
-          const developerInstructions = settings.developer_instructions ?? null;
+        const model = String(settings.model ?? "");
+        const reasoningEffort = settings.reasoning_effort ?? null;
+        const developerInstructions = settings.developer_instructions ?? null;
 
-          const labelSource = String(item.name ?? item.label ?? mode);
+        const labelSource = String(item.name ?? item.label ?? mode);
+        const normalizedValue: Record<string, unknown> = {
+          ...(item as Record<string, unknown>),
+          mode: normalizedMode,
+        };
 
-          const normalizedValue = {
-            ...(item as Record<string, unknown>),
-            mode: normalizedMode,
-          };
-
-          return {
-            id: normalizedMode,
-            label: formatCollaborationModeLabel(labelSource),
-            mode: normalizedMode,
-            model,
-            reasoningEffort: reasoningEffort ? String(reasoningEffort) : null,
-            developerInstructions: developerInstructions
-              ? String(developerInstructions)
-              : null,
-            value: normalizedValue,
-          };
-        })
-        .filter(Boolean);
+        data.push({
+          id: normalizedMode,
+          label: formatCollaborationModeLabel(labelSource),
+          mode: normalizedMode,
+          model,
+          reasoningEffort: reasoningEffort ? String(reasoningEffort) : null,
+          developerInstructions: developerInstructions
+            ? String(developerInstructions)
+            : null,
+          value: normalizedValue,
+        });
+      }
       setModes(data);
       lastFetchedWorkspaceId.current = workspaceId;
       const preferredModeId =

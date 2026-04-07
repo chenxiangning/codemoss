@@ -42,6 +42,7 @@ import { getVersion } from "@tauri-apps/api/app";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import {
   FolderOpen,
+  Globe,
   Monitor,
   Sun,
   Moon,
@@ -66,6 +67,7 @@ import type {
   WorkspaceInfo,
 } from "../../../types";
 import { formatDownloadSize } from "../../../utils/formatting";
+import wxqImage from "../../../assets/wxq.png";
 import {
   buildShortcutValue,
   getDefaultInterruptShortcut,
@@ -73,6 +75,7 @@ import {
 import { clampUiScale } from "../../../utils/uiScale";
 import {
   getCodexConfigPath,
+  reloadCodexRuntimeConfig,
 } from "../../../services/tauri";
 import {
   DEFAULT_CODE_FONT_FAMILY,
@@ -89,7 +92,6 @@ import { VendorSettingsPanel } from "../../vendors/components/VendorSettingsPane
 import { useGlobalAgentsMd } from "../hooks/useGlobalAgentsMd";
 import { useGlobalCodexConfigToml } from "../hooks/useGlobalCodexConfigToml";
 import { LanguageSelector } from "./LanguageSelector";
-import { HistoryCompletionSettings } from "./HistoryCompletionSettings";
 import { AgentSettingsSection } from "./AgentSettingsSection";
 import { PlaceholderSection } from "./PlaceholderSection";
 import { CommitSection } from "./CommitSection";
@@ -98,10 +100,12 @@ import { ProxyStatusBadge } from "../../../components/ProxyStatusBadge";
 import { UsageSection } from "./UsageSection";
 import { McpSection } from "./McpSection";
 import { SkillsSection } from "./SkillsSection";
+import type { ProjectSessionDeleteResult } from "./ProjectSessionManagementSection";
+import type { SessionRadarEntry } from "../../session-activity/hooks/useSessionRadarFeed";
 import {
-  ProjectSessionManagementSection,
-  type ProjectSessionDeleteResult,
-} from "./ProjectSessionManagementSection";
+  deleteSessionRadarHistoryEntries,
+  type SessionRadarHistoryDeleteResult,
+} from "../../session-activity/utils/sessionRadarHistoryManagement";
 import Settings from "lucide-react/dist/esm/icons/settings";
 import GitCommitHorizontal from "lucide-react/dist/esm/icons/git-commit-horizontal";
 import BookOpen from "lucide-react/dist/esm/icons/book-open";
@@ -130,23 +134,24 @@ import { ComposerSection } from "./settings-view/sections/ComposerSection";
 import { ShortcutsSection } from "./settings-view/sections/ShortcutsSection";
 import { OpenAppsSection } from "./settings-view/sections/OpenAppsSection";
 import { CodexSection } from "./settings-view/sections/CodexSection";
-
-// Feature flags to show/hide settings sidebar entries
-const SHOW_DICTATION_ENTRY = false;
-const SHOW_GIT_ENTRY = false;
-const SHOW_CODEX_ENTRY = false;
-const SHOW_EXPERIMENTAL_ENTRY = false;
-const SHOW_COMMIT_ENTRY = false;
-const SHOW_COMPOSER_ENTRY = false;
-const SHOW_SHORTCUTS_ENTRY = false;
-
-const DICTATION_MODELS = (t: (key: string) => string) => [
-  { id: "tiny", label: t("settings.dictationModelTiny"), size: "75 MB", note: t("settings.dictationModelFastest") },
-  { id: "base", label: t("settings.dictationModelBase"), size: "142 MB", note: t("settings.dictationModelBalanced") },
-  { id: "small", label: t("settings.dictationModelSmall"), size: "466 MB", note: t("settings.dictationModelBetter") },
-  { id: "medium", label: t("settings.dictationModelMedium"), size: "1.5 GB", note: t("settings.dictationModelHigh") },
-  { id: "large-v3", label: t("settings.dictationModelLargeV3"), size: "3.0 GB", note: t("settings.dictationModelBest") },
-];
+import { OtherSection } from "./settings-view/sections/OtherSection";
+import { DetachedExternalChangeToggles } from "./settings-view/sections/DetachedExternalChangeToggles";
+import { WebServiceSettings } from "./settings-view/sections/WebServiceSettings";
+import {
+  shortcutDraftKeyBySetting,
+  type ShortcutSettingKey,
+} from "./settings-view/settingsViewShortcuts";
+import {
+  DICTATION_MODELS,
+  SHOW_CODEX_ENTRY,
+  SHOW_COMMIT_ENTRY,
+  SHOW_COMPOSER_ENTRY,
+  SHOW_DICTATION_ENTRY,
+  SHOW_EXPERIMENTAL_ENTRY,
+  SHOW_GIT_ENTRY,
+  SHOW_SHORTCUTS_ENTRY,
+  TEMPORARILY_DISABLED_SIDEBAR_SECTIONS as BASE_DISABLED_SIDEBAR_SECTIONS,
+} from "./settings-view/settingsViewConstants";
 
 type InlineNoticeState =
   | {
@@ -193,6 +198,7 @@ export type SettingsViewProps = {
   ) => Promise<void>;
   workspaceThreadsById?: Record<string, ThreadSummary[]>;
   workspaceThreadListLoadingById?: Record<string, boolean>;
+  sessionRadarRecentCompletedSessions?: SessionRadarEntry[];
   onEnsureWorkspaceThreads?: (workspaceId: string) => void;
   onDeleteWorkspaceThreads?: (
     workspaceId: string,
@@ -224,78 +230,15 @@ type SettingsSection =
   | "dictation"
   | "shortcuts"
   | "open-apps"
+  | "web-service"
   | "git"
   | "other"
   | "community"
   | "vendors";
 type CodexSection = SettingsSection | "codex" | "experimental" | "about";
 
-const TEMPORARILY_DISABLED_SIDEBAR_SECTIONS: ReadonlySet<CodexSection> = new Set([
-  "mcp",
-  "permissions",
-  "prompts",
-  "skills",
-]);
-
-type ShortcutSettingKey =
-  | "composerModelShortcut"
-  | "composerAccessShortcut"
-  | "composerReasoningShortcut"
-  | "composerCollaborationShortcut"
-  | "interruptShortcut"
-  | "newAgentShortcut"
-  | "newWorktreeAgentShortcut"
-  | "newCloneAgentShortcut"
-  | "archiveThreadShortcut"
-  | "toggleProjectsSidebarShortcut"
-  | "toggleGitSidebarShortcut"
-  | "toggleGlobalSearchShortcut"
-  | "toggleDebugPanelShortcut"
-  | "toggleTerminalShortcut"
-  | "cycleAgentNextShortcut"
-  | "cycleAgentPrevShortcut"
-  | "cycleWorkspaceNextShortcut"
-  | "cycleWorkspacePrevShortcut";
-type ShortcutDraftKey =
-  | "model"
-  | "access"
-  | "reasoning"
-  | "collaboration"
-  | "interrupt"
-  | "newAgent"
-  | "newWorktreeAgent"
-  | "newCloneAgent"
-  | "archiveThread"
-  | "projectsSidebar"
-  | "gitSidebar"
-  | "globalSearch"
-  | "debugPanel"
-  | "terminal"
-  | "cycleAgentNext"
-  | "cycleAgentPrev"
-  | "cycleWorkspaceNext"
-  | "cycleWorkspacePrev";
-
-const shortcutDraftKeyBySetting: Record<ShortcutSettingKey, ShortcutDraftKey> = {
-  composerModelShortcut: "model",
-  composerAccessShortcut: "access",
-  composerReasoningShortcut: "reasoning",
-  composerCollaborationShortcut: "collaboration",
-  interruptShortcut: "interrupt",
-  newAgentShortcut: "newAgent",
-  newWorktreeAgentShortcut: "newWorktreeAgent",
-  newCloneAgentShortcut: "newCloneAgent",
-  archiveThreadShortcut: "archiveThread",
-  toggleProjectsSidebarShortcut: "projectsSidebar",
-  toggleGitSidebarShortcut: "gitSidebar",
-  toggleGlobalSearchShortcut: "globalSearch",
-  toggleDebugPanelShortcut: "debugPanel",
-  toggleTerminalShortcut: "terminal",
-  cycleAgentNextShortcut: "cycleAgentNext",
-  cycleAgentPrevShortcut: "cycleAgentPrev",
-  cycleWorkspaceNextShortcut: "cycleWorkspaceNext",
-  cycleWorkspacePrevShortcut: "cycleWorkspacePrev",
-};
+const TEMPORARILY_DISABLED_SIDEBAR_SECTIONS: ReadonlySet<CodexSection> =
+  BASE_DISABLED_SIDEBAR_SECTIONS as ReadonlySet<CodexSection>;
 
 const USER_MSG_DARK_PRESETS = [
   { color: "#005fb8", label: "Default" },
@@ -323,18 +266,6 @@ import { normalizeHexColor, HEX_COLOR_PATTERN } from "../../../utils/colorUtils"
 
 const DEFAULT_DARK_USER_MSG = "#005fb8";
 const DEFAULT_LIGHT_USER_MSG = "#0078d4";
-const BASIC_FONT_SIZE_LEVELS = [
-  { value: 0.8, labelKey: "settings.fontSizeLevel1" },
-  { value: 0.9, labelKey: "settings.fontSizeLevel2" },
-  { value: 1, labelKey: "settings.fontSizeLevel3" },
-  { value: 1.1, labelKey: "settings.fontSizeLevel4" },
-  { value: 1.2, labelKey: "settings.fontSizeLevel5" },
-  { value: 1.4, labelKey: "settings.fontSizeLevel6" },
-] as const;
-const BASIC_FONT_SIZE_LEVEL_SET = new Set(
-  BASIC_FONT_SIZE_LEVELS.map((level) => Number(level.value.toFixed(2))),
-);
-
 export function SettingsView({
   workspaceGroups,
   groupedWorkspaces,
@@ -360,6 +291,7 @@ export function SettingsView({
   onUpdateWorkspaceSettings,
   workspaceThreadsById = {},
   workspaceThreadListLoadingById = {},
+  sessionRadarRecentCompletedSessions = [],
   onEnsureWorkspaceThreads,
   onDeleteWorkspaceThreads,
   scaleShortcutTitle,
@@ -385,6 +317,7 @@ export function SettingsView({
   const [uiFontDraft, setUiFontDraft] = useState(appSettings.uiFontFamily);
   const [codeFontDraft, setCodeFontDraft] = useState(appSettings.codeFontFamily);
   const [codeFontSizeDraft, setCodeFontSizeDraft] = useState(appSettings.codeFontSize);
+  const [uiScaleDraft, setUiScaleDraft] = useState(clampUiScale(appSettings.uiScale));
   const [userMsgHexDraft, setUserMsgHexDraft] = useState(() =>
     normalizeHexColor(appSettings.userMsgColor),
   );
@@ -434,6 +367,10 @@ export function SettingsView({
     status: "idle" | "running" | "done";
     result: CodexDoctorResult | null;
   }>({ status: "idle", result: null });
+  const [codexRuntimeReloadState, setCodexRuntimeReloadState] = useState<{
+    status: "idle" | "reloading" | "applied" | "failed";
+    message: string | null;
+  }>({ status: "idle", message: null });
   const {
     content: globalAgentsContent,
     exists: globalAgentsExists,
@@ -533,13 +470,7 @@ export function SettingsView({
     [t],
   );
   const clampedUiScale = clampUiScale(appSettings.uiScale);
-  const uiScalePercentLabel = `${Math.round(clampedUiScale * 100)}%`;
-  const uiScaleSelectValue = useMemo(() => {
-    const normalizedScale = Number(clampedUiScale.toFixed(2));
-    return BASIC_FONT_SIZE_LEVEL_SET.has(normalizedScale)
-      ? String(normalizedScale)
-      : "custom";
-  }, [clampedUiScale]);
+  const uiScaleDraftPercentLabel = `${Math.round(uiScaleDraft * 100)}%`;
   const dictationReady = dictationModelStatus?.state === "ready";
   const dictationProgress = dictationModelStatus?.progress ?? null;
   const globalAgentsStatus = globalAgentsLoading
@@ -661,9 +592,17 @@ export function SettingsView({
     },
     [onDeleteWorkspaceThreads, t],
   );
-  const shouldShowWorkspaceSelector =
-    activeSection === "prompts" ||
-    activeSection === "skills";
+  const handleDeleteSessionRadarHistoryInSettings = useCallback(
+    async (entries: SessionRadarEntry[]) => {
+      const targets = entries.map((entry) => ({
+        id: entry.id,
+        completedAt: entry.completedAt ?? entry.updatedAt,
+      }));
+      return Promise.resolve(deleteSessionRadarHistoryEntries(targets));
+    },
+    [],
+  );
+  const shouldShowWorkspaceSelector = false;
   const mcpSectionDisabled = TEMPORARILY_DISABLED_SIDEBAR_SECTIONS.has("mcp");
   const permissionsSectionDisabled = TEMPORARILY_DISABLED_SIDEBAR_SECTIONS.has("permissions");
   const promptsSectionDisabled = TEMPORARILY_DISABLED_SIDEBAR_SECTIONS.has("prompts");
@@ -858,6 +797,10 @@ export function SettingsView({
   }, [appSettings.codeFontSize]);
 
   useEffect(() => {
+    setUiScaleDraft(clampedUiScale);
+  }, [clampedUiScale]);
+
+  useEffect(() => {
     setUserMsgHexDraft(normalizedUserMsgColor);
   }, [normalizedUserMsgColor]);
 
@@ -993,6 +936,13 @@ export function SettingsView({
   }, [initialSection]);
 
   useEffect(() => {
+    if (initialSection !== "prompts") {
+      return;
+    }
+    setSettingsWorkspaceId(activeWorkspace?.id ?? null);
+  }, [activeWorkspace?.id, initialSection]);
+
+  useEffect(() => {
     const handleWindowKeyDown = (event: KeyboardEvent) => {
       if (event.defaultPrevented) {
         return;
@@ -1073,27 +1023,20 @@ export function SettingsView({
     });
   };
 
-  const handleSelectBasicFontSizeLevel = useCallback(
-    (event: React.ChangeEvent<HTMLSelectElement>) => {
-      const nextValue = event.target.value;
-      if (nextValue === "custom") {
-        return;
-      }
-      const parsedScale = Number(nextValue);
-      if (!Number.isFinite(parsedScale)) {
-        return;
-      }
-      const nextScale = clampUiScale(parsedScale);
-      if (nextScale === appSettings.uiScale) {
-        return;
-      }
-      void onUpdateAppSettings({
-        ...appSettings,
-        uiScale: nextScale,
-      });
-    },
-    [appSettings, onUpdateAppSettings],
-  );
+  const handleSaveUiScale = useCallback(() => {
+    const nextScale = clampUiScale(uiScaleDraft);
+    if (nextScale === clampedUiScale) {
+      return;
+    }
+    void onUpdateAppSettings({
+      ...appSettings,
+      uiScale: nextScale,
+    });
+  }, [appSettings, clampedUiScale, onUpdateAppSettings, uiScaleDraft]);
+
+  const handleResetUiScaleDraft = useCallback(() => {
+    setUiScaleDraft(1);
+  }, []);
 
   const handleCommitUiFont = async () => {
     const nextFont = normalizeFontFamily(
@@ -1413,6 +1356,24 @@ export function SettingsView({
       });
     }
   };
+
+  const handleReloadCodexRuntimeConfig = useCallback(async () => {
+    setCodexRuntimeReloadState({ status: "reloading", message: null });
+    try {
+      const result = await reloadCodexRuntimeConfig();
+      const defaultMessage = t("settings.codexRuntimeReloadAppliedCount", {
+        count: result.restartedSessions,
+      });
+      const message = result.message?.trim() || defaultMessage;
+      setCodexRuntimeReloadState({ status: "applied", message });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setCodexRuntimeReloadState({
+        status: "failed",
+        message,
+      });
+    }
+  }, [t]);
 
   const updateShortcut = async (key: ShortcutSettingKey, value: string | null) => {
     const draftKey = shortcutDraftKeyBySetting[key];
@@ -1739,6 +1700,15 @@ export function SettingsView({
             >
               <ExternalLink aria-hidden />
               {!sidebarCollapsed && t("settings.sidebarOpenIn")}
+            </button>
+            <button
+              type="button"
+              className={`settings-nav ${activeSection === "web-service" ? "active" : ""}`}
+              onClick={() => setActiveSection("web-service")}
+              title={sidebarCollapsed ? t("settings.sidebarWebService") : ""}
+            >
+              <Globe aria-hidden />
+              {!sidebarCollapsed && t("settings.sidebarWebService")}
             </button>
             {SHOW_GIT_ENTRY && (
               <button
@@ -2266,24 +2236,41 @@ export function SettingsView({
                           <Type className="settings-basic-field-icon" aria-hidden />
                           <span className="settings-basic-field-label">{t("settings.fontSizeLabel")}</span>
                         </div>
-                        <div className="settings-control">
-                          <div className="settings-select-wrap">
-                            <select
-                              className="settings-select"
-                              value={uiScaleSelectValue}
-                              aria-label={t("settings.fontSizeLabel")}
-                              onChange={handleSelectBasicFontSizeLevel}
-                            >
-                              {BASIC_FONT_SIZE_LEVELS.map((level) => (
-                                <option key={level.value} value={level.value}>
-                                  {t(level.labelKey)}
-                                </option>
-                              ))}
-                              {uiScaleSelectValue === "custom" ? (
-                                <option value="custom">{t("settings.fontSizeCustom", { value: uiScalePercentLabel })}</option>
-                              ) : null}
-                            </select>
-                          </div>
+                        <div className="settings-control settings-scale-control">
+                          <input
+                            type="range"
+                            min={0.8}
+                            max={2.6}
+                            step={0.01}
+                            className="settings-input settings-input--range"
+                            aria-label={t("settings.fontSizeLabel")}
+                            value={uiScaleDraft}
+                            onChange={(event) => {
+                              const parsed = Number(event.target.value);
+                              if (!Number.isFinite(parsed)) {
+                                return;
+                              }
+                              setUiScaleDraft(clampUiScale(parsed));
+                            }}
+                          />
+                          <span className="settings-scale-value">{uiScaleDraftPercentLabel}</span>
+                          <button
+                            type="button"
+                            className="ghost settings-button-compact settings-scale-reset"
+                            onClick={handleResetUiScaleDraft}
+                            data-testid="settings-ui-scale-reset"
+                          >
+                            {t("settings.uiScaleReset")}
+                          </button>
+                          <button
+                            type="button"
+                            className="primary settings-button-compact settings-scale-save"
+                            onClick={handleSaveUiScale}
+                            disabled={uiScaleDraft === clampedUiScale}
+                            data-testid="settings-ui-scale-save"
+                          >
+                            {t("common.save")}
+                          </button>
                         </div>
                         <div className="settings-help" title={scaleShortcutTitle}>
                           {scaleShortcutText}
@@ -2483,7 +2470,11 @@ export function SettingsView({
               </section>
             )}
             {activeSection === "providers" && (
-              <VendorSettingsPanel />
+              <VendorSettingsPanel
+                codexReloadStatus={codexRuntimeReloadState.status}
+                codexReloadMessage={codexRuntimeReloadState.message}
+                handleReloadCodexRuntimeConfig={handleReloadCodexRuntimeConfig}
+              />
             )}
             {activeSection === "usage" && (
               <UsageSection
@@ -2516,37 +2507,32 @@ export function SettingsView({
               />
             )}
             {activeSection === "prompts" && (
-              <PromptSection activeWorkspace={selectedSettingsWorkspace} />
+              <PromptSection
+                activeWorkspace={selectedSettingsWorkspace}
+                workspaces={projects}
+                selectedWorkspaceId={selectedSettingsWorkspace?.id ?? null}
+                onWorkspaceChange={(workspaceId) => setSettingsWorkspaceId(workspaceId || null)}
+              />
             )}
             {activeSection === "skills" && (
               <SkillsSection activeWorkspace={selectedSettingsWorkspace} />
             )}
             {activeSection === "other" && (
-              <section className="settings-section">
-                <div className="settings-section-title">{t("settings.sidebarOther")}</div>
-                <div className="settings-section-subtitle">
-                  {t("settings.otherDescription")}
-                </div>
-                <HistoryCompletionSettings />
-                <Separator className="my-4" />
-                <ProjectSessionManagementSection
-                  workspace={selectedProjectSessionWorkspace}
-                  workspaces={sessionWorkspaceOptions}
-                  groupedWorkspaces={groupedWorkspaces}
-                  selectedWorkspaceId={selectedProjectSessionWorkspace?.id ?? null}
-                  onWorkspaceChange={setProjectSessionWorkspaceId}
-                  threads={selectedWorkspaceThreads}
-                  loading={selectedWorkspaceThreadListLoading}
-                  onRefresh={
-                    onEnsureWorkspaceThreads
-                      ? (workspaceId) => {
-                          onEnsureWorkspaceThreads(workspaceId);
-                        }
-                      : undefined
-                  }
-                  onDeleteSessions={handleDeleteWorkspaceThreadsInSettings}
-                />
-              </section>
+              <OtherSection
+                title={t("settings.sidebarOther")}
+                description={t("settings.otherDescription")}
+                sessionRadarRecentCompletedSessions={sessionRadarRecentCompletedSessions}
+                onDeleteSessionRadarHistory={handleDeleteSessionRadarHistoryInSettings}
+                workspace={selectedProjectSessionWorkspace}
+                workspaces={sessionWorkspaceOptions}
+                groupedWorkspaces={groupedWorkspaces}
+                selectedWorkspaceId={selectedProjectSessionWorkspace?.id ?? null}
+                onWorkspaceChange={setProjectSessionWorkspaceId}
+                threads={selectedWorkspaceThreads}
+                loading={selectedWorkspaceThreadListLoading}
+                onEnsureWorkspaceThreads={onEnsureWorkspaceThreads}
+                onDeleteWorkspaceThreads={handleDeleteWorkspaceThreadsInSettings}
+              />
             )}
             {activeSection === "community" && (
               <section className="settings-section settings-about-section">
@@ -2572,7 +2558,7 @@ export function SettingsView({
                   <div className="settings-about-wechat-label">{t("about.wechatGroupTitle")}</div>
                   <img
                     className="settings-about-wechat-qr"
-                    src="https://claudecodecn-1253302184.cos.ap-beijing.myqcloud.com/vscode/wxq.png"
+                    src={wxqImage}
                     alt={t("about.wechatGroupTitle")}
                   />
                 </div>
@@ -2808,29 +2794,26 @@ export function SettingsView({
               handleDeleteOpenApp={handleDeleteOpenApp}
               handleAddOpenApp={handleAddOpenApp}
             />
+            {activeSection === "web-service" && (
+              <section className="settings-section">
+                <WebServiceSettings
+                  t={t}
+                  appSettings={appSettings}
+                  onUpdateAppSettings={onUpdateAppSettings}
+                />
+              </section>
+            )}
             {activeSection === "git" && (
               <section className="settings-section">
                 <div className="settings-section-title">{t("settings.gitTitle")}</div>
                 <div className="settings-section-subtitle">
                   {t("settings.gitDescription")}
                 </div>
-                <div className="settings-toggle-row">
-                  <div>
-                    <div className="settings-toggle-title">{t("settings.preloadGitDiffs")}</div>
-                    <div className="settings-toggle-subtitle">
-                      {t("settings.preloadGitDiffsDesc")}
-                    </div>
-                  </div>
-                  <Switch
-                    checked={appSettings.preloadGitDiffs}
-                    onCheckedChange={(checked) =>
-                      void onUpdateAppSettings({
-                        ...appSettings,
-                        preloadGitDiffs: checked,
-                      })
-                    }
-                  />
-                </div>
+                <DetachedExternalChangeToggles
+                  t={t}
+                  appSettings={appSettings}
+                  onUpdateAppSettings={onUpdateAppSettings}
+                />
               </section>
             )}
             {/* vendors is now mapped to providers above */}

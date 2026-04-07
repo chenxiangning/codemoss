@@ -15,7 +15,7 @@ type RequestUserInputMessageProps = {
   ) => Promise<void> | void;
 };
 
-type SelectionState = Record<string, number | null>;
+type SelectionState = Record<string, Set<number>>;
 type NotesState = Record<string, string>;
 type SecretVisibilityState = Record<string, boolean>;
 type RequestDraftState = {
@@ -72,7 +72,7 @@ export function RequestUserInputMessage({
       const nextSecretVisible: SecretVisibilityState = {};
       activeRequest.params.questions.forEach((question, index) => {
         const key = question.id || `question-${index}`;
-        nextSelections[key] = null;
+        nextSelections[key] = new Set<number>();
         nextNotes[key] = "";
         nextSecretVisible[key] = false;
       });
@@ -112,15 +112,18 @@ export function RequestUserInputMessage({
       }
       const answerList: string[] = [];
       const key = question.id || `question-${index}`;
-      const selectedIndex = selections[key];
+      const selectedIndex = selections[key] ?? new Set<number>();
       const options = question.options ?? [];
       const hasOptions = options.length > 0;
-      if (hasOptions && selectedIndex !== null) {
-        const selected = options[selectedIndex];
-        const selectedValue =
-          selected?.label?.trim() || selected?.description?.trim() || "";
-        if (selectedValue) {
-          answerList.push(selectedValue);
+      if (hasOptions && selectedIndex.size > 0) {
+        const sortedIndexes = Array.from(selectedIndex).sort((left, right) => left - right);
+        for (const index of sortedIndexes) {
+          const selected = options[index];
+          const selectedValue =
+            selected?.label?.trim() || selected?.description?.trim() || "";
+          if (selectedValue) {
+            answerList.push(selectedValue);
+          }
         }
       }
       const note = (notes[key] ?? "").trim();
@@ -136,62 +139,54 @@ export function RequestUserInputMessage({
     return answers;
   };
 
-  const handleSelect = (questionId: string, optionIndex: number) => {
-    setDraftByRequest((current) => {
-      const draft = current[requestKey];
-      if (!draft) {
-        return current;
-      }
-      const noteText = (draft.notes[questionId] ?? "").trim();
-      if (noteText.length > 0) {
-        return {
-          ...current,
-          [requestKey]: {
-            ...draft,
-            selections: {
-              ...draft.selections,
-              [questionId]: null,
-            },
-          },
-        };
-      }
-      const currentSelected = draft.selections[questionId];
-      return {
-        ...current,
-        [requestKey]: {
-          ...draft,
-          selections: {
-            ...draft.selections,
-            [questionId]: currentSelected === optionIndex ? null : optionIndex,
-          },
-        },
-      };
-    });
-  };
-
-  const handleNotesChange = (
+  const handleSelect = (
     questionId: string,
-    value: string,
-    clearSelectionForCustomInput = false,
+    optionIndex: number,
+    multiSelect: boolean,
   ) => {
     setDraftByRequest((current) => {
       const draft = current[requestKey];
       if (!draft) {
         return current;
       }
-      const shouldClearSelection = clearSelectionForCustomInput && value.trim().length > 0;
-      const nextSelections = shouldClearSelection
-        ? {
+      const currentSelected = draft.selections[questionId] ?? new Set<number>();
+      const nextSelected = new Set(currentSelected);
+      if (multiSelect) {
+        if (nextSelected.has(optionIndex)) {
+          nextSelected.delete(optionIndex);
+        } else {
+          nextSelected.add(optionIndex);
+        }
+      } else if (nextSelected.size === 1 && nextSelected.has(optionIndex)) {
+        nextSelected.clear();
+      } else {
+        nextSelected.clear();
+        nextSelected.add(optionIndex);
+      }
+      return {
+        ...current,
+        [requestKey]: {
+          ...draft,
+          selections: {
             ...draft.selections,
-            [questionId]: null,
-          }
-        : draft.selections;
+            [questionId]: nextSelected,
+          },
+        },
+      };
+    });
+  };
+
+  const handleNotesChange = (questionId: string, value: string) => {
+    setDraftByRequest((current) => {
+      const draft = current[requestKey];
+      if (!draft) {
+        return current;
+      }
       return {
         ...current,
         [requestKey]: {
           ...draft,
           notes: { ...draft.notes, [questionId]: value },
-          selections: nextSelections,
         },
       };
     });
@@ -255,7 +250,6 @@ export function RequestUserInputMessage({
               const questionId = question.id || `question-${index}`;
               const selectedIndex = selections[questionId];
               const options = question.options ?? [];
-              const hasCustomInput = (notes[questionId] ?? "").trim().length > 0;
               const notePlaceholder = question.isOther
                 ? t("approval.typeAnswerOptional")
                 : options.length
@@ -274,7 +268,7 @@ export function RequestUserInputMessage({
                   {options.length ? (
                     <div className="request-user-input-options">
                       {options.map((option, optionIndex) => {
-                        const isSelected = !hasCustomInput && selectedIndex === optionIndex;
+                        const isSelected = Boolean(selectedIndex?.has(optionIndex));
                         return (
                         <button
                           key={`${questionId}-${optionIndex}`}
@@ -282,7 +276,13 @@ export function RequestUserInputMessage({
                           className={`request-user-input-option${
                             isSelected ? " is-selected" : ""
                           }`}
-                          onClick={() => handleSelect(questionId, optionIndex)}
+                          onClick={() =>
+                            handleSelect(
+                              questionId,
+                              optionIndex,
+                              question.multiSelect === true,
+                            )
+                          }
                         >
                           <div className="request-user-input-option-label">
                             {option.label}
@@ -323,9 +323,7 @@ export function RequestUserInputMessage({
                       className="request-user-input-notes"
                       placeholder={notePlaceholder}
                       value={notes[questionId] ?? ""}
-                      onChange={(event) =>
-                        handleNotesChange(questionId, event.target.value, options.length > 0)
-                      }
+                      onChange={(event) => handleNotesChange(questionId, event.target.value)}
                       rows={2}
                     />
                   )}
