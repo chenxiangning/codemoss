@@ -662,18 +662,84 @@ impl ClaudeSession {
         Ok(response_text)
     }
 
+    async fn terminate_child_process(
+        &self,
+        _turn_id: &str,
+        child: &mut Child,
+    ) -> Result<(), String> {
+        if matches!(child.try_wait(), Ok(Some(_))) {
+            return Ok(());
+        }
+
+        #[cfg(target_os = "windows")]
+        {
+            if let Some(pid) = child.id() {
+                match crate::utils::async_command("taskkill")
+                    .args(["/PID", &pid.to_string(), "/T", "/F"])
+                    .status()
+                    .await
+                {
+                    Ok(status) if status.success() => {
+                        let _ = child.wait().await;
+                        return Ok(());
+                    }
+                    Ok(status) => {
+                        if matches!(child.try_wait(), Ok(Some(_))) {
+                            return Ok(());
+                        }
+                        log::warn!(
+                            "[claude] taskkill failed for turn={} pid={} status={}",
+                            _turn_id,
+                            pid,
+                            status
+                        );
+                    }
+                    Err(error) => {
+                        log::warn!(
+                            "[claude] taskkill errored for turn={} pid={}: {}",
+                            _turn_id,
+                            pid,
+                            error
+                        );
+                    }
+                }
+            }
+        }
+
+        if let Err(error) = child.kill().await {
+            if matches!(child.try_wait(), Ok(Some(_))) {
+                return Ok(());
+            }
+            return Err(format!("Failed to kill process: {}", error));
+        }
+        if matches!(child.try_wait(), Ok(Some(_))) {
+            return Ok(());
+        }
+        let _ = child.wait().await;
+        Ok(())
+    }
+
     /// Interrupt the current operation
     pub async fn interrupt(&self) -> Result<(), String> {
         // Set interrupted flag BEFORE killing so send_message() knows this was intentional
         self.interrupted.store(true, Ordering::SeqCst);
-        let mut active = self.active_processes.lock().await;
-        for child in active.values_mut() {
-            child
-                .kill()
-                .await
-                .map_err(|e| format!("Failed to kill process: {}", e))?;
+        let children: Vec<(String, Child)> = {
+            let mut active = self.active_processes.lock().await;
+            active.drain().collect()
+        };
+        let mut first_terminate_error: Option<String> = None;
+        for (turn_id, mut child) in children {
+            if let Err(error) = self.terminate_child_process(&turn_id, &mut child).await {
+                log::warn!(
+                    "[claude] interrupt failed to terminate child for turn={}: {}",
+                    turn_id,
+                    error
+                );
+                if first_terminate_error.is_none() {
+                    first_terminate_error = Some(error);
+                }
+            }
         }
-        active.clear();
         // Clean up tool tracking state that would otherwise leak from interrupted turns.
         // Use unwrap_or_else to still clear even if the mutex was poisoned by a panic.
         self.tool_name_by_id
@@ -708,6 +774,9 @@ impl ClaudeSession {
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .clear();
+        if let Some(error) = first_terminate_error {
+            return Err(error);
+        }
         Ok(())
     }
 
@@ -719,10 +788,7 @@ impl ClaudeSession {
             active.remove(turn_id)
         };
         if let Some(child_proc) = child.as_mut() {
-            child_proc
-                .kill()
-                .await
-                .map_err(|e| format!("Failed to kill process: {}", e))?;
+            self.terminate_child_process(turn_id, child_proc).await?;
         }
         self.clear_turn_ephemeral_state(turn_id);
         Ok(())
