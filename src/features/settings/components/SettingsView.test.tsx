@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -8,10 +9,14 @@ import {
   within,
 } from "@testing-library/react";
 import type { ComponentProps } from "react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AppSettings, WorkspaceInfo } from "../../../types";
 import { pushErrorToast } from "../../../services/toasts";
 import { SettingsView } from "./SettingsView";
+
+vi.mock("@tauri-apps/api/app", () => ({
+  getVersion: vi.fn(() => new Promise<string>(() => {})),
+}));
 
 vi.mock("@tauri-apps/plugin-dialog", () => ({
   ask: vi.fn(),
@@ -29,9 +34,28 @@ vi.mock("../../../services/toasts", () => ({
   pushErrorToast: vi.fn(),
 }));
 
+const mockedLocalFonts = [
+  { family: "Monaco" },
+  { family: "Avenir" },
+  { family: "SF Pro Text" },
+] as const;
+
+const queryLocalFontsMock = vi.fn<() => Promise<Array<{ family: string }>>>(
+  () => new Promise<Array<{ family: string }>>(() => {}),
+);
+
+beforeEach(() => {
+  queryLocalFontsMock.mockReset();
+  queryLocalFontsMock.mockImplementation(
+    () => new Promise<Array<{ family: string }>>(() => {}),
+  );
+  (window as any).queryLocalFonts = queryLocalFontsMock;
+});
+
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
+  delete (window as any).queryLocalFonts;
 });
 
 const workspaceA: WorkspaceInfo = {
@@ -82,6 +106,8 @@ const baseSettings: AppSettings = {
   lastComposerReasoningEffort: null,
   uiScale: 1,
   theme: "system",
+  canvasWidthMode: "narrow",
+  layoutMode: "default",
   userMsgColor: "",
   usageShowRemaining: false,
   showMessageAnchors: true,
@@ -242,6 +268,12 @@ const renderComposerSection = (
   return { onUpdateAppSettings };
 };
 
+const flushSettingsViewEffects = async () => {
+  await act(async () => {
+    await Promise.resolve();
+  });
+};
+
 describe("SettingsView prompts workspace routing", () => {
   it("aligns prompt settings workspace picker to the active workspace when opened from prompts", async () => {
     render(
@@ -286,9 +318,73 @@ describe("SettingsView prompts workspace routing", () => {
   });
 });
 
+describe("SettingsView projects display", () => {
+  it("hides default workspace entry in projects section", async () => {
+    const defaultWorkspace: WorkspaceInfo = {
+      id: "ws-default",
+      name: "Default Hidden Workspace",
+      path: "/Users/demo/.codemoss/workspace",
+      connected: true,
+      settings: { sidebarCollapsed: false },
+    };
+    const normalWorkspace: WorkspaceInfo = {
+      id: "ws-normal",
+      name: "Visible Workspace",
+      path: "/tmp/visible-workspace",
+      connected: true,
+      settings: { sidebarCollapsed: false },
+    };
+
+    render(
+      <SettingsView
+        reduceTransparency={false}
+        onToggleTransparency={vi.fn()}
+        appSettings={baseSettings}
+        openAppIconById={{}}
+        onUpdateAppSettings={vi.fn().mockResolvedValue(undefined)}
+        workspaceGroups={[]}
+        groupedWorkspaces={[
+          {
+            id: null,
+            name: "Ungrouped",
+            workspaces: [defaultWorkspace, normalWorkspace],
+          },
+        ]}
+        ungroupedLabel="Ungrouped"
+        onClose={vi.fn()}
+        onMoveWorkspace={vi.fn()}
+        onDeleteWorkspace={vi.fn()}
+        onCreateWorkspaceGroup={vi.fn().mockResolvedValue(null)}
+        onRenameWorkspaceGroup={vi.fn().mockResolvedValue(null)}
+        onMoveWorkspaceGroup={vi.fn().mockResolvedValue(null)}
+        onDeleteWorkspaceGroup={vi.fn().mockResolvedValue(null)}
+        onAssignWorkspaceGroup={vi.fn().mockResolvedValue(null)}
+        onRunDoctor={vi.fn().mockResolvedValue(createDoctorResult())}
+        activeWorkspace={normalWorkspace}
+        activeEngine="codex"
+        onUpdateWorkspaceCodexBin={vi.fn().mockResolvedValue(undefined)}
+        onUpdateWorkspaceSettings={vi.fn().mockResolvedValue(undefined)}
+        scaleShortcutTitle="Scale shortcut"
+        scaleShortcutText="Use Command +/-"
+        onTestNotificationSound={vi.fn()}
+        dictationModelStatus={null}
+        onDownloadDictationModel={vi.fn()}
+        onCancelDictationDownload={vi.fn()}
+        onRemoveDictationModel={vi.fn()}
+        initialSection="projects"
+      />,
+    );
+
+    await flushSettingsViewEffects();
+    expect(screen.queryByText("Default Hidden Workspace")).toBeNull();
+    expect(screen.getByText("Visible Workspace")).toBeTruthy();
+  });
+});
+
 describe("SettingsView Display", () => {
-  it("keeps codex, dictation, git, and experimental sidebar entries hidden", () => {
+  it("keeps codex, dictation, git, and experimental sidebar entries hidden", async () => {
     renderDisplaySection();
+    await flushSettingsViewEffects();
 
     expect(screen.queryByRole("button", { name: "Dictation" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Git" })).toBeNull();
@@ -352,15 +448,18 @@ describe("SettingsView Display", () => {
     await waitFor(() => {
       expect(onRunDoctor).toHaveBeenCalled();
     });
-    const doctorBody = document.querySelector(".settings-doctor-body");
-    expect(doctorBody?.textContent).toContain("App Server Probe: fallback-ok");
-    expect(doctorBody?.textContent).toContain(
+    await waitFor(() => {
+      expect(document.querySelector(".settings-doctor-body")).toBeTruthy();
+    });
+    const doctorBodyText = document.querySelector(".settings-doctor-body")?.textContent ?? "";
+    expect(doctorBodyText).toContain("App Server Probe: fallback-ok");
+    expect(doctorBodyText).toContain(
       "Resolved Binary: C:/Users/test/AppData/Roaming/npm/codex.cmd",
     );
-    expect(doctorBody?.textContent).toContain("Wrapper Kind: cmd-wrapper");
-    expect(doctorBody?.textContent).toContain("Wrapper Fallback Retry: attempted");
-    expect(doctorBody?.textContent).toContain("HTTP_PROXY=http://127.0.0.1:7890");
-    expect(doctorBody?.textContent).toContain("HTTPS_PROXY=Not set");
+    expect(doctorBodyText).toContain("Wrapper Kind: cmd-wrapper");
+    expect(doctorBodyText).toContain("Wrapper Fallback Retry: attempted");
+    expect(doctorBodyText).toContain("HTTP_PROXY=http://127.0.0.1:7890");
+    expect(doctorBodyText).toContain("HTTPS_PROXY=Not set");
   });
 
   it("updates the theme selection", async () => {
@@ -376,8 +475,77 @@ describe("SettingsView Display", () => {
     });
   });
 
+  it("updates the canvas width mode selection", async () => {
+    const onUpdateAppSettings = vi.fn().mockResolvedValue(undefined);
+    renderDisplaySection({ onUpdateAppSettings });
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("radio", { name: "Wide canvas" }));
+    });
+
+    await waitFor(() => {
+      expect(onUpdateAppSettings).toHaveBeenCalledWith(
+        expect.objectContaining({ canvasWidthMode: "wide" }),
+      );
+    });
+  });
+
+  it("switches canvas width mode from wide back to narrow", async () => {
+    const onUpdateAppSettings = vi.fn().mockResolvedValue(undefined);
+    renderDisplaySection({
+      onUpdateAppSettings,
+      appSettings: { canvasWidthMode: "wide" },
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("radio", { name: "Narrow canvas" }));
+    });
+
+    await waitFor(() => {
+      expect(onUpdateAppSettings).toHaveBeenCalledWith(
+        expect.objectContaining({ canvasWidthMode: "narrow" }),
+      );
+    });
+  });
+
+  it("updates the layout mode selection", async () => {
+    const onUpdateAppSettings = vi.fn().mockResolvedValue(undefined);
+    renderDisplaySection({ onUpdateAppSettings });
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("radio", { name: "Left on right" }));
+    });
+
+    await waitFor(() => {
+      expect(onUpdateAppSettings).toHaveBeenCalledWith(
+        expect.objectContaining({ layoutMode: "swapped" }),
+      );
+    });
+  });
+
+  it("switches layout mode from swapped back to default", async () => {
+    const onUpdateAppSettings = vi.fn().mockResolvedValue(undefined);
+    renderDisplaySection({
+      onUpdateAppSettings,
+      appSettings: { layoutMode: "swapped" },
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("radio", { name: "Default layout" }));
+    });
+
+    await waitFor(() => {
+      expect(onUpdateAppSettings).toHaveBeenCalledWith(
+        expect.objectContaining({ layoutMode: "default" }),
+      );
+    });
+  });
+
   it("updates user message color using reference-compatible format", async () => {
     const onUpdateAppSettings = vi.fn().mockResolvedValue(undefined);
+    const appRoot = document.createElement("div");
+    appRoot.className = "app reduced-transparency";
+    document.body.appendChild(appRoot);
     renderDisplaySection({ onUpdateAppSettings });
 
     fireEvent.click(screen.getByTestId("settings-user-msg-color-preset-6e40c9"));
@@ -387,6 +555,10 @@ describe("SettingsView Display", () => {
         expect.objectContaining({ userMsgColor: "#6e40c9" }),
       );
     });
+    expect(document.documentElement.style.getPropertyValue("--color-message-user-bg")).toBe(
+      "#6e40c9",
+    );
+    expect(appRoot.style.getPropertyValue("--color-message-user-bg")).toBe("#6e40c9");
 
     fireEvent.change(screen.getByTestId("settings-user-msg-color-hex-input"), {
       target: { value: "#cf222e" },
@@ -397,6 +569,10 @@ describe("SettingsView Display", () => {
         expect.objectContaining({ userMsgColor: "#cf222e" }),
       );
     });
+    expect(document.documentElement.style.getPropertyValue("--color-message-user-bg")).toBe(
+      "#cf222e",
+    );
+    expect(appRoot.style.getPropertyValue("--color-message-user-bg")).toBe("#cf222e");
 
     const callCountBeforeInvalid = onUpdateAppSettings.mock.calls.length;
     fireEvent.change(screen.getByTestId("settings-user-msg-color-hex-input"), {
@@ -404,10 +580,12 @@ describe("SettingsView Display", () => {
     });
 
     expect(onUpdateAppSettings).toHaveBeenCalledTimes(callCountBeforeInvalid);
+    appRoot.remove();
   });
 
-  it("hides remaining limits, message anchors, and transparency toggles", () => {
+  it("hides remaining limits, message anchors, and transparency toggles", async () => {
     renderDisplaySection();
+    await flushSettingsViewEffects();
 
     expect(screen.queryByText("Show remaining Codex limits")).toBeNull();
     expect(screen.queryByText("Show message anchors")).toBeNull();
@@ -418,7 +596,7 @@ describe("SettingsView Display", () => {
     const onUpdateAppSettings = vi.fn().mockResolvedValue(undefined);
     renderDisplaySection({ onUpdateAppSettings });
 
-    const fontSizeSlider = screen.getByLabelText("Font size");
+    const fontSizeSlider = screen.getByLabelText("Interface scale");
 
     fireEvent.change(fontSizeSlider, { target: { value: "1.36" } });
     fireEvent.click(screen.getByTestId("settings-ui-scale-save"));
@@ -453,30 +631,44 @@ describe("SettingsView Display", () => {
     });
   });
 
-  it("commits font family changes on blur and enter", async () => {
+  it("commits ui font selection and code font dropdown changes", async () => {
     const onUpdateAppSettings = vi.fn().mockResolvedValue(undefined);
+    queryLocalFontsMock.mockResolvedValue([...mockedLocalFonts]);
     renderDisplaySection({ onUpdateAppSettings });
 
-    const uiFontInput = screen.getByLabelText("UI font family");
-    fireEvent.change(uiFontInput, { target: { value: "Avenir, sans-serif" } });
-    fireEvent.blur(uiFontInput);
+    const uiFontSelect = screen.getByTestId("settings-ui-font-select");
+    await waitFor(() => {
+      expect(within(uiFontSelect).getByRole("option", { name: "Avenir" })).toBeTruthy();
+    });
+    fireEvent.change(uiFontSelect, { target: { value: "Avenir" } });
 
     await waitFor(() => {
       expect(onUpdateAppSettings).toHaveBeenCalledWith(
-        expect.objectContaining({ uiFontFamily: "Avenir, sans-serif" }),
+        expect.objectContaining({ uiFontFamily: "Avenir" }),
       );
     });
 
-    const codeFontInput = screen.getByLabelText("Code font family");
-    fireEvent.change(codeFontInput, {
-      target: { value: "JetBrains Mono, monospace" },
-    });
-    fireEvent.keyDown(codeFontInput, { key: "Enter" });
+    const codeFontSelect = screen.getByTestId("settings-code-font-select");
+    fireEvent.change(codeFontSelect, { target: { value: "Avenir" } });
 
     await waitFor(() => {
       expect(onUpdateAppSettings).toHaveBeenCalledWith(
-        expect.objectContaining({ codeFontFamily: "JetBrains Mono, monospace" }),
+        expect.objectContaining({ codeFontFamily: "Avenir" }),
       );
+    });
+  });
+
+  it("lists local fonts in ui/code dropdowns", async () => {
+    queryLocalFontsMock.mockResolvedValue([...mockedLocalFonts]);
+    renderDisplaySection();
+
+    await waitFor(() => {
+      const uiFontSelect = screen.getByTestId("settings-ui-font-select");
+      const codeFontSelect = screen.getByTestId("settings-code-font-select");
+      expect(within(uiFontSelect).getByRole("option", { name: "Avenir" })).toBeTruthy();
+      expect(within(uiFontSelect).getByRole("option", { name: "Monaco" })).toBeTruthy();
+      expect(within(codeFontSelect).getByRole("option", { name: "Avenir" })).toBeTruthy();
+      expect(within(codeFontSelect).getByRole("option", { name: "Monaco" })).toBeTruthy();
     });
   });
 

@@ -356,6 +356,7 @@ export function renderAppShell(ctx: any) {
                 appSettings={appSettings}
                 openAppIconById={openAppIconById}
                 onUpdateAppSettings={async (next) => {
+                  setAppSettings(next);
                   await queueSaveSettings(next);
                 }}
                 onRunDoctor={doctor}

@@ -16,6 +16,15 @@
   width: 100%;
 }
 
+.app.canvas-width-wide .composer > * {
+  max-width: none;
+}
+
+.app.canvas-width-wide .composer {
+  padding-left: 50px;
+  padding-right: 25px;
+}
+
 .composer-queue {
   display: flex;
   flex-direction: column;

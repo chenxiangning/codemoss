@@ -44,13 +44,7 @@ import {
   FolderOpen,
   Globe,
   Monitor,
-  Sun,
-  Moon,
-  Palette,
   Cog,
-  Type,
-  MessageCircle,
-  RotateCcw,
   Info,
   Check,
   Wifi,
@@ -80,9 +74,6 @@ import {
 import {
   DEFAULT_CODE_FONT_FAMILY,
   DEFAULT_UI_FONT_FAMILY,
-  CODE_FONT_SIZE_DEFAULT,
-  CODE_FONT_SIZE_MAX,
-  CODE_FONT_SIZE_MIN,
   clampCodeFontSize,
   normalizeFontFamily,
 } from "../../../utils/fonts";
@@ -91,7 +82,6 @@ import { writeClientStoreValue } from "../../../services/clientStorage";
 import { VendorSettingsPanel } from "../../vendors/components/VendorSettingsPanel";
 import { useGlobalAgentsMd } from "../hooks/useGlobalAgentsMd";
 import { useGlobalCodexConfigToml } from "../hooks/useGlobalCodexConfigToml";
-import { LanguageSelector } from "./LanguageSelector";
 import { AgentSettingsSection } from "./AgentSettingsSection";
 import { PlaceholderSection } from "./PlaceholderSection";
 import { CommitSection } from "./CommitSection";
@@ -117,6 +107,11 @@ import NotebookPen from "lucide-react/dist/esm/icons/notebook-pen";
 import Users from "lucide-react/dist/esm/icons/users";
 import { pushErrorToast } from "../../../services/toasts";
 import {
+  normalizeHexColor,
+  HEX_COLOR_PATTERN,
+  getContrastingTextColor,
+} from "../../../utils/colorUtils";
+import {
   isHistoryCompletionEnabled,
   setHistoryCompletionEnabled,
 } from "../../composer/hooks/useInputHistoryStore";
@@ -133,6 +128,7 @@ import { ProjectsSection } from "./settings-view/sections/ProjectsSection";
 import { ComposerSection } from "./settings-view/sections/ComposerSection";
 import { ShortcutsSection } from "./settings-view/sections/ShortcutsSection";
 import { OpenAppsSection } from "./settings-view/sections/OpenAppsSection";
+import { BasicAppearanceSection } from "./settings-view/sections/BasicAppearanceSection";
 import { CodexSection } from "./settings-view/sections/CodexSection";
 import { OtherSection } from "./settings-view/sections/OtherSection";
 import { DetachedExternalChangeToggles } from "./settings-view/sections/DetachedExternalChangeToggles";
@@ -141,6 +137,17 @@ import {
   shortcutDraftKeyBySetting,
   type ShortcutSettingKey,
 } from "./settings-view/settingsViewShortcuts";
+import {
+  applyUserMessageBubbleCssVars,
+  DEFAULT_DARK_USER_MSG,
+  DEFAULT_LIGHT_USER_MSG,
+  extractPrimaryFontFamily,
+  formatFontFamilySetting,
+  listLocalUiFonts,
+  SettingsViewSection,
+  USER_MSG_DARK_PRESETS,
+  USER_MSG_LIGHT_PRESETS,
+} from "./settings-view/settingsViewAppearance";
 import {
   DICTATION_MODELS,
   SHOW_CODEX_ENTRY,
@@ -152,14 +159,12 @@ import {
   SHOW_SHORTCUTS_ENTRY,
   TEMPORARILY_DISABLED_SIDEBAR_SECTIONS as BASE_DISABLED_SIDEBAR_SECTIONS,
 } from "./settings-view/settingsViewConstants";
-
 type InlineNoticeState =
   | {
       kind: "success" | "error";
       message: string;
     }
   | null;
-
 export type SettingsViewProps = {
   workspaceGroups: WorkspaceGroup[];
   groupedWorkspaces: Array<{
@@ -211,61 +216,11 @@ export type SettingsViewProps = {
   onDownloadDictationModel?: () => void;
   onCancelDictationDownload?: () => void;
   onRemoveDictationModel?: () => void;
-  initialSection?: CodexSection;
+  initialSection?: SettingsViewSection;
   initialHighlightTarget?: "experimental-collaboration-modes";
 };
-
-type SettingsSection =
-  | "basic"
-  | "providers"
-  | "projects"
-  | "usage"
-  | "mcp"
-  | "permissions"
-  | "commit"
-  | "agents"
-  | "prompts"
-  | "skills"
-  | "composer"
-  | "dictation"
-  | "shortcuts"
-  | "open-apps"
-  | "web-service"
-  | "git"
-  | "other"
-  | "community"
-  | "vendors";
-type CodexSection = SettingsSection | "codex" | "experimental" | "about";
-
-const TEMPORARILY_DISABLED_SIDEBAR_SECTIONS: ReadonlySet<CodexSection> =
-  BASE_DISABLED_SIDEBAR_SECTIONS as ReadonlySet<CodexSection>;
-
-const USER_MSG_DARK_PRESETS = [
-  { color: "#005fb8", label: "Default" },
-  { color: "#1a7f37", label: "Green" },
-  { color: "#6e40c9", label: "Purple" },
-  { color: "#9a6700", label: "Amber" },
-  { color: "#cf222e", label: "Red" },
-  { color: "#0e6b8a", label: "Teal" },
-  { color: "#6b4c9a", label: "Violet" },
-  { color: "#4a5568", label: "Gray" },
-] as const;
-
-const USER_MSG_LIGHT_PRESETS = [
-  { color: "#0078d4", label: "Default" },
-  { color: "#1a7f37", label: "Green" },
-  { color: "#8250df", label: "Purple" },
-  { color: "#bf8700", label: "Amber" },
-  { color: "#cf222e", label: "Red" },
-  { color: "#0e8a9a", label: "Teal" },
-  { color: "#7c5cbf", label: "Violet" },
-  { color: "#57606a", label: "Gray" },
-] as const;
-
-import { normalizeHexColor, HEX_COLOR_PATTERN } from "../../../utils/colorUtils";
-
-const DEFAULT_DARK_USER_MSG = "#005fb8";
-const DEFAULT_LIGHT_USER_MSG = "#0078d4";
+const TEMPORARILY_DISABLED_SIDEBAR_SECTIONS: ReadonlySet<SettingsViewSection> =
+  BASE_DISABLED_SIDEBAR_SECTIONS as ReadonlySet<SettingsViewSection>;
 export function SettingsView({
   workspaceGroups,
   groupedWorkspaces,
@@ -305,7 +260,7 @@ export function SettingsView({
   initialHighlightTarget,
 }: SettingsViewProps) {
   const { t } = useTranslation();
-  const [activeSection, setActiveSection] = useState<CodexSection>("basic");
+  const [activeSection, setActiveSection] = useState<SettingsViewSection>("basic");
   const [basicSubTab, setBasicSubTab] = useState<"appearance" | "behavior">("appearance");
   const [commitPrompt, setCommitPrompt] = useState("");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -314,8 +269,15 @@ export function SettingsView({
   const [codexArgsDraft, setCodexArgsDraft] = useState(appSettings.codexArgs ?? "");
   const [remoteHostDraft, setRemoteHostDraft] = useState(appSettings.remoteBackendHost);
   const [remoteTokenDraft, setRemoteTokenDraft] = useState(appSettings.remoteBackendToken ?? "");
-  const [uiFontDraft, setUiFontDraft] = useState(appSettings.uiFontFamily);
-  const [codeFontDraft, setCodeFontDraft] = useState(appSettings.codeFontFamily);
+  const [uiFontDraft, setUiFontDraft] = useState(() =>
+    extractPrimaryFontFamily(appSettings.uiFontFamily) ||
+    extractPrimaryFontFamily(DEFAULT_UI_FONT_FAMILY),
+  );
+  const [uiFontOptions, setUiFontOptions] = useState<string[]>([]);
+  const [codeFontDraft, setCodeFontDraft] = useState(() =>
+    extractPrimaryFontFamily(appSettings.codeFontFamily) ||
+    extractPrimaryFontFamily(DEFAULT_CODE_FONT_FAMILY),
+  );
   const [codeFontSizeDraft, setCodeFontSizeDraft] = useState(appSettings.codeFontSize);
   const [uiScaleDraft, setUiScaleDraft] = useState(clampUiScale(appSettings.uiScale));
   const [userMsgHexDraft, setUserMsgHexDraft] = useState(() =>
@@ -441,6 +403,46 @@ export function SettingsView({
     resolvedAppearanceTheme === "light"
       ? DEFAULT_LIGHT_USER_MSG
       : DEFAULT_DARK_USER_MSG;
+  const defaultUiPrimaryFont = useMemo(
+    () => extractPrimaryFontFamily(DEFAULT_UI_FONT_FAMILY),
+    [],
+  );
+  const uiFontSelectOptions = useMemo(() => {
+    const options = new Set<string>(uiFontOptions);
+    const currentPrimary = extractPrimaryFontFamily(appSettings.uiFontFamily);
+    if (defaultUiPrimaryFont) {
+      options.add(defaultUiPrimaryFont);
+    }
+    if (currentPrimary) {
+      options.add(currentPrimary);
+    }
+    if (uiFontDraft) {
+      options.add(uiFontDraft);
+    }
+    return Array.from(options).sort((left, right) =>
+      left.localeCompare(right, undefined, { sensitivity: "base" }),
+    );
+  }, [appSettings.uiFontFamily, defaultUiPrimaryFont, uiFontDraft, uiFontOptions]);
+  const defaultCodePrimaryFont = useMemo(
+    () => extractPrimaryFontFamily(DEFAULT_CODE_FONT_FAMILY),
+    [],
+  );
+  const codeFontSelectOptions = useMemo(() => {
+    const options = new Set<string>(uiFontOptions);
+    const currentPrimary = extractPrimaryFontFamily(appSettings.codeFontFamily);
+    if (defaultCodePrimaryFont) {
+      options.add(defaultCodePrimaryFont);
+    }
+    if (currentPrimary) {
+      options.add(currentPrimary);
+    }
+    if (codeFontDraft) {
+      options.add(codeFontDraft);
+    }
+    return Array.from(options).sort((left, right) =>
+      left.localeCompare(right, undefined, { sensitivity: "base" }),
+    );
+  }, [appSettings.codeFontFamily, codeFontDraft, defaultCodePrimaryFont, uiFontOptions]);
   const selectedNotificationSound = useMemo(() => {
     const raw = appSettings.notificationSoundId?.trim();
     if (!raw) {
@@ -517,7 +519,6 @@ export function SettingsView({
       ) ?? models[1]
     );
   }, [appSettings.dictationModelId, t]);
-
   const projects = useMemo(
     () => groupedWorkspaces.flatMap((group) => group.workspaces),
     [groupedWorkspaces],
@@ -611,7 +612,6 @@ export function SettingsView({
     () => projects.some((workspace) => workspace.settings.codexHome != null),
     [projects],
   );
-
   useEffect(() => {
     let active = true;
     void getVersion().then((v) => {
@@ -621,7 +621,23 @@ export function SettingsView({
     });
     return () => { active = false; };
   }, [t]);
-
+  useEffect(() => {
+    let active = true;
+    void listLocalUiFonts()
+      .then((fonts) => {
+        if (active) {
+          setUiFontOptions(fonts);
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setUiFontOptions([]);
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
   useEffect(() => {
     if (
       projectSessionWorkspaceId &&
@@ -785,11 +801,17 @@ export function SettingsView({
   }, [appSettings.remoteBackendToken]);
 
   useEffect(() => {
-    setUiFontDraft(appSettings.uiFontFamily);
+    const nextPrimaryFont =
+      extractPrimaryFontFamily(appSettings.uiFontFamily) ||
+      extractPrimaryFontFamily(DEFAULT_UI_FONT_FAMILY);
+    setUiFontDraft(nextPrimaryFont);
   }, [appSettings.uiFontFamily]);
 
   useEffect(() => {
-    setCodeFontDraft(appSettings.codeFontFamily);
+    const nextPrimaryFont =
+      extractPrimaryFontFamily(appSettings.codeFontFamily) ||
+      extractPrimaryFontFamily(DEFAULT_CODE_FONT_FAMILY);
+    setCodeFontDraft(nextPrimaryFont);
   }, [appSettings.codeFontFamily]);
 
   useEffect(() => {
@@ -1038,35 +1060,59 @@ export function SettingsView({
     setUiScaleDraft(1);
   }, []);
 
-  const handleCommitUiFont = async () => {
-    const nextFont = normalizeFontFamily(
-      uiFontDraft,
-      DEFAULT_UI_FONT_FAMILY,
-    );
-    setUiFontDraft(nextFont);
-    if (nextFont === appSettings.uiFontFamily) {
-      return;
-    }
-    await onUpdateAppSettings({
-      ...appSettings,
-      uiFontFamily: nextFont,
-    });
-  };
+  const handleCommitUiFont = useCallback(
+    async (selectedFontName: string) => {
+      const normalizedFontName = selectedFontName.trim();
+      const nextFont = normalizeFontFamily(
+        formatFontFamilySetting(normalizedFontName),
+        DEFAULT_UI_FONT_FAMILY,
+      );
+      if (nextFont === appSettings.uiFontFamily) {
+        return;
+      }
+      await onUpdateAppSettings({
+        ...appSettings,
+        uiFontFamily: nextFont,
+      });
+    },
+    [appSettings, onUpdateAppSettings],
+  );
 
-  const handleCommitCodeFont = async () => {
-    const nextFont = normalizeFontFamily(
-      codeFontDraft,
-      DEFAULT_CODE_FONT_FAMILY,
-    );
-    setCodeFontDraft(nextFont);
-    if (nextFont === appSettings.codeFontFamily) {
-      return;
-    }
-    await onUpdateAppSettings({
-      ...appSettings,
-      codeFontFamily: nextFont,
-    });
-  };
+  const handleUiFontSelectChange = useCallback(
+    (event: React.ChangeEvent<HTMLSelectElement>) => {
+      const nextFontName = event.target.value;
+      setUiFontDraft(nextFontName);
+      void handleCommitUiFont(nextFontName);
+    },
+    [handleCommitUiFont],
+  );
+
+  const handleCommitCodeFont = useCallback(
+    async (selectedFontName: string) => {
+      const normalizedFontName = selectedFontName.trim();
+      const nextFont = normalizeFontFamily(
+        formatFontFamilySetting(normalizedFontName),
+        DEFAULT_CODE_FONT_FAMILY,
+      );
+      if (nextFont === appSettings.codeFontFamily) {
+        return;
+      }
+      await onUpdateAppSettings({
+        ...appSettings,
+        codeFontFamily: nextFont,
+      });
+    },
+    [appSettings, onUpdateAppSettings],
+  );
+
+  const handleCodeFontSelectChange = useCallback(
+    (event: React.ChangeEvent<HTMLSelectElement>) => {
+      const nextFontName = event.target.value;
+      setCodeFontDraft(nextFontName);
+      void handleCommitCodeFont(nextFontName);
+    },
+    [handleCommitCodeFont],
+  );
 
   const handleCommitCodeFontSize = async (nextSize: number) => {
     const clampedSize = clampCodeFontSize(nextSize);
@@ -1083,6 +1129,10 @@ export function SettingsView({
   const handleSaveUserMsgColor = useCallback(
     async (nextColor: string) => {
       const normalized = normalizeHexColor(nextColor);
+      applyUserMessageBubbleCssVars(
+        normalized || null,
+        normalized ? getContrastingTextColor(normalized) : null,
+      );
       if (normalized === normalizedUserMsgColor) {
         return;
       }
@@ -1825,7 +1875,6 @@ export function SettingsView({
               ungroupedLabel={ungroupedLabel}
               onMoveWorkspace={onMoveWorkspace}
               onDeleteWorkspace={onDeleteWorkspace}
-              projectsCount={projects.length}
             />
             {activeSection === "basic" && (
               <section className="settings-section settings-section-basic" data-basic-tab={basicSubTab}>
@@ -2159,313 +2208,40 @@ export function SettingsView({
                   </div>
                 )}
                 {basicSubTab === "appearance" && (
-                  <div className="settings-basic-appearance settings-basic-surface">
-                    <div className="settings-basic-group-card settings-basic-group-card--list">
-                      <div className="settings-subsection-title">{t("settings.displaySubtitle")}</div>
-                      <div className="settings-subsection-subtitle">
-                        {t("settings.displaySubDescription")}
-                      </div>
-                      <div className="settings-field settings-basic-theme-field settings-basic-item">
-                        <div className="settings-basic-field-header">
-                          <Palette className="settings-basic-field-icon" aria-hidden />
-                          <span className="settings-basic-field-label">{t("settings.theme")}</span>
-                        </div>
-                        <div className="settings-basic-theme-selector" role="radiogroup" aria-label={t("settings.theme")}>
-                          <button
-                            type="button"
-                            role="radio"
-                            aria-checked={appSettings.theme === "system"}
-                            className={`settings-basic-theme-option ${
-                              appSettings.theme === "system" ? "active" : ""
-                            }`}
-                            onClick={() =>
-                              void onUpdateAppSettings({
-                                ...appSettings,
-                                theme: "system",
-                              })
-                            }
-                          >
-                            <span className="settings-basic-theme-icon settings-basic-theme-icon-system">
-                              <Monitor size={14} />
-                            </span>
-                            <span>{t("settings.themeSystem")}</span>
-                          </button>
-                          <button
-                            type="button"
-                            role="radio"
-                            aria-checked={appSettings.theme === "light"}
-                            className={`settings-basic-theme-option ${
-                              appSettings.theme === "light" ? "active" : ""
-                            }`}
-                            onClick={() =>
-                              void onUpdateAppSettings({
-                                ...appSettings,
-                                theme: "light",
-                              })
-                            }
-                          >
-                            <span className="settings-basic-theme-icon settings-basic-theme-icon-light">
-                              <Sun size={14} />
-                            </span>
-                            <span>{t("settings.themeLight")}</span>
-                          </button>
-                          <button
-                            type="button"
-                            role="radio"
-                            aria-checked={appSettings.theme === "dark"}
-                            className={`settings-basic-theme-option ${
-                              appSettings.theme === "dark" ? "active" : ""
-                            }`}
-                            onClick={() =>
-                              void onUpdateAppSettings({
-                                ...appSettings,
-                                theme: "dark",
-                              })
-                            }
-                          >
-                            <span className="settings-basic-theme-icon settings-basic-theme-icon-dark">
-                              <Moon size={14} />
-                            </span>
-                            <span>{t("settings.themeDark")}</span>
-                          </button>
-                        </div>
-                      </div>
-                      <LanguageSelector rowClassName="settings-basic-item" />
-                      <div className="settings-field settings-basic-item">
-                        <div className="settings-basic-field-header">
-                          <Type className="settings-basic-field-icon" aria-hidden />
-                          <span className="settings-basic-field-label">{t("settings.fontSizeLabel")}</span>
-                        </div>
-                        <div className="settings-control settings-scale-control">
-                          <input
-                            type="range"
-                            min={0.8}
-                            max={2.6}
-                            step={0.01}
-                            className="settings-input settings-input--range"
-                            aria-label={t("settings.fontSizeLabel")}
-                            value={uiScaleDraft}
-                            onChange={(event) => {
-                              const parsed = Number(event.target.value);
-                              if (!Number.isFinite(parsed)) {
-                                return;
-                              }
-                              setUiScaleDraft(clampUiScale(parsed));
-                            }}
-                          />
-                          <span className="settings-scale-value">{uiScaleDraftPercentLabel}</span>
-                          <button
-                            type="button"
-                            className="ghost settings-button-compact settings-scale-reset"
-                            onClick={handleResetUiScaleDraft}
-                            data-testid="settings-ui-scale-reset"
-                          >
-                            {t("settings.uiScaleReset")}
-                          </button>
-                          <button
-                            type="button"
-                            className="primary settings-button-compact settings-scale-save"
-                            onClick={handleSaveUiScale}
-                            disabled={uiScaleDraft === clampedUiScale}
-                            data-testid="settings-ui-scale-save"
-                          >
-                            {t("common.save")}
-                          </button>
-                        </div>
-                        <div className="settings-help" title={scaleShortcutTitle}>
-                          {scaleShortcutText}
-                        </div>
-                      </div>
-                    </div>
-                    <div className="settings-color-config-card settings-basic-group-card">
-                      <div className="settings-color-config-head">
-                        <MessageCircle className="settings-color-config-icon" aria-hidden />
-                        <span className="settings-color-config-title">
-                          {t("settings.userMsgColorLabel")}
-                        </span>
-                      </div>
-                      <div className="settings-color-preset-grid" role="list">
-                        {userMsgPresets.map((preset) => (
-                          <button
-                            key={preset.color}
-                            type="button"
-                            role="listitem"
-                            className={`settings-color-swatch${isUserMsgPresetActive(preset.color) ? " is-active" : ""}`}
-                            onClick={() => handleUserMsgPresetClick(preset.color)}
-                            title={preset.label}
-                            aria-label={`${t("settings.userMsgColorLabel")} ${preset.color}`}
-                            data-testid={`settings-user-msg-color-preset-${preset.color.slice(1)}`}
-                          >
-                            <span
-                              className="settings-color-swatch-inner"
-                              style={{ backgroundColor: preset.color }}
-                            />
-                          </button>
-                        ))}
-                      </div>
-                      <div className="settings-color-custom-row">
-                        <span className="settings-color-custom-label">
-                          {t("settings.userMsgColorCustom")}
-                        </span>
-                        <label className="settings-color-picker" aria-label={t("settings.userMsgColorLabel")}>
-                          <span
-                            className="settings-color-picker-preview"
-                            style={{
-                              backgroundColor: normalizedUserMsgColor || defaultUserMsgColor,
-                            }}
-                          />
-                          <input
-                            type="color"
-                            className="settings-color-picker-input"
-                            value={normalizedUserMsgColor || defaultUserMsgColor}
-                            onChange={handleUserMsgColorPickerChange}
-                            aria-label={t("settings.userMsgColorLabel")}
-                          />
-                        </label>
-                        <input
-                          type="text"
-                          className="settings-input settings-color-hex-input"
-                          value={userMsgHexDraft}
-                          onChange={handleUserMsgHexInputChange}
-                          placeholder="#6e40c9"
-                          maxLength={7}
-                          spellCheck={false}
-                          aria-label={t("settings.userMsgColorLabel")}
-                          data-testid="settings-user-msg-color-hex-input"
-                        />
-                        {normalizedUserMsgColor ? (
-                          <button
-                            type="button"
-                            className="ghost settings-color-reset"
-                            onClick={handleResetUserMsgColor}
-                            data-testid="settings-user-msg-color-reset"
-                          >
-                            <RotateCcw size={14} aria-hidden />
-                            {t("settings.userMsgColorReset")}
-                          </button>
-                        ) : null}
-                      </div>
-                      <div className="settings-help settings-color-hint">
-                        <Info size={14} aria-hidden />
-                        <span>{t("settings.userMsgColorHint")}</span>
-                      </div>
-                    </div>
-                    <div className="settings-basic-group-card settings-basic-group-card--list">
-                      <div className="settings-field settings-basic-item">
-                        <label className="settings-field-label" htmlFor="ui-font-family">
-                          {t("settings.uiFontFamily")}
-                        </label>
-                        <div className="settings-field-row">
-                          <input
-                            id="ui-font-family"
-                            type="text"
-                            className="settings-input"
-                            value={uiFontDraft}
-                            onChange={(event) => setUiFontDraft(event.target.value)}
-                            onBlur={() => {
-                              void handleCommitUiFont();
-                            }}
-                            onKeyDown={(event) => {
-                              if (event.key === "Enter") {
-                                event.preventDefault();
-                                void handleCommitUiFont();
-                              }
-                            }}
-                          />
-                          <button
-                            type="button"
-                            className="ghost settings-button-compact"
-                            onClick={() => {
-                              setUiFontDraft(DEFAULT_UI_FONT_FAMILY);
-                              void onUpdateAppSettings({
-                                ...appSettings,
-                                uiFontFamily: DEFAULT_UI_FONT_FAMILY,
-                              });
-                            }}
-                          >
-                            {t("settings.reset")}
-                          </button>
-                        </div>
-                        <div className="settings-help">
-                          {t("settings.uiFontFamilyDesc")}
-                        </div>
-                      </div>
-                      <div className="settings-field settings-basic-item">
-                        <label className="settings-field-label" htmlFor="code-font-family">
-                          {t("settings.codeFontFamily")}
-                        </label>
-                        <div className="settings-field-row">
-                          <input
-                            id="code-font-family"
-                            type="text"
-                            className="settings-input"
-                            value={codeFontDraft}
-                            onChange={(event) => setCodeFontDraft(event.target.value)}
-                            onBlur={() => {
-                              void handleCommitCodeFont();
-                            }}
-                            onKeyDown={(event) => {
-                              if (event.key === "Enter") {
-                                event.preventDefault();
-                                void handleCommitCodeFont();
-                              }
-                            }}
-                          />
-                          <button
-                            type="button"
-                            className="ghost settings-button-compact"
-                            onClick={() => {
-                              setCodeFontDraft(DEFAULT_CODE_FONT_FAMILY);
-                              void onUpdateAppSettings({
-                                ...appSettings,
-                                codeFontFamily: DEFAULT_CODE_FONT_FAMILY,
-                              });
-                            }}
-                          >
-                            {t("settings.reset")}
-                          </button>
-                        </div>
-                        <div className="settings-help">
-                          {t("settings.codeFontFamilyDesc")}
-                        </div>
-                      </div>
-                      <div className="settings-field settings-basic-item">
-                        <label className="settings-field-label" htmlFor="code-font-size">
-                          {t("settings.codeFontSize")}
-                        </label>
-                        <div className="settings-field-row">
-                          <input
-                            id="code-font-size"
-                            type="range"
-                            min={CODE_FONT_SIZE_MIN}
-                            max={CODE_FONT_SIZE_MAX}
-                            step={1}
-                            className="settings-input settings-input--range"
-                            value={codeFontSizeDraft}
-                            onChange={(event) => {
-                              const nextValue = Number(event.target.value);
-                              setCodeFontSizeDraft(nextValue);
-                              void handleCommitCodeFontSize(nextValue);
-                            }}
-                          />
-                          <div className="settings-scale-value">{codeFontSizeDraft}px</div>
-                          <button
-                            type="button"
-                            className="ghost settings-button-compact"
-                            onClick={() => {
-                              setCodeFontSizeDraft(CODE_FONT_SIZE_DEFAULT);
-                              void handleCommitCodeFontSize(CODE_FONT_SIZE_DEFAULT);
-                            }}
-                          >
-                            {t("settings.reset")}
-                          </button>
-                        </div>
-                        <div className="settings-help">
-                          {t("settings.codeFontSizeDesc")}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
+                  <BasicAppearanceSection
+                    appSettings={appSettings}
+                    onUpdateAppSettings={onUpdateAppSettings}
+                    uiScaleDraft={uiScaleDraft}
+                    clampedUiScale={clampedUiScale}
+                    uiScaleDraftPercentLabel={uiScaleDraftPercentLabel}
+                    setUiScaleDraft={setUiScaleDraft}
+                    handleResetUiScaleDraft={handleResetUiScaleDraft}
+                    handleSaveUiScale={handleSaveUiScale}
+                    scaleShortcutTitle={scaleShortcutTitle}
+                    scaleShortcutText={scaleShortcutText}
+                    userMsgPresets={userMsgPresets}
+                    isUserMsgPresetActive={isUserMsgPresetActive}
+                    handleUserMsgPresetClick={handleUserMsgPresetClick}
+                    normalizedUserMsgColor={normalizedUserMsgColor}
+                    defaultUserMsgColor={defaultUserMsgColor}
+                    handleUserMsgColorPickerChange={handleUserMsgColorPickerChange}
+                    userMsgHexDraft={userMsgHexDraft}
+                    handleUserMsgHexInputChange={handleUserMsgHexInputChange}
+                    handleResetUserMsgColor={handleResetUserMsgColor}
+                    uiFontDraft={uiFontDraft}
+                    handleUiFontSelectChange={handleUiFontSelectChange}
+                    uiFontSelectOptions={uiFontSelectOptions}
+                    defaultUiPrimaryFont={defaultUiPrimaryFont}
+                    setUiFontDraft={setUiFontDraft}
+                    codeFontDraft={codeFontDraft}
+                    codeFontSelectOptions={codeFontSelectOptions}
+                    handleCodeFontSelectChange={handleCodeFontSelectChange}
+                    defaultCodePrimaryFont={defaultCodePrimaryFont}
+                    setCodeFontDraft={setCodeFontDraft}
+                    codeFontSizeDraft={codeFontSizeDraft}
+                    setCodeFontSizeDraft={setCodeFontSizeDraft}
+                    handleCommitCodeFontSize={handleCommitCodeFontSize}
+                  />
                 )}
               </section>
             )}

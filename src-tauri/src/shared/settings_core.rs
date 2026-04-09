@@ -11,12 +11,30 @@ use crate::types::AppSettings;
 const UI_SCALE_MIN: f64 = 0.8;
 const UI_SCALE_MAX: f64 = 2.6;
 const UI_SCALE_DEFAULT: f64 = 1.0;
+const CANVAS_WIDTH_MODE_NARROW: &str = "narrow";
+const CANVAS_WIDTH_MODE_WIDE: &str = "wide";
+const LAYOUT_MODE_DEFAULT: &str = "default";
+const LAYOUT_MODE_SWAPPED: &str = "swapped";
 
 fn sanitize_ui_scale(scale: f64) -> f64 {
     if !scale.is_finite() || scale < UI_SCALE_MIN || scale > UI_SCALE_MAX {
         return UI_SCALE_DEFAULT;
     }
     (scale * 100.0).round() / 100.0
+}
+
+fn sanitize_canvas_width_mode(mode: &str) -> String {
+    match mode {
+        CANVAS_WIDTH_MODE_NARROW | CANVAS_WIDTH_MODE_WIDE => mode.to_string(),
+        _ => CANVAS_WIDTH_MODE_NARROW.to_string(),
+    }
+}
+
+fn sanitize_layout_mode(mode: &str) -> String {
+    match mode {
+        LAYOUT_MODE_DEFAULT | LAYOUT_MODE_SWAPPED => mode.to_string(),
+        _ => LAYOUT_MODE_DEFAULT.to_string(),
+    }
 }
 
 fn validate_ui_scale(scale: f64) -> Result<(), String> {
@@ -62,6 +80,8 @@ pub(crate) async fn get_app_settings_core(app_settings: &Mutex<AppSettings>) -> 
         settings.codex_mode_enforcement_enabled = mode_enforcement_enabled;
     }
     settings.ui_scale = sanitize_ui_scale(settings.ui_scale);
+    settings.canvas_width_mode = sanitize_canvas_width_mode(&settings.canvas_width_mode);
+    settings.layout_mode = sanitize_layout_mode(&settings.layout_mode);
     settings
 }
 
@@ -70,14 +90,17 @@ pub(crate) async fn update_app_settings_core(
     app_settings: &Mutex<AppSettings>,
     settings_path: &PathBuf,
 ) -> Result<AppSettings, String> {
-    validate_ui_scale(settings.ui_scale)?;
-    proxy_core::validate_proxy_settings(&settings)?;
-    sync_codex_config_flags(&settings);
-    write_settings(settings_path, &settings)?;
-    proxy_core::apply_app_proxy_settings(&settings)?;
+    let mut normalized = settings;
+    normalized.canvas_width_mode = sanitize_canvas_width_mode(&normalized.canvas_width_mode);
+    normalized.layout_mode = sanitize_layout_mode(&normalized.layout_mode);
+    validate_ui_scale(normalized.ui_scale)?;
+    proxy_core::validate_proxy_settings(&normalized)?;
+    sync_codex_config_flags(&normalized);
+    write_settings(settings_path, &normalized)?;
+    proxy_core::apply_app_proxy_settings(&normalized)?;
     let mut current = app_settings.lock().await;
-    *current = settings.clone();
-    Ok(settings)
+    *current = normalized.clone();
+    Ok(normalized)
 }
 
 pub(crate) async fn restore_app_settings_core(
@@ -129,7 +152,10 @@ pub(crate) fn get_codex_config_path_core() -> Result<String, String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{sanitize_ui_scale, validate_ui_scale, UI_SCALE_DEFAULT};
+    use super::{
+        sanitize_canvas_width_mode, sanitize_layout_mode, sanitize_ui_scale, validate_ui_scale,
+        UI_SCALE_DEFAULT,
+    };
 
     #[test]
     fn sanitize_ui_scale_falls_back_for_out_of_range() {
@@ -142,6 +168,30 @@ mod tests {
         assert!((sanitize_ui_scale(0.8) - 0.8).abs() < f64::EPSILON);
         assert!((sanitize_ui_scale(1.25) - 1.25).abs() < f64::EPSILON);
         assert!((sanitize_ui_scale(2.6) - 2.6).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn sanitize_canvas_width_mode_falls_back_for_invalid_values() {
+        assert_eq!(sanitize_canvas_width_mode("foo"), "narrow");
+        assert_eq!(sanitize_canvas_width_mode(""), "narrow");
+    }
+
+    #[test]
+    fn sanitize_canvas_width_mode_keeps_supported_values() {
+        assert_eq!(sanitize_canvas_width_mode("narrow"), "narrow");
+        assert_eq!(sanitize_canvas_width_mode("wide"), "wide");
+    }
+
+    #[test]
+    fn sanitize_layout_mode_falls_back_for_invalid_values() {
+        assert_eq!(sanitize_layout_mode("foo"), "default");
+        assert_eq!(sanitize_layout_mode(""), "default");
+    }
+
+    #[test]
+    fn sanitize_layout_mode_keeps_supported_values() {
+        assert_eq!(sanitize_layout_mode("default"), "default");
+        assert_eq!(sanitize_layout_mode("swapped"), "swapped");
     }
 
     #[test]

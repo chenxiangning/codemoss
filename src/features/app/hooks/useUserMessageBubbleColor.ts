@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { normalizeHexColor, getContrastingTextColor } from "../../../utils/colorUtils";
+import { applyUserMessageBubbleCssVars } from "../../../utils/userMessageBubbleCssVars";
 
 export function useUserMessageBubbleColor(userMsgColor: string) {
   useEffect(() => {
@@ -7,13 +8,10 @@ export function useUserMessageBubbleColor(userMsgColor: string) {
       return;
     }
 
-    const root = document.documentElement;
     const normalized = normalizeHexColor(userMsgColor);
 
     if (normalized) {
-      root.style.setProperty("--surface-bubble-user", normalized);
-      root.style.setProperty("--color-message-user-bg", normalized);
-      root.style.setProperty("--color-message-user-text", getContrastingTextColor(normalized));
+      applyUserMessageBubbleCssVars(normalized, getContrastingTextColor(normalized));
       try {
         window.localStorage.setItem("userMsgColor", normalized);
       } catch {
@@ -22,9 +20,7 @@ export function useUserMessageBubbleColor(userMsgColor: string) {
       return;
     }
 
-    root.style.removeProperty("--surface-bubble-user");
-    root.style.removeProperty("--color-message-user-bg");
-    root.style.removeProperty("--color-message-user-text");
+    applyUserMessageBubbleCssVars(null, null);
     try {
       window.localStorage.removeItem("userMsgColor");
     } catch {

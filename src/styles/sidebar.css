@@ -4,7 +4,7 @@
   --sidebar-space-2: 8px;
   --sidebar-space-3: 12px;
   --sidebar-row-radius: 8px;
-  --sidebar-row-height-workspace: 32px;
+  --sidebar-row-height-workspace: 28px;
   --sidebar-row-height-thread: 30px;
   --sidebar-color-active-primary: var(--surface-hover);
   --sidebar-color-active-secondary: color-mix(
@@ -452,6 +452,11 @@
   scrollbar-gutter: auto;
 }
 
+.sidebar-content-column [data-slot="scroll-area-scrollbar"][data-orientation="horizontal"],
+.sidebar-content-column [data-slot="scroll-area-corner"] {
+  display: none;
+}
+
 .sidebar-content-column.fade-top.fade-bottom {
   -webkit-mask-image: none;
   mask-image: none;
@@ -770,8 +775,19 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
-  padding: 0 8px 0 10px;
+  min-height: var(--sidebar-row-height-workspace);
+  gap: 6px;
+  padding: 2px 8px;
+  border-radius: var(--sidebar-row-radius);
+  color: var(--text-muted);
+  transition:
+    background-color 0.16s ease,
+    color 0.16s ease;
+}
+
+.workspace-group-header:hover {
+  background: var(--surface-hover);
+  color: var(--text-strong);
 }
 
 .workspace-group-header.is-toggleable {
@@ -787,23 +803,17 @@
 .workspace-group-title {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 0;
   min-width: 0;
-}
-
-.workspace-group-icon {
-  width: 16px;
-  height: 16px;
-  color: var(--text-muted);
-  flex-shrink: 0;
 }
 
 .workspace-group-label {
   text-transform: none;
-  font-size: 12px;
-  letter-spacing: 0.02em;
-  color: var(--text-muted);
-  font-weight: 500;
+  font-size: 14px;
+  letter-spacing: 0;
+  color: inherit;
+  font-weight: 340;
+  line-height: 1.15;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -813,7 +823,7 @@
 .workspace-group-list {
   display: grid;
   grid-template-rows: 1fr;
-  margin-top: 6px;
+  margin-top: 2px;
   opacity: 1;
   transform: translateY(0);
   transition:
@@ -881,6 +891,10 @@
   position: relative;
 }
 
+.workspace-card + .workspace-card {
+  margin-top: -1px;
+}
+
 .workspace-children {
   position: relative;
   display: flex;
@@ -898,7 +912,8 @@
 .workspace-row {
   display: flex;
   flex-direction: column;
-  width: 100%;
+  width: calc(100% - 4px);
+  margin-left: 4px;
   border-radius: var(--sidebar-row-radius);
   border: none;
   background: transparent;
@@ -942,7 +957,7 @@
   align-items: center;
   min-height: var(--sidebar-row-height-workspace);
   width: 100%;
-  padding: 4px 8px;
+  padding: 2px 8px;
   gap: 6px;
   color: var(--text-muted);
   border-radius: var(--sidebar-row-radius);
