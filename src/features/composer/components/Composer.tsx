@@ -1,4 +1,12 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  memo,
+  useCallback,
+  useDeferredValue,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useTranslation } from "react-i18next";
 import type {
   ComposerSendShortcut,
@@ -552,13 +560,15 @@ export const Composer = memo(function Composer({
 }: ComposerProps) {
   const { t } = useTranslation();
   const isCodexEngine = selectedEngine === "codex";
+  const deferredItems = useDeferredValue(items);
+  const performanceScopedItems = isProcessing ? deferredItems : items;
   const supportsStreamActivityPhaseFx =
     selectedEngine === "codex" ||
     selectedEngine === "claude" ||
     selectedEngine === "gemini";
   const streamActivityPhase = useStreamActivityPhase({
     isProcessing: Boolean(isProcessing && supportsStreamActivityPhaseFx),
-    items,
+    items: performanceScopedItems,
   });
   const isReviewQuickActionEngine =
     selectedEngine === "codex" || selectedEngine === "claude";
@@ -567,7 +577,7 @@ export const Composer = memo(function Composer({
     selectedEngine === "codex" ||
     selectedEngine === "gemini";
   const { todoTotal, subagentTotal, fileChanges, commandTotal } = useStatusPanelData(
-    items,
+    performanceScopedItems,
     { isCodexEngine },
   );
   const hasStatusPanelActivity = useMemo(() => {

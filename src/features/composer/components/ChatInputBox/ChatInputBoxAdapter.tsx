@@ -7,6 +7,8 @@
  */
 import {
   forwardRef,
+  memo,
+  startTransition,
   useCallback,
   useEffect,
   useImperativeHandle,
@@ -503,7 +505,7 @@ function resolveSkillScope(source?: string): 'global' | 'project' {
   return 'project';
 }
 
-export const ChatInputBoxAdapter = forwardRef<ChatInputBoxHandle, ChatInputBoxAdapterProps>(
+export const ChatInputBoxAdapter = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxAdapterProps>(
   (props, ref) => {
     const {
       text,
@@ -650,7 +652,9 @@ export const ChatInputBoxAdapter = forwardRef<ChatInputBoxHandle, ChatInputBoxAd
 
     // Handle input from ChatInputBox -> Composer text state
     const handleInput = useCallback((content: string) => {
-      onTextChange(content, null);
+      startTransition(() => {
+        onTextChange(content, null);
+      });
     }, [onTextChange]);
 
     // Handle submit from ChatInputBox
@@ -1277,6 +1281,6 @@ export const ChatInputBoxAdapter = forwardRef<ChatInputBoxHandle, ChatInputBoxAd
       />
     );
   }
-);
+));
 
 ChatInputBoxAdapter.displayName = 'ChatInputBoxAdapter';
