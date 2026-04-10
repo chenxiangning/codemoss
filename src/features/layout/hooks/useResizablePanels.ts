@@ -30,6 +30,7 @@ type ResizeState = {
   startWidth: number;
   startHeight: number;
   horizontalDirection?: 1 | -1;
+  previewHandle?: HTMLElement | null;
 };
 
 function stopResizeEventPropagation(event: ReactMouseEvent) {
@@ -130,6 +131,38 @@ function applyLiveSizeCssVar(
     default:
       break;
   }
+}
+
+function setResizeHandleDragging(
+  handle: HTMLElement | null | undefined,
+  active: boolean,
+) {
+  if (!handle) {
+    return;
+  }
+  handle.classList.toggle("is-dragging", active);
+}
+
+function updateResizeHandlePreview(
+  handle: HTMLElement | null | undefined,
+  offsetX: number,
+) {
+  if (!handle) {
+    return;
+  }
+  if (offsetX === 0) {
+    handle.style.transform = "";
+    return;
+  }
+  handle.style.transform = `translate3d(${offsetX}px, 0, 0)`;
+}
+
+function clearResizeHandlePreview(handle: HTMLElement | null | undefined) {
+  if (!handle) {
+    return;
+  }
+  handle.style.transform = "";
+  handle.classList.remove("is-dragging");
 }
 
 export function useResizablePanels() {
@@ -286,9 +319,11 @@ export function useResizablePanels() {
           MIN_SIDEBAR_WIDTH,
           MAX_SIDEBAR_WIDTH,
         );
-        scheduleResizeApply(next);
         liveSizesRef.current.sidebarWidth = next;
-        applyLiveSizeCssVar("sidebar", next);
+        updateResizeHandlePreview(
+          resizeRef.current.previewHandle,
+          (next - resizeRef.current.startWidth) * (resizeRef.current.horizontalDirection ?? 1),
+        );
       } else if (resizeRef.current.type === "right-panel") {
         const delta = event.clientX - resizeRef.current.startX;
         const next = clamp(
@@ -297,7 +332,10 @@ export function useResizablePanels() {
           getRightPanelMaxWidth(),
         );
         liveSizesRef.current.rightPanelWidth = next;
-        applyLiveSizeCssVar("right-panel", next);
+        updateResizeHandlePreview(
+          resizeRef.current.previewHandle,
+          (next - resizeRef.current.startWidth) * (resizeRef.current.horizontalDirection ?? -1),
+        );
       } else if (resizeRef.current.type === "plan-panel") {
         const delta = event.clientY - resizeRef.current.startY;
         const next = clamp(
@@ -345,11 +383,18 @@ export function useResizablePanels() {
       if (!resizeRef.current) {
         return;
       }
+      const activeResize = resizeRef.current;
       if (resizeRafRef.current != null) {
         window.cancelAnimationFrame(resizeRafRef.current);
         resizeRafRef.current = null;
       }
       flushPendingResize();
+      if (activeResize.type === "sidebar") {
+        applyLiveSizeCssVar("sidebar", liveSizesRef.current.sidebarWidth);
+      } else if (activeResize.type === "right-panel") {
+        applyLiveSizeCssVar("right-panel", liveSizesRef.current.rightPanelWidth);
+      }
+      clearResizeHandlePreview(activeResize.previewHandle);
       resizeRef.current = null;
       setPanelResizing(false);
       setSidebarWidth(liveSizesRef.current.sidebarWidth);
@@ -384,6 +429,7 @@ export function useResizablePanels() {
         window.cancelAnimationFrame(resizeRafRef.current);
         resizeRafRef.current = null;
       }
+      clearResizeHandlePreview(resizeRef.current?.previewHandle);
       pendingValueRef.current = null;
       setResizingMode(false);
     };
@@ -404,7 +450,9 @@ export function useResizablePanels() {
         startWidth: sidebarWidth,
         startHeight: planPanelHeight,
         horizontalDirection: resolveHorizontalResizeDirection("sidebar", getAppNode()),
+        previewHandle: event.currentTarget instanceof HTMLElement ? event.currentTarget : null,
       };
+      setResizeHandleDragging(resizeRef.current.previewHandle, true);
       setPanelResizing(true);
       document.body.style.cursor = "col-resize";
       document.body.style.userSelect = "none";
@@ -428,7 +476,9 @@ export function useResizablePanels() {
         startWidth: rightPanelWidth,
         startHeight: planPanelHeight,
         horizontalDirection: resolveHorizontalResizeDirection("right-panel", getAppNode()),
+        previewHandle: event.currentTarget instanceof HTMLElement ? event.currentTarget : null,
       };
+      setResizeHandleDragging(resizeRef.current.previewHandle, true);
       setPanelResizing(true);
       document.body.style.cursor = "col-resize";
       document.body.style.userSelect = "none";

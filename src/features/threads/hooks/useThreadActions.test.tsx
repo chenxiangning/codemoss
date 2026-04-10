@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ConversationItem, WorkspaceInfo } from "../../../types";
 import {
   archiveThread,
+  deleteCodexSession,
   deleteClaudeSession,
   deleteGeminiSession,
   deleteOpenCodeSession,
@@ -50,6 +51,7 @@ vi.mock("../../../services/tauri", () => ({
   resumeThread: vi.fn(),
   listThreads: vi.fn(),
   archiveThread: vi.fn(),
+  deleteCodexSession: vi.fn(),
   deleteClaudeSession: vi.fn(),
   deleteGeminiSession: vi.fn(),
   deleteOpenCodeSession: vi.fn(),
@@ -70,7 +72,7 @@ vi.mock("../utils/threadStorage", () => ({
 describe("useThreadActions", () => {
   const workspace: WorkspaceInfo = {
     id: "ws-1",
-    name: "MossX",
+    name: "ccgui",
     path: "/tmp/codex",
     connected: true,
     settings: { sidebarCollapsed: false },
@@ -93,6 +95,12 @@ describe("useThreadActions", () => {
     vi.mocked(deleteOpenCodeSession).mockResolvedValue({
       deleted: true,
       method: "filesystem",
+    });
+    vi.mocked(deleteCodexSession).mockResolvedValue({
+      deleted: true,
+      deletedCount: 1,
+      method: "filesystem",
+      archivedBeforeDelete: true,
     });
     vi.mocked(loadGeminiSession).mockResolvedValue({ messages: [] });
   });
@@ -167,6 +175,37 @@ describe("useThreadActions", () => {
       threadId: "thread-1",
     });
     expect(loadedThreadsRef.current["thread-1"]).toBe(true);
+  });
+
+  it("reconnects workspace and retries when codex start thread reports not connected", async () => {
+    vi.mocked(startThread)
+      .mockRejectedValueOnce(new Error("workspace not connected"))
+      .mockResolvedValueOnce({
+        result: { thread: { id: "thread-retry" } },
+      });
+
+    const { result, dispatch, loadedThreadsRef } = renderActions();
+
+    let threadId: string | null = null;
+    await act(async () => {
+      threadId = await result.current.startThreadForWorkspace("ws-1");
+    });
+
+    expect(threadId).toBe("thread-retry");
+    expect(connectWorkspace).toHaveBeenCalledWith("ws-1");
+    expect(startThread).toHaveBeenCalledTimes(2);
+    expect(dispatch).toHaveBeenCalledWith({
+      type: "ensureThread",
+      workspaceId: "ws-1",
+      threadId: "thread-retry",
+      engine: "codex",
+    });
+    expect(dispatch).toHaveBeenCalledWith({
+      type: "setActiveThreadId",
+      workspaceId: "ws-1",
+      threadId: "thread-retry",
+    });
+    expect(loadedThreadsRef.current["thread-retry"]).toBe(true);
   });
 
   it("starts a thread when start_thread returns result.threadId", async () => {
@@ -814,6 +853,7 @@ describe("useThreadActions", () => {
             cwd: "/tmp/codex",
             preview: "Remote preview",
             updated_at: 5000,
+            size_bytes: 4096,
           },
           {
             id: "thread-2",
@@ -854,6 +894,7 @@ describe("useThreadActions", () => {
           id: "thread-1",
           name: "Custom",
           updatedAt: 5000,
+          sizeBytes: 4096,
           engineSource: "codex",
         },
       ],
@@ -1375,6 +1416,41 @@ describe("useThreadActions", () => {
     });
   });
 
+  it("falls back to claude sessions when codex thread list remains not connected after retry", async () => {
+    vi.mocked(listThreads)
+      .mockRejectedValueOnce(new Error("workspace not connected"))
+      .mockRejectedValueOnce(new Error("workspace not connected"));
+    vi.mocked(listClaudeSessions).mockResolvedValue([
+      {
+        sessionId: "claude-fallback-1",
+        firstMessage: "Claude recovered history",
+        updatedAt: 1_730_100_000_000,
+      },
+    ]);
+    vi.mocked(getOpenCodeSessionList).mockResolvedValue([]);
+
+    const { result, dispatch } = renderActions();
+
+    await act(async () => {
+      await result.current.listThreadsForWorkspace(workspace);
+    });
+
+    expect(connectWorkspace).toHaveBeenCalledWith("ws-1");
+    expect(listThreads).toHaveBeenCalledTimes(2);
+    expect(dispatch).toHaveBeenCalledWith({
+      type: "setThreads",
+      workspaceId: "ws-1",
+      threads: [
+        {
+          id: "claude:claude-fallback-1",
+          name: "Claude recovered history",
+          updatedAt: 1_730_100_000_000,
+          engineSource: "claude",
+        },
+      ],
+    });
+  });
+
   it("refreshes gemini sessions on cold start without gemini signal", async () => {
     vi.mocked(listThreads).mockResolvedValue({
       result: {
@@ -1415,6 +1491,47 @@ describe("useThreadActions", () => {
     });
   });
 
+  it("normalizes gemini session summaries with snake_case fields", async () => {
+    vi.mocked(listThreads).mockResolvedValue({
+      result: {
+        data: [],
+        nextCursor: null,
+      },
+    });
+    vi.mocked(listClaudeSessions).mockResolvedValue([]);
+    vi.mocked(getOpenCodeSessionList).mockResolvedValue([]);
+    vi.mocked(listGeminiSessions).mockResolvedValue([
+      {
+        session_id: "ses_gemini_snake_1",
+        first_message: "Gemini Snake",
+        updated_at: 1_730_000_200_000,
+        file_size_bytes: 2_048,
+      },
+    ]);
+
+    const { result, dispatch } = renderActions();
+
+    await act(async () => {
+      await result.current.listThreadsForWorkspace(workspace);
+    });
+
+    await waitFor(() => {
+      expect(dispatch).toHaveBeenCalledWith({
+        type: "setThreads",
+        workspaceId: "ws-1",
+        threads: [
+          {
+            id: "gemini:ses_gemini_snake_1",
+            name: "Gemini Snake",
+            updatedAt: 1_730_000_200_000,
+            sizeBytes: 2_048,
+            engineSource: "gemini",
+          },
+        ],
+      });
+    });
+  });
+
   it("routes opencode hard delete to backend adapter", async () => {
     const { result } = renderActions();
 
@@ -1424,6 +1541,20 @@ describe("useThreadActions", () => {
 
     expect(archiveThread).not.toHaveBeenCalled();
     expect(deleteOpenCodeSession).toHaveBeenCalledWith("ws-1", "ses_opc_1");
+  });
+
+  it("routes codex delete to filesystem delete instead of archive", async () => {
+    const { result } = renderActions();
+
+    await act(async () => {
+      await result.current.deleteThreadForWorkspace("ws-1", "019d767b-5541-7010-a30d-a454864bccd8");
+    });
+
+    expect(archiveThread).not.toHaveBeenCalled();
+    expect(deleteCodexSession).toHaveBeenCalledWith(
+      "ws-1",
+      "019d767b-5541-7010-a30d-a454864bccd8",
+    );
   });
 
   it("keeps deleted claude sessions absent after reload", async () => {

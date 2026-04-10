@@ -21,6 +21,16 @@
   --sidebar-default-badge-text: #ffffff;
   --sidebar-default-badge-border: rgba(59, 130, 246, 0.62);
   --sidebar-default-badge-bg: rgba(59, 130, 246, 0.24);
+  --thread-size-color-under-1m: #8f7f86;
+  --thread-size-color-1m: #a26e76;
+  --thread-size-color-2m: #b55f68;
+  --thread-size-color-4m: #c84e5b;
+  --thread-size-color-8m: #d83f50;
+  --thread-size-color-10m: #e33245;
+  --thread-size-color-15m: #ec263a;
+  --thread-size-color-25m: #f21930;
+  --thread-size-color-50m: #fb0d26;
+  --thread-size-color-100m: #ff0018;
   padding: 0 var(--sidebar-padding) 12px;
   background: var(--surface-sidebar);
   backdrop-filter: none;
@@ -45,6 +55,16 @@
   --sidebar-default-badge-text: #1d4ed8;
   --sidebar-default-badge-border: rgba(37, 99, 235, 0.42);
   --sidebar-default-badge-bg: rgba(37, 99, 235, 0.12);
+  --thread-size-color-under-1m: #75656c;
+  --thread-size-color-1m: #88575f;
+  --thread-size-color-2m: #9a4951;
+  --thread-size-color-4m: #ac3d46;
+  --thread-size-color-8m: #bc333d;
+  --thread-size-color-10m: #c82a35;
+  --thread-size-color-15m: #d1212e;
+  --thread-size-color-25m: #d81827;
+  --thread-size-color-50m: #df0f20;
+  --thread-size-color-100m: #e40018;
 }
 
 @media (prefers-color-scheme: light) {
@@ -58,6 +78,16 @@
     --sidebar-default-badge-text: #1d4ed8;
     --sidebar-default-badge-border: rgba(37, 99, 235, 0.42);
     --sidebar-default-badge-bg: rgba(37, 99, 235, 0.12);
+    --thread-size-color-under-1m: #75656c;
+    --thread-size-color-1m: #88575f;
+    --thread-size-color-2m: #9a4951;
+    --thread-size-color-4m: #ac3d46;
+    --thread-size-color-8m: #bc333d;
+    --thread-size-color-10m: #c82a35;
+    --thread-size-color-15m: #d1212e;
+    --thread-size-color-25m: #d81827;
+    --thread-size-color-50m: #df0f20;
+    --thread-size-color-100m: #e40018;
   }
 }
 
@@ -657,6 +687,49 @@
 .sidebar-primary-nav-item:focus-visible .sidebar-primary-nav-shortcut {
   color: var(--text-muted);
   border-color: color-mix(in srgb, var(--border-strong) 62%, transparent);
+}
+
+.app.layout-desktop.layout-swapped .sidebar-primary-nav .sidebar-primary-nav-item {
+  justify-content: flex-end;
+  text-align: right;
+}
+
+.app.layout-desktop.layout-swapped .sidebar-primary-nav .sidebar-primary-nav-icon {
+  order: 2;
+}
+
+.app.layout-desktop.layout-swapped .sidebar-primary-nav .sidebar-primary-nav-text,
+.app.layout-desktop.layout-swapped .sidebar-primary-nav .sidebar-primary-nav-text-with-badge {
+  order: 1;
+}
+
+.app.layout-desktop.layout-swapped .sidebar-primary-nav .sidebar-primary-nav-text-with-badge {
+  justify-content: flex-end;
+}
+
+.app.layout-desktop.layout-swapped .sidebar-primary-nav .sidebar-primary-nav-shortcut {
+  order: 0;
+  margin-left: 0;
+  margin-right: auto;
+}
+
+.app.layout-desktop.layout-swapped .sidebar-bottom-nav .sidebar-primary-nav-item-bottom {
+  justify-content: flex-end;
+  text-align: right;
+}
+
+.app.layout-desktop.layout-swapped .sidebar-bottom-nav .sidebar-primary-nav-item-bottom .sidebar-primary-nav-icon {
+  order: 2;
+}
+
+.app.layout-desktop.layout-swapped .sidebar-bottom-nav .sidebar-primary-nav-item-bottom .sidebar-primary-nav-text {
+  order: 1;
+}
+
+.app.layout-desktop.layout-swapped .sidebar-bottom-nav .sidebar-primary-nav-item-bottom .sidebar-settings-chevron {
+  order: 0;
+  margin-left: 0;
+  margin-right: auto;
 }
 
 .sidebar-bottom-nav {
@@ -2156,10 +2229,62 @@
   flex-shrink: 0;
 }
 
+.thread-size,
 .thread-time {
   font-size: 12px;
   color: var(--text-faint);
   font-weight: 350;
+  font-variant-numeric: tabular-nums;
+}
+
+.thread-size {
+  opacity: 0.98;
+  color: var(--thread-size-color-under-1m);
+  font-weight: 500;
+  letter-spacing: 0.01em;
+}
+
+.thread-size.thread-size-tier-under-1m {
+  color: var(--thread-size-color-under-1m);
+}
+
+.thread-size.thread-size-tier-1m {
+  color: var(--thread-size-color-1m);
+}
+
+.thread-size.thread-size-tier-2m {
+  color: var(--thread-size-color-2m);
+}
+
+.thread-size.thread-size-tier-4m {
+  color: var(--thread-size-color-4m);
+}
+
+.thread-size.thread-size-tier-8m {
+  color: var(--thread-size-color-8m);
+}
+
+.thread-size.thread-size-tier-10m {
+  color: var(--thread-size-color-10m);
+}
+
+.thread-size.thread-size-tier-15m {
+  color: var(--thread-size-color-15m);
+}
+
+.thread-size.thread-size-tier-25m {
+  color: var(--thread-size-color-25m);
+}
+
+.thread-size.thread-size-tier-50m {
+  color: var(--thread-size-color-50m);
+}
+
+.thread-size.thread-size-tier-100m {
+  color: var(--thread-size-color-100m);
+}
+
+.thread-time {
   opacity: 0.72;
 }
 
@@ -2168,6 +2293,11 @@
   color: #ff9f43;
   font-weight: 500;
   white-space: nowrap;
+}
+
+.thread-row:hover .thread-size {
+  opacity: 1;
+  filter: saturate(1.08) brightness(1.04);
 }
 
 .thread-row:hover .thread-time {

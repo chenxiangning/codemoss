@@ -831,10 +831,15 @@ export function threadReducer(state: ThreadState, action: ThreadAction): ThreadS
           }
         });
 
-        const hasPendingThreadAnchor = (threadId: string) =>
-          (state.activeTurnIdByThread[threadId] ?? null) !== null ||
-          (state.itemsByThread[threadId]?.length ?? 0) > 0 ||
-          Boolean(state.lastAgentMessageByThread[threadId]);
+        const hasPendingThreadAnchor = (threadId: string) => {
+          const hasActiveTurn = (state.activeTurnIdByThread[threadId] ?? null) !== null;
+          if (hasActiveTurn) {
+            return true;
+          }
+          const isProcessing = Boolean(state.threadStatusById[threadId]?.isProcessing);
+          const hasObservedItems = (state.itemsByThread[threadId]?.length ?? 0) > 0;
+          return isProcessing && hasObservedItems;
+        };
         const activePendingId = state.activeThreadIdByWorkspace[action.workspaceId] ?? null;
         const resolveActivePendingIndex = (): number | null => {
           if (!activePendingId || !activePendingId.startsWith(pendingPrefix)) {

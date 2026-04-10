@@ -367,6 +367,8 @@ pub(crate) struct LocalUsageUsageData {
 #[serde(rename_all = "camelCase")]
 pub(crate) struct LocalUsageSessionSummary {
     pub(crate) session_id: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub(crate) session_id_aliases: Vec<String>,
     pub(crate) timestamp: i64,
     pub(crate) model: String,
     pub(crate) usage: LocalUsageUsageData,
@@ -377,6 +379,8 @@ pub(crate) struct LocalUsageSessionSummary {
     pub(crate) source: Option<String>,
     #[serde(default)]
     pub(crate) provider: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) file_size_bytes: Option<u64>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]

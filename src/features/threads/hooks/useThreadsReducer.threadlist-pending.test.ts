@@ -482,6 +482,58 @@ describe("threadReducer", () => {
     expect(next.activeThreadIdByWorkspace["ws-1"]).toBe("claude-pending-idle");
   });
 
+  it("does not force-rename a pending thread anchored only by last agent message", () => {
+    const now = Date.now();
+    const base: ThreadState = {
+      ...initialState,
+      activeThreadIdByWorkspace: { "ws-1": "claude-pending-stale" },
+      threadsByWorkspace: {
+        "ws-1": [
+          {
+            id: "claude-pending-stale",
+            name: "Agent 1",
+            updatedAt: 1,
+            engineSource: "claude",
+          },
+        ],
+      },
+      lastAgentMessageByThread: {
+        "claude-pending-stale": {
+          text: "stale completed output",
+          timestamp: now - 60_000,
+        },
+      },
+      threadStatusById: {
+        "claude-pending-stale": {
+          isProcessing: false,
+          hasUnread: false,
+          isReviewing: false,
+          processingStartedAt: null,
+          lastDurationMs: null,
+        },
+      },
+      itemsByThread: {
+        "claude-pending-stale": [],
+      },
+      activeTurnIdByThread: {
+        "claude-pending-stale": null,
+      },
+    };
+
+    const next = threadReducer(base, {
+      type: "ensureThread",
+      workspaceId: "ws-1",
+      threadId: "claude:historical-session-2",
+      engine: "claude",
+    });
+
+    const ids = next.threadsByWorkspace["ws-1"]?.map((thread) => thread.id) ?? [];
+    expect(ids).toContain("claude-pending-stale");
+    expect(ids).toContain("claude:historical-session-2");
+    expect(next.itemsByThread["claude-pending-stale"]).toEqual([]);
+    expect(next.activeThreadIdByWorkspace["ws-1"]).toBe("claude-pending-stale");
+  });
+
   it("finalizes pending tool statuses to completed", () => {
     const base: ThreadState = {
       ...initialState,

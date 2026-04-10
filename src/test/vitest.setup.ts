@@ -58,7 +58,7 @@ vi.mock("react-i18next", () => ({
         "sidebar.signInToCodex": "Sign in to Codex",
         "sidebar.switchAccount": "Switch account",
         "sidebar.signIn": "Sign in",
-        "app.title": "MossX",
+        "app.title": "ccgui",
         "app.subtitle": "Orchestrate agents across your local projects.",
         "home.latestAgents": "Latest agents",
         "home.agentReplied": "Agent replied.",
@@ -340,7 +340,7 @@ vi.mock("react-i18next", () => ({
         "settings.preloadGitDiffsDesc": "Make viewing git diff faster.",
         // Codex section
         "settings.codexTitle": "Codex",
-        "settings.codexDescription": "Configure the Codex CLI used by MossX and validate the install.",
+        "settings.codexDescription": "Configure the Codex CLI used by ccgui and validate the install.",
         "settings.defaultCodexPath": "Default Codex path",
         "settings.codexPlaceholder": "codex",
         "settings.usePath": "Use PATH",
@@ -389,7 +389,7 @@ vi.mock("react-i18next", () => ({
         "settings.remoteBackendToken": "Token (optional)",
         "settings.remoteBackendHostAriaLabel": "Remote backend host",
         "settings.remoteBackendTokenAriaLabel": "Remote backend token",
-        "settings.remoteBackendDesc": "Start the daemon separately and point MossX to it (host:port + token).",
+        "settings.remoteBackendDesc": "Start the daemon separately and point ccgui to it (host:port + token).",
         "settings.globalAgentsMd": "Global AGENTS.md",
         "settings.globalAgentsMdPlaceholder": "Add global instructions for Codex agents…",
         "settings.storedAt": "Stored at",
@@ -447,6 +447,7 @@ vi.mock("react-i18next", () => ({
         "threads.turnFailedWithMessage": "会话失败：{{message}}",
         "threads.turnFailedToStart": "会话启动失败。",
         "threads.turnFailedToStartWithMessage": "会话启动失败：{{message}}",
+        "messages.middleStepsCollapsedHint": "已折叠 {{count}} 条中间步骤（实时中）",
       };
       // Simple interpolation for test environment
       let template = translations[key] ?? key;

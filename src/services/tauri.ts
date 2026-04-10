@@ -204,6 +204,7 @@ export interface ClaudeSessionSummaryPayload {
   sessionId: string;
   firstMessage: string;
   updatedAt: number;
+  fileSizeBytes?: number;
 }
 
 export type TextFileResponse = {
@@ -1932,7 +1933,7 @@ export type GlobalMcpServerEntry = {
   command?: string | null;
   url?: string | null;
   argsCount: number;
-  source: "claude_json" | "codemoss_config";
+  source: "claude_json" | "ccgui_config";
 };
 
 export async function listGlobalMcpServers() {
@@ -1950,6 +1951,21 @@ export async function archiveThread(workspaceId: string, threadId: string) {
   return invoke<Record<string, unknown> | null>("archive_thread", {
     workspaceId,
     threadId,
+  });
+}
+
+export async function deleteCodexSession(
+  workspaceId: string,
+  sessionId: string,
+) {
+  return invoke<{
+    deleted: boolean;
+    deletedCount: number;
+    method: "filesystem";
+    archivedBeforeDelete?: boolean;
+  }>("delete_codex_session", {
+    workspaceId,
+    sessionId,
   });
 }
 

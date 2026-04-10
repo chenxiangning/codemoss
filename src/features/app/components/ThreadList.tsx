@@ -61,6 +61,44 @@ type ThreadListProps = {
   onConfirmDeleteConfirm?: () => void;
 };
 
+const THREAD_SIZE_MIB = 1024 * 1024;
+const THREAD_SIZE_TONE_THRESHOLDS = [
+  { minBytes: 100 * THREAD_SIZE_MIB, className: "thread-size-tier-100m" },
+  { minBytes: 50 * THREAD_SIZE_MIB, className: "thread-size-tier-50m" },
+  { minBytes: 25 * THREAD_SIZE_MIB, className: "thread-size-tier-25m" },
+  { minBytes: 15 * THREAD_SIZE_MIB, className: "thread-size-tier-15m" },
+  { minBytes: 10 * THREAD_SIZE_MIB, className: "thread-size-tier-10m" },
+  { minBytes: 8 * THREAD_SIZE_MIB, className: "thread-size-tier-8m" },
+  { minBytes: 4 * THREAD_SIZE_MIB, className: "thread-size-tier-4m" },
+  { minBytes: 2 * THREAD_SIZE_MIB, className: "thread-size-tier-2m" },
+  { minBytes: 1 * THREAD_SIZE_MIB, className: "thread-size-tier-1m" },
+] as const;
+
+function formatThreadSize(sizeBytes: number | undefined) {
+  if (!sizeBytes || !Number.isFinite(sizeBytes) || sizeBytes <= 0) {
+    return null;
+  }
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let value = sizeBytes;
+  let unitIndex = 0;
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024;
+    unitIndex += 1;
+  }
+  const maximumFractionDigits = unitIndex === 0 || value >= 100 ? 0 : 1;
+  return `${new Intl.NumberFormat(undefined, { maximumFractionDigits }).format(value)} ${units[unitIndex]}`;
+}
+
+function getThreadSizeToneClass(sizeBytes: number | undefined) {
+  if (!sizeBytes || !Number.isFinite(sizeBytes) || sizeBytes <= 0) {
+    return "thread-size-tier-under-1m";
+  }
+  return (
+    THREAD_SIZE_TONE_THRESHOLDS.find((tier) => sizeBytes >= tier.minBytes)?.className ??
+    "thread-size-tier-under-1m"
+  );
+}
+
 export function ThreadList({
   workspaceId,
   pinnedRows,
@@ -94,6 +132,8 @@ export function ThreadList({
   const indentUnit = nested ? 10 : 14;
   const renderThreadRow = ({ thread, depth }: ThreadRow) => {
     const relativeTime = getThreadTime(thread);
+    const sizeLabel = formatThreadSize(thread.sizeBytes);
+    const sizeToneClass = getThreadSizeToneClass(thread.sizeBytes);
     const indentStyle =
       depth > 0
         ? ({ "--thread-indent": `${depth * indentUnit}px` } as CSSProperties)
@@ -197,6 +237,14 @@ export function ThreadList({
               <div className="thread-meta">
                 {isAutoNaming && (
                   <span className="thread-auto-naming">{t("threads.autoNaming")}</span>
+                )}
+                {sizeLabel && (
+                  <span
+                    className={`thread-size ${sizeToneClass}`}
+                    title={`${thread.sizeBytes?.toLocaleString()} B`}
+                  >
+                    {sizeLabel}
+                  </span>
                 )}
                 {relativeTime && <span className="thread-time">{relativeTime}</span>}
               </div>

@@ -41,6 +41,7 @@ const thread: ThreadSummary = {
   id: "thread-1",
   name: "Alpha",
   updatedAt: 1000,
+  sizeBytes: 1536,
 };
 
 const statusMap = {
@@ -225,6 +226,46 @@ describe("ThreadList", () => {
     );
 
     expect(screen.getByText("Auto naming...")).toBeTruthy();
+  });
+
+  it("renders thread size before relative time when size is available", () => {
+    const { container } = render(<ThreadList {...baseProps} />);
+
+    const meta = container.querySelector(".thread-meta");
+    expect(meta).toBeTruthy();
+    if (!meta) {
+      throw new Error("Missing thread meta");
+    }
+    const size = meta.querySelector(".thread-size");
+    const time = meta.querySelector(".thread-time");
+    expect(size?.textContent).toBe("1.5 KB");
+    expect(time?.textContent).toBe("2m");
+    expect(size?.compareDocumentPosition(time as Node)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+    expect(size?.classList.contains("thread-size-tier-under-1m")).toBe(true);
+  });
+
+  it("assigns the deepest size color tier to sessions at or above 100 MB", () => {
+    const { container } = render(
+      <ThreadList
+        {...baseProps}
+        unpinnedRows={[
+          {
+            thread: {
+              ...thread,
+              id: "thread-large",
+              sizeBytes: 250 * 1024 * 1024,
+            },
+            depth: 0,
+          },
+        ]}
+      />,
+    );
+
+    const size = container.querySelector(".thread-size");
+    expect(size?.textContent).toBe("250 MB");
+    expect(size?.classList.contains("thread-size-tier-100m")).toBe(true);
   });
 
   it("marks engine badge as processing when thread is running", () => {

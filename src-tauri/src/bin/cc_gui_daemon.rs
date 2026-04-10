@@ -1,4 +1,7 @@
 #[allow(dead_code)]
+#[path = "../app_paths.rs"]
+mod app_paths;
+#[allow(dead_code)]
 #[path = "../backend/mod.rs"]
 mod backend;
 #[path = "../codex/args.rs"]
@@ -11,9 +14,9 @@ mod codex_config;
 mod codex_home;
 #[path = "../codex/thread_mode_state.rs"]
 mod codex_thread_mode_state;
-#[path = "moss_x_daemon/daemon_state.rs"]
+#[path = "cc_gui_daemon/daemon_state.rs"]
 mod daemon_state;
-#[path = "moss_x_daemon/engine_bridge.rs"]
+#[path = "cc_gui_daemon/engine_bridge.rs"]
 mod engine;
 #[path = "../files/io.rs"]
 mod file_io;
@@ -23,6 +26,22 @@ mod file_ops;
 mod file_policy;
 #[path = "../git_utils.rs"]
 mod git_utils;
+// `local_usage.rs` is shared with the desktop Tauri app and references
+// `crate::state::AppState` in command wrappers. The daemon only reuses the
+// workspace-backed filesystem helpers, so a minimal stub keeps the shared
+// module compilable here without pulling the full desktop app state graph.
+mod state {
+    use std::collections::HashMap;
+    use tokio::sync::Mutex;
+
+    use crate::types::WorkspaceEntry;
+
+    pub(crate) struct AppState {
+        pub(crate) workspaces: Mutex<HashMap<String, WorkspaceEntry>>,
+    }
+}
+#[path = "../local_usage.rs"]
+mod local_usage;
 #[path = "../rules.rs"]
 mod rules;
 #[path = "../shared/mod.rs"]
@@ -36,7 +55,7 @@ mod text_encoding;
 mod types;
 #[path = "../utils.rs"]
 mod utils;
-#[path = "moss_x_daemon/web_service_runtime.rs"]
+#[path = "cc_gui_daemon/web_service_runtime.rs"]
 mod web_service_runtime;
 #[path = "../workspaces/settings.rs"]
 mod workspace_settings;
@@ -1192,7 +1211,7 @@ fn default_data_dir() -> PathBuf {
         if let Ok(local_app_data) = env::var("LOCALAPPDATA") {
             let trimmed = local_app_data.trim();
             if !trimmed.is_empty() {
-                return PathBuf::from(trimmed).join("moss-x-daemon");
+                return PathBuf::from(trimmed).join("cc_gui_daemon");
             }
         }
     }
@@ -1200,20 +1219,20 @@ fn default_data_dir() -> PathBuf {
     if let Ok(xdg) = env::var("XDG_DATA_HOME") {
         let trimmed = xdg.trim();
         if !trimmed.is_empty() {
-            return PathBuf::from(trimmed).join("moss-x-daemon");
+            return PathBuf::from(trimmed).join("cc_gui_daemon");
         }
     }
     let home = env::var("HOME").unwrap_or_else(|_| ".".to_string());
     PathBuf::from(home)
         .join(".local")
         .join("share")
-        .join("moss-x-daemon")
+        .join("cc_gui_daemon")
 }
 
 fn usage() -> String {
     format!(
         "\
-USAGE:\n  moss-x-daemon [--listen <addr>] [--data-dir <path>] [--token <token> | --insecure-no-auth]\n\n\
+USAGE:\n  cc_gui_daemon [--listen <addr>] [--data-dir <path>] [--token <token> | --insecure-no-auth]\n\n\
 OPTIONS:\n  --listen <addr>        Bind address (default: {DEFAULT_LISTEN_ADDR})\n  --data-dir <path>      Data dir holding workspaces.json/settings.json\n  --token <token>        Shared token required by clients\n  --insecure-no-auth      Disable auth (dev only)\n  -h, --help             Show this help\n"
     )
 }
@@ -1222,8 +1241,9 @@ fn parse_args() -> Result<DaemonConfig, String> {
     let mut listen = DEFAULT_LISTEN_ADDR
         .parse::<SocketAddr>()
         .map_err(|err| err.to_string())?;
-    let mut token = env::var("MOSS_X_DAEMON_TOKEN")
+    let mut token = env::var("CC_GUI_DAEMON_TOKEN")
         .ok()
+        .or_else(|| env::var("MOSS_X_DAEMON_TOKEN").ok())
         .map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty());
     let mut insecure_no_auth = false;
@@ -1266,7 +1286,7 @@ fn parse_args() -> Result<DaemonConfig, String> {
 
     if token.is_none() && !insecure_no_auth {
         return Err(
-            "Missing --token (or set MOSS_X_DAEMON_TOKEN). Use --insecure-no-auth for local dev only."
+            "Missing --token (or set CC_GUI_DAEMON_TOKEN). Use --insecure-no-auth for local dev only."
                 .to_string(),
         );
     }
@@ -2449,6 +2469,11 @@ async fn handle_rpc_request(
             let thread_id = parse_string(&params, "threadId")?;
             state.archive_thread(workspace_id, thread_id).await
         }
+        "delete_codex_session" => {
+            let workspace_id = parse_string(&params, "workspaceId")?;
+            let session_id = parse_string(&params, "sessionId")?;
+            state.delete_codex_session(workspace_id, session_id).await
+        }
         "send_user_message" => {
             let workspace_id = parse_string(&params, "workspaceId")?;
             let thread_id = parse_string(&params, "threadId")?;
@@ -2725,7 +2750,7 @@ fn main() {
             .await
             .unwrap_or_else(|err| panic!("failed to bind {}: {err}", config.listen));
         eprintln!(
-            "moss-x-daemon listening on {} (data dir: {})",
+            "cc_gui_daemon listening on {} (data dir: {})",
             config.listen,
             state
                 .storage_path

@@ -876,7 +876,9 @@ describe("useThreadTurnEvents", () => {
       renameAutoTitlePendingKey,
       renameThreadTitleMapping,
       resolvePendingThreadForSession,
-    } = makeOptions();
+    } = makeOptions({
+      activeThreadId: "opencode-pending-active",
+    });
     resolvePendingThreadForSession.mockImplementation(
       (_workspaceId: string, engine: "claude" | "gemini" | "opencode") =>
         engine === "opencode" ? "opencode-pending-active" : null,
@@ -913,6 +915,40 @@ describe("useThreadTurnEvents", () => {
     );
   });
 
+  it("does not rebind non-prefixed session update when resolved pending is not active", () => {
+    const {
+      result,
+      dispatch,
+      renameCustomNameKey,
+      renameAutoTitlePendingKey,
+      renameThreadTitleMapping,
+      resolvePendingThreadForSession,
+    } = makeOptions({
+      activeThreadId: "opencode-pending-new",
+    });
+    resolvePendingThreadForSession.mockImplementation(
+      (_workspaceId: string, engine: "claude" | "gemini" | "opencode") =>
+        engine === "opencode" ? "opencode-pending-old" : null,
+    );
+
+    act(() => {
+      result.current.onThreadSessionIdUpdated(
+        "ws-1",
+        "session-raw-id",
+        "session-xyz",
+      );
+    });
+
+    expect(dispatch).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "renameThreadId",
+      }),
+    );
+    expect(renameCustomNameKey).not.toHaveBeenCalled();
+    expect(renameAutoTitlePendingKey).not.toHaveBeenCalled();
+    expect(renameThreadTitleMapping).not.toHaveBeenCalled();
+  });
+
   it("does not rename ambiguously when both claude and opencode pending threads exist", () => {
     const {
       result,
@@ -925,6 +961,38 @@ describe("useThreadTurnEvents", () => {
     resolvePendingThreadForSession.mockImplementation(
       (_workspaceId: string, engine: "claude" | "gemini" | "opencode") =>
         engine === "opencode" ? "opencode-pending-active" : "claude-pending-active",
+    );
+
+    act(() => {
+      result.current.onThreadSessionIdUpdated(
+        "ws-1",
+        "session-raw-id",
+        "session-xyz",
+      );
+    });
+
+    expect(dispatch).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "renameThreadId",
+      }),
+    );
+    expect(renameCustomNameKey).not.toHaveBeenCalled();
+    expect(renameAutoTitlePendingKey).not.toHaveBeenCalled();
+    expect(renameThreadTitleMapping).not.toHaveBeenCalled();
+  });
+
+  it("does not rename ambiguously when both claude and gemini pending threads exist", () => {
+    const {
+      result,
+      dispatch,
+      renameCustomNameKey,
+      renameAutoTitlePendingKey,
+      renameThreadTitleMapping,
+      resolvePendingThreadForSession,
+    } = makeOptions();
+    resolvePendingThreadForSession.mockImplementation(
+      (_workspaceId: string, engine: "claude" | "gemini" | "opencode") =>
+        engine === "gemini" ? "gemini-pending-active" : "claude-pending-active",
     );
 
     act(() => {

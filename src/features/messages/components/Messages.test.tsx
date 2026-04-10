@@ -10,9 +10,9 @@ describe("Messages", () => {
   });
 
   beforeEach(() => {
-    window.localStorage.setItem("mossx.claude.hideReasoningModule", "0");
-    window.localStorage.removeItem("mossx.messages.live.autoFollow");
-    window.localStorage.removeItem("mossx.messages.live.collapseMiddleSteps");
+    window.localStorage.setItem("ccgui.claude.hideReasoningModule", "0");
+    window.localStorage.removeItem("ccgui.messages.live.autoFollow");
+    window.localStorage.removeItem("ccgui.messages.live.collapseMiddleSteps");
   });
 
   beforeAll(() => {
@@ -148,7 +148,7 @@ describe("Messages", () => {
   });
 
   it("renders Claude reasoning inline by default when no legacy dock flag is set", () => {
-    window.localStorage.removeItem("mossx.claude.hideReasoningModule");
+    window.localStorage.removeItem("ccgui.claude.hideReasoningModule");
 
     const items: ConversationItem[] = [
       {
@@ -197,7 +197,7 @@ describe("Messages", () => {
   });
 
   it("keeps Claude reasoning title stable while streaming", () => {
-    window.localStorage.removeItem("mossx.claude.hideReasoningModule");
+    window.localStorage.removeItem("ccgui.claude.hideReasoningModule");
 
     const items: ConversationItem[] = [
       {
@@ -231,7 +231,7 @@ describe("Messages", () => {
   });
 
   it("keeps legacy Claude docked reasoning mode when the flag is explicitly enabled", () => {
-    window.localStorage.setItem("mossx.claude.hideReasoningModule", "1");
+    window.localStorage.setItem("ccgui.claude.hideReasoningModule", "1");
 
     const items: ConversationItem[] = [
       {
@@ -1825,7 +1825,7 @@ describe("Messages", () => {
         summary:
           "让我继续读取项目内规范文件和项目结构。现在我有了项目的概览信息。现在我对项目有了比较全面的了解。让我整理分析报告。",
         content:
-          "MossX 是一个基于 Tauri + React 的桌面应用，是 Cursor 的开源替代品，集成了多个 AI 编程引擎。现在我对项目有了比较全面的了解。让我整理分析报告。",
+          "ccgui 是一个基于 Tauri + React 的桌面应用，是 Cursor 的开源替代品，集成了多个 AI 编程引擎。现在我对项目有了比较全面的了解。让我整理分析报告。",
       },
     ];
 
@@ -2194,7 +2194,7 @@ describe("Messages", () => {
   });
 
   it("renders claude live reasoning at the bottom when dock mode is enabled", () => {
-    window.localStorage.setItem("mossx.claude.hideReasoningModule", "1");
+    window.localStorage.setItem("ccgui.claude.hideReasoningModule", "1");
     try {
       const items: ConversationItem[] = [
         {
@@ -2228,12 +2228,12 @@ describe("Messages", () => {
       expect(thinkingBlock?.textContent ?? "").toContain("先读取目录，再检查关键文件");
       expect(thinkingBlock?.nextElementSibling?.className ?? "").toContain("working");
     } finally {
-      window.localStorage.removeItem("mossx.claude.hideReasoningModule");
+      window.localStorage.removeItem("ccgui.claude.hideReasoningModule");
     }
   });
 
   it("keeps docked claude reasoning after turn completes and collapses it by default", () => {
-    window.localStorage.setItem("mossx.claude.hideReasoningModule", "1");
+    window.localStorage.setItem("ccgui.claude.hideReasoningModule", "1");
     try {
       const items: ConversationItem[] = [
         {
@@ -2293,7 +2293,7 @@ describe("Messages", () => {
       expect(reasoningDetails[0]?.getAttribute("style") ?? "").toContain("display: none");
       expect(reasoningDetails[1]?.getAttribute("style") ?? "").toContain("display: none");
     } finally {
-      window.localStorage.removeItem("mossx.claude.hideReasoningModule");
+      window.localStorage.removeItem("ccgui.claude.hideReasoningModule");
     }
   });
 
@@ -2669,6 +2669,7 @@ describe("Messages", () => {
   });
 
   it("shows reasoning boundary when visible process items exist before final message", () => {
+    const completedAt = new Date(2026, 3, 10, 14, 41, 42).getTime();
     const items: ConversationItem[] = [
       {
         id: "user-process-1",
@@ -2688,6 +2689,7 @@ describe("Messages", () => {
         role: "assistant",
         text: "A1",
         isFinal: true,
+        finalCompletedAt: completedAt,
       },
     ];
 
@@ -2707,8 +2709,17 @@ describe("Messages", () => {
       "[data-message-anchor-id='assistant-process-final-1']",
     );
     const reasoningBoundaryNode = container.querySelector(".messages-reasoning-boundary");
+    const reasoningBoundaryMetaNode = container.querySelector(
+      ".messages-reasoning-boundary .messages-turn-boundary-meta",
+    );
+    const finalBoundaryMetaNode = container.querySelector(
+      ".messages-final-boundary .messages-turn-boundary-meta",
+    );
     expect(finalMessageNode).toBeTruthy();
     expect(reasoningBoundaryNode).toBeTruthy();
+    expect(reasoningBoundaryMetaNode?.textContent ?? "").toContain("04-10 14:41:42");
+    expect(reasoningBoundaryMetaNode?.getAttribute("aria-hidden")).toBe("true");
+    expect(reasoningBoundaryMetaNode?.textContent).toBe(finalBoundaryMetaNode?.textContent);
     if (finalMessageNode && reasoningBoundaryNode) {
       expect(
         reasoningBoundaryNode.compareDocumentPosition(finalMessageNode) &
@@ -2764,6 +2775,50 @@ describe("Messages", () => {
 
     const reasoningBoundaryNode = container.querySelector(".messages-reasoning-boundary");
     expect(reasoningBoundaryNode).toBeTruthy();
+  });
+
+  it("does not show reasoning boundary when only hidden command cards exist before final message", () => {
+    window.localStorage.setItem("ccgui.messages.live.collapseMiddleSteps", "1");
+    const items: ConversationItem[] = [
+      {
+        id: "user-hidden-command-1",
+        kind: "message",
+        role: "user",
+        text: "Q1",
+      },
+      {
+        id: "tool-hidden-command-1",
+        kind: "tool",
+        toolType: "commandExecution",
+        title: "Command: rg --files",
+        detail: "/tmp",
+        status: "completed",
+        output: "",
+      },
+      {
+        id: "assistant-hidden-command-final-1",
+        kind: "message",
+        role: "assistant",
+        text: "A1",
+        isFinal: true,
+      },
+    ];
+
+    const { container } = render(
+      <Messages
+        items={items}
+        threadId="thread-1"
+        workspaceId="ws-1"
+        isThinking={false}
+        activeEngine="codex"
+        openTargets={[]}
+        selectedOpenAppId=""
+      />,
+    );
+
+    expect(container.querySelector(".messages-reasoning-boundary")).toBeNull();
+    expect(container.querySelector(".messages-final-boundary")).toBeTruthy();
+    expect(container.textContent ?? "").not.toContain("Command: rg --files");
   });
 
   it("renders final and reasoning boundaries only once for the last final assistant in a turn", () => {
@@ -2900,7 +2955,7 @@ describe("Messages", () => {
     }
   });
 
-  it("shows completion time and duration on final boundary when metadata is available", () => {
+  it("shows completion time without total duration on final boundary", () => {
     const completedAt = new Date(2026, 3, 1, 10, 20, 30).getTime();
     const items: ConversationItem[] = [
       {
@@ -2927,7 +2982,7 @@ describe("Messages", () => {
 
     const finalMeta = container.querySelector(".messages-turn-boundary-meta");
     expect(finalMeta?.textContent ?? "").toContain("04-01 10:20:30");
-    expect(finalMeta?.textContent ?? "").toContain("总耗时 0:12");
+    expect(finalMeta?.textContent ?? "").not.toContain("总耗时");
   });
 
 });

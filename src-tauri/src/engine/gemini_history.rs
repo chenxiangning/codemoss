@@ -17,6 +17,8 @@ pub struct GeminiSessionSummary {
     pub updated_at: i64,
     pub created_at: i64,
     pub message_count: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub file_size_bytes: Option<u64>,
 }
 
 /// Single normalized message row used by frontend history parser.
@@ -813,6 +815,7 @@ fn parse_summary_from_value(path: &Path, value: &Value) -> Option<GeminiSessionS
         updated_at,
         created_at: started_at,
         message_count: messages.len(),
+        file_size_bytes: std::fs::metadata(path).ok().map(|metadata| metadata.len()),
     })
 }
 

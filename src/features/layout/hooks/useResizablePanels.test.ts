@@ -92,10 +92,14 @@ describe("useResizablePanels", () => {
     const app = document.createElement("div");
     app.className = "app";
     document.body.appendChild(app);
+    const handle = document.createElement("div");
+    handle.className = "right-panel-resizer";
+    app.appendChild(handle);
     writeClientStoreValue("layout", "rightPanelWidth", 300);
 
     const hook = renderResizablePanels();
     const initialWidth = hook.result.rightPanelWidth;
+    vi.mocked(writeClientStoreValue).mockClear();
 
     act(() => {
       hook.result.onRightPanelResizeStart({
@@ -104,6 +108,7 @@ describe("useResizablePanels", () => {
         button: 0,
         preventDefault: vi.fn(),
         stopPropagation: vi.fn(),
+        currentTarget: handle,
       } as unknown as React.MouseEvent);
     });
 
@@ -114,8 +119,15 @@ describe("useResizablePanels", () => {
       vi.runAllTimers();
     });
 
-    expect(app.style.getPropertyValue("--right-panel-width")).toBe("600px");
+    expect(app.style.getPropertyValue("--right-panel-width")).toBe("");
     expect(hook.result.rightPanelWidth).toBe(initialWidth);
+    expect(handle.classList.contains("is-dragging")).toBe(true);
+    expect(handle.style.transform).toBe("translate3d(-300px, 0, 0)");
+    expect(vi.mocked(writeClientStoreValue)).not.toHaveBeenCalledWith(
+      "layout",
+      "rightPanelWidth",
+      600,
+    );
 
     act(() => {
       window.dispatchEvent(new MouseEvent("mouseup"));
@@ -123,6 +135,9 @@ describe("useResizablePanels", () => {
     });
 
     expect(hook.result.rightPanelWidth).toBe(600);
+    expect(app.style.getPropertyValue("--right-panel-width")).toBe("600px");
+    expect(handle.classList.contains("is-dragging")).toBe(false);
+    expect(handle.style.transform).toBe("");
     expect(writeClientStoreValue).toHaveBeenCalledWith(
       "layout",
       "rightPanelWidth",
@@ -134,7 +149,17 @@ describe("useResizablePanels", () => {
   });
 
   it("persists sidebar width changes and clamps max", () => {
+    const app = document.createElement("div");
+    app.className = "app";
+    document.body.appendChild(app);
+    const handle = document.createElement("div");
+    handle.className = "sidebar-resizer";
+    app.appendChild(handle);
+    writeClientStoreValue("layout", "sidebarWidth", 210);
+
     const hook = renderResizablePanels();
+    const initialWidth = hook.result.sidebarWidth;
+    vi.mocked(writeClientStoreValue).mockClear();
 
     act(() => {
       hook.result.onSidebarResizeStart({
@@ -142,6 +167,7 @@ describe("useResizablePanels", () => {
         clientY: 0,
         button: 0,
         preventDefault: vi.fn(),
+        currentTarget: handle,
       } as unknown as React.MouseEvent);
     });
 
@@ -152,8 +178,11 @@ describe("useResizablePanels", () => {
       vi.runAllTimers();
     });
 
-    expect(hook.result.sidebarWidth).toBe(360);
-    expect(writeClientStoreValue).toHaveBeenCalledWith(
+    expect(hook.result.sidebarWidth).toBe(initialWidth);
+    expect(app.style.getPropertyValue("--sidebar-width")).toBe("");
+    expect(handle.classList.contains("is-dragging")).toBe(true);
+    expect(handle.style.transform).toBe("translate3d(150px, 0, 0)");
+    expect(vi.mocked(writeClientStoreValue)).not.toHaveBeenCalledWith(
       "layout",
       "sidebarWidth",
       360,
@@ -163,11 +192,31 @@ describe("useResizablePanels", () => {
       window.dispatchEvent(new MouseEvent("mouseup"));
     });
 
+    expect(hook.result.sidebarWidth).toBe(360);
+    expect(app.style.getPropertyValue("--sidebar-width")).toBe("360px");
+    expect(handle.classList.contains("is-dragging")).toBe(false);
+    expect(handle.style.transform).toBe("");
+    expect(writeClientStoreValue).toHaveBeenCalledWith(
+      "layout",
+      "sidebarWidth",
+      360,
+    );
+
+    app.remove();
     hook.unmount();
   });
 
   it("persists sidebar width changes and clamps min", () => {
+    const app = document.createElement("div");
+    app.className = "app";
+    document.body.appendChild(app);
+    const handle = document.createElement("div");
+    handle.className = "sidebar-resizer";
+    app.appendChild(handle);
+    writeClientStoreValue("layout", "sidebarWidth", 250);
+
     const hook = renderResizablePanels();
+    vi.mocked(writeClientStoreValue).mockClear();
 
     act(() => {
       hook.result.onSidebarResizeStart({
@@ -175,6 +224,7 @@ describe("useResizablePanels", () => {
         clientY: 0,
         button: 0,
         preventDefault: vi.fn(),
+        currentTarget: handle,
       } as unknown as React.MouseEvent);
     });
 
@@ -185,8 +235,11 @@ describe("useResizablePanels", () => {
       vi.runAllTimers();
     });
 
-    expect(hook.result.sidebarWidth).toBe(210);
-    expect(writeClientStoreValue).toHaveBeenCalledWith(
+    expect(hook.result.sidebarWidth).toBe(250);
+    expect(app.style.getPropertyValue("--sidebar-width")).toBe("");
+    expect(handle.classList.contains("is-dragging")).toBe(true);
+    expect(handle.style.transform).toBe("translate3d(-40px, 0, 0)");
+    expect(vi.mocked(writeClientStoreValue)).not.toHaveBeenCalledWith(
       "layout",
       "sidebarWidth",
       210,
@@ -196,6 +249,12 @@ describe("useResizablePanels", () => {
       window.dispatchEvent(new MouseEvent("mouseup"));
     });
 
+    expect(hook.result.sidebarWidth).toBe(210);
+    expect(app.style.getPropertyValue("--sidebar-width")).toBe("210px");
+    expect(handle.classList.contains("is-dragging")).toBe(false);
+    expect(handle.style.transform).toBe("");
+
+    app.remove();
     hook.unmount();
   });
 
@@ -203,6 +262,9 @@ describe("useResizablePanels", () => {
     const app = document.createElement("div");
     app.className = "app layout-swapped";
     document.body.appendChild(app);
+    const handle = document.createElement("div");
+    handle.className = "sidebar-resizer";
+    app.appendChild(handle);
     writeClientStoreValue("layout", "sidebarWidth", 250);
 
     const hook = renderResizablePanels();
@@ -214,6 +276,7 @@ describe("useResizablePanels", () => {
         button: 0,
         preventDefault: vi.fn(),
         stopPropagation: vi.fn(),
+        currentTarget: handle,
       } as unknown as React.MouseEvent);
     });
 
@@ -224,11 +287,14 @@ describe("useResizablePanels", () => {
       vi.runAllTimers();
     });
 
-    expect(hook.result.sidebarWidth).toBe(350);
+    expect(hook.result.sidebarWidth).toBe(250);
+    expect(handle.style.transform).toBe("translate3d(-100px, 0, 0)");
 
     act(() => {
       window.dispatchEvent(new MouseEvent("mouseup"));
     });
+
+    expect(hook.result.sidebarWidth).toBe(350);
 
     app.remove();
     hook.unmount();
@@ -238,6 +304,9 @@ describe("useResizablePanels", () => {
     const app = document.createElement("div");
     app.className = "app layout-swapped";
     document.body.appendChild(app);
+    const handle = document.createElement("div");
+    handle.className = "right-panel-resizer";
+    app.appendChild(handle);
     writeClientStoreValue("layout", "rightPanelWidth", 300);
 
     const hook = renderResizablePanels();
@@ -249,6 +318,7 @@ describe("useResizablePanels", () => {
         button: 0,
         preventDefault: vi.fn(),
         stopPropagation: vi.fn(),
+        currentTarget: handle,
       } as unknown as React.MouseEvent);
     });
 

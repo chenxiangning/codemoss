@@ -117,6 +117,7 @@ export type ThreadSummary = {
   id: string;
   name: string;
   updatedAt: number;
+  sizeBytes?: number;
   engineSource?: "codex" | "claude" | "gemini" | "opencode";
   source?: string;
   provider?: string;
@@ -636,11 +637,15 @@ export type LocalUsageUsageData = {
 
 export type LocalUsageSessionSummary = {
   sessionId: string;
+  sessionIdAliases?: string[];
   timestamp: number;
   model: string;
   usage: LocalUsageUsageData;
   cost: number;
   summary?: string | null;
+  source?: string | null;
+  provider?: string | null;
+  fileSizeBytes?: number;
 };
 
 export type LocalUsageDailyUsage = {

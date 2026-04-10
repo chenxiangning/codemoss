@@ -29,6 +29,7 @@ import type {
 import { useSoloMode } from "../features/layout/hooks/useSoloMode";
 import { useLiveEditPreview } from "../features/live-edit-preview/hooks/useLiveEditPreview";
 import { useArchiveShortcut } from "../features/app/hooks/useArchiveShortcut";
+import { usePrimaryModeShortcuts } from "../features/app/hooks/usePrimaryModeShortcuts";
 import { useWorkspaceCycling } from "../features/app/hooks/useWorkspaceCycling";
 import { useAppMenuEvents } from "../features/app/hooks/useAppMenuEvents";
 import { useMenuAcceleratorController } from "../features/app/hooks/useMenuAcceleratorController";
@@ -386,6 +387,7 @@ export function useAppShellSections(ctx: any) {
                 throw new Error("Unable to resolve default workspace path.");
               }
               const preferredPaths = [
+                `${resolvedHome}/.ccgui/workspace`,
                 `${resolvedHome}/.mossx/workspace`,
                 `${resolvedHome}/.codemoss/workspace`,
               ];
@@ -420,7 +422,7 @@ export function useAppShellSections(ctx: any) {
           let defaultWorkspacePath: string;
           try {
             const resolvedHome = normalizePath(await homeDir());
-            defaultWorkspacePath = `${resolvedHome}/.codemoss/workspace`;
+            defaultWorkspacePath = `${resolvedHome}/.ccgui/workspace`;
             await ensureWorkspacePathDir(defaultWorkspacePath);
           } catch (error) {
             alertError(error);
@@ -1962,6 +1964,17 @@ export function useAppShellSections(ctx: any) {
     resetPullRequestSelection,
     selectHome,
   ]);
+
+  const handleOpenKanbanMode = useCallback(() => {
+    setAppMode("kanban");
+    closeSettings();
+  }, [closeSettings, setAppMode]);
+
+  usePrimaryModeShortcuts({
+    isEnabled: true,
+    onOpenChat: handleOpenHomeChat,
+    onOpenKanban: handleOpenKanbanMode,
+  });
 
   useArchiveShortcut({
     isEnabled: isThreadOpen,

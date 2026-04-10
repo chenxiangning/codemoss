@@ -64,9 +64,9 @@ const RUNNING_CARD_MIN_EXPANDED_MS = 2000;
 const FOLLOW_BUBBLE_AUTO_DISMISS_MS = 1000;
 const MAX_STICKY_CHILD_SESSION_COUNT = 24;
 const SOLO_FOLLOW_COACH_DISMISSED_BY_WORKSPACE_STORAGE_KEY =
-  "mossx.sessionActivity.soloFollowCoachDismissedByWorkspace";
-const SOLO_FOLLOW_DISCOVERY_COACH_FLAG_KEY = "mossx.flags.soloFollow.discovery.coachmark";
-const SOLO_FOLLOW_DISCOVERY_NUDGE_FLAG_KEY = "mossx.flags.soloFollow.discovery.nudge";
+  "ccgui.sessionActivity.soloFollowCoachDismissedByWorkspace";
+const SOLO_FOLLOW_DISCOVERY_COACH_FLAG_KEY = "ccgui.flags.soloFollow.discovery.coachmark";
+const SOLO_FOLLOW_DISCOVERY_NUDGE_FLAG_KEY = "ccgui.flags.soloFollow.discovery.nudge";
 const SESSION_PILL_COLOR_PALETTE = [
   { hue: 158, saturation: 66, lightness: 44 },
   { hue: 210, saturation: 72, lightness: 48 },
@@ -169,7 +169,7 @@ function emitSoloFollowMetric(
   }
   try {
     window.dispatchEvent(
-      new CustomEvent("mossx:solo-follow-metric", {
+      new CustomEvent("ccgui:solo-follow-metric", {
         detail: {
           name,
           ...(payload ?? {}),
@@ -264,14 +264,34 @@ function canExpandEvent(event: SessionActivityEvent) {
 
 function unwrapShellCommand(command: string) {
   let normalized = command.trim();
-  const shellWrapperPattern =
-    /^(?:\/\S+\/)?(?:bash|zsh|sh|fish)(?:\.exe)?\s+-lc\s+(?:(['"])([\s\S]+)\1|([\s\S]+))$/i;
+  const shellLaunchers = new Set([
+    "bash",
+    "zsh",
+    "sh",
+    "fish",
+    "bash.exe",
+    "zsh.exe",
+    "sh.exe",
+    "fish.exe",
+  ]);
+  const shellWrapperPattern = /^(.+?)\s+-lc\s+([\s\S]+)$/i;
   for (let iteration = 0; iteration < 3; iteration += 1) {
     const wrapperMatch = normalized.match(shellWrapperPattern);
     if (!wrapperMatch) {
       break;
     }
-    normalized = (wrapperMatch[2] ?? wrapperMatch[3] ?? "").trim();
+    const launcherRaw = (wrapperMatch[1] ?? "").trim();
+    const payloadRaw = (wrapperMatch[2] ?? "").trim();
+    const launcherUnquoted = launcherRaw.replace(/^['"]|['"]$/g, "");
+    const launcherBase = launcherUnquoted.split(/[\\/]/).pop()?.toLowerCase() ?? "";
+    if (!shellLaunchers.has(launcherBase)) {
+      break;
+    }
+    const payloadMatch = payloadRaw.match(/^(["'])([\s\S]*)\1$/);
+    const payload = (payloadMatch ? payloadMatch[2] : payloadRaw)
+      .replace(/\\{2,}(?=["'])/g, "\\")
+      .trim();
+    normalized = payload;
   }
   return normalized;
 }

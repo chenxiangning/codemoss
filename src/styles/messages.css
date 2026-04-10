@@ -146,6 +146,11 @@
   z-index: 1;
 }
 
+.messages-turn-boundary-meta-placeholder {
+  visibility: hidden;
+  pointer-events: none;
+}
+
 .messages-reasoning-boundary {
   margin-bottom: 8px;
 }

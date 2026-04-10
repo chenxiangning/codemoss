@@ -504,7 +504,7 @@ export function useThreadTurnEvents({
           ? "opencode"
           : pendingGemini && !pendingOpenCode && !pendingClaude
             ? "gemini"
-          : pendingClaude && !pendingOpenCode
+          : pendingClaude && !pendingOpenCode && !pendingGemini
             ? "claude"
             : null);
       if (!enginePrefix) {
@@ -592,8 +592,23 @@ export function useThreadTurnEvents({
           : enginePrefix === "gemini"
             ? pendingGemini
           : pendingClaude;
-        if (pendingThreadId?.startsWith(sameEnginePendingPrefix)) {
+        // Safety boundary: for non-prefixed thread ids, only bind to the
+        // currently active pending thread. This avoids rebinding an old in-flight
+        // session into a newly created thread when events race across sessions.
+        if (
+          pendingThreadId?.startsWith(sameEnginePendingPrefix)
+          && pendingThreadId === activeThreadId
+        ) {
           sourceThreadId = pendingThreadId;
+        } else {
+          logSessionTrace("skip:non-prefixed-not-active", {
+            workspaceId,
+            threadId,
+            newThreadId,
+            enginePrefix,
+            pendingThreadId: pendingThreadId ?? null,
+            activeThreadId,
+          });
         }
       }
 

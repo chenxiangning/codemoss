@@ -23,6 +23,8 @@ pub struct ClaudeSessionSummary {
     pub updated_at: i64,
     pub created_at: i64,
     pub message_count: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub file_size_bytes: Option<u64>,
 }
 
 /// Encode a filesystem path to Claude's project directory name.
@@ -265,6 +267,7 @@ fn truncate(s: &str, max_chars: usize) -> String {
 /// Reads the file line-by-line to find the first user message and track timestamps.
 async fn scan_session_file(path: &Path) -> Option<ClaudeSessionSummary> {
     let file = fs::File::open(path).await.ok()?;
+    let file_size_bytes = file.metadata().await.ok().map(|metadata| metadata.len());
     let reader = BufReader::new(file);
     let mut lines = reader.lines();
 
@@ -350,6 +353,7 @@ async fn scan_session_file(path: &Path) -> Option<ClaudeSessionSummary> {
         updated_at: last_timestamp.unwrap_or(now_ms),
         created_at: first_timestamp.unwrap_or(now_ms),
         message_count,
+        file_size_bytes,
     })
 }
 

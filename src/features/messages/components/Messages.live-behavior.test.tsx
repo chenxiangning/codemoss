@@ -10,9 +10,9 @@ describe("Messages live behavior", () => {
   });
 
   beforeEach(() => {
-    window.localStorage.setItem("mossx.claude.hideReasoningModule", "0");
-    window.localStorage.removeItem("mossx.messages.live.autoFollow");
-    window.localStorage.removeItem("mossx.messages.live.collapseMiddleSteps");
+    window.localStorage.setItem("ccgui.claude.hideReasoningModule", "0");
+    window.localStorage.removeItem("ccgui.messages.live.autoFollow");
+    window.localStorage.removeItem("ccgui.messages.live.collapseMiddleSteps");
   });
 
   beforeAll(() => {
@@ -297,7 +297,7 @@ describe("Messages live behavior", () => {
   );
 
   it("disables auto-follow scrolling when live auto-follow toggle is off", () => {
-    window.localStorage.setItem("mossx.messages.live.autoFollow", "0");
+    window.localStorage.setItem("ccgui.messages.live.autoFollow", "0");
     const scrollSpy = vi
       .spyOn(HTMLElement.prototype, "scrollIntoView")
       .mockImplementation(() => {});
@@ -350,7 +350,7 @@ describe("Messages live behavior", () => {
   });
 
   it("keeps auto-follow working after manual scroll when enabled", async () => {
-    window.localStorage.setItem("mossx.messages.live.autoFollow", "1");
+    window.localStorage.setItem("ccgui.messages.live.autoFollow", "1");
     const scrollSpy = vi
       .spyOn(HTMLElement.prototype, "scrollIntoView")
       .mockImplementation(() => {});
@@ -417,7 +417,7 @@ describe("Messages live behavior", () => {
   });
 
   it("collapses live middle steps when enabled", () => {
-    window.localStorage.setItem("mossx.messages.live.collapseMiddleSteps", "1");
+    window.localStorage.setItem("ccgui.messages.live.collapseMiddleSteps", "1");
     const items: ConversationItem[] = [
       {
         id: "user-live-collapse",
@@ -466,8 +466,120 @@ describe("Messages live behavior", () => {
     expect(container.textContent ?? "").not.toContain("Command: rg --files");
   });
 
+  it("excludes hidden commands and batch commands from the live collapsed count", () => {
+    window.localStorage.setItem("ccgui.messages.live.collapseMiddleSteps", "1");
+    const items: ConversationItem[] = [
+      {
+        id: "user-live-collapse-count",
+        kind: "message",
+        role: "user",
+        text: "请继续",
+      },
+      {
+        id: "reasoning-live-collapse-count",
+        kind: "reasoning",
+        summary: "分析中",
+        content: "",
+      },
+      {
+        id: "tool-live-collapse-count-1",
+        kind: "tool",
+        toolType: "commandExecution",
+        title: "Command: rg --files",
+        detail: "/tmp",
+        status: "running",
+        output: "",
+      },
+      {
+        id: "tool-live-collapse-count-2",
+        kind: "tool",
+        toolType: "commandExecution",
+        title: "Command: ls -la",
+        detail: "/tmp",
+        status: "running",
+        output: "",
+      },
+      {
+        id: "assistant-live-collapse-count",
+        kind: "message",
+        role: "assistant",
+        text: "最终输出",
+      },
+    ];
+
+    const { container } = render(
+      <Messages
+        items={items}
+        threadId="thread-1"
+        workspaceId="ws-1"
+        isThinking
+        processingStartedAt={Date.now() - 1_000}
+        activeEngine="claude"
+        openTargets={[]}
+        selectedOpenAppId=""
+      />,
+    );
+
+    const indicator = container.querySelector(".messages-live-middle-collapsed-indicator");
+    expect(indicator?.textContent ?? "").toContain("已折叠 1 条中间步骤（实时中）");
+    expect(container.textContent ?? "").not.toContain("Command: rg --files");
+    expect(container.textContent ?? "").not.toContain("Command: ls -la");
+  });
+
+  it("does not show a live collapsed indicator when only hidden commands were skipped", () => {
+    window.localStorage.setItem("ccgui.messages.live.collapseMiddleSteps", "1");
+    const items: ConversationItem[] = [
+      {
+        id: "user-live-collapse-commands-only",
+        kind: "message",
+        role: "user",
+        text: "请继续",
+      },
+      {
+        id: "tool-live-collapse-commands-only-1",
+        kind: "tool",
+        toolType: "commandExecution",
+        title: "Command: rg --files",
+        detail: "/tmp",
+        status: "running",
+        output: "",
+      },
+      {
+        id: "tool-live-collapse-commands-only-2",
+        kind: "tool",
+        toolType: "commandExecution",
+        title: "Command: ls -la",
+        detail: "/tmp",
+        status: "running",
+        output: "",
+      },
+      {
+        id: "assistant-live-collapse-commands-only",
+        kind: "message",
+        role: "assistant",
+        text: "最终输出",
+      },
+    ];
+
+    const { container } = render(
+      <Messages
+        items={items}
+        threadId="thread-1"
+        workspaceId="ws-1"
+        isThinking
+        processingStartedAt={Date.now() - 1_000}
+        activeEngine="claude"
+        openTargets={[]}
+        selectedOpenAppId=""
+      />,
+    );
+
+    expect(container.querySelector(".messages-live-middle-collapsed-indicator")).toBeNull();
+    expect(container.textContent ?? "").toContain("最终输出");
+  });
+
   it("collapses middle steps in history mode when enabled", () => {
-    window.localStorage.setItem("mossx.messages.live.collapseMiddleSteps", "1");
+    window.localStorage.setItem("ccgui.messages.live.collapseMiddleSteps", "1");
     const items: ConversationItem[] = [
       {
         id: "user-history-collapse",
@@ -515,7 +627,7 @@ describe("Messages live behavior", () => {
   });
 
   it("collapses middle steps for all previous turns in history mode", () => {
-    window.localStorage.setItem("mossx.messages.live.collapseMiddleSteps", "1");
+    window.localStorage.setItem("ccgui.messages.live.collapseMiddleSteps", "1");
     const items: ConversationItem[] = [
       {
         id: "user-history-turn-1",

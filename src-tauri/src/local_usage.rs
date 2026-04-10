@@ -154,7 +154,7 @@ pub(crate) async fn list_codex_session_summaries_for_workspace(
     if workspace_id.is_empty() {
         return Err("workspace_id is required".to_string());
     }
-    let capped_limit = limit.clamp(1, 200);
+    let requested_limit = limit.max(1);
     let (workspace_path_str, workspace_path, sessions_roots) = {
         let workspaces = workspaces.lock().await;
         let entry = workspaces
@@ -165,12 +165,12 @@ pub(crate) async fn list_codex_session_summaries_for_workspace(
         (entry.path.clone(), workspace_path, sessions_roots)
     };
     let sessions = timeout(
-        std::time::Duration::from_millis(1_500),
+        std::time::Duration::from_millis(5_000),
         tokio::task::spawn_blocking(move || {
             let mut summaries =
                 scan_codex_session_summaries(Some(workspace_path.as_path()), &sessions_roots)?;
-            if summaries.len() > capped_limit {
-                summaries.truncate(capped_limit);
+            if summaries.len() > requested_limit {
+                summaries.truncate(requested_limit);
             }
             Ok::<Vec<LocalUsageSessionSummary>, String>(summaries)
         }),
@@ -180,6 +180,19 @@ pub(crate) async fn list_codex_session_summaries_for_workspace(
     .map_err(|err| err.to_string())??;
 
     Ok((workspace_path_str, sessions))
+}
+
+#[tauri::command]
+pub(crate) async fn list_codex_session_summaries(
+    workspace_id: String,
+    limit: Option<u32>,
+    state: State<'_, AppState>,
+) -> Result<Vec<LocalUsageSessionSummary>, String> {
+    let capped_limit = limit.unwrap_or(200).clamp(1, 200) as usize;
+    let (_, sessions) =
+        list_codex_session_summaries_for_workspace(&state.workspaces, &workspace_id, capped_limit)
+            .await?;
+    Ok(sessions)
 }
 
 #[tauri::command]
@@ -225,6 +238,45 @@ pub(crate) async fn load_codex_session(
         "sessionId": session_id,
         "entries": entries,
     }))
+}
+
+pub(crate) async fn delete_codex_session_for_workspace(
+    workspaces: &Mutex<HashMap<String, WorkspaceEntry>>,
+    workspace_id: &str,
+    session_id: &str,
+) -> Result<usize, String> {
+    let workspace_id = workspace_id.trim();
+    let session_id = session_id.trim();
+    if workspace_id.is_empty() {
+        return Err("workspace_id is required".to_string());
+    }
+    if session_id.is_empty() {
+        return Err("session_id is required".to_string());
+    }
+    if session_id.contains('/') || session_id.contains('\\') || session_id.contains("..") {
+        return Err("invalid session_id".to_string());
+    }
+
+    let (workspace_path, sessions_roots) = {
+        let workspaces = workspaces.lock().await;
+        let entry = workspaces
+            .get(workspace_id)
+            .ok_or_else(|| "workspace not found".to_string())?;
+        let workspace_path = PathBuf::from(&entry.path);
+        let sessions_roots = resolve_sessions_roots(&workspaces, Some(workspace_path.as_path()));
+        (workspace_path, sessions_roots)
+    };
+
+    let session_id_for_delete = session_id.to_string();
+    tokio::task::spawn_blocking(move || {
+        delete_codex_session_files(
+            session_id_for_delete.as_str(),
+            workspace_path.as_path(),
+            &sessions_roots,
+        )
+    })
+    .await
+    .map_err(|err| err.to_string())?
 }
 
 fn load_codex_session_entries(
@@ -282,10 +334,69 @@ fn find_codex_session_file(
         }
     }
 
-    unknown_candidates
-        .into_iter()
-        .next()
-        .ok_or_else(|| format!("codex session file not found for session {}", session_id))
+    match unknown_candidates.len() {
+        0 => Err(format!("codex session file not found for session {}", session_id)),
+        1 => Ok(unknown_candidates.remove(0)),
+        count => Err(format!(
+            "ambiguous codex session file for session {}: {} candidates missing workspace metadata",
+            session_id, count
+        )),
+    }
+}
+
+fn delete_codex_session_files(
+    session_id: &str,
+    workspace_path: &Path,
+    sessions_roots: &[PathBuf],
+) -> Result<usize, String> {
+    let mut files = Vec::new();
+    let mut seen = HashSet::new();
+    for root in sessions_roots {
+        collect_jsonl_files(root, &mut files, &mut seen);
+    }
+
+    let mut matched_targets = Vec::new();
+    let mut unknown_candidates = Vec::new();
+    for path in files {
+        if !codex_session_file_matches_session_id(&path, session_id)? {
+            continue;
+        }
+        match codex_session_file_matches_workspace(&path, workspace_path)? {
+            Some(true) => matched_targets.push(path),
+            Some(false) => continue,
+            None => unknown_candidates.push(path),
+        }
+    }
+
+    if matched_targets.is_empty() {
+        match unknown_candidates.len() {
+            0 => {}
+            1 => matched_targets = unknown_candidates,
+            count => {
+                return Err(format!(
+                    "ambiguous codex session files for session {}: {} candidates missing workspace metadata",
+                    session_id, count
+                ));
+            }
+        }
+    }
+
+    if matched_targets.is_empty() {
+        return Err(format!("codex session file not found for session {}", session_id));
+    }
+
+    let mut deleted_count = 0;
+    for path in matched_targets {
+        fs::remove_file(&path).map_err(|err| {
+            format!(
+                "failed to delete codex session file {}: {}",
+                path.display(),
+                err
+            )
+        })?;
+        deleted_count += 1;
+    }
+    Ok(deleted_count)
 }
 
 fn codex_session_file_matches_session_id(path: &Path, session_id: &str) -> Result<bool, String> {
@@ -753,10 +864,11 @@ fn parse_codex_session_summary(
     let mut source: Option<String> = None;
     let mut provider: Option<String> = None;
     let mut canonical_session_id: Option<String> = None;
-    let mut first_timestamp = 0_i64;
+    let mut latest_timestamp = 0_i64;
     let mut previous_totals: Option<UsageTotals> = None;
     let mut match_known = workspace_path.is_none();
     let mut matches_workspace = workspace_path.is_none();
+    let mut saw_session_signal = false;
 
     for line in reader.lines() {
         let line = match line {
@@ -771,9 +883,7 @@ fn parse_codex_session_summary(
             Ok(value) => value,
             Err(_) => continue,
         };
-        if first_timestamp == 0 {
-            first_timestamp = read_timestamp_ms(&value).unwrap_or(0);
-        }
+        latest_timestamp = latest_timestamp.max(read_timestamp_ms(&value).unwrap_or(0));
 
         let entry_type = value
             .get("type")
@@ -781,6 +891,7 @@ fn parse_codex_session_summary(
             .unwrap_or("");
 
         if entry_type == "session_meta" || entry_type == "turn_context" {
+            saw_session_signal = true;
             if canonical_session_id.is_none() {
                 canonical_session_id = extract_session_id_from_session_value(&value);
             }
@@ -828,6 +939,7 @@ fn parse_codex_session_summary(
                     .and_then(|value| value.as_str())
                     .unwrap_or("");
                 if payload_type == "user_message" {
+                    saw_session_signal = true;
                     if let Some(message) = payload.get("message").and_then(|value| value.as_str()) {
                         summary = truncate_summary(message);
                     }
@@ -845,6 +957,7 @@ fn parse_codex_session_summary(
         if payload_type != Some("token_count") {
             continue;
         }
+        saw_session_signal = true;
 
         let info = payload
             .and_then(|payload| payload.get("info"))
@@ -934,20 +1047,33 @@ fn parse_codex_session_summary(
         + usage.cache_write_tokens
         + usage.cache_read_tokens;
 
-    if summary.is_none() && usage.total_tokens == 0 {
+    if !saw_session_signal {
         return Ok(None);
     }
 
-    let session_id = canonical_session_id.unwrap_or_else(|| {
-        path.file_stem()
-            .and_then(|name| name.to_str())
-            .unwrap_or_default()
-            .to_string()
-    });
+    if summary.is_none()
+        && usage.total_tokens == 0
+        && canonical_session_id.is_none()
+        && source.is_none()
+        && provider.is_none()
+    {
+        return Ok(None);
+    }
+
+    let file_stem = path
+        .file_stem()
+        .and_then(|name| name.to_str())
+        .unwrap_or_default()
+        .to_string();
+    let session_id = canonical_session_id.unwrap_or_else(|| file_stem.clone());
+    let mut session_id_aliases = Vec::new();
+    if !file_stem.is_empty() && file_stem != session_id {
+        session_id_aliases.push(file_stem);
+    }
     let model = model.unwrap_or_else(|| "gpt-5.1".to_string());
     let cost = calculate_usage_cost(&usage, codex_cost_rates());
-    let timestamp = if first_timestamp > 0 {
-        first_timestamp
+    let timestamp = if latest_timestamp > 0 {
+        latest_timestamp
     } else {
         SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -957,6 +1083,7 @@ fn parse_codex_session_summary(
 
     Ok(Some(LocalUsageSessionSummary {
         session_id,
+        session_id_aliases,
         timestamp,
         model,
         usage,
@@ -964,6 +1091,7 @@ fn parse_codex_session_summary(
         summary,
         source,
         provider,
+        file_size_bytes: fs::metadata(path).ok().map(|metadata| metadata.len()),
     }))
 }
 
@@ -1020,8 +1148,8 @@ fn normalize_originator_source(value: Option<String>) -> Option<String> {
         return None;
     }
     let lower = trimmed.to_ascii_lowercase();
-    if lower == "mossx" || lower == "codemoss" {
-        return Some("mossx".to_string());
+    if lower == "ccgui" || lower == "codemoss" || lower == "ccgui" {
+        return Some("ccgui".to_string());
     }
     if lower == "codex_cli_rs" {
         return Some("cli".to_string());
@@ -1270,6 +1398,7 @@ fn parse_claude_session_summary(path: &Path) -> Result<Option<LocalUsageSessionS
 
     Ok(Some(LocalUsageSessionSummary {
         session_id,
+        session_id_aliases: Vec::new(),
         timestamp,
         model,
         usage,
@@ -1277,6 +1406,7 @@ fn parse_claude_session_summary(path: &Path) -> Result<Option<LocalUsageSessionS
         summary,
         source: None,
         provider: None,
+        file_size_bytes: fs::metadata(path).ok().map(|metadata| metadata.len()),
     }))
 }
 
@@ -1597,11 +1727,20 @@ fn day_key_for_timestamp_ms(timestamp_ms: i64) -> Option<String> {
 }
 
 fn extract_cwd(value: &Value) -> Option<String> {
-    value
-        .get("payload")
-        .and_then(|payload| payload.get("cwd"))
-        .and_then(|cwd| cwd.as_str())
-        .map(|cwd| cwd.to_string())
+    let root = value.as_object()?;
+    let payload = root.get("payload").and_then(Value::as_object);
+    let session_meta = payload
+        .and_then(|payload| payload.get("session_meta"))
+        .and_then(Value::as_object)
+        .or_else(|| {
+            payload
+                .and_then(|payload| payload.get("sessionMeta"))
+                .and_then(Value::as_object)
+        });
+
+    read_string_from_object(root, &["cwd"])
+        .or_else(|| payload.and_then(|item| read_string_from_object(item, &["cwd"])))
+        .or_else(|| session_meta.and_then(|item| read_string_from_object(item, &["cwd"])))
 }
 
 #[cfg(windows)]
@@ -1650,10 +1789,11 @@ fn make_day_keys(days: u32) -> Vec<String> {
         .collect()
 }
 
-fn resolve_codex_sessions_root(codex_home_override: Option<PathBuf>) -> Option<PathBuf> {
-    codex_home_override
-        .or_else(resolve_default_codex_home)
-        .map(|home| home.join("sessions"))
+fn resolve_codex_sessions_roots(codex_home_override: Option<PathBuf>) -> Vec<PathBuf> {
+    let Some(home) = codex_home_override.or_else(resolve_default_codex_home) else {
+        return Vec::new();
+    };
+    vec![home.join("sessions"), home.join("archived_sessions")]
 }
 
 fn resolve_sessions_roots(
@@ -1663,15 +1803,13 @@ fn resolve_sessions_roots(
     if let Some(workspace_path) = workspace_path {
         let codex_home_override =
             resolve_workspace_codex_home_for_path(workspaces, Some(workspace_path));
-        return resolve_codex_sessions_root(codex_home_override)
-            .into_iter()
-            .collect();
+        return resolve_codex_sessions_roots(codex_home_override);
     }
 
     let mut roots = Vec::new();
     let mut seen = HashSet::new();
 
-    if let Some(root) = resolve_codex_sessions_root(None) {
+    for root in resolve_codex_sessions_roots(None) {
         if seen.insert(root.clone()) {
             roots.push(root);
         }
@@ -1685,7 +1823,7 @@ fn resolve_sessions_roots(
         let Some(codex_home) = resolve_workspace_codex_home(entry, parent_entry) else {
             continue;
         };
-        if let Some(root) = resolve_codex_sessions_root(Some(codex_home)) {
+        for root in resolve_codex_sessions_roots(Some(codex_home)) {
             if seen.insert(root.clone()) {
                 roots.push(root);
             }
@@ -2219,11 +2357,58 @@ mod tests {
         workspaces.insert(entry_b.id.clone(), entry_b.clone());
 
         let roots = resolve_sessions_roots(&workspaces, None);
-        let expected_a = PathBuf::from(entry_a.settings.codex_home.unwrap()).join("sessions");
-        let expected_b = PathBuf::from(entry_b.settings.codex_home.unwrap()).join("sessions");
+        let codex_home_a = entry_a.settings.codex_home.clone().expect("codex home a");
+        let codex_home_b = entry_b.settings.codex_home.clone().expect("codex home b");
+        let expected_a = PathBuf::from(&codex_home_a).join("sessions");
+        let expected_a_archived = PathBuf::from(&codex_home_a).join("archived_sessions");
+        let expected_b = PathBuf::from(&codex_home_b).join("sessions");
+        let expected_b_archived = PathBuf::from(&codex_home_b).join("archived_sessions");
 
         assert!(roots.iter().any(|root| root == &expected_a));
+        assert!(roots.iter().any(|root| root == &expected_a_archived));
         assert!(roots.iter().any(|root| root == &expected_b));
+        assert!(roots.iter().any(|root| root == &expected_b_archived));
+    }
+
+    #[tokio::test]
+    async fn list_codex_session_summaries_for_workspace_does_not_clamp_to_200() {
+        let codex_home = std::env::temp_dir().join(format!("codex-home-{}", Uuid::new_v4()));
+        let sessions_root = codex_home.join("sessions");
+        let day_key = "2026-01-19";
+        for index in 0..230 {
+            let session_id = format!("session-{index:03}");
+            write_named_session_file(
+                &sessions_root,
+                day_key,
+                &session_id,
+                &[format!(
+                    r#"{{"timestamp":"2026-01-19T12:00:00.000Z","type":"session_meta","payload":{{"id":"{session_id}","cwd":"/tmp/project-alpha"}}}}"#
+                )],
+            );
+        }
+
+        let mut settings = WorkspaceSettings::default();
+        settings.codex_home = Some(codex_home.to_string_lossy().to_string());
+        let entry = WorkspaceEntry {
+            id: "workspace-id".to_string(),
+            name: "workspace".to_string(),
+            path: "/tmp/project-alpha".to_string(),
+            codex_bin: None,
+            kind: WorkspaceKind::Main,
+            parent_id: None,
+            worktree: None,
+            settings,
+        };
+        let mut workspace_map = HashMap::new();
+        workspace_map.insert(entry.id.clone(), entry);
+        let workspaces = Mutex::new(workspace_map);
+
+        let (_, sessions) =
+            list_codex_session_summaries_for_workspace(&workspaces, "workspace-id", 230)
+                .await
+                .expect("list codex summaries");
+
+        assert_eq!(sessions.len(), 230);
     }
 
     #[test]
@@ -2289,6 +2474,147 @@ mod tests {
     }
 
     #[test]
+    fn load_codex_session_entries_reads_nested_session_meta_cwd() {
+        let root = make_temp_sessions_root();
+        let day_key = "2026-01-19";
+        let workspace_path = Path::new("/tmp/project-alpha");
+        write_named_session_file(
+            &root,
+            day_key,
+            "session-alpha",
+            &[
+                r#"{"timestamp":"2026-01-19T12:00:00.000Z","type":"session_meta","payload":{"sessionMeta":{"cwd":"/tmp/project-alpha"}}}"#
+                    .to_string(),
+                r#"{"timestamp":"2026-01-19T12:00:05.000Z","type":"response_item","payload":{"type":"reasoning","id":"reason-1","summary":"Inspect","content":"Inspect workspace"}}"#
+                    .to_string(),
+            ],
+        );
+
+        let entries = load_codex_session_entries("session-alpha", workspace_path, &[root])
+            .expect("load session entries");
+
+        assert_eq!(entries.len(), 2);
+    }
+
+    #[test]
+    fn load_codex_session_entries_rejects_ambiguous_unknown_candidates() {
+        let sessions_root = make_temp_sessions_root();
+        let archived_root = make_temp_sessions_root();
+        let day_key = "2026-01-19";
+        let workspace_path = Path::new("/tmp/project-alpha");
+        write_named_session_file(
+            &sessions_root,
+            day_key,
+            "rollout-2026-01-19T12-00-00-session-alpha",
+            &[r#"{"timestamp":"2026-01-19T12:00:00.000Z","type":"session_meta","payload":{"id":"session-alpha"}}"#
+                .to_string()],
+        );
+        write_named_session_file(
+            &archived_root,
+            day_key,
+            "rollout-2026-01-19T12-05-00-session-alpha",
+            &[r#"{"timestamp":"2026-01-19T12:05:00.000Z","type":"session_meta","payload":{"id":"session-alpha"}}"#
+                .to_string()],
+        );
+
+        let error = load_codex_session_entries(
+            "session-alpha",
+            workspace_path,
+            &[sessions_root, archived_root],
+        )
+        .expect_err("ambiguous unknown candidates should fail");
+
+        assert!(error.contains("ambiguous codex session file"));
+    }
+
+    #[tokio::test]
+    async fn delete_codex_session_for_workspace_physically_removes_matching_file() {
+        let codex_home = std::env::temp_dir().join(format!("codex-home-{}", Uuid::new_v4()));
+        let sessions_root = codex_home.join("sessions");
+        let day_key = "2026-01-19";
+        let session_path = write_named_session_file(
+            &sessions_root,
+            day_key,
+            "rollout-2026-01-19T12-00-00-session-alpha",
+            &[
+                r#"{"timestamp":"2026-01-19T12:00:00.000Z","type":"session_meta","payload":{"id":"session-alpha","cwd":"/tmp/project-alpha"}}"#
+                    .to_string(),
+            ],
+        );
+
+        let mut settings = WorkspaceSettings::default();
+        settings.codex_home = Some(codex_home.to_string_lossy().to_string());
+        let entry = WorkspaceEntry {
+            id: "workspace-id".to_string(),
+            name: "workspace".to_string(),
+            path: "/tmp/project-alpha".to_string(),
+            codex_bin: None,
+            kind: WorkspaceKind::Main,
+            parent_id: None,
+            worktree: None,
+            settings,
+        };
+        let mut workspace_map = HashMap::new();
+        workspace_map.insert(entry.id.clone(), entry);
+        let workspaces = Mutex::new(workspace_map);
+
+        let deleted_count =
+            delete_codex_session_for_workspace(&workspaces, "workspace-id", "session-alpha")
+                .await
+                .expect("delete codex session");
+
+        assert_eq!(deleted_count, 1);
+        assert!(!session_path.exists());
+    }
+
+    #[tokio::test]
+    async fn delete_codex_session_for_workspace_rejects_ambiguous_unknown_candidates() {
+        let codex_home = std::env::temp_dir().join(format!("codex-home-{}", Uuid::new_v4()));
+        let sessions_root = codex_home.join("sessions");
+        let archived_root = codex_home.join("archived_sessions");
+        let day_key = "2026-01-19";
+        let session_path_a = write_named_session_file(
+            &sessions_root,
+            day_key,
+            "rollout-2026-01-19T12-00-00-session-alpha",
+            &[r#"{"timestamp":"2026-01-19T12:00:00.000Z","type":"session_meta","payload":{"id":"session-alpha"}}"#
+                .to_string()],
+        );
+        let session_path_b = write_named_session_file(
+            &archived_root,
+            day_key,
+            "rollout-2026-01-19T12-05-00-session-alpha",
+            &[r#"{"timestamp":"2026-01-19T12:05:00.000Z","type":"session_meta","payload":{"id":"session-alpha"}}"#
+                .to_string()],
+        );
+
+        let mut settings = WorkspaceSettings::default();
+        settings.codex_home = Some(codex_home.to_string_lossy().to_string());
+        let entry = WorkspaceEntry {
+            id: "workspace-id".to_string(),
+            name: "workspace".to_string(),
+            path: "/tmp/project-alpha".to_string(),
+            codex_bin: None,
+            kind: WorkspaceKind::Main,
+            parent_id: None,
+            worktree: None,
+            settings,
+        };
+        let mut workspace_map = HashMap::new();
+        workspace_map.insert(entry.id.clone(), entry);
+        let workspaces = Mutex::new(workspace_map);
+
+        let error =
+            delete_codex_session_for_workspace(&workspaces, "workspace-id", "session-alpha")
+                .await
+                .expect_err("ambiguous unknown candidates should fail");
+
+        assert!(error.contains("ambiguous codex session files"));
+        assert!(session_path_a.exists());
+        assert!(session_path_b.exists());
+    }
+
+    #[test]
     fn parse_codex_session_summary_extracts_source_provider_metadata() {
         let root = make_temp_sessions_root();
         let day_key = "2026-01-19";
@@ -2314,6 +2640,58 @@ mod tests {
     }
 
     #[test]
+    fn parse_codex_session_summary_reads_nested_session_meta_cwd() {
+        let root = make_temp_sessions_root();
+        let day_key = "2026-01-19";
+        let workspace_path = Path::new("/tmp/project-alpha");
+        let session_path = write_named_session_file(
+            &root,
+            day_key,
+            "session-nested-cwd",
+            &[
+                r#"{"timestamp":"2026-01-19T12:00:00.000Z","type":"session_meta","payload":{"sessionMeta":{"cwd":"/tmp/project-alpha"},"source":"custom","provider":"openai"}}"#
+                    .to_string(),
+                r#"{"timestamp":"2026-01-19T12:00:01.000Z","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":12,"cached_input_tokens":0,"output_tokens":4}}}}"#
+                    .to_string(),
+            ],
+        );
+
+        let summary = parse_codex_session_summary(session_path.as_path(), Some(workspace_path))
+            .expect("parse summary")
+            .expect("summary exists");
+
+        assert_eq!(summary.source.as_deref(), Some("custom"));
+        assert_eq!(summary.provider.as_deref(), Some("openai"));
+    }
+
+    #[test]
+    fn parse_codex_session_summary_uses_latest_activity_timestamp() {
+        let root = make_temp_sessions_root();
+        let day_key = "2026-01-19";
+        let workspace_path = Path::new("/tmp/project-alpha");
+        let session_path = write_named_session_file(
+            &root,
+            day_key,
+            "session-latest-timestamp",
+            &[
+                r#"{"timestamp":"2026-01-19T12:00:00.000Z","type":"session_meta","payload":{"cwd":"/tmp/project-alpha","source":"custom","provider":"openai"}}"#
+                    .to_string(),
+                r#"{"timestamp":"2026-01-19T12:05:00.000Z","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":12,"cached_input_tokens":0,"output_tokens":4}}}}"#
+                    .to_string(),
+            ],
+        );
+
+        let summary = parse_codex_session_summary(session_path.as_path(), Some(workspace_path))
+            .expect("parse summary")
+            .expect("summary exists");
+
+        let expected_timestamp = DateTime::parse_from_rfc3339("2026-01-19T12:05:00.000Z")
+            .expect("latest timestamp")
+            .timestamp_millis();
+        assert_eq!(summary.timestamp, expected_timestamp);
+    }
+
+    #[test]
     fn parse_codex_session_summary_prefers_session_meta_id_over_rollout_filename() {
         let root = make_temp_sessions_root();
         let day_key = "2026-01-19";
@@ -2335,6 +2713,10 @@ mod tests {
             .expect("summary exists");
 
         assert_eq!(summary.session_id, "session-alpha");
+        assert_eq!(
+            summary.session_id_aliases,
+            vec!["rollout-2026-01-19T12-00-00-session-alpha".to_string()]
+        );
     }
 
     #[test]
@@ -2374,7 +2756,7 @@ mod tests {
             day_key,
             "session-originator-meta",
             &[
-                r#"{"timestamp":"2026-01-19T12:00:00.000Z","type":"session_meta","payload":{"cwd":"/tmp/project-alpha","source":"vscode","originator":"mossx","model_provider":"openai"}}"#
+                r#"{"timestamp":"2026-01-19T12:00:00.000Z","type":"session_meta","payload":{"cwd":"/tmp/project-alpha","source":"vscode","originator":"ccgui","model_provider":"openai"}}"#
                     .to_string(),
                 r#"{"timestamp":"2026-01-19T12:00:01.000Z","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":12,"cached_input_tokens":0,"output_tokens":4}}}}"#
                     .to_string(),
@@ -2385,8 +2767,32 @@ mod tests {
             .expect("parse summary")
             .expect("summary exists");
 
-        assert_eq!(summary.source.as_deref(), Some("mossx"));
+        assert_eq!(summary.source.as_deref(), Some("ccgui"));
         assert_eq!(summary.provider.as_deref(), Some("openai"));
+    }
+
+    #[test]
+    fn parse_codex_session_summary_keeps_metadata_only_sessions_for_size_enrichment() {
+        let root = make_temp_sessions_root();
+        let day_key = "2026-01-19";
+        let workspace_path = Path::new("/tmp/project-alpha");
+        let session_path = write_named_session_file(
+            &root,
+            day_key,
+            "rollout-2026-01-19T12-00-00-session-alpha",
+            &[r#"{"timestamp":"2026-01-19T12:00:00.000Z","type":"session_meta","payload":{"id":"session-alpha","cwd":"/tmp/project-alpha","source":"custom","provider":"openai"}}"#
+                .to_string()],
+        );
+
+        let summary = parse_codex_session_summary(session_path.as_path(), Some(workspace_path))
+            .expect("parse summary")
+            .expect("summary exists");
+
+        assert_eq!(summary.session_id, "session-alpha");
+        assert_eq!(summary.source.as_deref(), Some("custom"));
+        assert_eq!(summary.provider.as_deref(), Some("openai"));
+        assert_eq!(summary.usage.total_tokens, 0);
+        assert!(summary.file_size_bytes.unwrap_or(0) > 0);
     }
 
     #[cfg(windows)]

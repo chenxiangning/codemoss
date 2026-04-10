@@ -5,7 +5,7 @@ import type { WorkspaceSessionActivityViewModel } from "../types";
 import { WorkspaceSessionActivityPanel } from "./WorkspaceSessionActivityPanel";
 
 const SOLO_FOLLOW_COACH_DISMISSED_BY_WORKSPACE_STORAGE_KEY =
-  "mossx.sessionActivity.soloFollowCoachDismissedByWorkspace";
+  "ccgui.sessionActivity.soloFollowCoachDismissedByWorkspace";
 
 function dismissSoloFollowCoachForWorkspace(workspaceId: string) {
   window.localStorage.setItem(
@@ -1207,6 +1207,34 @@ describe("WorkspaceSessionActivityPanel", () => {
             commandDescription: "",
             commandText:
               "/bin/zsh -lc \"zsh -lc 'source ~/.zshrc && rg -n \\\"TODO\\\" src'\"",
+          }
+        : event,
+    );
+
+    const view = render(
+      <WorkspaceSessionActivityPanel
+        workspaceId="workspace-1"
+        viewModel={viewModel}
+        onOpenDiffPath={vi.fn()}
+        onSelectThread={vi.fn()}
+      />,
+    );
+
+    expect(
+      getEventNode(view.container, "command")?.querySelector(".session-activity-card-title")
+        ?.textContent,
+    ).toBe("activityPanel.commandCategories.search · rg -n \\\"TODO\\\" src");
+  });
+
+  it("normalizes wrapped Windows shell command and adds category in collapsed command title", () => {
+    const viewModel = createViewModel();
+    viewModel.timeline = viewModel.timeline.map((event) =>
+      event.kind === "command"
+        ? {
+            ...event,
+            commandDescription: "",
+            commandText:
+              "\"C:\\\\Program Files\\\\Git\\\\bin\\\\bash.exe\" -lc \"zsh -lc 'source ~/.zshrc && rg -n \\\\\\\"TODO\\\\\\\" src'\"",
           }
         : event,
     );

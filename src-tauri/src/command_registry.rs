@@ -71,6 +71,7 @@ pub(crate) fn invoke_handler(
         crate::engine::list_gemini_sessions,
         crate::engine::load_gemini_session,
         crate::engine::delete_gemini_session,
+        crate::local_usage::list_codex_session_summaries,
         crate::local_usage::load_codex_session,
         // Codex
         crate::codex::get_config_model,
@@ -95,6 +96,7 @@ pub(crate) fn invoke_handler(
         crate::codex::list_global_mcp_servers,
         crate::codex::list_mcp_server_status,
         crate::codex::archive_thread,
+        crate::codex::delete_codex_session,
         crate::codex::collaboration_mode_list,
         crate::codex::model_list,
         crate::codex::account_rate_limits,

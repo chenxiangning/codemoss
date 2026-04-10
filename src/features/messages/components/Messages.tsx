@@ -242,9 +242,9 @@ const AGENT_PROMPT_NAME_LINE_REGEX =
   /^(?:agent\s*name|selected\s*agent|智能体(?:名称|标题)?|agent)\s*[:：]\s*(.+)$/i;
 const AGENT_PROMPT_ICON_LINE_REGEX =
   /^(?:agent\s*icon|selected\s*agent\s*icon|智能体图标|agent\s*icon\s*id)\s*[:：]\s*(.+)$/i;
-const MESSAGES_PERF_DEBUG_FLAG_KEY = "mossx.debug.messages.perf";
-const CLAUDE_HIDE_REASONING_MODULE_FLAG_KEY = "mossx.claude.hideReasoningModule";
-const CLAUDE_RENDER_DEBUG_FLAG_KEY = "mossx.debug.claude.render";
+const MESSAGES_PERF_DEBUG_FLAG_KEY = "ccgui.debug.messages.perf";
+const CLAUDE_HIDE_REASONING_MODULE_FLAG_KEY = "ccgui.claude.hideReasoningModule";
+const CLAUDE_RENDER_DEBUG_FLAG_KEY = "ccgui.debug.claude.render";
 
 type MessageConversationItem = Extract<ConversationItem, { kind: "message" }>;
 type ReasoningConversationItem = Extract<ConversationItem, { kind: "reasoning" }>;
@@ -585,6 +585,28 @@ function shouldHideCodexCanvasCommandCard(
     return true;
   }
   return isBashTool(extractToolName(item.title).toLowerCase());
+}
+
+function countRenderableCollapsedEntries(
+  items: ConversationItem[],
+  activeEngine: "claude" | "codex" | "gemini" | "opencode",
+) {
+  if (items.length === 0) {
+    return 0;
+  }
+  return groupToolItems(items).reduce((count, entry) => {
+    if (entry.kind === "bashGroup") {
+      return activeEngine === "codex" || activeEngine === "claude" ? count : count + 1;
+    }
+    if (
+      entry.kind === "item" &&
+      entry.item.kind === "tool" &&
+      shouldHideCodexCanvasCommandCard(entry.item, activeEngine)
+    ) {
+      return count;
+    }
+    return count + 1;
+  }, 0);
 }
 
 function resolveWorkingActivityLabel(
@@ -1823,20 +1845,21 @@ export const Messages = memo(function Messages({
         return { timelineItems: visibleItems, collapsedMiddleStepCount: 0 };
       }
       const nextTimelineItems: ConversationItem[] = [];
-      let hiddenCount = 0;
+      const hiddenItems: ConversationItem[] = [];
       for (let index = 0; index < visibleItems.length; index += 1) {
-      const item = visibleItems[index];
-      if (!item) {
-        continue;
+        const item = visibleItems[index];
+        if (!item) {
+          continue;
+        }
+        if (index < firstUserIndex || index > lastMessageIndex || isMessageConversationItem(item)) {
+          nextTimelineItems.push(item);
+          continue;
+        }
+        hiddenItems.push(item);
       }
-      if (index < firstUserIndex || index > lastMessageIndex || isMessageConversationItem(item)) {
-        nextTimelineItems.push(item);
-        continue;
-      }
-        hiddenCount += 1;
-      }
-      return hiddenCount > 0
-        ? { timelineItems: nextTimelineItems, collapsedMiddleStepCount: hiddenCount }
+      const collapsedEntryCount = countRenderableCollapsedEntries(hiddenItems, activeEngine);
+      return hiddenItems.length > 0
+        ? { timelineItems: nextTimelineItems, collapsedMiddleStepCount: collapsedEntryCount }
         : { timelineItems: visibleItems, collapsedMiddleStepCount: 0 };
     }
     let lastUserIndex = -1;
@@ -1852,7 +1875,7 @@ export const Messages = memo(function Messages({
     }
     const lastIndex = visibleItems.length - 1;
     const nextTimelineItems: ConversationItem[] = [];
-    let hiddenCount = 0;
+    const hiddenItems: ConversationItem[] = [];
     for (let index = 0; index < visibleItems.length; index += 1) {
       const item = visibleItems[index];
       if (!item) {
@@ -1866,12 +1889,13 @@ export const Messages = memo(function Messages({
         nextTimelineItems.push(item);
         continue;
       }
-      hiddenCount += 1;
+      hiddenItems.push(item);
     }
-    return hiddenCount > 0
-      ? { timelineItems: nextTimelineItems, collapsedMiddleStepCount: hiddenCount }
+    const collapsedEntryCount = countRenderableCollapsedEntries(hiddenItems, activeEngine);
+    return hiddenItems.length > 0
+      ? { timelineItems: nextTimelineItems, collapsedMiddleStepCount: collapsedEntryCount }
       : { timelineItems: visibleItems, collapsedMiddleStepCount: 0 };
-  }, [collapseLiveMiddleStepsEnabled, isThinking, visibleItems]);
+  }, [activeEngine, collapseLiveMiddleStepsEnabled, isThinking, visibleItems]);
   useEffect(() => {
     if (activeEngine !== "claude") {
       return;
@@ -2242,9 +2266,6 @@ export const Messages = memo(function Messages({
       if (typeof item.finalCompletedAt === "number" && item.finalCompletedAt > 0) {
         finalMetaParts.push(formatCompletedTimeMs(item.finalCompletedAt));
       }
-      if (typeof item.finalDurationMs === "number" && item.finalDurationMs >= 0) {
-        finalMetaParts.push(`总耗时 ${formatDurationMs(item.finalDurationMs)}`);
-      }
       const finalMetaText = finalMetaParts.join(" · ");
       const bindMessageNode = (node: HTMLDivElement | null) => {
         if (item.role === "user" && node) {
@@ -2263,6 +2284,14 @@ export const Messages = memo(function Messages({
                   <span>推理过程</span>
                 </span>
               </span>
+              {finalMetaText && (
+                <span
+                  className="messages-turn-boundary-meta messages-turn-boundary-meta-placeholder"
+                  aria-hidden="true"
+                >
+                  {finalMetaText}
+                </span>
+              )}
             </div>
           )}
           <div ref={bindMessageNode} data-message-anchor-id={item.id}>
