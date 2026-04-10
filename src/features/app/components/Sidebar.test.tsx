@@ -154,17 +154,21 @@ describe("Sidebar", () => {
     expect(onOpenGlobalSearch).toHaveBeenCalledTimes(1);
   });
 
-  it("shows Windows-friendly shortcut label for quick search", () => {
+  it("keeps only Windows-friendly quick nav shortcuts K/F visible while hiding J", () => {
     const originalPlatform = window.navigator.platform;
     Object.defineProperty(window.navigator, "platform", {
       value: "Win32",
       configurable: true,
     });
     try {
-      render(<Sidebar {...baseProps} />);
-      expect(screen.getByText("Ctrl+J")).toBeTruthy();
+      const { container } = render(<Sidebar {...baseProps} />);
+      expect(screen.queryByText("Ctrl+J")).toBeNull();
       expect(screen.getByText("Ctrl+K")).toBeTruthy();
       expect(screen.getByText("Ctrl+F")).toBeTruthy();
+      expect(container.querySelectorAll(".sidebar-primary-nav .sidebar-primary-nav-shortcut")).toHaveLength(2);
+      expect(screen.getByRole("button", { name: "New Thread" }).getAttribute("title")).toContain("Ctrl+J");
+      expect(screen.getByRole("button", { name: "Automation" }).getAttribute("title")).toContain("Ctrl+K");
+      expect(screen.getByRole("button", { name: "Search" }).getAttribute("title")).toContain("Ctrl+F");
     } finally {
       Object.defineProperty(window.navigator, "platform", {
         value: originalPlatform,

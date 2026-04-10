@@ -10,6 +10,10 @@ const mainCss = readFileSync(
   fileURLToPath(new URL("./main.css", import.meta.url)),
   "utf8",
 );
+const sidebarCss = readFileSync(
+  fileURLToPath(new URL("./sidebar.css", import.meta.url)),
+  "utf8",
+);
 const messagesCss = readFileSync(
   fileURLToPath(new URL("./messages.css", import.meta.url)),
   "utf8",
@@ -68,6 +72,31 @@ describe("layout swapped platform guard", () => {
     );
     expect(diffViewerCss).toContain(
       ".app.layout-desktop.layout-swapped .diff-viewer-anchor-floating:not(.is-embedded) {",
+    );
+  });
+
+  it("keeps swapped sidebar quick nav in normal LTR order", () => {
+    expect(sidebarCss).toContain(
+      ".app.layout-desktop.layout-swapped .sidebar-primary-nav .sidebar-primary-nav-item {",
+    );
+    expect(sidebarCss).toContain("justify-content: flex-start;");
+    expect(sidebarCss).toContain("text-align: left;");
+    expect(sidebarCss).toContain(
+      ".app.layout-desktop.layout-swapped .sidebar-primary-nav .sidebar-primary-nav-item > .sidebar-primary-nav-icon {",
+    );
+    expect(sidebarCss).toContain("order: 0;");
+    expect(sidebarCss).toContain(
+      ".app.layout-desktop.layout-swapped .sidebar-primary-nav .sidebar-primary-nav-item > .sidebar-primary-nav-text-with-badge {",
+    );
+    expect(sidebarCss).toContain("justify-content: flex-start;");
+    expect(sidebarCss).toContain(
+      ".app.layout-desktop.layout-swapped .sidebar-primary-nav .sidebar-primary-nav-item > .sidebar-primary-nav-shortcut {",
+    );
+    expect(sidebarCss).toContain("order: 2;");
+    expect(sidebarCss).toContain("margin-left: auto;");
+    expect(sidebarCss).toContain("margin-right: 0;");
+    expect(sidebarCss).not.toContain(
+      ".app.layout-desktop.layout-swapped .sidebar-primary-nav .sidebar-primary-nav-text,",
     );
   });
 });

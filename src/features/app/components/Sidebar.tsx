@@ -948,9 +948,6 @@ export function Sidebar({
                 <path d="M10 3.25H6.25C4.59315 3.25 3.25 4.59315 3.25 6.25V13.75C3.25 15.4069 4.59315 16.75 6.25 16.75H13.75C15.4069 16.75 16.75 15.4069 16.75 13.75V10" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
               </svg>
               <span className="sidebar-primary-nav-text">{t("sidebar.quickNewThread")}</span>
-              <span className="sidebar-primary-nav-shortcut" aria-hidden>
-                {quickChatShortcutLabel}
-              </span>
             </button>
             <button
               type="button"

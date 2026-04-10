@@ -690,27 +690,27 @@
 }
 
 .app.layout-desktop.layout-swapped .sidebar-primary-nav .sidebar-primary-nav-item {
-  justify-content: flex-end;
-  text-align: right;
+  justify-content: flex-start;
+  text-align: left;
 }
 
-.app.layout-desktop.layout-swapped .sidebar-primary-nav .sidebar-primary-nav-icon {
-  order: 2;
+.app.layout-desktop.layout-swapped .sidebar-primary-nav .sidebar-primary-nav-item > .sidebar-primary-nav-icon {
+  order: 0;
 }
 
-.app.layout-desktop.layout-swapped .sidebar-primary-nav .sidebar-primary-nav-text,
-.app.layout-desktop.layout-swapped .sidebar-primary-nav .sidebar-primary-nav-text-with-badge {
+.app.layout-desktop.layout-swapped .sidebar-primary-nav .sidebar-primary-nav-item > .sidebar-primary-nav-text,
+.app.layout-desktop.layout-swapped .sidebar-primary-nav .sidebar-primary-nav-item > .sidebar-primary-nav-text-with-badge {
   order: 1;
 }
 
-.app.layout-desktop.layout-swapped .sidebar-primary-nav .sidebar-primary-nav-text-with-badge {
-  justify-content: flex-end;
+.app.layout-desktop.layout-swapped .sidebar-primary-nav .sidebar-primary-nav-item > .sidebar-primary-nav-text-with-badge {
+  justify-content: flex-start;
 }
 
-.app.layout-desktop.layout-swapped .sidebar-primary-nav .sidebar-primary-nav-shortcut {
-  order: 0;
-  margin-left: 0;
-  margin-right: auto;
+.app.layout-desktop.layout-swapped .sidebar-primary-nav .sidebar-primary-nav-item > .sidebar-primary-nav-shortcut {
+  order: 2;
+  margin-left: auto;
+  margin-right: 0;
 }
 
 .app.layout-desktop.layout-swapped .sidebar-bottom-nav .sidebar-primary-nav-item-bottom {
