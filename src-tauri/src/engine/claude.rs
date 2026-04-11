@@ -21,18 +21,20 @@ use tokio::time::sleep;
 use super::claude_message_content::{build_message_content, format_ask_user_answer};
 use super::events::EngineEvent;
 use super::{EngineConfig, EngineType, SendMessageParams};
+#[path = "claude/event_conversion.rs"]
+mod event_conversion;
 mod lifecycle;
 #[path = "claude_stream_helpers.rs"]
 mod stream_helpers;
 mod user_input;
 #[cfg(test)]
 use stream_helpers::extract_text_from_content;
+#[cfg(test)]
+use stream_helpers::extract_tool_result_text;
 use stream_helpers::{
-    concat_reasoning_blocks, concat_text_blocks, extract_claude_tool_input,
-    extract_claude_tool_name, extract_delta_text_from_event, extract_reasoning_fragment,
-    extract_result_text, extract_string_field, extract_tool_result_output,
-    extract_tool_result_text, is_claude_stream_control_line, looks_like_claude_runtime_error,
-    parse_claude_stream_json_line, tool_input_signature,
+    extract_claude_tool_input, extract_claude_tool_name, extract_result_text, extract_string_field,
+    is_claude_stream_control_line, looks_like_claude_runtime_error, parse_claude_stream_json_line,
+    tool_input_signature,
 };
 
 #[derive(Debug, Clone)]
@@ -72,6 +74,8 @@ pub struct ClaudeSession {
     active_processes: Mutex<HashMap<String, Child>>,
     /// Flag set by interrupt() so send_message() knows the process was killed intentionally
     interrupted: AtomicBool,
+    /// Disposal flag set when workspace/session is being torn down.
+    disposed: AtomicBool,
     /// Track tool names for completion events
     tool_name_by_id: StdMutex<HashMap<String, String>>,
     /// Track tool input buffers for streaming input_json_delta
@@ -138,6 +142,7 @@ impl ClaudeSession {
             custom_args: config.custom_args,
             active_processes: Mutex::new(HashMap::new()),
             interrupted: AtomicBool::new(false),
+            disposed: AtomicBool::new(false),
             tool_name_by_id: StdMutex::new(HashMap::new()),
             tool_input_by_id: StdMutex::new(HashMap::new()),
             tool_input_value_by_id: StdMutex::new(HashMap::new()),
@@ -159,6 +164,14 @@ impl ClaudeSession {
     /// Get current session ID
     pub async fn get_session_id(&self) -> Option<String> {
         self.session_id.read().await.clone()
+    }
+
+    fn is_disposed(&self) -> bool {
+        self.disposed.load(Ordering::SeqCst)
+    }
+
+    pub(crate) fn mark_disposed(&self) {
+        self.disposed.store(true, Ordering::SeqCst);
     }
 
     /// Emit a TurnError event to notify the frontend when an error occurs
@@ -333,6 +346,20 @@ impl ClaudeSession {
         params: SendMessageParams,
         turn_id: &str,
     ) -> Result<String, String> {
+        if self.is_disposed() {
+            let error_msg = "Claude session disposed; refusing to start new process".to_string();
+            self.emit_turn_event(
+                turn_id,
+                EngineEvent::TurnError {
+                    workspace_id: self.workspace_id.clone(),
+                    error: error_msg.clone(),
+                    code: None,
+                },
+            );
+            self.clear_turn_ephemeral_state(turn_id);
+            return Err(error_msg);
+        }
+
         // Reset cumulative text tracker for the new turn only.
         if let Ok(mut map) = self.last_emitted_text_by_turn.lock() {
             map.remove(turn_id);
@@ -456,9 +483,30 @@ impl ClaudeSession {
         };
 
         // Store child for interruption (per turn)
+        let mut spawned_child = Some(child);
         {
             let mut active = self.active_processes.lock().await;
-            active.insert(turn_id.to_string(), child);
+            if !self.is_disposed() {
+                if let Some(child) = spawned_child.take() {
+                    active.insert(turn_id.to_string(), child);
+                }
+            }
+        }
+        if let Some(mut child) = spawned_child.take() {
+            let _ = self.terminate_child_process(turn_id, &mut child).await;
+            let error_msg =
+                "Claude session disposed during startup; terminated pending child process"
+                    .to_string();
+            self.emit_turn_event(
+                turn_id,
+                EngineEvent::TurnError {
+                    workspace_id: self.workspace_id.clone(),
+                    error: error_msg.clone(),
+                    code: None,
+                },
+            );
+            self.clear_turn_ephemeral_state(turn_id);
+            return Err(error_msg);
         }
 
         // Emit session started event
@@ -930,532 +978,6 @@ impl ClaudeSession {
         }
         self.clear_turn_ephemeral_state(turn_id);
         Ok(())
-    }
-
-    /// Convert Claude event to unified format
-    /// Handles Claude CLI 2.0.52+ event format: system, assistant, result, error
-    fn convert_event(&self, turn_id: &str, event: &Value) -> Option<EngineEvent> {
-        // Debug: print the full event JSON
-        log::debug!(
-            "[claude] Received event: {}",
-            serde_json::to_string_pretty(event).unwrap_or_else(|_| event.to_string())
-        );
-
-        // Check for context_window field in ANY event (Claude statusline/hooks)
-        // This provides the most accurate context usage snapshot
-        self.try_extract_context_window_usage(turn_id, event);
-
-        let event_type = event.get("type")?.as_str()?;
-
-        match event_type {
-            // Legacy stream_event format (kept for backward compatibility)
-            "stream_event" => self.convert_stream_event(turn_id, event),
-
-            // Claude CLI 2.0.52+ format: system init event
-            "system" => {
-                let has_init_payload = event
-                    .get("subtype")
-                    .and_then(|value| value.as_str())
-                    .map(|value| value.eq_ignore_ascii_case("init"))
-                    .unwrap_or(false)
-                    || event.get("tools").is_some()
-                    || event.get("mcp_servers").is_some()
-                    || event.get("mcpServers").is_some();
-
-                if has_init_payload {
-                    return Some(EngineEvent::Raw {
-                        workspace_id: self.workspace_id.clone(),
-                        engine: EngineType::Claude,
-                        data: event.clone(),
-                    });
-                }
-
-                // System events contain session_id and initialization info
-                // Extract session_id here as a fallback (also checked at top-level parsing)
-                // Check both snake_case (session_id) and camelCase (sessionId) field names
-                if let Some(sid) = event
-                    .get("session_id")
-                    .or_else(|| event.get("sessionId"))
-                    .and_then(|v| v.as_str())
-                {
-                    if !sid.is_empty() && sid != "pending" {
-                        return Some(EngineEvent::SessionStarted {
-                            workspace_id: self.workspace_id.clone(),
-                            session_id: sid.to_string(),
-                            engine: EngineType::Claude,
-                        });
-                    }
-                }
-                if Self::has_compaction_system_signal(event) {
-                    return Some(EngineEvent::Raw {
-                        workspace_id: self.workspace_id.clone(),
-                        engine: EngineType::Claude,
-                        data: event.clone(),
-                    });
-                }
-                None
-            }
-
-            // Claude CLI 2.0.52+ format: assistant message event
-            "assistant" => {
-                // Extract text content from the message
-                if let Some(message) = event.get("message") {
-                    if let Some(content) = message.get("content").and_then(|c| c.as_array()) {
-                        let reasoning_text = concat_reasoning_blocks(content);
-
-                        if let Some(cumulative_text) = concat_text_blocks(content) {
-                            // assistant partial messages contain cumulative text.
-                            // Compute the true delta to avoid sending the full text
-                            // on every update, which causes excessive re-renders.
-                            let delta = self.compute_text_delta(turn_id, &cumulative_text);
-                            if !delta.is_empty() {
-                                if let Some(reasoning) = reasoning_text.as_deref() {
-                                    self.emit_turn_event(
-                                        turn_id,
-                                        EngineEvent::ReasoningDelta {
-                                            workspace_id: self.workspace_id.clone(),
-                                            text: reasoning.to_string(),
-                                        },
-                                    );
-                                }
-                                return Some(EngineEvent::TextDelta {
-                                    workspace_id: self.workspace_id.clone(),
-                                    text: delta,
-                                });
-                            }
-                        }
-
-                        for block in content {
-                            let block_type = block.get("type").and_then(|t| t.as_str());
-                            match block_type {
-                                Some("tool_use") => {
-                                    let tool_name = extract_claude_tool_name(block)
-                                        .unwrap_or_else(|| "unknown".to_string());
-                                    let index = block.get("index").and_then(|v| v.as_i64());
-                                    let tool_id = self
-                                        .resolve_tool_use_id(block, index)
-                                        .unwrap_or_else(|| "unknown".to_string());
-                                    let input = extract_claude_tool_input(block);
-
-                                    if let Some(index) = index {
-                                        self.cache_tool_block_index(turn_id, index, &tool_id);
-                                    }
-                                    self.cache_tool_name(&tool_id, &tool_name);
-                                    if let Some(input) = input.as_ref() {
-                                        self.cache_tool_input_value(&tool_id, input);
-                                    }
-                                    self.register_pending_tool(
-                                        turn_id,
-                                        &tool_id,
-                                        &tool_name,
-                                        input.as_ref(),
-                                    );
-
-                                    // Intercept AskUserQuestion tool to emit a RequestUserInput event
-                                    if tool_name == "AskUserQuestion" {
-                                        if let Some(ref input_val) = input {
-                                            return self.convert_ask_user_question_to_request(
-                                                &tool_id, input_val, turn_id,
-                                            );
-                                        }
-                                    }
-
-                                    return Some(EngineEvent::ToolStarted {
-                                        workspace_id: self.workspace_id.clone(),
-                                        tool_id: tool_id.to_string(),
-                                        tool_name,
-                                        input,
-                                    });
-                                }
-                                Some("tool_result") => {
-                                    let index = block.get("index").and_then(|v| v.as_i64());
-                                    let tool_id = self
-                                        .resolve_tool_result_id(turn_id, block, index)
-                                        .unwrap_or_default();
-                                    if tool_id.is_empty() {
-                                        return None;
-                                    }
-                                    let content =
-                                        block.get("content").or_else(|| block.get("tool_output"));
-                                    let is_error = block
-                                        .get("is_error")
-                                        .or_else(|| block.get("isError"))
-                                        .and_then(|v| v.as_bool())
-                                        .unwrap_or(false);
-                                    let output = content.and_then(extract_tool_result_text);
-                                    let result =
-                                        self.build_tool_completed(&tool_id, output, is_error);
-                                    self.clear_tool_block_index(turn_id, index);
-                                    return result;
-                                }
-                                _ => {}
-                            }
-                        }
-
-                        if let Some(reasoning) = reasoning_text {
-                            return Some(EngineEvent::ReasoningDelta {
-                                workspace_id: self.workspace_id.clone(),
-                                text: reasoning,
-                            });
-                        }
-                    }
-                }
-                None
-            }
-
-            // Compatibility: some runtimes emit explicit delta events instead of
-            // cumulative assistant snapshots.
-            "assistant_message_delta" | "message_delta" | "text_delta" | "output_text_delta" => {
-                if let Some(text) =
-                    extract_delta_text_from_event(event).or_else(|| extract_result_text(event))
-                {
-                    if !text.is_empty() {
-                        return Some(EngineEvent::TextDelta {
-                            workspace_id: self.workspace_id.clone(),
-                            text,
-                        });
-                    }
-                }
-                None
-            }
-
-            // Compatibility: some runtimes emit assistant snapshots as
-            // `assistant_message`/`message`.
-            "assistant_message" | "message" => {
-                let role = event
-                    .get("message")
-                    .and_then(|m| m.get("role"))
-                    .or_else(|| event.get("role"))
-                    .and_then(|value| value.as_str())
-                    .unwrap_or("")
-                    .to_ascii_lowercase();
-                if role == "user" {
-                    return None;
-                }
-                if let Some(cumulative_text) = extract_result_text(event) {
-                    let delta = self.compute_text_delta(turn_id, &cumulative_text);
-                    if !delta.is_empty() {
-                        return Some(EngineEvent::TextDelta {
-                            workspace_id: self.workspace_id.clone(),
-                            text: delta,
-                        });
-                    }
-                }
-                None
-            }
-
-            "user" => {
-                if let Some(message) = event.get("message") {
-                    if let Some(content) = message.get("content").and_then(|c| c.as_array()) {
-                        for block in content {
-                            let block_type = block.get("type").and_then(|t| t.as_str());
-                            if block_type != Some("tool_result") {
-                                continue;
-                            }
-
-                            let index = block.get("index").and_then(|v| v.as_i64());
-                            let tool_id = self
-                                .resolve_tool_result_id(turn_id, block, index)
-                                .unwrap_or_default();
-                            if tool_id.is_empty() {
-                                continue;
-                            }
-
-                            let is_error = block
-                                .get("is_error")
-                                .or_else(|| block.get("isError"))
-                                .or_else(|| event.get("is_error"))
-                                .or_else(|| event.get("isError"))
-                                .and_then(|v| v.as_bool())
-                                .unwrap_or(false);
-                            let output = extract_tool_result_output(block, event);
-                            let result = self.build_tool_completed(&tool_id, output, is_error);
-                            self.clear_tool_block_index(turn_id, index);
-                            return result;
-                        }
-                    }
-                }
-
-                Some(EngineEvent::Raw {
-                    workspace_id: self.workspace_id.clone(),
-                    engine: EngineType::Claude,
-                    data: event.clone(),
-                })
-            }
-
-            // Claude CLI 2.0.52+ format: final result event
-            "result" => {
-                // Note: Usage extraction is handled by try_extract_context_window_usage()
-                // which looks for context_window.current_usage (the accurate context snapshot)
-                // We don't use result.usage here as it represents cumulative session stats,
-                // not the current context window usage
-
-                // Final result event - turn completed
-                Some(EngineEvent::TurnCompleted {
-                    workspace_id: self.workspace_id.clone(),
-                    result: Some(event.clone()),
-                })
-            }
-
-            "reasoning_delta" | "thinking_delta" => {
-                let text = extract_reasoning_fragment(event)
-                    .map(|value| value.to_string())
-                    .or_else(|| extract_delta_text_from_event(event))?;
-                Some(EngineEvent::ReasoningDelta {
-                    workspace_id: self.workspace_id.clone(),
-                    text,
-                })
-            }
-
-            "error" => {
-                let message = event
-                    .get("error")
-                    .and_then(|e| e.get("message"))
-                    .and_then(|m| m.as_str())
-                    .or_else(|| event.get("message").and_then(|m| m.as_str()))
-                    .unwrap_or("Unknown error");
-                Some(EngineEvent::TurnError {
-                    workspace_id: self.workspace_id.clone(),
-                    error: message.to_string(),
-                    code: event
-                        .get("error")
-                        .and_then(|e| e.get("code"))
-                        .and_then(|c| c.as_str())
-                        .map(|s| s.to_string()),
-                })
-            }
-            "tool_use" => {
-                let tool_name =
-                    extract_claude_tool_name(event).unwrap_or_else(|| "unknown".to_string());
-                let index = event.get("index").and_then(|v| v.as_i64());
-                let tool_id = self
-                    .resolve_tool_use_id(event, index)
-                    .unwrap_or_else(|| "unknown".to_string());
-                let input = extract_claude_tool_input(event);
-                if let Some(index) = index {
-                    self.cache_tool_block_index(turn_id, index, &tool_id);
-                }
-                self.cache_tool_name(&tool_id, &tool_name);
-                if let Some(input) = input.as_ref() {
-                    self.cache_tool_input_value(&tool_id, input);
-                }
-                self.register_pending_tool(turn_id, &tool_id, &tool_name, input.as_ref());
-
-                // Intercept AskUserQuestion tool to emit a RequestUserInput event
-                if tool_name == "AskUserQuestion" {
-                    if let Some(ref input_val) = input {
-                        return self
-                            .convert_ask_user_question_to_request(&tool_id, input_val, turn_id);
-                    }
-                }
-
-                Some(EngineEvent::ToolStarted {
-                    workspace_id: self.workspace_id.clone(),
-                    tool_id: tool_id.to_string(),
-                    tool_name,
-                    input,
-                })
-            }
-            "tool_result" => {
-                let index = event.get("index").and_then(|v| v.as_i64());
-                let tool_id = self
-                    .resolve_tool_result_id(turn_id, event, index)
-                    .unwrap_or_default();
-                if tool_id.is_empty() {
-                    return None;
-                }
-                let content = event.get("content").or_else(|| event.get("tool_output"));
-                let is_error = event
-                    .get("is_error")
-                    .or_else(|| event.get("isError"))
-                    .and_then(|v| v.as_bool())
-                    .unwrap_or(false);
-                let output = content.and_then(extract_tool_result_text);
-                let result = self.build_tool_completed(&tool_id, output, is_error);
-                self.clear_tool_block_index(turn_id, index);
-                result
-            }
-
-            _ => {
-                // Pass through as raw event
-                Some(EngineEvent::Raw {
-                    workspace_id: self.workspace_id.clone(),
-                    engine: EngineType::Claude,
-                    data: event.clone(),
-                })
-            }
-        }
-    }
-
-    /// Convert stream_event type
-    fn convert_stream_event(&self, turn_id: &str, event: &Value) -> Option<EngineEvent> {
-        let inner = event.get("event")?;
-        let inner_type = inner.get("type").and_then(|v| v.as_str()).unwrap_or("");
-
-        if inner_type == "content_block_start" {
-            if let Some(block) = inner.get("content_block") {
-                let block_type = block.get("type").and_then(|v| v.as_str()).unwrap_or("");
-                match block_type {
-                    "tool_use" => {
-                        let tool_name = extract_claude_tool_name(block)
-                            .unwrap_or_else(|| "unknown".to_string());
-                        let index = inner.get("index").and_then(|v| v.as_i64());
-                        let tool_id = self
-                            .resolve_tool_use_id(block, index)
-                            .unwrap_or_else(|| "unknown".to_string());
-                        let input = extract_claude_tool_input(block);
-                        if let Some(index) = index {
-                            self.cache_tool_block_index(turn_id, index, &tool_id);
-                        }
-
-                        self.cache_tool_name(&tool_id, &tool_name);
-                        if let Some(input) = input.as_ref() {
-                            self.cache_tool_input_value(&tool_id, input);
-                        }
-                        self.register_pending_tool(turn_id, &tool_id, &tool_name, input.as_ref());
-                        return Some(EngineEvent::ToolStarted {
-                            workspace_id: self.workspace_id.clone(),
-                            tool_id: tool_id.to_string(),
-                            tool_name,
-                            input,
-                        });
-                    }
-                    "tool_result" => {
-                        let index = inner.get("index").and_then(|v| v.as_i64());
-                        let tool_id = self
-                            .resolve_tool_result_id(turn_id, block, index)
-                            .unwrap_or_default();
-                        if tool_id.is_empty() {
-                            return None;
-                        }
-                        if let Some(index) = index {
-                            self.cache_tool_block_index(turn_id, index, &tool_id);
-                        }
-                        let content = block.get("content").or_else(|| block.get("tool_output"));
-                        if content.is_none() {
-                            return None;
-                        }
-                        let is_error = block
-                            .get("is_error")
-                            .or_else(|| block.get("isError"))
-                            .and_then(|v| v.as_bool())
-                            .unwrap_or(false);
-                        let output = content.and_then(extract_tool_result_text);
-                        if let Some(event) = self.build_tool_completed(&tool_id, output, is_error) {
-                            self.clear_tool_block_index(turn_id, index);
-                            return Some(event);
-                        }
-                    }
-                    _ => {}
-                }
-            }
-        }
-
-        if inner_type == "content_block_delta" {
-            let delta = inner.get("delta");
-            let delta_type = delta
-                .and_then(|d| d.get("type"))
-                .and_then(|t| t.as_str())
-                .unwrap_or("");
-            if delta_type == "input_json_delta" {
-                let partial = delta
-                    .and_then(|d| d.get("partial_json"))
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("");
-                let index = inner.get("index").and_then(|v| v.as_i64());
-                if let Some(tool_id) = self.tool_id_for_block_index(turn_id, index) {
-                    if let Some(input) = self.append_tool_input(&tool_id, partial) {
-                        let tool_name = self.peek_tool_name(&tool_id);
-                        return Some(EngineEvent::ToolInputUpdated {
-                            workspace_id: self.workspace_id.clone(),
-                            tool_id,
-                            tool_name,
-                            input: Some(input),
-                        });
-                    }
-                }
-            }
-        }
-
-        let delta = inner.get("delta");
-        let delta_type = delta
-            .and_then(|d| d.get("type"))
-            .and_then(|t| t.as_str())
-            .unwrap_or("");
-
-        match delta_type {
-            "text_delta" => {
-                let text = delta?.get("text")?.as_str()?;
-                let index = inner.get("index").and_then(|v| v.as_i64());
-                if let Some(tool_id) = self.tool_id_for_block_index(turn_id, index) {
-                    if let Some(event) = self.build_tool_output_delta(&tool_id, text) {
-                        return Some(event);
-                    }
-                }
-                Some(EngineEvent::TextDelta {
-                    workspace_id: self.workspace_id.clone(),
-                    text: text.to_string(),
-                })
-            }
-            "thinking_delta" | "reasoning_delta" => {
-                let text = extract_reasoning_fragment(delta?)?;
-                Some(EngineEvent::ReasoningDelta {
-                    workspace_id: self.workspace_id.clone(),
-                    text: text.to_string(),
-                })
-            }
-            "tool_use" => {
-                let tool_name = delta
-                    .and_then(|d| d.get("name"))
-                    .or_else(|| inner.get("name"))
-                    .and_then(|n| n.as_str())
-                    .unwrap_or("unknown");
-                let index = inner.get("index").and_then(|v| v.as_i64());
-                let tool_id = self
-                    .resolve_tool_use_id(delta.unwrap_or(inner), index)
-                    .unwrap_or_else(|| "unknown".to_string());
-                let input = delta
-                    .and_then(|d| d.get("input"))
-                    .cloned()
-                    .or_else(|| inner.get("input").cloned());
-
-                if let Some(index) = index {
-                    self.cache_tool_block_index(turn_id, index, &tool_id);
-                }
-                self.cache_tool_name(&tool_id, tool_name);
-                if let Some(input) = input.as_ref() {
-                    self.cache_tool_input_value(&tool_id, input);
-                }
-                self.register_pending_tool(turn_id, &tool_id, tool_name, input.as_ref());
-                Some(EngineEvent::ToolStarted {
-                    workspace_id: self.workspace_id.clone(),
-                    tool_id: tool_id.to_string(),
-                    tool_name: tool_name.to_string(),
-                    input,
-                })
-            }
-            "tool_result" => {
-                let index = inner.get("index").and_then(|v| v.as_i64());
-                let block = delta.unwrap_or(inner);
-                let tool_id = self
-                    .resolve_tool_result_id(turn_id, block, index)
-                    .unwrap_or_default();
-                if tool_id.is_empty() {
-                    return None;
-                }
-                let content = block.get("content").or_else(|| block.get("tool_output"));
-                let is_error = block
-                    .get("is_error")
-                    .or_else(|| block.get("isError"))
-                    .and_then(|v| v.as_bool())
-                    .unwrap_or(false);
-                let output = content.and_then(extract_tool_result_text);
-                let result = self.build_tool_completed(&tool_id, output, is_error);
-                self.clear_tool_block_index(turn_id, index);
-                result
-            }
-            _ => None,
-        }
     }
 
     fn resolve_tool_use_id(&self, block: &Value, index: Option<i64>) -> Option<String> {

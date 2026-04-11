@@ -368,6 +368,64 @@ function matchesWorkspacePath(threadCwd: string, workspacePath: string): boolean
   return false;
 }
 
+function isLikelyCodexThreadId(threadId: string): boolean {
+  const normalized = threadId.trim().toLowerCase();
+  if (!normalized) {
+    return false;
+  }
+  return !(
+    normalized.startsWith("claude:") ||
+    normalized.startsWith("claude-pending-") ||
+    normalized.startsWith("gemini:") ||
+    normalized.startsWith("gemini-pending-") ||
+    normalized.startsWith("opencode:") ||
+    normalized.startsWith("opencode-pending-")
+  );
+}
+
+function collectKnownCodexThreadIds(
+  existingThreads: ThreadSummary[],
+  activeThreadId: string,
+): Set<string> {
+  const known = new Set<string>();
+  existingThreads.forEach((thread) => {
+    if (thread.engineSource === "codex" && thread.id) {
+      known.add(thread.id);
+    }
+  });
+  if (isLikelyCodexThreadId(activeThreadId)) {
+    known.add(activeThreadId);
+  }
+  return known;
+}
+
+function isLocalSessionScanUnavailable(result: Record<string, unknown>): boolean {
+  const marker = asString(result.partialSource ?? result.partial_source)
+    .trim()
+    .toLowerCase();
+  return marker === "local-session-scan-unavailable";
+}
+
+function shouldIncludeWorkspaceThreadEntry(
+  thread: Record<string, unknown>,
+  workspacePath: string,
+  knownCodexThreadIds: Set<string>,
+  allowKnownCodexWithoutCwd: boolean,
+): boolean {
+  const threadCwd = asString(thread.cwd).trim();
+  if (matchesWorkspacePath(threadCwd, workspacePath)) {
+    return shouldIncludeThreadEntry(thread);
+  }
+  if (!allowKnownCodexWithoutCwd || threadCwd.length > 0) {
+    return false;
+  }
+  const threadId = asString(thread.id).trim();
+  if (!threadId || !knownCodexThreadIds.has(threadId)) {
+    return false;
+  }
+  return shouldIncludeThreadEntry(thread);
+}
+
 function toBooleanFlag(value: unknown): boolean {
   if (typeof value === "boolean") {
     return value;
@@ -1268,6 +1326,10 @@ export function useThreadActions({
         }
         const existingThreads = threadsByWorkspace[workspace.id] ?? [];
         const activeThreadId = activeThreadIdByWorkspace[workspace.id] ?? "";
+        const knownCodexThreadIds = collectKnownCodexThreadIds(
+          existingThreads,
+          activeThreadId,
+        );
         const engineById = new Map(
           existingThreads.map((thread) => [thread.id, thread.engineSource]),
         );
@@ -1345,13 +1407,18 @@ export function useThreadActions({
           const data = Array.isArray(result?.data)
             ? (result.data as Record<string, unknown>[])
             : [];
+          const allowKnownCodexWithoutCwd = isLocalSessionScanUnavailable(result);
           const nextCursor =
             (result?.nextCursor ?? result?.next_cursor ?? null) as string | null;
           matchingThreads.push(
             ...data.filter(
               (thread) =>
-                matchesWorkspacePath(String(thread?.cwd ?? ""), workspacePath) &&
-                shouldIncludeThreadEntry(thread),
+                shouldIncludeWorkspaceThreadEntry(
+                  thread,
+                  workspacePath,
+                  knownCodexThreadIds,
+                  allowKnownCodexWithoutCwd,
+                ),
             ),
           );
           cursor = nextCursor;
@@ -1689,6 +1756,8 @@ export function useThreadActions({
       }
       const workspacePath = normalizeComparableWorkspacePath(workspace.path);
       const existing = threadsByWorkspace[workspace.id] ?? [];
+      const activeThreadId = activeThreadIdByWorkspace[workspace.id] ?? "";
+      const knownCodexThreadIds = collectKnownCodexThreadIds(existing, activeThreadId);
       dispatch({
         type: "setThreadListPaging",
         workspaceId: workspace.id,
@@ -1735,13 +1804,18 @@ export function useThreadActions({
           const data = Array.isArray(result?.data)
             ? (result.data as Record<string, unknown>[])
             : [];
+          const allowKnownCodexWithoutCwd = isLocalSessionScanUnavailable(result);
           const next =
             (result?.nextCursor ?? result?.next_cursor ?? null) as string | null;
           matchingThreads.push(
             ...data.filter(
               (thread) =>
-                matchesWorkspacePath(String(thread?.cwd ?? ""), workspacePath) &&
-                shouldIncludeThreadEntry(thread),
+                shouldIncludeWorkspaceThreadEntry(
+                  thread,
+                  workspacePath,
+                  knownCodexThreadIds,
+                  allowKnownCodexWithoutCwd,
+                ),
             ),
           );
           cursor = next;
@@ -1828,6 +1902,7 @@ export function useThreadActions({
       getCustomName,
       onDebug,
       onThreadTitleMappingsLoaded,
+      activeThreadIdByWorkspace,
       threadListCursorByWorkspace,
       threadsByWorkspace,
     ],

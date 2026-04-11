@@ -432,6 +432,117 @@ vi.mock("react-i18next", () => ({
         "approval.showSecret": "Show",
         "approval.hideSecret": "Hide",
         "approval.submitFailed": "Submit failed. Please retry.",
+        "settings.mcpPanel.title": "MCP Servers",
+        "settings.mcpPanel.description":
+          "Inspect MCP readiness, runtime inventory, and effective rules for each engine.",
+        "settings.mcpPanel.workspaceRequired":
+          "Add and open at least one workspace to query MCP status.",
+        "settings.mcpPanel.serverCount": "{{count}} servers · {{toolCount}} tools",
+        "settings.mcpPanel.refresh": "Refresh",
+        "settings.mcpPanel.enabled": "Enabled",
+        "settings.mcpPanel.disabled": "Disabled",
+        "settings.mcpPanel.overviewActiveEngine": "Selected engine",
+        "settings.mcpPanel.overviewDetectedEngines": "Detected engines",
+        "settings.mcpPanel.detectedEnginesValue": "{{installed}} / {{total}} installed",
+        "settings.mcpPanel.overviewDetectedDesc":
+          "Shows which clients can currently provide MCP-related context.",
+        "settings.mcpPanel.overviewLiveInventory": "Live inventory",
+        "settings.mcpPanel.overviewInventoryDesc":
+          "Runtime inventory follows the selected engine when supported.",
+        "settings.mcpPanel.enginesTitle": "By engine",
+        "settings.mcpPanel.enginesDesc":
+          "Each engine has a different source of truth and refresh rule.",
+        "settings.mcpPanel.engineSelectLabel": "Select engine to inspect",
+        "settings.mcpPanel.detailsTitle": "Detailed status and rules",
+        "settings.mcpPanel.detailsDesc":
+          "Read configuration entry points, runtime availability, and visible MCP servers.",
+        "settings.mcpPanel.engineClaude": "Claude Code",
+        "settings.mcpPanel.engineCodex": "Codex",
+        "settings.mcpPanel.engineGemini": "Gemini",
+        "settings.mcpPanel.engineOpenCode": "OpenCode",
+        "settings.mcpPanel.engineStatusActive": "Active",
+        "settings.mcpPanel.engineStatusInstalled": "Installed",
+        "settings.mcpPanel.engineStatusUnavailable": "Unavailable",
+        "settings.mcpPanel.detailVersion": "Version",
+        "settings.mcpPanel.detailBinary": "Binary path",
+        "settings.mcpPanel.detailMode": "Display mode",
+        "settings.mcpPanel.detailConfigPaths": "Config entry points",
+        "settings.mcpPanel.detailRuntimeStatus": "Runtime visibility",
+        "settings.mcpPanel.detailWorkspace": "Workspace",
+        "settings.mcpPanel.detailError": "Detection note",
+        "settings.mcpPanel.valueUnknown": "Unknown",
+        "settings.mcpPanel.valueUnavailable": "Unavailable",
+        "settings.mcpPanel.rulesTitle": "Runtime rules",
+        "settings.mcpPanel.environmentTitle": "Environment details",
+        "settings.mcpPanel.configServersTitle": "Config-defined servers",
+        "settings.mcpPanel.runtimeServersTitle": "Runtime servers",
+        "settings.mcpPanel.sessionOverviewTitle": "Session overview",
+        "settings.mcpPanel.noConfigServers":
+          "No servers were discovered from the known config source.",
+        "settings.mcpPanel.noRuntimeServers": "No runtime servers were reported.",
+        "settings.mcpPanel.noOpenCodeSnapshot":
+          "OpenCode runtime snapshot is not available in the current context.",
+        "settings.mcpPanel.detectEmptyTitle": "No engine data returned",
+        "settings.mcpPanel.detectEmptyDesc":
+          "Refresh after the engine runtime is ready, or verify the local daemon/web-service connection.",
+        "settings.mcpPanel.ruleModeLabel": "Mode",
+        "settings.mcpPanel.ruleScopeLabel": "Scope",
+        "settings.mcpPanel.ruleSourceLabel": "Source",
+        "settings.mcpPanel.ruleRefreshLabel": "Refresh",
+        "settings.mcpPanel.ruleRuntimeLabel": "Visible inventory",
+        "settings.mcpPanel.ruleModeConfigOnly": "Config-driven",
+        "settings.mcpPanel.ruleModeRuntimeRead": "Runtime inventory",
+        "settings.mcpPanel.ruleModeSessionRead": "Session inventory",
+        "settings.mcpPanel.ruleScopeClaude":
+          "User-level config. Shared across Claude sessions on this machine.",
+        "settings.mcpPanel.ruleScopeCodex":
+          "Global config plus workspace runtime inspection.",
+        "settings.mcpPanel.ruleScopeGemini":
+          "Client config. Effective behavior depends on Gemini-side runtime loading.",
+        "settings.mcpPanel.ruleScopeOpenCode": "Current workspace session only.",
+        "settings.mcpPanel.ruleSourceClaude":
+          "~/.claude.json and Claude settings files.",
+        "settings.mcpPanel.ruleSourceCodex":
+          "~/.ccgui/config.json, ~/.codex/config.toml, and workspace runtime status.",
+        "settings.mcpPanel.ruleSourceGemini":
+          "~/.gemini/settings.json and compatible bridge config.",
+        "settings.mcpPanel.ruleSourceOpenCode":
+          "OpenCode workspace runtime snapshot.",
+        "settings.mcpPanel.ruleRefreshConfig":
+          "Refresh this page after editing config files or restarting the client.",
+        "settings.mcpPanel.ruleRefreshRuntime":
+          "Use Refresh to re-read the latest runtime snapshot.",
+        "settings.mcpPanel.ruleRuntimeConfigOnly":
+          "This page shows config entry points, not per-server runtime inventory.",
+        "settings.mcpPanel.ruleRuntimeCodex":
+          "Config-defined servers plus workspace runtime-reported tools and auth state.",
+        "settings.mcpPanel.ruleRuntimeOpenCode":
+          "Session-level global state and per-server enabled status are shown read-only.",
+        "settings.mcpPanel.runtimeStatusOpenCodeReady":
+          "Workspace selected. Session snapshot can be queried.",
+        "settings.mcpPanel.runtimeStatusWorkspaceRequired":
+          "Select a workspace to query runtime state.",
+        "settings.mcpPanel.runtimeStatusCodexReady":
+          "Workspace selected. Runtime inventory can be queried.",
+        "settings.mcpPanel.runtimeStatusWorkspaceOptional":
+          "Global config is visible. Workspace runtime inventory needs a workspace.",
+        "settings.mcpPanel.runtimeStatusConfigOnly": "Config entry points only.",
+        "settings.mcpPanel.sourceClaude": "Source: ~/.claude.json",
+        "settings.mcpPanel.sourceCcgui": "Source: ~/.ccgui/config.json",
+        "settings.mcpPanel.commandMeta": "{{command}} · args {{args}}",
+        "settings.mcpPanel.urlMeta": "URL: {{url}}",
+        "settings.mcpPanel.transportUnknown": "unknown transport",
+        "settings.mcpPanel.pathWorkspaceSession": "Current workspace session",
+        "settings.mcpPanel.pathRuntimeInjection": "OpenCode runtime injection",
+        "settings.mcpPanel.globalToggle": "Global toggle",
+        "settings.mcpPanel.globalToggleDesc":
+          "When disabled, OpenCode will stop injecting MCP tools.",
+        "settings.mcpPanel.noServers": "No MCP servers configured.",
+        "settings.mcpPanel.statusUnknown": "status unknown",
+        "settings.mcpPanel.authUnknown": "auth unknown",
+        "settings.mcpPanel.resourcesTemplates":
+          "resources {{resources}} / templates {{templates}}",
+        "settings.mcpPanel.noTools": "No tools",
         "tools.userInputRequest": "Ask User Question",
         "tools.planQuickView": "Plan",
         "tools.openFullPlanPanel": "Open full Plan panel",

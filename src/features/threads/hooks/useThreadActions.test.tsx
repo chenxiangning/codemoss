@@ -1298,6 +1298,64 @@ describe("useThreadActions", () => {
     });
   });
 
+  it("keeps known codex threads when local session scan is unavailable and cwd is missing", async () => {
+    vi.mocked(listThreads).mockResolvedValue({
+      result: {
+        data: [
+          {
+            id: "thread-known",
+            preview: "Known recovered",
+            updated_at: 7200,
+          },
+          {
+            id: "thread-unknown",
+            preview: "Unknown dropped",
+            updated_at: 7100,
+          },
+        ],
+        nextCursor: null,
+        partialSource: "local-session-scan-unavailable",
+      },
+    });
+    vi.mocked(getThreadTimestamp).mockImplementation((thread) => {
+      const value = (thread as Record<string, unknown>).updated_at as number;
+      return value ?? 0;
+    });
+
+    const { result, dispatch } = renderActions({
+      threadsByWorkspace: {
+        "ws-1": [
+          {
+            id: "thread-known",
+            name: "Known old",
+            updatedAt: 7000,
+            engineSource: "codex",
+          },
+        ],
+      },
+      activeThreadIdByWorkspace: {
+        "ws-1": "thread-known",
+      },
+    });
+
+    await act(async () => {
+      await result.current.listThreadsForWorkspace(workspace);
+    });
+
+    expect(dispatch).toHaveBeenCalledWith({
+      type: "setThreads",
+      workspaceId: "ws-1",
+      threads: [
+        {
+          id: "thread-known",
+          name: "Known recovered",
+          updatedAt: 7200,
+          engineSource: "codex",
+        },
+      ],
+    });
+  });
+
   it("stops scanning after capped empty pages when known activity exists", async () => {
     let calls = 0;
     vi.mocked(listThreads).mockImplementation(async () => {
@@ -1684,6 +1742,58 @@ describe("useThreadActions", () => {
       type: "setThreadListCursor",
       workspaceId: "ws-1",
       cursor: null,
+    });
+  });
+
+  it("loads older active codex thread without cwd when local scan is unavailable", async () => {
+    vi.mocked(listThreads).mockResolvedValue({
+      result: {
+        data: [
+          {
+            id: "thread-active",
+            preview: "Recovered active thread",
+            updated_at: 4100,
+          },
+        ],
+        nextCursor: null,
+        partialSource: "local-session-scan-unavailable",
+      },
+    });
+    vi.mocked(getThreadTimestamp).mockImplementation((thread) => {
+      const value = (thread as Record<string, unknown>).updated_at as number;
+      return value ?? 0;
+    });
+
+    const { result, dispatch } = renderActions({
+      threadsByWorkspace: {
+        "ws-1": [{ id: "thread-1", name: "Agent 1", updatedAt: 6000, engineSource: "codex" }],
+      },
+      activeThreadIdByWorkspace: {
+        "ws-1": "thread-active",
+      },
+      threadListCursorByWorkspace: { "ws-1": "cursor-1" },
+    });
+
+    await act(async () => {
+      await result.current.loadOlderThreadsForWorkspace(workspace);
+    });
+
+    expect(dispatch).toHaveBeenCalledWith({
+      type: "setThreads",
+      workspaceId: "ws-1",
+      threads: [
+        {
+          id: "thread-1",
+          name: "Agent 1",
+          updatedAt: 6000,
+          engineSource: "codex",
+        },
+        {
+          id: "thread-active",
+          name: "Recovered active thread",
+          updatedAt: 4100,
+        },
+      ],
     });
   });
 

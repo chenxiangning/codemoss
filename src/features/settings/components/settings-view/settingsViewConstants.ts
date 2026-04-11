@@ -18,6 +18,5 @@ export const DICTATION_MODELS = (t: TFunction) => [
 ];
 
 export const TEMPORARILY_DISABLED_SIDEBAR_SECTIONS = new Set([
-  "mcp",
   "permissions",
 ] as const);

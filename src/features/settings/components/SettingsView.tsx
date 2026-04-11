@@ -1585,7 +1585,7 @@ export function SettingsView({
   return (
     <div className="settings-embedded">
       <div className="settings-header" />
-      <div className="settings-body">
+      <div className={`settings-body${sidebarCollapsed ? " is-sidebar-collapsed" : ""}`}>
         <aside className={`settings-sidebar${sidebarCollapsed ? " is-collapsed" : ""}`}>
             <button
               type="button"

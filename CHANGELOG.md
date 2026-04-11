@@ -2,6 +2,72 @@
 
 ---
 
+##### **2026年4月11日（v0.3.12）**
+
+中文：
+
+✨ Features
+- 品牌升级为 `ccgui` 并支持 legacy 数据迁移，降低现有用户升级切换成本
+- 新增幕布宽度配置与左到右视图切换，完善不同布局偏好的使用体验
+- 新增对话/看板快捷键与会话大小展示，提升导航与会话管理效率
+- 优化 `File changes` 折叠展示与独立展开交互，减少长会话浏览噪音
+- 重构 `MCP` 设置页为按引擎查看的只读展示视图，支持统一查看 Claude Code、Codex、Gemini、OpenCode 的配置入口与运行规则
+- 完善本地统计能力并增强多引擎兼容性，提升跨引擎使用数据的一致性
+
+🔧 Improvements
+- 降低实时会话更新对输入链路的干扰，提升连续输入稳定性
+- 拆分设置页样式模块并通过大文件门禁，降低后续样式迭代耦合
+- 优化 `MCP` 设置页总览卡、引擎选择与详情区的联动语义，减少跨区域状态错位
+- 补齐 `MCP` 设置中英文文案、图标层次与测试映射，提升展示一致性与可维护性
+- 拆分 Claude 事件转换模块并完成大文件治理，收敛引擎层职责边界并降低维护复杂度
+
+🐛 Fixes
+- 修复启动链异常场景下的黑屏问题，增强冷启动兜底能力
+- 修复 Web 端切换 Codex 后无法继续对话与历史丢失问题
+- 修复跨会话绑定边界问题，并增强 Win/mac 命令包装兼容性
+- 修复默认 workspace 去重与路径边界问题，避免配置重复与异常回退
+- 修复消息折叠边界、拖拽预览与 Gemini 会话兼容问题
+- 修复 swapped 侧栏快捷入口顺序与快捷键显示偏差
+- 优化 Windows 内部文件树拖拽视觉反馈，降低拖拽操作歧义
+- 修复 `Gemini` 在 `MCP` 设置中配置服务显示缺失、`OpenCode` 工具数误报，以及 Codex 运行时工具名前缀大小写兼容问题
+- 修复侧栏折叠布局错位并统一引擎图标切换反馈，避免设置面板状态混淆
+- 修复 Claude 会话销毁期间的子进程竞争与残留问题，降低退出阶段资源泄漏风险
+- 修复本地扫描不可用时 Codex 线程已知会话丢失与 `cwd` 回填偏差问题
+- 修复聊天输入框长文本水平溢出问题，提升长输入场景下的可读性
+
+English:
+
+✨ Features
+- Rebrand the app to `ccgui` and support legacy data migration to reduce upgrade friction for existing users
+- Add curtain-width settings and a left-to-right view toggle to better support different layout preferences
+- Add conversation/kanban shortcuts and session-size display to improve navigation and session management
+- Improve `File changes` collapsing and standalone expand interactions to reduce noise in long conversations
+- Rebuild the `MCP` settings page into an engine-scoped read-only view that clearly shows config entry points and runtime rules for Claude Code, Codex, Gemini, and OpenCode
+- Improve local usage metrics and strengthen multi-engine compatibility to keep cross-engine usage data consistent
+
+🔧 Improvements
+- Reduce interference from realtime session updates in the composer input flow for steadier typing
+- Split settings style modules and pass the large-file guard to reduce styling coupling in future iterations
+- Tighten the linkage between the `MCP` overview cards, engine selector, and detail area to prevent cross-section state drift
+- Fill in `MCP` i18n copy, icon hierarchy, and test mappings to improve presentation consistency and maintainability
+- Split Claude event-conversion modules and complete large-file governance to tighten engine-layer boundaries and reduce maintenance complexity
+
+🐛 Fixes
+- Fix black-screen scenarios during bootstrap failures by adding a safer startup fallback path
+- Fix the inability to continue chatting and the history-loss issue after switching to Codex on Web
+- Fix cross-session binding edge cases and improve Win/mac command-wrapper compatibility
+- Fix default-workspace de-duplication and path edge cases to avoid duplicate config states and bad fallback behavior
+- Fix message-collapse boundaries, drag-preview behavior, and Gemini session compatibility issues
+- Fix incorrect quick-entry order and shortcut labels in the swapped sidebar layout
+- Refine Windows internal file-tree drag feedback to make drag operations clearer
+- Fix missing `Gemini` config-server visibility in `MCP` settings, incorrect `OpenCode` tool counts, and case-sensitive Codex runtime tool-prefix parsing
+- Fix sidebar collapsed-layout drift and unify engine-icon switch feedback to reduce settings-state confusion
+- Fix subprocess race and residue during Claude session teardown to reduce exit-time resource leaks
+- Fix Codex known-session loss and `cwd` backfill drift when local scanning is unavailable
+- Fix horizontal overflow in the chat composer for long-input scenarios
+
+---
+
 ##### **2026年4月9日（v0.3.11）**
 
 中文：

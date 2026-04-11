@@ -68,6 +68,10 @@
   align-items: center;
 }
 
+.settings-body.is-sidebar-collapsed {
+  grid-template-columns: 50px minmax(0, 1fr);
+}
+
 .settings-sidebar.is-collapsed .settings-nav {
   justify-content: center;
   padding: 8px;
@@ -714,6 +718,16 @@
   background: color-mix(in srgb, #3b82f6 14%, transparent);
 }
 
+.settings-usage-stat-card.engine-card .stat-icon {
+  color: #14b8a6;
+  background: color-mix(in srgb, #14b8a6 14%, transparent);
+}
+
+.settings-usage-stat-card.code-lines-card .stat-icon {
+  color: #ef4444;
+  background: color-mix(in srgb, #ef4444 14%, transparent);
+}
+
 .settings-usage-stat-card .stat-content {
   flex: 1;
 }
@@ -749,6 +763,8 @@
 }
 
 .settings-usage-token-breakdown h4,
+.settings-usage-engine-distribution h4,
+.settings-usage-code-changes h4,
 .settings-usage-top-models h4,
 .settings-usage-models-tab h4,
 .settings-usage-timeline-tab h4 {
@@ -809,6 +825,65 @@
 
 .settings-usage-token-fill.cache-read {
   background: #8b5cf6;
+}
+
+.settings-usage-engine-list,
+.settings-usage-code-change-list {
+  border: 1px solid var(--settings-usage-border-soft);
+  border-radius: 10px;
+  background: var(--settings-usage-surface-soft);
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.settings-usage-engine-row,
+.settings-usage-code-change-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.settings-usage-engine-header,
+.settings-usage-code-change-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 13px;
+  color: var(--text-strong);
+}
+
+.settings-usage-engine-track,
+.settings-usage-code-change-track {
+  width: 100%;
+  height: 8px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--surface-hover) 64%, var(--surface-card-strong) 36%);
+  overflow: hidden;
+}
+
+.settings-usage-engine-fill,
+.settings-usage-code-change-fill {
+  height: 100%;
+  transition: width 0.2s ease;
+  border-radius: 6px;
+}
+
+.settings-usage-engine-fill {
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, #14b8a6 86%, #ffffff 14%) 0%,
+    color-mix(in srgb, #14b8a6 62%, transparent) 100%
+  );
+}
+
+.settings-usage-code-change-fill {
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, #ef4444 86%, #ffffff 14%) 0%,
+    color-mix(in srgb, #ef4444 62%, transparent) 100%
+  );
 }
 
 .settings-usage-top-models-list {
@@ -1184,6 +1259,31 @@
   gap: 8px;
 }
 
+.settings-mcp-overview-grid,
+.settings-mcp-engine-grid,
+.settings-mcp-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 12px;
+}
+
+.settings-mcp-section-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 16px;
+  margin-bottom: 10px;
+}
+
+.settings-mcp-engine-select {
+  min-width: 220px;
+}
+
+.settings-mcp-engine-select-trigger {
+  width: 220px;
+}
+
 .settings-mcp-global {
   display: flex;
   justify-content: space-between;
@@ -1235,6 +1335,95 @@
 
 .settings-mcp-codex-card {
   padding: 10px 12px;
+}
+
+.settings-mcp-overview-card {
+  min-height: 96px;
+}
+
+.settings-mcp-engine-card.is-active,
+.settings-mcp-engine-panel {
+  border: 1px solid var(--accent-primary);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent-primary) 18%, transparent);
+}
+
+.settings-mcp-engine-card {
+  padding: 10px 12px;
+}
+
+.settings-mcp-engine-head,
+.settings-mcp-engine-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.settings-mcp-engine-meta-grid,
+.settings-mcp-rule-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.settings-mcp-panel-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-strong);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.settings-mcp-panel-highlight {
+  margin-top: 8px;
+  color: var(--text-strong);
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.settings-mcp-engine-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--surface-card) 88%, transparent);
+}
+
+.settings-mcp-detail-row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.settings-mcp-detail-label {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.settings-mcp-detail-value {
+  color: var(--text-strong);
+  font-size: 12px;
+  line-height: 1.5;
+  word-break: break-word;
+}
+
+.settings-mcp-empty-state {
+  margin-top: 12px;
+}
+
+@media (max-width: 900px) {
+  .settings-mcp-section-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .settings-mcp-engine-select,
+  .settings-mcp-engine-select-trigger {
+    width: 100%;
+  }
 }
 
 .settings-mcp-codex-head {
