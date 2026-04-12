@@ -1,5 +1,9 @@
 import type { ConversationItem } from "../types";
 import { normalizeAgentIcon } from "./agentIcons";
+import {
+  formatCollabAgentStates,
+  normalizeCollabAgentStatusMap,
+} from "./collabToolParsing";
 import { summarizeExploration } from "./threadItemsExploreSummary";
 import {
   inferFileChangesFromCommandExecutionArtifacts,
@@ -1446,24 +1450,6 @@ function hasApplyPatchSuccessSignal(output: string): boolean {
   return /success\.\s*updated the following files:/i.test(output);
 }
 
-function formatCollabAgentStates(value: unknown) {
-  if (!value || typeof value !== "object") {
-    return "";
-  }
-  const entries = Object.entries(value as Record<string, unknown>)
-    .map(([id, state]) => {
-      const status = asString(
-        (state as Record<string, unknown>)?.status ?? state ?? "",
-      );
-      return status ? `${id}: ${status}` : id;
-    })
-    .filter(Boolean);
-  if (entries.length === 0) {
-    return "";
-  }
-  return entries.join("\n");
-}
-
 export function normalizeItem(item: ConversationItem): ConversationItem {
   if (item.kind === "message") {
     let normalizedText =
@@ -2095,9 +2081,10 @@ export function buildConversationItem(
       ...normalizeStringList(item.newThreadId ?? item.new_thread_id),
     ];
     const prompt = asString(item.prompt ?? "");
-    const agentsState = formatCollabAgentStates(
+    const normalizedAgentStatus = normalizeCollabAgentStatusMap(
       item.agentStatus ?? item.agentsStates ?? item.agents_states,
     );
+    const agentsState = formatCollabAgentStates(normalizedAgentStatus);
     const detailParts = [sender ? `From ${sender}` : ""]
       .concat(receivers.length > 0 ? `→ ${receivers.join(", ")}` : "")
       .filter(Boolean);
@@ -2110,6 +2097,9 @@ export function buildConversationItem(
       detail: detailParts.join(" "),
       status,
       output: outputParts.join("\n\n"),
+      senderThreadId: sender || undefined,
+      receiverThreadIds: receivers,
+      ...(normalizedAgentStatus ? { agentStatus: normalizedAgentStatus } : {}),
     };
   }
   if (type === "webSearch") {

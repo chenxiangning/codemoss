@@ -127,6 +127,45 @@ describe("buildWorkspaceSessionActivity", () => {
     expect(result.timeline[0]?.relationshipSource).toBe("fallbackLinking");
   });
 
+  it("supports ASCII fallback arrows for legacy collab links", () => {
+    const threads: ThreadSummary[] = [
+      { id: "root", name: "Root", updatedAt: 1000 },
+      { id: "child", name: "Child", updatedAt: 1100 },
+    ];
+    const itemsByThread = {
+      root: [
+        toolItem("link-legacy-1", {
+          toolType: "collabToolCall",
+          title: "Collab: spawn_agent",
+          detail: "From root -> child",
+          status: "completed",
+        }),
+      ],
+      child: [
+        toolItem("cmd-legacy-1", {
+          toolType: "commandExecution",
+          title: "Command: pnpm lint",
+          status: "running",
+          output: "checking",
+        }),
+      ],
+    };
+
+    const result = buildWorkspaceSessionActivity({
+      activeThreadId: "child",
+      threads,
+      itemsByThread,
+      threadParentById: {},
+      threadStatusById: {
+        child: { isProcessing: true },
+      },
+    });
+
+    expect(result.rootThreadId).toBe("root");
+    expect(result.relevantThreadIds).toEqual(["root", "child"]);
+    expect(result.timeline[0]?.relationshipSource).toBe("fallbackLinking");
+  });
+
   it("includes inferred child thread summaries even when thread list misses them", () => {
     const threads: ThreadSummary[] = [{ id: "root", name: "Root", updatedAt: 1000 }];
     const itemsByThread = {

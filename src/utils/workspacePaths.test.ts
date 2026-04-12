@@ -28,6 +28,24 @@ describe("workspacePaths", () => {
     ).toBe("src/App.tsx");
   });
 
+  it("resolves relative paths when the workspace is the filesystem root", () => {
+    expect(
+      resolveWorkspaceRelativePath(
+        "/",
+        "/var/log/system.log",
+      ),
+    ).toBe("var/log/system.log");
+  });
+
+  it("resolves git root prefixes when the workspace is the filesystem root", () => {
+    expect(
+      resolveGitRootWorkspacePrefix(
+        "/",
+        "/repo-a",
+      ),
+    ).toBe("repo-a");
+  });
+
   it("matches diff paths case-insensitively for Windows tool output", () => {
     expect(
       resolveDiffPathFromWorkspacePath(
@@ -115,6 +133,12 @@ describe("workspacePaths", () => {
     expect(isAbsoluteFsPath("C:\\Users\\Chen\\Project\\src\\App.tsx")).toBe(true);
     expect(isAbsoluteFsPath("\\\\server\\share\\file.txt")).toBe(true);
     expect(isAbsoluteFsPath("src/App.tsx")).toBe(false);
+  });
+
+  it("preserves drive roots while normalizing Windows paths", () => {
+    expect(resolveWorkspaceRelativePath("C:/", "c:/Users/Chen/Project/src/App.tsx")).toBe(
+      "Users/Chen/Project/src/App.tsx",
+    );
   });
 
   it("resolves git root prefix from absolute git root path under workspace", () => {

@@ -115,6 +115,10 @@ import type { SearchContentFilter, SearchResult, SearchScope } from "./features/
 import { toggleSearchContentFilters } from "./features/search/utils/contentFilters";
 import { resolveSearchScopeOnOpen } from "./features/search/utils/scope";
 import {
+  normalizeFsPath,
+  resolveWorkspaceRelativePath,
+} from "./utils/workspacePaths";
+import {
   buildDetachedFileExplorerSession,
   openOrFocusDetachedFileExplorer,
 } from "./features/files/detachedFileExplorer";
@@ -395,6 +399,7 @@ export function AppShell() {
   });
 
   const { errorToasts, dismissErrorToast } = useErrorToasts();
+  const normalizePath = useCallback((path: string) => normalizeFsPath(path).trim(), []);
 
   // Force accessMode to "full-access" (Auto Mode)
   // Other modes are temporarily disabled in ModeSelect component
@@ -1013,9 +1018,6 @@ export function AppShell() {
     [activeWorkspaceId, openCodeVariantByThreadId, openCodeDefaultVariantByWorkspace],
   );
   const activeGitRoot = activeWorkspace?.settings.gitRoot ?? null;
-  const normalizePath = useCallback((value: string) => {
-    return value.replace(/\\/g, "/").replace(/\/+$/, "");
-  }, []);
   const handleSetGitRoot = useCallback(
     async (path: string | null) => {
       if (!activeWorkspace) {
@@ -1042,18 +1044,10 @@ export function AppShell() {
     if (!selection) {
       return;
     }
-    const workspacePath = normalizePath(activeWorkspace.path);
-    const selectedPath = normalizePath(selection);
-    let nextRoot: string | null = null;
-    if (selectedPath === workspacePath) {
-      nextRoot = null;
-    } else if (selectedPath.startsWith(`${workspacePath}/`)) {
-      nextRoot = selectedPath.slice(workspacePath.length + 1);
-    } else {
-      nextRoot = selectedPath;
-    }
+    const relativeRoot = resolveWorkspaceRelativePath(activeWorkspace.path, selection);
+    const nextRoot = relativeRoot === "" ? null : relativeRoot;
     await handleSetGitRoot(nextRoot);
-  }, [activeWorkspace, handleSetGitRoot, normalizePath]);
+  }, [activeWorkspace, handleSetGitRoot]);
   const fileStatus =
     gitStatus.error
       ? t("git.statusUnavailable")

@@ -111,6 +111,9 @@ export type ConversationItem =
       output?: string;
       durationMs?: number | null;
       changes?: { path: string; kind?: string; diff?: string }[];
+      senderThreadId?: string;
+      receiverThreadIds?: string[];
+      agentStatus?: Record<string, { status?: string } | string>;
     };
 
 export type ThreadSummary = {

@@ -17,6 +17,7 @@ import {
   findPrimaryGitMarkerLine,
   parseLineMarkersFromDiff,
 } from "../../files/utils/gitLineMarkers";
+import { parseCollabFallbackLink } from "../../../utils/collabToolParsing";
 import { getThreadTimestamp } from "../../../utils/threadItems";
 import type {
   SessionActivityEvent,
@@ -993,26 +994,6 @@ function summarizeInspectionTool(item: Extract<ConversationItem, { kind: "tool" 
   return null;
 }
 
-function parseFallbackLink(detail: string, fallbackParentId: string) {
-  const trimmed = detail.trim();
-  if (!trimmed.includes("→")) {
-    return null;
-  }
-  const [leftSide = "", rightSide = ""] = trimmed
-    .split("→", 2)
-    .map((part) => part.trim());
-  const parentMatch = leftSide.match(/^From\s+(.+)$/i);
-  const parentId = parentMatch?.[1]?.trim() || fallbackParentId;
-  const receivers = rightSide
-    .split(",")
-    .map((entry) => entry.trim())
-    .filter(Boolean);
-  if (!parentId || receivers.length === 0) {
-    return null;
-  }
-  return { parentId, receivers };
-}
-
 function buildFallbackParentById(
   threads: ThreadSummary[],
   itemsByThread: Record<string, ConversationItem[]>,
@@ -1024,7 +1005,7 @@ function buildFallbackParentById(
       if (item.kind !== "tool" || item.toolType !== "collabToolCall") {
         continue;
       }
-      const parsed = parseFallbackLink(item.detail, thread.id);
+      const parsed = parseCollabFallbackLink(item.detail, thread.id);
       if (!parsed) {
         continue;
       }

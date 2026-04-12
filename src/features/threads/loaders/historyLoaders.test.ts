@@ -501,7 +501,7 @@ describe("history loaders", () => {
       ],
     });
 
-    expect(items).toEqual(
+  expect(items).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           kind: "message",
@@ -609,6 +609,107 @@ describe("history loaders", () => {
           toolType: "collabToolCall",
           title: "Collab: wait",
           detail: expect.stringContaining("agent-7"),
+          agentStatus: {
+            "agent-7": { status: "completed" },
+          },
+        }),
+      ]),
+    );
+  });
+
+  it("reconstructs codex wait results when statuses are returned as an object map", () => {
+    const items = parseCodexSessionHistory({
+      entries: [
+        {
+          type: "response_item",
+          payload: {
+            type: "function_call",
+            call_id: "wait-map-1",
+            name: "wait",
+            arguments: JSON.stringify({
+              ids: ["agent-9"],
+            }),
+          },
+        },
+        {
+          type: "response_item",
+          payload: {
+            type: "function_call_output",
+            call_id: "wait-map-1",
+            output: JSON.stringify({
+              statuses: {
+                "agent-9": { status: "completed" },
+              },
+            }),
+          },
+        },
+      ],
+    });
+
+    expect(items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "wait-map-1",
+          kind: "tool",
+          toolType: "collabToolCall",
+          title: "Collab: wait",
+          detail: expect.stringContaining("agent-9"),
+          receiverThreadIds: ["agent-9"],
+          agentStatus: {
+            "agent-9": { status: "completed" },
+          },
+        }),
+      ]),
+    );
+  });
+
+  it("reconstructs codex agent results from direct id-status records without fake keys", () => {
+    const items = parseCodexSessionHistory({
+      entries: [
+        {
+          type: "response_item",
+          payload: {
+            type: "function_call",
+            call_id: "wait-agent-1",
+            name: "wait",
+            arguments: JSON.stringify({
+              ids: ["agent-10"],
+            }),
+          },
+        },
+        {
+          type: "response_item",
+          payload: {
+            type: "function_call_output",
+            call_id: "wait-agent-1",
+            output: JSON.stringify({
+              agent: { id: "agent-10", status: "completed" },
+            }),
+          },
+        },
+      ],
+    });
+
+    expect(items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "wait-agent-1",
+          kind: "tool",
+          toolType: "collabToolCall",
+          title: "Collab: wait",
+          receiverThreadIds: ["agent-10"],
+          agentStatus: {
+            "agent-10": { status: "completed" },
+          },
+        }),
+      ]),
+    );
+    expect(items).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          agentStatus: expect.objectContaining({
+            status: expect.anything(),
+          }),
         }),
       ]),
     );

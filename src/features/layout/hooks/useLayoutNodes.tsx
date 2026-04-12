@@ -20,13 +20,14 @@ import { ProjectMemoryPanel } from "../../project-memory/components/ProjectMemor
 import { WorkspaceSessionActivityPanel } from "../../session-activity/components/WorkspaceSessionActivityPanel";
 import { WorkspaceSessionRadarPanel } from "../../session-activity/components/WorkspaceSessionRadarPanel";
 import { DebugPanel } from "../../debug/components/DebugPanel";
-import { PlanPanel } from "../../plan/components/PlanPanel";
 import { PanelTabs } from "../components/PanelTabs";
 import Construction from "lucide-react/dist/esm/icons/construction";
 import { TabBar } from "../../app/components/TabBar";
 import { TabletNav } from "../../app/components/TabletNav";
 import { TerminalDock } from "../../terminal/components/TerminalDock";
 import { TerminalPanel } from "../../terminal/components/TerminalPanel";
+import { StatusPanel } from "../../status-panel/components/StatusPanel";
+import { useStatusPanelData } from "../../status-panel/hooks/useStatusPanelData";
 import type {
   EditorHighlightTarget,
   EditorNavigationLocation,
@@ -558,6 +559,7 @@ type LayoutNodesOptions = {
   isPlanMode: boolean;
   onOpenPlanPanel: () => void;
   onClosePlanPanel: () => void;
+  bottomStatusPanelExpanded: boolean;
   debugEntries: DebugEntry[];
   debugOpen: boolean;
   terminalOpen: boolean;
@@ -1060,10 +1062,42 @@ export function useLayoutNodes(options: LayoutNodesOptions): LayoutNodesResult {
     [options.selectedAgent],
   );
   const composerCommands = options.commands ?? EMPTY_COMMANDS;
+  const isStatusPanelEngine =
+    options.selectedEngine === "claude" ||
+    options.selectedEngine === "codex" ||
+    options.selectedEngine === "gemini";
+  const isStatusPanelCodexEngine = options.selectedEngine === "codex";
+  const {
+    todoTotal,
+    subagentTotal,
+    fileChanges,
+    commandTotal,
+  } = useStatusPanelData(options.activeItems, {
+    isCodexEngine: isStatusPanelCodexEngine,
+    activeThreadId: options.activeThreadId,
+    itemsByThread: options.threadItemsByThread,
+    threadParentById: options.threadParentById,
+    threadStatusById: options.threadStatusById,
+  });
+  const hasStatusPanelActivity =
+    todoTotal > 0 ||
+    subagentTotal > 0 ||
+    fileChanges.length > 0 ||
+    options.isPlanMode ||
+    Boolean(options.plan) ||
+    (isStatusPanelCodexEngine && commandTotal > 0);
+  const showBottomStatusPanel =
+    isStatusPanelEngine &&
+    options.bottomStatusPanelExpanded &&
+    (hasStatusPanelActivity || options.bottomStatusPanelExpanded);
 
   const composerNode = options.showComposer ? (
     <Composer
       items={options.activeItems}
+      activeThreadId={options.activeThreadId}
+      threadItemsByThread={options.threadItemsByThread}
+      threadParentById={options.threadParentById}
+      threadStatusById={options.threadStatusById}
       onSend={options.onSend}
       onQueue={options.onQueue}
       onStop={options.onStop}
@@ -1156,10 +1190,13 @@ export function useLayoutNodes(options: LayoutNodesOptions): LayoutNodesResult {
       activeFileLineRange={options.activeComposerFileLineRange}
       fileReferenceMode={options.fileReferenceMode}
       activeWorkspaceId={options.activeWorkspaceId}
-      activeThreadId={options.activeThreadId}
       plan={options.plan}
       isPlanMode={options.isPlanMode}
       onOpenDiffPath={handleOpenDiffPath}
+      statusPanelExpandedOverride={showBottomStatusPanel}
+      onToggleStatusPanelOverride={
+        showBottomStatusPanel ? options.onClosePlanPanel : options.onOpenPlanPanel
+      }
       reviewPrompt={options.reviewPrompt}
       onReviewPromptClose={options.onReviewPromptClose}
       onReviewPromptShowPreset={options.onReviewPromptShowPreset}
@@ -1547,15 +1584,22 @@ export function useLayoutNodes(options: LayoutNodesOptions): LayoutNodesResult {
       />
     ) : null;
 
-  const planPanelNode = (
-    <PlanPanel
-      plan={options.plan}
+  const planPanelNode = showBottomStatusPanel ? (
+    <StatusPanel
+      items={options.activeItems}
       isProcessing={options.isProcessing}
+      expanded
+      plan={options.plan}
       isPlanMode={options.isPlanMode}
-      isCodexEngine={options.selectedEngine === "codex"}
-      onClose={options.onClosePlanPanel}
+      isCodexEngine={isStatusPanelCodexEngine}
+      activeThreadId={options.activeThreadId}
+      itemsByThread={options.threadItemsByThread}
+      threadParentById={options.threadParentById}
+      threadStatusById={options.threadStatusById}
+      onOpenDiffPath={handleOpenDiffPath}
+      variant="dock"
     />
-  );
+  ) : null;
 
   const terminalPanelNode = options.terminalState ? (
     <TerminalPanel

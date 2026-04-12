@@ -2,6 +2,38 @@ function stripRelativePrefix(path: string) {
   return path.replace(/^\.\/+/, "");
 }
 
+function normalizeDecodedFsPath(value: string) {
+  const normalized = value
+    .replace(/\\/g, "/")
+    .replace(/^\/([a-zA-Z]:\/)/, "$1");
+  if (/^\/+$/.test(normalized)) {
+    return "/";
+  }
+  if (/^[a-zA-Z]:\/+$/.test(normalized)) {
+    return `${normalized.slice(0, 2)}/`;
+  }
+  const uncRootMatch = normalized.match(/^(\/\/[^/]+\/[^/]+)(?:\/+)?$/);
+  if (uncRootMatch) {
+    return uncRootMatch[1];
+  }
+  return normalized.replace(/\/+$/, "");
+}
+
+function isFsRootPath(path: string) {
+  return (
+    path === "/" ||
+    /^[a-zA-Z]:\/$/.test(path) ||
+    /^\/\/[^/]+\/[^/]+$/.test(path)
+  );
+}
+
+function slicePathInsideRoot(path: string, root: string) {
+  if (path === root) {
+    return "";
+  }
+  return path.slice(root.length).replace(/^\/+/, "");
+}
+
 export function isAbsoluteFsPath(path: string) {
   const trimmed = path.trim();
   return (
@@ -14,15 +46,9 @@ export function isAbsoluteFsPath(path: string) {
 
 export function normalizeFsPath(path: string) {
   try {
-    return decodeURIComponent(path)
-      .replace(/\\/g, "/")
-      .replace(/^\/([a-zA-Z]:\/)/, "$1")
-      .replace(/\/+$/, "");
+    return normalizeDecodedFsPath(decodeURIComponent(path));
   } catch {
-    return path
-      .replace(/\\/g, "/")
-      .replace(/^\/([a-zA-Z]:\/)/, "$1")
-      .replace(/\/+$/, "");
+    return normalizeDecodedFsPath(path);
   }
 }
 
@@ -51,22 +77,14 @@ export function resolveWorkspaceRelativePath(
   if (!workspacePath) {
     return stripRelativePrefix(normalizedPath);
   }
-  const normalizedWorkspace = normalizeFsPath(workspacePath).replace(/\/+$/, "");
+  const normalizedWorkspace = normalizeFsPath(workspacePath).trim();
   if (!normalizedWorkspace) {
     return stripRelativePrefix(normalizedPath);
   }
 
   const caseInsensitive = isLikelyWindowsFsPath(normalizedWorkspace);
-  const comparablePath = normalizeComparablePath(normalizedPath, caseInsensitive);
-  const comparableWorkspace = normalizeComparablePath(
-    normalizedWorkspace,
-    caseInsensitive,
-  );
-  if (comparablePath === comparableWorkspace) {
-    return "";
-  }
-  if (comparablePath.startsWith(`${comparableWorkspace}/`)) {
-    return normalizedPath.slice(normalizedWorkspace.length + 1);
+  if (isPathInsideRoot(normalizedPath, normalizedWorkspace, caseInsensitive)) {
+    return slicePathInsideRoot(normalizedPath, normalizedWorkspace);
   }
   return stripRelativePrefix(normalizedPath);
 }
@@ -80,29 +98,25 @@ export function resolveGitRootWorkspacePrefix(
     return null;
   }
 
-  const normalized = normalizeFsPath(trimmed).replace(/\/+$/, "").trim();
+  const normalized = normalizeFsPath(trimmed).trim();
   if (!normalized) {
     return null;
   }
 
   if (isAbsoluteFsPath(normalized)) {
-    const normalizedWorkspace = normalizeFsPath(workspacePath).replace(/\/+$/, "");
+    const normalizedWorkspace = normalizeFsPath(workspacePath).trim();
     if (!normalizedWorkspace) {
       return null;
     }
     const caseInsensitive = isLikelyWindowsFsPath(normalizedWorkspace);
-    const comparablePath = normalizeComparablePath(normalized, caseInsensitive);
-    const comparableWorkspace = normalizeComparablePath(
-      normalizedWorkspace,
-      caseInsensitive,
-    );
-    if (comparablePath === comparableWorkspace) {
+    if (normalizeComparablePath(normalized, caseInsensitive) ===
+      normalizeComparablePath(normalizedWorkspace, caseInsensitive)) {
       return null;
     }
-    if (!comparablePath.startsWith(`${comparableWorkspace}/`)) {
+    if (!isPathInsideRoot(normalized, normalizedWorkspace, caseInsensitive)) {
       return null;
     }
-    return normalizeRelativeWorkspacePath(normalized.slice(normalizedWorkspace.length + 1));
+    return normalizeRelativeWorkspacePath(slicePathInsideRoot(normalized, normalizedWorkspace));
   }
 
   const relative = normalizeRelativeWorkspacePath(normalized.replace(/^\.\/+/, ""));
@@ -186,7 +200,7 @@ export function resolveDiffPathFromWorkspacePath(
 ) {
   const normalizedInput = normalizeFsPath(rawPath).trim();
   const normalizedWorkspace = workspacePath
-    ? normalizeFsPath(workspacePath).replace(/\/+$/, "")
+    ? normalizeFsPath(workspacePath).trim()
     : "";
   const caseInsensitive = isLikelyWindowsFsPath(normalizedWorkspace);
   const comparableAvailable = new Map(
@@ -251,7 +265,7 @@ function normalizeRootPath(path: string | null | undefined) {
   if (!path) {
     return "";
   }
-  return normalizeExtendedFsPath(path).replace(/\/+$/, "");
+  return normalizeExtendedFsPath(path).trim();
 }
 
 function isPathInsideRoot(path: string, root: string, caseInsensitive: boolean) {
@@ -259,6 +273,9 @@ function isPathInsideRoot(path: string, root: string, caseInsensitive: boolean) 
   const comparableRoot = normalizeComparablePath(root, caseInsensitive);
   if (comparablePath === comparableRoot) {
     return true;
+  }
+  if (isFsRootPath(root)) {
+    return comparablePath.startsWith(comparableRoot);
   }
   return comparablePath.startsWith(`${comparableRoot}/`);
 }

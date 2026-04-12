@@ -1674,6 +1674,30 @@ go lang`,
       expect(item.detail).toContain("From thread-a");
       expect(item.detail).toContain("thread-b, thread-c");
       expect(item.output).toBe("Coordinate work\n\nagent-1: running");
+      expect(item.senderThreadId).toBe("thread-a");
+      expect(item.receiverThreadIds).toEqual(["thread-b", "thread-c"]);
+      expect(item.agentStatus).toEqual({
+        "agent-1": { status: "running" },
+      });
+    }
+  });
+
+  it("normalizes array-shaped collab agent states into a stable map", () => {
+    const item = buildConversationItem({
+      type: "collabToolCall",
+      id: "collab-2",
+      tool: "wait",
+      status: "completed",
+      receiverThreadIds: ["agent-2"],
+      prompt: "Check progress",
+      agentStatus: [{ id: "agent-2", status: "completed" }],
+    });
+    expect(item).not.toBeNull();
+    if (item && item.kind === "tool") {
+      expect(item.output).toBe("Check progress\n\nagent-2: completed");
+      expect(item.agentStatus).toEqual({
+        "agent-2": { status: "completed" },
+      });
     }
   });
 

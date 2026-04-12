@@ -1,4 +1,5 @@
 import type { ConversationItem } from "../../../types";
+import { normalizeCollabAgentStatusMap } from "../../../utils/collabToolParsing";
 import { buildConversationItemFromThreadItem } from "../../../utils/threadItems";
 import { asRecord, asString } from "./historyLoaderUtils";
 
@@ -21,6 +22,7 @@ type PendingCollabToolCall = {
   receiverThreadIds: string[];
   prompt: string;
   status: string;
+  agentStatus?: Record<string, { status?: string }>;
 };
 type PendingGenericToolCall = {
   callId: string;
@@ -358,15 +360,54 @@ function extractThreadIdsFromRecord(record: Record<string, unknown>): string[] {
   return uniqueStringList(ids);
 }
 
-function extractThreadIdsFromStatusRecords(value: unknown): string[] {
-  if (!Array.isArray(value)) {
+function extractThreadIdsFromStatusValue(value: unknown): string[] {
+  const normalizedStatuses = normalizeCollabAgentStatusMap(value);
+  if (!normalizedStatuses) {
     return [];
   }
-  return uniqueStringList(
-    value
-      .map((entry) => asRecord(entry))
-      .flatMap((entry) => extractThreadIdsFromRecord(entry)),
+  return Object.keys(normalizedStatuses);
+}
+
+function mergeAgentStatuses(
+  ...candidates: Array<Record<string, { status?: string }> | undefined>
+) {
+  const merged: Record<string, { status?: string }> = {};
+  candidates.forEach((candidate) => {
+    if (!candidate) {
+      return;
+    }
+    Object.entries(candidate).forEach(([id, state]) => {
+      const normalizedId = id.trim();
+      if (!normalizedId) {
+        return;
+      }
+      const status = asString(state?.status ?? "").trim();
+      if (!status) {
+        return;
+      }
+      merged[normalizedId] = { status };
+    });
+  });
+  return Object.keys(merged).length > 0 ? merged : undefined;
+}
+
+function extractAgentStatusesFromRecord(value: unknown) {
+  const directStatuses = normalizeCollabAgentStatusMap(value);
+  if (directStatuses) {
+    return directStatuses;
+  }
+
+  const record = asRecord(value);
+  if (Object.keys(record).length === 0) {
+    return undefined;
+  }
+  const nestedStatuses = mergeAgentStatuses(
+    extractAgentStatusesFromRecord(record.statuses),
+    extractAgentStatusesFromRecord(record.results),
+    extractAgentStatusesFromRecord(record.agent),
+    extractAgentStatusesFromRecord(record.agents),
   );
+  return nestedStatuses;
 }
 
 function extractMessageText(payload: Record<string, unknown>) {
@@ -488,6 +529,7 @@ function buildCollabToolCallItem(pending: PendingCollabToolCall) {
     senderThreadId: pending.senderThreadId,
     receiverThreadIds: pending.receiverThreadIds,
     prompt: pending.prompt,
+    ...(pending.agentStatus ? { agentStatus: pending.agentStatus } : {}),
   });
 }
 
@@ -587,13 +629,23 @@ function flushCollabToolCallOutput(
   const mergedReceiverThreadIds = uniqueStringList([
     ...pending.receiverThreadIds,
     ...extractThreadIdsFromRecord(outputRecord),
-    ...extractThreadIdsFromStatusRecords(outputRecord.statuses ?? outputRecord.results),
-    ...extractThreadIdsFromRecord(asRecord(outputRecord.agent)),
+    ...extractThreadIdsFromStatusValue(outputRecord.statuses),
+    ...extractThreadIdsFromStatusValue(outputRecord.results),
+    ...extractThreadIdsFromStatusValue(outputRecord.agent),
+    ...extractThreadIdsFromStatusValue(outputRecord.agents),
   ]);
+  const mergedAgentStatus = mergeAgentStatuses(
+    pending.agentStatus,
+    extractAgentStatusesFromRecord(outputRecord.statuses),
+    extractAgentStatusesFromRecord(outputRecord.results),
+    extractAgentStatusesFromRecord(outputRecord.agent),
+    extractAgentStatusesFromRecord(outputRecord.agents),
+  );
   return buildCollabToolCallItem({
     ...pending,
     status: asString(payload.status ?? pending.status ?? "completed").trim() || "completed",
     receiverThreadIds: mergedReceiverThreadIds,
+    ...(mergedAgentStatus ? { agentStatus: mergedAgentStatus } : {}),
   });
 }
 
