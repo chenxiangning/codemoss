@@ -634,7 +634,7 @@ const enPart1 = {
       cancel: "Cancel",
       saveFailed: "Save failed: {{message}}",
       engineClaude: "Claude",
-      engineCode: "Code",
+      engineCode: "Codex",
       engineGemini: "Gemini",
       engineAgents: "Agents",
     },

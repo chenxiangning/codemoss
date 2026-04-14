@@ -646,7 +646,7 @@ const zhPart1 = {
       cancel: "取消",
       saveFailed: "保存失败：{{message}}",
       engineClaude: "Claude",
-      engineCode: "Code",
+      engineCode: "Codex",
       engineGemini: "Gemini",
       engineAgents: "Agents",
     },

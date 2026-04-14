@@ -115,13 +115,11 @@ fn webview2_argument_exists(existing: &str, argument: &str) -> bool {
                     .all(|feature| current_features.iter().any(|item| item == feature))
             });
     }
-    existing
-        .split_whitespace()
-        .any(|token| {
-            token
-                .trim_matches(|c| c == '"' || c == '\'')
-                .eq_ignore_ascii_case(argument.trim_matches(|c| c == '"' || c == '\''))
-        })
+    existing.split_whitespace().any(|token| {
+        token
+            .trim_matches(|c| c == '"' || c == '\'')
+            .eq_ignore_ascii_case(argument.trim_matches(|c| c == '"' || c == '\''))
+    })
 }
 
 #[cfg(target_os = "windows")]
@@ -249,7 +247,8 @@ mod tests {
         let path = temp_dir.join("startup_guard.json");
         std::fs::write(&path, "{not-json").expect("write corrupted json");
 
-        let decision = prepare_launch_with_path(&path).expect("prepare launch with corrupted state");
+        let decision =
+            prepare_launch_with_path(&path).expect("prepare launch with corrupted state");
         assert!(!decision.enable_webview2_compat_mode);
         assert!(!decision.enable_webview2_gpu_fallback);
         assert_eq!(decision.consecutive_unready_launches, 0);

@@ -2089,11 +2089,11 @@ mod tests {
         is_repo_mutating_command_tokens, looks_like_executable_plan_text,
         looks_like_plan_blocker_prompt, looks_like_user_info_followup_prompt,
         normalize_command_tokens_from_item, should_block_request_user_input,
-        should_skip_codex_stderr_line,
-        visible_console_fallback_enabled_from_env, wrapper_kind_for_binary,
-        AutoCompactionThreadState, PlanTurnState, TimedOutRequest, MODE_BLOCKED_PLAN_REASON,
-        MODE_BLOCKED_PLAN_SUGGESTION, MODE_BLOCKED_REASON, MODE_BLOCKED_REASON_CODE_PLAN_READONLY,
-        MODE_BLOCKED_REASON_CODE_REQUEST_USER_INPUT, MODE_BLOCKED_SUGGESTION,
+        should_skip_codex_stderr_line, visible_console_fallback_enabled_from_env,
+        wrapper_kind_for_binary, AutoCompactionThreadState, PlanTurnState, TimedOutRequest,
+        MODE_BLOCKED_PLAN_REASON, MODE_BLOCKED_PLAN_SUGGESTION, MODE_BLOCKED_REASON,
+        MODE_BLOCKED_REASON_CODE_PLAN_READONLY, MODE_BLOCKED_REASON_CODE_REQUEST_USER_INPUT,
+        MODE_BLOCKED_SUGGESTION,
     };
     use serde_json::{json, Value};
 
@@ -2254,7 +2254,9 @@ mod tests {
         let noisy_line = "\u{1b}[2m2026-04-14T05:38:37Z\u{1b}[0m \u{1b}[31mERROR\u{1b}[0m \u{1b}[2mrmcp::transport::worker\u{1b}[0m: worker quit with fatal: Transport channel closed, when AuthRequired(AuthRequiredError { www_authenticate_header: \"Bearer resource_metadata=https://mcp.stripe.com/.well-known/oauth-protected-resource\" })";
         assert!(should_skip_codex_stderr_line(noisy_line));
         assert!(should_skip_codex_stderr_line("   "));
-        assert!(!should_skip_codex_stderr_line("ERROR: git failed: fatal: not a git repository"));
+        assert!(!should_skip_codex_stderr_line(
+            "ERROR: git failed: fatal: not a git repository"
+        ));
     }
 
     #[test]
