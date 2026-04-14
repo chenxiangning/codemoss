@@ -4,6 +4,7 @@ import ListChecks from "lucide-react/dist/esm/icons/list-checks";
 import Bot from "lucide-react/dist/esm/icons/bot";
 import FileEdit from "lucide-react/dist/esm/icons/file-edit";
 import ListTodo from "lucide-react/dist/esm/icons/list-todo";
+import MessageSquareQuote from "lucide-react/dist/esm/icons/message-square-quote";
 import type { ConversationItem } from "../../../types";
 import type { TurnPlan } from "../../../types";
 import type { TabType } from "../types";
@@ -13,6 +14,9 @@ import { TodoList } from "./TodoList";
 import { SubagentList } from "./SubagentList";
 import { FileChangesList } from "./FileChangesList";
 import { PlanList } from "./PlanList";
+import type { SubagentInfo } from "../types";
+import { resolveLatestUserMessagePreview } from "../utils/latestUserMessage";
+import { LatestUserMessagePanel } from "./LatestUserMessagePanel";
 
 interface StatusPanelProps {
   items: ConversationItem[];
@@ -26,6 +30,7 @@ interface StatusPanelProps {
   threadParentById?: Record<string, string>;
   threadStatusById?: Record<string, { isProcessing?: boolean } | undefined>;
   onOpenDiffPath?: (path: string) => void;
+  onSelectSubagent?: (agent: SubagentInfo) => void;
   variant?: "popover" | "dock";
 }
 
@@ -51,6 +56,7 @@ export const StatusPanel = memo(function StatusPanel({
   threadParentById,
   threadStatusById,
   onOpenDiffPath,
+  onSelectSubagent,
   variant = "popover",
 }: StatusPanelProps) {
   const { t } = useTranslation();
@@ -106,6 +112,10 @@ export const StatusPanel = memo(function StatusPanel({
   );
   const codexTaskTotal = codexTaskItems.length;
   const codexTaskInProgress = codexTaskItems.some((item) => item.status === "in_progress");
+  const latestUserMessagePreview = useMemo(
+    () => resolveLatestUserMessagePreview(items),
+    [items],
+  );
 
   // 点击外部关闭 popover
   useEffect(() => {
@@ -163,7 +173,17 @@ export const StatusPanel = memo(function StatusPanel({
   const contentNode = (
     <>
       {activeTab === "todo" && <TodoList todos={isCodexEngine ? codexTaskItems : todos} />}
-      {activeTab === "subagent" && <SubagentList subagents={subagents} />}
+      {activeTab === "subagent" && (
+        <SubagentList
+          subagents={subagents}
+          onSelectSubagent={(agent) => {
+            onSelectSubagent?.(agent);
+            if (variant !== "dock") {
+              setOpenTab(null);
+            }
+          }}
+        />
+      )}
       {activeTab === "files" && (
         <FileChangesList
           fileChanges={fileChanges}
@@ -176,6 +196,9 @@ export const StatusPanel = memo(function StatusPanel({
             }
           }}
         />
+      )}
+      {activeTab === "latestUserMessage" && variant === "dock" && (
+        <LatestUserMessagePanel preview={latestUserMessagePreview} />
       )}
       {activeTab === "plan" && (
         <PlanList
@@ -292,6 +315,16 @@ export const StatusPanel = memo(function StatusPanel({
                 </span>
               </button>
             )}
+
+            <button
+              type="button"
+              className={`sp-tab${activeTab === "latestUserMessage" ? " sp-tab-active" : ""}`}
+              onClick={() => handleTabClick("latestUserMessage")}
+              aria-expanded={activeTab === "latestUserMessage"}
+            >
+              <MessageSquareQuote size={14} className="sp-tab-icon" />
+              <span className="sp-tab-label">{t("statusPanel.tabLatestUserMessage")}</span>
+            </button>
 
             {showPlanTab && (
               <button

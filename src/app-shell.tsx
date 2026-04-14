@@ -169,6 +169,8 @@ import { useAppShellSections } from "./app-shell-parts/useAppShellSections";
 import { useAppShellLayoutNodesSection } from "./app-shell-parts/useAppShellLayoutNodesSection";
 import { renderAppShell } from "./app-shell-parts/renderAppShell";
 import { useSelectedAgentSession } from "./app-shell-parts/useSelectedAgentSession";
+import type { AgentTaskScrollRequest } from "./features/messages/types";
+import type { SubagentInfo } from "./features/status-panel/types";
 import {
   RADAR_STORE_NAME,
   SESSION_RADAR_RECENT_STORAGE_KEY,
@@ -180,6 +182,7 @@ import {
 } from "./features/session-activity/utils/sessionRadarPersistence";
 
 const DEFAULT_CLAUDE_MODEL_ID = "claude-sonnet-4-6";
+const INVISIBLE_SEARCH_QUERY_CHARS_REGEX = /[\u200B-\u200D\uFEFF]/g;
 
 const SettingsView = lazy(() =>
   import("./features/settings/components/SettingsView").then((module) => ({
@@ -314,6 +317,8 @@ export function AppShell() {
     toggleTerminalShortcut: appSettings.toggleTerminalShortcut,
   });
   const [appMode, setAppMode] = useState<AppMode>("chat");
+  const [agentTaskScrollRequest, setAgentTaskScrollRequest] =
+    useState<AgentTaskScrollRequest | null>(null);
   const appRootRef = useRef<HTMLDivElement | null>(null);
   const {
     gitHistoryPanelHeight,
@@ -1117,6 +1122,7 @@ export function AppShell() {
     threadsByWorkspace,
     threadParentById,
     threadStatusById,
+    activeTurnIdByThread,
     threadListLoadingByWorkspace,
     threadListPagingByWorkspace,
     threadListCursorByWorkspace,
@@ -1137,6 +1143,8 @@ export function AppShell() {
     isThreadAutoNaming,
     startThreadForWorkspace,
     forkThreadForWorkspace,
+    forkSessionFromMessageForWorkspace,
+    forkClaudeSessionFromMessageForWorkspace,
     listThreadsForWorkspace,
     loadOlderThreadsForWorkspace,
     resetWorkspaceThreads,
@@ -1753,13 +1761,21 @@ export function AppShell() {
     }
   }, []);
 
-
-  const navigateToThread = useCallback(
-    (workspaceId: string, threadId: string) => {
+  const navigateToThreadWithUiOptions = useCallback(
+    (
+      workspaceId: string,
+      threadId: string,
+      options: {
+        collapseRightPanel?: boolean;
+      } = {},
+    ) => {
+      const { collapseRightPanel: shouldCollapseRightPanel = true } = options;
       exitDiffView();
       setAppMode("chat");
       setActiveTab("codex");
-      collapseRightPanel();
+      if (shouldCollapseRightPanel) {
+        collapseRightPanel();
+      }
       setSelectedKanbanTaskId(null);
       selectWorkspace(workspaceId);
       setActiveThreadId(threadId, workspaceId);
@@ -1781,6 +1797,13 @@ export function AppShell() {
     ],
   );
 
+  const navigateToThread = useCallback(
+    (workspaceId: string, threadId: string) => {
+      navigateToThreadWithUiOptions(workspaceId, threadId);
+    },
+    [navigateToThreadWithUiOptions],
+  );
+
   // Register system notification click handler to navigate to the completed thread
   useEffect(() => {
     setNotificationActionHandler((extra) => {
@@ -1791,6 +1814,43 @@ export function AppShell() {
       }
     });
   }, [navigateToThread]);
+
+  const handleSelectStatusPanelSubagent = useCallback(
+    (agent: SubagentInfo) => {
+      const target = agent.navigationTarget;
+      if (!target) {
+        return;
+      }
+      if (target.kind === "thread") {
+        if (!activeWorkspaceId) {
+          return;
+        }
+        navigateToThreadWithUiOptions(activeWorkspaceId, target.threadId, {
+          collapseRightPanel: false,
+        });
+        return;
+      }
+      if (target.kind === "claude-task") {
+        exitDiffView();
+        setAppMode("chat");
+        setCenterMode("chat");
+        setActiveTab("codex");
+        setAgentTaskScrollRequest({
+          nonce: Date.now(),
+          taskId: target.taskId ?? null,
+          toolUseId: target.toolUseId ?? null,
+        });
+      }
+    },
+    [
+      activeWorkspaceId,
+      exitDiffView,
+      navigateToThread,
+      navigateToThreadWithUiOptions,
+      setActiveTab,
+      setCenterMode,
+    ],
+  );
 
   const openAppIconById = useOpenAppIcons(appSettings.openAppTargets);
 
@@ -1976,6 +2036,9 @@ export function AppShell() {
   const isReviewing = activeThreadId
     ? threadStatusById[activeThreadId]?.isReviewing ?? false
     : false;
+  const activeTurnId = activeThreadId
+    ? activeTurnIdByThread[activeThreadId] ?? null
+    : null;
   const {
     activeImages,
     attachImages,
@@ -1995,9 +2058,13 @@ export function AppShell() {
     handleSendPrompt,
     handleEditQueued,
     handleDeleteQueued,
+    handleFuseQueued,
+    canFuseActiveQueue,
+    activeFusingMessageId,
     clearDraftForThread,
   } = useComposerController({
     activeThreadId,
+    activeTurnId,
     activeWorkspaceId,
     activeWorkspace,
     isProcessing,
@@ -2034,6 +2101,8 @@ export function AppShell() {
       }
       return "code";
     },
+    getCodexCollaborationPayload: () => collaborationModePayload,
+    interruptTurn,
   });
 
   const handleInsertComposerText = useComposerInsert({
@@ -2248,7 +2317,7 @@ export function AppShell() {
     () => new Map(workspaces.map((w) => [w.path, w.name])),
     [workspaces],
   );
-  const searchResults = useUnifiedSearch({
+  const rawSearchResults = useUnifiedSearch({
     query: searchPaletteQuery,
     contentFilters: searchContentFilters,
     workspaceSources: workspaceSearchSources,
@@ -2260,6 +2329,13 @@ export function AppShell() {
     activeWorkspaceId,
     workspaceNameByPath,
   });
+  const normalizedSearchPaletteQuery = searchPaletteQuery
+    .replace(INVISIBLE_SEARCH_QUERY_CHARS_REGEX, "")
+    .trim();
+  const searchResults = useMemo(
+    () => (normalizedSearchPaletteQuery ? rawSearchResults : []),
+    [normalizedSearchPaletteQuery, rawSearchResults],
+  );
 
   const sessionRadarFeed = useSessionRadarFeed({
     workspaces,
@@ -2772,11 +2848,11 @@ export function AppShell() {
   const appShellContext = {
     GitHubPanelData, RECENT_THREAD_LIMIT, SettingsView, accessMode, accountByWorkspace, accountSwitching, activeAccount, activeDiffError,
     activeDiffLoading, activeDiffs, activeDraft, activeEditorFilePath, activeEditorLineRange, activeEngine, activeGitRoot, activeImages,
-    activeItems, activeParentWorkspace, activePath, activePlan, activeQueue, activeRateLimits, activeRenamePrompt, activeTab,
+    activeFusingMessageId, activeItems, activeParentWorkspace, activePath, activePlan, activeQueue, activeRateLimits, activeRenamePrompt, activeTab, agentTaskScrollRequest,
     activeTerminalId, activeThreadId, activeThreadIdForModeRef, activeThreadIdRef, activeTokenUsage, activeWorkspace, activeWorkspaceId, activeWorkspaceIdRef,
     activeWorkspaceKanbanTasks, activeWorkspaceRef, activeWorkspaceThreads, addCloneAgent, addDebugEntry, addWorkspace, addWorkspaceFromPath, addWorktreeAgent,
     agent, alertError, appMode, appRoot, appRootRef, appSettings, appSettingsLoading, applySelectedCollaborationMode,
-    approvals, assignWorkspaceGroup, attachImages, baseWorkspaceRef, branches, canInterrupt, cancelClonePrompt, cancelWorktreePrompt,
+    approvals, assignWorkspaceGroup, attachImages, baseWorkspaceRef, branches, canFuseActiveQueue, canInterrupt, cancelClonePrompt, cancelWorktreePrompt,
     cancelled, centerMode, checkoutBranch, chooseCloneCopiesFolder, choosePreset, claudeAccessModeRef, clearActiveImages, clearCloneCopiesFolder,
     clearDebugEntries, clearDictationError, clearDictationHint, clearDictationTranscript, clearDraftForThread, clearGitRootCandidates, clonePrompt, closePlanPanel,
     closeReleaseNotes, closeReviewPrompt, closeSettings, closeTerminalPanel, closeWorktreeCreateResult, codexComposerModeRef, collaborationModePayload, collaborationModes,
@@ -2790,7 +2866,7 @@ export function AppShell() {
     effectiveSelectedModelId, effectiveUiMode, engineModelsAsOptions, engineSelectedModelIdByType, engineSelection, engineStatuses, ensureLaunchTerminal, ensureTerminalWithTitle,
     ensureWorkspaceThreadListLoaded, entry, errorToasts, existing, exitDiffView, expandRightPanel, expandSidebar, filePanelMode,
     filePassword, fileReferenceMode, fileStatus, files, finishedByAgentUpdate, finishedByDuration, firstAnswer, flushDraggedHeight,
-    force, forkThreadForWorkspace, getGlobalPromptsDir, getPinTimestamp, getThreadRows, getWorkspaceGroupName, getWorkspacePromptsDir, gitCommitDiffs,
+    force, forkThreadForWorkspace, forkSessionFromMessageForWorkspace, forkClaudeSessionFromMessageForWorkspace, getGlobalPromptsDir, getPinTimestamp, getThreadRows, getWorkspaceGroupName, getWorkspacePromptsDir, gitCommitDiffs,
     gitDiffListView, gitDiffViewStyle, gitHistoryPanelHeight, gitHistoryPanelHeightRef, gitIssues, gitIssuesError, gitIssuesLoading, gitIssuesTotal,
     gitLogAhead, gitLogAheadEntries, gitLogBehind, gitLogBehindEntries, gitLogEntries, gitLogError, gitLogLoading, gitLogTotal,
     gitLogUpstream, gitPanelMode, gitPullRequestComments, gitPullRequestCommentsError, gitPullRequestCommentsLoading, gitPullRequestDiffs, gitPullRequestDiffsError, gitPullRequestDiffsLoading,
@@ -2804,8 +2880,8 @@ export function AppShell() {
     handleGitPullRequestDiffsChange, handleGitPullRequestsChange, handleInsertComposerText, handleLockPanel, handleMovePrompt, handleOpenDetachedFileExplorer, handleOpenFile, handleOpenModelSettings, handleOpenRenameWorktree,
     handlePickGitRoot, handlePointerMove, handlePointerUp, handlePush, handleRenamePromptCancel, handleRenamePromptChange, handleRenamePromptConfirm, handleRenameThread,
     handleRenameWorktreeCancel, handleRenameWorktreeChange, handleRenameWorktreeConfirm, handleResize, handleRevealGeneralPrompts, handleRevealWorkspacePrompts, handleRevertAllGitChanges, handleRevertGitFile,
-    handleReviewPromptKeyDown, handleSelectAgent, handleSelectCommit, handleSelectDiff, handleSelectModel, handleSelectOpenAppId, handleSelectOpenCodeAgent, handleSelectOpenCodeVariant,
-    handleSend, handleSendPrompt, handleSendPromptToNewAgent, handleSetAccessMode, handleSetGitRoot, handleStageGitAll, handleStageGitFile, handleSwitchAccount,
+    handleReviewPromptKeyDown, handleSelectAgent, handleSelectCommit, handleSelectDiff, handleSelectModel, handleSelectOpenAppId, handleSelectOpenCodeAgent, handleSelectOpenCodeVariant, handleSelectStatusPanelSubagent,
+    handleSend, handleSendPrompt, handleSendPromptToNewAgent, handleSetAccessMode, handleSetGitRoot, handleStageGitAll, handleStageGitFile, handleSwitchAccount, handleFuseQueued,
     handleSync, handleTestNotificationSound, handleToggleDictation, handleToggleRuntimeConsole, handleToggleTerminal, handleToggleTerminalPanel, handleUnlockPanel, handleUnstageGitFile,
     handleUpdatePrompt, handleUserInputSubmit, handleUserInputSubmitWithPlanApply, handleWorkspaceDragEnter, handleWorkspaceDragLeave, handleWorkspaceDragOver, handleWorkspaceDrop, handleWorktreeCreated,
     hasActivePlan, hasLoaded, hasPlanData, highlightedBranchIndex, highlightedCommitIndex, highlightedPresetIndex, historySearchItems, hydratedThreadListWorkspaceIdsRef,
