@@ -77,6 +77,11 @@ type ThreadEventHandlersOptions = {
   onCollaborationModeResolved?: (
     event: CollaborationModeResolvedRequest,
   ) => void;
+  onExitPlanModeToolCompleted?: (payload: {
+    workspaceId: string;
+    threadId: string;
+    itemId: string;
+  }) => void;
 };
 
 function isThreadSessionMirrorEnabled() {
@@ -141,6 +146,7 @@ export function useThreadEventHandlers({
   renamePendingMemoryCaptureKey,
   onAgentMessageCompletedExternal,
   onCollaborationModeResolved,
+  onExitPlanModeToolCompleted,
 }: ThreadEventHandlersOptions) {
   const isReasoningRawDebugEnabled = () => {
     if (import.meta.env?.DEV) {
@@ -173,6 +179,8 @@ export function useThreadEventHandlers({
   const onApprovalRequest = useThreadApprovalEvents({
     dispatch,
     approvalAllowlistRef,
+    markProcessing,
+    setActiveTurnId,
   });
   const enqueueUserInputRequest = useThreadUserInputEvents({ dispatch });
   const onRequestUserInput = useCallback(
@@ -272,6 +280,7 @@ export function useThreadEventHandlers({
     interruptedThreadsRef,
     onDebug,
     onAgentMessageCompletedExternal,
+    onExitPlanModeToolCompleted,
   });
 
   const {

@@ -133,7 +133,7 @@ npm run test          # Run frontend tests
 
 ### Download
 
-Download link: https://github.com/zhukunpenglinyutong/ccgui/releases
+Download link: https://github.com/zhukunpenglinyutong/desktop-cc-gui/releases
 
 ---
 
@@ -147,7 +147,13 @@ Your Stars and recommendations help more people discover this project. Thank you
 
 ### License
 
-[MIT](https://github.com/zhukunpenglinyutong/ccgui?tab=MIT-1-ov-file)
+[MIT](https://github.com/zhukunpenglinyutong/desktop-cc-gui?tab=MIT-1-ov-file)
+
+---
+
+## Friendship Link
+
+Thanks for the support and feedback from the friends at [LINUX DO](https://linux.do/). 
 
 ---
 
@@ -181,13 +187,13 @@ Thanks to all the contributors who help make ccgui better!
 
 ## Star History
 
-[![Star History Chart](https://api.star-history.com/svg?repos=zhukunpenglinyutong/ccgui&type=date&legend=top-left)](https://www.star-history.com/#zhukunpenglinyutong/ccgui&type=date&legend=top-left)
+[![Star History Chart](https://api.star-history.com/svg?repos=zhukunpenglinyutong/desktop-cc-gui&type=date&legend=top-left)](https://www.star-history.com/#zhukunpenglinyutong/desktop-cc-gui&type=date&legend=top-left)
 
 <!-- LINK GROUP -->
 
-[github-contributors-shield]: https://img.shields.io/github/contributors/zhukunpenglinyutong/ccgui?color=c4f042&labelColor=black&style=flat-square
-[github-forks-shield]: https://img.shields.io/github/forks/zhukunpenglinyutong/ccgui?color=8ae8ff&labelColor=black&style=flat-square
-[github-issues-link]: https://github.com/zhukunpenglinyutong/ccgui/issues
-[github-issues-shield]: https://img.shields.io/github/issues/zhukunpenglinyutong/ccgui?color=ff80eb&labelColor=black&style=flat-square
-[github-license-link]: https://github.com/zhukunpenglinyutong/ccgui/blob/main/LICENSE
-[github-stars-shield]: https://img.shields.io/github/stars/zhukunpenglinyutong/ccgui?color=ffcb47&labelColor=black&style=flat-square
+[github-contributors-shield]: https://img.shields.io/github/contributors/zhukunpenglinyutong/desktop-cc-gui?color=c4f042&labelColor=black&style=flat-square
+[github-forks-shield]: https://img.shields.io/github/forks/zhukunpenglinyutong/desktop-cc-gui?color=8ae8ff&labelColor=black&style=flat-square
+[github-issues-link]: https://github.com/zhukunpenglinyutong/desktop-cc-gui/issues
+[github-issues-shield]: https://img.shields.io/github/issues/zhukunpenglinyutong/desktop-cc-gui?color=ff80eb&labelColor=black&style=flat-square
+[github-license-link]: https://github.com/zhukunpenglinyutong/desktop-cc-gui/blob/main/LICENSE
+[github-stars-shield]: https://img.shields.io/github/stars/zhukunpenglinyutong/desktop-cc-gui?color=ffcb47&labelColor=black&style=flat-square

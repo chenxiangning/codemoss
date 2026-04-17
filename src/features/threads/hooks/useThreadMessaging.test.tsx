@@ -23,6 +23,7 @@ import {
 } from "../../../services/tauri";
 import { getClientStoreSync, writeClientStoreValue } from "../../../services/clientStorage";
 import { pushErrorToast } from "../../../services/toasts";
+import { sendSharedSessionTurn } from "../../shared-session/runtime/sendSharedSessionTurn";
 
 vi.mock("../../../services/toasts", () => ({
   pushErrorToast: vi.fn(),
@@ -56,6 +57,10 @@ vi.mock("../../../services/clientStorage", () => ({
   writeClientStoreValue: vi.fn(),
 }));
 
+vi.mock("../../shared-session/runtime/sendSharedSessionTurn", () => ({
+  sendSharedSessionTurn: vi.fn(),
+}));
+
 describe("useThreadMessaging", () => {
   const workspace: WorkspaceInfo = {
     id: "ws-1",
@@ -68,6 +73,13 @@ describe("useThreadMessaging", () => {
     id: "ws-win",
     name: "ccgui-Win",
     path: "C:\\repo\\mossx",
+    connected: true,
+    settings: { sidebarCollapsed: false },
+  };
+  const noPathWorkspace: WorkspaceInfo = {
+    id: "ws-nopath",
+    name: "ccgui-NoPath",
+    path: "",
     connected: true,
     settings: { sidebarCollapsed: false },
   };
@@ -124,6 +136,9 @@ describe("useThreadMessaging", () => {
     vi.mocked(engineInterruptTurn).mockResolvedValue();
     vi.mocked(interruptTurn).mockResolvedValue({});
     vi.mocked(writeClientStoreValue).mockImplementation(() => undefined);
+    vi.mocked(sendSharedSessionTurn).mockResolvedValue({
+      result: { turn: { id: "shared-turn-1" } },
+    });
   });
 
   function makeHook(
@@ -180,6 +195,8 @@ describe("useThreadMessaging", () => {
         getCustomName: () => undefined,
         getThreadEngine: (_workspaceId, threadId) =>
           overrides.threadEngineById?.[threadId] ?? undefined,
+        getThreadKind: (_workspaceId, threadId) =>
+          threadId.startsWith("shared:") ? "shared" : "native",
         markProcessing,
         markReviewing,
         setActiveTurnId,
@@ -227,6 +244,102 @@ describe("useThreadMessaging", () => {
       expect.objectContaining({ engine: "opencode" }),
     );
     expect(sendUserMessage).not.toHaveBeenCalled();
+  });
+
+  it("normalizes unsupported shared-session sends back to claude", async () => {
+    const dispatch = vi.fn();
+    const { result } = makeHook("gemini", {
+      activeThreadId: "shared:thread-1",
+      dispatch,
+    });
+
+    await act(async () => {
+      await result.current.sendUserMessageToThread(
+        workspace,
+        "shared:thread-1",
+        "hello shared",
+      );
+    });
+
+    expect(sendSharedSessionTurn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        workspaceId: "ws-1",
+        threadId: "shared:thread-1",
+        engine: "claude",
+      }),
+    );
+    expect(dispatch).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "setThreadEngine",
+        threadId: "shared:thread-1",
+        engine: "claude",
+      }),
+    );
+    expect(engineSendMessage).not.toHaveBeenCalled();
+    expect(sendUserMessage).not.toHaveBeenCalled();
+  });
+
+  it("uses active shared engine selection instead of stale thread engine when sending", async () => {
+    const dispatch = vi.fn();
+    const { result } = makeHook("claude", {
+      activeThreadId: "shared:thread-sticky-engine",
+      dispatch,
+      threadEngineById: {
+        "shared:thread-sticky-engine": "codex",
+      },
+    });
+
+    await act(async () => {
+      await result.current.sendUserMessageToThread(
+        workspace,
+        "shared:thread-sticky-engine",
+        "切回 claude 后继续发送",
+      );
+    });
+
+    expect(sendSharedSessionTurn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        workspaceId: "ws-1",
+        threadId: "shared:thread-sticky-engine",
+        engine: "claude",
+      }),
+    );
+    expect(dispatch).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "setThreadEngine",
+        workspaceId: "ws-1",
+        threadId: "shared:thread-sticky-engine",
+        engine: "claude",
+      }),
+    );
+  });
+
+  it("hides shared native thread id returned from shared send response", async () => {
+    const dispatch = vi.fn();
+    vi.mocked(sendSharedSessionTurn).mockResolvedValue({
+      result: { turn: { id: "shared-turn-2" } },
+      nativeThreadId: "550e8400-e29b-41d4-a716-446655440000",
+    });
+    const { result } = makeHook("codex", {
+      activeThreadId: "shared:thread-2",
+      dispatch,
+    });
+
+    await act(async () => {
+      await result.current.sendUserMessageToThread(
+        workspace,
+        "shared:thread-2",
+        "hello shared hide native",
+      );
+    });
+
+    expect(dispatch).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "hideThread",
+        workspaceId: "ws-1",
+        threadId: "550e8400-e29b-41d4-a716-446655440000",
+      }),
+    );
   });
 
   it("passes custom spec root through cli engine send when configured", async () => {
@@ -1092,6 +1205,27 @@ describe("useThreadMessaging", () => {
     );
   });
 
+  it("keeps relative LSP document path when workspace path is empty", async () => {
+    vi.mocked(getOpenCodeLspDocumentSymbols).mockResolvedValue({
+      fileUri: "src/main.ts",
+      result: [],
+    });
+    const { result } = makeHook("opencode", {
+      workspace: noPathWorkspace,
+      activeThreadId: "opencode:ses-no-path",
+      ensuredThreadId: "opencode:ses-no-path",
+    });
+
+    await act(async () => {
+      await result.current.startLsp("/lsp document-symbols src/main.ts");
+    });
+
+    expect(getOpenCodeLspDocumentSymbols).toHaveBeenCalledWith(
+      "ws-nopath",
+      "src/main.ts",
+    );
+  });
+
   it("supports /lsp symbols based on thread ownership when active engine mismatches", async () => {
     const { result } = makeHook("codex", {
       activeThreadId: "opencode:session-1",
@@ -1167,6 +1301,29 @@ describe("useThreadMessaging", () => {
     });
   });
 
+  it("keeps plan handoff interrupts silent while still stopping the active turn", async () => {
+    const { result, dispatch, markProcessing, setActiveTurnId } = makeHook("claude", {
+      activeThreadId: "claude:session-1",
+      ensuredThreadId: "claude:session-1",
+      activeTurnIdByThread: { "claude:session-1": "turn-1" },
+      threadEngineById: { "claude:session-1": "claude" },
+    });
+
+    await act(async () => {
+      await result.current.interruptTurn({ reason: "plan-handoff" });
+    });
+
+    expect(markProcessing).toHaveBeenCalledWith("claude:session-1", false);
+    expect(setActiveTurnId).toHaveBeenCalledWith("claude:session-1", null);
+    expect(dispatch).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "addAssistantMessage",
+        threadId: "claude:session-1",
+      }),
+    );
+    expect(engineInterruptTurn).toHaveBeenCalledWith("ws-1", "turn-1", "claude");
+  });
+
   it("interrupt routes opencode thread through engine interrupt only", async () => {
     const { result } = makeHook("codex", {
       activeThreadId: "opencode:session-1",
@@ -1219,6 +1376,26 @@ describe("useThreadMessaging", () => {
     expect(interruptTurn).not.toHaveBeenCalled();
   });
 
+  it("clears queued pending interrupt before starting a new claude send", async () => {
+    const { result, pendingInterruptsRef } = makeHook("claude", {
+      activeThreadId: "claude:session-1",
+      ensuredThreadId: "claude:session-1",
+      activeTurnIdByThread: {},
+    });
+    pendingInterruptsRef.current.add("claude:session-1");
+
+    await act(async () => {
+      await result.current.sendUserMessage("resume execution", [], {
+        accessMode: "default",
+        collaborationMode: { mode: "code", settings: {} },
+        suppressUserMessageRender: true,
+      });
+    });
+
+    expect(pendingInterruptsRef.current.has("claude:session-1")).toBe(false);
+    expect(engineSendMessage).toHaveBeenCalled();
+  });
+
   it("creates new opencode pending thread when active thread id is not opencode-prefixed", async () => {
     const startThreadForWorkspace = vi.fn(async () => "opencode-pending-new");
     const { result } = makeHook("opencode", {
@@ -1263,6 +1440,31 @@ describe("useThreadMessaging", () => {
       "ws-1",
       "thread-1",
       "follow up",
+      expect.any(Object),
+    );
+  });
+
+  it("sends follow-up messages on the rewound codex child thread", async () => {
+    const refreshThread = vi.fn(async () => null);
+    const startThreadForWorkspace = vi.fn(async () => "thread-new-1");
+    const { result } = makeHook("codex", {
+      activeThreadId: "thread-codex-rewind-1",
+      ensuredThreadId: "thread-codex-rewind-1",
+      threadEngineById: { "thread-codex-rewind-1": "codex" },
+      refreshThread,
+      startThreadForWorkspace,
+    });
+
+    await act(async () => {
+      await result.current.sendUserMessage("follow up after rewind");
+    });
+
+    expect(refreshThread).not.toHaveBeenCalled();
+    expect(startThreadForWorkspace).not.toHaveBeenCalled();
+    expect(sendUserMessage).toHaveBeenCalledWith(
+      "ws-1",
+      "thread-codex-rewind-1",
+      "follow up after rewind",
       expect.any(Object),
     );
   });
@@ -1516,6 +1718,36 @@ describe("useThreadMessaging", () => {
     expect(optimisticCall).toBeDefined();
     const optimisticAction = optimisticCall?.[0] as { item?: { id?: string } };
     expect(optimisticAction.item?.id).toMatch(/^optimistic-user-/);
+  });
+
+  it("suppresses rendered user bubbles when send opts request silent execution prompts", async () => {
+    const dispatch = vi.fn();
+    const { result } = makeHook("claude", {
+      dispatch,
+      activeThreadId: "claude:session-1",
+      ensuredThreadId: "claude:session-1",
+      threadEngineById: { "claude:session-1": "claude" },
+    });
+
+    await act(async () => {
+      await result.current.sendUserMessageToThread(workspace, "claude:session-1", "Implement this plan.", [], {
+        suppressUserMessageRender: true,
+      });
+    });
+
+    const renderedUserBubbleCalls = dispatch.mock.calls.filter(
+      ([action]) =>
+        action &&
+        typeof action === "object" &&
+        "type" in action &&
+        (action as { type?: string }).type === "upsertItem" &&
+        "item" in action &&
+        (action as { item?: { kind?: string; role?: string } }).item?.kind === "message" &&
+        (action as { item?: { kind?: string; role?: string } }).item?.role === "user",
+    );
+
+    expect(renderedUserBubbleCalls).toHaveLength(0);
+    expect(engineSendMessage).toHaveBeenCalled();
   });
 
   it("does not attach selectedAgentIcon when sending without selected agent", async () => {

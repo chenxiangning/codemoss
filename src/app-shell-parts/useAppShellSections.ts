@@ -10,7 +10,10 @@ import { homeDir } from "@tauri-apps/api/path";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { ensureWorkspacePathDir, isWebServiceRuntime } from "../services/tauri";
 import { pushErrorToast } from "../services/toasts";
-import { resolveKanbanThreadCreationStrategy } from "../features/kanban/utils/contextMode";
+import {
+  isKanbanThreadCompatibleWithEngine,
+  resolveKanbanThreadCreationStrategy,
+} from "../features/kanban/utils/contextMode";
 import { deriveKanbanTaskTitle } from "../features/kanban/utils/taskTitle";
 import { findTaskDownstream } from "../features/kanban/utils/chaining";
 import { buildChainedPromptPrefix, extractKanbanResultSnapshot } from "../features/kanban/utils/resultSnapshot";
@@ -36,6 +39,7 @@ import { useAppMenuEvents } from "../features/app/hooks/useAppMenuEvents";
 import { useMenuAcceleratorController } from "../features/app/hooks/useMenuAcceleratorController";
 import { useMenuLocalization } from "../features/app/hooks/useMenuLocalization";
 import { isDefaultWorkspacePath } from "../features/workspaces/utils/defaultWorkspace";
+import { normalizeSharedSessionEngine } from "../features/shared-session/utils/sharedSessionEngines";
 import type { WorkspaceHomeDeleteResult } from "../features/workspaces/components/WorkspaceHome";
 import type { EngineType, MessageSendOptions, WorkspaceInfo } from "../types";
 import type { KanbanContextMode } from "../features/kanban/utils/contextMode";
@@ -172,6 +176,7 @@ export function useAppShellSections(ctx: any) {
     exitDiffView,
     connectWorkspace,
     startThreadForWorkspace,
+    startSharedSessionForWorkspace,
     setCenterMode,
     selectWorkspace,
     setActiveThreadId,
@@ -193,6 +198,7 @@ export function useAppShellSections(ctx: any) {
     recentThreads,
     collapseRightPanel,
     setActiveEngine,
+    updateSharedSessionEngineSelection,
     removeThread,
     clearDraftForThread,
     removeImagesForThread,
@@ -239,6 +245,8 @@ export function useAppShellSections(ctx: any) {
     handleArchiveActiveThread,
     appSettings,
     groupedWorkspaces,
+    homeWorkspaceDefaultId,
+    homeWorkspaceSelectedId,
     getThreadRows,
     getPinTimestamp,
     activeWorkspaceIdRef,
@@ -256,6 +264,7 @@ export function useAppShellSections(ctx: any) {
     handleToggleSearchPalette,
     composerSendLabel,
     refreshAccountRateLimits,
+    setHomeOpen,
     showHome,
     showKanban,
     showGitHistory,
@@ -531,6 +540,14 @@ export function useAppShellSections(ctx: any) {
       const engine = (activeEngine === "codex" ? "codex" : "claude") as
         | "codex"
         | "claude";
+      const activeThreadEngine =
+        activeThreadId && activeWorkspaceId
+          ? (
+              threadsByWorkspace[activeWorkspaceId]?.find(
+                (thread) => thread.id === activeThreadId,
+              )?.engineSource ?? null
+            )
+          : null;
       const isActiveThreadInWorkspace = Boolean(
         activeWorkspaceId &&
           activeThreadId &&
@@ -542,6 +559,7 @@ export function useAppShellSections(ctx: any) {
         mode: composerKanbanContextMode,
         engine,
         activeThreadId,
+        activeThreadEngine,
         activeWorkspaceId,
         targetWorkspaceId: workspace.id,
         isActiveThreadInWorkspace,
@@ -670,7 +688,10 @@ export function useAppShellSections(ctx: any) {
   );
 
   const handleRewindFromMessage = useCallback(
-    async (messageId: string) => {
+    async (
+      messageId: string,
+      options?: { mode?: "messages-and-files" | "messages-only" | "files-only" },
+    ) => {
       const normalizedMessageId = messageId.trim();
       if (!activeWorkspaceId || !activeThreadId || !normalizedMessageId) {
         throw new Error(t("rewind.notAvailable"));
@@ -685,7 +706,10 @@ export function useAppShellSections(ctx: any) {
         activeWorkspaceId,
         activeThreadId,
         normalizedMessageId,
-        { activate: true },
+        {
+          activate: true,
+          mode: options?.mode,
+        },
       );
       if (!forkedThreadId) {
         throw new Error(t("rewind.failed"));
@@ -704,6 +728,7 @@ export function useAppShellSections(ctx: any) {
     (workspaceId: string, threadId: string) => {
       exitDiffView();
       resetPullRequestSelection();
+      setHomeOpen(false);
       setWorkspaceHomeWorkspaceId(null);
       setAppMode("chat");
       setActiveTab("codex");
@@ -720,6 +745,10 @@ export function useAppShellSections(ctx: any) {
       exitDiffView,
       collapseRightPanel,
       resetPullRequestSelection,
+      setActiveTab,
+      setAppMode,
+      setHomeOpen,
+      setWorkspaceHomeWorkspaceId,
       selectWorkspace,
       setActiveEngine,
       setActiveThreadId,
@@ -733,6 +762,7 @@ export function useAppShellSections(ctx: any) {
         return;
       }
       try {
+        setHomeOpen(false);
         setWorkspaceHomeWorkspaceId(null);
         if (!activeWorkspace.connected) {
           await connectWorkspace(activeWorkspace);
@@ -760,9 +790,66 @@ export function useAppShellSections(ctx: any) {
       collapseRightPanel,
       connectWorkspace,
       isCompact,
+      setHomeOpen,
+      setActiveTab,
       setActiveEngine,
       setActiveThreadId,
+      setWorkspaceHomeWorkspaceId,
       startThreadForWorkspace,
+    ],
+  );
+
+  const handleStartSharedConversation = useCallback(
+    async (engineOrWorkspace: EngineType | WorkspaceInfo = "claude") => {
+      const targetWorkspace =
+        typeof engineOrWorkspace === "object" && engineOrWorkspace !== null
+          ? engineOrWorkspace
+          : activeWorkspace;
+      if (!targetWorkspace) {
+        return;
+      }
+      const engine: EngineType =
+        typeof engineOrWorkspace === "string"
+          ? engineOrWorkspace
+          : activeEngine;
+      const sharedEngine = normalizeSharedSessionEngine(engine);
+      try {
+        setWorkspaceHomeWorkspaceId(null);
+        selectWorkspace(targetWorkspace.id);
+        if (!targetWorkspace.connected) {
+          await connectWorkspace(targetWorkspace);
+        }
+        await setActiveEngine(sharedEngine);
+        const threadId = await startSharedSessionForWorkspace(targetWorkspace.id, {
+          activate: true,
+          initialEngine: sharedEngine,
+        });
+        if (!threadId) {
+          return;
+        }
+        updateSharedSessionEngineSelection(targetWorkspace.id, threadId, sharedEngine);
+        setActiveThreadId(threadId, targetWorkspace.id);
+        collapseRightPanel();
+        if (isCompact) {
+          setActiveTab("codex");
+        }
+      } catch (error) {
+        alertError(error);
+      }
+    },
+    [
+      activeEngine,
+      activeWorkspace,
+      alertError,
+      collapseRightPanel,
+      connectWorkspace,
+      isCompact,
+      selectWorkspace,
+      setActiveEngine,
+      setActiveThreadId,
+      setActiveTab,
+      startSharedSessionForWorkspace,
+      updateSharedSessionEngineSelection,
     ],
   );
 
@@ -781,6 +868,7 @@ export function useAppShellSections(ctx: any) {
         return;
       }
       try {
+        setHomeOpen(false);
         setWorkspaceHomeWorkspaceId(null);
         if (!activeWorkspace.connected) {
           await connectWorkspace(activeWorkspace);
@@ -810,8 +898,11 @@ export function useAppShellSections(ctx: any) {
       connectWorkspace,
       isCompact,
       sendUserMessageToThread,
+      setHomeOpen,
+      setActiveTab,
       setActiveEngine,
       setActiveThreadId,
+      setWorkspaceHomeWorkspaceId,
       startThreadForWorkspace,
     ],
   );
@@ -997,6 +1088,7 @@ export function useAppShellSections(ctx: any) {
 
         await connectWorkspace(workspace);
         const engine = (task.engineType ?? activeEngine) as "claude" | "codex";
+        const workspaceThreads = threadsByWorkspace[workspace.id] ?? [];
         const { outboundModel } = await syncKanbanExecutionEngineAndModel({
           activate: params.activate,
           engine,
@@ -1007,10 +1099,33 @@ export function useAppShellSections(ctx: any) {
         });
 
         const shouldForceNewThread = Boolean(params.forceNewThread);
-        let threadId = shouldForceNewThread ? null : task.threadId;
+        const canonicalTaskThreadId =
+          shouldForceNewThread
+            ? null
+            : resolveTaskThreadId(task.threadId, resolveCanonicalThreadId);
+        const canonicalTaskThreadEngine =
+          canonicalTaskThreadId
+            ? (
+                workspaceThreads.find((entry) => entry.id === canonicalTaskThreadId)
+                  ?.engineSource ?? null
+              )
+            : null;
+        const canReuseExistingThread = isKanbanThreadCompatibleWithEngine({
+          engine,
+          threadId: canonicalTaskThreadId,
+          threadEngine: canonicalTaskThreadEngine,
+        });
+        let threadId = canReuseExistingThread ? canonicalTaskThreadId : null;
         if (shouldForceNewThread && task.threadId) {
           // Keep previous run in review state before switching task to the new execution thread.
           kanbanUpdateTask(task.id, { status: "testing" });
+        }
+        if (
+          canonicalTaskThreadId &&
+          canonicalTaskThreadId !== task.threadId &&
+          canReuseExistingThread
+        ) {
+          kanbanUpdateTask(task.id, { threadId: canonicalTaskThreadId });
         }
         if (!threadId) {
           threadId = await startThreadForWorkspace(workspace.id, {
@@ -1062,6 +1177,7 @@ export function useAppShellSections(ctx: any) {
       workspacesByPath,
       connectWorkspace,
       activeEngine,
+      threadsByWorkspace,
       setActiveEngine,
       setSelectedModelId,
       setEngineSelectedModelIdByType,
@@ -1070,6 +1186,7 @@ export function useAppShellSections(ctx: any) {
       sendUserMessageToThread,
       updateTaskExecution,
       setTaskChainBlockedReason,
+      resolveCanonicalThreadId,
     ],
   );
 
@@ -1084,6 +1201,7 @@ export function useAppShellSections(ctx: any) {
       selectWorkspace(workspace.id);
 
       const engine = (task.engineType ?? activeEngine) as "claude" | "codex";
+      const workspaceThreads = threadsByWorkspace[workspace.id] ?? [];
       await setActiveEngine(engine);
 
       // Apply the model that was selected when the task was created
@@ -1099,18 +1217,30 @@ export function useAppShellSections(ctx: any) {
       }
 
       if (task.threadId) {
-        const threads = threadsByWorkspace[workspace.id] ?? [];
         let resolvedThreadId =
           resolveTaskThreadId(task.threadId, resolveCanonicalThreadId) ?? task.threadId;
+        const resolvedThreadEngine =
+          workspaceThreads.find((entry) => entry.id === resolvedThreadId)?.engineSource ?? null;
+        const canReuseExistingThread = isKanbanThreadCompatibleWithEngine({
+          engine,
+          threadId: resolvedThreadId,
+          threadEngine: resolvedThreadEngine,
+        });
         if (resolvedThreadId !== task.threadId) {
           kanbanUpdateTask(task.id, { threadId: resolvedThreadId });
+        }
+
+        if (!canReuseExistingThread) {
+          resolvedThreadId = "";
         }
 
         const isPendingThread =
           resolvedThreadId.startsWith("claude-pending-") ||
           resolvedThreadId.startsWith("opencode-pending-");
         const hasThreadStatus = threadStatusById[resolvedThreadId] !== undefined;
-        const existsInWorkspaceThreads = threads.some((entry) => entry.id === resolvedThreadId);
+        const existsInWorkspaceThreads = workspaceThreads.some(
+          (entry) => entry.id === resolvedThreadId,
+        );
 
         if (isPendingThread && !hasThreadStatus && !existsInWorkspaceThreads) {
           const occupiedThreadIds = new Set(
@@ -1130,7 +1260,7 @@ export function useAppShellSections(ctx: any) {
           );
           const uniqueCandidate = resolvePendingSessionThreadCandidate({
             pendingThreadId: resolvedThreadId,
-            workspaceThreadIds: threads.map((entry) => entry.id),
+            workspaceThreadIds: workspaceThreads.map((entry) => entry.id),
             occupiedThreadIds,
           });
           if (uniqueCandidate) {
@@ -1141,7 +1271,7 @@ export function useAppShellSections(ctx: any) {
 
         const canActivateExistingThread =
           threadStatusById[resolvedThreadId] !== undefined ||
-          threads.some((entry) => entry.id === resolvedThreadId) ||
+          workspaceThreads.some((entry) => entry.id === resolvedThreadId) ||
           resolvedThreadId.startsWith("claude-pending-") ||
           resolvedThreadId.startsWith("opencode-pending-");
         if (canActivateExistingThread) {
@@ -1171,12 +1301,13 @@ export function useAppShellSections(ctx: any) {
       threadsByWorkspace,
       kanbanTasks,
       resolveCanonicalThreadId,
+      setSelectedKanbanTaskId,
     ]
   );
 
   const handleCloseTaskConversation = useCallback(() => {
     setSelectedKanbanTaskId(null);
-  }, []);
+  }, [setSelectedKanbanTaskId]);
 
   const handleKanbanCreateTask = useCallback(
     (input: Parameters<typeof kanbanCreateTask>[0]) => {
@@ -1274,7 +1405,7 @@ export function useAppShellSections(ctx: any) {
     if (appMode !== "kanban") {
       setSelectedKanbanTaskId(null);
     }
-  }, [appMode]);
+  }, [appMode, setSelectedKanbanTaskId]);
 
   // Sync activeWorkspaceId when kanban navigates to a workspace
   useEffect(() => {
@@ -1985,11 +2116,12 @@ export function useAppShellSections(ctx: any) {
     setAppMode("chat");
     setCenterMode("chat");
     setActiveTab((current) => (current === "spec" ? "codex" : "spec"));
-  }, [closeSettings]);
+  }, [closeSettings, setActiveTab, setAppMode, setCenterMode]);
 
   const handleOpenWorkspaceHome = useCallback(() => {
     exitDiffView();
     resetPullRequestSelection();
+    setHomeOpen(false);
     setAppMode("chat");
     setCenterMode("chat");
     setActiveTab("codex");
@@ -2005,6 +2137,11 @@ export function useAppShellSections(ctx: any) {
     activeWorkspaceId,
     exitDiffView,
     resetPullRequestSelection,
+    setActiveTab,
+    setAppMode,
+    setCenterMode,
+    setHomeOpen,
+    setWorkspaceHomeWorkspaceId,
     selectHome,
     selectWorkspace,
     setActiveThreadId,
@@ -2016,17 +2153,54 @@ export function useAppShellSections(ctx: any) {
     setWorkspaceHomeWorkspaceId(null);
     setAppMode("chat");
     setCenterMode("chat");
+    setHomeOpen(true);
+    if (homeWorkspaceSelectedId) {
+      setActiveWorkspaceId(homeWorkspaceSelectedId);
+      setActiveThreadId(null, homeWorkspaceSelectedId);
+      return;
+    }
     selectHome();
   }, [
     exitDiffView,
+    homeWorkspaceSelectedId,
     resetPullRequestSelection,
     selectHome,
+    setAppMode,
+    setCenterMode,
+    setActiveThreadId,
+    setActiveWorkspaceId,
+    setHomeOpen,
+    setWorkspaceHomeWorkspaceId,
+  ]);
+
+  const handleSelectHomeWorkspace = useCallback((workspaceId: string) => {
+    if (!workspaceId) {
+      return;
+    }
+    exitDiffView();
+    resetPullRequestSelection();
+    setWorkspaceHomeWorkspaceId(null);
+    setAppMode("chat");
+    setCenterMode("chat");
+    setHomeOpen(true);
+    setActiveWorkspaceId(workspaceId);
+    setActiveThreadId(null, workspaceId);
+  }, [
+    exitDiffView,
+    resetPullRequestSelection,
+    setAppMode,
+    setCenterMode,
+    setActiveThreadId,
+    setActiveWorkspaceId,
+    setHomeOpen,
+    setWorkspaceHomeWorkspaceId,
   ]);
 
   const handleOpenKanbanMode = useCallback(() => {
+    setHomeOpen(false);
     setAppMode("kanban");
     closeSettings();
-  }, [closeSettings, setAppMode]);
+  }, [closeSettings, setAppMode, setHomeOpen]);
 
   usePrimaryModeShortcuts({
     isEnabled: true,
@@ -2129,6 +2303,7 @@ export function useAppShellSections(ctx: any) {
     handleRewindFromMessage,
     handleSelectWorkspaceInstance,
     handleStartWorkspaceConversation,
+    handleStartSharedConversation,
     handleContinueLatestConversation,
     handleStartGuidedConversation,
     handleRevealActiveWorkspace,
@@ -2160,6 +2335,7 @@ export function useAppShellSections(ctx: any) {
     handleOpenSpecHub,
     handleOpenWorkspaceHome,
     handleOpenHomeChat,
+    handleSelectHomeWorkspace,
     handleRefreshAccountRateLimits,
     dropOverlayActive,
     dropOverlayText,

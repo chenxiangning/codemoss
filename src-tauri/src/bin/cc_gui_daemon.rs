@@ -12,6 +12,8 @@ mod codex_collaboration_policy;
 mod codex_config;
 #[path = "../codex/home.rs"]
 mod codex_home;
+#[path = "../codex/rewind.rs"]
+mod codex_rewind;
 #[path = "../codex/thread_mode_state.rs"]
 mod codex_thread_mode_state;
 #[path = "cc_gui_daemon/daemon_state.rs"]
@@ -31,19 +33,27 @@ mod git_utils;
 // workspace-backed filesystem helpers, so a minimal stub keeps the shared
 // module compilable here without pulling the full desktop app state graph.
 mod state {
+    use std::sync::Arc;
     use std::collections::HashMap;
     use tokio::sync::Mutex;
 
-    use crate::types::WorkspaceEntry;
+    use crate::backend::app_server::WorkspaceSession;
+    use crate::runtime::RuntimeManager;
+    use crate::types::{AppSettings, WorkspaceEntry};
 
     pub(crate) struct AppState {
         pub(crate) workspaces: Mutex<HashMap<String, WorkspaceEntry>>,
+        pub(crate) sessions: Mutex<HashMap<String, Arc<WorkspaceSession>>>,
+        pub(crate) app_settings: Mutex<AppSettings>,
+        pub(crate) runtime_manager: RuntimeManager,
     }
 }
 #[path = "../local_usage.rs"]
 mod local_usage;
 #[path = "../rules.rs"]
 mod rules;
+#[path = "../runtime/mod.rs"]
+mod runtime;
 #[path = "../shared/mod.rs"]
 mod shared;
 #[path = "../storage.rs"]
@@ -63,6 +73,13 @@ mod workspace_settings;
 // Provide feature-style module paths for shared cores when compiled in the daemon.
 mod codex {
     pub(crate) type WorkspaceSession = crate::backend::app_server::WorkspaceSession;
+    pub(crate) async fn ensure_codex_session(
+        _workspace_id: &str,
+        _state: &crate::state::AppState,
+        _app: &tauri::AppHandle,
+    ) -> Result<(), String> {
+        Err("runtime control commands are unavailable in daemon mode".to_string())
+    }
     pub(crate) mod args {
         pub(crate) use crate::codex_args::*;
     }
@@ -71,6 +88,9 @@ mod codex {
     }
     pub(crate) mod home {
         pub(crate) use crate::codex_home::*;
+    }
+    pub(crate) mod rewind {
+        pub(crate) use crate::codex_rewind::*;
     }
     pub(crate) mod collaboration_policy {
         pub(crate) use crate::codex_collaboration_policy::*;
@@ -2458,6 +2478,28 @@ async fn handle_rpc_request(
             let thread_id = parse_string(&params, "threadId")?;
             let message_id = parse_optional_string(&params, "messageId");
             state.fork_thread(workspace_id, thread_id, message_id).await
+        }
+        "rewind_codex_thread" => {
+            let workspace_id = parse_string(&params, "workspaceId")?;
+            let thread_id = parse_string(&params, "threadId")?;
+            let message_id = parse_optional_string(&params, "messageId");
+            let target_user_turn_index = parse_optional_u32(&params, "targetUserTurnIndex")
+                .ok_or_else(|| "targetUserTurnIndex is required".to_string())?;
+            let target_user_message_text = parse_optional_string(&params, "targetUserMessageText");
+            let target_user_message_occurrence =
+                parse_optional_u32(&params, "targetUserMessageOccurrence");
+            let local_user_message_count = parse_optional_u32(&params, "localUserMessageCount");
+            state
+                .rewind_codex_thread(
+                    workspace_id,
+                    thread_id,
+                    message_id,
+                    target_user_turn_index,
+                    target_user_message_text,
+                    target_user_message_occurrence,
+                    local_user_message_count,
+                )
+                .await
         }
         "list_threads" => {
             let workspace_id = parse_string(&params, "workspaceId")?;

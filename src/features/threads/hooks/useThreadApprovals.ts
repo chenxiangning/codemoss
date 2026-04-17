@@ -1,6 +1,11 @@
 import { useCallback, useRef } from "react";
 import type { Dispatch } from "react";
 import type { ApprovalRequest, DebugEntry } from "../../../types";
+import i18n from "../../../i18n";
+import {
+  getApprovalThreadId,
+  getApprovalTurnId,
+} from "../../../utils/approvalBatching";
 import { normalizeCommandTokens } from "../../../utils/approvalRules";
 import {
   rememberApprovalRule,
@@ -13,8 +18,92 @@ type UseThreadApprovalsOptions = {
   onDebug?: (entry: DebugEntry) => void;
 };
 
-export function useThreadApprovals({ dispatch, onDebug }: UseThreadApprovalsOptions) {
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function getApprovalInputRecord(
+  params: Record<string, unknown>,
+): Record<string, unknown> {
+  const nestedInput = asRecord(params.input);
+  return Object.keys(nestedInput).length > 0 ? nestedInput : params;
+}
+
+function getApprovalPath(params: Record<string, unknown>): string | null {
+  for (const key of [
+    "file_path",
+    "filePath",
+    "filepath",
+    "path",
+    "target_file",
+    "targetFile",
+    "filename",
+    "file",
+    "notebook_path",
+    "notebookPath",
+  ]) {
+    const value = params[key];
+    if (typeof value === "string" && value.trim()) {
+      return value.trim();
+    }
+  }
+  return null;
+}
+
+function isFileChangeApprovalRequest(request: ApprovalRequest): boolean {
+  return request.method.includes("fileChange");
+}
+
+function buildApprovalRequestKey(request: ApprovalRequest): string {
+  return `${request.workspace_id}:${String(request.request_id)}`;
+}
+
+export function useThreadApprovals({
+  dispatch,
+  onDebug,
+}: UseThreadApprovalsOptions) {
   const approvalAllowlistRef = useRef<Record<string, string[][]>>({});
+
+  const markApprovalAsApplying = useCallback(
+    (request: ApprovalRequest) => {
+      const threadId = getApprovalThreadId(request);
+      if (!threadId || !request.method.includes("fileChange")) {
+        return;
+      }
+      dispatch({
+        type: "markProcessing",
+        threadId,
+        isProcessing: true,
+        timestamp: Date.now(),
+      });
+      dispatch({
+        type: "setActiveTurnId",
+        threadId,
+        turnId: getApprovalTurnId(request),
+      });
+      const params = request.params ?? {};
+      const input = getApprovalInputRecord(params);
+      const filePath = getApprovalPath(input) ?? getApprovalPath(params);
+      dispatch({
+        type: "upsertItem",
+        workspaceId: request.workspace_id,
+        threadId,
+        item: {
+          id: String(request.request_id),
+          kind: "tool",
+          toolType: "fileChange",
+          title: i18n.t("approval.applyingApprovedFileChange"),
+          detail: JSON.stringify(input),
+          status: "running",
+          output: i18n.t("approval.resumingAfterApproval"),
+          changes: filePath ? [{ path: filePath }] : undefined,
+        },
+      });
+    },
+    [dispatch],
+  );
 
   const rememberApprovalPrefix = useCallback((workspaceId: string, command: string[]) => {
     const normalized = normalizeCommandTokens(command);
@@ -37,6 +126,9 @@ export function useThreadApprovals({ dispatch, onDebug }: UseThreadApprovalsOpti
 
   const handleApprovalDecision = useCallback(
     async (request: ApprovalRequest, decision: "accept" | "decline") => {
+      if (decision === "accept") {
+        markApprovalAsApplying(request);
+      }
       await respondToServerRequest(
         request.workspace_id,
         request.request_id,
@@ -46,9 +138,43 @@ export function useThreadApprovals({ dispatch, onDebug }: UseThreadApprovalsOpti
         type: "removeApproval",
         requestId: request.request_id,
         workspaceId: request.workspace_id,
+        approval: request,
       });
     },
-    [dispatch],
+    [dispatch, markApprovalAsApplying],
+  );
+
+  const handleApprovalBatchAccept = useCallback(
+    async (batch: ApprovalRequest[]) => {
+      const seenRequestKeys = new Set<string>();
+      const uniqueFileBatch = batch.filter((approval) => {
+        if (!isFileChangeApprovalRequest(approval)) {
+          return false;
+        }
+        const requestKey = buildApprovalRequestKey(approval);
+        if (seenRequestKeys.has(requestKey)) {
+          return false;
+        }
+        seenRequestKeys.add(requestKey);
+        return true;
+      });
+
+      for (const approval of uniqueFileBatch) {
+        markApprovalAsApplying(approval);
+        await respondToServerRequest(
+          approval.workspace_id,
+          approval.request_id,
+          "accept",
+        );
+        dispatch({
+          type: "removeApproval",
+          requestId: approval.request_id,
+          workspaceId: approval.workspace_id,
+          approval,
+        });
+      }
+    },
+    [dispatch, markApprovalAsApplying],
   );
 
   const handleApprovalRemember = useCallback(
@@ -67,6 +193,8 @@ export function useThreadApprovals({ dispatch, onDebug }: UseThreadApprovalsOpti
 
       rememberApprovalPrefix(request.workspace_id, command);
 
+      markApprovalAsApplying(request);
+
       await respondToServerRequest(
         request.workspace_id,
         request.request_id,
@@ -76,14 +204,16 @@ export function useThreadApprovals({ dispatch, onDebug }: UseThreadApprovalsOpti
         type: "removeApproval",
         requestId: request.request_id,
         workspaceId: request.workspace_id,
+        approval: request,
       });
     },
-    [dispatch, onDebug, rememberApprovalPrefix],
+    [dispatch, markApprovalAsApplying, onDebug, rememberApprovalPrefix],
   );
 
   return {
     approvalAllowlistRef,
     handleApprovalDecision,
+    handleApprovalBatchAccept,
     handleApprovalRemember,
   };
 }

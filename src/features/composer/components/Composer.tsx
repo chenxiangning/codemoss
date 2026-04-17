@@ -71,6 +71,11 @@ import {
 } from "../../operation-facts/operationFacts";
 import { pushErrorToast } from "../../../services/toasts";
 import { getManualMemoryInjectionMode } from "../../project-memory/utils/manualInjectionMode";
+import type { RewindMode } from "../../threads/utils/rewindMode";
+
+type RewindExecutionOptions = {
+  mode?: RewindMode;
+};
 
 type ComposerProps = {
   kanbanContextMode?: "new" | "inherit";
@@ -95,6 +100,7 @@ type ComposerProps = {
   collaborationModesEnabled: boolean;
   selectedCollaborationModeId: string | null;
   onSelectCollaborationMode: (id: string | null) => void;
+  isSharedSession?: boolean;
   // Engine props
   engines?: EngineDisplayInfo[];
   selectedEngine?: EngineType;
@@ -208,6 +214,10 @@ type ComposerProps = {
   activeFileLineRange?: { startLine: number; endLine: number } | null;
   fileReferenceMode?: "path" | "none";
   activeWorkspaceId?: string | null;
+  rewindWorkspaceGitState?: {
+    isGitRepository: boolean;
+    hasDetectedChanges: boolean;
+  } | null;
   activeThreadId?: string | null;
   threadItemsByThread?: Record<string, ConversationItem[]>;
   threadParentById?: Record<string, string>;
@@ -215,7 +225,11 @@ type ComposerProps = {
   plan?: TurnPlan | null;
   isPlanMode?: boolean;
   onOpenDiffPath?: (path: string) => void;
-  onRewind?: (userMessageId: string) => void | Promise<void>;
+  onRewind?: (
+    userMessageId: string,
+    options?: RewindExecutionOptions,
+  ) => void | Promise<void>;
+  showStatusPanelToggleOverride?: boolean;
   statusPanelExpandedOverride?: boolean;
   onToggleStatusPanelOverride?: () => void;
 };
@@ -256,6 +270,14 @@ const CREATE_FILE_INTENT_REGEX =
   /(创建|新建|新增|create|add)/i;
 const RENAME_FILE_INTENT_REGEX =
   /(重命名|rename|move)/i;
+const MODIFY_FILE_INTENT_REGEX =
+  /(修改|改|更新|注释|edit|patch|update)/i;
+const READ_ONLY_FILE_INTENT_REGEX =
+  /(读取|查看|看看|阅读|read|open|cat|search|grep|find|list|scan|inspect)/i;
+const REWIND_MUTATION_TOOL_HINT_REGEX =
+  /(edit|replace|write|patch|apply|delete|remove|unlink|rename|move|create|add)/i;
+const REWIND_READ_ONLY_TOOL_HINT_REGEX =
+  /(read|view|cat|search|grep|glob|find|list|ls|scan|inspect)/i;
 const REWIND_PREVIEW_MAX_CHARS = 72;
 
 type RewindCandidate = {
@@ -337,6 +359,34 @@ function getFileNameFromPath(filePath: string): string {
   return parts[parts.length - 1] ?? filePath;
 }
 
+function normalizeRewindExportPath(filePath: string): string {
+  return filePath.trim().replace(/\\/g, "/");
+}
+
+function isWindowsLikeRewindPath(rawPath: string, normalizedPath: string): boolean {
+  if (rawPath.includes("\\")) {
+    return true;
+  }
+  if (/^[A-Za-z]:\//.test(normalizedPath)) {
+    return true;
+  }
+  if (/^\/\/[^/]+\/[^/]+/.test(normalizedPath)) {
+    return true;
+  }
+  return /^\/mnt\/[A-Za-z]\//.test(normalizedPath);
+}
+
+function toRewindPathDedupeKey(filePath: string): string {
+  const normalizedPath = normalizeRewindExportPath(filePath);
+  if (!normalizedPath) {
+    return "";
+  }
+  if (isWindowsLikeRewindPath(filePath, normalizedPath)) {
+    return normalizedPath.toLowerCase();
+  }
+  return normalizedPath;
+}
+
 function isLikelyFilePathToken(value: string): boolean {
   const normalized = value.trim();
   if (!normalized) {
@@ -370,7 +420,9 @@ function normalizeMentionPath(rawPath: string): string {
     .trim();
 }
 
-function inferMessageFileStatus(text: string): OperationFileChangeSummary["status"] {
+function inferMessageFileStatus(
+  text: string,
+): OperationFileChangeSummary["status"] | null {
   if (DELETE_FILE_INTENT_REGEX.test(text)) {
     return "D";
   }
@@ -380,7 +432,57 @@ function inferMessageFileStatus(text: string): OperationFileChangeSummary["statu
   if (CREATE_FILE_INTENT_REGEX.test(text)) {
     return "A";
   }
-  return "M";
+  if (MODIFY_FILE_INTENT_REGEX.test(text)) {
+    return "M";
+  }
+  return null;
+}
+
+function inferSegmentFileStatus(
+  text: string,
+): OperationFileChangeSummary["status"] | null {
+  const normalized = text.trim();
+  if (!normalized) {
+    return null;
+  }
+  if (DELETE_FILE_INTENT_REGEX.test(normalized)) {
+    return "D";
+  }
+  if (RENAME_FILE_INTENT_REGEX.test(normalized)) {
+    return "R";
+  }
+  if (CREATE_FILE_INTENT_REGEX.test(normalized)) {
+    return "A";
+  }
+  if (MODIFY_FILE_INTENT_REGEX.test(normalized)) {
+    return "M";
+  }
+  return null;
+}
+
+function hasReadOnlyFileIntent(text: string): boolean {
+  return READ_ONLY_FILE_INTENT_REGEX.test(text.trim());
+}
+
+function extractLeadingIntentClause(text: string): string {
+  const normalized = text.trimStart();
+  const separatorIndex = normalized.search(/[，,。.;；!?！？\n]/);
+  if (separatorIndex < 0) {
+    return normalized;
+  }
+  return normalized.slice(0, separatorIndex);
+}
+
+function extractTrailingIntentClause(text: string): string {
+  const normalized = text.trimEnd();
+  const separatorMatches = Array.from(
+    normalized.matchAll(/[，,。.;；!?！？\n]/g),
+  );
+  const lastSeparator = separatorMatches.at(-1);
+  if (!lastSeparator || lastSeparator.index === undefined) {
+    return normalized;
+  }
+  return normalized.slice(lastSeparator.index + lastSeparator[0].length);
 }
 
 function resolvePreferredStatus(
@@ -396,24 +498,47 @@ function resolvePreferredStatus(
   return priority[incoming] > priority[current] ? incoming : current;
 }
 
-function extractMentionedPathsFromMessage(text: string): string[] {
+type MentionedPathInMessage = {
+  path: string;
+  dedupeKey: string;
+  start: number;
+  end: number;
+};
+
+function extractMentionedPathsFromMessage(
+  text: string,
+): MentionedPathInMessage[] {
   if (!text.trim()) {
     return [];
   }
-  const paths: string[] = [];
+  const paths: MentionedPathInMessage[] = [];
   const seen = new Set<string>();
 
   text.replace(
     INLINE_FILE_REFERENCE_TOKEN_REGEX,
-    (_full, _icon: string, _name: string, fullPathRaw: string) => {
+    (
+      _full,
+      _icon: string,
+      _name: string,
+      fullPathRaw: string,
+      offset: number,
+    ) => {
       const normalized = normalizeMentionPath(fullPathRaw);
       if (!normalized || !isLikelyFilePathToken(normalized)) {
         return _full;
       }
-      const dedupeKey = normalized.toLowerCase();
+      const dedupeKey = toRewindPathDedupeKey(normalized);
+      if (!dedupeKey) {
+        return _full;
+      }
       if (!seen.has(dedupeKey)) {
         seen.add(dedupeKey);
-        paths.push(normalized);
+        paths.push({
+          path: normalized,
+          dedupeKey,
+          start: offset,
+          end: offset + _full.length,
+        });
       }
       return _full;
     },
@@ -426,15 +551,25 @@ function extractMentionedPathsFromMessage(text: string): string[] {
     if (!normalized || !isLikelyFilePathToken(normalized)) {
       continue;
     }
-    const dedupeKey = normalized.toLowerCase();
+    const dedupeKey = toRewindPathDedupeKey(normalized);
+    if (!dedupeKey) {
+      continue;
+    }
     if (seen.has(dedupeKey)) {
       continue;
     }
     seen.add(dedupeKey);
-    paths.push(normalized);
+    const start = match.index ?? 0;
+    const raw = match[0] ?? normalized;
+    paths.push({
+      path: normalized,
+      dedupeKey,
+      start,
+      end: start + raw.length,
+    });
   }
 
-  return paths;
+  return paths.sort((left, right) => left.start - right.start);
 }
 
 function extractFallbackAffectedFilesFromImpactedMessages(
@@ -445,27 +580,177 @@ function extractFallbackAffectedFilesFromImpactedMessages(
     if (item.kind !== "message" || item.role !== "user") {
       continue;
     }
-    const paths = extractMentionedPathsFromMessage(item.text);
-    if (paths.length === 0) {
+    const mentions = extractMentionedPathsFromMessage(item.text);
+    if (mentions.length === 0) {
       continue;
     }
-    const status = inferMessageFileStatus(item.text);
-    for (const filePath of paths) {
-      const existing = byPath.get(filePath);
+    const messageLevelStatus = inferMessageFileStatus(item.text);
+    mentions.forEach((mention, index) => {
+      const previousEnd = index > 0 ? mentions[index - 1]?.end ?? 0 : 0;
+      const nextStart =
+        index + 1 < mentions.length
+          ? mentions[index + 1]?.start ?? item.text.length
+          : item.text.length;
+      const beforeSegment = extractTrailingIntentClause(
+        item.text.slice(previousEnd, mention.start),
+      );
+      const afterSegment = extractLeadingIntentClause(
+        item.text.slice(mention.end, nextStart),
+      );
+      const beforeStatus = inferSegmentFileStatus(beforeSegment);
+      const afterStatus = inferSegmentFileStatus(afterSegment);
+      const beforeHasReadOnlyIntent = hasReadOnlyFileIntent(beforeSegment);
+      const afterHasReadOnlyIntent = hasReadOnlyFileIntent(afterSegment);
+      const status = (() => {
+        if (beforeStatus) {
+          return beforeStatus;
+        }
+        if (beforeHasReadOnlyIntent) {
+          return null;
+        }
+        if (afterStatus) {
+          return afterStatus;
+        }
+        if (afterHasReadOnlyIntent) {
+          return null;
+        }
+        return messageLevelStatus;
+      })();
+      if (!status) {
+        return;
+      }
+      const normalizedPath = normalizeRewindExportPath(mention.path);
+      const dedupeKey = mention.dedupeKey;
+      if (!normalizedPath || !dedupeKey) {
+        return;
+      }
+      const existing = byPath.get(dedupeKey);
       if (!existing) {
-        byPath.set(filePath, {
-          filePath,
-          fileName: getFileNameFromPath(filePath),
+        byPath.set(dedupeKey, {
+          filePath: normalizedPath,
+          fileName: getFileNameFromPath(normalizedPath),
           status,
           additions: 0,
           deletions: 0,
         });
-        continue;
+        return;
       }
       existing.status = resolvePreferredStatus(existing.status, status);
-    }
+    });
   }
   return Array.from(byPath.values());
+}
+
+function isMutationToolItem(
+  item: Extract<ConversationItem, { kind: "tool" }>,
+): boolean {
+  if ((item.changes?.length ?? 0) > 0) {
+    return true;
+  }
+  const normalizedToolType = item.toolType.trim().toLowerCase();
+  if (normalizedToolType === "filechange") {
+    return true;
+  }
+  if (isReadOnlyToolItem(item)) {
+    return false;
+  }
+  if (normalizedToolType === "commandexecution" || normalizedToolType === "bash") {
+    return true;
+  }
+  return REWIND_MUTATION_TOOL_HINT_REGEX.test(
+    `${item.title}\n${item.detail}\n${item.output ?? ""}`,
+  );
+}
+
+function isReadOnlyToolItem(
+  item: Extract<ConversationItem, { kind: "tool" }>,
+): boolean {
+  const candidateText = `${item.title}\n${item.detail}\n${item.output ?? ""}`;
+  return REWIND_READ_ONLY_TOOL_HINT_REGEX.test(candidateText);
+}
+
+function shouldUseFallbackAffectedFiles(
+  items: ConversationItem[],
+): boolean {
+  const toolItems = items.filter(
+    (item): item is Extract<ConversationItem, { kind: "tool" }> =>
+      item.kind === "tool",
+  );
+  if (toolItems.length === 0) {
+    return false;
+  }
+  return toolItems.some((item) => !isReadOnlyToolItem(item));
+}
+
+function extractMutationAffectedFilesFromTools(
+  items: ConversationItem[],
+): OperationFileChangeSummary[] {
+  return extractFileChangeSummaries(
+    items.filter(
+      (item): item is Extract<ConversationItem, { kind: "tool" }> =>
+        item.kind === "tool" && isMutationToolItem(item),
+    ),
+  );
+}
+
+function mergeRewindAffectedFiles(
+  toolFiles: OperationFileChangeSummary[],
+  fallbackFiles: OperationFileChangeSummary[],
+): OperationFileChangeSummary[] {
+  const mergedByKey = new Map<string, OperationFileChangeSummary>();
+
+  const normalizeForMerge = (file: OperationFileChangeSummary) => {
+    const normalizedPath = normalizeRewindExportPath(file.filePath);
+    const dedupeKey = toRewindPathDedupeKey(normalizedPath);
+    if (!normalizedPath || !dedupeKey) {
+      return null;
+    }
+    return {
+      dedupeKey,
+      file: {
+        ...file,
+        filePath: normalizedPath,
+        fileName: file.fileName?.trim() || getFileNameFromPath(normalizedPath),
+      } satisfies OperationFileChangeSummary,
+    };
+  };
+
+  for (const sourceFile of toolFiles) {
+    const normalized = normalizeForMerge(sourceFile);
+    if (!normalized) {
+      continue;
+    }
+    const existing = mergedByKey.get(normalized.dedupeKey);
+    if (!existing) {
+      mergedByKey.set(normalized.dedupeKey, normalized.file);
+      continue;
+    }
+    existing.status = resolvePreferredStatus(existing.status, normalized.file.status);
+    existing.additions = Math.max(existing.additions, normalized.file.additions);
+    existing.deletions = Math.max(existing.deletions, normalized.file.deletions);
+    if (!existing.diff && normalized.file.diff) {
+      existing.diff = normalized.file.diff;
+    }
+  }
+
+  for (const sourceFile of fallbackFiles) {
+    const normalized = normalizeForMerge(sourceFile);
+    if (!normalized) {
+      continue;
+    }
+    const existing = mergedByKey.get(normalized.dedupeKey);
+    if (!existing) {
+      mergedByKey.set(normalized.dedupeKey, normalized.file);
+      continue;
+    }
+    existing.status = resolvePreferredStatus(existing.status, normalized.file.status);
+  }
+
+  return Array.from(mergedByKey.values()).map((file) => ({
+      ...file,
+      filePath: normalizeRewindExportPath(file.filePath),
+      fileName: file.fileName?.trim() || getFileNameFromPath(file.filePath),
+    }));
 }
 
 function resolveRewindThreadContext(
@@ -517,11 +802,17 @@ function buildLatestRewindPreview(
   }
 
   const impactedItems = items.slice(latestCandidate.index);
-  const affectedFilesFromTools = extractFileChangeSummaries(impactedItems);
+  const affectedFilesFromTools = extractMutationAffectedFilesFromTools(
+    impactedItems,
+  );
   const fallbackAffectedFiles =
-    affectedFilesFromTools.length === 0
+    shouldUseFallbackAffectedFiles(impactedItems)
       ? extractFallbackAffectedFilesFromImpactedMessages(impactedItems)
       : [];
+  const affectedFiles = mergeRewindAffectedFiles(
+    affectedFilesFromTools,
+    fallbackAffectedFiles,
+  );
   const threadContext = resolveRewindThreadContext(
     activeThreadId,
     fallbackEngine,
@@ -541,10 +832,7 @@ function buildLatestRewindPreview(
     ).length,
     removedToolCallCount: impactedItems.filter((item) => item.kind === "tool")
       .length,
-    affectedFiles:
-      affectedFilesFromTools.length > 0
-        ? affectedFilesFromTools
-        : fallbackAffectedFiles,
+    affectedFiles,
   };
 }
 
@@ -779,6 +1067,7 @@ export const Composer = memo(function Composer({
   collaborationModesEnabled: _collaborationModesEnabled,
   selectedCollaborationModeId: _selectedCollaborationModeId,
   onSelectCollaborationMode: _onSelectCollaborationMode,
+  isSharedSession = false,
   engines,
   selectedEngine,
   onSelectEngine,
@@ -877,6 +1166,7 @@ export const Composer = memo(function Composer({
   activeFileLineRange = null,
   fileReferenceMode = "path",
   activeWorkspaceId = null,
+  rewindWorkspaceGitState = null,
   activeThreadId = null,
   threadItemsByThread,
   threadParentById,
@@ -885,6 +1175,7 @@ export const Composer = memo(function Composer({
   isPlanMode = false,
   onOpenDiffPath,
   onRewind,
+  showStatusPanelToggleOverride,
   statusPanelExpandedOverride,
   onToggleStatusPanelOverride,
 }: ComposerProps) {
@@ -960,6 +1251,8 @@ export const Composer = memo(function Composer({
   const [rewindInFlight, setRewindInFlight] = useState(false);
   const [rewindPreviewState, setRewindPreviewState] =
     useState<ClaudeRewindPreviewState | null>(null);
+  const [rewindMode, setRewindMode] =
+    useState<RewindMode>("messages-and-files");
   const rewindInFlightRef = useRef(false);
   const lastExpandedHeightRef = useRef(
     Math.max(textareaHeight, COMPOSER_EXPAND_HEIGHT),
@@ -1087,6 +1380,7 @@ export const Composer = memo(function Composer({
 
   useEffect(() => {
     setRewindPreviewState(null);
+    setRewindMode("messages-and-files");
   }, [activeThreadId]);
 
   useEffect(() => {
@@ -1094,6 +1388,7 @@ export const Composer = memo(function Composer({
       return;
     }
     setRewindPreviewState(null);
+    setRewindMode("messages-and-files");
   }, [onRewind, rewindSupportedEngine]);
 
   const handleExpandComposer = useCallback(() => {
@@ -1308,6 +1603,8 @@ export const Composer = memo(function Composer({
   const handleToggleStatusPanel = useCallback(() => {
     setStatusPanelExpanded((prev) => !prev);
   }, []);
+  const resolvedShowStatusPanelToggle =
+    showStatusPanelToggleOverride ?? showStatusPanel;
   const resolvedStatusPanelExpanded =
     statusPanelExpandedOverride ?? statusPanelExpanded;
   const resolvedToggleStatusPanel =
@@ -1319,6 +1616,7 @@ export const Composer = memo(function Composer({
       return;
     }
     setRewindPreviewState(null);
+    setRewindMode("messages-and-files");
   }, [rewindInFlight]);
 
   const handleRewind = useCallback(() => {
@@ -1338,6 +1636,7 @@ export const Composer = memo(function Composer({
         });
         return;
       }
+      setRewindMode("messages-and-files");
       setRewindPreviewState(preview);
       return;
     }
@@ -1366,6 +1665,7 @@ export const Composer = memo(function Composer({
         message: t("rewind.notAvailable"),
       });
       setRewindPreviewState(null);
+      setRewindMode("messages-and-files");
       return;
     }
     if (rewindInFlightRef.current || rewindInFlight) {
@@ -1375,8 +1675,9 @@ export const Composer = memo(function Composer({
     rewindInFlightRef.current = true;
     try {
       setRewindInFlight(true);
-      await onRewind(preview.targetMessageId);
+      await onRewind(preview.targetMessageId, { mode: rewindMode });
       setRewindPreviewState(null);
+      setRewindMode("messages-and-files");
     } catch (error) {
       pushErrorToast({
         title: t("rewind.title"),
@@ -1388,7 +1689,13 @@ export const Composer = memo(function Composer({
       setRewindInFlight(false);
       rewindInFlightRef.current = false;
     }
-  }, [onRewind, rewindInFlight, rewindPreviewState, t]);
+  }, [
+    onRewind,
+    rewindMode,
+    rewindInFlight,
+    rewindPreviewState,
+    t,
+  ]);
 
   const handleStoreRewindChanges = useCallback(
     async (preview: ClaudeRewindPreviewState) => {
@@ -1397,12 +1704,27 @@ export const Composer = memo(function Composer({
       if (!workspaceId || !sessionId) {
         throw new Error(t("rewind.storeUnavailable"));
       }
-      const uniquePaths = Array.from(
-        new Set(
-          preview.affectedFiles.map((file) => file.filePath).filter(Boolean),
-        ),
-      );
-      if (uniquePaths.length === 0) {
+      const filesByPath = new Map<
+        string,
+        { path: string; status?: OperationFileChangeSummary["status"] }
+      >();
+      for (const file of preview.affectedFiles) {
+        const path = normalizeRewindExportPath(file.filePath);
+        const dedupeKey = toRewindPathDedupeKey(file.filePath);
+        if (!path || !dedupeKey) {
+          continue;
+        }
+        const existing = filesByPath.get(dedupeKey);
+        if (!existing) {
+          filesByPath.set(dedupeKey, { path, status: file.status });
+          continue;
+        }
+        const currentStatus = existing.status ?? "M";
+        const incomingStatus = file.status ?? "M";
+        existing.status = resolvePreferredStatus(currentStatus, incomingStatus);
+      }
+      const exportFiles = Array.from(filesByPath.values());
+      if (exportFiles.length === 0) {
         throw new Error(t("rewind.filesEmpty"));
       }
       return exportRewindFiles({
@@ -1411,7 +1733,7 @@ export const Composer = memo(function Composer({
         sessionId,
         targetMessageId: preview.targetMessageId,
         conversationLabel: preview.conversationLabel,
-        files: uniquePaths.map((path) => ({ path })),
+        files: exportFiles,
       });
     },
     [activeWorkspaceId, t],
@@ -1815,6 +2137,7 @@ export const Composer = memo(function Composer({
               onTextChange={handleTextChangeWithHistory}
               selectedModelId={selectedModelId}
               selectedEngine={selectedEngine}
+              isSharedSession={isSharedSession}
               engines={engines}
               onSelectEngine={onSelectEngine}
               models={models}
@@ -1885,7 +2208,7 @@ export const Composer = memo(function Composer({
               onRewind={handleRewind}
               showRewindEntry={canRewindSession}
               statusPanelExpanded={resolvedStatusPanelExpanded}
-              showStatusPanelToggle={showStatusPanel}
+              showStatusPanelToggle={resolvedShowStatusPanelToggle}
               onToggleStatusPanel={resolvedToggleStatusPanel}
             />
           </>
@@ -1894,6 +2217,12 @@ export const Composer = memo(function Composer({
       <ClaudeRewindConfirmDialog
         preview={rewindPreviewState}
         isBusy={rewindInFlight}
+        rewindMode={rewindMode}
+        shouldShowAffectedFiles={
+          !rewindWorkspaceGitState?.isGitRepository ||
+          Boolean(rewindWorkspaceGitState.hasDetectedChanges)
+        }
+        onRewindModeChange={setRewindMode}
         onOpenDiffPath={onOpenDiffPath}
         onStoreChanges={handleStoreRewindChanges}
         onCancel={handleCancelRewind}

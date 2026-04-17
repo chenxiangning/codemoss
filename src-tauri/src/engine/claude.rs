@@ -21,12 +21,30 @@ use tokio::time::sleep;
 use super::claude_message_content::{build_message_content, format_ask_user_answer};
 use super::events::EngineEvent;
 use super::{EngineConfig, EngineType, SendMessageParams};
+#[path = "claude/approval.rs"]
+mod approval;
 #[path = "claude/event_conversion.rs"]
 mod event_conversion;
 mod lifecycle;
+#[path = "claude/manager.rs"]
+mod manager;
 #[path = "claude_stream_helpers.rs"]
 mod stream_helpers;
 mod user_input;
+use approval::{
+    classify_claude_mode_blocked_tool, command_can_apply_as_local_file_action,
+    extract_claude_command_string, looks_like_claude_permission_denial_message,
+    ClaudeModeBlockedKind, SyntheticApprovalSummaryEntry,
+};
+#[cfg(test)]
+use approval::{
+    format_synthetic_approval_completion_text, format_synthetic_approval_resume_message,
+    SYNTHETIC_APPROVAL_RESUME_MARKER_PREFIX,
+};
+#[cfg(test)]
+#[path = "claude/tests_stream.rs"]
+mod tests_stream;
+pub use manager::ClaudeSessionManager;
 #[cfg(test)]
 use stream_helpers::extract_text_from_content;
 #[cfg(test)]
@@ -49,6 +67,12 @@ struct PendingClaudeTool {
     tool_id: String,
     tool_name: String,
     input_signature: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct PendingClaudeToolSummary {
+    tool_id: String,
+    tool_name: String,
 }
 
 const RETRYABLE_PROMPT_TOO_LONG_PREFIX: &str = "__claude_retryable_prompt_too_long__:";
@@ -92,6 +116,15 @@ pub struct ClaudeSession {
     stdin_by_turn: Mutex<HashMap<String, ChildStdin>>,
     /// Pending AskUserQuestion requests: request_id -> turn_id
     pending_user_inputs: StdMutex<HashMap<String, String>>,
+    /// Pending synthetic Claude approval requests: request_id -> turn_id
+    pending_approval_requests: StdMutex<HashMap<String, String>>,
+    /// Synthetic approval summaries accumulated per turn for final completion reporting
+    synthetic_approval_summaries_by_turn:
+        StdMutex<HashMap<String, Vec<SyntheticApprovalSummaryEntry>>>,
+    /// Per-turn signal to resume stdout processing after approval responses arrive
+    approval_notify_by_turn: StdMutex<HashMap<String, Arc<Notify>>>,
+    /// Per-turn formatted approval resolution text for kill+resume mechanism
+    approval_resume_message_by_turn: StdMutex<HashMap<String, String>>,
     /// Per-turn signal to resume stdout processing after AskUserQuestion response
     user_input_notify_by_turn: StdMutex<HashMap<String, Arc<Notify>>>,
     /// Per-turn formatted AskUserQuestion answer for kill+resume mechanism
@@ -151,6 +184,10 @@ impl ClaudeSession {
             last_emitted_text_by_turn: StdMutex::new(HashMap::new()),
             stdin_by_turn: Mutex::new(HashMap::new()),
             pending_user_inputs: StdMutex::new(HashMap::new()),
+            pending_approval_requests: StdMutex::new(HashMap::new()),
+            synthetic_approval_summaries_by_turn: StdMutex::new(HashMap::new()),
+            approval_notify_by_turn: StdMutex::new(HashMap::new()),
+            approval_resume_message_by_turn: StdMutex::new(HashMap::new()),
             user_input_notify_by_turn: StdMutex::new(HashMap::new()),
             user_input_answer_by_turn: StdMutex::new(HashMap::new()),
         }
@@ -591,6 +628,7 @@ impl ClaudeSession {
                     if let Some(sid) = sid {
                         if !sid.is_empty() && sid != "pending" && !session_id_emitted {
                             new_session_id = Some(sid.to_string());
+                            self.set_session_id(Some(sid.to_string())).await;
                             session_id_emitted = true;
                             // Emit SessionStarted with real session_id so frontend can update thread ID
                             self.emit_turn_event(
@@ -626,6 +664,31 @@ impl ClaudeSession {
                             matches!(&unified_event, EngineEvent::RequestUserInput { .. });
 
                         self.emit_turn_event(turn_id, unified_event);
+
+                        if self.has_pending_approval_request_for_turn(turn_id) {
+                            match self
+                                .handle_file_approval_resume(turn_id, &params, &new_session_id)
+                                .await
+                            {
+                                Ok(Some(new_lines)) => {
+                                    lines = new_lines;
+                                    continue;
+                                }
+                                Ok(None) => {}
+                                Err(error) => {
+                                    self.emit_turn_event(
+                                        turn_id,
+                                        EngineEvent::TurnError {
+                                            workspace_id: self.workspace_id.clone(),
+                                            error: error.clone(),
+                                            code: None,
+                                        },
+                                    );
+                                    self.clear_turn_ephemeral_state(turn_id);
+                                    return Err(error);
+                                }
+                            }
+                        }
 
                         // When AskUserQuestion is detected, delegate to the
                         // dedicated handler which waits for user input, kills the
@@ -712,6 +775,12 @@ impl ClaudeSession {
                 if Self::is_prompt_too_long_error(&error_msg) {
                     self.clear_turn_ephemeral_state(turn_id);
                     return Err(Self::mark_retryable_prompt_too_long_error(&error_msg));
+                }
+
+                if let Some(mode_blocked_event) =
+                    self.build_mode_blocked_signal_from_error(turn_id, &error_msg)
+                {
+                    self.emit_turn_event(turn_id, mode_blocked_event);
                 }
 
                 self.emit_turn_event(
@@ -1136,6 +1205,101 @@ impl ClaudeSession {
             .map(|entry| entry.tool_id.clone())
     }
 
+    fn latest_pending_tool_summary(&self, turn_id: &str) -> Option<PendingClaudeToolSummary> {
+        let pending = self.pending_tools.lock().ok()?;
+        pending
+            .iter()
+            .rev()
+            .find(|entry| entry.turn_id == turn_id)
+            .map(|entry| PendingClaudeToolSummary {
+                tool_id: entry.tool_id.clone(),
+                tool_name: entry.tool_name.clone(),
+            })
+    }
+
+    fn build_mode_blocked_signal_from_error(
+        &self,
+        turn_id: &str,
+        error_message: &str,
+    ) -> Option<EngineEvent> {
+        if !looks_like_claude_permission_denial_message(error_message) {
+            return None;
+        }
+
+        let pending_tool = self.latest_pending_tool_summary(turn_id)?;
+        let tool_input = self.peek_tool_input_value(&pending_tool.tool_id);
+        let blocked_kind = classify_claude_mode_blocked_tool(&pending_tool.tool_name)?;
+        let should_emit_synthetic_approval = match blocked_kind {
+            ClaudeModeBlockedKind::FileChange => true,
+            ClaudeModeBlockedKind::CommandExecution => tool_input
+                .as_ref()
+                .and_then(extract_claude_command_string)
+                .as_deref()
+                .map(command_can_apply_as_local_file_action)
+                .unwrap_or(false),
+            ClaudeModeBlockedKind::RequestUserInput => false,
+        };
+
+        if should_emit_synthetic_approval {
+            if let Ok(mut pending) = self.pending_approval_requests.lock() {
+                pending.insert(pending_tool.tool_id.clone(), turn_id.to_string());
+            }
+            return Some(EngineEvent::ApprovalRequest {
+                workspace_id: self.workspace_id.clone(),
+                request_id: Value::String(pending_tool.tool_id.clone()),
+                tool_name: pending_tool.tool_name.clone(),
+                input: tool_input,
+                message: Some(
+                    "Approve to let the GUI apply this file change locally. Preview currently supports structured file tools plus safe single-path file commands.".to_string(),
+                ),
+            });
+        }
+
+        let (blocked_method, reason_code, reason, suggestion) = match blocked_kind {
+            ClaudeModeBlockedKind::RequestUserInput => (
+                "item/tool/requestUserInput",
+                "claude_ask_user_question_permission_denied",
+                "Claude denied AskUserQuestion before any approval request reached the GUI.",
+                "Claude default mode remains gated. Use Plan mode when the workflow needs AskUserQuestion or other interactive clarification.",
+            ),
+            ClaudeModeBlockedKind::FileChange => (
+                "item/fileChange/requestApproval",
+                "claude_file_change_permission_denied",
+                "Claude denied a file-change tool before any GUI approval request could start.",
+                "Claude preview can bridge Write/CreateFile/CreateDirectory after approval. Other file tools still need full-access or a retry after changing Claude Code settings.",
+            ),
+            ClaudeModeBlockedKind::CommandExecution => (
+                "item/commandExecution/requestApproval",
+                "claude_command_execution_permission_denied",
+                "Claude blocked a command-execution tool before any recoverable GUI approval request could start.",
+                "Claude default mode cannot recover blocked Bash/command tools through the GUI approval bridge yet. Retry in full-access or rewrite the action to use supported file tools.",
+            ),
+        };
+
+        Some(EngineEvent::Raw {
+            workspace_id: self.workspace_id.clone(),
+            engine: EngineType::Claude,
+            data: json!({
+                "type": "permission_denied",
+                "source": "claude_permission_denied",
+                "blockedMethod": blocked_method,
+                "blocked_method": blocked_method,
+                "effectiveMode": "code",
+                "effective_mode": "code",
+                "reasonCode": reason_code,
+                "reason_code": reason_code,
+                "reason": reason,
+                "suggestion": suggestion,
+                "requestId": pending_tool.tool_id,
+                "request_id": pending_tool.tool_id,
+                "toolName": pending_tool.tool_name,
+                "tool_name": pending_tool.tool_name,
+                "rawError": error_message,
+                "raw_error": error_message,
+            }),
+        })
+    }
+
     /// Compute the true delta from a cumulative assistant text.
     /// If the cumulative text starts with the previously emitted text,
     /// return only the new portion. Otherwise return the full text
@@ -1187,6 +1351,16 @@ impl ClaudeSession {
             .and_then(|mut map| map.remove(tool_id))
     }
 
+    fn peek_tool_input_value(&self, tool_id: &str) -> Option<Value> {
+        if tool_id.is_empty() {
+            return None;
+        }
+        self.tool_input_value_by_id
+            .lock()
+            .ok()
+            .and_then(|map| map.get(tool_id).cloned())
+    }
+
     fn clear_tool_input(&self, tool_id: &str) {
         if tool_id.is_empty() {
             return;
@@ -1199,38 +1373,34 @@ impl ClaudeSession {
         }
     }
 
-    fn build_tool_completed(
-        &self,
-        tool_id: &str,
-        output: Option<String>,
-        is_error: bool,
-    ) -> Option<EngineEvent> {
-        if tool_id.is_empty() {
-            return None;
-        }
+    fn take_tool_completion_state(&self, tool_id: &str) -> (Option<String>, Option<Value>) {
         let tool_name = self.take_tool_name(tool_id);
         let cached_input = self.take_tool_input_value(tool_id);
         self.clear_pending_tool(tool_id);
         self.clear_tool_input(tool_id);
-        let error = if is_error {
-            output.clone().filter(|text| !text.trim().is_empty())
-        } else {
-            None
-        };
-        let output = if is_error {
-            None
-        } else {
-            output.map(|text| {
-                if let Some(input) = cached_input.clone() {
-                    json!({
-                        "_input": input,
-                        "_output": text,
-                    })
-                } else {
-                    Value::String(text)
-                }
-            })
-        };
+        (tool_name, cached_input)
+    }
+
+    fn build_tool_completed_with_parts(
+        &self,
+        tool_id: &str,
+        output: Option<String>,
+        error: Option<String>,
+    ) -> Option<EngineEvent> {
+        if tool_id.is_empty() {
+            return None;
+        }
+        let (tool_name, cached_input) = self.take_tool_completion_state(tool_id);
+        let output = output.map(|text| {
+            if let Some(input) = cached_input.clone() {
+                json!({
+                    "_input": input,
+                    "_output": text,
+                })
+            } else {
+                Value::String(text)
+            }
+        });
         Some(EngineEvent::ToolCompleted {
             workspace_id: self.workspace_id.clone(),
             tool_id: tool_id.to_string(),
@@ -1238,6 +1408,33 @@ impl ClaudeSession {
             output,
             error,
         })
+    }
+
+    fn emit_tool_completion(
+        &self,
+        turn_id: &str,
+        tool_id: &str,
+        output: Option<String>,
+        error: Option<String>,
+    ) {
+        if let Some(event) = self.build_tool_completed_with_parts(tool_id, output, error) {
+            self.emit_turn_event(turn_id, event);
+        }
+    }
+
+    fn build_tool_completed(
+        &self,
+        tool_id: &str,
+        output: Option<String>,
+        is_error: bool,
+    ) -> Option<EngineEvent> {
+        let error = if is_error {
+            output.clone().filter(|text| !text.trim().is_empty())
+        } else {
+            None
+        };
+        let output = if is_error { None } else { output };
+        self.build_tool_completed_with_parts(tool_id, output, error)
     }
 
     fn build_tool_output_delta(&self, tool_id: &str, delta: &str) -> Option<EngineEvent> {
@@ -1254,1249 +1451,6 @@ impl ClaudeSession {
     }
 }
 
-/// Claude session manager for all workspaces
-pub struct ClaudeSessionManager {
-    sessions: Mutex<HashMap<String, Arc<ClaudeSession>>>,
-    default_config: RwLock<EngineConfig>,
-}
-
-impl ClaudeSessionManager {
-    pub fn new() -> Self {
-        Self {
-            sessions: Mutex::new(HashMap::new()),
-            default_config: RwLock::new(EngineConfig::default()),
-        }
-    }
-
-    /// Set default configuration
-    pub async fn set_config(&self, config: EngineConfig) {
-        *self.default_config.write().await = config;
-    }
-
-    /// Get or create a session for a workspace
-    pub async fn get_or_create_session(
-        &self,
-        workspace_id: &str,
-        workspace_path: &Path,
-    ) -> Arc<ClaudeSession> {
-        let mut sessions = self.sessions.lock().await;
-
-        if let Some(session) = sessions.get(workspace_id) {
-            return session.clone();
-        }
-
-        let config = self.default_config.read().await.clone();
-        let session = Arc::new(ClaudeSession::new(
-            workspace_id.to_string(),
-            workspace_path.to_path_buf(),
-            Some(config),
-        ));
-
-        sessions.insert(workspace_id.to_string(), session.clone());
-        session
-    }
-
-    /// Remove a session
-    pub async fn remove_session(&self, workspace_id: &str) -> Option<Arc<ClaudeSession>> {
-        let mut sessions = self.sessions.lock().await;
-        sessions.remove(workspace_id)
-    }
-
-    /// Get a session if it exists
-    pub async fn get_session(&self, workspace_id: &str) -> Option<Arc<ClaudeSession>> {
-        let sessions = self.sessions.lock().await;
-        sessions.get(workspace_id).cloned()
-    }
-
-    /// Interrupt all active sessions (used during app shutdown)
-    pub async fn interrupt_all(&self) {
-        let sessions = self.sessions.lock().await;
-        for session in sessions.values() {
-            let _ = session.interrupt().await;
-        }
-    }
-}
-
-impl Default for ClaudeSessionManager {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use serde_json::json;
-    use tokio::sync::broadcast::error::TryRecvError;
-
-    #[test]
-    fn session_creation() {
-        let session = ClaudeSession::new(
-            "test-workspace".to_string(),
-            PathBuf::from("/tmp/test"),
-            None,
-        );
-
-        assert_eq!(session.workspace_id, "test-workspace");
-    }
-
-    #[tokio::test]
-    async fn ask_user_question_registers_and_clears_pending_request() {
-        let session = ClaudeSession::new(
-            "test-workspace".to_string(),
-            PathBuf::from("/tmp/test"),
-            None,
-        );
-        let input = json!({
-            "questions": [
-                {
-                    "header": "确认",
-                    "question": "继续吗？",
-                    "options": [{ "label": "继续", "description": "继续执行" }]
-                }
-            ]
-        });
-
-        let event = session
-            .convert_ask_user_question_to_request("tool-ask-1", &input, "turn-1")
-            .expect("request user input event");
-
-        let request_id = match event {
-            EngineEvent::RequestUserInput { request_id, .. } => request_id,
-            other => panic!("unexpected event: {:?}", other),
-        };
-
-        assert!(session.has_pending_user_input(&request_id));
-
-        let result = json!({
-            "answers": {
-                "q-0": {
-                    "answers": ["继续"]
-                }
-            }
-        });
-        session
-            .respond_to_user_input(request_id.clone(), result)
-            .await
-            .expect("respond success");
-
-        assert!(!session.has_pending_user_input(&request_id));
-    }
-
-    #[test]
-    fn ask_user_question_preserves_multi_select_flag() {
-        let session = ClaudeSession::new(
-            "test-workspace".to_string(),
-            PathBuf::from("/tmp/test"),
-            None,
-        );
-        let input = json!({
-            "questions": [
-                {
-                    "header": "关注点",
-                    "question": "可多选",
-                    "multiSelect": true,
-                    "options": [{ "label": "性能", "description": "" }]
-                }
-            ]
-        });
-
-        let event = session
-            .convert_ask_user_question_to_request("tool-ask-multi", &input, "turn-1")
-            .expect("request user input event");
-
-        let questions = match event {
-            EngineEvent::RequestUserInput { questions, .. } => questions,
-            other => panic!("unexpected event: {:?}", other),
-        };
-        let question = questions
-            .as_array()
-            .and_then(|arr| arr.first())
-            .expect("first question");
-        assert_eq!(question["multiSelect"], json!(true));
-    }
-
-    #[test]
-    fn has_pending_user_input_accepts_numeric_id_for_backward_compat() {
-        let session = ClaudeSession::new(
-            "test-workspace".to_string(),
-            PathBuf::from("/tmp/test"),
-            None,
-        );
-        if let Ok(mut pending) = session.pending_user_inputs.lock() {
-            pending.insert("42".to_string(), "turn-42".to_string());
-        }
-        assert!(session.has_pending_user_input(&json!(42)));
-        assert!(session.has_pending_user_input(&json!("42")));
-    }
-
-    #[test]
-    fn has_any_pending_user_input_reports_presence() {
-        let session = ClaudeSession::new(
-            "test-workspace".to_string(),
-            PathBuf::from("/tmp/test"),
-            None,
-        );
-        assert!(!session.has_any_pending_user_input());
-        if let Ok(mut pending) = session.pending_user_inputs.lock() {
-            pending.insert("ask-1".to_string(), "turn-1".to_string());
-        }
-        assert!(session.has_any_pending_user_input());
-    }
-
-    #[tokio::test]
-    async fn respond_to_user_input_rejects_mismatched_request_id() {
-        let session = ClaudeSession::new(
-            "test-workspace".to_string(),
-            PathBuf::from("/tmp/test"),
-            None,
-        );
-        if let Ok(mut pending) = session.pending_user_inputs.lock() {
-            pending.insert("ask-fallback".to_string(), "turn-1".to_string());
-        }
-
-        let result = json!({
-            "answers": {
-                "q-0": {
-                    "answers": ["继续"]
-                }
-            }
-        });
-        let err = session
-            .respond_to_user_input(json!(999), result)
-            .await
-            .expect_err("mismatched request_id should fail");
-
-        assert!(err.contains("unknown request_id"));
-        assert!(session.has_any_pending_user_input());
-    }
-
-    #[test]
-    fn build_command_adds_external_spec_root_when_configured() {
-        let session = ClaudeSession::new(
-            "test-workspace".to_string(),
-            PathBuf::from("/tmp/test"),
-            None,
-        );
-        let mut params = SendMessageParams::default();
-        params.text = "hello".to_string();
-        params.custom_spec_root = Some(if cfg!(windows) {
-            "C:\\tmp\\external-openspec".to_string()
-        } else {
-            "/tmp/external-openspec".to_string()
-        });
-
-        let command = session.build_command(&params, false);
-        let args: Vec<String> = command
-            .as_std()
-            .get_args()
-            .map(|arg| arg.to_string_lossy().to_string())
-            .collect();
-
-        assert!(args.windows(2).any(|window| {
-            window[0] == "--add-dir" && window[1] == params.custom_spec_root.clone().unwrap()
-        }));
-    }
-
-    #[test]
-    fn should_use_stream_json_input_for_multiline_text_without_images() {
-        let mut params = SendMessageParams::default();
-        params.text = "line1\nline2".to_string();
-        assert!(ClaudeSession::should_use_stream_json_input(&params));
-    }
-
-    #[test]
-    fn should_not_use_stream_json_input_for_single_line_text_without_images() {
-        let mut params = SendMessageParams::default();
-        params.text = "single line".to_string();
-        assert!(!ClaudeSession::should_use_stream_json_input(&params));
-    }
-
-    #[test]
-    fn build_command_uses_stream_json_for_multiline_text() {
-        let session = ClaudeSession::new(
-            "test-workspace".to_string(),
-            PathBuf::from("/tmp/test"),
-            None,
-        );
-        let mut params = SendMessageParams::default();
-        params.text = "line1\nline2".to_string();
-
-        let use_stream_json_input = ClaudeSession::should_use_stream_json_input(&params);
-        let command = session.build_command(&params, use_stream_json_input);
-        let args: Vec<String> = command
-            .as_std()
-            .get_args()
-            .map(|arg| arg.to_string_lossy().to_string())
-            .collect();
-
-        assert!(args
-            .windows(2)
-            .any(|window| { window[0] == "--input-format" && window[1] == "stream-json" }));
-        assert!(args.iter().all(|arg| arg != "line1\nline2"));
-    }
-
-    #[test]
-    fn build_resume_command_uses_stream_json_for_multiline_answer() {
-        let session = ClaudeSession::new(
-            "test-workspace".to_string(),
-            PathBuf::from("/tmp/test"),
-            None,
-        );
-        let mut params = SendMessageParams::default();
-        params.text = "line1\r\nline2".to_string();
-        params.continue_session = true;
-        params.session_id = Some("33333333-3333-4333-8333-333333333333".to_string());
-        params.images = None;
-
-        let use_stream_json_input = ClaudeSession::should_use_stream_json_input(&params);
-        let command = session.build_command(&params, use_stream_json_input);
-        let args: Vec<String> = command
-            .as_std()
-            .get_args()
-            .map(|arg| arg.to_string_lossy().to_string())
-            .collect();
-
-        assert!(args.windows(2).any(|window| {
-            window[0] == "--resume" && window[1] == "33333333-3333-4333-8333-333333333333"
-        }));
-        assert!(args
-            .windows(2)
-            .any(|window| { window[0] == "--input-format" && window[1] == "stream-json" }));
-        assert!(args.iter().all(|arg| arg != "line1\r\nline2"));
-    }
-
-    #[test]
-    fn build_command_uses_session_id_for_new_conversation_without_continue() {
-        let session = ClaudeSession::new(
-            "test-workspace".to_string(),
-            PathBuf::from("/tmp/test"),
-            None,
-        );
-        let mut params = SendMessageParams::default();
-        params.text = "hello".to_string();
-        params.continue_session = false;
-        params.session_id = Some("11111111-1111-4111-8111-111111111111".to_string());
-
-        let command = session.build_command(&params, false);
-        let args: Vec<String> = command
-            .as_std()
-            .get_args()
-            .map(|arg| arg.to_string_lossy().to_string())
-            .collect();
-
-        assert!(args.windows(2).any(|window| {
-            window[0] == "--session-id" && window[1] == "11111111-1111-4111-8111-111111111111"
-        }));
-        assert!(!args
-            .iter()
-            .any(|arg| arg == "--continue" || arg == "--resume"));
-    }
-
-    #[test]
-    fn build_command_uses_resume_when_continue_session_is_enabled() {
-        let session = ClaudeSession::new(
-            "test-workspace".to_string(),
-            PathBuf::from("/tmp/test"),
-            None,
-        );
-        let mut params = SendMessageParams::default();
-        params.text = "hello".to_string();
-        params.continue_session = true;
-        params.session_id = Some("22222222-2222-4222-8222-222222222222".to_string());
-
-        let command = session.build_command(&params, false);
-        let args: Vec<String> = command
-            .as_std()
-            .get_args()
-            .map(|arg| arg.to_string_lossy().to_string())
-            .collect();
-
-        assert!(args.windows(2).any(|window| {
-            window[0] == "--resume" && window[1] == "22222222-2222-4222-8222-222222222222"
-        }));
-        assert!(!args.iter().any(|arg| arg == "--session-id"));
-    }
-
-    #[tokio::test]
-    async fn session_manager_get_or_create() {
-        let manager = ClaudeSessionManager::new();
-
-        let session1 = manager
-            .get_or_create_session("ws-1", Path::new("/tmp/ws1"))
-            .await;
-        let session2 = manager
-            .get_or_create_session("ws-1", Path::new("/tmp/ws1"))
-            .await;
-
-        // Should return the same session
-        assert_eq!(session1.workspace_id, session2.workspace_id);
-    }
-
-    #[test]
-    fn emit_error_broadcasts_turn_scoped_event() {
-        let session = ClaudeSession::new(
-            "test-workspace".to_string(),
-            PathBuf::from("/tmp/test"),
-            None,
-        );
-        let mut receiver = session.subscribe();
-
-        session.emit_error("turn-a", "boom".to_string());
-
-        let received = receiver.try_recv().expect("expected one error event");
-        assert_eq!(received.turn_id, "turn-a");
-        match received.event {
-            EngineEvent::TurnError { error, .. } => assert_eq!(error, "boom"),
-            other => panic!("unexpected event: {:?}", other),
-        }
-        assert!(matches!(receiver.try_recv(), Err(TryRecvError::Empty)));
-    }
-
-    #[test]
-    fn prompt_too_long_detection_matches_common_variants() {
-        assert!(ClaudeSession::is_prompt_too_long_error(
-            "Prompt is too long"
-        ));
-        assert!(ClaudeSession::is_prompt_too_long_error(
-            "Maximum context length exceeded for this model"
-        ));
-        assert!(!ClaudeSession::is_prompt_too_long_error(
-            "API Error: All providers unavailable"
-        ));
-    }
-
-    #[test]
-    fn prompt_too_long_marker_roundtrip() {
-        let marked = ClaudeSession::mark_retryable_prompt_too_long_error("Prompt is too long");
-        assert!(marked.starts_with(RETRYABLE_PROMPT_TOO_LONG_PREFIX));
-        assert_eq!(
-            ClaudeSession::extract_retryable_prompt_too_long_error(&marked),
-            Some("Prompt is too long".to_string())
-        );
-        assert_eq!(
-            ClaudeSession::clear_retryable_prompt_too_long_marker(marked),
-            "Prompt is too long".to_string()
-        );
-    }
-
-    #[test]
-    fn extract_text_from_content_concatenates_fragmented_blocks() {
-        let content = json!([
-            {"type": "text", "text": "你"},
-            {"type": "text", "text": "好！我"},
-            {"type": "text", "text": "是"},
-            {"type": "text", "text": "Antigravity"}
-        ]);
-
-        let text = extract_text_from_content(&content);
-        assert_eq!(text.as_deref(), Some("你好！我是Antigravity"));
-    }
-
-    #[test]
-    fn convert_event_prefers_combined_text_when_thinking_and_text_coexist() {
-        let session = ClaudeSession::new(
-            "test-workspace".to_string(),
-            PathBuf::from("/tmp/test"),
-            None,
-        );
-        let mut receiver = session.subscribe();
-
-        let event = json!({
-            "type": "assistant",
-            "message": {
-                "content": [
-                    {"type": "thinking", "thinking": "先想一下"},
-                    {"type": "text", "text": "你"},
-                    {"type": "text", "text": "好"}
-                ]
-            }
-        });
-
-        let converted = session.convert_event("turn-a", &event);
-        match converted {
-            Some(EngineEvent::TextDelta { text, .. }) => assert_eq!(text, "你好"),
-            other => panic!("expected text delta, got {:?}", other),
-        }
-
-        let reasoning_event = receiver
-            .try_recv()
-            .expect("expected reasoning delta to be emitted");
-        assert_eq!(reasoning_event.turn_id, "turn-a");
-        match reasoning_event.event {
-            EngineEvent::ReasoningDelta { text, .. } => assert_eq!(text, "先想一下"),
-            other => panic!("expected reasoning delta, got {:?}", other),
-        }
-        assert!(matches!(receiver.try_recv(), Err(TryRecvError::Empty)));
-    }
-
-    #[test]
-    fn convert_event_supports_reasoning_block_alias() {
-        let session = ClaudeSession::new(
-            "test-workspace".to_string(),
-            PathBuf::from("/tmp/test"),
-            None,
-        );
-
-        let event = json!({
-            "type": "assistant",
-            "message": {
-                "content": [
-                    {"type": "reasoning", "reasoning": "先分析约束条件"}
-                ]
-            }
-        });
-
-        let converted = session.convert_event("turn-a", &event);
-        match converted {
-            Some(EngineEvent::ReasoningDelta { text, .. }) => {
-                assert_eq!(text, "先分析约束条件")
-            }
-            other => panic!("expected reasoning delta, got {:?}", other),
-        }
-    }
-
-    #[test]
-    fn convert_event_supports_assistant_message_delta_aliases() {
-        let session = ClaudeSession::new(
-            "test-workspace".to_string(),
-            PathBuf::from("/tmp/test"),
-            None,
-        );
-
-        let event = json!({
-            "type": "assistant_message_delta",
-            "delta": "stream chunk",
-        });
-
-        let converted = session.convert_event("turn-a", &event);
-        match converted {
-            Some(EngineEvent::TextDelta { text, .. }) => assert_eq!(text, "stream chunk"),
-            other => panic!("expected text delta, got {:?}", other),
-        }
-    }
-
-    #[test]
-    fn convert_event_maps_system_compacting_to_raw() {
-        let session = ClaudeSession::new(
-            "test-workspace".to_string(),
-            PathBuf::from("/tmp/test"),
-            None,
-        );
-        let event = json!({
-            "type": "system",
-            "subtype": "compacting",
-            "usage_percent": 95,
-        });
-
-        let converted = session.convert_event("turn-a", &event);
-        match converted {
-            Some(EngineEvent::Raw { engine, data, .. }) => {
-                assert!(matches!(engine, EngineType::Claude));
-                assert_eq!(data["subtype"], Value::String("compacting".to_string()));
-            }
-            other => panic!("expected raw compaction signal, got {:?}", other),
-        }
-    }
-
-    #[test]
-    fn convert_event_maps_system_compact_boundary_to_raw() {
-        let session = ClaudeSession::new(
-            "test-workspace".to_string(),
-            PathBuf::from("/tmp/test"),
-            None,
-        );
-        let event = json!({
-            "type": "system",
-            "event": "compact_boundary",
-        });
-
-        let converted = session.convert_event("turn-a", &event);
-        match converted {
-            Some(EngineEvent::Raw { engine, data, .. }) => {
-                assert!(matches!(engine, EngineType::Claude));
-                assert_eq!(data["event"], Value::String("compact_boundary".to_string()));
-            }
-            other => panic!("expected raw compact boundary signal, got {:?}", other),
-        }
-    }
-
-    #[test]
-    fn convert_event_supports_message_snapshot_aliases() {
-        let session = ClaudeSession::new(
-            "test-workspace".to_string(),
-            PathBuf::from("/tmp/test"),
-            None,
-        );
-
-        let first = json!({
-            "type": "assistant_message",
-            "message": {
-                "content": [
-                    {"type": "text", "text": "你好"},
-                ]
-            }
-        });
-        let second = json!({
-            "type": "assistant_message",
-            "message": {
-                "content": [
-                    {"type": "text", "text": "你好，世界"},
-                ]
-            }
-        });
-
-        match session.convert_event("turn-a", &first) {
-            Some(EngineEvent::TextDelta { text, .. }) => assert_eq!(text, "你好"),
-            other => panic!("expected first text delta, got {:?}", other),
-        }
-        match session.convert_event("turn-a", &second) {
-            Some(EngineEvent::TextDelta { text, .. }) => assert_eq!(text, "，世界"),
-            other => panic!("expected second text delta, got {:?}", other),
-        }
-    }
-
-    #[test]
-    fn parse_claude_stream_json_line_supports_data_prefix() {
-        let parsed = parse_claude_stream_json_line(
-            "data: {\"type\":\"assistant_message_delta\",\"delta\":\"ok\"}",
-        )
-        .expect("expected parser to accept data: prefix");
-        assert_eq!(
-            parsed.get("type").and_then(|value| value.as_str()),
-            Some("assistant_message_delta"),
-        );
-    }
-
-    #[test]
-    fn convert_stream_event_supports_reasoning_delta_alias() {
-        let session = ClaudeSession::new(
-            "test-workspace".to_string(),
-            PathBuf::from("/tmp/test"),
-            None,
-        );
-
-        let event = json!({
-            "type": "stream_event",
-            "event": {
-                "type": "content_block_delta",
-                "delta": {
-                    "type": "reasoning_delta",
-                    "reasoning": "先看日志，再定位根因"
-                }
-            }
-        });
-
-        let converted = session.convert_event("turn-a", &event);
-        match converted {
-            Some(EngineEvent::ReasoningDelta { text, .. }) => {
-                assert_eq!(text, "先看日志，再定位根因")
-            }
-            other => panic!("expected reasoning delta, got {:?}", other),
-        }
-    }
-
-    #[test]
-    fn convert_stream_event_maps_tool_result_text_delta_to_tool_output_delta() {
-        let session = ClaudeSession::new(
-            "test-workspace".to_string(),
-            PathBuf::from("/tmp/test"),
-            None,
-        );
-        session.cache_tool_name("tool-1", "Bash");
-        session.cache_tool_block_index("turn-a", 7, "tool-1");
-
-        let event = json!({
-            "type": "stream_event",
-            "event": {
-                "type": "content_block_delta",
-                "index": 7,
-                "delta": {
-                    "type": "text_delta",
-                    "text": "total 12\n"
-                }
-            }
-        });
-
-        let converted = session.convert_event("turn-a", &event);
-        match converted {
-            Some(EngineEvent::ToolOutputDelta {
-                tool_id,
-                tool_name,
-                delta,
-                ..
-            }) => {
-                assert_eq!(tool_id, "tool-1");
-                assert_eq!(tool_name.as_deref(), Some("Bash"));
-                assert_eq!(delta, "total 12");
-            }
-            other => panic!("expected tool output delta, got {:?}", other),
-        }
-    }
-
-    #[test]
-    fn convert_stream_event_caches_tool_result_block_index_before_text_deltas() {
-        let session = ClaudeSession::new(
-            "test-workspace".to_string(),
-            PathBuf::from("/tmp/test"),
-            None,
-        );
-        session.cache_tool_name("tool-42", "Bash");
-        session.register_pending_tool("turn-a", "tool-42", "Bash", None);
-
-        let start_event = json!({
-            "type": "stream_event",
-            "event": {
-                "type": "content_block_start",
-                "index": 11,
-                "content_block": {
-                    "type": "tool_result",
-                    "tool_use_id": "tool-42"
-                }
-            }
-        });
-        assert!(session.convert_event("turn-a", &start_event).is_none());
-
-        let delta_event = json!({
-            "type": "stream_event",
-            "event": {
-                "type": "content_block_delta",
-                "index": 11,
-                "delta": {
-                    "type": "text_delta",
-                    "text": "README.md\n"
-                }
-            }
-        });
-
-        let converted = session.convert_event("turn-a", &delta_event);
-        match converted {
-            Some(EngineEvent::ToolOutputDelta { tool_id, delta, .. }) => {
-                assert_eq!(tool_id, "tool-42");
-                assert_eq!(delta, "README.md");
-            }
-            other => panic!("expected tool output delta, got {:?}", other),
-        }
-    }
-
-    #[test]
-    fn convert_stream_event_emits_tool_completed_for_tool_result_delta() {
-        let session = ClaudeSession::new(
-            "test-workspace".to_string(),
-            PathBuf::from("/tmp/test"),
-            None,
-        );
-        session.cache_tool_name("tool-55", "Edit");
-        session.register_pending_tool("turn-a", "tool-55", "Edit", None);
-
-        let event = json!({
-            "type": "stream_event",
-            "event": {
-                "type": "content_block_delta",
-                "index": 5,
-                "delta": {
-                    "type": "tool_result",
-                    "tool_use_id": "tool-55",
-                    "content": [{"type": "text", "text": "updated file\n"}]
-                }
-            }
-        });
-
-        let converted = session.convert_event("turn-a", &event);
-        match converted {
-            Some(EngineEvent::ToolCompleted {
-                tool_id,
-                tool_name,
-                output,
-                error,
-                ..
-            }) => {
-                assert_eq!(tool_id, "tool-55");
-                assert_eq!(tool_name.as_deref(), Some("Edit"));
-                assert_eq!(output, Some(Value::String("updated file".to_string())));
-                assert_eq!(error, None);
-            }
-            other => panic!("expected tool completed, got {:?}", other),
-        }
-    }
-
-    #[test]
-    fn build_tool_completed_embeds_cached_input_with_output() {
-        let session = ClaudeSession::new(
-            "test-workspace".to_string(),
-            PathBuf::from("/tmp/test"),
-            None,
-        );
-        session.cache_tool_name("tool-input", "Bash");
-        session.cache_tool_input_value(
-            "tool-input",
-            &json!({
-                "command": "pwd",
-                "cwd": "/repo",
-            }),
-        );
-
-        let converted =
-            session.build_tool_completed("tool-input", Some("/repo".to_string()), false);
-        match converted {
-            Some(EngineEvent::ToolCompleted {
-                output: Some(Value::Object(payload)),
-                ..
-            }) => {
-                assert_eq!(
-                    payload.get("_output"),
-                    Some(&Value::String("/repo".to_string()))
-                );
-                assert_eq!(
-                    payload.get("_input").and_then(|value| value.get("command")),
-                    Some(&Value::String("pwd".to_string()))
-                );
-            }
-            other => panic!("expected embedded output payload, got {:?}", other),
-        }
-    }
-
-    #[test]
-    fn extract_tool_result_text_reads_preview_and_loaded_entries() {
-        let preview = json!({
-            "preview": "settings.local.json"
-        });
-        assert_eq!(
-            extract_tool_result_text(&preview),
-            Some("settings.local.json".to_string())
-        );
-
-        let loaded = json!({
-            "loaded": [
-                "/repo/README.md",
-                "/repo/package.json"
-            ]
-        });
-        assert_eq!(
-            extract_tool_result_text(&loaded),
-            Some("/repo/README.md\n/repo/package.json".to_string())
-        );
-    }
-
-    #[test]
-    fn convert_stream_event_falls_back_to_latest_pending_tool_when_result_lacks_identifiers() {
-        let session = ClaudeSession::new(
-            "test-workspace".to_string(),
-            PathBuf::from("/tmp/test"),
-            None,
-        );
-        session.cache_tool_name("tool-latest", "Bash");
-        session.register_pending_tool("turn-a", "tool-latest", "Bash", None);
-
-        let start_event = json!({
-            "type": "stream_event",
-            "event": {
-                "type": "content_block_start",
-                "index": 12,
-                "content_block": {
-                    "type": "tool_result"
-                }
-            }
-        });
-        assert!(session.convert_event("turn-a", &start_event).is_none());
-
-        let delta_event = json!({
-            "type": "stream_event",
-            "event": {
-                "type": "content_block_delta",
-                "index": 12,
-                "delta": {
-                    "type": "text_delta",
-                    "text": "README.md\n"
-                }
-            }
-        });
-
-        let converted = session.convert_event("turn-a", &delta_event);
-        match converted {
-            Some(EngineEvent::ToolOutputDelta { tool_id, delta, .. }) => {
-                assert_eq!(tool_id, "tool-latest");
-                assert_eq!(delta, "README.md");
-            }
-            other => panic!("expected tool output delta, got {:?}", other),
-        }
-    }
-
-    #[test]
-    fn convert_event_reads_transcript_style_tool_output_payload() {
-        let session = ClaudeSession::new(
-            "test-workspace".to_string(),
-            PathBuf::from("/tmp/test"),
-            None,
-        );
-        session.cache_tool_name("tool-99", "bash");
-        session.register_pending_tool("turn-a", "tool-99", "bash", None);
-
-        let event = json!({
-            "type": "tool_result",
-            "tool_use_id": "tool-99",
-            "tool_output": {
-                "output": "commit-a\ncommit-b\n",
-                "exit": 0
-            }
-        });
-
-        let converted = session.convert_event("turn-a", &event);
-        match converted {
-            Some(EngineEvent::ToolCompleted {
-                tool_id,
-                tool_name,
-                output,
-                error,
-                ..
-            }) => {
-                assert_eq!(tool_id, "tool-99");
-                assert_eq!(tool_name.as_deref(), Some("bash"));
-                assert_eq!(
-                    output,
-                    Some(Value::String("commit-a\ncommit-b".to_string()))
-                );
-                assert_eq!(error, None);
-            }
-            other => panic!("expected tool completed, got {:?}", other),
-        }
-    }
-
-    #[test]
-    fn convert_event_matches_transcript_style_tool_result_without_tool_use_id() {
-        let session = ClaudeSession::new(
-            "test-workspace".to_string(),
-            PathBuf::from("/tmp/test"),
-            None,
-        );
-        let tool_input = json!({
-            "command": "git log --oneline -10",
-            "description": "查看最近提交"
-        });
-        session.cache_tool_name("tool-bash-1", "bash");
-        session.register_pending_tool("turn-a", "tool-bash-1", "bash", Some(&tool_input));
-
-        let event = json!({
-            "type": "tool_result",
-            "tool_name": "bash",
-            "tool_input": {
-                "command": "git log --oneline -10",
-                "description": "查看最近提交"
-            },
-            "tool_output": {
-                "output": "commit-a\ncommit-b\n",
-                "exit": 0
-            }
-        });
-
-        let converted = session.convert_event("turn-a", &event);
-        match converted {
-            Some(EngineEvent::ToolCompleted {
-                tool_id,
-                tool_name,
-                output,
-                error,
-                ..
-            }) => {
-                assert_eq!(tool_id, "tool-bash-1");
-                assert_eq!(tool_name.as_deref(), Some("bash"));
-                assert_eq!(
-                    output,
-                    Some(Value::String("commit-a\ncommit-b".to_string()))
-                );
-                assert_eq!(error, None);
-            }
-            other => panic!("expected tool completed, got {:?}", other),
-        }
-    }
-
-    #[test]
-    fn convert_event_reads_project_jsonl_user_tool_result_content() {
-        let session = ClaudeSession::new(
-            "test-workspace".to_string(),
-            PathBuf::from("/tmp/test"),
-            None,
-        );
-        session.cache_tool_name("tool-user-1", "Bash");
-        session.register_pending_tool("turn-a", "tool-user-1", "Bash", None);
-
-        let event = json!({
-            "type": "user",
-            "message": {
-                "role": "user",
-                "content": [{
-                    "type": "tool_result",
-                    "tool_use_id": "tool-user-1",
-                    "content": "/repo\n",
-                    "is_error": false
-                }]
-            }
-        });
-
-        let converted = session.convert_event("turn-a", &event);
-        match converted {
-            Some(EngineEvent::ToolCompleted {
-                tool_id,
-                tool_name,
-                output,
-                error,
-                ..
-            }) => {
-                assert_eq!(tool_id, "tool-user-1");
-                assert_eq!(tool_name.as_deref(), Some("Bash"));
-                assert_eq!(output, Some(Value::String("/repo".to_string())));
-                assert_eq!(error, None);
-            }
-            other => panic!("expected tool completed, got {:?}", other),
-        }
-    }
-
-    #[test]
-    fn convert_event_preserves_read_input_for_project_jsonl_user_tool_result() {
-        let session = ClaudeSession::new(
-            "test-workspace".to_string(),
-            PathBuf::from("/tmp/test"),
-            None,
-        );
-
-        let start_event = json!({
-            "type": "assistant",
-            "message": {
-                "content": [{
-                    "type": "tool_use",
-                    "id": "read-tool-1",
-                    "name": "Read",
-                    "input": {
-                        "file_path": "/repo/README.md"
-                    }
-                }]
-            }
-        });
-
-        match session.convert_event("turn-a", &start_event) {
-            Some(EngineEvent::ToolStarted { tool_id, input, .. }) => {
-                assert_eq!(tool_id, "read-tool-1");
-                assert_eq!(
-                    input.as_ref().and_then(|value| value.get("file_path")),
-                    Some(&Value::String("/repo/README.md".to_string()))
-                );
-            }
-            other => panic!("expected tool started, got {:?}", other),
-        }
-
-        let completed_event = json!({
-            "type": "user",
-            "message": {
-                "role": "user",
-                "content": [{
-                    "type": "tool_result",
-                    "tool_use_id": "read-tool-1",
-                    "content": "     1→hello world\n"
-                }]
-            }
-        });
-
-        match session.convert_event("turn-a", &completed_event) {
-            Some(EngineEvent::ToolCompleted {
-                tool_id,
-                output: Some(Value::Object(payload)),
-                ..
-            }) => {
-                assert_eq!(tool_id, "read-tool-1");
-                assert_eq!(
-                    payload
-                        .get("_input")
-                        .and_then(|value| value.get("file_path")),
-                    Some(&Value::String("/repo/README.md".to_string()))
-                );
-                assert_eq!(
-                    payload.get("_output"),
-                    Some(&Value::String("1→hello world".to_string()))
-                );
-            }
-            other => panic!("expected embedded read payload, got {:?}", other),
-        }
-    }
-
-    #[test]
-    fn convert_event_reads_project_jsonl_user_tool_result_stdout_fallback() {
-        let session = ClaudeSession::new(
-            "test-workspace".to_string(),
-            PathBuf::from("/tmp/test"),
-            None,
-        );
-        session.cache_tool_name("tool-user-stdout", "Bash");
-        session.register_pending_tool("turn-a", "tool-user-stdout", "Bash", None);
-
-        let event = json!({
-            "type": "user",
-            "message": {
-                "role": "user",
-                "content": [{
-                    "type": "tool_result",
-                    "tool_use_id": "tool-user-stdout",
-                    "content": "",
-                    "is_error": false
-                }]
-            },
-            "toolUseResult": {
-                "stdout": "total 32\n-rw-r--r-- README.md\n",
-                "stderr": ""
-            }
-        });
-
-        let converted = session.convert_event("turn-a", &event);
-        match converted {
-            Some(EngineEvent::ToolCompleted {
-                tool_id,
-                tool_name,
-                output,
-                error,
-                ..
-            }) => {
-                assert_eq!(tool_id, "tool-user-stdout");
-                assert_eq!(tool_name.as_deref(), Some("Bash"));
-                assert_eq!(
-                    output,
-                    Some(Value::String("total 32\n-rw-r--r-- README.md".to_string()))
-                );
-                assert_eq!(error, None);
-            }
-            other => panic!("expected tool completed, got {:?}", other),
-        }
-    }
-
-    #[test]
-    fn convert_event_matches_tool_result_without_id_or_name_to_latest_pending_tool() {
-        let session = ClaudeSession::new(
-            "test-workspace".to_string(),
-            PathBuf::from("/tmp/test"),
-            None,
-        );
-        session.cache_tool_name("tool-fallback", "bash");
-        session.register_pending_tool("turn-a", "tool-fallback", "bash", None);
-
-        let event = json!({
-            "type": "tool_result",
-            "tool_output": {
-                "output": "ok\n",
-                "exit": 0
-            }
-        });
-
-        let converted = session.convert_event("turn-a", &event);
-        match converted {
-            Some(EngineEvent::ToolCompleted {
-                tool_id,
-                tool_name,
-                output,
-                error,
-                ..
-            }) => {
-                assert_eq!(tool_id, "tool-fallback");
-                assert_eq!(tool_name.as_deref(), Some("bash"));
-                assert_eq!(output, Some(Value::String("ok".to_string())));
-                assert_eq!(error, None);
-            }
-            other => panic!("expected tool completed, got {:?}", other),
-        }
-    }
-
-    #[test]
-    fn convert_event_matches_most_recent_same_name_tool_when_input_missing() {
-        let session = ClaudeSession::new(
-            "test-workspace".to_string(),
-            PathBuf::from("/tmp/test"),
-            None,
-        );
-        session.cache_tool_name("tool-bash-older", "bash");
-        session.register_pending_tool(
-            "turn-a",
-            "tool-bash-older",
-            "bash",
-            Some(&json!({ "command": "pwd" })),
-        );
-        session.cache_tool_name("tool-bash-newer", "bash");
-        session.register_pending_tool(
-            "turn-a",
-            "tool-bash-newer",
-            "bash",
-            Some(&json!({ "command": "find . -name \"*.py\"" })),
-        );
-
-        let event = json!({
-            "type": "tool_result",
-            "tool_name": "bash",
-            "tool_output": {
-                "output": "42\n",
-                "exit": 0
-            }
-        });
-
-        let converted = session.convert_event("turn-a", &event);
-        match converted {
-            Some(EngineEvent::ToolCompleted {
-                tool_id, output, ..
-            }) => {
-                assert_eq!(tool_id, "tool-bash-newer");
-                assert_eq!(output, Some(Value::String("42".to_string())));
-            }
-            other => panic!("expected tool completed, got {:?}", other),
-        }
-    }
-
-    #[test]
-    fn convert_event_avoids_duplicate_when_assistant_blocks_repeat_whole_message() {
-        let session = ClaudeSession::new(
-            "test-workspace".to_string(),
-            PathBuf::from("/tmp/test"),
-            None,
-        );
-
-        let first = json!({
-            "type": "assistant",
-            "message": {
-                "content": [
-                    {"type": "text", "text": "你好！很高兴见到你。\n\n有什么我可以帮你的吗"}
-                ]
-            }
-        });
-        let second = json!({
-            "type": "assistant",
-            "message": {
-                "content": [
-                    {"type": "text", "text": "有什么我可以帮你的吗？"},
-                    {"type": "text", "text": "你好！很高兴见到你。\n\n有什么我可以帮你的吗？"}
-                ]
-            }
-        });
-
-        match session.convert_event("turn-a", &first) {
-            Some(EngineEvent::TextDelta { text, .. }) => {
-                assert_eq!(text, "你好！很高兴见到你。\n\n有什么我可以帮你的吗")
-            }
-            other => panic!("expected first text delta, got {:?}", other),
-        }
-
-        match session.convert_event("turn-a", &second) {
-            Some(EngineEvent::TextDelta { text, .. }) => assert_eq!(text, "？"),
-            other => panic!("expected punctuation-only delta, got {:?}", other),
-        }
-    }
-
-    #[test]
-    fn looks_like_claude_runtime_error_detects_api_json_eof() {
-        assert!(looks_like_claude_runtime_error(
-            "API Error: Unexpected end of JSON input"
-        ));
-        assert!(looks_like_claude_runtime_error(
-            "error: transport dropped unexpectedly"
-        ));
-    }
-
-    #[test]
-    fn looks_like_claude_runtime_error_ignores_regular_output() {
-        assert!(!looks_like_claude_runtime_error("你好，我继续给你方案"));
-        assert!(!looks_like_claude_runtime_error("{\"type\":\"assistant\"}"));
-    }
-}
+#[path = "claude/tests_core.rs"]
+mod tests_core;

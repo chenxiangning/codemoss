@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AVAILABLE_MODES, type PermissionMode } from '../types';
 import xuanzhonIcon from '../../../../../assets/xuanzhong.svg';
@@ -6,6 +6,10 @@ import morenmoshiIcon from '../../../../../assets/morenmoshi.svg';
 import guihuamoshiIcon from '../../../../../assets/guihuamoshi.svg';
 import dailimoshiIcon from '../../../../../assets/dailimoshi.svg';
 import zidongmoshiIcon from '../../../../../assets/zidongmoshi.svg';
+import {
+  MODE_SELECT_FLASH_DURATION_MS,
+  MODE_SELECT_FLASH_EVENT,
+} from './modeSelectFlash';
 
 const MODE_ICONS: Record<string, string> = {
   default: morenmoshiIcon,
@@ -27,8 +31,11 @@ interface ModeSelectProps {
 export const ModeSelect = ({ value, onChange, provider }: ModeSelectProps) => {
   const { t } = useTranslation();
   const [isOpen, setIsOpen] = useState(false);
+  const [isChevronFlashing, setIsChevronFlashing] = useState(false);
+  const [flashCycle, setFlashCycle] = useState(0);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const flashTimerRef = useRef<number | null>(null);
   const fallbackMode = AVAILABLE_MODES[0] ?? {
     id: 'default' as PermissionMode,
     label: 'Default Mode',
@@ -41,8 +48,19 @@ export const ModeSelect = ({ value, onChange, provider }: ModeSelectProps) => {
     if (provider === 'gemini') {
       return AVAILABLE_MODES.map((mode) => ({ ...mode, disabled: false }));
     }
-    // Only allow bypassPermissions (Auto Mode) to be selectable
-    // Disable all other modes (default, plan, acceptEdits)
+    if (provider === 'claude') {
+      return AVAILABLE_MODES.map((mode) => {
+        if (
+          mode.id === 'default' ||
+          mode.id === 'plan' ||
+          mode.id === 'bypassPermissions'
+        ) {
+          return { ...mode, disabled: false };
+        }
+        return { ...mode, disabled: true };
+      });
+    }
+    // Keep non-Claude providers on the existing restricted path.
     return AVAILABLE_MODES.map((mode) => {
       if (mode.id !== 'bypassPermissions') {
         return { ...mode, disabled: true };
@@ -59,6 +77,11 @@ export const ModeSelect = ({ value, onChange, provider }: ModeSelectProps) => {
       const codexKey = `codexModes.${modeId}.${field}`;
       const fallbackKey = `modes.${modeId}.${field}`;
       return t(codexKey, { defaultValue: t(fallbackKey) });
+    }
+    if (provider === 'claude') {
+      const claudeKey = `claudeModes.${modeId}.${field}`;
+      const fallbackKey = `modes.${modeId}.${field}`;
+      return t(claudeKey, { defaultValue: t(fallbackKey) });
     }
 
     return t(`modes.${modeId}.${field}`);
@@ -109,17 +132,76 @@ export const ModeSelect = ({ value, onChange, provider }: ModeSelectProps) => {
     };
   }, [isOpen]);
 
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return undefined;
+    }
+
+    const clearFlashTimer = () => {
+      if (flashTimerRef.current !== null) {
+        window.clearTimeout(flashTimerRef.current);
+        flashTimerRef.current = null;
+      }
+    };
+
+    const handleFlashEvent = () => {
+      clearFlashTimer();
+      setIsChevronFlashing(true);
+      setFlashCycle((previous) => previous + 1);
+      flashTimerRef.current = window.setTimeout(() => {
+        setIsChevronFlashing(false);
+        flashTimerRef.current = null;
+      }, MODE_SELECT_FLASH_DURATION_MS);
+    };
+
+    window.addEventListener(MODE_SELECT_FLASH_EVENT, handleFlashEvent);
+    return () => {
+      clearFlashTimer();
+      window.removeEventListener(MODE_SELECT_FLASH_EVENT, handleFlashEvent);
+    };
+  }, []);
+
+  const flashingButtonStyle = useMemo<CSSProperties | undefined>(() => {
+    if (!isChevronFlashing) {
+      return undefined;
+    }
+    return {
+      ['--mode-trigger-flash-name' as const]:
+        flashCycle % 2 === 0
+          ? 'selector-mode-trigger-flash-a'
+          : 'selector-mode-trigger-flash-b',
+    } as CSSProperties;
+  }, [flashCycle, isChevronFlashing]);
+
+  const flashingChevronStyle = useMemo<CSSProperties | undefined>(() => {
+    if (!isChevronFlashing) {
+      return { fontSize: '10px', marginLeft: '2px' };
+    }
+    return {
+      fontSize: '10px',
+      marginLeft: '2px',
+      ['--mode-chevron-flash-name' as const]:
+        flashCycle % 2 === 0
+          ? 'selector-mode-chevron-flash-a'
+          : 'selector-mode-chevron-flash-b',
+    } as CSSProperties;
+  }, [flashCycle, isChevronFlashing]);
+
   return (
     <div style={{ position: 'relative', display: 'inline-block' }}>
       <button
         ref={buttonRef}
-        className="selector-button"
+        className={`selector-button selector-button-mode-trigger${isChevronFlashing ? ' is-flashing' : ''}`}
         onClick={handleToggle}
+        style={flashingButtonStyle}
         title={getModeText(currentMode.id, 'tooltip') || `${t('chat.currentMode', { mode: getModeText(currentMode.id, 'label') })}`}
       >
         <img src={MODE_ICONS[currentMode.id]} style={{ width: 12, height: 12, flexShrink: 0 }} aria-hidden />
         <span className="selector-button-text">{getModeText(currentMode.id, 'label')}</span>
-        <span className={`codicon codicon-chevron-${isOpen ? 'up' : 'down'}`} style={{ fontSize: '10px', marginLeft: '2px' }} />
+        <span
+          className={`codicon codicon-chevron-${isOpen ? 'up' : 'down'} selector-button-mode-chevron${isChevronFlashing ? ' is-flashing' : ''}`}
+          style={flashingChevronStyle}
+        />
       </button>
 
       {isOpen && (

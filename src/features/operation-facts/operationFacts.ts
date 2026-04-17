@@ -1,5 +1,8 @@
 import type { ConversationItem } from "../../types";
-import { inferFileChangesFromPayload } from "../../utils/threadItemsFileChanges";
+import {
+  inferFileChangesFromCommandExecutionArtifacts,
+  inferFileChangesFromPayload,
+} from "../../utils/threadItemsFileChanges";
 import {
   buildCommandSummary,
   extractToolName,
@@ -103,6 +106,19 @@ export function extractFileChangeSummaries(items: ConversationItem[]): Operation
       (entry): entry is Record<string, unknown> => Boolean(entry),
     );
     if (changes.length === 0) {
+      const isCommandTool = shouldInferCommandToolChanges(item);
+      const commandSummary = isCommandTool
+        ? buildCommandSummary(
+            { title: item.title, detail: item.detail, toolType: "commandExecution" },
+            { includeDetail: false },
+          )
+        : "";
+      const commandInferredChanges = isCommandTool
+        ? inferFileChangesFromCommandExecutionArtifacts(
+            commandSummary,
+            item.output ?? "",
+          )
+        : [];
       const payloadInferredChanges = inferFileChangesFromPayload([
         parsedArgs,
         inputArgs,
@@ -110,8 +126,12 @@ export function extractFileChangeSummaries(items: ConversationItem[]): Operation
         item.detail,
         item.output ?? "",
       ]);
-      if (payloadInferredChanges.length > 0) {
-        for (const inferredChange of payloadInferredChanges) {
+      const inferredChanges = mergeInferredChangesByPath(
+        payloadInferredChanges,
+        commandInferredChanges,
+      );
+      if (inferredChanges.length > 0) {
+        for (const inferredChange of inferredChanges) {
           const filePath = inferredChange.path.trim();
           if (!filePath) {
             continue;
@@ -140,11 +160,7 @@ export function extractFileChangeSummaries(items: ConversationItem[]): Operation
           }
           existing.additions += stats.additions;
           existing.deletions += stats.deletions;
-          if (status === "A") {
-            existing.status = "A";
-          } else if (status === "D" && existing.status !== "A") {
-            existing.status = "D";
-          }
+          existing.status = mergeFileStatus(existing.status, status);
           existing.diff = pickPreferredDiff(existing.diff, inferredChange.diff);
         }
         continue;
@@ -169,11 +185,7 @@ export function extractFileChangeSummaries(items: ConversationItem[]): Operation
       }
       existing.additions += inferred.additions;
       existing.deletions += inferred.deletions;
-      if (status === "A") {
-        existing.status = "A";
-      } else if (status === "D" && existing.status !== "A") {
-        existing.status = "D";
-      }
+      existing.status = mergeFileStatus(existing.status, status);
       continue;
     }
     for (const change of changes) {
@@ -214,13 +226,75 @@ export function extractFileChangeSummaries(items: ConversationItem[]): Operation
       }
       existing.additions += additions;
       existing.deletions += deletions;
-      if (status === "A") {
-        existing.status = "A";
-      }
+      existing.status = mergeFileStatus(existing.status, status);
       existing.diff = pickPreferredDiff(existing.diff, change.diff);
     }
   }
   return Array.from(seen.values());
+}
+
+function mergeFileStatus(
+  current: OperationFileChangeSummary["status"],
+  incoming: OperationFileChangeSummary["status"],
+): OperationFileChangeSummary["status"] {
+  if (incoming === "A") {
+    return "A";
+  }
+  if (incoming === "D") {
+    return current === "A" ? current : "D";
+  }
+  if (incoming === "R") {
+    return current === "A" || current === "D" ? current : "R";
+  }
+  return current;
+}
+
+function mergeInferredChangesByPath(
+  primary: Array<{ path: string; kind?: string; diff?: string }>,
+  secondary: Array<{ path: string; kind?: string; diff?: string }>,
+) {
+  const mergedByPath = new Map<string, { path: string; kind?: string; diff?: string }>();
+  const mergeEntry = (entry: { path: string; kind?: string; diff?: string }) => {
+    const normalizedPath = entry.path.trim();
+    if (!normalizedPath) {
+      return;
+    }
+    const existing = mergedByPath.get(normalizedPath);
+    if (!existing) {
+      mergedByPath.set(normalizedPath, {
+        path: normalizedPath,
+        kind: entry.kind,
+        diff: entry.diff,
+      });
+      return;
+    }
+    const existingStatus = normalizeFileStatus(existing.kind);
+    const incomingStatus = normalizeFileStatus(entry.kind);
+    if (
+      (!existingStatus && incomingStatus) ||
+      (existingStatus === "M" && incomingStatus && incomingStatus !== "M")
+    ) {
+      existing.kind = entry.kind;
+    }
+    existing.diff = pickPreferredDiff(existing.diff, entry.diff);
+  };
+  primary.forEach(mergeEntry);
+  secondary.forEach(mergeEntry);
+  return Array.from(mergedByPath.values());
+}
+
+function shouldInferCommandToolChanges(
+  item: Extract<ConversationItem, { kind: "tool" }>,
+) {
+  const normalizedToolType = item.toolType.trim().toLowerCase();
+  if (normalizedToolType === "commandexecution") {
+    return true;
+  }
+  if (isBashTool(normalizedToolType)) {
+    return true;
+  }
+  const extractedToolName = extractToolName(item.title);
+  return isBashTool(extractedToolName);
 }
 
 function pickPreferredDiff(primary?: string, secondary?: string): string | undefined {

@@ -36,10 +36,7 @@ import {
   mergeThreadItems,
   previewThreadName,
 } from "../../../utils/threadItems";
-import {
-  loadCodexRewindHiddenItemIds,
-  saveThreadActivity,
-} from "../utils/threadStorage";
+import { saveThreadActivity } from "../utils/threadStorage";
 import { useThreadActions } from "./useThreadActions";
 
 vi.mock("../../../services/tauri", () => ({
@@ -49,6 +46,7 @@ vi.mock("../../../services/tauri", () => ({
   forkClaudeSession: vi.fn(),
   forkClaudeSessionFromMessage: vi.fn(),
   forkThread: vi.fn(),
+  rewindCodexThread: vi.fn(),
   listClaudeSessions: vi.fn(),
   listGeminiSessions: vi.fn(),
   getOpenCodeSessionList: vi.fn(),
@@ -72,17 +70,17 @@ vi.mock("../../../services/tauri", () => ({
 
 vi.mock("../../../utils/threadItems", () => ({
   buildItemsFromThread: vi.fn(),
+  extractClaudeApprovalResumeEntries: vi.fn(() => []),
   getThreadTimestamp: vi.fn(),
   isReviewingFromThread: vi.fn(),
   mergeThreadItems: vi.fn(),
   previewThreadName: vi.fn(),
+  stripClaudeApprovalResumeArtifacts: vi.fn((text: string) => text),
 }));
 
 vi.mock("../utils/threadStorage", () => ({
-  loadCodexRewindHiddenItemIds: vi.fn(() => ({})),
   makeCustomNameKey: (workspaceId: string, threadId: string) =>
     `${workspaceId}:${threadId}`,
-  saveCodexRewindHiddenItemIds: vi.fn(),
   saveThreadActivity: vi.fn(),
 }));
 
@@ -97,7 +95,6 @@ describe("useThreadActions", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(loadCodexRewindHiddenItemIds).mockReturnValue({});
     vi.mocked(listThreadTitles).mockResolvedValue({});
     vi.mocked(listGeminiSessions).mockResolvedValue([]);
     vi.mocked(getOpenCodeSessionList).mockResolvedValue([]);
@@ -172,6 +169,20 @@ describe("useThreadActions", () => {
       updateThreadParent: args.updateThreadParent,
       ...utils,
     };
+  }
+
+  function expectSetThreadsDispatched(
+    dispatch: ReturnType<typeof vi.fn>,
+    workspaceId: string,
+    threads: Array<Record<string, unknown>>,
+  ) {
+    expect(dispatch).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "setThreads",
+        workspaceId,
+        threads: threads.map((thread) => expect.objectContaining(thread)),
+      }),
+    );
   }
 
   it("starts a thread and activates it by default", async () => {
@@ -980,6 +991,72 @@ describe("useThreadActions", () => {
     );
   });
 
+  it("skips workspace restore when Claude rewind toggle is disabled", async () => {
+    vi.mocked(listThreads).mockResolvedValue({
+      result: {
+        data: [],
+        nextCursor: null,
+      },
+    } as any);
+    vi.mocked(listClaudeSessions).mockResolvedValue([]);
+    vi.mocked(loadClaudeSession).mockResolvedValue({
+      messages: [
+        {
+          kind: "message",
+          role: "user",
+          id: "550e8400-e29b-41d4-a716-446655440131",
+          text: "回溯目标",
+        },
+      ],
+    } as any);
+    vi.mocked(forkClaudeSessionFromMessage).mockResolvedValue({
+      thread: { id: "claude:forked-from-message-no-restore" },
+      sessionId: "forked-from-message-no-restore",
+    });
+
+    const { result } = renderActions({
+      itemsByThread: {
+        "claude:session-1": [
+          {
+            id: "user-local-no-restore",
+            kind: "message",
+            role: "user",
+            text: "回溯目标",
+          },
+          {
+            id: "tool-file-no-restore",
+            kind: "tool",
+            toolType: "fileChange",
+            title: "File changes",
+            detail: "{}",
+            changes: [
+              {
+                path: "src/App.tsx",
+                kind: "modified",
+                diff: "@@ -1,1 +1,1 @@\n-const value = 'before';\n+const value = 'after';",
+              },
+            ],
+          },
+        ],
+      },
+    });
+
+    await act(async () => {
+      await result.current.listThreadsForWorkspace(workspace, { preserveState: true });
+    });
+
+    await act(async () => {
+      await result.current.forkClaudeSessionFromMessageForWorkspace(
+        "ws-1",
+        "claude:session-1",
+        "user-local-no-restore",
+        { mode: "messages-only" },
+      );
+    });
+
+    expect(writeWorkspaceFile).not.toHaveBeenCalled();
+  });
+
   it("rolls workspace files back when Claude rewind fork fails", async () => {
     vi.mocked(listThreads).mockResolvedValue({
       result: {
@@ -1069,6 +1146,157 @@ describe("useThreadActions", () => {
       "src/App.tsx",
       "const value = 'after';\n",
     );
+  });
+
+  it("does not roll workspace files back when Claude rewind fork fails and toggle is disabled", async () => {
+    vi.mocked(listThreads).mockResolvedValue({
+      result: {
+        data: [],
+        nextCursor: null,
+      },
+    } as any);
+    vi.mocked(listClaudeSessions).mockResolvedValue([]);
+    vi.mocked(loadClaudeSession).mockResolvedValue({
+      messages: [
+        {
+          kind: "message",
+          role: "user",
+          id: "440e8400-e29b-41d4-a716-446655440140",
+          text: "更早一条",
+        },
+        {
+          kind: "message",
+          role: "user",
+          id: "550e8400-e29b-41d4-a716-446655440141",
+          text: "回溯目标",
+        },
+      ],
+    } as any);
+    vi.mocked(forkClaudeSessionFromMessage).mockRejectedValue(
+      new Error("fork failed"),
+    );
+
+    const { result } = renderActions({
+      itemsByThread: {
+        "claude:session-1": [
+          {
+            id: "user-local-prev-disable-rollback",
+            kind: "message",
+            role: "user",
+            text: "更早一条",
+          },
+          {
+            id: "user-local-disable-rollback",
+            kind: "message",
+            role: "user",
+            text: "回溯目标",
+          },
+          {
+            id: "tool-file-disable-rollback",
+            kind: "tool",
+            toolType: "fileChange",
+            title: "File changes",
+            detail: "{}",
+            changes: [
+              {
+                path: "src/App.tsx",
+                kind: "modified",
+                diff: "@@ -1,1 +1,1 @@\n-const value = 'before';\n+const value = 'after';",
+              },
+            ],
+          },
+        ],
+      },
+    });
+
+    await act(async () => {
+      await result.current.listThreadsForWorkspace(workspace, { preserveState: true });
+    });
+
+    await act(async () => {
+      await result.current.forkClaudeSessionFromMessageForWorkspace(
+        "ws-1",
+        "claude:session-1",
+        "user-local-disable-rollback",
+        { mode: "messages-only" },
+      );
+    });
+
+    expect(writeWorkspaceFile).not.toHaveBeenCalled();
+  });
+
+  it("restores workspace files without rewinding Claude messages in files-only mode", async () => {
+    vi.mocked(listThreads).mockResolvedValue({
+      result: {
+        data: [],
+        nextCursor: null,
+      },
+    } as any);
+    vi.mocked(listClaudeSessions).mockResolvedValue([]);
+    vi.mocked(loadClaudeSession).mockResolvedValue({
+      messages: [
+        {
+          kind: "message",
+          role: "user",
+          id: "550e8400-e29b-41d4-a716-446655440151",
+          text: "回溯目标",
+        },
+      ],
+    } as any);
+    vi.mocked(readWorkspaceFile).mockResolvedValue({
+      content: "const value = 'after';\n",
+      truncated: false,
+    });
+
+    const { result } = renderActions({
+      itemsByThread: {
+        "claude:session-1": [
+          {
+            id: "user-files-only",
+            kind: "message",
+            role: "user",
+            text: "回溯目标",
+          },
+          {
+            id: "tool-file-files-only",
+            kind: "tool",
+            toolType: "fileChange",
+            title: "File changes",
+            detail: "{}",
+            changes: [
+              {
+                path: "src/App.tsx",
+                kind: "modified",
+                diff: "@@ -1,1 +1,1 @@\n-const value = 'before';\n+const value = 'after';",
+              },
+            ],
+          },
+        ],
+      },
+    });
+
+    await act(async () => {
+      await result.current.listThreadsForWorkspace(workspace, { preserveState: true });
+    });
+
+    let output: string | null = null;
+    await act(async () => {
+      output = await result.current.forkClaudeSessionFromMessageForWorkspace(
+        "ws-1",
+        "claude:session-1",
+        "user-files-only",
+        { mode: "files-only" },
+      );
+    });
+
+    expect(output).toBe("claude:session-1");
+    expect(writeWorkspaceFile).toHaveBeenCalledWith(
+      "ws-1",
+      "src/App.tsx",
+      "const value = 'before';\n",
+    );
+    expect(forkClaudeSessionFromMessage).not.toHaveBeenCalled();
+    expect(deleteClaudeSession).not.toHaveBeenCalled();
   });
 
   it("starts a thread without activating when requested", async () => {
@@ -1600,19 +1828,15 @@ describe("useThreadActions", () => {
       workspaceId: "ws-1",
       isLoading: true,
     });
-    expect(dispatch).toHaveBeenCalledWith({
-      type: "setThreads",
-      workspaceId: "ws-1",
-      threads: [
-        {
-          id: "thread-1",
-          name: "Custom",
-          updatedAt: 5000,
-          sizeBytes: 4096,
-          engineSource: "codex",
-        },
-      ],
-    });
+    expectSetThreadsDispatched(dispatch, "ws-1", [
+      {
+        id: "thread-1",
+        name: "Custom",
+        updatedAt: 5000,
+        sizeBytes: 4096,
+        engineSource: "codex",
+      },
+    ]);
     expect(dispatch).toHaveBeenCalledWith({
       type: "setThreadListCursor",
       workspaceId: "ws-1",
@@ -1651,18 +1875,14 @@ describe("useThreadActions", () => {
       await result.current.listThreadsForWorkspace(workspace);
     });
 
-    expect(dispatch).toHaveBeenCalledWith({
-      type: "setThreads",
-      workspaceId: "ws-1",
-      threads: [
-        {
-          id: "thread-private-1",
-          name: "Private prefix path",
-          updatedAt: 6100,
-          engineSource: "codex",
-        },
-      ],
-    });
+    expectSetThreadsDispatched(dispatch, "ws-1", [
+      {
+        id: "thread-private-1",
+        name: "Private prefix path",
+        updatedAt: 6100,
+        engineSource: "codex",
+      },
+    ]);
   });
 
   it("matches Windows workspace path when thread cwd uses extended-length prefix", async () => {
@@ -1695,18 +1915,14 @@ describe("useThreadActions", () => {
       await result.current.listThreadsForWorkspace(windowsWorkspace);
     });
 
-    expect(dispatch).toHaveBeenCalledWith({
-      type: "setThreads",
-      workspaceId: "ws-win",
-      threads: [
-        {
-          id: "thread-win-1",
-          name: "Windows extended path",
-          updatedAt: 6200,
-          engineSource: "codex",
-        },
-      ],
-    });
+    expectSetThreadsDispatched(dispatch, "ws-win", [
+      {
+        id: "thread-win-1",
+        name: "Windows extended path",
+        updatedAt: 6200,
+        engineSource: "codex",
+      },
+    ]);
   });
 
   it("matches Windows UNC workspace path when thread cwd uses \\?\\UNC prefix", async () => {
@@ -1739,18 +1955,14 @@ describe("useThreadActions", () => {
       await result.current.listThreadsForWorkspace(uncWorkspace);
     });
 
-    expect(dispatch).toHaveBeenCalledWith({
-      type: "setThreads",
-      workspaceId: "ws-unc",
-      threads: [
-        {
-          id: "thread-unc-1",
-          name: "UNC extended path",
-          updatedAt: 6300,
-          engineSource: "codex",
-        },
-      ],
-    });
+    expectSetThreadsDispatched(dispatch, "ws-unc", [
+      {
+        id: "thread-unc-1",
+        name: "UNC extended path",
+        updatedAt: 6300,
+        engineSource: "codex",
+      },
+    ]);
   });
 
   it("matches mac workspace path when thread cwd includes /System/Volumes/Data prefix", async () => {
@@ -1783,18 +1995,14 @@ describe("useThreadActions", () => {
       await result.current.listThreadsForWorkspace(macWorkspace);
     });
 
-    expect(dispatch).toHaveBeenCalledWith({
-      type: "setThreads",
-      workspaceId: "ws-mac",
-      threads: [
-        {
-          id: "thread-mac-1",
-          name: "Mac data volume path",
-          updatedAt: 6400,
-          engineSource: "codex",
-        },
-      ],
-    });
+    expectSetThreadsDispatched(dispatch, "ws-mac", [
+      {
+        id: "thread-mac-1",
+        name: "Mac data volume path",
+        updatedAt: 6400,
+        engineSource: "codex",
+      },
+    ]);
   });
 
   it("matches file:// cwd URI on Windows workspace", async () => {
@@ -1827,18 +2035,14 @@ describe("useThreadActions", () => {
       await result.current.listThreadsForWorkspace(windowsWorkspace);
     });
 
-    expect(dispatch).toHaveBeenCalledWith({
-      type: "setThreads",
-      workspaceId: "ws-win-uri",
-      threads: [
-        {
-          id: "thread-win-uri-1",
-          name: "Windows file URI path",
-          updatedAt: 6500,
-          engineSource: "codex",
-        },
-      ],
-    });
+    expectSetThreadsDispatched(dispatch, "ws-win-uri", [
+      {
+        id: "thread-win-uri-1",
+        name: "Windows file URI path",
+        updatedAt: 6500,
+        engineSource: "codex",
+      },
+    ]);
   });
 
   it("matches file://C:/ cwd URI on Windows workspace", async () => {
@@ -1871,18 +2075,14 @@ describe("useThreadActions", () => {
       await result.current.listThreadsForWorkspace(windowsWorkspace);
     });
 
-    expect(dispatch).toHaveBeenCalledWith({
-      type: "setThreads",
-      workspaceId: "ws-win-uri-host-drive",
-      threads: [
-        {
-          id: "thread-win-uri-host-drive-1",
-          name: "Windows file URI host drive path",
-          updatedAt: 6510,
-          engineSource: "codex",
-        },
-      ],
-    });
+    expectSetThreadsDispatched(dispatch, "ws-win-uri-host-drive", [
+      {
+        id: "thread-win-uri-host-drive-1",
+        name: "Windows file URI host drive path",
+        updatedAt: 6510,
+        engineSource: "codex",
+      },
+    ]);
   });
 
   it("matches Windows workspace path when thread cwd uses /mnt/c style path", async () => {
@@ -1915,18 +2115,14 @@ describe("useThreadActions", () => {
       await result.current.listThreadsForWorkspace(windowsWorkspace);
     });
 
-    expect(dispatch).toHaveBeenCalledWith({
-      type: "setThreads",
-      workspaceId: "ws-win-mnt",
-      threads: [
-        {
-          id: "thread-win-mnt-1",
-          name: "Windows mnt path",
-          updatedAt: 6600,
-          engineSource: "codex",
-        },
-      ],
-    });
+    expectSetThreadsDispatched(dispatch, "ws-win-mnt", [
+      {
+        id: "thread-win-mnt-1",
+        name: "Windows mnt path",
+        updatedAt: 6600,
+        engineSource: "codex",
+      },
+    ]);
   });
 
   it("filters archived and Codex helper thread entries while keeping vscode sessions", async () => {
@@ -1986,30 +2182,26 @@ describe("useThreadActions", () => {
       await result.current.listThreadsForWorkspace(workspace);
     });
 
-    expect(dispatch).toHaveBeenCalledWith({
-      type: "setThreads",
-      workspaceId: "ws-1",
-      threads: [
-        {
-          id: "thread-valid",
-          name: "Visible thread",
-          updatedAt: 6200,
-          engineSource: "codex",
-          source: "cli",
-          provider: undefined,
-          sourceLabel: "cli",
-        },
-        {
-          id: "thread-vscode",
-          name: "Should keep vscode",
-          updatedAt: 6000,
-          engineSource: "codex",
-          source: "vscode",
-          provider: undefined,
-          sourceLabel: "vscode",
-        },
-      ],
-    });
+    expectSetThreadsDispatched(dispatch, "ws-1", [
+      {
+        id: "thread-valid",
+        name: "Visible thread",
+        updatedAt: 6200,
+        engineSource: "codex",
+        source: "cli",
+        provider: undefined,
+        sourceLabel: "cli",
+      },
+      {
+        id: "thread-vscode",
+        name: "Should keep vscode",
+        updatedAt: 6000,
+        engineSource: "codex",
+        source: "vscode",
+        provider: undefined,
+        sourceLabel: "vscode",
+      },
+    ]);
   });
 
   it("keeps known codex threads when local session scan is unavailable and cwd is missing", async () => {
@@ -2056,18 +2248,14 @@ describe("useThreadActions", () => {
       await result.current.listThreadsForWorkspace(workspace);
     });
 
-    expect(dispatch).toHaveBeenCalledWith({
-      type: "setThreads",
-      workspaceId: "ws-1",
-      threads: [
-        {
-          id: "thread-known",
-          name: "Known recovered",
-          updatedAt: 7200,
-          engineSource: "codex",
-        },
-      ],
-    });
+    expectSetThreadsDispatched(dispatch, "ws-1", [
+      {
+        id: "thread-known",
+        name: "Known recovered",
+        updatedAt: 7200,
+        engineSource: "codex",
+      },
+    ]);
   });
 
   it("stops scanning after capped empty pages when known activity exists", async () => {
@@ -2129,18 +2317,63 @@ describe("useThreadActions", () => {
       await result.current.listThreadsForWorkspace(workspace);
     });
 
-    expect(dispatch).toHaveBeenCalledWith({
-      type: "setThreads",
-      workspaceId: "ws-1",
-      threads: [
-        {
-          id: "opencode:ses_opc_1",
-          name: "OpenCode Hello",
-          updatedAt: 1_730_000_000_000,
-          engineSource: "opencode",
-        },
-      ],
+    expectSetThreadsDispatched(dispatch, "ws-1", [
+      {
+        id: "opencode:ses_opc_1",
+        name: "OpenCode Hello",
+        updatedAt: 1_730_000_000_000,
+        engineSource: "opencode",
+      },
+    ]);
+  });
+
+  it("can skip opencode probing while keeping existing opencode threads", async () => {
+    vi.mocked(listThreads).mockResolvedValue({
+      result: {
+        data: [],
+        nextCursor: null,
+      },
     });
+    vi.mocked(listClaudeSessions).mockResolvedValue([]);
+    vi.mocked(getOpenCodeSessionList).mockResolvedValue([
+      {
+        sessionId: "ses_should_not_fetch",
+        title: "Should not fetch",
+        updatedLabel: "1m ago",
+        updatedAt: 1_740_000_000_000,
+      },
+    ]);
+
+    const { result, dispatch } = renderActions({
+      threadsByWorkspace: {
+        "ws-1": [
+          {
+            id: "opencode:ses_cached_1",
+            name: "Cached OpenCode",
+            updatedAt: 1_730_500_000_000,
+            engineSource: "opencode",
+            threadKind: "native",
+          },
+        ],
+      },
+    });
+
+    await act(async () => {
+      await result.current.listThreadsForWorkspace(workspace, {
+        preserveState: true,
+        includeOpenCodeSessions: false,
+      });
+    });
+
+    expect(getOpenCodeSessionList).not.toHaveBeenCalled();
+    expectSetThreadsDispatched(dispatch, "ws-1", [
+      {
+        id: "opencode:ses_cached_1",
+        name: "Cached OpenCode",
+        updatedAt: 1_730_500_000_000,
+        engineSource: "opencode",
+      },
+    ]);
   });
 
   it("reconnects workspace and retries list when backend reports not connected", async () => {
@@ -2174,18 +2407,14 @@ describe("useThreadActions", () => {
 
     expect(connectWorkspace).toHaveBeenCalledWith("ws-1");
     expect(listThreads).toHaveBeenCalledTimes(2);
-    expect(dispatch).toHaveBeenCalledWith({
-      type: "setThreads",
-      workspaceId: "ws-1",
-      threads: [
-        {
-          id: "thread-1",
-          name: "Recovered",
-          updatedAt: 1000,
-          engineSource: "codex",
-        },
-      ],
-    });
+    expectSetThreadsDispatched(dispatch, "ws-1", [
+      {
+        id: "thread-1",
+        name: "Recovered",
+        updatedAt: 1000,
+        engineSource: "codex",
+      },
+    ]);
   });
 
   it("falls back to claude sessions when codex thread list remains not connected after retry", async () => {
@@ -2209,18 +2438,14 @@ describe("useThreadActions", () => {
 
     expect(connectWorkspace).toHaveBeenCalledWith("ws-1");
     expect(listThreads).toHaveBeenCalledTimes(2);
-    expect(dispatch).toHaveBeenCalledWith({
-      type: "setThreads",
-      workspaceId: "ws-1",
-      threads: [
-        {
-          id: "claude:claude-fallback-1",
-          name: "Claude recovered history",
-          updatedAt: 1_730_100_000_000,
-          engineSource: "claude",
-        },
-      ],
-    });
+    expectSetThreadsDispatched(dispatch, "ws-1", [
+      {
+        id: "claude:claude-fallback-1",
+        name: "Claude recovered history",
+        updatedAt: 1_730_100_000_000,
+        engineSource: "claude",
+      },
+    ]);
   });
 
   it("refreshes gemini sessions on cold start without gemini signal", async () => {
@@ -2248,18 +2473,14 @@ describe("useThreadActions", () => {
 
     await waitFor(() => {
       expect(listGeminiSessions).toHaveBeenCalledWith("/tmp/codex", 50);
-      expect(dispatch).toHaveBeenCalledWith({
-        type: "setThreads",
-        workspaceId: "ws-1",
-        threads: [
-          {
-            id: "gemini:ses_gemini_1",
-            name: "Gemini Hello",
-            updatedAt: 1_730_000_100_000,
-            engineSource: "gemini",
-          },
-        ],
-      });
+      expectSetThreadsDispatched(dispatch, "ws-1", [
+        {
+          id: "gemini:ses_gemini_1",
+          name: "Gemini Hello",
+          updatedAt: 1_730_000_100_000,
+          engineSource: "gemini",
+        },
+      ]);
     });
   });
 
@@ -2288,19 +2509,15 @@ describe("useThreadActions", () => {
     });
 
     await waitFor(() => {
-      expect(dispatch).toHaveBeenCalledWith({
-        type: "setThreads",
-        workspaceId: "ws-1",
-        threads: [
-          {
-            id: "gemini:ses_gemini_snake_1",
-            name: "Gemini Snake",
-            updatedAt: 1_730_000_200_000,
-            sizeBytes: 2_048,
-            engineSource: "gemini",
-          },
-        ],
-      });
+      expectSetThreadsDispatched(dispatch, "ws-1", [
+        {
+          id: "gemini:ses_gemini_snake_1",
+          name: "Gemini Snake",
+          updatedAt: 1_730_000_200_000,
+          sizeBytes: 2_048,
+          engineSource: "gemini",
+        },
+      ]);
     });
   });
 
@@ -2367,18 +2584,20 @@ describe("useThreadActions", () => {
       .map(([action]) => action)
       .filter((action) => action.type === "setThreads");
     expect(setThreadsActions.length).toBeGreaterThanOrEqual(2);
-    expect(setThreadsActions[0]).toEqual({
-      type: "setThreads",
-      workspaceId: "ws-1",
-      threads: [
-        {
-          id: "claude:session-delete-me",
-          name: "Delete me",
-          updatedAt: 1_730_000_000_000,
-          engineSource: "claude",
-        },
-      ],
-    });
+    expect(setThreadsActions[0]).toEqual(
+      expect.objectContaining({
+        type: "setThreads",
+        workspaceId: "ws-1",
+        threads: [
+          expect.objectContaining({
+            id: "claude:session-delete-me",
+            name: "Delete me",
+            updatedAt: 1_730_000_000_000,
+            engineSource: "claude",
+          }),
+        ],
+      }),
+    );
     expect(setThreadsActions[setThreadsActions.length - 1]).toEqual({
       type: "setThreads",
       workspaceId: "ws-1",
@@ -2444,14 +2663,10 @@ describe("useThreadActions", () => {
       workspaceId: "ws-1",
       isLoading: true,
     });
-    expect(dispatch).toHaveBeenCalledWith({
-      type: "setThreads",
-      workspaceId: "ws-1",
-      threads: [
-        { id: "thread-1", name: "Agent 1", updatedAt: 6000 },
-        { id: "thread-2", name: "Older preview", updatedAt: 4000 },
-      ],
-    });
+    expectSetThreadsDispatched(dispatch, "ws-1", [
+      { id: "thread-1", name: "Agent 1", updatedAt: 6000 },
+      { id: "thread-2", name: "Older preview", updatedAt: 4000 },
+    ]);
     expect(dispatch).toHaveBeenCalledWith({
       type: "setThreadListCursor",
       workspaceId: "ws-1",
@@ -2492,23 +2707,19 @@ describe("useThreadActions", () => {
       await result.current.loadOlderThreadsForWorkspace(workspace);
     });
 
-    expect(dispatch).toHaveBeenCalledWith({
-      type: "setThreads",
-      workspaceId: "ws-1",
-      threads: [
-        {
-          id: "thread-1",
-          name: "Agent 1",
-          updatedAt: 6000,
-          engineSource: "codex",
-        },
-        {
-          id: "thread-active",
-          name: "Recovered active thread",
-          updatedAt: 4100,
-        },
-      ],
-    });
+    expectSetThreadsDispatched(dispatch, "ws-1", [
+      {
+        id: "thread-1",
+        name: "Agent 1",
+        updatedAt: 6000,
+        engineSource: "codex",
+      },
+      {
+        id: "thread-active",
+        name: "Recovered active thread",
+        updatedAt: 4100,
+      },
+    ]);
   });
 
   it("archives threads and reports errors", async () => {

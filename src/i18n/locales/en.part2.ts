@@ -40,6 +40,9 @@ const enPart2 = {
     workspaceTypeMain: "Main workspace",
     workspaceTypeWorktree: "Worktree",
     unknownBranch: "unknown",
+    homeHeroTitle: "Build anything",
+    homeBranchLabelMain: "Primary branch",
+    homeBranchLabelWorktree: "Worktree",
     copyPath: "Copy path",
     pathCopied: "Path copied",
     openProjectFolder: "Open project folder",
@@ -50,6 +53,7 @@ const enPart2 = {
     engineOpenCode: "OpenCode",
     engineComingSoon: "Coming soon",
     startConversation: "Start conversation",
+    startSharedConversation: "Claude Code + Codex",
     startingConversation: "Starting...",
     continueLatestConversation: "Continue latest conversation",
     guidedStart: "Spec and execution guides",
@@ -118,6 +122,7 @@ const enPart2 = {
     models: "{{count}} models",
     runs: "{{count}} runs",
     // Clone
+    newSharedSession: "Claude Code + Codex",
     newCloneAgent: "New clone agent",
     createWorkingCopyOf: "Create a new working copy of \"{{name}}\".",
     copyName: "Copy name",
@@ -1180,13 +1185,26 @@ const enPart2 = {
     denyAll: "Deny All",
     reviewRequest: "Review Request",
     approvalNeeded: "Approval needed",
+    pendingBadge: "Pending approval",
+    reviewBeforeApply: "Review this request before the local bridge executes it.",
     inputRequested: "Input requested",
+    fileChanges: "File changes",
+    commandExecution: "Command execution",
+    genericApproval: "Approval",
+    toolLabel: "Tool",
+    filePathLabel: "File path",
+    commandLabel: "Command",
+    noteLabel: "Note",
     none: "None",
     noExtraDetails: "No extra details.",
     decline: "Decline",
+    approveTurnBatch: "Approve all in this batch ({{count}})",
     allowCommandsStartWith: "Allow commands that start with {{prefix}}",
     alwaysAllow: "Always allow",
     approveEnter: "Approve (Enter)",
+    remainingRequests: "{{count}} more approval request(s) waiting",
+    applyingApprovedFileChange: "Applying approved file change",
+    resumingAfterApproval: "Approved. Applying the change locally and resuming Claude...",
     userInputRequested: "User input requested",
     requestOf: "Request {{current}} of {{total}}",
     typeAnswerOptional: "Type your answer (optional)",
@@ -1691,6 +1709,29 @@ const enPart2 = {
     },
   },
 
+  claudeModes: {
+    default: {
+      label: "Suggest Mode (Preview)",
+      tooltip: "Claude Code preview approval mode. Some flows may still degrade while the full approval bridge is being completed.",
+      description: "Now available as a preview for validating Claude's default permission flow. If a degraded path is hit, the UI should guide users back to Plan mode.",
+    },
+    plan: {
+      label: "Plan Mode",
+      tooltip: "Claude Code read-only analysis mode.",
+      description: "Uses read-only tools for analysis and planning before taking action.",
+    },
+    acceptEdits: {
+      label: "Auto Edit",
+      tooltip: "Claude Code auto-edit mode. Not enabled in the current rollout phase.",
+      description: "This mode stays unavailable until Claude approval semantics are verified.",
+    },
+    bypassPermissions: {
+      label: "Full Auto",
+      tooltip: "Claude Code mode that skips permission checks.",
+      description: "Hands-off execution for file writes and commands without approvals. Use with care.",
+    },
+  },
+
   // Codex-specific modes
   codexModes: {
     default: {
@@ -1802,6 +1843,16 @@ const enPart2 = {
       "After confirmation, the current linear history will roll back from this user message. That includes this user message and all later assistant replies, tool calls, and related changes.",
     impactFollowUp:
       "If files are listed below, their changes happened inside the history segment that will be rewound. Review them before confirming.",
+    workspaceRestoreSectionTitle: "Workspace file strategy",
+    modeMessagesAndFilesLabel: "Rewind messages + files",
+    modeMessagesAndFilesHint:
+      "Rewind the conversation history and restore the related workspace file changes together.",
+    modeMessagesOnlyLabel: "Messages only",
+    modeMessagesOnlyHint:
+      "Only rewind conversation history and leave current workspace files untouched.",
+    modeFilesOnlyLabel: "Files only",
+    modeFilesOnlyHint:
+      "Only restore the related files and keep the current conversation history unchanged.",
     filesSectionTitle: "Affected files",
     filesRailTitle: "Files",
     filesEmpty: "No file changes were detected in the history segment being rewound.",

@@ -5,6 +5,7 @@ import {
   forkClaudeSession,
   forkClaudeSessionFromMessage,
   forkThread,
+  rewindCodexThread,
   generateThreadTitle,
   getGitHubIssues,
   getGitLog,
@@ -145,7 +146,10 @@ describe("tauri invoke wrappers", () => {
       sessionId: "session-1",
       targetMessageId: "user-1",
       conversationLabel: "test",
-      files: [{ path: "src/App.tsx" }, { path: "/tmp/demo.ts" }],
+      files: [
+        { path: "src/App.tsx", status: "M" },
+        { path: "/tmp/demo.ts", status: "D" },
+      ],
     });
 
     expect(invokeMock).toHaveBeenCalledWith("export_rewind_files", {
@@ -154,7 +158,10 @@ describe("tauri invoke wrappers", () => {
       sessionId: "session-1",
       targetMessageId: "user-1",
       conversationLabel: "test",
-      files: [{ path: "src/App.tsx" }, { path: "/tmp/demo.ts" }],
+      files: [
+        { path: "src/App.tsx", status: "M" },
+        { path: "/tmp/demo.ts", status: "D" },
+      ],
     });
   });
 
@@ -210,6 +217,55 @@ describe("tauri invoke wrappers", () => {
       threadId: "thread-9",
       messageId: null,
     });
+  });
+
+  it("maps codex rewind params to rewind_codex_thread", async () => {
+    const invokeMock = vi.mocked(invoke);
+    invokeMock.mockResolvedValueOnce({});
+
+    await rewindCodexThread("ws-9", "thread-9", 2, "user-2", {
+      targetUserMessageText: "1+1",
+      targetUserMessageOccurrence: 1,
+      localUserMessageCount: 3,
+    });
+
+    expect(invokeMock).toHaveBeenCalledWith("rewind_codex_thread", {
+      workspaceId: "ws-9",
+      threadId: "thread-9",
+      messageId: "user-2",
+      targetUserTurnIndex: 2,
+      targetUserMessageText: "1+1",
+      targetUserMessageOccurrence: 1,
+      localUserMessageCount: 3,
+    });
+  });
+
+  it("normalizes codex rewind index/messageId payload", async () => {
+    const invokeMock = vi.mocked(invoke);
+    invokeMock.mockResolvedValueOnce({});
+
+    await rewindCodexThread("ws-9", "thread-9", 2.8, "  user-2  ", {
+      targetUserMessageText: " 1+1 ",
+      targetUserMessageOccurrence: Number.POSITIVE_INFINITY,
+      localUserMessageCount: Number.POSITIVE_INFINITY,
+    });
+
+    expect(invokeMock).toHaveBeenCalledWith("rewind_codex_thread", {
+      workspaceId: "ws-9",
+      threadId: "thread-9",
+      messageId: "user-2",
+      targetUserTurnIndex: 2,
+      targetUserMessageText: "1+1",
+    });
+  });
+
+  it("rejects codex rewind when targetUserTurnIndex is invalid", async () => {
+    const invokeMock = vi.mocked(invoke);
+
+    await expect(rewindCodexThread("ws-9", "thread-9", 0, "user-2")).rejects.toThrow(
+      "targetUserTurnIndex must be >= 1 for codex rewind",
+    );
+    expect(invokeMock).not.toHaveBeenCalled();
   });
 
   it("maps optional messageId for fork_thread", async () => {
@@ -684,6 +740,26 @@ describe("tauri invoke wrappers", () => {
       effort: null,
       accessMode: "full-access",
       images: ["image.png"],
+      preferredLanguage: null,
+    });
+  });
+
+  it("forwards read-only access mode for claude plan flows", async () => {
+    const invokeMock = vi.mocked(invoke);
+    invokeMock.mockResolvedValueOnce({});
+
+    await sendUserMessage("ws-4", "thread-1", "plan first", {
+      accessMode: "read-only",
+    });
+
+    expect(invokeMock).toHaveBeenCalledWith("send_user_message", {
+      workspaceId: "ws-4",
+      threadId: "thread-1",
+      text: "plan first",
+      model: null,
+      effort: null,
+      accessMode: "read-only",
+      images: null,
       preferredLanguage: null,
     });
   });

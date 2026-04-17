@@ -16,6 +16,7 @@ import {
   forkClaudeSession as forkClaudeSessionService,
   forkClaudeSessionFromMessage as forkClaudeSessionFromMessageService,
   forkThread as forkThreadService,
+  rewindCodexThread as rewindCodexThreadService,
   listThreadTitles as listThreadTitlesService,
   listThreads as listThreadsService,
   listClaudeSessions as listClaudeSessionsService,
@@ -44,16 +45,23 @@ import { createCodexHistoryLoader } from "../loaders/codexHistoryLoader";
 import { createGeminiHistoryLoader } from "../loaders/geminiHistoryLoader";
 import { parseGeminiHistoryMessages } from "../loaders/geminiHistoryParser";
 import { createOpenCodeHistoryLoader } from "../loaders/opencodeHistoryLoader";
+import { createSharedHistoryLoader } from "../loaders/sharedHistoryLoader";
+import {
+  deleteSharedSession as deleteSharedSessionService,
+  listSharedSessions as listSharedSessionsService,
+  loadSharedSession as loadSharedSessionService,
+  startSharedSession as startSharedSessionService,
+} from "../../shared-session/services/sharedSessions";
+import {
+  normalizeSharedSessionSummaries,
+  toSharedThreadSummary,
+} from "../../shared-session/runtime/sharedSessionSummaries";
+import { normalizeSharedSessionEngine } from "../../shared-session/utils/sharedSessionEngines";
 import {
   asString,
   asNumber,
-  normalizeRootPath,
 } from "../utils/threadNormalize";
 import {
-  type CodexRewindHiddenItemIdsMap,
-  loadCodexRewindHiddenItemIds,
-  makeCustomNameKey,
-  saveCodexRewindHiddenItemIds,
   saveThreadActivity,
 } from "../utils/threadStorage";
 import {
@@ -61,6 +69,17 @@ import {
   findImpactedClaudeRewindItems,
   restoreClaudeRewindWorkspaceSnapshots,
 } from "../utils/claudeRewindRestore";
+import {
+  collectKnownCodexThreadIds,
+  matchesWorkspacePath,
+  normalizeComparableWorkspacePath,
+} from "./useThreadActions.workspacePath";
+import {
+  normalizeRewindMode,
+  shouldRestoreWorkspaceFiles,
+  shouldRewindMessages,
+  type RewindMode,
+} from "../utils/rewindMode";
 import type { ThreadAction, ThreadState } from "./useThreadsReducer";
 
 type UseThreadActionsOptions = {
@@ -116,118 +135,6 @@ const CODEX_BACKGROUND_HELPER_PROMPT_PREFIXES = [
   "Please generate a commit message. The commit message must follow the Conventional Commits specification and be written entirely in English.",
   "Generate a concise git commit message for the following changes.",
 ] as const;
-const CODEX_REWIND_HIDDEN_ITEM_IDS_PER_THREAD_LIMIT = 4000;
-
-function normalizeCodexRewindHiddenItemIds(ids: string[]): string[] {
-  if (ids.length < 1) {
-    return [];
-  }
-  const normalized: string[] = [];
-  const seen = new Set<string>();
-  ids.forEach((rawId) => {
-    const id = rawId.trim();
-    if (!id || seen.has(id)) {
-      return;
-    }
-    seen.add(id);
-    normalized.push(id);
-  });
-  if (normalized.length <= CODEX_REWIND_HIDDEN_ITEM_IDS_PER_THREAD_LIMIT) {
-    return normalized;
-  }
-  return normalized.slice(-CODEX_REWIND_HIDDEN_ITEM_IDS_PER_THREAD_LIMIT);
-}
-
-function getCodexRewindHiddenItemIdsForThread(params: {
-  map: CodexRewindHiddenItemIdsMap;
-  workspaceId: string;
-  threadId: string;
-}): string[] {
-  const key = makeCustomNameKey(params.workspaceId, params.threadId);
-  return normalizeCodexRewindHiddenItemIds(params.map[key] ?? []);
-}
-
-function setCodexRewindHiddenItemIdsForThread(params: {
-  map: CodexRewindHiddenItemIdsMap;
-  workspaceId: string;
-  threadId: string;
-  itemIds: string[];
-}): CodexRewindHiddenItemIdsMap {
-  const key = makeCustomNameKey(params.workspaceId, params.threadId);
-  const normalized = normalizeCodexRewindHiddenItemIds(params.itemIds);
-  if (normalized.length < 1) {
-    if (!(key in params.map)) {
-      return params.map;
-    }
-    const next = { ...params.map };
-    delete next[key];
-    return next;
-  }
-  const previous = params.map[key] ?? [];
-  if (
-    previous.length === normalized.length &&
-    previous.every((itemId, index) => itemId === normalized[index])
-  ) {
-    return params.map;
-  }
-  return {
-    ...params.map,
-    [key]: normalized,
-  };
-}
-
-function removeCodexRewindHiddenItemIdsForThread(params: {
-  map: CodexRewindHiddenItemIdsMap;
-  workspaceId: string;
-  threadId: string;
-}): CodexRewindHiddenItemIdsMap {
-  const key = makeCustomNameKey(params.workspaceId, params.threadId);
-  if (!(key in params.map)) {
-    return params.map;
-  }
-  const next = { ...params.map };
-  delete next[key];
-  return next;
-}
-
-function collectCodexRewindHiddenItemIdsFromIndex(
-  items: ConversationItem[],
-  rewindTargetIndex: number,
-): string[] {
-  if (rewindTargetIndex < 0 || rewindTargetIndex >= items.length) {
-    return [];
-  }
-  const hiddenIds: string[] = [];
-  for (let index = rewindTargetIndex; index < items.length; index += 1) {
-    const item = items[index];
-    if (!item) {
-      continue;
-    }
-    hiddenIds.push(item.id);
-  }
-  return normalizeCodexRewindHiddenItemIds(hiddenIds);
-}
-
-function filterCodexRewindHiddenItems(
-  items: ConversationItem[],
-  hiddenItemIds: string[],
-): ConversationItem[] {
-  if (items.length < 1 || hiddenItemIds.length < 1) {
-    return items;
-  }
-  const hiddenSet = new Set(hiddenItemIds);
-  let hasHiddenItems = false;
-  const filtered = items.filter((item) => {
-    const normalizedId = item.id.trim();
-    const shouldHide = normalizedId.length > 0 && hiddenSet.has(normalizedId);
-    if (shouldHide) {
-      hasHiddenItems = true;
-      return false;
-    }
-    return true;
-  });
-  return hasHiddenItems ? filtered : items;
-}
 
 function isWorkspaceNotConnectedError(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error);
@@ -242,6 +149,26 @@ function isUserConversationMessage(
 
 function normalizeComparableRewindText(text: string): string {
   return text.replace(/\s+/g, " ").trim();
+}
+
+function findLastUserMessageIndexById(
+  items: UserConversationMessage[],
+  messageId: string,
+): number {
+  const normalizedMessageId = messageId.trim();
+  if (!normalizedMessageId) {
+    return -1;
+  }
+  for (let index = items.length - 1; index >= 0; index -= 1) {
+    const item = items[index];
+    if (!item) {
+      continue;
+    }
+    if (item.id.trim() === normalizedMessageId) {
+      return index;
+    }
+  }
+  return -1;
 }
 
 function resolveClaudeRewindMessageIdFromHistory(params: {
@@ -350,6 +277,7 @@ type GeminiSessionSummary = {
   fileSizeBytes?: number;
 };
 
+
 function normalizeThreadSizeBytes(value: unknown) {
   const sizeBytes = asNumber(value);
   return sizeBytes > 0 ? Math.round(sizeBytes) : undefined;
@@ -398,6 +326,7 @@ function normalizeGeminiSessionSummaries(value: unknown): GeminiSessionSummary[]
   });
   return summaries;
 }
+
 
 function mergeGeminiSessionSummaries(
   baseSummaries: ThreadSummary[],
@@ -481,163 +410,11 @@ async function mapWithConcurrency<T>(
   return results;
 }
 
-function normalizeComparableWorkspacePath(path: string): string {
-  return normalizeWindowsPathForComparison(normalizeRootPath(stripFileUri(path)).trim());
-}
-
-function normalizeWindowsPathForComparison(path: string): string {
-  if (!path) {
-    return path;
-  }
-  if (path.startsWith("//?/UNC/")) {
-    return `//${path.slice("//?/UNC/".length)}`;
-  }
-  if (path.startsWith("//?/")) {
-    return path.slice("//?/".length);
-  }
-  return path;
-}
-
-function stripFileUri(path: string): string {
-  const trimmed = path.trim();
-  if (!trimmed.toLowerCase().startsWith("file://")) {
-    return trimmed;
-  }
-  try {
-    const url = new URL(trimmed);
-    const pathname = decodeURIComponent(url.pathname || "");
-    if (!pathname) {
-      return trimmed;
-    }
-    const host = decodeURIComponent(url.hostname || "");
-    const lowerHost = host.toLowerCase();
-    if (/^[A-Za-z]$/.test(host) && pathname.startsWith("/")) {
-      return `${host.toUpperCase()}:${pathname}`;
-    }
-    if (lowerHost === "localhost") {
-      if (/^\/[A-Za-z]:\//.test(pathname)) {
-        return pathname.slice(1);
-      }
-      return pathname;
-    }
-    if (host) {
-      return `//${host}${pathname}`;
-    }
-    if (/^\/[A-Za-z]:\//.test(pathname)) {
-      return pathname.slice(1);
-    }
-    return pathname;
-  } catch {
-    return trimmed;
-  }
-}
-
-function addMacVolumeDataVariants(path: string, variants: Set<string>) {
-  if (path.startsWith("/System/Volumes/Data/")) {
-    variants.add(path.slice("/System/Volumes/Data".length));
-    return;
-  }
-  if (path.startsWith("/")) {
-    variants.add(`/System/Volumes/Data${path}`);
-  }
-}
-
-function addWindowsDriveShellVariants(path: string, variants: Set<string>) {
-  const winDriveMatch = path.match(/^([A-Za-z]):\/(.+)$/);
-  if (winDriveMatch) {
-    const drive = winDriveMatch[1]?.toLowerCase() ?? "";
-    const rest = winDriveMatch[2] ?? "";
-    variants.add(`/${drive}/${rest}`);
-    variants.add(`/mnt/${drive}/${rest}`);
-  }
-  const shellDriveMatch = path.match(/^\/(?:(?:mnt)\/)?([A-Za-z])\/(.+)$/);
-  if (shellDriveMatch) {
-    const drive = shellDriveMatch[1]?.toLowerCase() ?? "";
-    const rest = shellDriveMatch[2] ?? "";
-    variants.add(`${drive.toUpperCase()}:/${rest}`);
-    variants.add(`${drive}:/${rest}`);
-  }
-}
-
-function buildWorkspacePathVariants(path: string): Set<string> {
-  const normalized = normalizeComparableWorkspacePath(path);
-  const variants = new Set<string>();
-  if (!normalized) {
-    return variants;
-  }
-  variants.add(normalized);
-  if (normalized.startsWith("/private/")) {
-    variants.add(normalized.slice("/private".length));
-  } else if (normalized.startsWith("/")) {
-    variants.add(`/private${normalized}`);
-  }
-  addMacVolumeDataVariants(normalized, variants);
-  addWindowsDriveShellVariants(normalized, variants);
-  if (/^[A-Za-z]:/.test(normalized)) {
-    variants.add(`${normalized.charAt(0).toLowerCase()}${normalized.slice(1)}`);
-    variants.add(normalized.toLowerCase());
-  }
-  if (normalized.startsWith("//")) {
-    variants.add(normalized.toLowerCase());
-  }
-  return variants;
-}
-
-function matchesWorkspacePath(threadCwd: string, workspacePath: string): boolean {
-  const workspaceVariants = buildWorkspacePathVariants(workspacePath);
-  if (workspaceVariants.size === 0) {
-    return false;
-  }
-  const threadVariants = buildWorkspacePathVariants(threadCwd);
-  for (const candidate of threadVariants) {
-    for (const workspaceCandidate of workspaceVariants) {
-      if (candidate === workspaceCandidate) {
-        return true;
-      }
-      if (
-        candidate.startsWith(workspaceCandidate) &&
-        candidate.charAt(workspaceCandidate.length) === "/"
-      ) {
-        return true;
-      }
-    }
-  }
-  return false;
-}
-
-function isLikelyCodexThreadId(threadId: string): boolean {
-  const normalized = threadId.trim().toLowerCase();
-  if (!normalized) {
-    return false;
-  }
-  return !(
-    normalized.startsWith("codex-pending-") ||
-    normalized.startsWith("claude:") ||
-    normalized.startsWith("claude-pending-") ||
-    normalized.startsWith("gemini:") ||
-    normalized.startsWith("gemini-pending-") ||
-    normalized.startsWith("opencode:") ||
-    normalized.startsWith("opencode-pending-")
-  );
-}
-
-function collectKnownCodexThreadIds(
-  existingThreads: ThreadSummary[],
-  activeThreadId: string,
-): Set<string> {
-  const known = new Set<string>();
-  existingThreads.forEach((thread) => {
-    if (thread.engineSource === "codex" && thread.id) {
-      known.add(thread.id);
-    }
-  });
-  if (isLikelyCodexThreadId(activeThreadId)) {
-    known.add(activeThreadId);
-  }
-  return known;
-}
-
 type RewindSupportedEngine = "claude" | "codex";
+type RewindFromMessageOptions = {
+  activate?: boolean;
+  mode?: RewindMode;
+};
 
 function resolveRewindSupportedEngine(
   threadId: string,
@@ -910,9 +687,6 @@ export function useThreadActions({
   const geminiRefreshAttemptedRef = useRef<Record<string, boolean>>({});
   const threadListRequestSeqRef = useRef<Record<string, number>>({});
   const claudeRewindInFlightByThreadRef = useRef<Record<string, boolean>>({});
-  const codexRewindHiddenItemIdsRef = useRef<CodexRewindHiddenItemIdsMap>(
-    loadCodexRewindHiddenItemIds(),
-  );
   const latestThreadsByWorkspaceRef = useRef(threadsByWorkspace);
   latestThreadsByWorkspaceRef.current = threadsByWorkspace;
 
@@ -1058,6 +832,56 @@ export function useThreadActions({
     [dispatch, extractThreadId, loadedThreadsRef, onDebug],
   );
 
+  const startSharedSessionForWorkspace = useCallback(
+    async (
+      workspaceId: string,
+      options?: { activate?: boolean; initialEngine?: "claude" | "codex" | "gemini" | "opencode" },
+    ) => {
+      const shouldActivate = options?.activate !== false;
+      const initialEngine = normalizeSharedSessionEngine(options?.initialEngine);
+      onDebug?.({
+        id: `${Date.now()}-client-shared-thread-start`,
+        timestamp: Date.now(),
+        source: "client",
+        label: "shared-session/start",
+        payload: { workspaceId, initialEngine },
+      });
+      const response = await startSharedSessionService(workspaceId, initialEngine);
+      const threadId = extractThreadId(response);
+      if (!threadId) {
+        return null;
+      }
+      const result =
+        response?.result && typeof response.result === "object"
+          ? (response.result as Record<string, unknown>)
+          : response;
+      const thread =
+        result?.thread && typeof result.thread === "object"
+          ? (result.thread as Record<string, unknown>)
+          : null;
+      const summary: ThreadSummary = {
+        id: threadId,
+        name: asString(thread?.name).trim() || "Shared Session",
+        updatedAt: asNumber(thread?.updatedAt ?? thread?.updated_at) || Date.now(),
+        engineSource: initialEngine,
+        threadKind: "shared",
+        selectedEngine: initialEngine,
+        nativeThreadIds: [],
+      };
+      dispatch({
+        type: "setThreads",
+        workspaceId,
+        threads: [summary, ...(threadsByWorkspace[workspaceId] ?? [])],
+      });
+      if (shouldActivate) {
+        dispatch({ type: "setActiveThreadId", workspaceId, threadId });
+      }
+      loadedThreadsRef.current[threadId] = true;
+      return threadId;
+    },
+    [dispatch, extractThreadId, loadedThreadsRef, onDebug, threadsByWorkspace],
+  );
+
   const resumeThreadForWorkspace = useCallback(
     async (
       workspaceId: string,
@@ -1101,7 +925,12 @@ export function useThreadActions({
         try {
           const workspacePath = workspacePathsByIdRef.current[workspaceId] ?? null;
           const createHistoryLoader = (targetThreadId: string) =>
-            targetThreadId.startsWith("claude:")
+            targetThreadId.startsWith("shared:")
+              ? createSharedHistoryLoader({
+                  workspaceId,
+                  loadSharedSession: loadSharedSessionService,
+                })
+              : targetThreadId.startsWith("claude:")
               ? createClaudeHistoryLoader({
                   workspaceId,
                   workspacePath,
@@ -1125,15 +954,7 @@ export function useThreadActions({
                   });
           const loader = createHistoryLoader(threadId);
           const snapshot = await loader.load(threadId);
-          const codexHiddenItemIds = getCodexRewindHiddenItemIdsForThread({
-            map: codexRewindHiddenItemIdsRef.current,
-            workspaceId,
-            threadId,
-          });
-          const snapshotItems = filterCodexRewindHiddenItems(
-            snapshot.items,
-            codexHiddenItemIds,
-          );
+          const snapshotItems = snapshot.items;
           dispatch({
             type: "ensureThread",
             workspaceId,
@@ -1198,15 +1019,7 @@ export function useThreadActions({
                 const relatedSnapshot = await createHistoryLoader(relatedThreadId).load(
                   relatedThreadId,
                 );
-                const relatedHiddenItemIds = getCodexRewindHiddenItemIdsForThread({
-                  map: codexRewindHiddenItemIdsRef.current,
-                  workspaceId,
-                  threadId: relatedThreadId,
-                });
-                const relatedSnapshotItems = filterCodexRewindHiddenItems(
-                  relatedSnapshot.items,
-                  relatedHiddenItemIds,
-                );
+                const relatedSnapshotItems = relatedSnapshot.items;
                 if (relatedSnapshotItems.length > 0) {
                   dispatch({
                     type: "setThreadItems",
@@ -1419,20 +1232,11 @@ export function useThreadActions({
                   ? localItems
                   : mergeThreadItems(items, localItems)
               : localItems;
-          const codexHiddenItemIds = getCodexRewindHiddenItemIdsForThread({
-            map: codexRewindHiddenItemIdsRef.current,
-            workspaceId,
-            threadId,
-          });
-          const mergedItemsWithoutHidden = filterCodexRewindHiddenItems(
-            mergedItems,
-            codexHiddenItemIds,
-          );
-          if (mergedItemsWithoutHidden.length > 0) {
+          if (mergedItems.length > 0) {
             dispatch({
               type: "setThreadItems",
               threadId,
-              items: mergedItemsWithoutHidden,
+              items: mergedItems,
             });
           }
           dispatch({
@@ -1450,7 +1254,7 @@ export function useThreadActions({
               name: previewThreadName(preview, `Agent ${threadId.slice(0, 4)}`),
             });
           }
-          const lastAgentMessage = [...mergedItemsWithoutHidden]
+          const lastAgentMessage = [...mergedItems]
             .reverse()
             .find(
               (item) => item.kind === "message" && item.role === "assistant",
@@ -1583,7 +1387,7 @@ export function useThreadActions({
       workspaceId: string,
       threadId: string,
       messageId: string,
-      options?: { activate?: boolean },
+      options?: RewindFromMessageOptions,
     ) => {
       if (!threadId.startsWith("claude:")) {
         return null;
@@ -1601,6 +1405,9 @@ export function useThreadActions({
         return null;
       }
       const shouldActivate = options?.activate !== false;
+      const rewindMode = normalizeRewindMode(options?.mode);
+      const shouldRestoreFiles = shouldRestoreWorkspaceFiles(rewindMode);
+      const shouldRewindSession = shouldRewindMessages(rewindMode);
       const rewindLockKey = `${workspaceId}:${threadId}`;
       if (claudeRewindInFlightByThreadRef.current[rewindLockKey]) {
         return null;
@@ -1659,36 +1466,42 @@ export function useThreadActions({
             latestHistoryMessageId,
           },
         });
-        rewindRestoreState = await applyClaudeRewindWorkspaceRestore({
-          workspaceId,
-          workspacePath,
-          impactedItems,
-        });
-        if ((rewindRestoreState?.ignoredCommittedPaths?.length ?? 0) > 0) {
-          onDebug?.({
-            id: `${Date.now()}-client-thread-fork-from-message-restore-committed-ignored`,
-            timestamp: Date.now(),
-            source: "client",
-            label: "thread/fork from message restore committed ignored",
-            payload: {
-              workspaceId,
-              threadId,
-              ignoredCommittedPaths: rewindRestoreState?.ignoredCommittedPaths ?? [],
-            },
+        if (shouldRestoreFiles) {
+          rewindRestoreState = await applyClaudeRewindWorkspaceRestore({
+            workspaceId,
+            workspacePath,
+            impactedItems,
           });
+          if ((rewindRestoreState?.ignoredCommittedPaths?.length ?? 0) > 0) {
+            onDebug?.({
+              id: `${Date.now()}-client-thread-fork-from-message-restore-committed-ignored`,
+              timestamp: Date.now(),
+              source: "client",
+              label: "thread/fork from message restore committed ignored",
+              payload: {
+                workspaceId,
+                threadId,
+                ignoredCommittedPaths:
+                  rewindRestoreState?.ignoredCommittedPaths ?? [],
+              },
+            });
+          }
+          if ((rewindRestoreState?.skippedPaths?.length ?? 0) > 0) {
+            onDebug?.({
+              id: `${Date.now()}-client-thread-fork-from-message-restore-skipped`,
+              timestamp: Date.now(),
+              source: "error",
+              label: "thread/fork from message restore skipped",
+              payload: {
+                workspaceId,
+                threadId,
+                skippedPaths: rewindRestoreState?.skippedPaths ?? [],
+              },
+            });
+          }
         }
-        if ((rewindRestoreState?.skippedPaths?.length ?? 0) > 0) {
-          onDebug?.({
-            id: `${Date.now()}-client-thread-fork-from-message-restore-skipped`,
-            timestamp: Date.now(),
-            source: "error",
-            label: "thread/fork from message restore skipped",
-            payload: {
-              workspaceId,
-              threadId,
-              skippedPaths: rewindRestoreState?.skippedPaths ?? [],
-            },
-          });
+        if (!shouldRewindSession) {
+          return threadId;
         }
         if (
           firstHistoryMessageId &&
@@ -1717,7 +1530,10 @@ export function useThreadActions({
         });
         const forkedThreadId = extractThreadId(response);
         if (!forkedThreadId) {
-          if (rewindRestoreState?.originalSnapshots?.length) {
+          if (
+            shouldRestoreFiles &&
+            rewindRestoreState?.originalSnapshots?.length
+          ) {
             await restoreClaudeRewindWorkspaceSnapshots(
               workspaceId,
               rewindRestoreState.originalSnapshots,
@@ -1777,7 +1593,10 @@ export function useThreadActions({
         return forkedThreadId;
       } catch (error) {
         try {
-          if (rewindRestoreState?.originalSnapshots?.length) {
+          if (
+            shouldRestoreFiles &&
+            rewindRestoreState?.originalSnapshots?.length
+          ) {
             await restoreClaudeRewindWorkspaceSnapshots(
               workspaceId,
               rewindRestoreState.originalSnapshots,
@@ -1816,7 +1635,7 @@ export function useThreadActions({
       workspaceId: string,
       threadId: string,
       messageId: string,
-      options?: { activate?: boolean },
+      options?: RewindFromMessageOptions,
     ) => {
       const canonicalThreadId = threadId.trim();
       const rewindEngine = resolveRewindSupportedEngine(canonicalThreadId);
@@ -1842,6 +1661,9 @@ export function useThreadActions({
         return null;
       }
       const shouldActivate = options?.activate !== false;
+      const rewindMode = normalizeRewindMode(options?.mode);
+      const shouldRestoreFiles = shouldRestoreWorkspaceFiles(rewindMode);
+      const shouldRewindSession = shouldRewindMessages(rewindMode);
       const rewindLockKey = `${workspaceId}:${canonicalThreadId}`;
       if (claudeRewindInFlightByThreadRef.current[rewindLockKey]) {
         return null;
@@ -1863,71 +1685,70 @@ export function useThreadActions({
         | null = null;
       try {
         const threadItems = itemsByThread[canonicalThreadId] ?? [];
-        const rewindTargetIndex = threadItems.findIndex(
-          (item) =>
-            item.kind === "message" &&
-            item.role === "user" &&
-            item.id.trim() === normalizedMessageId,
+        const userThreadItems = threadItems.filter(isUserConversationMessage);
+        const targetUserTurnIndex = findLastUserMessageIndexById(
+          userThreadItems,
+          normalizedMessageId,
         );
-        if (rewindTargetIndex < 0) {
+        if (targetUserTurnIndex < 0) {
           return null;
         }
-        const retainedThreadItems = threadItems.slice(0, rewindTargetIndex);
-        const rewindHiddenItemIds = collectCodexRewindHiddenItemIdsFromIndex(
-          threadItems,
-          rewindTargetIndex,
+        const targetUserMessageText = normalizeComparableRewindText(
+          userThreadItems[targetUserTurnIndex]?.text ?? "",
         );
+        const targetUserMessageOccurrence = targetUserMessageText
+          ? userThreadItems.reduce((count, item, index) => {
+              if (index > targetUserTurnIndex) {
+                return count;
+              }
+              return normalizeComparableRewindText(item.text) === targetUserMessageText
+                ? count + 1
+                : count;
+            }, 0) || 1
+          : undefined;
         const impactedItems = findImpactedClaudeRewindItems(
           threadItems,
           normalizedMessageId,
         );
-        if (impactedItems.length < 1) {
-          return null;
-        }
-        const firstThreadMessageId = findFirstHistoryUserMessageId(threadItems);
-        rewindRestoreState = await applyClaudeRewindWorkspaceRestore({
-          workspaceId,
-          workspacePath,
-          impactedItems,
-        });
-        if ((rewindRestoreState?.ignoredCommittedPaths?.length ?? 0) > 0) {
-          onDebug?.({
-            id: `${Date.now()}-client-thread-codex-fork-from-message-restore-committed-ignored`,
-            timestamp: Date.now(),
-            source: "client",
-            label: "codex/thread/fork from message restore committed ignored",
-            payload: {
-              workspaceId,
-              threadId: canonicalThreadId,
-              ignoredCommittedPaths: rewindRestoreState?.ignoredCommittedPaths ?? [],
-            },
+        if (shouldRestoreFiles) {
+          rewindRestoreState = await applyClaudeRewindWorkspaceRestore({
+            workspaceId,
+            workspacePath,
+            impactedItems,
           });
+          if ((rewindRestoreState?.ignoredCommittedPaths?.length ?? 0) > 0) {
+            onDebug?.({
+              id: `${Date.now()}-client-thread-codex-fork-from-message-restore-committed-ignored`,
+              timestamp: Date.now(),
+              source: "client",
+              label: "codex/thread/fork from message restore committed ignored",
+              payload: {
+                workspaceId,
+                threadId: canonicalThreadId,
+                ignoredCommittedPaths:
+                  rewindRestoreState?.ignoredCommittedPaths ?? [],
+              },
+            });
+          }
+          if ((rewindRestoreState?.skippedPaths?.length ?? 0) > 0) {
+            onDebug?.({
+              id: `${Date.now()}-client-thread-codex-fork-from-message-restore-skipped`,
+              timestamp: Date.now(),
+              source: "error",
+              label: "codex/thread/fork from message restore skipped",
+              payload: {
+                workspaceId,
+                threadId: canonicalThreadId,
+                skippedPaths: rewindRestoreState?.skippedPaths ?? [],
+              },
+            });
+          }
         }
-        if ((rewindRestoreState?.skippedPaths?.length ?? 0) > 0) {
-          onDebug?.({
-            id: `${Date.now()}-client-thread-codex-fork-from-message-restore-skipped`,
-            timestamp: Date.now(),
-            source: "error",
-            label: "codex/thread/fork from message restore skipped",
-            payload: {
-              workspaceId,
-              threadId: canonicalThreadId,
-              skippedPaths: rewindRestoreState?.skippedPaths ?? [],
-            },
-          });
+        if (!shouldRewindSession) {
+          return canonicalThreadId;
         }
 
-        if (rewindTargetIndex === 0 || (firstThreadMessageId &&
-          normalizedMessageId === firstThreadMessageId)) {
-          const trimmedMap = removeCodexRewindHiddenItemIdsForThread({
-            map: codexRewindHiddenItemIdsRef.current,
-            workspaceId,
-            threadId: canonicalThreadId,
-          });
-          if (trimmedMap !== codexRewindHiddenItemIdsRef.current) {
-            codexRewindHiddenItemIdsRef.current = trimmedMap;
-            saveCodexRewindHiddenItemIds(trimmedMap);
-          }
+        if (targetUserTurnIndex === 0) {
           await deleteCodexSessionService(workspaceId, canonicalThreadId);
           delete loadedThreadsRef.current[canonicalThreadId];
           dispatch({
@@ -1938,21 +1759,31 @@ export function useThreadActions({
           return canonicalThreadId;
         }
 
-        const response = await forkThreadService(
+        const hardRewindResponse = await rewindCodexThreadService(
           workspaceId,
           canonicalThreadId,
+          targetUserTurnIndex,
           normalizedMessageId,
+          {
+            targetUserMessageText:
+              targetUserMessageText.length > 0 ? targetUserMessageText : undefined,
+            targetUserMessageOccurrence,
+            localUserMessageCount: userThreadItems.length,
+          },
         );
         onDebug?.({
           id: `${Date.now()}-server-thread-codex-fork-from-message`,
           timestamp: Date.now(),
           source: "server",
           label: "codex/thread/fork from message response",
-          payload: response,
+          payload: hardRewindResponse,
         });
-        const forkedThreadId = extractThreadId(response);
+        const forkedThreadId = extractThreadId(hardRewindResponse);
         if (!forkedThreadId) {
-          if (rewindRestoreState?.originalSnapshots?.length) {
+          if (
+            shouldRestoreFiles &&
+            rewindRestoreState?.originalSnapshots?.length
+          ) {
             await restoreClaudeRewindWorkspaceSnapshots(
               workspaceId,
               rewindRestoreState.originalSnapshots,
@@ -1960,39 +1791,6 @@ export function useThreadActions({
           }
           return null;
         }
-        const canonicalHiddenItemIds = getCodexRewindHiddenItemIdsForThread({
-          map: codexRewindHiddenItemIdsRef.current,
-          workspaceId,
-          threadId: canonicalThreadId,
-        });
-        const forkedHiddenItemIds = getCodexRewindHiddenItemIdsForThread({
-          map: codexRewindHiddenItemIdsRef.current,
-          workspaceId,
-          threadId: forkedThreadId,
-        });
-        const mergedHiddenItemIds = normalizeCodexRewindHiddenItemIds([
-          ...canonicalHiddenItemIds,
-          ...forkedHiddenItemIds,
-          ...rewindHiddenItemIds,
-        ]);
-        let nextHiddenMap = setCodexRewindHiddenItemIdsForThread({
-          map: codexRewindHiddenItemIdsRef.current,
-          workspaceId,
-          threadId: forkedThreadId,
-          itemIds: mergedHiddenItemIds,
-        });
-        if (forkedThreadId !== canonicalThreadId) {
-          nextHiddenMap = removeCodexRewindHiddenItemIdsForThread({
-            map: nextHiddenMap,
-            workspaceId,
-            threadId: canonicalThreadId,
-          });
-        }
-        if (nextHiddenMap !== codexRewindHiddenItemIdsRef.current) {
-          codexRewindHiddenItemIdsRef.current = nextHiddenMap;
-          saveCodexRewindHiddenItemIds(nextHiddenMap);
-        }
-
         dispatch({
           type: "renameThreadId",
           workspaceId,
@@ -2043,30 +1841,13 @@ export function useThreadActions({
         delete loadedThreadsRef.current[canonicalThreadId];
         loadedThreadsRef.current[forkedThreadId] = false;
         await resumeThreadForWorkspace(workspaceId, forkedThreadId, true, true);
-        dispatch({
-          type: "evictThreadItems",
-          threadIds: [forkedThreadId],
-        });
-        dispatch({
-          type: "setThreadItems",
-          threadId: forkedThreadId,
-          items: retainedThreadItems,
-        });
-        try {
-          await deleteCodexSessionService(workspaceId, canonicalThreadId);
-        } catch (error) {
-          onDebug?.({
-            id: `${Date.now()}-client-thread-codex-fork-from-message-delete-source-error`,
-            timestamp: Date.now(),
-            source: "error",
-            label: "codex/thread/fork from message delete source error",
-            payload: error instanceof Error ? error.message : String(error),
-          });
-        }
         return forkedThreadId;
       } catch (error) {
         try {
-          if (rewindRestoreState?.originalSnapshots?.length) {
+          if (
+            shouldRestoreFiles &&
+            rewindRestoreState?.originalSnapshots?.length
+          ) {
             await restoreClaudeRewindWorkspaceSnapshots(
               workspaceId,
               rewindRestoreState.originalSnapshots,
@@ -2133,6 +1914,7 @@ export function useThreadActions({
       workspace: WorkspaceInfo,
       options?: {
         preserveState?: boolean;
+        includeOpenCodeSessions?: boolean;
       },
     ) => {
       // Store workspace path for Claude session loading
@@ -2140,6 +1922,7 @@ export function useThreadActions({
       const requestSeq = (threadListRequestSeqRef.current[workspace.id] ?? 0) + 1;
       threadListRequestSeqRef.current[workspace.id] = requestSeq;
       const preserveState = options?.preserveState ?? false;
+      const includeOpenCodeSessions = options?.includeOpenCodeSessions ?? true;
       const workspacePath = normalizeComparableWorkspacePath(workspace.path);
       if (!preserveState) {
         dispatch({
@@ -2168,6 +1951,12 @@ export function useThreadActions({
         } catch {
           mappedTitles = {};
         }
+        const sharedSessions = normalizeSharedSessionSummaries(
+          await listSharedSessionsService(workspace.id).catch(() => []),
+        );
+        const hiddenSharedBindingIds = new Set(
+          sharedSessions.flatMap((session) => session.nativeThreadIds),
+        );
         const existingThreads = threadsByWorkspace[workspace.id] ?? [];
         const activeThreadId = activeThreadIdByWorkspace[workspace.id] ?? "";
         const knownCodexThreadIds = collectKnownCodexThreadIds(
@@ -2365,10 +2154,11 @@ export function useThreadActions({
               updatedAt: getThreadTimestamp(thread),
               sizeBytes: extractThreadSizeBytes(thread),
               engineSource,
+              threadKind: "native" as const,
               ...sourceMeta,
             };
           })
-          .filter((entry) => entry.id);
+          .filter((entry) => entry.id && !hiddenSharedBindingIds.has(entry.id));
 
         // Fetch Claude/OpenCode sessions in the critical path.
         // Gemini history is merged from cache first, then refreshed in background,
@@ -2378,7 +2168,11 @@ export function useThreadActions({
         allSummaries.forEach((entry) => mergedById.set(entry.id, entry));
         const [claudeResult, opencodeResult] = await Promise.allSettled([
           listClaudeSessionsService(workspace.path, 50),
-          getOpenCodeSessionListService(workspace.id),
+          includeOpenCodeSessions
+            ? getOpenCodeSessionListService(workspace.id)
+            : Promise.resolve<
+                Awaited<ReturnType<typeof getOpenCodeSessionListService>>
+              >([]),
         ]);
         if (claudeResult.status === "fulfilled") {
           const claudeSessions = Array.isArray(claudeResult.value)
@@ -2392,6 +2186,9 @@ export function useThreadActions({
               fileSizeBytes?: number;
             }) => {
               const id = `claude:${session.sessionId}`;
+              if (hiddenSharedBindingIds.has(id)) {
+                return;
+              }
               const prev = mergedById.get(id);
               const updatedAt = session.updatedAt;
               const next: ThreadSummary = {
@@ -2403,6 +2200,7 @@ export function useThreadActions({
                 updatedAt,
                 sizeBytes: normalizeThreadSizeBytes(session.fileSizeBytes),
                 engineSource: "claude",
+                threadKind: "native",
               };
               if (!prev || next.updatedAt >= prev.updatedAt) {
                 mergedById.set(id, next);
@@ -2416,6 +2214,9 @@ export function useThreadActions({
             : [];
           opencodeSessions.forEach((session) => {
             const id = `opencode:${session.sessionId}`;
+            if (hiddenSharedBindingIds.has(id)) {
+              return;
+            }
             const prev = mergedById.get(id);
             const sessionUpdatedAt =
               typeof session.updatedAt === "number" && Number.isFinite(session.updatedAt)
@@ -2439,9 +2240,46 @@ export function useThreadActions({
               updatedAt,
               sizeBytes: extractThreadSizeBytes(session as Record<string, unknown>),
               engineSource: "opencode",
+              threadKind: "native",
             };
             if (!prev || next.updatedAt >= prev.updatedAt) {
               mergedById.set(id, next);
+            }
+          });
+        }
+        if (!includeOpenCodeSessions) {
+          existingThreads.forEach((thread) => {
+            if (thread.threadKind === "shared" || hiddenSharedBindingIds.has(thread.id)) {
+              return;
+            }
+            const isOpenCodeThread =
+              thread.engineSource === "opencode"
+              || thread.id.startsWith("opencode:")
+              || thread.id.startsWith("opencode-pending-");
+            if (!isOpenCodeThread) {
+              return;
+            }
+            const prev = mergedById.get(thread.id);
+            const threadUpdatedAt = Number.isFinite(thread.updatedAt)
+              ? Math.max(0, thread.updatedAt)
+              : 0;
+            const updatedAt =
+              threadUpdatedAt ||
+              nextActivityByThread[thread.id] ||
+              prev?.updatedAt ||
+              0;
+            if (updatedAt > (nextActivityByThread[thread.id] ?? 0)) {
+              nextActivityByThread[thread.id] = updatedAt;
+              didChangeActivity = true;
+            }
+            const next: ThreadSummary = {
+              ...thread,
+              updatedAt,
+              engineSource: "opencode",
+              threadKind: thread.threadKind ?? "native",
+            };
+            if (!prev || next.updatedAt >= prev.updatedAt) {
+              mergedById.set(thread.id, next);
             }
           });
         }
@@ -2451,10 +2289,25 @@ export function useThreadActions({
         if (hasFreshGeminiCache && cachedGemini.sessions.length > 0) {
           allSummaries = mergeGeminiSessionSummaries(
             allSummaries,
-            cachedGemini.sessions,
+            cachedGemini.sessions.filter(
+              (session) => !hiddenSharedBindingIds.has(`gemini:${session.sessionId}`),
+            ),
             workspace.id,
             mappedTitles,
             getCustomName,
+          );
+        }
+        if (sharedSessions.length > 0) {
+          const sharedSummaries = sharedSessions.map(toSharedThreadSummary);
+          const merged = new Map<string, ThreadSummary>();
+          [...sharedSummaries, ...allSummaries].forEach((entry) => {
+            const previous = merged.get(entry.id);
+            if (!previous || entry.updatedAt >= previous.updatedAt) {
+              merged.set(entry.id, entry);
+            }
+          });
+          allSummaries = Array.from(merged.values()).sort(
+            (a, b) => b.updatedAt - a.updatedAt,
           );
         }
         if (didChangeActivity) {
@@ -2532,7 +2385,9 @@ export function useThreadActions({
               currentSnapshot.length > 0 ? currentSnapshot : allSummaries;
             const nextSummaries = mergeGeminiSessionSummaries(
               baselineSummaries,
-              normalizedGeminiSessions,
+              normalizedGeminiSessions.filter(
+                (session) => !hiddenSharedBindingIds.has(`gemini:${session.sessionId}`),
+              ),
               workspace.id,
               mappedTitles,
               getCustomName,
@@ -2546,7 +2401,8 @@ export function useThreadActions({
                   prev.id === entry.id &&
                   prev.name === entry.name &&
                   prev.updatedAt === entry.updatedAt &&
-                  prev.engineSource === entry.engineSource
+                  prev.engineSource === entry.engineSource &&
+                  prev.threadKind === entry.threadKind
                 );
               });
             if (!unchanged) {
@@ -2800,6 +2656,11 @@ export function useThreadActions({
       if (threadId.includes("-pending-")) {
         return;
       }
+      const thread = (threadsByWorkspace[workspaceId] ?? []).find((entry) => entry.id === threadId);
+      if (thread?.threadKind === "shared" || threadId.startsWith("shared:")) {
+        await deleteSharedSessionService(workspaceId, threadId);
+        return;
+      }
       if (threadId.startsWith("claude:")) {
         await archiveClaudeThread(workspaceId, threadId);
         return;
@@ -2818,18 +2679,9 @@ export function useThreadActions({
         await deleteGeminiSessionService(workspacePath, sessionId);
         return;
       }
-      const trimmedMap = removeCodexRewindHiddenItemIdsForThread({
-        map: codexRewindHiddenItemIdsRef.current,
-        workspaceId,
-        threadId,
-      });
-      if (trimmedMap !== codexRewindHiddenItemIdsRef.current) {
-        codexRewindHiddenItemIdsRef.current = trimmedMap;
-        saveCodexRewindHiddenItemIds(trimmedMap);
-      }
       await deleteCodexSessionService(workspaceId, threadId);
     },
-    [archiveClaudeThread],
+    [archiveClaudeThread, threadsByWorkspace],
   );
 
   const renameThreadTitleMapping = useCallback(
@@ -2855,6 +2707,7 @@ export function useThreadActions({
 
   return {
     startThreadForWorkspace,
+    startSharedSessionForWorkspace,
     forkThreadForWorkspace,
     forkSessionFromMessageForWorkspace,
     forkClaudeSessionFromMessageForWorkspace,

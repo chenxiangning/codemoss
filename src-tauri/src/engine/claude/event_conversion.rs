@@ -1,15 +1,164 @@
 use serde_json::Value;
 
+use super::approval::{
+    classify_claude_mode_blocked_tool, command_can_apply_as_local_file_action,
+    extract_claude_command_string, looks_like_claude_permission_denial_message,
+    ClaudeModeBlockedKind,
+};
 use super::stream_helpers::{
     concat_reasoning_blocks, concat_text_blocks, extract_claude_tool_input,
     extract_claude_tool_name, extract_delta_text_from_event, extract_reasoning_fragment,
     extract_result_text, extract_tool_result_output, extract_tool_result_text,
+    tool_result_is_error,
 };
 use super::ClaudeSession;
 use crate::engine::events::EngineEvent;
 use crate::engine::EngineType;
 
+#[derive(Clone, Copy)]
+enum ClaudeSyntheticApprovalKind {
+    FileChange,
+    CommandExecution,
+}
+
+fn is_claude_file_change_tool(tool_name: &str) -> bool {
+    matches!(
+        tool_name.trim().to_ascii_lowercase().as_str(),
+        "applypatch"
+            | "createfile"
+            | "createdirectory"
+            | "delete"
+            | "deletefile"
+            | "edit"
+            | "multiedit"
+            | "notebookedit"
+            | "remove"
+            | "removefile"
+            | "rewrite"
+            | "unlink"
+            | "write"
+    )
+}
+
+fn is_claude_command_tool(tool_name: &str) -> bool {
+    matches!(
+        classify_claude_mode_blocked_tool(tool_name),
+        Some(ClaudeModeBlockedKind::CommandExecution)
+    )
+}
+
+fn has_claude_permission_signal(message: &str) -> bool {
+    looks_like_claude_permission_denial_message(message)
+}
+
+fn detect_claude_synthetic_approval_kind(
+    tool_input: Option<&Value>,
+    tool_name: &str,
+    message: &str,
+) -> Option<ClaudeSyntheticApprovalKind> {
+    if !has_claude_permission_signal(message) {
+        return None;
+    }
+
+    if is_claude_file_change_tool(tool_name) {
+        return Some(ClaudeSyntheticApprovalKind::FileChange);
+    }
+
+    if is_claude_command_tool(tool_name) {
+        if tool_input
+            .and_then(extract_claude_command_string)
+            .as_deref()
+            .map(command_can_apply_as_local_file_action)
+            .unwrap_or(false)
+        {
+            return Some(ClaudeSyntheticApprovalKind::FileChange);
+        }
+        return Some(ClaudeSyntheticApprovalKind::CommandExecution);
+    }
+
+    None
+}
+
 impl ClaudeSession {
+    fn build_command_mode_blocked_signal(
+        &self,
+        turn_id: &str,
+        tool_id: &str,
+        tool_name: &str,
+        output: &str,
+    ) -> EngineEvent {
+        self.clear_pending_tool(tool_id);
+        self.clear_tool_input(tool_id);
+        self.take_tool_name(tool_id);
+        EngineEvent::Raw {
+            workspace_id: self.workspace_id.clone(),
+            engine: EngineType::Claude,
+            data: serde_json::json!({
+                "type": "permission_denied",
+                "source": "claude_permission_denied",
+                "blockedMethod": "item/commandExecution/requestApproval",
+                "blocked_method": "item/commandExecution/requestApproval",
+                "effectiveMode": "code",
+                "effective_mode": "code",
+                "reasonCode": "claude_command_execution_permission_denied",
+                "reason_code": "claude_command_execution_permission_denied",
+                "reason": "Claude blocked a command-execution tool before any recoverable GUI approval request could start.",
+                "suggestion": "Claude default mode cannot recover blocked Bash/command tools through the GUI approval bridge yet. Retry in full-access or rewrite the action to use supported file tools.",
+                "requestId": tool_id,
+                "request_id": tool_id,
+                "toolName": tool_name,
+                "tool_name": tool_name,
+                "rawError": output,
+                "raw_error": output,
+                "turnId": turn_id,
+                "turn_id": turn_id,
+            }),
+        }
+    }
+
+    fn maybe_handle_claude_permission_block(
+        &self,
+        turn_id: &str,
+        tool_id: &str,
+        output: &str,
+    ) -> Option<EngineEvent> {
+        let Some(tool_name) = self.peek_tool_name(tool_id) else {
+            return None;
+        };
+        let tool_input = self.peek_tool_input_value(tool_id);
+        let Some(kind) =
+            detect_claude_synthetic_approval_kind(tool_input.as_ref(), &tool_name, output)
+        else {
+            return None;
+        };
+
+        match kind {
+            ClaudeSyntheticApprovalKind::FileChange => {
+                let request_id = Value::String(tool_id.to_string());
+                let input = tool_input;
+                if let Ok(mut pending) = self.pending_approval_requests.lock() {
+                    pending.insert(tool_id.to_string(), turn_id.to_string());
+                }
+                self.emit_turn_event(
+                    turn_id,
+                    EngineEvent::ApprovalRequest {
+                        workspace_id: self.workspace_id.clone(),
+                        request_id,
+                        tool_name,
+                        input,
+                        message: Some(
+                            "Approve to let the GUI apply this file change locally. Preview currently supports structured file tools plus safe single-path file commands.".to_string(),
+                        ),
+                    },
+                );
+                None
+            }
+            ClaudeSyntheticApprovalKind::CommandExecution => {
+                Some(self.build_command_mode_blocked_signal(turn_id, tool_id, &tool_name, output))
+            }
+        }
+    }
+
     /// Convert Claude event to unified format
     /// Handles Claude CLI 2.0.52+ event format: system, assistant, result, error
     pub(super) fn convert_event(&self, turn_id: &str, event: &Value) -> Option<EngineEvent> {
@@ -161,6 +310,24 @@ impl ClaudeSession {
                                         .and_then(|v| v.as_bool())
                                         .unwrap_or(false);
                                     let output = content.and_then(extract_tool_result_text);
+                                    if is_error {
+                                        if let Some(text) = output.as_deref() {
+                                            if let Some(mode_blocked_event) = self
+                                                .maybe_handle_claude_permission_block(
+                                                    turn_id, &tool_id, text,
+                                                )
+                                            {
+                                                self.clear_tool_block_index(turn_id, index);
+                                                return Some(mode_blocked_event);
+                                            }
+                                            if self.has_pending_approval_request(&Value::String(
+                                                tool_id.clone(),
+                                            )) {
+                                                self.clear_tool_block_index(turn_id, index);
+                                                return None;
+                                            }
+                                        }
+                                    }
                                     let result =
                                         self.build_tool_completed(&tool_id, output, is_error);
                                     self.clear_tool_block_index(turn_id, index);
@@ -239,14 +406,26 @@ impl ClaudeSession {
                                 continue;
                             }
 
-                            let is_error = block
-                                .get("is_error")
-                                .or_else(|| block.get("isError"))
-                                .or_else(|| event.get("is_error"))
-                                .or_else(|| event.get("isError"))
-                                .and_then(|v| v.as_bool())
-                                .unwrap_or(false);
+                            let is_error = tool_result_is_error(block, event);
                             let output = extract_tool_result_output(block, event);
+                            if is_error {
+                                if let Some(text) = output.as_deref() {
+                                    if let Some(mode_blocked_event) = self
+                                        .maybe_handle_claude_permission_block(
+                                            turn_id, &tool_id, text,
+                                        )
+                                    {
+                                        self.clear_tool_block_index(turn_id, index);
+                                        return Some(mode_blocked_event);
+                                    }
+                                    if self.has_pending_approval_request(&Value::String(
+                                        tool_id.clone(),
+                                    )) {
+                                        self.clear_tool_block_index(turn_id, index);
+                                        return None;
+                                    }
+                                }
+                            }
                             let result = self.build_tool_completed(&tool_id, output, is_error);
                             self.clear_tool_block_index(turn_id, index);
                             return result;
@@ -289,9 +468,15 @@ impl ClaudeSession {
                 let message = event
                     .get("error")
                     .and_then(|e| e.get("message"))
+                    .or_else(|| event.get("error"))
                     .and_then(|m| m.as_str())
                     .or_else(|| event.get("message").and_then(|m| m.as_str()))
                     .unwrap_or("Unknown error");
+                if let Some(mode_blocked_event) =
+                    self.build_mode_blocked_signal_from_error(turn_id, message)
+                {
+                    return Some(mode_blocked_event);
+                }
                 Some(EngineEvent::TurnError {
                     workspace_id: self.workspace_id.clone(),
                     error: message.to_string(),
@@ -349,6 +534,20 @@ impl ClaudeSession {
                     .and_then(|v| v.as_bool())
                     .unwrap_or(false);
                 let output = content.and_then(extract_tool_result_text);
+                if is_error {
+                    if let Some(text) = output.as_deref() {
+                        if let Some(mode_blocked_event) =
+                            self.maybe_handle_claude_permission_block(turn_id, &tool_id, text)
+                        {
+                            self.clear_tool_block_index(turn_id, index);
+                            return Some(mode_blocked_event);
+                        }
+                        if self.has_pending_approval_request(&Value::String(tool_id.clone())) {
+                            self.clear_tool_block_index(turn_id, index);
+                            return None;
+                        }
+                    }
+                }
                 let result = self.build_tool_completed(&tool_id, output, is_error);
                 self.clear_tool_block_index(turn_id, index);
                 result
@@ -419,6 +618,22 @@ impl ClaudeSession {
                             .and_then(|v| v.as_bool())
                             .unwrap_or(false);
                         let output = content.and_then(extract_tool_result_text);
+                        if is_error {
+                            if let Some(text) = output.as_deref() {
+                                if let Some(mode_blocked_event) = self
+                                    .maybe_handle_claude_permission_block(turn_id, &tool_id, text)
+                                {
+                                    self.clear_tool_block_index(turn_id, index);
+                                    return Some(mode_blocked_event);
+                                }
+                                if self
+                                    .has_pending_approval_request(&Value::String(tool_id.clone()))
+                                {
+                                    self.clear_tool_block_index(turn_id, index);
+                                    return None;
+                                }
+                            }
+                        }
                         if let Some(event) = self.build_tool_completed(&tool_id, output, is_error) {
                             self.clear_tool_block_index(turn_id, index);
                             return Some(event);
@@ -528,6 +743,20 @@ impl ClaudeSession {
                     .and_then(|v| v.as_bool())
                     .unwrap_or(false);
                 let output = content.and_then(extract_tool_result_text);
+                if is_error {
+                    if let Some(text) = output.as_deref() {
+                        if let Some(mode_blocked_event) =
+                            self.maybe_handle_claude_permission_block(turn_id, &tool_id, text)
+                        {
+                            self.clear_tool_block_index(turn_id, index);
+                            return Some(mode_blocked_event);
+                        }
+                        if self.has_pending_approval_request(&Value::String(tool_id.clone())) {
+                            self.clear_tool_block_index(turn_id, index);
+                            return None;
+                        }
+                    }
+                }
                 let result = self.build_tool_completed(&tool_id, output, is_error);
                 self.clear_tool_block_index(turn_id, index);
                 result

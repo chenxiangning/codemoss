@@ -1,0 +1,35 @@
+schema: spec-driven
+
+# Project context
+context: |
+  Project: CodeMoss - 多 AI 集成桌面应用
+  Tech stack: Tauri 2.9.6 + Rust + React 19.1.0 + TypeScript 5.8.3 + Vite 7.0.4
+  Domain: AI 对话助手、项目记忆管理、多引擎集成 (Claude Code + Codex + Gemini)
+  Architecture:
+    - Frontend: React + TypeScript + Tauri IPC
+    - Backend: Rust + Tauri Commands + File-based Storage
+    - Storage: JSON (按项目分文件夹 + 按天分桶)
+  Conventions:
+    - 所有 Tauri Command 必须使用 Mutex 保护并发
+    - 文件操作必须使用 with_file_lock()
+    - TypeScript typecheck 零错误
+    - 测试覆盖率 ≥ 80%
+  Quality Gates:
+    - Rust 后端测试全部通过 (63 条)
+    - 前端单元测试全部通过 (压缩器 12 条 + Hook 3 条)
+    - 无破坏性变更 (兼容 legacy fingerprint)
+
+# Per-artifact rules
+rules:
+  proposal:
+    - 必须包含 "目标与边界" 和 "非目标" 章节
+    - 技术方案必须对比至少 2 个选项并说明取舍
+    - 包含具体的验收标准
+  tasks:
+    - 每个任务必须可在 2 小时内完成
+    - 包含明确的输入/输出和验证方式
+    - 标注依赖关系和优先级
+  implementation:
+    - 先计划后代码 (禁止直接写代码)
+    - 先测试后实现 (TDD 驱动)
+    - 最小改动原则 (不扩大影响范围)

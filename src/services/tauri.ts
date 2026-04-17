@@ -10,6 +10,7 @@ import type {
   DictationSessionState,
   LocalUsageSnapshot,
   LocalUsageStatistics,
+  RuntimePoolSnapshot,
   WorkspaceInfo,
   WorkspaceSettings,
   EngineStatus,
@@ -417,6 +418,28 @@ export async function connectWorkspace(id: string): Promise<void> {
   return invoke("connect_workspace", { id });
 }
 
+export async function ensureRuntimeReady(workspaceId: string): Promise<void> {
+  return invoke("ensure_runtime_ready", { workspaceId });
+}
+
+export async function getRuntimePoolSnapshot(): Promise<RuntimePoolSnapshot> {
+  return invoke("get_runtime_pool_snapshot");
+}
+
+export async function mutateRuntimePool(mutation: {
+  action: "close" | "releaseToCold" | "pin";
+  workspaceId: string;
+  pinned?: boolean;
+}): Promise<RuntimePoolSnapshot> {
+  const { workspaceId, ...rest } = mutation;
+  return invoke("mutate_runtime_pool", {
+    mutation: {
+      ...rest,
+      workspace_id: workspaceId,
+    },
+  });
+}
+
 export async function startThread(workspaceId: string) {
   return invoke<Record<string, unknown> | null | undefined>("start_thread", {
     workspaceId,
@@ -433,6 +456,58 @@ export async function forkThread(
     threadId,
     messageId: messageId ?? null,
   });
+}
+
+export async function rewindCodexThread(
+  workspaceId: string,
+  threadId: string,
+  targetUserTurnIndex: number,
+  messageId?: string | null,
+  rewindHint?: {
+    targetUserMessageText?: string | null;
+    targetUserMessageOccurrence?: number | null;
+    localUserMessageCount?: number | null;
+  },
+) {
+  const normalizedTargetUserTurnIndex = Number.isFinite(targetUserTurnIndex)
+    ? Math.trunc(targetUserTurnIndex)
+    : Number.NaN;
+  if (!(normalizedTargetUserTurnIndex >= 1)) {
+    throw new Error("targetUserTurnIndex must be >= 1 for codex rewind");
+  }
+  const normalizedMessageId =
+    typeof messageId === "string" ? messageId.trim() : "";
+  const targetUserMessageText =
+    typeof rewindHint?.targetUserMessageText === "string"
+      ? rewindHint.targetUserMessageText.trim()
+      : "";
+  const targetUserMessageOccurrence =
+    typeof rewindHint?.targetUserMessageOccurrence === "number" &&
+    Number.isFinite(rewindHint.targetUserMessageOccurrence)
+      ? Math.trunc(rewindHint.targetUserMessageOccurrence)
+      : null;
+  const localUserMessageCount =
+    typeof rewindHint?.localUserMessageCount === "number" &&
+    Number.isFinite(rewindHint.localUserMessageCount)
+      ? Math.trunc(rewindHint.localUserMessageCount)
+      : null;
+
+  return invoke<Record<string, unknown> | null | undefined>(
+    "rewind_codex_thread",
+    {
+      workspaceId,
+      threadId,
+      messageId: normalizedMessageId || null,
+      targetUserTurnIndex: normalizedTargetUserTurnIndex,
+      ...(targetUserMessageText ? { targetUserMessageText } : {}),
+      ...(targetUserMessageOccurrence && targetUserMessageOccurrence > 0
+        ? { targetUserMessageOccurrence }
+        : {}),
+      ...(localUserMessageCount && localUserMessageCount > 0
+        ? { localUserMessageCount }
+        : {}),
+    },
+  );
 }
 
 export async function sendUserMessage(
@@ -1607,7 +1682,10 @@ export type ExportRewindFilesParams = {
   sessionId: string;
   targetMessageId: string;
   conversationLabel: string;
-  files: Array<{ path: string }>;
+  files: Array<{
+    path: string;
+    status?: "A" | "D" | "R" | "M";
+  }>;
 };
 
 export type ExportRewindFilesResult = {

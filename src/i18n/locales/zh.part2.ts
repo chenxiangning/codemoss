@@ -40,6 +40,9 @@ const zhPart2 = {
     workspaceTypeMain: "主工作区",
     workspaceTypeWorktree: "工作树",
     unknownBranch: "unknown",
+    homeHeroTitle: "构建任何东西",
+    homeBranchLabelMain: "主分支",
+    homeBranchLabelWorktree: "工作树",
     copyPath: "复制路径",
     pathCopied: "已复制路径",
     openProjectFolder: "打开项目目录",
@@ -50,6 +53,7 @@ const zhPart2 = {
     engineOpenCode: "OpenCode",
     engineComingSoon: "即将支持",
     startConversation: "新建会话",
+    startSharedConversation: "Claude Code + Codex",
     startingConversation: "正在创建...",
     continueLatestConversation: "继续最近会话",
     guidedStart: "规范与执行引导",
@@ -116,6 +120,7 @@ const zhPart2 = {
     models: "{{count}} 个模型",
     runs: "{{count}} 次运行",
     // 克隆
+    newSharedSession: "Claude Code + Codex",
     newCloneAgent: "新建克隆代理",
     createWorkingCopyOf: "创建 \"{{name}}\" 的新工作副本。",
     copyName: "副本名称",
@@ -1154,13 +1159,26 @@ const zhPart2 = {
     denyAll: "全部拒绝",
     reviewRequest: "审核请求",
     approvalNeeded: "需要批准",
+    pendingBadge: "待审批",
+    reviewBeforeApply: "请先确认本次请求，再由本地桥接执行对应操作。",
     inputRequested: "请求输入",
+    fileChanges: "文件变更",
+    commandExecution: "命令执行",
+    genericApproval: "审批",
+    toolLabel: "工具",
+    filePathLabel: "文件路径",
+    commandLabel: "命令",
+    noteLabel: "说明",
     none: "无",
     noExtraDetails: "无额外详情。",
     decline: "拒绝",
+    approveTurnBatch: "批准本次全部操作 ({{count}} 项)",
     allowCommandsStartWith: "允许以 {{prefix}} 开头的命令",
     alwaysAllow: "始终允许",
     approveEnter: "批准 (Enter)",
+    remainingRequests: "还有 {{count}} 个待审批项",
+    applyingApprovedFileChange: "正在应用已批准的文件变更",
+    resumingAfterApproval: "已批准，正在本地应用变更并恢复 Claude 执行...",
     userInputRequested: "请求用户输入",
     requestOf: "请求 {{current}} / {{total}}",
     typeAnswerOptional: "输入你的回答（可选）",
@@ -1664,6 +1682,29 @@ const zhPart2 = {
     },
   },
 
+  claudeModes: {
+    default: {
+      label: "建议模式（预览）",
+      tooltip: "Claude Code 预览审批模式。部分场景仍可能退化，完整审批桥仍在补齐。",
+      description: "现已开放预览，用于验证 Claude 默认权限流；若命中退化路径，界面会提示切换到 Plan 模式。",
+    },
+    plan: {
+      label: "规划模式",
+      tooltip: "Claude Code 只读分析模式。",
+      description: "仅使用只读工具进行分析与规划，适合谨慎执行前先看方案。",
+    },
+    acceptEdits: {
+      label: "自动编辑",
+      tooltip: "Claude Code 自动编辑模式。当前阶段暂未开放。",
+      description: "待确认 Claude 实际审批语义后再开放，当前阶段暂不可选。",
+    },
+    bypassPermissions: {
+      label: "全自动",
+      tooltip: "Claude Code 跳过权限检查模式。",
+      description: "直接执行文件写入与命令操作，不经过审批，需谨慎使用。",
+    },
+  },
+
   // Codex 特定模式
   codexModes: {
     default: {
@@ -1775,6 +1816,16 @@ const zhPart2 = {
       "确认后，会从这条用户消息开始整体回退。也就是这条用户消息，以及它后面的助手回复、工具调用和相关变更，都会从当前线性历史里移除。",
     impactFollowUp:
       "如果下面列出了文件，表示这些文件对应的变更发生在将被回退的这段历史里，确认前请先核对。",
+    workspaceRestoreSectionTitle: "工作区文件策略",
+    modeMessagesAndFilesLabel: "回退消息 + 相关文件",
+    modeMessagesAndFilesHint:
+      "同时回退当前会话历史和这段历史对应的工作区文件变更。",
+    modeMessagesOnlyLabel: "只回退消息",
+    modeMessagesOnlyHint:
+      "只回退会话历史，不改写当前工作区中的文件内容。",
+    modeFilesOnlyLabel: "只回退文件",
+    modeFilesOnlyHint:
+      "只恢复这段历史对应的文件，不改写当前会话消息历史。",
     filesSectionTitle: "受影响文件",
     filesRailTitle: "文件列表",
     filesEmpty: "这段回溯历史里没有识别到文件变更。",

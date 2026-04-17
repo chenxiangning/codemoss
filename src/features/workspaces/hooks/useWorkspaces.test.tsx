@@ -2,8 +2,10 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { WorkspaceInfo } from "../../../types";
+import { writeClientStoreData, writeClientStoreValue } from "../../../services/clientStorage";
 import {
   addWorkspace,
+  ensureRuntimeReady,
   listWorkspaces,
   renameWorktree,
   renameWorktreeUpstream,
@@ -18,7 +20,7 @@ vi.mock("../../../services/tauri", () => ({
   addClone: vi.fn(),
   addWorkspace: vi.fn(),
   addWorktree: vi.fn(),
-  connectWorkspace: vi.fn(),
+  ensureRuntimeReady: vi.fn(),
   isWorkspacePathDir: vi.fn(),
   pickWorkspacePath: vi.fn(),
   removeWorkspace: vi.fn(),
@@ -62,6 +64,7 @@ const workspaceTwo: WorkspaceInfo = {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  writeClientStoreData("threads", {});
 });
 
 describe("useWorkspaces.renameWorktree", () => {
@@ -284,6 +287,26 @@ describe("useWorkspaces.addWorkspaceFromPath", () => {
   });
 });
 
+describe("useWorkspaces.connectWorkspace", () => {
+  it("routes workspace acquire through ensureRuntimeReady", async () => {
+    vi.mocked(listWorkspaces).mockResolvedValue([workspaceOne]);
+    const ensureRuntimeReadyMock = vi.mocked(ensureRuntimeReady);
+    ensureRuntimeReadyMock.mockResolvedValue(undefined);
+
+    const { result } = renderHook(() => useWorkspaces());
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      await result.current.connectWorkspace(workspaceOne);
+    });
+
+    expect(ensureRuntimeReadyMock).toHaveBeenCalledWith(workspaceOne.id);
+  });
+});
+
 describe("useWorkspaces.groupedWorkspaces", () => {
   it("keeps default workspace pinned to top of its section", async () => {
     const listWorkspacesMock = vi.mocked(listWorkspaces);
@@ -328,5 +351,36 @@ describe("useWorkspaces.groupedWorkspaces", () => {
 
     const [section] = result.current.groupedWorkspaces;
     expect(section?.workspaces[0]?.id).toBe("ws-default");
+  });
+});
+
+describe("useWorkspaces sidebar cache", () => {
+  it("hydrates cached workspaces before live refresh resolves", async () => {
+    writeClientStoreValue("threads", "sidebarSnapshot", {
+      version: 1,
+      updatedAt: 123,
+      workspaces: [workspaceOne],
+      threadsByWorkspace: {},
+    });
+
+    let resolveList: (value: WorkspaceInfo[]) => void = () => {};
+    vi.mocked(listWorkspaces).mockReturnValue(
+      new Promise((resolve) => {
+        resolveList = resolve;
+      }),
+    );
+
+    const { result } = renderHook(() => useWorkspaces());
+
+    expect(result.current.workspaces).toEqual([workspaceOne]);
+
+    await act(async () => {
+      resolveList([workspaceTwo]);
+      await Promise.resolve();
+    });
+
+    await waitFor(() => {
+      expect(result.current.workspaces).toEqual([workspaceTwo]);
+    });
   });
 });

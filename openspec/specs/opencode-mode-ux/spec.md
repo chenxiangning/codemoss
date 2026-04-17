@@ -1,0 +1,80 @@
+# opencode-mode-ux Specification
+
+## Purpose
+
+Define user-facing OpenCode mode UX baseline for status visibility, provider diagnostics, MCP controls, session discovery, and debug-area segregation.
+
+## Requirements
+
+### Requirement: OpenCode Unified Status Panel
+
+The system MUST provide a unified status panel in OpenCode mode showing key runtime context.
+
+#### Scenario: show OpenCode runtime status
+
+- **WHEN** user enters OpenCode conversation mode
+- **THEN** UI MUST show current Session, Agent, Model, Provider, MCP, and Token/Context status
+
+### Requirement: OpenCode Model Metadata Visibility
+
+The system MUST display model metadata labels in OpenCode model selector.
+
+#### Scenario: render model labels in selector
+
+- **WHEN** user opens OpenCode model dropdown
+- **THEN** system MUST show coarse-grained labels such as speed/cost/context for each model
+
+### Requirement: OpenCode Provider Health Check
+
+The system MUST provide provider health checks and explicit connection status in OpenCode mode.
+
+#### Scenario: test provider connection
+
+- **WHEN** user triggers provider connection test
+- **THEN** system MUST show visual connection result
+- **AND** on failure MUST display clear error reason
+
+### Requirement: OpenCode MCP Granular Control
+
+The system MUST provide MCP global toggle and per-server toggle controls.
+
+#### Scenario: toggle single MCP server
+
+- **WHEN** user toggles a specific MCP server switch
+- **THEN** system MUST only change availability for that server
+- **AND** system MUST update related permission hint text
+
+### Requirement: OpenCode Session Discovery
+
+The system SHALL provide search and quick filters for OpenCode sessions.
+
+#### Scenario: search sessions in OpenCode mode
+
+- **WHEN** user enters keywords in session list
+- **THEN** system SHALL return matching sessions
+- **AND** support quick filters such as recent/favorite
+
+### Requirement: OpenCode Advanced Debug Segregation
+
+The system SHALL keep debug capabilities in Advanced area and out of primary chat flow.
+
+#### Scenario: hide debug tools in primary workspace
+
+- **WHEN** user operates in OpenCode primary chat UI
+- **THEN** system SHALL not expose debug/console/heap actions as primary controls
+
+### Requirement: MCP Engine Inspection in Settings MUST Be Read-Only
+
+In settings, MCP information across Claude/Codex/Gemini/OpenCode MUST be presented as an engine-scoped read-only inspection surface.
+
+#### Scenario: settings MCP panel shows engine-scoped inventory and rules without mutating runtime
+
+- **WHEN** user opens settings MCP panel and switches inspected engine
+- **THEN** panel MUST display engine-specific config paths, runtime visibility, and discovered server/tool inventory
+- **AND** panel MUST NOT provide direct per-server enable/disable mutation actions
+
+#### Scenario: refresh action only re-reads runtime/config snapshots
+
+- **WHEN** user clicks refresh in settings MCP panel
+- **THEN** system MUST re-read latest config/runtime snapshot for selected engine
+- **AND** existing OpenCode session-level MCP enable state MUST remain unchanged unless user mutates it in runtime control surface

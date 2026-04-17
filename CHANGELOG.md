@@ -2,6 +2,108 @@
 
 ---
 
+##### **2026年4月18日（v0.4.3）**
+
+中文：
+
+✨ Features
+- 重构回溯模式与文件选择策略：将回溯确认从二态开关改为三种模式单选（回退消息+相关文件、只回退消息、只回退文件），并严格锚定回溯文件集合在最后一条用户消息及其后续 AI 消息范围内
+
+🐛 Fixes
+- 完善 Claude 计划模式切换与执行审批链路，确保 ExitPlanMode 卡片不会误触发默认模式双按钮逻辑，也不会在切换后吞掉后续审批弹窗
+- 补齐 Claude 默认模式审批桥接边界，增强审批卡结构（增加 icon、badge、summary band），并从嵌套 payload 中提取路径与说明摘要
+
+🔧 Improvements
+- 增强 ExitPlanMode 交互体验：保留首张 handoff 卡、记录按钮已选状态、支持复制计划 markdown，并在自动切换 mode selector 后提供可感知的闪烁提示
+- 审批卡默认隐藏 content/patch/diff 等正文类字段，减少审批噪音
+
+English:
+
+✨ Features
+- Refactor rewind mode and file selection strategy: change rewind confirmation from binary toggle to three-mode radio selection (rollback message+related files, message-only, files-only), strictly anchoring rewind file set within the last user message and subsequent AI messages
+
+🐛 Fixes
+- Complete Claude plan-to-execution mode switch and approval flow to prevent ExitPlanMode card from incorrectly triggering default-mode dual-button logic or swallowing subsequent approval dialogs after mode switch
+- Complete Claude default-mode approval bridge boundary handling, enhance approval card structure (icon, badge, summary band), and extract path/summary from nested payloads
+
+🔧 Improvements
+- Enhance ExitPlanMode interaction experience: preserve first handoff card, record button selected state, support copying plan markdown, and add visible flash hint after auto-switching mode selector
+- Approval cards hide content/patch/diff body fields by default to reduce approval noise
+
+---
+
+##### **2026年4月16日（v0.4.2）**
+
+中文：
+
+✨ Features
+- 渐进开放 Claude Code planning mode 与默认模式，补齐从预览到默认可用的发布链路
+- 完成 Claude 默认模式审批桥与对话连续性改造，提升计划执行切换时的上下文连贯性
+
+🐛 Fixes
+- 修复共享会话幕布中 assistant 重复输出与 fallback 误判
+- 提升 Codex/Claude 数学公式渲染与会话去重兼容性
+- 修复旧引擎正则兼容并增强跨平台命令稳定性
+- 修复焦点刷新反复触发 opencode 会话探测问题
+- 修复 Codex 选择智能体后用户消息双份回归
+- 对齐物理回溯截断并修复多轮回退错位
+- 补充 Claude 权限拒绝场景的兜底诊断，降低审批失败时的定位成本
+- 完善 Claude 渐进式 rollout 的审批链路、计划卡片渲染与模式边界处理
+
+English:
+
+✨ Features
+- Gradually open Claude Code planning mode and default mode, completing the rollout path from preview to default availability
+- Complete the Claude default-mode approval bridge and conversation continuity refactor to improve context continuity during plan-to-execution transitions
+
+🐛 Fixes
+- Fix duplicate assistant outputs and fallback misclassification in shared-session curtain rendering
+- Improve Codex/Claude math rendering compatibility and conversation de-duplication behavior
+- Fix legacy engine regex compatibility and harden cross-platform command stability
+- Fix repeated OpenCode session probing during focus refresh
+- Fix duplicated user messages after selecting an agent in Codex
+- Align physical rewind truncation and fix offset drift across multi-round rollback
+- Add fallback diagnostics for Claude permission-denied scenarios to reduce troubleshooting cost when approvals fail
+- Tighten Claude progressive-rollout approval flow, plan-card rendering, and mode-boundary handling
+
+---
+
+##### **2026年4月16日（v0.4.1）**
+
+中文：
+
+✨ Features
+- 落地共享会话能力并收口至 Claude/Codex 引擎，支持跨引擎会话共享与消息归一化
+- 实现侧栏缓存机制并重构 app-shell，提升工作区切换与侧栏加载性能
+- 支持回溯场景下删除文件的识别与可选工作区文件恢复，增强回溯操作完整性
+
+🔧 Improvements
+- 优化工作区首页进入流程，降低首次进入门槛并提升安全性
+- 移除侧栏硬编码颜色，统一使用主题变量，提升多主题一致性
+
+🐛 Fixes
+- 修复正文中 LaTeX 与普通文本混排时的渲染异常，提升技术内容阅读体验
+- 修复共享会话在兼容性与消息归一化链路中的边界问题
+- 修复共享会话流程与工作区首页刷新之间的回归冲突
+
+English:
+
+✨ Features
+- Land shared-session capability scoped to Claude/Codex engines with cross-engine session sharing and message normalization
+- Implement sidebar caching and refactor app-shell to improve workspace switching and sidebar loading performance
+- Support deleted-file detection in rewind scenarios with optional workspace file restoration for stronger rollback completeness
+
+🔧 Improvements
+- Make the workspace home entry flow safer and easier to reach, lowering the first-visit barrier
+- Remove hardcoded sidebar colors and unify with theme variables for better multi-theme consistency
+
+🐛 Fixes
+- Fix LaTeX mixed-content rendering issues in message bodies to improve technical content readability
+- Fix shared-session compatibility and message normalization edge cases
+- Integrate shared-session flow without regressing workspace-home refresh behavior
+
+---
+
 ##### **2026年4月14日（v0.4.0）**
 
 中文：

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef } from "react";
 import type { Dispatch, MutableRefObject } from "react";
 import { buildConversationItem } from "../../../utils/threadItems";
 import { asString } from "../utils/threadNormalize";
-import type { DebugEntry } from "../../../types";
+import type { ConversationItem, DebugEntry } from "../../../types";
 import type { ThreadAction } from "./useThreadsReducer";
 import { isRealtimeBatchingEnabled } from "../utils/realtimePerfFlags";
 import {
@@ -35,6 +35,28 @@ function isClaudeThread(threadId: string) {
 
 function isGeminiThread(threadId: string) {
   return threadId.startsWith("gemini:") || threadId.startsWith("gemini-pending-");
+}
+
+type ReasoningEngineHint = "gemini" | null;
+
+function isGeminiEventThread(
+  threadId: string,
+  engineHint?: ReasoningEngineHint,
+) {
+  return engineHint === "gemini" || isGeminiThread(threadId);
+}
+
+function inferItemEngineSource(
+  item: Record<string, unknown>,
+  threadId: string,
+): ReasoningEngineHint {
+  const rawEngineSource = asString(item.engineSource ?? item.engine_source ?? "")
+    .trim()
+    .toLowerCase();
+  if (rawEngineSource === "gemini") {
+    return "gemini";
+  }
+  return isGeminiThread(threadId) ? "gemini" : null;
 }
 
 function shouldIgnoreInterruptedGeminiThread(
@@ -97,6 +119,11 @@ type UseThreadItemEventsOptions = {
     itemId: string;
     text: string;
   }) => void;
+  onExitPlanModeToolCompleted?: (payload: {
+    workspaceId: string;
+    threadId: string;
+    itemId: string;
+  }) => void;
 };
 
 type RealtimeDeltaOperation =
@@ -113,12 +140,14 @@ type RealtimeDeltaOperation =
       threadId: string;
       itemId: string;
       delta: string;
+      engineHint?: ReasoningEngineHint;
     }
   | {
       kind: "reasoningSummaryBoundary";
       workspaceId: string;
       threadId: string;
       itemId: string;
+      engineHint?: ReasoningEngineHint;
     }
   | {
       kind: "reasoningContentDelta";
@@ -126,6 +155,7 @@ type RealtimeDeltaOperation =
       threadId: string;
       itemId: string;
       delta: string;
+      engineHint?: ReasoningEngineHint;
     }
   | {
       kind: "toolOutputDelta";
@@ -150,11 +180,29 @@ export function useThreadItemEvents({
   interruptedThreadsRef,
   onDebug,
   onAgentMessageCompletedExternal,
+  onExitPlanModeToolCompleted,
 }: UseThreadItemEventsOptions) {
   const enableRealtimeBatchingRef = useRef(isRealtimeBatchingEnabled());
   const pendingRealtimeDeltaOpsRef = useRef<RealtimeDeltaOperation[]>([]);
   const realtimeFlushTimerRef = useRef<number | null>(null);
   const isFlushingRealtimeDeltaOpsRef = useRef(false);
+
+  const normalizeToolIdentifier = useCallback((value: string) => {
+    return value.trim().toLowerCase().replace(/[^a-z0-9]/g, "");
+  }, []);
+
+  const isClaudeExitPlanModeTool = useCallback(
+    (item: Extract<ConversationItem, { kind: "tool" }>) => {
+      const normalizedToolType = normalizeToolIdentifier(item.toolType);
+      const normalizedTitle = normalizeToolIdentifier(item.title);
+      return (
+        normalizedToolType === "exitplanmode" ||
+        normalizedToolType.endsWith("exitplanmode") ||
+        normalizedTitle.includes("exitplanmode")
+      );
+    },
+    [normalizeToolIdentifier],
+  );
 
   const logReasoningRoute = useCallback(
     (
@@ -235,8 +283,10 @@ export function useThreadItemEvents({
         });
         ensuredThreads?.add(operation.threadId);
       }
+      const reasoningEngineHint =
+        "engineHint" in operation ? operation.engineHint : undefined;
       const isGeminiReasoningDelta =
-        isGeminiThread(operation.threadId) &&
+        isGeminiEventThread(operation.threadId, reasoningEngineHint) &&
         (operation.kind === "reasoningSummaryDelta" ||
           operation.kind === "reasoningSummaryBoundary" ||
           operation.kind === "reasoningContentDelta");
@@ -376,12 +426,15 @@ export function useThreadItemEvents({
       }
       flushRealtimeDeltaOps();
       dispatch({ type: "ensureThread", workspaceId, threadId, engine: inferEngineFromThreadId(threadId) });
-      if (shouldMarkProcessing) {
+      const itemType = asString(item?.type ?? "");
+      const itemId = asString(item?.id ?? "");
+      const itemEngineSource = inferItemEngineSource(item, threadId);
+      const shouldSuppressGeminiReasoningProcessing =
+        itemType === "reasoning" && itemEngineSource === "gemini";
+      if (shouldMarkProcessing && !shouldSuppressGeminiReasoningProcessing) {
         markProcessing(threadId, true);
       }
       applyCollabThreadLinks(threadId, item);
-      const itemType = asString(item?.type ?? "");
-      const itemId = asString(item?.id ?? "");
       const agentMessageSnapshotText = asString(
         item?.text ?? item?.content ?? item?.output_text ?? item?.outputText ?? "",
       );
@@ -445,38 +498,53 @@ export function useThreadItemEvents({
 
       const converted = buildConversationItem(item);
       if (converted) {
+        const itemEngineSource = asString(
+          item.engineSource ?? item.engine_source ?? "",
+        )
+          .trim()
+          .toLowerCase();
+        const normalizedConverted =
+          itemEngineSource === "claude" ||
+          itemEngineSource === "gemini" ||
+          itemEngineSource === "opencode" ||
+          itemEngineSource === "codex"
+            ? {
+                ...converted,
+                engineSource: itemEngineSource as "claude" | "codex" | "gemini" | "opencode",
+              }
+            : converted;
         const threadEngine = inferEngineFromThreadId(threadId);
         // Claude reasoning should converge to the persisted history shape.
         // Accept snapshot items so final/live state can be enriched by the
         // server snapshot instead of staying delta-only.
-        if (threadEngine === "claude" && converted.kind === "reasoning") {
+        if (threadEngine === "claude" && normalizedConverted.kind === "reasoning") {
           logReasoningRoute("reasoning-snapshot-accepted", {
             workspaceId,
             threadId,
-            itemId: converted.id,
+            itemId: normalizedConverted.id,
             skipped: false,
             reason: "claude-snapshot-enriches-live-state",
           });
           logClaudeStream("reasoning-snapshot-upsert", {
             workspaceId,
             threadId,
-            itemId: converted.id,
+            itemId: normalizedConverted.id,
             itemType,
-            deltaLength: `${converted.summary}${converted.content}`.length,
+            deltaLength: `${normalizedConverted.summary}${normalizedConverted.content}`.length,
             textPreview: createDebugPreview(
-              converted.content || converted.summary || "",
+              normalizedConverted.content || normalizedConverted.summary || "",
             ),
           });
         }
         const normalizedItem =
-          converted.kind === "message" &&
-          converted.role === "user" &&
-          !converted.collaborationMode
+          normalizedConverted.kind === "message" &&
+          normalizedConverted.role === "user" &&
+          !normalizedConverted.collaborationMode
             ? {
-                ...converted,
+                ...normalizedConverted,
                 collaborationMode: resolveCollaborationUiMode?.(threadId) ?? null,
               }
-            : converted;
+            : normalizedConverted;
         dispatch({
           type: "upsertItem",
           workspaceId,
@@ -484,6 +552,18 @@ export function useThreadItemEvents({
           item: normalizedItem,
           hasCustomName: Boolean(getCustomName(workspaceId, threadId)),
         });
+        if (
+          !shouldMarkProcessing &&
+          inferEngineFromThreadId(threadId) === "claude" &&
+          normalizedItem.kind === "tool" &&
+          isClaudeExitPlanModeTool(normalizedItem)
+        ) {
+          onExitPlanModeToolCompleted?.({
+            workspaceId,
+            threadId,
+            itemId: normalizedItem.id,
+          });
+        }
       }
       safeMessageActivity();
     },
@@ -493,9 +573,11 @@ export function useThreadItemEvents({
       flushRealtimeDeltaOps,
       getCustomName,
       interruptedThreadsRef,
+      isClaudeExitPlanModeTool,
       logReasoningRoute,
       markProcessing,
       markReviewing,
+      onExitPlanModeToolCompleted,
       resolveCollaborationUiMode,
       safeMessageActivity,
     ],
@@ -683,7 +765,13 @@ export function useThreadItemEvents({
   );
 
   const onReasoningSummaryDelta = useCallback(
-    (workspaceId: string, threadId: string, itemId: string, delta: string) => {
+    (
+      workspaceId: string,
+      threadId: string,
+      itemId: string,
+      delta: string,
+      engineHint?: ReasoningEngineHint,
+    ) => {
       logReasoningRoute("reasoning-summary-delta", {
         workspaceId,
         threadId,
@@ -708,6 +796,7 @@ export function useThreadItemEvents({
         threadId,
         itemId,
         delta,
+        engineHint,
       });
       logClaudeStream("reasoning-summary-delta", {
         workspaceId,
@@ -721,7 +810,12 @@ export function useThreadItemEvents({
   );
 
   const onReasoningSummaryBoundary = useCallback(
-    (workspaceId: string, threadId: string, itemId: string) => {
+    (
+      workspaceId: string,
+      threadId: string,
+      itemId: string,
+      engineHint?: ReasoningEngineHint,
+    ) => {
       logReasoningRoute("reasoning-summary-boundary", {
         workspaceId,
         threadId,
@@ -742,6 +836,7 @@ export function useThreadItemEvents({
         workspaceId,
         threadId,
         itemId,
+        engineHint,
       });
       logClaudeStream("reasoning-summary-boundary", {
         workspaceId,
@@ -753,7 +848,13 @@ export function useThreadItemEvents({
   );
 
   const onReasoningTextDelta = useCallback(
-    (workspaceId: string, threadId: string, itemId: string, delta: string) => {
+    (
+      workspaceId: string,
+      threadId: string,
+      itemId: string,
+      delta: string,
+      engineHint?: ReasoningEngineHint,
+    ) => {
       logReasoningRoute("reasoning-text-delta", {
         workspaceId,
         threadId,
@@ -778,6 +879,7 @@ export function useThreadItemEvents({
         threadId,
         itemId,
         delta,
+        engineHint,
       });
       logClaudeStream("reasoning-text-delta", {
         workspaceId,

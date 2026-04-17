@@ -677,6 +677,425 @@
   color: var(--text-secondary);
 }
 
+.tool-exit-plan-card {
+  margin: 12px 0;
+  border: 1px solid color-mix(in srgb, var(--border-primary, var(--border-subtle)) 92%, transparent);
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--surface-card);
+  box-shadow: none;
+}
+
+.tool-exit-plan-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 10px 12px;
+  border: none;
+  border-bottom: 1px solid color-mix(in srgb, var(--border-primary, var(--border-subtle)) 88%, transparent);
+  background: color-mix(in srgb, var(--surface-card) 84%, var(--surface-command));
+  cursor: pointer;
+  text-align: left;
+  transition: background-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.tool-exit-plan-card-header:hover {
+  background: color-mix(in srgb, var(--surface-hover) 55%, var(--surface-card));
+}
+
+.tool-exit-plan-card-header:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 28%, transparent);
+}
+
+.tool-exit-plan-card-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+  flex: 1;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.tool-exit-plan-card-toggle:focus-visible {
+  outline: none;
+}
+
+.tool-exit-plan-card-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  flex: 1;
+}
+
+.tool-exit-plan-card-header-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.tool-exit-plan-card-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  color: color-mix(in srgb, var(--accent) 48%, var(--text-primary));
+  font-size: 15px;
+  flex-shrink: 0;
+}
+
+.tool-exit-plan-card-title-copy {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.tool-exit-plan-card-title {
+  font-size: 13px;
+  line-height: 1.4;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+
+.tool-exit-plan-card-subtitle {
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tool-exit-plan-card-copy-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 28px;
+  padding: 0 10px;
+  border: 1px solid color-mix(in srgb, var(--border-primary) 72%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--surface-card) 72%, var(--surface-command));
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background-color 0.15s ease, color 0.15s ease;
+}
+
+.tool-exit-plan-card-copy-button:hover {
+  border-color: color-mix(in srgb, var(--accent) 34%, var(--border-primary));
+  background: color-mix(in srgb, var(--surface-hover) 62%, var(--surface-card));
+  color: var(--text-primary);
+}
+
+.tool-exit-plan-card-copy-button:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 24%, transparent);
+}
+
+.tool-exit-plan-card-copy-button.is-copied {
+  color: color-mix(in srgb, var(--accent) 72%, var(--text-primary));
+  border-color: color-mix(in srgb, var(--accent) 48%, var(--border-primary));
+}
+
+.tool-exit-plan-card-copy-icon {
+  font-size: 13px;
+}
+
+.tool-exit-plan-card-copy-label {
+  white-space: nowrap;
+}
+
+.tool-exit-plan-card-body {
+  display: grid;
+  gap: 0;
+  padding: 0 12px 6px;
+}
+
+.tool-exit-plan-card-section {
+  padding: 10px 0;
+  border-top: 1px solid color-mix(in srgb, var(--border-primary, var(--border-subtle)) 82%, transparent);
+}
+
+.tool-exit-plan-card-section-label {
+  margin-bottom: 6px;
+  font-size: 11px;
+  line-height: 1.3;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--text-secondary);
+}
+
+.tool-exit-plan-card-markdown {
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text-primary);
+}
+
+.tool-exit-plan-card-markdown > :first-child {
+  margin-top: 0;
+}
+
+.tool-exit-plan-card-markdown :where(h1, h2, h3, h4) {
+  margin-top: 1rem;
+  margin-bottom: 0.45rem;
+  color: var(--text-primary);
+}
+
+.tool-exit-plan-card-markdown :where(h1) {
+  font-size: 15px;
+  line-height: 1.45;
+  font-weight: 700;
+}
+
+.tool-exit-plan-card-markdown :where(h2) {
+  font-size: 13px;
+  line-height: 1.45;
+  font-weight: 700;
+  padding-top: 0.7rem;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.tool-exit-plan-card-markdown :where(h3, h4) {
+  font-size: 12px;
+  line-height: 1.45;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.tool-exit-plan-card-markdown :where(pre, code) {
+  font-size: 12px;
+}
+
+.tool-exit-plan-card-markdown :where(p, li) {
+  color: var(--text-secondary);
+}
+
+.tool-exit-plan-card-markdown :where(ul, ol, p, table, blockquote) {
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+.tool-exit-plan-card-markdown :where(ul, ol) {
+  padding-left: 1.2rem;
+}
+
+.tool-exit-plan-card-markdown :where(li + li) {
+  margin-top: 0.22rem;
+}
+
+.tool-exit-plan-card-markdown :where(table) {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.tool-exit-plan-card-markdown :where(th, td) {
+  padding: 6px 8px;
+  text-align: left;
+  vertical-align: top;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.tool-exit-plan-card-markdown :where(th) {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.tool-exit-plan-card-markdown :where(blockquote) {
+  margin-left: 0;
+  padding-left: 0.75rem;
+  border-left: 2px solid var(--border-subtle);
+  color: var(--text-secondary);
+}
+
+.tool-exit-plan-card-markdown :where(:not(pre) > code) {
+  padding: 0.08rem 0.32rem;
+  border-radius: 4px;
+  background: var(--surface-command);
+}
+
+.tool-exit-plan-card-handoff-copy {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text-primary);
+}
+
+.tool-exit-plan-card-execution-section {
+  display: grid;
+  gap: 10px;
+}
+
+.tool-exit-plan-card-mode-icon,
+.tool-exit-plan-card-action-icon {
+  font-size: 14px;
+  color: color-mix(in srgb, var(--accent) 52%, var(--text-primary));
+  flex-shrink: 0;
+}
+
+.tool-exit-plan-card-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.tool-exit-plan-card-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 36px;
+  padding: 9px 12px;
+  border: 1px solid color-mix(in srgb, var(--accent) 22%, var(--border-subtle));
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--surface-card) 92%, var(--surface-command));
+  color: var(--text-primary);
+  font-size: 12px;
+  line-height: 1.4;
+  font-weight: 600;
+  text-align: center;
+  cursor: pointer;
+  transition: transform 0.15s ease, border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.tool-exit-plan-card-action:disabled {
+  cursor: default;
+  opacity: 0.58;
+  transform: none;
+}
+
+.tool-exit-plan-card-action:hover {
+  transform: translateY(-1px);
+  border-color: color-mix(in srgb, var(--accent) 38%, var(--border-primary));
+  background: color-mix(in srgb, var(--surface-hover) 48%, var(--surface-card));
+}
+
+.tool-exit-plan-card-action:disabled:hover {
+  transform: none;
+  border-color: color-mix(in srgb, var(--accent) 22%, var(--border-subtle));
+  background: color-mix(in srgb, var(--surface-card) 92%, var(--surface-command));
+}
+
+.tool-exit-plan-card-action:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 24%, transparent);
+}
+
+.tool-exit-plan-card-action.is-primary {
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface-card));
+}
+
+.tool-exit-plan-card-action.is-selected {
+  border-color: color-mix(in srgb, var(--accent) 68%, var(--border-primary));
+  background: color-mix(in srgb, var(--accent) 18%, var(--surface-card));
+}
+
+.tool-exit-plan-card-action.is-selected .tool-exit-plan-card-action-icon {
+  color: color-mix(in srgb, var(--accent) 82%, var(--text-primary));
+}
+
+.tool-exit-plan-card-path {
+  display: block;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--text-primary);
+  font-family: var(--code-font-family, 'SF Mono', 'SFMono-Regular', Menlo, Monaco, monospace);
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.tool-exit-plan-card-chevron {
+  color: var(--text-secondary);
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+@media (max-width: 640px) {
+  .tool-exit-plan-card-header {
+    padding: 10px 12px;
+  }
+
+  .tool-exit-plan-card-title-copy {
+    gap: 6px;
+  }
+
+  .tool-exit-plan-card-actions {
+    grid-template-columns: 1fr;
+  }
+}
+
+:root[data-theme="dark"] .tool-exit-plan-card-markdown :where(h1) {
+  color: rgba(244, 247, 255, 0.96);
+}
+
+:root[data-theme="dark"] .tool-exit-plan-card {
+  border-color: rgba(112, 124, 148, 0.4);
+}
+
+:root[data-theme="dark"] .tool-exit-plan-card-header {
+  border-bottom-color: rgba(112, 124, 148, 0.34);
+  background: linear-gradient(
+    180deg,
+    rgba(54, 60, 77, 0.7) 0%,
+    rgba(39, 43, 56, 0.92) 100%
+  );
+}
+
+:root[data-theme="dark"] .tool-exit-plan-card-copy-button {
+  border-color: rgba(124, 138, 168, 0.38);
+  background: rgba(32, 36, 48, 0.88);
+  color: rgba(223, 229, 240, 0.82);
+}
+
+:root[data-theme="dark"] .tool-exit-plan-card-section {
+  border-top-color: rgba(112, 124, 148, 0.24);
+}
+
+:root[data-theme="dark"] .tool-exit-plan-card-markdown :where(h2) {
+  color: rgba(226, 233, 247, 0.94);
+  border-top-color: rgba(255, 255, 255, 0.08);
+}
+
+:root[data-theme="dark"] .tool-exit-plan-card-markdown :where(h3, h4) {
+  color: rgba(188, 198, 216, 0.9);
+}
+
+:root[data-theme="dark"] .tool-exit-plan-card-markdown :where(p, li, td, blockquote) {
+  color: rgba(211, 218, 230, 0.92);
+}
+
+:root[data-theme="dark"] .tool-exit-plan-card-markdown :where(th, td) {
+  border-bottom-color: rgba(255, 255, 255, 0.08);
+}
+
+:root[data-theme="dark"] .tool-exit-plan-card-markdown :where(th) {
+  color: rgba(244, 247, 255, 0.96);
+}
+
+:root[data-theme="dark"] .tool-exit-plan-card-markdown :where(blockquote) {
+  border-left-color: rgba(148, 163, 184, 0.4);
+}
+
 :root[data-theme="light"] .tool-change-inline-diff .edit-diff-line.is-hunk {
   background: color-mix(in srgb, #2563eb 16%, transparent);
   border-top-color: color-mix(in srgb, #2563eb 26%, transparent);
