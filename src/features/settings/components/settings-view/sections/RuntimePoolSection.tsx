@@ -79,6 +79,30 @@ function getRuntimeTone(state: string) {
   }
 }
 
+function getRuntimeStateLabel(
+  t: RuntimePoolSectionProps["t"],
+  state: string,
+) {
+  switch (state.toLowerCase()) {
+    case "hot":
+      return t("settings.runtimeStateHot");
+    case "warm":
+      return t("settings.runtimeStateWarm");
+    case "busy":
+      return t("settings.runtimeStateBusy");
+    case "starting":
+      return t("settings.runtimeStateStarting");
+    case "stopping":
+      return t("settings.runtimeStateStopping");
+    case "failed":
+      return t("settings.runtimeStateFailed");
+    case "zombiesuspected":
+      return t("settings.runtimeStateZombie");
+    default:
+      return state;
+  }
+}
+
 export function RuntimePoolSection({
   t,
   appSettings,
@@ -224,10 +248,26 @@ export function RuntimePoolSection({
                 </CardDescription>
               </div>
             </div>
+            <div className="rounded-2xl border border-amber-200/80 bg-amber-50/90 px-4 py-3 text-sm leading-6 text-amber-900">
+              <div className="font-medium">{t("settings.runtimeScopeTitle")}</div>
+              <div className="mt-1">{t("settings.runtimeScopeDescription")}</div>
+            </div>
             <div className="flex flex-wrap gap-2">
-              <Badge variant="outline">{`Hot ${appSettings.codexMaxHotRuntimes}`}</Badge>
-              <Badge variant="outline">{`Warm ${appSettings.codexMaxWarmRuntimes}`}</Badge>
-              <Badge variant="outline">{`TTL ${appSettings.codexWarmTtlSeconds}s`}</Badge>
+              <Badge variant="outline">
+                {t("settings.runtimeBadgeHot", {
+                  value: appSettings.codexMaxHotRuntimes,
+                })}
+              </Badge>
+              <Badge variant="outline">
+                {t("settings.runtimeBadgeWarm", {
+                  value: appSettings.codexMaxWarmRuntimes,
+                })}
+              </Badge>
+              <Badge variant="outline">
+                {t("settings.runtimeBadgeTtl", {
+                  value: appSettings.codexWarmTtlSeconds,
+                })}
+              </Badge>
             </div>
           </div>
           <div className="flex gap-2">
@@ -469,7 +509,9 @@ export function RuntimePoolSection({
                             {row.engine}
                           </div>
                         </div>
-                        <Badge className={tone.chip}>{row.state}</Badge>
+                        <Badge className={tone.chip}>
+                          {getRuntimeStateLabel(t, row.state)}
+                        </Badge>
                         {row.pinned ? <Badge variant="secondary">{t("settings.runtimePin")}</Badge> : null}
                       </div>
 
