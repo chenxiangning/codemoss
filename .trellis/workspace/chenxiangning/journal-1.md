@@ -1120,3 +1120,63 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 21: revert missing terminal fallback and restore typecheck
+
+**Date**: 2026-04-18
+**Task**: revert missing terminal fallback and restore typecheck
+**Branch**: `feature/vvvv0.4.3`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+任务目标:
+- 确认并回退导致正常任务被误中断的 missing terminal fallback 修复。
+- 保留无行为风险的 typecheck 修复，避免回退后工作区重新处于编译失败状态。
+
+主要改动:
+- 提交 a8ed09a2 回退了 fix(threads): harden missing terminal fallback，对应删除 threads fallback 工具、测试与 useThreads 中的本地 terminal 收口逻辑。
+- 提交 fbe9b7ac 单独恢复两处无 runtime 行为影响的 type 修复：ModeSelect CSSProperties 类型收敛、Messages 未使用导入移除。
+- 额外核对当前源码中已不存在 threadTerminalFallback / MISSING_TERMINAL_SETTLE / thread/terminal-fallback 相关实现残留。
+
+涉及模块:
+- src/features/threads/hooks/useThreads.ts
+- src/features/threads/hooks/useThreads.missing-terminal.test.tsx
+- src/features/threads/utils/threadTerminalFallback.ts
+- src/features/threads/utils/threadTerminalFallback.test.ts
+- src/features/composer/components/ChatInputBox/selectors/ModeSelect.tsx
+- src/features/messages/components/Messages.tsx
+
+验证结果:
+- git show --stat --name-status a8ed09a2
+- python3 ./.trellis/scripts/get_context.py --mode record
+- python3 ./.trellis/scripts/task.py list
+- rg -n "missing terminal fallback|threadTerminalFallback|terminalFallbackCandidateByThreadRef|MISSING_TERMINAL_SETTLE|thread/terminal-fallback" src
+- npm run typecheck
+
+后续事项:
+- 若仍需继续修 Codex 长任务 loading 问题，下一步应转向 backend/app-server 根因排查，不再使用当前这版前端 fallback 方案。
+- 本次确认没有 active task 挂载到其他任务容器。
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `fbe9b7ac` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
