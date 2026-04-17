@@ -170,7 +170,7 @@ export const ModeSelect = ({ value, onChange, provider }: ModeSelectProps) => {
         flashCycle % 2 === 0
           ? 'selector-mode-trigger-flash-a'
           : 'selector-mode-trigger-flash-b',
-    };
+    } as CSSProperties;
   }, [flashCycle, isChevronFlashing]);
 
   const flashingChevronStyle = useMemo<CSSProperties | undefined>(() => {
@@ -184,7 +184,7 @@ export const ModeSelect = ({ value, onChange, provider }: ModeSelectProps) => {
         flashCycle % 2 === 0
           ? 'selector-mode-chevron-flash-a'
           : 'selector-mode-chevron-flash-b',
-    };
+    } as CSSProperties;
   }, [flashCycle, isChevronFlashing]);
 
   return (
