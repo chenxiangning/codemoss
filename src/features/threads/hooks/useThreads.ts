@@ -39,7 +39,6 @@ import {
   shouldMergeOnAssistantCompleted,
   shouldMergeOnInputCapture,
 } from "../utils/memoryCaptureRace";
-import { shouldForceSettleMissingTerminal } from "../utils/threadTerminalFallback";
 import { buildItemsFromThread } from "../../../utils/threadItems";
 import i18n from "../../../i18n";
 import { clearSharedSessionBindingsForSharedThread } from "../../shared-session/runtime/sharedSessionBridge";
@@ -58,8 +57,6 @@ const THREAD_SWITCH_RESUME_DELAY_MS = 24;
 const THREAD_SWITCH_LOADED_REFRESH_MS = 20_000;
 const THREAD_ITEM_CACHE_MAX = 12;
 const THREAD_ITEM_CACHE_TRIM_WATERMARK = 2;
-const MISSING_TERMINAL_SETTLE_GRACE_MS = 4_000;
-const MISSING_TERMINAL_SETTLE_TICK_MS = 1_000;
 
 /** 回合级记忆待合并数据（输入侧采集后暂存，等输出侧压缩后融合写入） */
 type PendingMemoryCapture = {
@@ -80,10 +77,6 @@ type PendingAssistantCompletion = {
   itemId: string;
   text: string;
   createdAt: number;
-};
-
-type PendingTerminalFallbackCandidate = PendingAssistantCompletion & {
-  heartbeatPulseAtCapture: number;
 };
 
 const MAX_ASSISTANT_DETAIL_LENGTH = 12000;
@@ -525,9 +518,6 @@ export function useThreads({
   const interruptedThreadsRef = useRef<Set<string>>(new Set());
   const pendingMemoryCaptureRef = useRef<Record<string, PendingMemoryCapture>>({});
   const pendingAssistantCompletionRef = useRef<Record<string, PendingAssistantCompletion>>({});
-  const terminalFallbackCandidateByThreadRef = useRef<
-    Record<string, PendingTerminalFallbackCandidate>
-  >({});
   const threadIdAliasRef = useRef<Record<string, string>>({});
   const recentThreadErrorsRef = useRef<Record<string, { message: string; at: number }>>({});
   const handledClaudeExitPlanToolIdsRef = useRef<Set<string>>(new Set());
@@ -650,7 +640,6 @@ export function useThreads({
         }
       });
       sharedSessionSyncTimerByThreadRef.current = {};
-      terminalFallbackCandidateByThreadRef.current = {};
     };
   }, []);
   const { applyCollabThreadLinks, applyCollabThreadLinksFromThread, updateThreadParent } =
@@ -829,90 +818,6 @@ export function useThreads({
     [resolveCanonicalThreadId],
   );
 
-  useEffect(() => {
-    for (const [threadId, status] of Object.entries(state.threadStatusById)) {
-      if (!status?.isProcessing) {
-        delete terminalFallbackCandidateByThreadRef.current[threadId];
-      }
-    }
-  }, [state.threadStatusById]);
-
-  useEffect(() => {
-    const timer = window.setInterval(() => {
-      const now = Date.now();
-      for (const [threadId, candidate] of Object.entries(
-        terminalFallbackCandidateByThreadRef.current,
-      )) {
-        const status = threadStatusByIdRef.current[threadId];
-        if (!status?.isProcessing) {
-          delete terminalFallbackCandidateByThreadRef.current[threadId];
-          continue;
-        }
-        if (
-          !shouldForceSettleMissingTerminal({
-            status,
-            candidate,
-            now,
-            graceMs: MISSING_TERMINAL_SETTLE_GRACE_MS,
-          })
-        ) {
-          continue;
-        }
-        onDebug?.({
-          id: `${Date.now()}-thread-terminal-fallback`,
-          timestamp: now,
-          source: "client",
-          label: "thread/terminal-fallback",
-          payload: {
-            threadId,
-            itemId: candidate.itemId,
-            candidateCreatedAt: candidate.createdAt,
-            processingStartedAt: status.processingStartedAt ?? null,
-            heartbeatPulseAtCapture: candidate.heartbeatPulseAtCapture ?? 0,
-            currentHeartbeatPulse: status.heartbeatPulse ?? 0,
-          },
-        });
-        collectRelatedThreadIds(threadId).forEach((relatedThreadId) => {
-          dispatch({
-            type: "finalizePendingToolStatuses",
-            threadId: relatedThreadId,
-            status: "completed",
-          });
-          dispatch({
-            type: "markContextCompacting",
-            threadId: relatedThreadId,
-            isCompacting: false,
-          });
-          dispatch({
-            type: "settleThreadPlanInProgress",
-            threadId: relatedThreadId,
-            targetStatus: "completed",
-          });
-          dispatch({ type: "resetAgentSegment", threadId: relatedThreadId });
-          dispatch({ type: "markLatestAssistantMessageFinal", threadId: relatedThreadId });
-          markProcessing(relatedThreadId, false);
-          markReviewing(relatedThreadId, false);
-          setActiveTurnId(relatedThreadId, null);
-          pendingInterruptsRef.current.delete(relatedThreadId);
-          interruptedThreadsRef.current.delete(relatedThreadId);
-          delete terminalFallbackCandidateByThreadRef.current[relatedThreadId];
-        });
-      }
-    }, MISSING_TERMINAL_SETTLE_TICK_MS);
-    return () => {
-      window.clearInterval(timer);
-    };
-  }, [
-    collectRelatedThreadIds,
-    dispatch,
-    markProcessing,
-    markReviewing,
-    onDebug,
-    pendingInterruptsRef,
-    interruptedThreadsRef,
-    setActiveTurnId,
-  ]);
-
   const renamePendingMemoryCaptureKey = useCallback(
     (oldThreadId: string, newThreadId: string) => {
       rememberThreadAlias(oldThreadId, newThreadId);
@@ -937,18 +842,7 @@ export function useThreads({
       const completed =
         pendingAssistantCompletionRef.current[oldThreadId] ??
         pendingAssistantCompletionRef.current[oldCanonicalThreadId];
-      const terminalFallback =
-        terminalFallbackCandidateByThreadRef.current[oldThreadId] ??
-        terminalFallbackCandidateByThreadRef.current[oldCanonicalThreadId];
       if (!completed) {
-        if (terminalFallback) {
-          delete terminalFallbackCandidateByThreadRef.current[oldThreadId];
-          delete terminalFallbackCandidateByThreadRef.current[oldCanonicalThreadId];
-          terminalFallbackCandidateByThreadRef.current[newCanonicalThreadId] = {
-            ...terminalFallback,
-            threadId: newCanonicalThreadId,
-          };
-        }
         return;
       }
       memoryDebugLog("rename pending assistant completion key", {
@@ -962,14 +856,6 @@ export function useThreads({
         ...completed,
         threadId: newCanonicalThreadId,
       };
-      if (terminalFallback) {
-        delete terminalFallbackCandidateByThreadRef.current[oldThreadId];
-        delete terminalFallbackCandidateByThreadRef.current[oldCanonicalThreadId];
-        terminalFallbackCandidateByThreadRef.current[newCanonicalThreadId] = {
-          ...terminalFallback,
-          threadId: newCanonicalThreadId,
-        };
-      }
     },
     [rememberThreadAlias, resolveCanonicalThreadId],
   );
@@ -1530,17 +1416,6 @@ export function useThreads({
       text: string;
     }) => {
       const canonicalThreadId = resolveCanonicalThreadId(payload.threadId);
-      const completedAt = Date.now();
-      terminalFallbackCandidateByThreadRef.current[canonicalThreadId] = {
-        ...payload,
-        threadId: canonicalThreadId,
-        createdAt: completedAt,
-        heartbeatPulseAtCapture:
-          state.threadStatusById[canonicalThreadId]?.heartbeatPulse ?? 0,
-      };
-      if (canonicalThreadId !== payload.threadId) {
-        delete terminalFallbackCandidateByThreadRef.current[payload.threadId];
-      }
       const sharedThread = (state.threadsByWorkspace[payload.workspaceId] ?? []).find(
         (thread) => thread.id === canonicalThreadId,
       );
@@ -1571,7 +1446,7 @@ export function useThreads({
         pendingAssistantCompletionRef.current[canonicalThreadId] = {
           ...payload,
           threadId: canonicalThreadId,
-          createdAt: completedAt,
+          createdAt: Date.now(),
         };
         if (canonicalThreadId !== payload.threadId) {
           delete pendingAssistantCompletionRef.current[payload.threadId];
@@ -1612,7 +1487,6 @@ export function useThreads({
       getCustomName,
       mergeMemoryFromPendingCapture,
       resolveCanonicalThreadId,
-      state.threadStatusById,
       state.threadsByWorkspace,
     ],
   );

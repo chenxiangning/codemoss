@@ -74,6 +74,7 @@ import {
 import { parseAgentTaskNotification } from "../utils/agentTaskNotification";
 import {
   dedupeExitPlanItemsKeepFirst,
+  isExitPlanModeConversationTool,
 } from "./messagesExitPlan";
 
 
