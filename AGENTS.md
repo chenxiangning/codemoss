@@ -24,6 +24,7 @@ Keep this managed block so 'trellis update' can refresh the instructions.
 ## 项目工作基线（mossx）
 
 - 文档与规则统一使用“中文主体 + English technical terms”。
+- 本地 `git commit` 统一使用 **Conventional Commits** 风格；commit 标题与正文默认使用中文，且正文必须写清楚变更背景、主要改动、验证结果与必要的后续说明。
 - 规则优先级：当前项目代码实现 > 项目内文档（`AGENTS.md` / `.trellis/spec` / `openspec/`）> 全局 `~/.codex/rules` / 全局 `~/.codex/AGENTS.md`。
 - 当前项目同时包含：
   - frontend：`src/**`
