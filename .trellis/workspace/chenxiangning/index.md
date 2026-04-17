@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 19
+- **Total Sessions**: 20
 - **Last Active**: 2026-04-18
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~1070 | Active |
+| `journal-1.md` | ~1122 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 20 | 2026-04-18 | commit copy convention in agents | `b3a71e2a04cb34871f63a8301f62ce73d2c3fef2` | `feature/vvvv0.4.3` |
 | 19 | 2026-04-18 | runtime pool copy clarification | `bf0efd3c5b9d8596ff3c49101ecbac5ab2079535` | `feature/vvvv0.4.3` |
 | 18 | 2026-04-18 | harden missing terminal fallback | `6e23d269` | `feature/vvvv0.4.3` |
 | 17 | 2026-04-18 | dedicated runtime pool settings panel | `520e706406350f6166e0bcb34e01ceeb3623856f` | `feature/vvvv0.4.3` |

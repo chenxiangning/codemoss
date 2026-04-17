@@ -1068,3 +1068,55 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 20: commit copy convention in agents
+
+**Date**: 2026-04-18
+**Task**: commit copy convention in agents
+**Branch**: `feature/vvvv0.4.3`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+任务目标：
+- 将“本地 git commit 使用 Conventional Commits 风格，且标题与正文使用中文并写详细说明”固化到项目规则中。
+
+主要改动：
+- 在 AGENTS.md 的“项目工作基线（mossx）”增加一条提交规范。
+- 明确要求本地 git commit 统一采用 Conventional Commits 风格。
+- 明确要求 commit 标题与正文默认使用中文。
+- 明确要求正文必须包含变更背景、主要改动、验证结果与必要的后续说明。
+
+涉及模块：
+- AGENTS.md
+
+验证结果：
+- git diff 已确认规则写入位置正确。
+- 本次提交本身已按该规则使用中文 Conventional Commits 标题与详细中文正文。
+
+后续事项：
+- 后续我在本仓库内执行的提交，将默认遵守这条中文 Conventional Commits 规则。
+- 历史英文提交不自动改写，如需统一历史风格需单独处理。
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `b3a71e2a04cb34871f63a8301f62ce73d2c3fef2` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
