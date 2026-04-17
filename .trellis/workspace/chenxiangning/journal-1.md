@@ -955,3 +955,64 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 18: harden missing terminal fallback
+
+**Date**: 2026-04-18
+**Task**: harden missing terminal fallback
+**Branch**: `feature/vvvv0.4.3`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+任务目标:
+- 修复 Codex 长任务偶发缺失 terminal event 时前端持续 loading、后续消息入队且融合失效的问题。
+- 完成当前工作区代码 review，重点检查边界条件、跨平台兼容与大文件治理相关风险。
+
+主要改动:
+- 在 threads lifecycle 增加 missing-terminal fallback，仅在 assistant completed、grace window 已过且 heartbeat 未继续推进时执行本地收口。
+- fallback 收口范围扩展到 alias / pending / finalized related thread ids，避免 pending rebind 后只清理单线程状态。
+- 为 fallback 判定抽出 threadTerminalFallback 工具与单测。
+- 新增 useThreads.missing-terminal 集成测试，覆盖 terminal 缺失、heartbeat 持续、pending->finalized rebind 三条边界路径。
+- 顺手修复当前工作区两处 typecheck 阻塞：ModeSelect CSSProperties 类型收敛、Messages 未使用导入移除。
+
+涉及模块:
+- src/features/threads/hooks/useThreads.ts
+- src/features/threads/utils/threadTerminalFallback.ts
+- src/features/threads/hooks/useThreads.missing-terminal.test.tsx
+- src/features/threads/utils/threadTerminalFallback.test.ts
+- src/features/composer/components/ChatInputBox/selectors/ModeSelect.tsx
+- src/features/messages/components/Messages.tsx
+
+验证结果:
+- npx vitest run src/features/threads/hooks/useThreads.missing-terminal.test.tsx src/features/threads/utils/threadTerminalFallback.test.ts src/features/threads/hooks/useQueuedSend.test.tsx --reporter=dot
+- npx eslint src/features/threads/hooks/useThreads.ts src/features/threads/utils/threadTerminalFallback.ts src/features/threads/utils/threadTerminalFallback.test.ts src/features/threads/hooks/useThreads.missing-terminal.test.tsx src/features/composer/components/ChatInputBox/selectors/ModeSelect.tsx src/features/messages/components/Messages.tsx
+- npm run typecheck
+- npm run check:large-files
+
+后续事项:
+- 继续观察长任务真实运行中是否仍会出现 thread/terminal-fallback 调试事件，必要时再追 backend/app-server 缺失 turn/completed 的根因。
+- src-tauri/src/codex/mod.rs 仍是仓库现存 3036 行大文件，未在本次提交中拆分。
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `6e23d269` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
