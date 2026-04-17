@@ -1016,3 +1016,55 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 19: runtime pool copy clarification
+
+**Date**: 2026-04-18
+**Task**: runtime pool copy clarification
+**Branch**: `feature/vvvv0.4.3`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+任务目标:
+- 修正运行时池面板中的中英混排文案。
+- 明确当前方案的覆盖范围，避免用户误以为 Claude Code 已经进入 Hot/Warm 池。
+
+主要改动:
+- 将运行时池入口、摘要卡片、状态标签、徽标文案进一步中文化。
+- 新增 scope 说明：当前 Hot/Warm/Cold 池化主要覆盖 Codex；Claude Code 当前纳入统一退出清理、残留诊断与进程收口，但暂未进入热池/温池复用调度。
+- 将状态标签从 Hot/Warm/Busy/Pinned 等直接显示文本切换为 i18n 文案。
+
+涉及模块:
+- src/features/settings/components/settings-view/sections/RuntimePoolSection.tsx
+- src/i18n/locales/zh.part1.ts
+- src/i18n/locales/en.part1.ts
+
+验证结果:
+- npx vitest run src/features/settings/components/SettingsView.test.tsx 通过。
+
+后续事项:
+- 如果后续将 Claude Code 也纳入 Hot/Warm 池，需要同步调整当前 scope 文案，避免文档与实现漂移。
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `bf0efd3c5b9d8596ff3c49101ecbac5ab2079535` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
