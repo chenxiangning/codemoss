@@ -2131,7 +2131,7 @@ export const Messages = memo(function Messages({
   const visibleItems = useMemo(() => {
     const filtered = effectiveItems.filter((item) => {
       if (
-        activeEngine === "codex" &&
+        (activeEngine === "codex" || activeEngine === "claude") &&
         item.kind === "explore" &&
         item.status === "exploring"
       ) {

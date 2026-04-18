@@ -1424,3 +1424,216 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 26: review 修复 runtime/workspaces 边界问题
+
+**Date**: 2026-04-19
+**Task**: review 修复 runtime/workspaces 边界问题
+**Branch**: `feature/vvvv0.4.3`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+任务目标:
+- 对 86ec28024648682570a03cc069f95ab77be9b1a5 之后的提交执行全面 review，并直接修复确认问题。
+
+主要改动:
+- 修复 workspace 启动恢复在 active workspace 失败时阻断其余 workspace 恢复、且失败项后续不再重试的问题。
+- 修复 runtime ledger 原子写在 Windows 下覆盖已有文件时可能失败的问题，补齐覆盖式写盘测试。
+- 将 runtime pool 预算字段的 clamp/sanitize 下沉到 Rust source-of-truth，覆盖设置更新与启动读盘两条路径。
+
+涉及模块:
+- src/features/workspaces/hooks/useWorkspaceRestore*
+- src-tauri/src/runtime/mod.rs
+- src-tauri/src/storage.rs
+- src-tauri/src/shared/settings_core.rs
+- src-tauri/src/types.rs
+
+验证结果:
+- npx vitest run src/features/workspaces/hooks/useWorkspaceRestore.test.tsx src/features/settings/hooks/useAppSettings.test.ts src/features/messages/components/runtimeReconnect.test.ts src/features/messages/components/Messages.runtime-reconnect.test.tsx
+- cargo test --manifest-path src-tauri/Cargo.toml write_json_atomically_replaces_existing_file -- --nocapture
+- cargo test --manifest-path src-tauri/Cargo.toml sanitize_runtime_pool_settings -- --nocapture
+- cargo test --manifest-path src-tauri/Cargo.toml read_settings_sanitizes_runtime_pool_budget_fields -- --nocapture
+- npm run typecheck
+- npm run check:large-files
+- npm run lint（仅存在仓库既有 react-hooks warnings，无新增 error）
+
+后续事项:
+- 仓库里仍有既有 lint warnings，可后续单独治理。
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `441b680b` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 27: 对齐 Claude explore 卡片隐藏行为
+
+**Date**: 2026-04-19
+**Task**: 对齐 Claude explore 卡片隐藏行为
+**Branch**: `feature/vvvv0.4.3`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+任务目标:
+- 让 Claude 幕布对进行中的 explore 卡片隐藏行为严格对齐 Codex 现有逻辑。
+
+主要改动:
+- 在 src/features/messages/components/Messages.tsx 中复用 Codex 现有过滤分支，将 claude 纳入同一条 explore+exploring 隐藏条件。
+- 在 src/features/messages/components/Messages.explore.test.tsx 中新增 Claude 等价测试，验证仅隐藏 exploring 卡片并保留 explored 卡片。
+
+涉及模块:
+- messages canvas 渲染过滤逻辑
+- messages explore 行为测试
+
+验证结果:
+- pnpm vitest run src/features/messages/components/Messages.explore.test.tsx src/features/messages/components/Messages.live-behavior.test.tsx 通过（29/29）
+- pnpm eslint src/features/messages/components/Messages.tsx src/features/messages/components/Messages.explore.test.tsx 通过
+- pnpm tsc --noEmit 通过
+
+后续事项:
+- 若需要继续做 Claude/Codex 幕布行为完全一致性梳理，可沿 Messages 可见性过滤与 live behavior 测试继续补齐矩阵。
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `8df6ed06` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 28: 修复 Claude stop 后晚到事件回流
+
+**Date**: 2026-04-19
+**Task**: 修复 Claude stop 后晚到事件回流
+**Branch**: `feature/vvvv0.4.3`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+任务目标:
+- 修复 Claude 会话在 stop 之后被晚到 snapshot/completed 事件重新写活的问题。
+
+主要改动:
+- 将 threads item 事件层的 interrupted 过滤从 Gemini 特判收敛为通用 thread guard。
+- 阻断 Claude interrupted thread 的 late item snapshot 与 completed agent message 回流。
+- 补充 useThreadItemEvents 的 Claude 回归测试，覆盖 late snapshot 与 late completion 两类边界。
+
+涉及模块:
+- src/features/threads/hooks/useThreadItemEvents.ts
+- src/features/threads/hooks/useThreadItemEvents.test.ts
+
+验证结果:
+- npx vitest run src/features/threads/hooks/useThreadItemEvents.test.ts
+- npx vitest run src/features/threads/hooks/useThreadTurnEvents.test.tsx src/features/threads/hooks/useThreadMessaging.test.tsx
+- npm run typecheck
+- npm run lint 存在仓库既有 react-hooks warnings，但本次改动未新增 lint error。
+
+后续事项:
+- 若线上仍偶发 stop 后复活，可进一步把 guard 从 thread 级增强到 Claude 专属 turn 级 tombstone。
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `b2043039` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 29: 纳入 thread not found 会话恢复卡片
+
+**Date**: 2026-04-19
+**Task**: 纳入 thread not found 会话恢复卡片
+**Branch**: `feature/vvvv0.4.3`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+任务目标：将 thread not found / SESSION_NOT_FOUND 类会话启动失败纳入消息区恢复卡片，并复用现有线程恢复链路。
+
+主要改动：
+- 扩展 src/features/messages/components/runtimeReconnect.ts 的错误识别，新增 thread-not-found 分类并收紧前缀匹配，避免解释性文本误判。
+- 更新 src/features/messages/components/RuntimeReconnectCard.tsx，在 thread-not-found 场景下直接调用 onRecoverThreadRuntime，保留原有 runtime reconnect 分支。
+- 补充中英文 threadRecovery 文案，避免回归 broken pipe / workspace not connected 既有交互。
+- 新增与修正消息恢复卡片相关单测，覆盖恢复成功、误判防护与兼容分支。
+
+涉及模块：messages、i18n。
+
+验证结果：
+- pnpm vitest run src/features/messages/components/runtimeReconnect.test.ts src/features/messages/components/Messages.runtime-reconnect.test.tsx
+- pnpm eslint src/features/messages/components/runtimeReconnect.ts src/features/messages/components/RuntimeReconnectCard.tsx src/features/messages/components/runtimeReconnect.test.ts src/features/messages/components/Messages.runtime-reconnect.test.tsx src/i18n/locales/zh.part1.ts src/i18n/locales/en.part1.ts
+- pnpm tsc --noEmit
+- npm run check:large-files
+
+后续事项：建议在本地手动复现一次会话启动失败，确认幕布里出现 thread recovery 卡片且点击后能恢复当前会话。
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `99e82f29` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
