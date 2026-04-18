@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 23
+- **Total Sessions**: 24
 - **Last Active**: 2026-04-19
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~1308 | Active |
+| `journal-1.md` | ~1365 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 24 | 2026-04-19 | 拆分线程动作大文件并整理回归测试 | `83e9ecb53ea207ffa77d4849ed9d2c11dbcb49c3` | `feature/vvvv0.4.3` |
 | 23 | 2026-04-19 | 修复运行时重连与线程事件边界处理 | `431a462b19a7c3832ee3ba2a0ed6c612ca2604cf` | `feature/vvvv0.4.3` |
 | 22 | 2026-04-18 | 同步 runtime orchestrator pool console 方案与默认预算 | `6deeca2e` | `feature/vvvv0.4.3` |
 | 21 | 2026-04-18 | 压缩 runtime 预算卡片布局 | `e8a71ebb` | `feature/vvvv0.4.3` |

@@ -1306,3 +1306,60 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 24: 拆分线程动作大文件并整理回归测试
+
+**Date**: 2026-04-19
+**Task**: 拆分线程动作大文件并整理回归测试
+**Branch**: `feature/vvvv0.4.3`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+任务目标:
+- 清理 large-file hard gate 中 useThreadActions.ts 与 useThreadActions.test.tsx 的历史超限问题。
+- 在不改变线程动作对外行为的前提下，完成低风险模块拆分并保留回归覆盖。
+
+主要改动:
+- 将 useThreadActions.ts 中的纯 helper 逻辑抽离到 useThreadActions.helpers.ts，包括线程筛选、rewind 目标解析、Gemini session 归一化、collab 关系恢复、用户输入队列替换判断等。
+- 保持主 hook 中的 orchestration、dispatch、runtime 调用与 ref/state 管理不变，仅改为引用外部 helper。
+- 将 Claude/Codex rewind 相关测试拆分到 useThreadActions.rewind.test.tsx，保留 fork、rewind、workspace 文件恢复、失败回滚与 files-only/messages-only 等覆盖。
+- 清理拆分后测试文件中的未使用 import，并修复 helper 外移时遗漏的 Claude session sizeBytes 归一化调用。
+
+涉及模块:
+- src/features/threads/hooks/useThreadActions.ts
+- src/features/threads/hooks/useThreadActions.helpers.ts
+- src/features/threads/hooks/useThreadActions.test.tsx
+- src/features/threads/hooks/useThreadActions.rewind.test.tsx
+
+验证结果:
+- 通过: npx vitest run src/features/threads/hooks/useThreadActions.test.tsx src/features/threads/hooks/useThreadActions.rewind.test.tsx
+- 通过: npm run typecheck
+- 通过: npm run check:large-files
+- 结果: useThreadActions.ts 从 3088 行降到 2447 行，useThreadActions.test.tsx 从 3283 行降到 2336 行，large-file hard gate found=0。
+
+后续事项:
+- 如果还要继续治理 near-threshold 文件，可优先评估 src/services/tauri.ts、src/utils/threadItems.ts 与 src/features/messages/components/Messages.tsx 的下一轮拆分边界。
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `83e9ecb53ea207ffa77d4849ed9d2c11dbcb49c3` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
