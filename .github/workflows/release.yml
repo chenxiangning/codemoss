@@ -277,7 +277,21 @@ jobs:
         env:
           NODE_OPTIONS: "--max-old-space-size=8192"
         run: |
-          npm run tauri -- build --config src-tauri/tauri.windows.ci.unsigned.json --bundles nsis
+          $maxAttempts = 3
+          for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
+            npm run tauri -- build --config src-tauri/tauri.windows.ci.unsigned.json --bundles nsis
+            if ($LASTEXITCODE -eq 0) {
+              break
+            }
+
+            if ($attempt -eq $maxAttempts) {
+              exit $LASTEXITCODE
+            }
+
+            $delaySeconds = 30 * $attempt
+            Write-Warning "Unsigned Windows bundle attempt $attempt failed with exit code $LASTEXITCODE. Retrying in $delaySeconds seconds."
+            Start-Sleep -Seconds $delaySeconds
+          }
 
       - name: Build Windows installer (signed)
         if: ${{ inputs.windows_signing_mode == 'signed' }}
@@ -289,7 +303,21 @@ jobs:
         run: |
           # TAURI_SIGNING_PRIVATE_KEY expects base64-encoded minisign key
           $env:TAURI_SIGNING_PRIVATE_KEY = $env:TAURI_SIGNING_PRIVATE_KEY_B64
-          npm run tauri -- build --config src-tauri/tauri.windows.conf.json --bundles nsis
+          $maxAttempts = 3
+          for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
+            npm run tauri -- build --config src-tauri/tauri.windows.conf.json --bundles nsis
+            if ($LASTEXITCODE -eq 0) {
+              break
+            }
+
+            if ($attempt -eq $maxAttempts) {
+              exit $LASTEXITCODE
+            }
+
+            $delaySeconds = 30 * $attempt
+            Write-Warning "Signed Windows bundle attempt $attempt failed with exit code $LASTEXITCODE. Retrying in $delaySeconds seconds."
+            Start-Sleep -Seconds $delaySeconds
+          }
 
       - name: Get version
         id: version
