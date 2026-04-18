@@ -202,6 +202,7 @@ export function useAppShellLayoutNodesSection(ctx: any) {
     handleApprovalBatchAccept,
     handleApprovalRemember,
     handleUserInputSubmit: handleUserInputSubmitWithPlanApply,
+    onRecoverThreadRuntime: (workspaceId, threadId) => refreshThread(workspaceId, threadId),
     handleExitPlanModeExecute,
     onOpenSettings: () => openSettings(),
     onOpenAgentSettings: () => openSettings("agents"),

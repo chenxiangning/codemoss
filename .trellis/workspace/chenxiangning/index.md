@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 21
-- **Last Active**: 2026-04-18
+- **Total Sessions**: 23
+- **Last Active**: 2026-04-19
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~1182 | Active |
+| `journal-1.md` | ~1308 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,10 +29,12 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
-| 21 | 2026-04-18 | revert missing terminal fallback and restore typecheck | `fbe9b7ac` | `feature/vvvv0.4.3` |
-| 20 | 2026-04-18 | commit copy convention in agents | `b3a71e2a04cb34871f63a8301f62ce73d2c3fef2` | `feature/vvvv0.4.3` |
-| 19 | 2026-04-18 | runtime pool copy clarification | `bf0efd3c5b9d8596ff3c49101ecbac5ab2079535` | `feature/vvvv0.4.3` |
-| 18 | 2026-04-18 | harden missing terminal fallback | `6e23d269` | `feature/vvvv0.4.3` |
+| 23 | 2026-04-19 | 修复运行时重连与线程事件边界处理 | `431a462b19a7c3832ee3ba2a0ed6c612ca2604cf` | `feature/vvvv0.4.3` |
+| 22 | 2026-04-18 | 同步 runtime orchestrator pool console 方案与默认预算 | `6deeca2e` | `feature/vvvv0.4.3` |
+| 21 | 2026-04-18 | 压缩 runtime 预算卡片布局 | `e8a71ebb` | `feature/vvvv0.4.3` |
+| 20 | 2026-04-18 | 修复会话继续时失效线程恢复 | `2e3a5b08c1a4c721c9a44502191f773d205b8944` | `feature/vvvv0.4.3` |
+| 19 | 2026-04-18 | 优化 runtime 恢复提示与预算设置边界处理 | `d7b0c02212d50a0af37f473ea15897a2a6226d38` | `feature/vvvv0.4.3` |
+| 18 | 2026-04-18 | 运行时编排与进程治理重构 | `8d617b60dd0c6b746e36610f41fe4c8aa111c8fa` | `feature/vvvv0.4.3` |
 | 17 | 2026-04-18 | dedicated runtime pool settings panel | `520e706406350f6166e0bcb34e01ceeb3623856f` | `feature/vvvv0.4.3` |
 | 16 | 2026-04-18 | runtime pool console visible settings entry | `d1e17770b8e8a0cbab6c701176fbadd8c6c716cb` | `feature/vvvv0.4.3` |
 | 15 | 2026-04-18 | runtime orchestrator pool console | `cb2db54934ba419a7220b746ab1d18f68b455e8c` | `feature/vvvv0.4.3` |

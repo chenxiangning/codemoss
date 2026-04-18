@@ -75,6 +75,8 @@ import { parseAgentTaskNotification } from "../utils/agentTaskNotification";
 import {
   dedupeExitPlanItemsKeepFirst,
 } from "./messagesExitPlan";
+import { RuntimeReconnectCard } from "./RuntimeReconnectCard";
+import { resolveRuntimeReconnectHint } from "./runtimeReconnect";
 
 
 type MessagesProps = {
@@ -119,6 +121,10 @@ type MessagesProps = {
   presentationProfile?: PresentationProfile | null;
   onOpenWorkspaceFile?: (path: string) => void;
   agentTaskScrollRequest?: AgentTaskScrollRequest | null;
+  onRecoverThreadRuntime?: (
+    workspaceId: string,
+    threadId: string,
+  ) => Promise<string | null | void> | string | null | void;
 };
 
 type WorkingIndicatorProps = {
@@ -141,11 +147,17 @@ type WorkingIndicatorProps = {
 type MessageRowProps = {
   item: Extract<ConversationItem, { kind: "message" }>;
   workspaceId?: string | null;
+  threadId?: string | null;
   isStreaming?: boolean;
   activeEngine?: "claude" | "codex" | "gemini" | "opencode";
   activeCollaborationModeId?: string | null;
   enableCollaborationBadge?: boolean;
   presentationProfile?: PresentationProfile | null;
+  showRuntimeReconnectCard?: boolean;
+  onRecoverThreadRuntime?: (
+    workspaceId: string,
+    threadId: string,
+  ) => Promise<string | null | void> | string | null | void;
   isCopied: boolean;
   onCopy: (
     item: Extract<ConversationItem, { kind: "message" }>,
@@ -184,6 +196,16 @@ type ExploreRowProps = {
   isExpanded: boolean;
   onToggle: (id: string) => void;
 };
+
+function resolveAssistantRuntimeReconnectHint(
+  item: Extract<ConversationItem, { kind: "message" }>,
+  agentTaskNotification: ReturnType<typeof parseAgentTaskNotification>,
+) {
+  if (item.role !== "assistant" || agentTaskNotification) {
+    return null;
+  }
+  return resolveRuntimeReconnectHint(item.text);
+}
 
 function areMessageImagesEqual(
   previous: Extract<ConversationItem, { kind: "message" }>["images"],
@@ -229,10 +251,13 @@ function areMessageRowPropsEqual(
   return (
     areMessageItemsEqual(previous.item, next.item) &&
     previous.workspaceId === next.workspaceId &&
+    previous.threadId === next.threadId &&
     previous.isStreaming === next.isStreaming &&
     previous.activeEngine === next.activeEngine &&
     previous.enableCollaborationBadge === next.enableCollaborationBadge &&
     previous.presentationProfile === next.presentationProfile &&
+    previous.showRuntimeReconnectCard === next.showRuntimeReconnectCard &&
+    previous.onRecoverThreadRuntime === next.onRecoverThreadRuntime &&
     previous.isCopied === next.isCopied &&
     previous.onCopy === next.onCopy &&
     previous.codeBlockCopyUseModifier === next.codeBlockCopyUseModifier &&
@@ -956,10 +981,13 @@ const WorkingIndicator = memo(function WorkingIndicator({
 const MessageRow = memo(function MessageRow({
   item,
   workspaceId = null,
+  threadId = null,
   isStreaming = false,
   activeEngine = "claude",
   enableCollaborationBadge = false,
   presentationProfile = null,
+  showRuntimeReconnectCard = false,
+  onRecoverThreadRuntime,
   isCopied,
   onCopy,
   codeBlockCopyUseModifier,
@@ -1100,6 +1128,10 @@ const MessageRow = memo(function MessageRow({
       .filter(Boolean) as MessageImage[];
   }, [item.images]);
   const provenanceLabel = resolveProvenanceEngineLabel(item.engineSource);
+  const runtimeReconnectHint = useMemo(
+    () => resolveAssistantRuntimeReconnectHint(item, agentTaskNotification),
+    [agentTaskNotification, item],
+  );
 
   const bubbleNode = (
     <div className={`bubble message-bubble${agentTaskNotification ? " message-bubble-agent-task" : ""}`}>
@@ -1181,10 +1213,18 @@ const MessageRow = memo(function MessageRow({
           )}
         </div>
       ) : null}
+      {runtimeReconnectHint && showRuntimeReconnectCard ? (
+        <RuntimeReconnectCard
+          hint={runtimeReconnectHint}
+          workspaceId={workspaceId}
+          threadId={threadId}
+          onRecoverThreadRuntime={onRecoverThreadRuntime}
+        />
+      ) : null}
       {hasText && (
         item.role === "user" && !agentTaskNotification ? (
           <CollapsibleUserTextBlock content={displayText} />
-        ) : (
+        ) : runtimeReconnectHint && showRuntimeReconnectCard ? null : (
           <Markdown
             value={displayText}
             className={resolvedMarkdownClassName}
@@ -1475,6 +1515,7 @@ export const Messages = memo(function Messages({
   onOpenWorkspaceFile,
   onExitPlanModeExecute,
   agentTaskScrollRequest = null,
+  onRecoverThreadRuntime,
 }: MessagesProps) {
   const { t } = useTranslation();
   const fallbackConversationState = useMemo<ConversationState>(
@@ -1517,6 +1558,18 @@ export const Messages = memo(function Messages({
   const userInputRequests = effectiveState.userInputQueue;
   const workspaceId = effectiveState.meta.workspaceId || legacyWorkspaceId;
   const threadId = effectiveState.meta.threadId || legacyThreadId;
+  const latestRuntimeReconnectItemId = useMemo(() => {
+    for (let index = items.length - 1; index >= 0; index -= 1) {
+      const item = items[index];
+      if (!item || item.kind !== "message" || item.role !== "assistant") {
+        continue;
+      }
+      if (resolveAssistantRuntimeReconnectHint(item, parseAgentTaskNotification(item.text))) {
+        return item.id;
+      }
+    }
+    return null;
+  }, [items]);
   const activeEngine = toConversationEngine(effectiveState.meta.engine);
   const isThinking = conversationState
     ? effectiveState.meta.isThinking
@@ -2655,6 +2708,7 @@ export const Messages = memo(function Messages({
             <MessageRow
               item={item}
               workspaceId={workspaceId}
+              threadId={threadId}
               isStreaming={
                 activeEngine === "claude" &&
                 isThinking &&
@@ -2665,6 +2719,8 @@ export const Messages = memo(function Messages({
               activeCollaborationModeId={activeCollaborationModeId}
               enableCollaborationBadge={activeEngine === "codex"}
               presentationProfile={presentationProfile}
+              showRuntimeReconnectCard={item.id === latestRuntimeReconnectItemId}
+              onRecoverThreadRuntime={onRecoverThreadRuntime}
               isCopied={isCopied}
               onCopy={handleCopyMessage}
               codeBlockCopyUseModifier={codeBlockCopyUseModifier}

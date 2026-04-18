@@ -957,123 +957,10 @@
 - None - task complete
 
 
-## Session 18: harden missing terminal fallback
+## Session 18: 运行时编排与进程治理重构
 
 **Date**: 2026-04-18
-**Task**: harden missing terminal fallback
-**Branch**: `feature/vvvv0.4.3`
-
-### Summary
-
-(Add summary)
-
-### Main Changes
-
-任务目标:
-- 修复 Codex 长任务偶发缺失 terminal event 时前端持续 loading、后续消息入队且融合失效的问题。
-- 完成当前工作区代码 review，重点检查边界条件、跨平台兼容与大文件治理相关风险。
-
-主要改动:
-- 在 threads lifecycle 增加 missing-terminal fallback，仅在 assistant completed、grace window 已过且 heartbeat 未继续推进时执行本地收口。
-- fallback 收口范围扩展到 alias / pending / finalized related thread ids，避免 pending rebind 后只清理单线程状态。
-- 为 fallback 判定抽出 threadTerminalFallback 工具与单测。
-- 新增 useThreads.missing-terminal 集成测试，覆盖 terminal 缺失、heartbeat 持续、pending->finalized rebind 三条边界路径。
-- 顺手修复当前工作区两处 typecheck 阻塞：ModeSelect CSSProperties 类型收敛、Messages 未使用导入移除。
-
-涉及模块:
-- src/features/threads/hooks/useThreads.ts
-- src/features/threads/utils/threadTerminalFallback.ts
-- src/features/threads/hooks/useThreads.missing-terminal.test.tsx
-- src/features/threads/utils/threadTerminalFallback.test.ts
-- src/features/composer/components/ChatInputBox/selectors/ModeSelect.tsx
-- src/features/messages/components/Messages.tsx
-
-验证结果:
-- npx vitest run src/features/threads/hooks/useThreads.missing-terminal.test.tsx src/features/threads/utils/threadTerminalFallback.test.ts src/features/threads/hooks/useQueuedSend.test.tsx --reporter=dot
-- npx eslint src/features/threads/hooks/useThreads.ts src/features/threads/utils/threadTerminalFallback.ts src/features/threads/utils/threadTerminalFallback.test.ts src/features/threads/hooks/useThreads.missing-terminal.test.tsx src/features/composer/components/ChatInputBox/selectors/ModeSelect.tsx src/features/messages/components/Messages.tsx
-- npm run typecheck
-- npm run check:large-files
-
-后续事项:
-- 继续观察长任务真实运行中是否仍会出现 thread/terminal-fallback 调试事件，必要时再追 backend/app-server 缺失 turn/completed 的根因。
-- src-tauri/src/codex/mod.rs 仍是仓库现存 3036 行大文件，未在本次提交中拆分。
-
-
-### Git Commits
-
-| Hash | Message |
-|------|---------|
-| `6e23d269` | (see git log) |
-
-### Testing
-
-- [OK] (Add test results)
-
-### Status
-
-[OK] **Completed**
-
-### Next Steps
-
-- None - task complete
-
-
-## Session 19: runtime pool copy clarification
-
-**Date**: 2026-04-18
-**Task**: runtime pool copy clarification
-**Branch**: `feature/vvvv0.4.3`
-
-### Summary
-
-(Add summary)
-
-### Main Changes
-
-任务目标:
-- 修正运行时池面板中的中英混排文案。
-- 明确当前方案的覆盖范围，避免用户误以为 Claude Code 已经进入 Hot/Warm 池。
-
-主要改动:
-- 将运行时池入口、摘要卡片、状态标签、徽标文案进一步中文化。
-- 新增 scope 说明：当前 Hot/Warm/Cold 池化主要覆盖 Codex；Claude Code 当前纳入统一退出清理、残留诊断与进程收口，但暂未进入热池/温池复用调度。
-- 将状态标签从 Hot/Warm/Busy/Pinned 等直接显示文本切换为 i18n 文案。
-
-涉及模块:
-- src/features/settings/components/settings-view/sections/RuntimePoolSection.tsx
-- src/i18n/locales/zh.part1.ts
-- src/i18n/locales/en.part1.ts
-
-验证结果:
-- npx vitest run src/features/settings/components/SettingsView.test.tsx 通过。
-
-后续事项:
-- 如果后续将 Claude Code 也纳入 Hot/Warm 池，需要同步调整当前 scope 文案，避免文档与实现漂移。
-
-
-### Git Commits
-
-| Hash | Message |
-|------|---------|
-| `bf0efd3c5b9d8596ff3c49101ecbac5ab2079535` | (see git log) |
-
-### Testing
-
-- [OK] (Add test results)
-
-### Status
-
-[OK] **Completed**
-
-### Next Steps
-
-- None - task complete
-
-
-## Session 20: commit copy convention in agents
-
-**Date**: 2026-04-18
-**Task**: commit copy convention in agents
+**Task**: 运行时编排与进程治理重构
 **Branch**: `feature/vvvv0.4.3`
 
 ### Summary
@@ -1083,31 +970,43 @@
 ### Main Changes
 
 任务目标：
-- 将“本地 git commit 使用 Conventional Commits 风格，且标题与正文使用中文并写详细说明”固化到项目规则中。
+- 重构 runtime orchestrator，统一纳管 Codex、Claude Code 与相关 node 进程。
+- 修复运行时启动和回收之间的竞态，避免刚启动的有效进程被误杀，也减少空闲时未托管进程残留。
+- 补齐 runtime pool 控制台展示、i18n 和 OpenSpec 文档。
 
 主要改动：
-- 在 AGENTS.md 的“项目工作基线（mossx）”增加一条提交规范。
-- 明确要求本地 git commit 统一采用 Conventional Commits 风格。
-- 明确要求 commit 标题与正文默认使用中文。
-- 明确要求正文必须包含变更背景、主要改动、验证结果与必要的后续说明。
+- 在 src-tauri/src/runtime/mod.rs 引入 acquire gate、进程观测与 host/unmanaged roots 诊断，补齐 Windows/macOS 兼容的进程快照与回收路径。
+- 在 src-tauri/src/codex/mod.rs、src-tauri/src/codex/session_runtime.rs、src-tauri/src/shared/workspaces_core.rs 中重构 Codex session 获取流程，修复 session 注册前被 reconcile 回收的竞态。
+- 在 Claude 相关模块中同步接入运行时管理与状态同步。
+- 前端 Runtime Pool 面板、src/services/tauri.ts、src/types.ts 以及中英文 i18n 文案同步更新，展示新的运行时观测字段。
+- 为满足 large-file governance，将 Codex session runtime 与 OpenCode helper 从超大文件中抽离，避免超过 3000 行门禁。
+- 更新 openspec/changes/runtime-orchestrator-pool-console 下 proposal、design、tasks 与 spec，保持提案与实现一致。
 
 涉及模块：
-- AGENTS.md
+- backend/runtime: src-tauri/src/runtime/mod.rs
+- backend/codex: src-tauri/src/codex/mod.rs, src-tauri/src/codex/session_runtime.rs
+- backend/shared: src-tauri/src/shared/workspaces_core.rs, src-tauri/src/state.rs, src-tauri/src/types.rs
+- backend/engine: src-tauri/src/engine/claude.rs, src-tauri/src/engine/claude/manager.rs, src-tauri/src/engine/commands.rs, src-tauri/src/engine/commands_opencode_helpers.rs
+- frontend/runtime-pool: src/features/settings/components/settings-view/sections/RuntimePoolSection.tsx, src/services/tauri.ts, src/types.ts, src/i18n/locales/en.part1.ts, src/i18n/locales/zh.part1.ts
+- spec: openspec/changes/runtime-orchestrator-pool-console/*
 
 验证结果：
-- git diff 已确认规则写入位置正确。
-- 本次提交本身已按该规则使用中文 Conventional Commits 标题与详细中文正文。
+- cargo fmt --manifest-path src-tauri/Cargo.toml 通过
+- cargo test --manifest-path src-tauri/Cargo.toml runtime::tests 通过
+- npm run typecheck 通过
+- npm run check:large-files:gate 通过
+- npm run build:mac-arm64 产出本地 app bundle，但 codesign 因缺少指定签名身份而中止收尾；构建产物已生成，可用于本地验证
 
 后续事项：
-- 后续我在本仓库内执行的提交，将默认遵守这条中文 Conventional Commits 规则。
-- 历史英文提交不自动改写，如需统一历史风格需单独处理。
+- 继续基于新 bundle 验证安装包场景下的对话创建、恢复与进程回收表现。
+- 若需要正式分发，还需补齐对应 macOS 签名身份或调整打包脚本的签名策略。
 
 
 ### Git Commits
 
 | Hash | Message |
 |------|---------|
-| `b3a71e2a04cb34871f63a8301f62ce73d2c3fef2` | (see git log) |
+| `8d617b60dd0c6b746e36610f41fe4c8aa111c8fa` | (see git log) |
 
 ### Testing
 
@@ -1122,10 +1021,10 @@
 - None - task complete
 
 
-## Session 21: revert missing terminal fallback and restore typecheck
+## Session 19: 优化 runtime 恢复提示与预算设置边界处理
 
 **Date**: 2026-04-18
-**Task**: revert missing terminal fallback and restore typecheck
+**Task**: 优化 runtime 恢复提示与预算设置边界处理
 **Branch**: `feature/vvvv0.4.3`
 
 ### Summary
@@ -1135,39 +1034,266 @@
 ### Main Changes
 
 任务目标:
-- 确认并回退导致正常任务被误中断的 missing terminal fallback 修复。
-- 保留无行为风险的 typecheck 修复，避免回退后工作区重新处于编译失败状态。
+- 对当前工作区进行全面 review，重点检查边界条件处理、Windows 与 macOS 兼容性以及 3000 行大文件治理风险。
+- 修复 runtime 断链恢复提示与 Runtime Pool Console 中发现的问题，并完成提交记录。
 
 主要改动:
-- 提交 a8ed09a2 回退了 fix(threads): harden missing terminal fallback，对应删除 threads fallback 工具、测试与 useThreads 中的本地 terminal 收口逻辑。
-- 提交 fbe9b7ac 单独恢复两处无 runtime 行为影响的 type 修复：ModeSelect CSSProperties 类型收敛、Messages 未使用导入移除。
-- 额外核对当前源码中已不存在 threadTerminalFallback / MISSING_TERMINAL_SETTLE / thread/terminal-fallback 相关实现残留。
+- 为消息区新增 runtime 断链恢复卡片，覆盖 Broken pipe、workspace not connected 与 Windows pipe close 场景。
+- 将恢复识别逻辑拆分为独立纯函数与组件，避免继续膨胀 Messages.tsx，并保留重连失败错误详情与无 workspace 绑定提示。
+- 收紧 Runtime Pool Console 排版，明确 Codex-only 预算文案，修复预算输入的空值、非法值、越界值归一化回写。
+- 修正 zombie-suspected 状态的深色告警 tone，并补充中英文 i18n 与相关单测。
 
 涉及模块:
-- src/features/threads/hooks/useThreads.ts
-- src/features/threads/hooks/useThreads.missing-terminal.test.tsx
-- src/features/threads/utils/threadTerminalFallback.ts
-- src/features/threads/utils/threadTerminalFallback.test.ts
-- src/features/composer/components/ChatInputBox/selectors/ModeSelect.tsx
-- src/features/messages/components/Messages.tsx
+- src/features/messages/components
+- src/features/settings/components/settings-view/sections
+- src/i18n/locales
+- src/styles/messages.css
 
 验证结果:
-- git show --stat --name-status a8ed09a2
-- python3 ./.trellis/scripts/get_context.py --mode record
-- python3 ./.trellis/scripts/task.py list
-- rg -n "missing terminal fallback|threadTerminalFallback|terminalFallbackCandidateByThreadRef|MISSING_TERMINAL_SETTLE|thread/terminal-fallback" src
+- npx vitest run src/features/messages/components/Messages.test.tsx src/features/messages/components/runtimeReconnect.test.ts src/features/settings/components/settings-view/sections/runtimePoolSection.utils.test.ts
 - npm run typecheck
+- npx eslint src/features/messages/components/Messages.tsx src/features/messages/components/RuntimeReconnectCard.tsx src/features/messages/components/runtimeReconnect.ts src/features/messages/components/Messages.test.tsx src/features/messages/components/runtimeReconnect.test.ts src/features/settings/components/settings-view/sections/RuntimePoolSection.tsx src/features/settings/components/settings-view/sections/runtimePoolSection.utils.ts src/features/settings/components/settings-view/sections/runtimePoolSection.utils.test.ts src/i18n/locales/zh.part1.ts src/i18n/locales/en.part1.ts
+- npm run check:large-files
+- npm run check:large-files:near-threshold
 
 后续事项:
-- 若仍需继续修 Codex 长任务 loading 问题，下一步应转向 backend/app-server 根因排查，不再使用当前这版前端 fallback 方案。
-- 本次确认没有 active task 挂载到其他任务容器。
+- Messages.test.tsx 与 messages.css 仍处于 near-threshold watchlist，后续若继续扩展消息区交互，建议按块继续拆分测试与样式。
 
 
 ### Git Commits
 
 | Hash | Message |
 |------|---------|
-| `fbe9b7ac` | (see git log) |
+| `d7b0c02212d50a0af37f473ea15897a2a6226d38` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 20: 修复会话继续时失效线程恢复
+
+**Date**: 2026-04-18
+**Task**: 修复会话继续时失效线程恢复
+**Branch**: `feature/vvvv0.4.3`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+任务目标：修复当前会话继续对话时因旧 threadId 失效导致的 thread not found / session_not_found 错误，并确保不破坏已有成功链路。
+
+主要改动：
+- 在 unified history loader 恢复路径中增加 stale thread 恢复逻辑，仅针对失效线程错误触发。
+- 为 Codex 恢复增加有限分页扫描，避免线程较多时只扫描第一页导致无法恢复。
+- 为 OpenCode 恢复增加基于本地 session 列表的候选重建。
+- 恢复成功后建立旧线程到新线程的 alias，并同步切换 active thread。
+- 清理旧线程上残留的 user input 请求状态，避免 UI 切换后仍残留孤儿请求。
+- 更新 hook 测试，覆盖 Codex 恢复、OpenCode 恢复、无安全候选保守回退、以及候选位于后续分页的场景。
+
+涉及模块：
+- src/features/threads/hooks/useThreadActions.ts
+- src/features/threads/hooks/useThreads.ts
+- src/features/threads/hooks/useThreadActions.test.tsx
+
+验证结果：
+- npx vitest run src/features/threads/hooks/useThreadActions.test.tsx 通过
+- npm run typecheck 通过
+
+后续事项：
+- 当前工作区仍有 OpenSpec、RuntimePoolSection 与 i18n 的未提交改动，本次未纳入该业务提交。
+- 如后续继续演进，可考虑把 useThreadActions 的恢复辅助逻辑进一步拆分，降低超大文件维护成本。
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `2e3a5b08c1a4c721c9a44502191f773d205b8944` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 21: 压缩 runtime 预算卡片布局
+
+**Date**: 2026-04-18
+**Task**: 压缩 runtime 预算卡片布局
+**Branch**: `feature/vvvv0.4.3`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+任务目标:
+- 继续收紧 Runtime Pool Console 的预算卡布局，把三项配置压成一行，并把保存/刷新按钮提到卡片右上角。
+- 保持现有运行时逻辑不变，只做 UI 排版和文案语义收口。
+
+主要改动:
+- 将 Codex runtime 实例预算卡改为更紧凑的一行三列布局，缩小 label、input、help 文案占用空间。
+- 把保存/刷新按钮移动到预算卡头部右上角，形成更像工具条的极简控制区。
+- 继续弱化预算卡的表单感，明确 runtime 实例预算与聊天线程数量的区别，并补充操作文案说明。
+
+涉及模块:
+- src/features/settings/components/settings-view/sections/RuntimePoolSection.tsx
+- src/i18n/locales/zh.part1.ts
+- src/i18n/locales/en.part1.ts
+
+验证结果:
+- npx eslint src/features/settings/components/settings-view/sections/RuntimePoolSection.tsx src/i18n/locales/zh.part1.ts src/i18n/locales/en.part1.ts
+- npm run typecheck
+- npm run check:large-files
+
+后续事项:
+- 仓库仍存在与本次提交无关的未提交变更：openspec/changes/runtime-orchestrator-pool-console/* 与 src-tauri/src/types.rs，未纳入本次 commit。
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `e8a71ebb` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 22: 同步 runtime orchestrator pool console 方案与默认预算
+
+**Date**: 2026-04-18
+**Task**: 同步 runtime orchestrator pool console 方案与默认预算
+**Branch**: `feature/vvvv0.4.3`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+任务目标:
+- 处理上一轮提交后剩余的 OpenSpec / Rust 默认值改动，并按同样提交风格单独提交。
+- 确保 runtime orchestrator pool console 的 proposal/design/checklist/tasks 与当前实现保持一致。
+
+主要改动:
+- 回写 runtime orchestrator pool console 的实现状态，明确 Codex 已进入 budgeted pool，Claude Code 已纳入统一 lifecycle / shutdown / observability，但预算配置仍分阶段推进。
+- 同步 release checklist、tasks、proposal、design 中的可见 settings runtime section、runtime reconnect recovery、diagnostics counters 与 Codex-only budget 约束。
+- 更新后端默认预算参数，将 Codex warm 实例默认上限改为 2，warm TTL 改为 120 秒，使默认值与当前控制台语义一致。
+
+涉及模块:
+- openspec/changes/runtime-orchestrator-pool-console/design.md
+- openspec/changes/runtime-orchestrator-pool-console/proposal.md
+- openspec/changes/runtime-orchestrator-pool-console/release-checklist.md
+- openspec/changes/runtime-orchestrator-pool-console/tasks.md
+- src-tauri/src/types.rs
+
+验证结果:
+- cargo test --manifest-path src-tauri/Cargo.toml types --quiet
+- git diff review for remaining OpenSpec / Rust changes
+
+后续事项:
+- `cargo test` 本次仅出现仓库里既有 Rust warnings，没有新的 error；若后续继续清理 backend，可单独处理这些 warning。
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `6deeca2e` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 23: 修复运行时重连与线程事件边界处理
+
+**Date**: 2026-04-19
+**Task**: 修复运行时重连与线程事件边界处理
+**Branch**: `feature/vvvv0.4.3`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+任务目标:
+- 审查当前工作区与运行时重连、线程事件处理相关的改动，重点检查边界条件、兼容性和大文件治理约束。
+- 直接修复确认存在的问题，并完成本地验证后提交。
+
+主要改动:
+- 统一 Messages 中 runtime reconnect hint 的解析入口，消除列表去重与单条消息渲染使用不同文本来源导致的卡片错位风险。
+- 完善 RuntimeReconnectCard 错误分支，对线程级恢复回调返回 null 的情况输出明确提示，并同步补齐中英文 i18n 文案。
+- 将 runtime reconnect 测试从超长的 Messages.test.tsx 中拆分为独立测试文件，回落主测试文件体量并补充 Windows pipe、无 workspace、兼容模式与恢复失败场景。
+- 保留并提交 useThreadEventHandlers 诊断增强及其回归测试，覆盖 stalled-after-first-delta、默认静默、stale turn 忽略、interrupted thread 忽略等边界行为。
+- 纳入 layout 与运行时池设置页相关接线改动，保证当前 UI 链路仍能触达线程级 runtime 恢复能力。
+
+涉及模块:
+- src/features/messages/components/**
+- src/features/threads/hooks/**
+- src/features/layout/hooks/useLayoutNodes.tsx
+- src/app-shell-parts/useAppShellLayoutNodesSection.tsx
+- src/features/settings/components/settings-view/sections/RuntimePoolSection.tsx
+- src/i18n/locales/en.part1.ts
+- src/i18n/locales/zh.part1.ts
+
+验证结果:
+- 通过: npx vitest run src/features/messages/components/Messages.runtime-reconnect.test.tsx src/features/messages/components/Messages.test.tsx src/features/threads/hooks/useThreadEventHandlers.test.ts
+- 通过: npx vitest run src/features/messages/components/Messages.runtime-reconnect.test.tsx src/features/messages/components/Messages.test.tsx
+- 通过: npm run typecheck
+- 检查: npm run check:large-files
+  结果显示本次治理已将 Messages.test.tsx 降回 3000 行阈值内，但仓库仍存在历史超限文件 useThreadActions.ts / useThreadActions.test.tsx。
+- 检查: npm run check:large-files:near-threshold
+  结果显示 Messages.tsx 与 Messages.test.tsx 仍处于 near-threshold 观察区。
+
+后续事项:
+- 后续可继续治理 useThreadActions.ts 与 useThreadActions.test.tsx 的大文件问题。
+- 若用户继续验证 runtime 会话恢复流程，可围绕 thread recover 失败后的 reopen/new session 路径再补真实交互回归用例。
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `431a462b19a7c3832ee3ba2a0ed6c612ca2604cf` | (see git log) |
 
 ### Testing
 
