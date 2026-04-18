@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use tokio::sync::Mutex;
+use tokio::time::Duration;
 
 use crate::backend::app_server::WorkspaceSession;
 use crate::codex::args::resolve_workspace_codex_args;
@@ -21,6 +22,7 @@ pub(crate) const WORKTREE_SETUP_MARKER_EXT: &str = "ran";
 const WORKTREE_VALIDATION_ERROR_PREFIX: &str = "VALIDATION_ERROR";
 const LEGACY_BRAND_WORKSPACE_NAMES: &[&str] = &["codemoss", "ccgui"];
 const CURRENT_BRAND_WORKSPACE_NAME: &str = "ccgui";
+const SESSION_HEALTH_PROBE_TIMEOUT_SECS: u64 = 3;
 
 pub(crate) fn normalize_setup_script(script: Option<String>) -> Option<String> {
     match script {
@@ -599,13 +601,33 @@ where
 {
     let (entry, parent_entry) = resolve_entry_and_parent(workspaces, &workspace_id).await?;
     loop {
-        if sessions.lock().await.contains_key(&workspace_id) {
-            if let Some(runtime_manager) = runtime_manager {
-                runtime_manager
-                    .touch("codex", &workspace_id, "connect")
-                    .await;
+        let existing_session = {
+            let sessions = sessions.lock().await;
+            sessions.get(&workspace_id).cloned()
+        };
+        if let Some(session) = existing_session {
+            match session
+                .probe_health(Duration::from_secs(SESSION_HEALTH_PROBE_TIMEOUT_SECS))
+                .await
+            {
+                Ok(()) => {
+                    if let Some(runtime_manager) = runtime_manager {
+                        runtime_manager
+                            .touch("codex", &workspace_id, "connect")
+                            .await;
+                    }
+                    return Ok(());
+                }
+                Err(error) => {
+                    log::warn!(
+                        "[connect_workspace_core] stale session detected for workspace {}: {}",
+                        workspace_id,
+                        error
+                    );
+                    disconnect_workspace_session_core(sessions, runtime_manager, &workspace_id)
+                        .await;
+                }
             }
-            return Ok(());
         }
 
         let Some(runtime_manager) = runtime_manager else {

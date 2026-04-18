@@ -12,17 +12,46 @@ const RUNTIME_PIPE_DISCONNECT_PATTERNS = [
   "os error 232",
 ] as const;
 
-export function resolveRuntimeReconnectHint(text: string): RuntimeReconnectHint | null {
+function lineLooksLikeRuntimeReconnectError(line: string): boolean {
+  const lowered = line.toLowerCase();
+  return (
+    RUNTIME_PIPE_DISCONNECT_PATTERNS.some((pattern) => lowered.includes(pattern)) ||
+    lowered.includes("workspace not connected")
+  );
+}
+
+function getRuntimeReconnectCandidate(text: string): string | null {
   const normalized = text.trim();
   if (!normalized) {
     return null;
   }
-  const lowered = normalized.toLowerCase();
+  const lines = normalized
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  if (lines.length === 0) {
+    return null;
+  }
+  if (lines.length === 1) {
+    return lines[0];
+  }
+  if (!lines.every((line) => lineLooksLikeRuntimeReconnectError(line))) {
+    return null;
+  }
+  return lines[0];
+}
+
+export function resolveRuntimeReconnectHint(text: string): RuntimeReconnectHint | null {
+  const candidate = getRuntimeReconnectCandidate(text);
+  if (!candidate) {
+    return null;
+  }
+  const lowered = candidate.toLowerCase();
   if (RUNTIME_PIPE_DISCONNECT_PATTERNS.some((pattern) => lowered.includes(pattern))) {
-    return { reason: "broken-pipe", rawMessage: normalized };
+    return { reason: "broken-pipe", rawMessage: candidate };
   }
   if (lowered.includes("workspace not connected")) {
-    return { reason: "workspace-not-connected", rawMessage: normalized };
+    return { reason: "workspace-not-connected", rawMessage: candidate };
   }
   return null;
 }

@@ -1090,6 +1090,12 @@ impl WorkspaceSession {
             .map_err(|e| e.to_string())
     }
 
+    pub(crate) async fn probe_health(&self, timeout_duration: Duration) -> Result<(), String> {
+        self.send_request_with_timeout("model/list", json!({}), timeout_duration)
+            .await
+            .map(|_| ())
+    }
+
     pub(crate) async fn send_request(&self, method: &str, params: Value) -> Result<Value, String> {
         self.send_request_with_timeout(
             method,
@@ -1108,8 +1114,13 @@ impl WorkspaceSession {
         let id = self.next_id.fetch_add(1, Ordering::SeqCst);
         let (tx, rx) = oneshot::channel();
         self.pending.lock().await.insert(id, tx);
-        self.write_message(json!({ "id": id, "method": method, "params": params }))
-            .await?;
+        if let Err(error) = self
+            .write_message(json!({ "id": id, "method": method, "params": params }))
+            .await
+        {
+            self.pending.lock().await.remove(&id);
+            return Err(error);
+        }
         // Add timeout to prevent pending entries from leaking forever
         // when the child process crashes without sending a response.
         match timeout(timeout_duration, rx).await {

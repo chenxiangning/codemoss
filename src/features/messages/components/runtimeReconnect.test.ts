@@ -23,6 +23,23 @@ describe("resolveRuntimeReconnectHint", () => {
     });
     expect(resolveRuntimeReconnectHint("request timed out")).toBeNull();
   });
+
+  it("ignores long assistant replies that only quote runtime disconnect text", () => {
+    expect(
+      resolveRuntimeReconnectHint(
+        "Broken pipe (os error 32)\n\n结论先行：这是一次 stale session 问题，需要后端重建。",
+      ),
+    ).toBeNull();
+  });
+
+  it("keeps reconnect detection for repeated raw error lines", () => {
+    expect(
+      resolveRuntimeReconnectHint("Broken pipe (os error 32)\nBroken pipe (os error 32)"),
+    ).toEqual({
+      reason: "broken-pipe",
+      rawMessage: "Broken pipe (os error 32)",
+    });
+  });
 });
 
 describe("normalizeRuntimeReconnectErrorMessage", () => {

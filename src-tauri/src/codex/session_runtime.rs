@@ -1,6 +1,46 @@
 use super::*;
 use crate::runtime::RuntimeAcquireGate;
 use tauri::AppHandle;
+use tokio::time::Duration;
+
+const SESSION_HEALTH_PROBE_TIMEOUT_SECS: u64 = 3;
+
+async fn reuse_existing_session_if_healthy<FProbe, FutProbe, FTouch, FutTouch, FStop, FutStop>(
+    workspace_id: &str,
+    probe: FProbe,
+    touch: FTouch,
+    stop: FStop,
+) -> bool
+where
+    FProbe: FnOnce() -> FutProbe,
+    FutProbe: std::future::Future<Output = Result<(), String>>,
+    FTouch: FnOnce() -> FutTouch,
+    FutTouch: std::future::Future<Output = ()>,
+    FStop: FnOnce() -> FutStop,
+    FutStop: std::future::Future<Output = Result<(), String>>,
+{
+    match probe().await {
+        Ok(()) => {
+            touch().await;
+            true
+        }
+        Err(error) => {
+            log::warn!(
+                "[ensure_codex_session] stale session detected for workspace {}: {}",
+                workspace_id,
+                error
+            );
+            if let Err(stop_error) = stop().await {
+                log::warn!(
+                    "[ensure_codex_session] failed to stop stale session for workspace {}: {}",
+                    workspace_id,
+                    stop_error
+                );
+            }
+            false
+        }
+    }
+}
 
 /// Ensure a Codex session exists for the workspace. If not, spawn one.
 /// This is called before sending messages to handle the case where user
@@ -11,13 +51,31 @@ pub(crate) async fn ensure_codex_session(
     app: &AppHandle,
 ) -> Result<(), String> {
     loop {
-        {
+        let existing_session = {
             let sessions = state.sessions.lock().await;
-            if sessions.contains_key(workspace_id) {
-                state
-                    .runtime_manager
-                    .touch("codex", workspace_id, "ensure-runtime-ready")
-                    .await;
+            sessions.get(workspace_id).cloned()
+        };
+        if let Some(session) = existing_session {
+            if reuse_existing_session_if_healthy(
+                workspace_id,
+                || session.probe_health(Duration::from_secs(SESSION_HEALTH_PROBE_TIMEOUT_SECS)),
+                || async {
+                    state
+                        .runtime_manager
+                        .touch("codex", workspace_id, "ensure-runtime-ready")
+                        .await;
+                },
+                || async {
+                    crate::runtime::stop_workspace_session(
+                        &state.sessions,
+                        &state.runtime_manager,
+                        workspace_id,
+                    )
+                    .await
+                },
+            )
+            .await
+            {
                 return Ok(());
             }
         }
@@ -106,4 +164,69 @@ pub(crate) async fn ensure_codex_session(
         .finish_runtime_acquire("codex", workspace_id)
         .await;
     replace_result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::reuse_existing_session_if_healthy;
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    #[tokio::test]
+    async fn reuses_existing_session_when_probe_succeeds() {
+        let touched = Arc::new(AtomicBool::new(false));
+        let stopped = Arc::new(AtomicBool::new(false));
+
+        let reused = reuse_existing_session_if_healthy(
+            "ws-1",
+            || async { Ok(()) },
+            {
+                let touched = Arc::clone(&touched);
+                move || async move {
+                    touched.store(true, Ordering::SeqCst);
+                }
+            },
+            {
+                let stopped = Arc::clone(&stopped);
+                move || async move {
+                    stopped.store(true, Ordering::SeqCst);
+                    Ok(())
+                }
+            },
+        )
+        .await;
+
+        assert!(reused);
+        assert!(touched.load(Ordering::SeqCst));
+        assert!(!stopped.load(Ordering::SeqCst));
+    }
+
+    #[tokio::test]
+    async fn stops_stale_session_when_probe_fails() {
+        let touched = Arc::new(AtomicBool::new(false));
+        let stopped = Arc::new(AtomicBool::new(false));
+
+        let reused = reuse_existing_session_if_healthy(
+            "ws-1",
+            || async { Err("Broken pipe (os error 32)".to_string()) },
+            {
+                let touched = Arc::clone(&touched);
+                move || async move {
+                    touched.store(true, Ordering::SeqCst);
+                }
+            },
+            {
+                let stopped = Arc::clone(&stopped);
+                move || async move {
+                    stopped.store(true, Ordering::SeqCst);
+                    Ok(())
+                }
+            },
+        )
+        .await;
+
+        assert!(!reused);
+        assert!(!touched.load(Ordering::SeqCst));
+        assert!(stopped.load(Ordering::SeqCst));
+    }
 }

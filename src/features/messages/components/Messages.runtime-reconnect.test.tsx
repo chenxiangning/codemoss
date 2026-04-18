@@ -170,6 +170,24 @@ describe("Messages runtime reconnect", () => {
     expect(screen.getByRole("group", { name: "messages.runtimeReconnectTitle" })).toBeTruthy();
   });
 
+  it("does not turn a normal assistant reply quoting broken pipe into a reconnect card", () => {
+    renderMessages([
+      {
+        id: "assistant-broken-pipe-quoted",
+        kind: "message",
+        role: "assistant",
+        text: "Broken pipe (os error 32)\n\n结论先行：这是 stale session，需要重建 runtime。",
+      },
+    ], {
+      threadId: "thread-runtime-reconnect-quoted",
+    });
+
+    expect(screen.queryByRole("group", { name: "messages.runtimeReconnectTitle" })).toBeNull();
+    expect(
+      screen.getByText("结论先行：这是 stale session，需要重建 runtime。"),
+    ).toBeTruthy();
+  });
+
   it("shows unavailable hint when the message is not bound to a workspace runtime", () => {
     renderMessages([
       {

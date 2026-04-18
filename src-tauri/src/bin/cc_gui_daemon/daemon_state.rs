@@ -1,6 +1,9 @@
 use super::*;
+use tokio::time::Duration;
 
 mod git;
+
+const SESSION_HEALTH_PROBE_TIMEOUT_SECS: u64 = 3;
 
 fn is_valid_claude_model_for_passthrough(model: &str) -> bool {
     let trimmed = model.trim();
@@ -23,10 +26,29 @@ pub(super) struct CodexRuntimeReloadResult {
 
 impl DaemonState {
     async fn ensure_codex_session_for_workspace(&self, workspace_id: &str) -> Result<(), String> {
-        {
+        let existing_session = {
             let sessions = self.sessions.lock().await;
-            if sessions.contains_key(workspace_id) {
-                return Ok(());
+            sessions.get(workspace_id).cloned()
+        };
+        if let Some(session) = existing_session {
+            match session
+                .probe_health(Duration::from_secs(SESSION_HEALTH_PROBE_TIMEOUT_SECS))
+                .await
+            {
+                Ok(()) => return Ok(()),
+                Err(error) => {
+                    log::warn!(
+                        "[daemon.ensure_codex_session_for_workspace] stale session detected for workspace {}: {}",
+                        workspace_id,
+                        error
+                    );
+                    workspaces_core::disconnect_workspace_session_core(
+                        &self.sessions,
+                        None,
+                        workspace_id,
+                    )
+                    .await;
+                }
             }
         }
         self.connect_workspace(
