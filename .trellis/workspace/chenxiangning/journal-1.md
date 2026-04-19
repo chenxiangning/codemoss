@@ -1637,3 +1637,354 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 30: 修复项目会话管理批量删除慢与查询缺失
+
+**Date**: 2026-04-19
+**Task**: 修复项目会话管理批量删除慢与查询缺失
+**Branch**: `feature/vvvv0.4.3`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+任务目标:
+- 修复设置页“项目会话管理”查询慢、部分会话查不出、批量删除极慢的问题。
+- 保持线程管理重构主链不回退，只补查询/删除适配层。
+
+主要改动:
+- 新增 Codex 批量删除 command，并补齐 desktop/remote/daemon 三条执行路径。
+- 将 local_usage 中的 session 删除与文件匹配逻辑拆到 local_usage/session_delete.rs，降低大文件风险。
+- 扩展本地会话 cwd 提取兼容 root.sessionMeta、payload.context、turnContext、turn_context 等元数据形态，修复部分会话查不出。
+- 设置页删除改走 removeThreads fast path，批量删除 Codex 会话时复用一次扫描。
+- 删除前的 archive 改为 2 秒 best-effort 超时，避免线程/archive RPC 把删除拖到 300 秒默认超时。
+- 设置页加载中保留已有会话列表，避免空白等待。
+
+涉及模块:
+- src-tauri/src/codex/mod.rs
+- src-tauri/src/bin/cc_gui_daemon.rs
+- src-tauri/src/bin/cc_gui_daemon/daemon_state.rs
+- src-tauri/src/shared/codex_core.rs
+- src-tauri/src/local_usage.rs
+- src-tauri/src/local_usage/session_delete.rs
+- src/features/threads/hooks/useThreads.ts
+- src/app-shell-parts/useAppShellSections.ts
+- src/features/settings/components/ProjectSessionManagementSection.tsx
+- src/services/tauri.ts
+- 相关测试文件
+
+验证结果:
+- npm run typecheck 通过
+- npx vitest run src/features/threads/hooks/useThreads.sidebar-cache.test.tsx src/features/settings/components/SettingsView.test.tsx 通过
+- cargo test --manifest-path src-tauri/Cargo.toml delete_codex_session_for_workspace_physically_removes_matching_file -- --nocapture 通过
+- cargo test --manifest-path src-tauri/Cargo.toml delete_codex_sessions_for_workspace_reuses_single_scan_for_multiple_targets -- --nocapture 通过
+- cargo test --manifest-path src-tauri/Cargo.toml parse_codex_session_summary_reads_root_session_meta_cwd -- --nocapture 通过
+- npm run check:large-files:near-threshold 通过
+- npm run check:large-files:gate 通过
+
+后续事项:
+- 建议人工再验证一次设置页删除 3-5 条 Codex 会话的真实耗时，确认已从分钟级降到秒级。
+- 如仍感知等待，可继续补前端删除进度提示与 archive skipped 文案。
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `7384c6a4` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 31: 修复消息区 runtime 重连重发边界并完成代码清理
+
+**Date**: 2026-04-19
+**Task**: 修复消息区 runtime 重连重发边界并完成代码清理
+**Branch**: `feature/vvvv0.4.3`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+任务目标:
+- 对当前工作区进行全面 review，重点检查 runtime reconnect 卡片、上一条提示词重发、边界条件和大文件治理
+- 按用户反馈完成代码清理，去掉无效的重连成功提示并保留双按钮能力
+
+主要改动:
+- 新增 reconnect 卡片的“重连并发送上一条提示词”能力，同时保留原有仅重连按钮
+- 修复上一条提示词选择错误，改为只回溯 reconnect 错误之前最近的一条 user message
+- 在恢复并重发时复用 refreshThread 与 sendUserMessageToThread，避免重复 optimistic user bubble 和顶部残留消息
+- 下沉 runtime reconnect 纯逻辑 helper，压低 Messages.tsx 行数并通过 large-file 检查
+- 清理未生效的 success 提示分支与对应文案噪音
+- 补充 reconnect、Windows pipe error、nearest previous prompt、resend unavailable 等回归测试
+
+涉及模块:
+- src/features/messages/components
+- src/app-shell-parts/useAppShellLayoutNodesSection.tsx
+- src/features/layout/hooks/useLayoutNodes.tsx
+- src/i18n/locales/*
+- src/styles/messages.css
+- src/types.ts
+
+验证结果:
+- npm run typecheck 通过
+- npx vitest run src/features/messages/components/Messages.runtime-reconnect.test.tsx src/services/toasts.test.ts 通过
+- npm run check:large-files 通过
+- npm run lint 无 error，但仓库存在既有 react-hooks/exhaustive-deps warnings，本次未扩散处理
+
+后续事项:
+- 如需继续收口仓库级 lint warnings，可另开一轮按模块治理 react-hooks/exhaustive-deps 历史告警
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `864c0c9bb4bd03d444087b5455af5d90ccad7c71` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 32: 修复批量删除后项目会话刷新卡死
+
+**Date**: 2026-04-19
+**Task**: 修复批量删除后项目会话刷新卡死
+**Branch**: `feature/vvvv0.4.3`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+任务目标:
+- 修复项目会话管理中批量删除后重新拉取可能一直停留在“正在加载会话...”的问题。
+
+主要改动:
+- 在 Rust 主进程 src-tauri/src/codex/mod.rs 为 live thread/list 增加 1500ms timeout，超时后返回可收敛错误或局部结果，避免无限阻塞。
+- 在本地 daemon src-tauri/src/bin/cc_gui_daemon/daemon_state.rs 对齐相同的 live thread/list timeout 行为，保持两条运行路径一致。
+- 在 src/app-shell.tsx 将设置页项目会话刷新入口改为 force=true + preserveState=false，确保删除后的刷新走显式 loading 收敛路径。
+- 在 src/features/threads/hooks/useThreadActions.ts 为前端 live listThreadsService 增加 timeout 和 debug 标记，防止 promise 卡死导致 UI loading 无法结束。
+- 在 src/features/threads/hooks/useThreadActions.test.tsx 补充 live thread/list timeout 后 loading 结束的回归测试。
+- 在 src/features/settings/components/SettingsView.test.tsx 补充 other 区域进入与 workspace 切换都会触发项目会话刷新的回归测试。
+
+涉及模块:
+- 设置页项目会话管理刷新入口
+- thread list 前端 orchestrator
+- Codex thread/list Rust command 与 daemon 对齐逻辑
+- SettingsView / useThreadActions 测试
+
+验证结果:
+- pnpm vitest run src/features/settings/components/SettingsView.test.tsx src/features/threads/hooks/useThreadActions.test.tsx 通过
+- cargo test --manifest-path src-tauri/Cargo.toml --no-run 通过
+
+后续事项:
+- 可继续补 app-shell 级别更高层的参数契约测试，锁定 settings 刷新入口必须走 force refresh。
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `1fe3531a` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 33: 重构 v0.4.3 发布说明
+
+**Date**: 2026-04-19
+**Task**: 重构 v0.4.3 发布说明
+**Branch**: `feature/vvvv0.4.3`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+任务目标：基于完整 git log 重构 CHANGELOG 中 v0.4.3 的发布说明，保留现有格式并合并同版本零散内容。
+
+主要改动：
+- 重新梳理 9d62e04a 之后属于 v0.4.3 的提交范围。
+- 将 v0.4.3 的更新说明按 Features、Improvements、Fixes 三组重写。
+- 覆盖 runtime pool console、回溯模式重构、runtime 恢复卡片、Claude plan mode 与 approval bridge、会话恢复和批量删除会话后的刷新收敛等主线。
+- 保持 CHANGELOG 现有模板、分隔线和中英双语结构不变。
+
+涉及模块：
+- CHANGELOG.md
+- .trellis/workspace/<developer>/ journal record（由脚本自动写入）
+
+验证结果：
+- 手工检查 CHANGELOG 顶部结构，确认 v0.4.3 仅保留一个版本块。
+- 对照 git log 重新归并内容，确认未混入 chore / docs / record journal 原文。
+- git commit 已完成：89ea0792 docs(changelog): 重构 v0.4.3 发布说明
+
+后续事项：
+- 如需继续优化文案，可再针对 App Store / GitHub Release / 官网更新公告生成不同风格版本。
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `89ea07928e06e5c086e8eaadf1dccb309cd86b6a` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 34: codex 模块拆分 thread listing 与 MCP config
+
+**Date**: 2026-04-19
+**Task**: codex 模块拆分 thread listing 与 MCP config
+**Branch**: `feature/vvvv0.4.3`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+任务目标:
+- 按模块级拆分 src-tauri/src/codex/mod.rs，大文件降到 2500 行左右且不改变原有能力。
+
+主要改动:
+- 新增 src-tauri/src/codex/thread_listing.rs，下沉 unified thread listing、session merge、workspace fallback model 逻辑。
+- 新增 src-tauri/src/codex/mcp_config.rs，下沉 global MCP config 读取与解析逻辑。
+- 精简 src-tauri/src/codex/mod.rs，仅保留 command 入口与必要 orchestrate/re-export。
+
+涉及模块:
+- src-tauri/src/codex/mod.rs
+- src-tauri/src/codex/thread_listing.rs
+- src-tauri/src/codex/mcp_config.rs
+
+验证结果:
+- cargo test --manifest-path src-tauri/Cargo.toml codex::tests -- --nocapture 通过（11 passed）。
+- cargo test --manifest-path src-tauri/Cargo.toml list_global_mcp_servers -- --nocapture 通过（目标过滤后无失败）。
+- mod.rs 行数从 3020 降到 2277。
+
+后续事项:
+- 如需继续降低复杂度，可后续拆分 background helper flow（thread title / commit message / run metadata）逻辑。
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `7ad5652c` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 35: 项目会话管理中心落地与归档链路完善
+
+**Date**: 2026-04-19
+**Task**: 项目会话管理中心落地与归档链路完善
+**Branch**: `feature/vvvv0.4.3`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+任务目标:
+- 落地项目级会话管理中心，实现真实会话历史分页读取、查询、选择、删除、归档等能力。
+- 修复 archived-only workspace 在客户端主页左侧持续刷新的问题。
+- 完成 OpenSpec 提案归档，并补做本轮全面 review 的问题修复。
+
+主要改动:
+- 前后端联动实现项目会话管理中心，支持项目维度筛选、引擎筛选、关键词检索、批量 archive/unarchive/delete。
+- 新增 archived 会话能力，客户端主界面默认隐藏已归档数据，仅在设置页管理。
+- 优化会话列表加载与删除路径，减少慢查询与无效刷新。
+- 修复边界问题：workspaceId 清空后的旧请求回灌、批量操作部分失败时选中态丢失、来源关键词搜索不生效。
+- 完成 OpenSpec 归档：project-session-management-center、runtime-orchestrator-pool-console。
+
+涉及模块:
+- frontend: src/features/settings/components/settings-view/**, src/app-shell.tsx, src/app-shell-parts/workspaceThreadListLoadGuard.ts
+- backend: src-tauri/src/session_management.rs
+- spec: openspec/changes/archive/2026-04-19-project-session-management-center/, openspec/changes/archive/2026-04-19-runtime-orchestrator-pool-console/
+
+验证结果:
+- pnpm vitest run src/features/settings/components/settings-view/hooks/useWorkspaceSessionCatalog.test.tsx src/features/settings/components/settings-view/sections/SessionManagementSection.test.tsx src/features/settings/components/SettingsView.test.tsx src/features/threads/hooks/useThreads.sidebar-cache.test.tsx src/services/tauri.test.ts
+- cargo test --manifest-path src-tauri/Cargo.toml session_management::tests -- --nocapture
+- pnpm tsc --noEmit
+- npm run check:large-files
+
+后续事项:
+- 继续观察真实数据量较大时的会话分页性能与删除耗时。
+- 如后续需要，可补充 archive/unarchive/delete 的端到端回归用例。
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `21767fb6` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

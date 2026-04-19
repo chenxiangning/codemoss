@@ -12,6 +12,7 @@ import {
   createWorkspaceDirectory,
   forkThread,
   getOpenCodeSessionList,
+  listWorkspaceSessions,
   listClaudeSessions,
   listGeminiSessions,
   loadClaudeSession,
@@ -48,6 +49,7 @@ vi.mock("../../../services/tauri", () => ({
   listClaudeSessions: vi.fn(),
   listGeminiSessions: vi.fn(),
   getOpenCodeSessionList: vi.fn(),
+  listWorkspaceSessions: vi.fn(),
   loadClaudeSession: vi.fn(),
   loadGeminiSession: vi.fn(),
   loadCodexSession: vi.fn(),
@@ -93,9 +95,15 @@ describe("useThreadActions", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.useRealTimers();
     vi.mocked(listThreadTitles).mockResolvedValue({});
     vi.mocked(listGeminiSessions).mockResolvedValue([]);
     vi.mocked(getOpenCodeSessionList).mockResolvedValue([]);
+    vi.mocked(listWorkspaceSessions).mockResolvedValue({
+      data: [],
+      nextCursor: null,
+      partialSource: null,
+    });
     vi.mocked(renameThreadTitleKey).mockResolvedValue(undefined);
     vi.mocked(setThreadTitle).mockResolvedValue("title");
     vi.mocked(connectWorkspace).mockResolvedValue(undefined);
@@ -838,6 +846,137 @@ describe("useThreadActions", () => {
         threadId: "thread-b",
       }),
     );
+  });
+
+  it("ends loading when live thread list times out during a non-preserved refresh", async () => {
+    vi.useFakeTimers();
+    vi.mocked(listThreads).mockImplementation(
+      () => new Promise(() => undefined),
+    );
+
+    const { result, dispatch } = renderActions();
+
+    const refreshPromise = result.current.listThreadsForWorkspace(workspace);
+    await vi.advanceTimersByTimeAsync(2_000);
+    await refreshPromise;
+
+    expect(dispatch).toHaveBeenCalledWith({
+      type: "setThreadListLoading",
+      workspaceId: "ws-1",
+      isLoading: true,
+    });
+    expect(dispatch).toHaveBeenCalledWith({
+      type: "setThreadListLoading",
+      workspaceId: "ws-1",
+      isLoading: false,
+    });
+  });
+
+  it("ends loading when native session providers hang for an empty workspace", async () => {
+    vi.useFakeTimers();
+    vi.mocked(listThreads).mockResolvedValue({
+      data: [],
+      nextCursor: null,
+    });
+    vi.mocked(listClaudeSessions).mockImplementation(
+      () => new Promise(() => undefined),
+    );
+    vi.mocked(getOpenCodeSessionList).mockImplementation(
+      () => new Promise(() => undefined),
+    );
+
+    const { result, dispatch } = renderActions();
+
+    const refreshPromise = result.current.listThreadsForWorkspace(workspace);
+    await vi.advanceTimersByTimeAsync(2_000);
+    await refreshPromise;
+
+    expect(dispatch).toHaveBeenCalledWith({
+      type: "setThreadListLoading",
+      workspaceId: "ws-1",
+      isLoading: true,
+    });
+    expect(dispatch).toHaveBeenCalledWith({
+      type: "setThreadListLoading",
+      workspaceId: "ws-1",
+      isLoading: false,
+    });
+    expect(dispatch).toHaveBeenCalledWith({
+      type: "setThreads",
+      workspaceId: "ws-1",
+      threads: [],
+    });
+  });
+
+  it("ignores stale thread list responses that finish after a newer refresh", async () => {
+    type ThreadListResponse = Awaited<ReturnType<typeof listThreads>>;
+    const createDeferred = <T,>() => {
+      let resolve!: (value: T) => void;
+      const promise = new Promise<T>((nextResolve) => {
+        resolve = nextResolve;
+      });
+      return { promise, resolve };
+    };
+
+    const firstResponse = createDeferred<ThreadListResponse>();
+    const secondResponse = createDeferred<ThreadListResponse>();
+    vi.mocked(listThreads)
+      .mockImplementationOnce(() => firstResponse.promise)
+      .mockImplementationOnce(() => secondResponse.promise);
+    vi.mocked(listClaudeSessions).mockResolvedValue([]);
+    vi.mocked(getOpenCodeSessionList).mockResolvedValue([]);
+    vi.mocked(getThreadTimestamp).mockImplementation((thread) => {
+      const updatedAt = (thread as { updated_at?: number; updatedAt?: number }).updated_at
+        ?? (thread as { updated_at?: number; updatedAt?: number }).updatedAt
+        ?? 0;
+      return updatedAt;
+    });
+
+    const { result, dispatch } = renderActions();
+
+    const firstRefresh = result.current.listThreadsForWorkspace(workspace);
+    const secondRefresh = result.current.listThreadsForWorkspace(workspace);
+
+    await act(async () => {
+      secondResponse.resolve({
+        result: {
+          data: [{ id: "thread-new", cwd: "/tmp/codex", preview: "new", updated_at: 200 }],
+          nextCursor: null,
+        },
+      });
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      firstResponse.resolve({
+        result: {
+          data: [{ id: "thread-old", cwd: "/tmp/codex", preview: "old", updated_at: 100 }],
+          nextCursor: null,
+        },
+      });
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      await Promise.all([firstRefresh, secondRefresh]);
+    });
+
+    const setThreadsCalls = dispatch.mock.calls
+      .map(([action]) => action)
+      .filter((action) => action?.type === "setThreads");
+
+    expect(setThreadsCalls).toHaveLength(1);
+    expect(setThreadsCalls[0]).toEqual({
+      type: "setThreads",
+      workspaceId: "ws-1",
+      threads: [
+        expect.objectContaining({
+          id: "thread-new",
+          name: "new",
+          updatedAt: 200,
+        }),
+      ],
+    });
   });
 
   it("recovers stale unified OpenCode thread ids from refreshed native sessions", async () => {
@@ -1596,6 +1735,70 @@ describe("useThreadActions", () => {
         source: "vscode",
         provider: undefined,
         sourceLabel: "vscode",
+      },
+    ]);
+  });
+
+  it("filters sessions archived in the workspace catalog", async () => {
+    vi.mocked(listThreads).mockResolvedValue({
+      result: {
+        data: [
+          {
+            id: "thread-visible",
+            cwd: "/tmp/codex",
+            preview: "Visible thread",
+            updated_at: 6200,
+            source: "cli",
+          },
+          {
+            id: "thread-catalog-archived",
+            cwd: "/tmp/codex",
+            preview: "Should hide from catalog",
+            updated_at: 6100,
+            source: "cli",
+          },
+        ],
+        nextCursor: null,
+      },
+    });
+    vi.mocked(listWorkspaceSessions).mockResolvedValue({
+      data: [
+        {
+          sessionId: "thread-catalog-archived",
+          workspaceId: "ws-1",
+          engine: "codex",
+          title: "Should hide from catalog",
+          updatedAt: 6100,
+          archivedAt: 1710000000000,
+          threadKind: "native",
+          sourceLabel: "cli/codex",
+        },
+      ],
+      nextCursor: null,
+      partialSource: null,
+    });
+    vi.mocked(getThreadTimestamp).mockImplementation((thread) => {
+      const value = (thread as Record<string, unknown>).updated_at as number;
+      return value ?? 0;
+    });
+
+    const { result, dispatch } = renderActions();
+
+    await act(async () => {
+      await result.current.listThreadsForWorkspace(workspace);
+    });
+
+    expect(listWorkspaceSessions).toHaveBeenCalledWith("ws-1", {
+      query: { status: "all" },
+      cursor: null,
+      limit: 200,
+    });
+    expectSetThreadsDispatched(dispatch, "ws-1", [
+      {
+        id: "thread-visible",
+        name: "Visible thread",
+        updatedAt: 6200,
+        engineSource: "codex",
       },
     ]);
   });

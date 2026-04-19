@@ -2527,6 +2527,11 @@ async fn handle_rpc_request(
             let session_id = parse_string(&params, "sessionId")?;
             state.delete_codex_session(workspace_id, session_id).await
         }
+        "delete_codex_sessions" => {
+            let workspace_id = parse_string(&params, "workspaceId")?;
+            let session_ids = parse_string_array(&params, "sessionIds")?;
+            state.delete_codex_sessions(workspace_id, session_ids).await
+        }
         "send_user_message" => {
             let workspace_id = parse_string(&params, "workspaceId")?;
             let thread_id = parse_string(&params, "threadId")?;

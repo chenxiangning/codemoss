@@ -7,9 +7,9 @@
 ## Current Status
 
 <!-- @@@auto:current-status -->
-- **Active File**: `journal-1.md`
-- **Total Sessions**: 29
-- **Last Active**: 2026-04-19
+- **Active File**: `journal-2.md`
+- **Total Sessions**: 39
+- **Last Active**: 2026-04-20
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,8 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~1639 | Active |
+| `journal-2.md` | ~242 | Active |
+| `journal-1.md` | ~1990 | Archived |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +30,16 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 39 | 2026-04-20 | 修复 OpenApp 图标懒加载回归并收口启动期开销 | `4d417500` | `feature/vv0.4.4` |
+| 38 | 2026-04-20 | 归档项目会话管理范围修正提案 | `869e2562668d722ed4f4cbc4fe7d97fc4ae79c3b` | `feature/vv0.4.4` |
+| 37 | 2026-04-20 | 落地项目范围会话聚合与归属路由 | `accf1da0` | `feature/vv0.4.4` |
+| 36 | 2026-04-20 | Fix repeated empty session loading | `e15b2497` | `feature/vv0.4.4` |
+| 35 | 2026-04-19 | 项目会话管理中心落地与归档链路完善 | `21767fb6` | `feature/vvvv0.4.3` |
+| 34 | 2026-04-19 | codex 模块拆分 thread listing 与 MCP config | `7ad5652c` | `feature/vvvv0.4.3` |
+| 33 | 2026-04-19 | 重构 v0.4.3 发布说明 | `89ea07928e06e5c086e8eaadf1dccb309cd86b6a` | `feature/vvvv0.4.3` |
+| 32 | 2026-04-19 | 修复批量删除后项目会话刷新卡死 | `1fe3531a` | `feature/vvvv0.4.3` |
+| 31 | 2026-04-19 | 修复消息区 runtime 重连重发边界并完成代码清理 | `864c0c9bb4bd03d444087b5455af5d90ccad7c71` | `feature/vvvv0.4.3` |
+| 30 | 2026-04-19 | 修复项目会话管理批量删除慢与查询缺失 | `7384c6a4` | `feature/vvvv0.4.3` |
 | 29 | 2026-04-19 | 纳入 thread not found 会话恢复卡片 | `99e82f29` | `feature/vvvv0.4.3` |
 | 28 | 2026-04-19 | 修复 Claude stop 后晚到事件回流 | `b2043039` | `feature/vvvv0.4.3` |
 | 27 | 2026-04-19 | 对齐 Claude explore 卡片隐藏行为 | `8df6ed06` | `feature/vvvv0.4.3` |

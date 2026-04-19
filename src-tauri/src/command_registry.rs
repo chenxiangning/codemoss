@@ -102,6 +102,7 @@ pub(crate) fn invoke_handler(
         crate::codex::list_mcp_server_status,
         crate::codex::archive_thread,
         crate::codex::delete_codex_session,
+        crate::codex::delete_codex_sessions,
         crate::codex::collaboration_mode_list,
         crate::codex::model_list,
         crate::codex::account_rate_limits,
@@ -234,6 +235,10 @@ pub(crate) fn invoke_handler(
         crate::runtime_log::runtime_log_stop,
         crate::runtime_log::runtime_log_get_session,
         crate::runtime_log::runtime_log_mark_exit,
+        crate::session_management::list_workspace_sessions,
+        crate::session_management::archive_workspace_sessions,
+        crate::session_management::unarchive_workspace_sessions,
+        crate::session_management::delete_workspace_sessions,
         // Dictation
         crate::dictation::dictation_model_status,
         crate::dictation::dictation_download_model,

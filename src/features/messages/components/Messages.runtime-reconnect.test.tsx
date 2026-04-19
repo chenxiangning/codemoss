@@ -41,6 +41,11 @@ describe("Messages runtime reconnect", () => {
       workspaceId: string,
       threadId: string,
     ) => Promise<string | null | void> | string | null | void;
+    onRecoverThreadRuntimeAndResend?: (
+      workspaceId: string,
+      threadId: string,
+      message: { text: string; images?: string[] },
+    ) => Promise<string | null | void> | string | null | void;
   }) {
     return render(
       <Messages
@@ -54,6 +59,7 @@ describe("Messages runtime reconnect", () => {
         isThinking={false}
         activeEngine="codex"
         onRecoverThreadRuntime={options?.onRecoverThreadRuntime}
+        onRecoverThreadRuntimeAndResend={options?.onRecoverThreadRuntimeAndResend}
         openTargets={[]}
         selectedOpenAppId=""
       />,
@@ -83,7 +89,6 @@ describe("Messages runtime reconnect", () => {
       expect(vi.mocked(ensureRuntimeReady)).toHaveBeenCalledWith("ws-runtime");
     });
     expect(onRecoverThreadRuntime).toHaveBeenCalledWith("ws-runtime", "thread-runtime-reconnect");
-    expect(screen.getByText("messages.runtimeReconnectSuccess")).toBeTruthy();
   });
 
   it("shows a recover-specific error when runtime resumes but thread recovery returns null", async () => {
@@ -152,7 +157,6 @@ describe("Messages runtime reconnect", () => {
     await waitFor(() => {
       expect(vi.mocked(ensureRuntimeReady)).toHaveBeenCalledWith("ws-runtime");
     });
-    expect(screen.getByText("messages.runtimeReconnectSuccess")).toBeTruthy();
   });
 
   it("shows reconnect runtime recovery card for Windows pipe disconnect errors", () => {
@@ -192,7 +196,6 @@ describe("Messages runtime reconnect", () => {
       expect(onRecoverThreadRuntime).toHaveBeenCalledWith("ws-runtime", "thread-runtime-stale");
     });
     expect(vi.mocked(ensureRuntimeReady)).not.toHaveBeenCalled();
-    expect(screen.getByText("messages.threadRecoverySuccess")).toBeTruthy();
   });
 
   it("does not turn a normal assistant reply quoting broken pipe into a reconnect card", () => {
@@ -228,5 +231,96 @@ describe("Messages runtime reconnect", () => {
 
     expect(screen.getByText("messages.runtimeReconnectUnavailable")).toBeTruthy();
     expect(screen.getByRole("button", { name: "messages.runtimeReconnectAction" }).hasAttribute("disabled")).toBe(true);
+  });
+
+  it("reconnects and resends the previous prompt from the latest user message", async () => {
+    vi.mocked(ensureRuntimeReady).mockResolvedValue(undefined);
+    const onRecoverThreadRuntimeAndResend = vi.fn().mockResolvedValue("thread-runtime-resend");
+
+    renderMessages([
+      {
+        id: "user-before-runtime-resend",
+        kind: "message",
+        role: "user",
+        text: "完事没",
+      },
+      {
+        id: "assistant-broken-pipe-resend",
+        kind: "message",
+        role: "assistant",
+        text: "Broken pipe (os error 32)",
+      },
+    ], {
+      threadId: "thread-runtime-resend",
+      onRecoverThreadRuntimeAndResend,
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "messages.runtimeReconnectResendAction" }));
+
+    await waitFor(() => {
+      expect(vi.mocked(ensureRuntimeReady)).toHaveBeenCalledWith("ws-runtime");
+    });
+    expect(onRecoverThreadRuntimeAndResend).toHaveBeenCalledWith(
+      "ws-runtime",
+      "thread-runtime-resend",
+      { text: "完事没", images: undefined },
+    );
+  });
+
+  it("replays the nearest previous user prompt before the reconnect error", async () => {
+    vi.mocked(ensureRuntimeReady).mockResolvedValue(undefined);
+    const onRecoverThreadRuntimeAndResend = vi.fn().mockResolvedValue("thread-runtime-resend-nearest");
+
+    renderMessages([
+      {
+        id: "user-before-runtime-resend-nearest",
+        kind: "message",
+        role: "user",
+        text: "真正应该重发的是这句",
+      },
+      {
+        id: "assistant-broken-pipe-resend-nearest",
+        kind: "message",
+        role: "assistant",
+        text: "Broken pipe (os error 32)",
+      },
+      {
+        id: "user-after-runtime-resend-nearest",
+        kind: "message",
+        role: "user",
+        text: "这句是后来的，不该被重发",
+      },
+    ], {
+      threadId: "thread-runtime-resend-nearest",
+      onRecoverThreadRuntimeAndResend,
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "messages.runtimeReconnectResendAction" }));
+
+    await waitFor(() => {
+      expect(onRecoverThreadRuntimeAndResend).toHaveBeenCalledWith(
+        "ws-runtime",
+        "thread-runtime-resend-nearest",
+        { text: "真正应该重发的是这句", images: undefined },
+      );
+    });
+  });
+
+  it("disables resend when there is no previous user prompt to replay", () => {
+    renderMessages([
+      {
+        id: "assistant-broken-pipe-resend-unavailable",
+        kind: "message",
+        role: "assistant",
+        text: "Broken pipe (os error 32)",
+      },
+    ], {
+      threadId: "thread-runtime-resend-unavailable",
+    });
+
+    expect(screen.getByText("messages.runtimeReconnectResendUnavailable")).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "messages.runtimeReconnectResendAction" }).hasAttribute("disabled"),
+    ).toBe(true);
   });
 });

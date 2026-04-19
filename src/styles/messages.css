@@ -920,6 +920,14 @@
   gap: 3px;
 }
 
+.message-runtime-recovery-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+}
+
 .message-runtime-recovery-title {
   font-size: 13px;
   line-height: 1.25;

@@ -438,6 +438,7 @@ const enPart1 = {
     sidebarProviders: "Providers",
     sidebarProjects: "Projects",
     sidebarUsage: "Usage",
+    sidebarSessionManagement: "Sessions",
     sidebarMcp: "MCP Servers",
     sidebarPermissions: "Permissions",
     sidebarCommit: "Commit AI",
@@ -876,6 +877,24 @@ const enPart1 = {
     projectSessionEngineClaude: "Claude",
     projectSessionEngineGemini: "Gemini",
     projectSessionEngineOpencode: "OpenCode",
+    sessionManagementDescription:
+      "Manage real session history per project with paged loading, filtering, batch archive, unarchive, and deletion.",
+    sessionManagementSearchPlaceholder: "Search by title, ID, or source...",
+    sessionManagementEngineAll: "All engines",
+    sessionManagementStatusActive: "Active only",
+    sessionManagementStatusArchived: "Archived only",
+    sessionManagementStatusAll: "All sessions",
+    sessionManagementArchiveSelected: "Archive selected",
+    sessionManagementUnarchiveSelected: "Unarchive selected",
+    sessionManagementArchiveSuccess: "Archived {{count}} sessions.",
+    sessionManagementUnarchiveSuccess: "Unarchived {{count}} sessions.",
+    sessionManagementDeleteSuccess: "Deleted {{count}} sessions.",
+    sessionManagementMutationPartial:
+      "Processed {{succeeded}} sessions, {{failed}} failed. {{reason}}",
+    sessionManagementPartialSource: "Current result includes fallback source: {{source}}",
+    sessionManagementBadgeArchived: "Archived",
+    sessionManagementLoadMore: "Load more",
+    sessionManagementLoadingMore: "Loading more...",
     radarHistoryTitle: "Radar History Management",
     radarHistoryDescription: "Delete recently completed radar sessions with batch operations.",
     radarHistoryEmpty: "No recent completed radar history.",
@@ -979,6 +998,8 @@ const enPart1 = {
     addApp: "Add app",
     openInHelp: "Commands receive the selected path as the final argument. Apps use macOS open with optional args.",
     newApp: "New App",
+    selectEditor: "Select editor",
+    openInTarget: "Open in {{target}}",
 
     // Git section
     gitTitle: "Git",
@@ -1542,7 +1563,9 @@ const enPart1 = {
       "This workspace does not currently have an available managed runtime. Reconnect the runtime, then retry your send.",
     runtimeReconnectAction: "Reconnect runtime",
     runtimeReconnectRunning: "Reconnecting...",
-    runtimeReconnectSuccess: "Runtime reconnected. You can send again now.",
+    runtimeReconnectResendAction: "Reconnect and resend previous prompt",
+    runtimeReconnectResendRunning: "Reconnecting and resending...",
+    runtimeReconnectResendUnavailable: "There is no previous prompt available to resend.",
     runtimeReconnectFailed:
       "Failed to reconnect the runtime. Try again, or refresh the Runtime Pool Console manually.",
     runtimeReconnectRecoverFailed:
@@ -1554,7 +1577,10 @@ const enPart1 = {
       "This conversation is pointing at a stale thread handle. Try restoring the current conversation binding, then continue chatting.",
     threadRecoveryAction: "Try recovery",
     threadRecoveryRunning: "Recovering...",
-    threadRecoverySuccess: "Recovery completed. You can send again now.",
+    threadRecoveryResendAction: "Recover and resend previous prompt",
+    threadRecoveryResendRunning: "Recovering and resending...",
+    threadRecoveryResendUnavailable:
+      "There is no previous prompt available to resend.",
     threadRecoveryFailed:
       "Recovery failed. Try again, or reopen the conversation before retrying.",
     threadRecoveryRecoverFailed:

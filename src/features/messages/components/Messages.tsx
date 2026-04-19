@@ -15,15 +15,13 @@ import type {
   ApprovalRequest,
   ConversationItem,
   OpenAppTarget,
+  QueuedMessage,
   RequestUserInputRequest,
   RequestUserInputResponse,
   TurnPlan,
   WorkspaceInfo,
 } from "../../../types";
-import type {
-  ConversationEngine,
-  ConversationState,
-} from "../../threads/contracts/conversationCurtainContracts";
+import type { ConversationEngine, ConversationState } from "../../threads/contracts/conversationCurtainContracts";
 import type { AgentTaskScrollRequest } from "../types";
 import { Markdown } from "./Markdown";
 import { CollapsibleUserTextBlock } from "./CollapsibleUserTextBlock";
@@ -56,14 +54,8 @@ import {
   writeLocalBooleanFlag,
 } from "../constants/liveCanvasControls";
 import { normalizeAgentIcon } from "../../../utils/agentIcons";
-import {
-  parseInjectedMemoryPrefixFromUser,
-  parseMemoryContextSummary,
-} from "./messagesMemoryContext";
-import {
-  useStreamActivityPhase,
-  type StreamActivityPhase,
-} from "../../threads/hooks/useStreamActivityPhase";
+import { parseInjectedMemoryPrefixFromUser, parseMemoryContextSummary } from "./messagesMemoryContext";
+import { useStreamActivityPhase, type StreamActivityPhase } from "../../threads/hooks/useStreamActivityPhase";
 import {
   collapseConsecutiveReasoningRuns,
   compactComparableReasoningText,
@@ -72,12 +64,9 @@ import {
   parseReasoning,
 } from "./messagesReasoning";
 import { parseAgentTaskNotification } from "../utils/agentTaskNotification";
-import {
-  dedupeExitPlanItemsKeepFirst,
-} from "./messagesExitPlan";
+import { dedupeExitPlanItemsKeepFirst } from "./messagesExitPlan";
 import { RuntimeReconnectCard } from "./RuntimeReconnectCard";
-import { resolveRuntimeReconnectHint } from "./runtimeReconnect";
-
+import { resolveAssistantRuntimeReconnectHint, resolveRetryMessageForReconnectItem } from "./runtimeReconnect";
 
 type MessagesProps = {
   items: ConversationItem[];
@@ -125,6 +114,11 @@ type MessagesProps = {
     workspaceId: string,
     threadId: string,
   ) => Promise<string | null | void> | string | null | void;
+  onRecoverThreadRuntimeAndResend?: (
+    workspaceId: string,
+    threadId: string,
+    message: Pick<QueuedMessage, "text" | "images">,
+  ) => Promise<string | null | void> | string | null | void;
 };
 
 type WorkingIndicatorProps = {
@@ -158,6 +152,12 @@ type MessageRowProps = {
     workspaceId: string,
     threadId: string,
   ) => Promise<string | null | void> | string | null | void;
+  onRecoverThreadRuntimeAndResend?: (
+    workspaceId: string,
+    threadId: string,
+    message: Pick<QueuedMessage, "text" | "images">,
+  ) => Promise<string | null | void> | string | null | void;
+  retryMessage?: Pick<QueuedMessage, "text" | "images"> | null;
   isCopied: boolean;
   onCopy: (
     item: Extract<ConversationItem, { kind: "message" }>,
@@ -196,16 +196,6 @@ type ExploreRowProps = {
   isExpanded: boolean;
   onToggle: (id: string) => void;
 };
-
-function resolveAssistantRuntimeReconnectHint(
-  item: Extract<ConversationItem, { kind: "message" }>,
-  agentTaskNotification: ReturnType<typeof parseAgentTaskNotification>,
-) {
-  if (item.role !== "assistant" || agentTaskNotification) {
-    return null;
-  }
-  return resolveRuntimeReconnectHint(item.text);
-}
 
 function areMessageImagesEqual(
   previous: Extract<ConversationItem, { kind: "message" }>["images"],
@@ -258,6 +248,9 @@ function areMessageRowPropsEqual(
     previous.presentationProfile === next.presentationProfile &&
     previous.showRuntimeReconnectCard === next.showRuntimeReconnectCard &&
     previous.onRecoverThreadRuntime === next.onRecoverThreadRuntime &&
+    previous.onRecoverThreadRuntimeAndResend === next.onRecoverThreadRuntimeAndResend &&
+    previous.retryMessage?.text === next.retryMessage?.text &&
+    areMessageImagesEqual(previous.retryMessage?.images, next.retryMessage?.images) &&
     previous.isCopied === next.isCopied &&
     previous.onCopy === next.onCopy &&
     previous.codeBlockCopyUseModifier === next.codeBlockCopyUseModifier &&
@@ -988,6 +981,8 @@ const MessageRow = memo(function MessageRow({
   presentationProfile = null,
   showRuntimeReconnectCard = false,
   onRecoverThreadRuntime,
+  onRecoverThreadRuntimeAndResend,
+  retryMessage = null,
   isCopied,
   onCopy,
   codeBlockCopyUseModifier,
@@ -1129,7 +1124,11 @@ const MessageRow = memo(function MessageRow({
   }, [item.images]);
   const provenanceLabel = resolveProvenanceEngineLabel(item.engineSource);
   const runtimeReconnectHint = useMemo(
-    () => resolveAssistantRuntimeReconnectHint(item, agentTaskNotification),
+    () => (
+      item.role === "assistant"
+        ? resolveAssistantRuntimeReconnectHint(item, Boolean(agentTaskNotification))
+        : null
+    ),
     [agentTaskNotification, item],
   );
 
@@ -1219,6 +1218,8 @@ const MessageRow = memo(function MessageRow({
           workspaceId={workspaceId}
           threadId={threadId}
           onRecoverThreadRuntime={onRecoverThreadRuntime}
+          retryMessage={retryMessage}
+          onRecoverThreadRuntimeAndResend={onRecoverThreadRuntimeAndResend}
         />
       ) : null}
       {hasText && (
@@ -1516,6 +1517,7 @@ export const Messages = memo(function Messages({
   onExitPlanModeExecute,
   agentTaskScrollRequest = null,
   onRecoverThreadRuntime,
+  onRecoverThreadRuntimeAndResend,
 }: MessagesProps) {
   const { t } = useTranslation();
   const fallbackConversationState = useMemo<ConversationState>(
@@ -1564,12 +1566,21 @@ export const Messages = memo(function Messages({
       if (!item || item.kind !== "message" || item.role !== "assistant") {
         continue;
       }
-      if (resolveAssistantRuntimeReconnectHint(item, parseAgentTaskNotification(item.text))) {
+      if (
+        resolveAssistantRuntimeReconnectHint(
+          item,
+          Boolean(parseAgentTaskNotification(item.text)),
+        )
+      ) {
         return item.id;
       }
     }
     return null;
   }, [items]);
+  const latestRetryMessage = useMemo(
+    () => resolveRetryMessageForReconnectItem(items, latestRuntimeReconnectItemId),
+    [items, latestRuntimeReconnectItemId],
+  );
   const activeEngine = toConversationEngine(effectiveState.meta.engine);
   const isThinking = conversationState
     ? effectiveState.meta.isThinking
@@ -2721,6 +2732,12 @@ export const Messages = memo(function Messages({
               presentationProfile={presentationProfile}
               showRuntimeReconnectCard={item.id === latestRuntimeReconnectItemId}
               onRecoverThreadRuntime={onRecoverThreadRuntime}
+              onRecoverThreadRuntimeAndResend={onRecoverThreadRuntimeAndResend}
+              retryMessage={
+                item.id === latestRuntimeReconnectItemId
+                  ? latestRetryMessage
+                  : null
+              }
               isCopied={isCopied}
               onCopy={handleCopyMessage}
               codeBlockCopyUseModifier={codeBlockCopyUseModifier}

@@ -123,6 +123,7 @@ export type ThreadSummary = {
   id: string;
   name: string;
   updatedAt: number;
+  archivedAt?: number;
   threadKind?: "native" | "shared";
   sizeBytes?: number;
   engineSource?: "codex" | "claude" | "gemini" | "opencode";
@@ -875,6 +876,8 @@ export type MessageSendOptions = {
   effort?: string | null;
   collaborationMode?: Record<string, unknown> | null;
   accessMode?: AccessMode;
+  skipOptimisticUserBubble?: boolean;
+  suppressUserMessageRender?: boolean;
 };
 
 export type SelectedAgentOption = {

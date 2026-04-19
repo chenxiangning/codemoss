@@ -78,6 +78,7 @@ import { usePersistComposerSettings } from "./features/app/hooks/usePersistCompo
 import { useSyncSelectedDiffPath } from "./features/app/hooks/useSyncSelectedDiffPath";
 import { useMenuAcceleratorController } from "./features/app/hooks/useMenuAcceleratorController";
 import { useAppMenuEvents } from "./features/app/hooks/useAppMenuEvents";
+import { shouldSkipWorkspaceThreadListLoad } from "./app-shell-parts/workspaceThreadListLoadGuard";
 import { useWorkspaceActions } from "./features/app/hooks/useWorkspaceActions";
 import { useWorkspaceCycling } from "./features/app/hooks/useWorkspaceCycling";
 import { useThreadRows } from "./features/app/hooks/useThreadRows";
@@ -146,7 +147,6 @@ import type {
   WorkspaceInfo,
 } from "./types";
 import { getClientStoreSync, writeClientStoreValue } from "./services/clientStorage";
-import { useOpenAppIcons } from "./features/app/hooks/useOpenAppIcons";
 import { useCodeCssVars } from "./features/app/hooks/useCodeCssVars";
 import { useAccountSwitching } from "./features/app/hooks/useAccountSwitching";
 import { useMenuLocalization } from "./features/app/hooks/useMenuLocalization";
@@ -193,6 +193,7 @@ import {
   resolveLatestUserMessage,
 } from "./features/session-activity/utils/sessionRadarPersistence";
 
+const EMPTY_OPEN_APP_ICON_MAP: Record<string, string> = {};
 const DEFAULT_CLAUDE_MODEL_ID = "claude-sonnet-4-6";
 const INVISIBLE_SEARCH_QUERY_CHARS_REGEX = /[\u200B-\u200D\uFEFF]/g;
 
@@ -1055,6 +1056,7 @@ export function AppShell() {
     lastAgentMessageByThread,
     interruptTurn,
     removeThread,
+    removeThreads,
     pinThread,
     unpinThread,
     isThreadPinned,
@@ -1332,15 +1334,15 @@ export function AppShell() {
         return;
       }
       const force = options?.force ?? false;
-      const existingThreads = threadsByWorkspace[workspaceId] ?? [];
       const isLoading = threadListLoadingByWorkspace[workspaceId] ?? false;
-      const hasAnyThreadData = existingThreads.length > 0;
       const hasHydratedThreadList =
         hydratedThreadListWorkspaceIdsRef.current.has(workspaceId);
       if (
-        !force &&
-        (isLoading ||
-          (hasHydratedThreadList && hasAnyThreadData))
+        shouldSkipWorkspaceThreadListLoad({
+          force,
+          isLoading,
+          hasHydratedThreadList,
+        })
       ) {
         return;
       }
@@ -1351,7 +1353,6 @@ export function AppShell() {
     [
       listThreadsForWorkspaceTracked,
       threadListLoadingByWorkspace,
-      threadsByWorkspace,
       workspacesById,
     ],
   );
@@ -1369,7 +1370,10 @@ export function AppShell() {
   }, [activeWorkspaceId, ensureWorkspaceThreadListLoaded]);
   const handleEnsureWorkspaceThreadsForSettings = useCallback(
     (workspaceId: string) => {
-      ensureWorkspaceThreadListLoaded(workspaceId, { preserveState: true });
+      ensureWorkspaceThreadListLoaded(workspaceId, {
+        preserveState: false,
+        force: true,
+      });
     },
     [ensureWorkspaceThreadListLoaded],
   );
@@ -1762,7 +1766,7 @@ export function AppShell() {
     ],
   );
 
-  const openAppIconById = useOpenAppIcons(appSettings.openAppTargets);
+  const openAppIconById = EMPTY_OPEN_APP_ICON_MAP;
 
   const persistProjectCopiesFolder = useCallback(
     async (groupId: string, copiesFolder: string) => {
@@ -2833,7 +2837,7 @@ export function AppShell() {
     previousDurationMs, previousTracker, prompts, pushError, pushLoading, queueGitStatusRefresh, queueMessage,
     queueSaveSettings, rafId, rateLimitsByWorkspace, reasoningOptions, reasoningSupported, recentThreads, reduceTransparency, refreshAccountInfo,
     refreshAccountRateLimits, refreshFiles, refreshGitDiffs, refreshGitLog, refreshGitStatus, refreshThread, refreshWorkspaces, releaseNotesActiveIndex,
-    releaseNotesEntries, releaseNotesError, releaseNotesLoading, releaseNotesOpen, reloadSelectedAgent, removeImage, removeImagesForThread, removeThread,
+    releaseNotesEntries, releaseNotesError, releaseNotesLoading, releaseNotesOpen, reloadSelectedAgent, removeImage, removeImagesForThread, removeThread, removeThreads,
     removeWorkspace, removeWorktree, renamePrompt, renameThread, renameWorkspaceGroup, renameWorktree, renameWorktreeNotice, renameWorktreePrompt,
     renameWorktreeUpstream, renameWorktreeUpstreamPrompt, requestId, requestThreadId, resetGitHubPanelState, resetSoloSplitToHalf, resetWorkspaceThreads, resolveCloneProjectContext,
     resolveCanonicalThreadId, resolveCollaborationRuntimeMode, resolveCollaborationUiMode, resolveOpenCodeAgentForThread, resolveOpenCodeVariantForThread, resolvedEffort, resolvedModel, response, restartTerminalSession,

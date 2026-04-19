@@ -30,6 +30,7 @@ import {
   resumeThread as resumeThreadService,
   startThread as startThreadService,
 } from "../../../services/tauri";
+import * as tauriServices from "../../../services/tauri";
 import {
   buildItemsFromThread,
   getThreadTimestamp,
@@ -144,12 +145,16 @@ const THREAD_LIST_MAX_EMPTY_PAGES_WITH_ACTIVITY = 20;
 const THREAD_LIST_MAX_TOTAL_PAGES = 40;
 const THREAD_LIST_MAX_EMPTY_PAGES_LOAD_OLDER = 10;
 const THREAD_LIST_MAX_FETCH_DURATION_MS = 1_500;
+const THREAD_LIST_LIVE_REQUEST_TIMEOUT_MS = 1_600;
 const THREAD_RECOVERY_MAX_PAGES = 3;
 const THREAD_RECOVERY_MAX_FETCH_DURATION_MS = 800;
 const RELATED_THREAD_LOAD_CONCURRENCY = 2;
 const DEFAULT_CLAUDE_CONTEXT_WINDOW = 200_000;
 const GEMINI_SESSION_CACHE_TTL_MS = 60_000;
 const GEMINI_SESSION_FETCH_TIMEOUT_MS = 800;
+const NATIVE_SESSION_LIST_FETCH_TIMEOUT_MS = 800;
+const SESSION_CATALOG_PAGE_SIZE = 200;
+const SESSION_CATALOG_MAX_PAGES = 20;
 type RewindFromMessageOptions = {
   activate?: boolean;
   mode?: RewindMode;
@@ -185,6 +190,62 @@ export function useThreadActions({
   const claudeRewindInFlightByThreadRef = useRef<Record<string, boolean>>({});
   const latestThreadsByWorkspaceRef = useRef(threadsByWorkspace);
   latestThreadsByWorkspaceRef.current = threadsByWorkspace;
+  const canListWorkspaceSessions = typeof tauriServices.listWorkspaceSessions === "function";
+
+  const loadArchivedSessionMap = useCallback(
+    async (workspaceId: string): Promise<Map<string, number> | null> => {
+      if (!canListWorkspaceSessions) {
+        return null;
+      }
+      try {
+        const archivedAtBySessionId = new Map<string, number>();
+        let cursor: string | null = null;
+        let pagesFetched = 0;
+        do {
+          const response = await tauriServices.listWorkspaceSessions(workspaceId, {
+            query: { status: "all" },
+            cursor,
+            limit: SESSION_CATALOG_PAGE_SIZE,
+          });
+          response.data.forEach((entry) => {
+            const archivedAt =
+              typeof entry.archivedAt === "number" && Number.isFinite(entry.archivedAt)
+                ? Math.max(0, entry.archivedAt)
+                : 0;
+            if (archivedAt > 0) {
+              archivedAtBySessionId.set(entry.sessionId, archivedAt);
+            }
+          });
+          cursor = response.nextCursor ?? null;
+          pagesFetched += 1;
+        } while (cursor && pagesFetched < SESSION_CATALOG_MAX_PAGES);
+        return archivedAtBySessionId;
+      } catch {
+        return null;
+      }
+    },
+    [canListWorkspaceSessions],
+  );
+
+  const applySessionArchiveState = useCallback(
+    (
+      summaries: ThreadSummary[],
+      archivedAtBySessionId: Map<string, number> | null,
+    ): ThreadSummary[] => {
+      if (!archivedAtBySessionId) {
+        return summaries;
+      }
+      const nextSummaries = summaries.map((summary) => {
+        const archivedAt = archivedAtBySessionId.get(summary.id) ?? 0;
+        if (archivedAt <= 0) {
+          return { ...summary, archivedAt: undefined };
+        }
+        return { ...summary, archivedAt };
+      });
+      return nextSummaries.filter((summary) => !summary.archivedAt || summary.archivedAt <= 0);
+    },
+    [],
+  );
 
   const extractThreadId = useCallback(
     (response: Record<string, unknown> | null | undefined) => {
@@ -1646,6 +1707,8 @@ export function useThreadActions({
       workspacePathsByIdRef.current[workspace.id] = workspace.path;
       const requestSeq = (threadListRequestSeqRef.current[workspace.id] ?? 0) + 1;
       threadListRequestSeqRef.current[workspace.id] = requestSeq;
+      const isLatestThreadListRequest = () =>
+        threadListRequestSeqRef.current[workspace.id] === requestSeq;
       const preserveState = options?.preserveState ?? false;
       const includeOpenCodeSessions = options?.includeOpenCodeSessions ?? true;
       const workspacePath = normalizeComparableWorkspacePath(workspace.path);
@@ -1670,6 +1733,7 @@ export function useThreadActions({
       });
       try {
         let mappedTitles: Record<string, string> = {};
+        const archivedSessionMapPromise = loadArchivedSessionMap(workspace.id);
         try {
           mappedTitles = await listThreadTitlesService(workspace.id);
           onThreadTitleMappingsLoaded?.(workspace.id, mappedTitles);
@@ -1720,7 +1784,7 @@ export function useThreadActions({
           pagesFetched += 1;
           let response: Record<string, unknown>;
           try {
-            response = (await (async () => {
+            const liveResponse = await withTimeout((async () => {
               try {
                 return await listThreadsService(workspace.id, cursor, pageSize);
               } catch (error) {
@@ -1737,7 +1801,22 @@ export function useThreadActions({
                 await connectWorkspaceService(workspace.id);
                 return await listThreadsService(workspace.id, cursor, pageSize);
               }
-            })()) as Record<string, unknown>;
+            })(), THREAD_LIST_LIVE_REQUEST_TIMEOUT_MS);
+            if (liveResponse === null) {
+              onDebug?.({
+                id: `${Date.now()}-client-thread-list-live-timeout`,
+                timestamp: Date.now(),
+                source: "error",
+                label: "thread/list live timeout",
+                payload: {
+                  workspaceId: workspace.id,
+                  cursor,
+                  timeoutMs: THREAD_LIST_LIVE_REQUEST_TIMEOUT_MS,
+                },
+              });
+              break;
+            }
+            response = liveResponse as Record<string, unknown>;
           } catch (error) {
             if (!isWorkspaceNotConnectedError(error)) {
               throw error;
@@ -1891,15 +1970,32 @@ export function useThreadActions({
         let allSummaries: ThreadSummary[] = summaries;
         const mergedById = new Map<string, ThreadSummary>();
         allSummaries.forEach((entry) => mergedById.set(entry.id, entry));
+        const opencodeSessionsPromise = includeOpenCodeSessions
+          ? withTimeout(
+              getOpenCodeSessionListService(workspace.id),
+              NATIVE_SESSION_LIST_FETCH_TIMEOUT_MS,
+            )
+          : Promise.resolve([] as Awaited<ReturnType<typeof getOpenCodeSessionListService>>);
         const [claudeResult, opencodeResult] = await Promise.allSettled([
-          listClaudeSessionsService(workspace.path, 50),
-          includeOpenCodeSessions
-            ? getOpenCodeSessionListService(workspace.id)
-            : Promise.resolve<
-                Awaited<ReturnType<typeof getOpenCodeSessionListService>>
-              >([]),
+          withTimeout(
+            listClaudeSessionsService(workspace.path, 50),
+            NATIVE_SESSION_LIST_FETCH_TIMEOUT_MS,
+          ),
+          opencodeSessionsPromise,
         ]);
         if (claudeResult.status === "fulfilled") {
+          if (claudeResult.value === null) {
+            onDebug?.({
+              id: `${Date.now()}-client-claude-session-timeout`,
+              timestamp: Date.now(),
+              source: "client",
+              label: "thread/list claude timeout",
+              payload: {
+                workspaceId: workspace.id,
+                timeoutMs: NATIVE_SESSION_LIST_FETCH_TIMEOUT_MS,
+              },
+            });
+          }
           const claudeSessions = Array.isArray(claudeResult.value)
             ? claudeResult.value
             : [];
@@ -1934,6 +2030,18 @@ export function useThreadActions({
           );
         }
         if (opencodeResult.status === "fulfilled") {
+          if (opencodeResult.value === null) {
+            onDebug?.({
+              id: `${Date.now()}-client-opencode-session-timeout`,
+              timestamp: Date.now(),
+              source: "client",
+              label: "thread/list opencode timeout",
+              payload: {
+                workspaceId: workspace.id,
+                timeoutMs: NATIVE_SESSION_LIST_FETCH_TIMEOUT_MS,
+              },
+            });
+          }
           const opencodeSessions = Array.isArray(opencodeResult.value)
             ? opencodeResult.value
             : [];
@@ -2035,6 +2143,10 @@ export function useThreadActions({
             (a, b) => b.updatedAt - a.updatedAt,
           );
         }
+        allSummaries = applySessionArchiveState(
+          allSummaries,
+          await archivedSessionMapPromise,
+        );
         if (didChangeActivity) {
           const next = {
             ...threadActivityRef.current,
@@ -2042,6 +2154,10 @@ export function useThreadActions({
           };
           threadActivityRef.current = next;
           saveThreadActivity(next);
+        }
+
+        if (!isLatestThreadListRequest()) {
+          return;
         }
 
         dispatch({
@@ -2117,9 +2233,13 @@ export function useThreadActions({
               mappedTitles,
               getCustomName,
             );
+            const visibleNextSummaries = applySessionArchiveState(
+              nextSummaries,
+              await archivedSessionMapPromise,
+            );
             const unchanged =
-              nextSummaries.length === baselineSummaries.length &&
-              nextSummaries.every((entry, index) => {
+              visibleNextSummaries.length === baselineSummaries.length &&
+              visibleNextSummaries.every((entry, index) => {
                 const prev = baselineSummaries[index];
                 return (
                   !!prev &&
@@ -2134,11 +2254,11 @@ export function useThreadActions({
               dispatch({
                 type: "setThreads",
                 workspaceId: workspace.id,
-                threads: nextSummaries,
+                threads: visibleNextSummaries,
               });
               latestThreadsByWorkspaceRef.current = {
                 ...latestThreadsByWorkspaceRef.current,
-                [workspace.id]: nextSummaries,
+                [workspace.id]: visibleNextSummaries,
               };
             }
           })();
@@ -2152,7 +2272,7 @@ export function useThreadActions({
           payload: error instanceof Error ? error.message : String(error),
         });
       } finally {
-        if (!preserveState) {
+        if (!preserveState && isLatestThreadListRequest()) {
           dispatch({
             type: "setThreadListLoading",
             workspaceId: workspace.id,
@@ -2162,8 +2282,10 @@ export function useThreadActions({
       }
     },
     [
+      applySessionArchiveState,
       dispatch,
       getCustomName,
+      loadArchivedSessionMap,
       onDebug,
       onThreadTitleMappingsLoaded,
       activeThreadIdByWorkspace,
@@ -2197,6 +2319,7 @@ export function useThreadActions({
       });
       try {
         let mappedTitles: Record<string, string> = {};
+        const archivedSessionMapPromise = loadArchivedSessionMap(workspace.id);
         try {
           mappedTitles = await listThreadTitlesService(workspace.id);
           onThreadTitleMappingsLoaded?.(workspace.id, mappedTitles);
@@ -2281,11 +2404,16 @@ export function useThreadActions({
           existingIds.add(id);
         });
 
-        if (additions.length > 0) {
+        const visibleAdditions = applySessionArchiveState(
+          additions,
+          await archivedSessionMapPromise,
+        );
+
+        if (visibleAdditions.length > 0) {
           dispatch({
             type: "setThreads",
             workspaceId: workspace.id,
-            threads: [...existing, ...additions],
+            threads: [...existing, ...visibleAdditions],
           });
         }
         dispatch({
@@ -2323,8 +2451,10 @@ export function useThreadActions({
       }
     },
     [
+      applySessionArchiveState,
       dispatch,
       getCustomName,
+      loadArchivedSessionMap,
       onDebug,
       onThreadTitleMappingsLoaded,
       activeThreadIdByWorkspace,
