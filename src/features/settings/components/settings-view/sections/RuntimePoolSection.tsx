@@ -56,6 +56,13 @@ function getRuntimeTone(state: string) {
         chip:
           "border-emerald-300/60 bg-emerald-500/10 text-emerald-700 dark:border-emerald-400/20 dark:bg-emerald-500/12 dark:text-emerald-200",
       };
+    case "startup-pending":
+    case "resume-pending":
+      return {
+        icon: Sparkles,
+        chip:
+          "border-blue-300/60 bg-blue-500/10 text-blue-700 dark:border-blue-400/20 dark:bg-blue-500/12 dark:text-blue-200",
+      };
     case "acquired":
       return {
         icon: Flame,
@@ -98,6 +105,10 @@ function getRuntimeStateLabel(
   switch (state.toLowerCase()) {
     case "starting":
       return t("settings.runtimeStateStarting");
+    case "startup-pending":
+      return t("settings.runtimeStateStartupPending");
+    case "resume-pending":
+      return t("settings.runtimeStateResumePending");
     case "acquired":
       return t("settings.runtimeStateAcquired");
     case "streaming":
@@ -122,6 +133,12 @@ function getActiveWorkLabel(
   reason?: string | null,
 ) {
   switch ((reason ?? "").toLowerCase()) {
+    case "silent-busy":
+      return t("settings.runtimeProtectionSilentBusy");
+    case "startup-pending":
+      return t("settings.runtimeProtectionStartupPending");
+    case "resume-pending":
+      return t("settings.runtimeProtectionResumePending");
     case "turn":
       return t("settings.runtimeProtectionTurn");
     case "stream":
@@ -756,6 +773,8 @@ export function RuntimePoolSection({
                           {getRuntimeStartupStateLabel(t, row.startupState)}
                           {row.lastRecoverySource ? ` · ${t("settings.runtimeRecoverySourceLabel")} ${row.lastRecoverySource}` : ""}
                           {row.lastGuardState ? ` · ${t("settings.runtimeGuardStateLabel")} ${row.lastGuardState}` : ""}
+                          {row.foregroundWorkThreadId ? ` · ${t("settings.runtimeForegroundThreadLabel")} ${row.foregroundWorkThreadId}` : ""}
+                          {row.foregroundWorkTurnId ? ` · ${t("settings.runtimeForegroundTurnLabel")} ${row.foregroundWorkTurnId}` : ""}
                         </div>
                         <div className="min-w-0">
                           <span className="font-medium text-slate-900 dark:text-slate-100">{t("settings.runtimeRecentChurnLabel")}</span>{" "}
@@ -786,7 +805,8 @@ export function RuntimePoolSection({
                       || row.evictionReason
                       || row.lastExitReasonCode
                       || row.lastReplaceReason
-                      || row.lastProbeFailure ? (
+                      || row.lastProbeFailure
+                      || row.foregroundWorkState ? (
                         <details className="group rounded-xl border border-slate-200/80 bg-white/80 px-3 py-2 dark:border-white/10 dark:bg-slate-900/70">
                           <summary className="cursor-pointer list-none text-[11px] font-medium text-slate-600 outline-none marker:content-none dark:text-slate-300">
                             <span className="inline-flex items-center gap-2">
@@ -832,6 +852,24 @@ export function RuntimePoolSection({
                                   ? ` · ${t("settings.runtimeLastUsedLabel")} ${formatTimestamp(row.lastExitAtMs)}`
                                   : ""}
                               </div>
+                            </div>
+                          ) : null}
+                          {row.foregroundWorkState ? (
+                            <div className="mt-2 rounded-xl border border-blue-200/80 bg-blue-50/85 px-3 py-2 text-[12px] leading-5 text-blue-700 dark:border-blue-500/25 dark:bg-blue-500/10 dark:text-blue-200">
+                              <div>
+                                {t("settings.runtimeForegroundStateLabel")} {getActiveWorkLabel(t, row.foregroundWorkState ?? row.activeWorkReason)}
+                              </div>
+                              <div className="mt-1">
+                                {t("settings.runtimeForegroundSinceLabel")} {formatTimestamp(row.foregroundWorkSinceMs)}
+                              </div>
+                              {row.foregroundWorkTimeoutAtMs ? (
+                                <div className="mt-1">
+                                  {t("settings.runtimeForegroundTimeoutLabel")} {formatTimestamp(row.foregroundWorkTimeoutAtMs)}
+                                </div>
+                              ) : null}
+                              {row.foregroundWorkTimedOut ? (
+                                <div className="mt-1">{t("settings.runtimeForegroundTimedOutLabel")}</div>
+                              ) : null}
                             </div>
                           ) : null}
                           {row.lastReplaceReason ? (

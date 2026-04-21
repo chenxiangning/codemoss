@@ -91,6 +91,18 @@ type AppServerEventHandlers = {
     turnId: string,
     payload: { message: string; willRetry: boolean },
   ) => void;
+  onTurnStalled?: (
+    workspaceId: string,
+    threadId: string,
+    turnId: string,
+    payload: {
+      message: string;
+      reasonCode: string;
+      stage: string;
+      startedAtMs: number | null;
+      timeoutMs: number | null;
+    },
+  ) => void;
   onTurnPlanUpdated?: (
     workspaceId: string,
     threadId: string,
@@ -1116,6 +1128,30 @@ export function useAppServerEvents(
           handlers.onTurnError?.(workspace_id, threadId, turnId, {
             message: messageText,
             willRetry,
+          });
+        }
+        return;
+      }
+
+      if (method === "turn/stalled") {
+        const params = message.params as Record<string, unknown>;
+        const threadId = sharedBridge?.sharedThreadId ?? String(params.threadId ?? params.thread_id ?? "");
+        const turnId = String(params.turnId ?? params.turn_id ?? "");
+        const rawStartedAtMs = Number(params.startedAtMs ?? params.started_at_ms ?? 0);
+        const rawTimeoutMs = Number(params.timeoutMs ?? params.timeout_ms ?? 0);
+        if (threadId) {
+          handlers.onTurnStalled?.(workspace_id, threadId, turnId, {
+            message: String(params.message ?? ""),
+            reasonCode: String(params.reasonCode ?? params.reason_code ?? ""),
+            stage: String(params.stage ?? ""),
+            startedAtMs:
+              Number.isFinite(rawStartedAtMs) && rawStartedAtMs > 0
+                ? Math.trunc(rawStartedAtMs)
+                : null,
+            timeoutMs:
+              Number.isFinite(rawTimeoutMs) && rawTimeoutMs > 0
+                ? Math.trunc(rawTimeoutMs)
+                : null,
           });
         }
         return;

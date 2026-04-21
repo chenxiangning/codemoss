@@ -2,14 +2,19 @@ use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::env;
 use std::path::PathBuf;
+#[cfg(test)]
+use std::process::Stdio;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex as StdMutex};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use tokio::io::AsyncWriteExt;
 use tokio::process::{Child, ChildStdin};
+#[cfg(test)]
+use tokio::process::Command;
 use tokio::sync::{mpsc, oneshot, Mutex};
 use tokio::time::timeout;
+use tauri::{AppHandle, Emitter};
 
 use crate::backend::events::{AppServerEvent, EventSink};
 use crate::codex::args::{apply_codex_args, parse_codex_args};
@@ -50,6 +55,9 @@ const DEFAULT_REQUEST_TIMEOUT_SECS: u64 = 300;
 const DEFAULT_INITIAL_TURN_START_TIMEOUT_MS: u64 = 120_000;
 const MIN_INITIAL_TURN_START_TIMEOUT_MS: u64 = 30_000;
 const MAX_INITIAL_TURN_START_TIMEOUT_MS: u64 = 240_000;
+const DEFAULT_RESUME_AFTER_USER_INPUT_TIMEOUT_MS: u64 = 45_000;
+const MIN_RESUME_AFTER_USER_INPUT_TIMEOUT_MS: u64 = 10_000;
+const MAX_RESUME_AFTER_USER_INPUT_TIMEOUT_MS: u64 = 180_000;
 const TIMED_OUT_REQUEST_GRACE_MS: u64 = 180_000;
 const AUTO_COMPACTION_METHOD_CANDIDATES: [&str; 3] = [
     "thread/compact/start",
@@ -80,6 +88,14 @@ struct TimedOutRequest {
     timed_out_at_ms: u64,
 }
 
+#[derive(Debug, Clone)]
+struct ResumePendingTurnState {
+    nonce: String,
+    turn_id: Option<String>,
+    started_at_ms: u64,
+    timeout_ms: u64,
+}
+
 fn now_millis() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -95,6 +111,17 @@ fn resolve_initial_turn_start_timeout_ms() -> u64 {
     configured.clamp(
         MIN_INITIAL_TURN_START_TIMEOUT_MS,
         MAX_INITIAL_TURN_START_TIMEOUT_MS,
+    )
+}
+
+fn resolve_resume_after_user_input_timeout_ms() -> u64 {
+    let configured = env::var("MOSSX_RESUME_AFTER_USER_INPUT_TIMEOUT_MS")
+        .ok()
+        .and_then(|value| value.trim().parse::<u64>().ok())
+        .unwrap_or(DEFAULT_RESUME_AFTER_USER_INPUT_TIMEOUT_MS);
+    configured.clamp(
+        MIN_RESUME_AFTER_USER_INPUT_TIMEOUT_MS,
+        MAX_RESUME_AFTER_USER_INPUT_TIMEOUT_MS,
     )
 }
 
@@ -115,6 +142,17 @@ fn extract_thread_id(value: &Value) -> Option<String> {
                 .and_then(|t| t.as_str())
                 .map(|s| s.to_string())
         })
+}
+
+fn extract_turn_id(value: &Value) -> Option<String> {
+    let params = value.get("params")?;
+
+    params
+        .get("turnId")
+        .or_else(|| params.get("turn_id"))
+        .or_else(|| params.get("turn").and_then(|turn| turn.get("id")))
+        .and_then(|turn| turn.as_str())
+        .map(ToOwned::to_owned)
 }
 
 fn extract_event_method(value: &Value) -> Option<&str> {
@@ -354,6 +392,7 @@ pub(crate) struct WorkspaceSession {
     auto_compaction_state: Mutex<HashMap<String, AutoCompactionThreadState>>,
     local_user_input_requests: Mutex<HashMap<String, String>>,
     local_request_seq: AtomicU64,
+    resume_pending_turns: Mutex<HashMap<String, ResumePendingTurnState>>,
     runtime_manager: StdMutex<Option<Arc<RuntimeManager>>>,
     active_turns: Mutex<HashMap<String, String>>,
     manual_shutdown_requested: AtomicBool,
@@ -449,6 +488,141 @@ impl WorkspaceSession {
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
             .clone()
+    }
+
+    pub(crate) async fn note_codex_turn_start_pending(
+        &self,
+        thread_id: &str,
+        timeout_duration: Duration,
+    ) {
+        let normalized_thread_id = thread_id.trim();
+        if normalized_thread_id.is_empty() {
+            return;
+        }
+        if let Some(runtime_manager) = self.runtime_manager() {
+            runtime_manager
+                .note_foreground_turn_start_pending(
+                    &self.entry,
+                    "codex",
+                    normalized_thread_id,
+                    timeout_duration.as_millis() as u64,
+                )
+                .await;
+        }
+    }
+
+    pub(crate) async fn clear_codex_foreground_work(
+        &self,
+        thread_id: Option<&str>,
+        turn_id: Option<&str>,
+    ) {
+        if let Some(runtime_manager) = self.runtime_manager() {
+            runtime_manager
+                .clear_foreground_work_continuity(
+                    "codex",
+                    &self.entry.id,
+                    thread_id,
+                    turn_id,
+                )
+                .await;
+        }
+    }
+
+    pub(crate) async fn clear_resume_pending_watch(
+        &self,
+        thread_id: Option<&str>,
+        turn_id: Option<&str>,
+    ) {
+        let Some(thread_id) = thread_id.map(str::trim).filter(|value| !value.is_empty()) else {
+            return;
+        };
+        let mut resume_pending_turns = self.resume_pending_turns.lock().await;
+        let should_remove = resume_pending_turns
+            .get(thread_id)
+            .map(|state| {
+                if let Some(expected_turn_id) = state.turn_id.as_deref() {
+                    if let Some(candidate_turn_id) = turn_id.map(str::trim) {
+                        return candidate_turn_id.is_empty() || candidate_turn_id == expected_turn_id;
+                    }
+                }
+                true
+            })
+            .unwrap_or(false);
+        if should_remove {
+            resume_pending_turns.remove(thread_id);
+        }
+    }
+
+    pub(crate) async fn start_resume_pending_watch(
+        self: &Arc<Self>,
+        app: AppHandle,
+        thread_id: String,
+        turn_id: Option<String>,
+    ) {
+        let normalized_thread_id = thread_id.trim().to_string();
+        if normalized_thread_id.is_empty() {
+            return;
+        }
+        let normalized_turn_id = turn_id
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        let timeout_ms = resolve_resume_after_user_input_timeout_ms();
+        let state = ResumePendingTurnState {
+            nonce: format!("resume-pending-{}", self.next_id.fetch_add(1, Ordering::SeqCst)),
+            turn_id: normalized_turn_id.clone(),
+            started_at_ms: now_millis(),
+            timeout_ms,
+        };
+        self.resume_pending_turns
+            .lock()
+            .await
+            .insert(normalized_thread_id.clone(), state.clone());
+        if let Some(runtime_manager) = self.runtime_manager() {
+            runtime_manager
+                .note_foreground_resume_pending(
+                    &self.entry,
+                    "codex",
+                    &normalized_thread_id,
+                    normalized_turn_id.as_deref(),
+                    timeout_ms,
+                )
+                .await;
+        }
+        let session = Arc::clone(self);
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(timeout_ms)).await;
+            let timed_out_state = {
+                let mut resume_pending_turns = session.resume_pending_turns.lock().await;
+                match resume_pending_turns.get(&normalized_thread_id) {
+                    Some(current) if current.nonce == state.nonce => {
+                        resume_pending_turns.remove(&normalized_thread_id)
+                    }
+                    _ => None,
+                }
+            };
+            let Some(timed_out_state) = timed_out_state else {
+                return;
+            };
+            let message = format!(
+                "[TURN_STALLED] User input was submitted, but Codex did not resume within {}s. You can continue from the latest visible state.",
+                timed_out_state.timeout_ms.div_ceil(1000)
+            );
+            let _ = app.emit(
+                "app-server-event",
+                AppServerEvent {
+                    workspace_id: session.entry.id.clone(),
+                    message: build_turn_stalled_event(
+                        &normalized_thread_id,
+                        timed_out_state.turn_id.as_deref(),
+                        "resume_timeout",
+                        "resume-pending",
+                        &message,
+                        timed_out_state.started_at_ms,
+                        timed_out_state.timeout_ms,
+                    ),
+                },
+            );
+        });
     }
 
     pub(crate) async fn send_notification(
@@ -700,6 +874,7 @@ async fn spawn_workspace_session_once<E: EventSink>(
         auto_compaction_state: Mutex::new(HashMap::new()),
         local_user_input_requests: Mutex::new(HashMap::new()),
         local_request_seq: AtomicU64::new(1),
+        resume_pending_turns: Mutex::new(HashMap::new()),
         runtime_manager: StdMutex::new(None),
         active_turns: Mutex::new(HashMap::new()),
         manual_shutdown_requested: AtomicBool::new(false),
@@ -758,6 +933,89 @@ async fn spawn_workspace_session_once<E: EventSink>(
     event_sink.emit_app_server_event(payload);
 
     Ok(session)
+}
+
+#[cfg(test)]
+fn make_test_workspace_entry(id: &str) -> WorkspaceEntry {
+    let mut settings = crate::types::WorkspaceSettings::default();
+    settings.engine_type = Some("codex".to_string());
+    WorkspaceEntry {
+        id: id.to_string(),
+        name: format!("Workspace {id}"),
+        path: std::env::temp_dir().join(id).display().to_string(),
+        codex_bin: None,
+        kind: crate::types::WorkspaceKind::Main,
+        parent_id: None,
+        worktree: None,
+        settings,
+    }
+}
+
+#[cfg(test)]
+fn spawn_test_runtime_process_for_runtime() -> (tokio::process::Child, String) {
+    #[cfg(windows)]
+    {
+        let command_path = std::env::var("COMSPEC").unwrap_or_else(|_| "cmd.exe".to_string());
+        let mut command = Command::new(&command_path);
+        command.args(["/Q", "/K"]);
+        command.stdin(Stdio::piped());
+        command.stdout(Stdio::piped());
+        command.stderr(Stdio::piped());
+        let child = command
+            .spawn()
+            .unwrap_or_else(|error| panic!("failed to spawn {command_path}: {error}"));
+        return (child, command_path);
+    }
+
+    #[cfg(not(windows))]
+    {
+        let command_path = "cat".to_string();
+        let mut command = Command::new(&command_path);
+        command.stdin(Stdio::piped());
+        command.stdout(Stdio::piped());
+        command.stderr(Stdio::piped());
+        let child = command
+            .spawn()
+            .unwrap_or_else(|error| panic!("failed to spawn {command_path}: {error}"));
+        (child, command_path)
+    }
+}
+
+#[cfg(test)]
+pub(crate) async fn make_test_workspace_session(id: &str) -> Arc<WorkspaceSession> {
+    let (mut child, resolved_bin) = spawn_test_runtime_process_for_runtime();
+    let stdin = child.stdin.take().expect("test child stdin");
+    Arc::new(WorkspaceSession {
+        entry: make_test_workspace_entry(id),
+        child: Mutex::new(child),
+        stdin: Mutex::new(stdin),
+        wrapper_kind: "direct".to_string(),
+        resolved_bin,
+        pending: Mutex::new(HashMap::new()),
+        timed_out_requests: Mutex::new(HashMap::new()),
+        next_id: AtomicU64::new(1),
+        background_thread_callbacks: Mutex::new(HashMap::new()),
+        thread_mode_state: crate::codex::thread_mode_state::ThreadModeState::default(),
+        mode_enforcement_enabled: AtomicBool::new(false),
+        collaboration_mode_supported: AtomicBool::new(false),
+        plan_turn_state: Mutex::new(HashMap::new()),
+        auto_compaction_state: Mutex::new(HashMap::new()),
+        local_user_input_requests: Mutex::new(HashMap::new()),
+        local_request_seq: AtomicU64::new(1),
+        resume_pending_turns: Mutex::new(HashMap::new()),
+        runtime_manager: StdMutex::new(None),
+        active_turns: Mutex::new(HashMap::new()),
+        manual_shutdown_requested: AtomicBool::new(false),
+        runtime_end_emitted: AtomicBool::new(false),
+    })
+}
+
+#[cfg(test)]
+pub(crate) async fn dispose_test_workspace_session(session: &WorkspaceSession) {
+    session.mark_manual_shutdown();
+    let mut child = session.child.lock().await;
+    let _ = child.kill().await;
+    let _ = child.wait().await;
 }
 
 #[cfg(test)]
@@ -878,6 +1136,7 @@ mod tests {
             auto_compaction_state: Mutex::new(HashMap::new()),
             local_user_input_requests: Mutex::new(HashMap::new()),
             local_request_seq: AtomicU64::new(1),
+            resume_pending_turns: Mutex::new(HashMap::new()),
             runtime_manager: StdMutex::new(None),
             active_turns: Mutex::new(HashMap::new()),
             manual_shutdown_requested: AtomicBool::new(false),

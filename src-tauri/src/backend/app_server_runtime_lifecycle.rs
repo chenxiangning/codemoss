@@ -89,6 +89,7 @@ impl WorkspaceSession {
         timed_out_requests.clear();
         drop(timed_out_requests);
 
+        self.resume_pending_turns.lock().await.clear();
         self.background_thread_callbacks.lock().await.clear();
         let total_pending_request_count = pending_count.saturating_add(timed_out_count);
 
@@ -257,6 +258,12 @@ async fn process_workspace_stdout_value<E: EventSink>(
 
     session.track_plan_turn_state(&value).await;
     session.record_runtime_event_activity(&value).await;
+    session
+        .clear_resume_pending_watch(
+            extract_thread_id(&value).as_deref(),
+            extract_turn_id(&value).as_deref(),
+        )
+        .await;
     if let Some(runtime_manager) = session.runtime_manager() {
         runtime_manager
             .handle_codex_runtime_event(&session.entry, &value)

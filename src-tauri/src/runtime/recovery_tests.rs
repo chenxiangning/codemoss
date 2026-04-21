@@ -162,6 +162,38 @@ async fn snapshot_surfaces_recovery_churn_context() {
 }
 
 #[tokio::test]
+async fn startup_probe_failure_stays_distinct_from_post_ready_stale() {
+    let manager = RuntimeManager::new(&std::env::temp_dir());
+    let entry = workspace_entry("startup-pending");
+    manager
+        .record_starting(&entry, "codex", "workspace-restore")
+        .await;
+    manager
+        .note_probe_failure(
+            "codex",
+            "startup-pending",
+            "thread-list-live",
+            "startup probe timeout",
+        )
+        .await;
+
+    let snapshot = manager.snapshot(&AppSettings::default()).await;
+    let row = snapshot
+        .rows
+        .iter()
+        .find(|item| item.workspace_id == "startup-pending")
+        .expect("runtime row should exist");
+
+    assert_eq!(row.startup_state, Some(RuntimeStartupState::Starting));
+    assert_eq!(row.last_guard_state.as_deref(), Some("probe-failed"));
+    assert_eq!(row.last_probe_failure.as_deref(), Some("startup probe timeout"));
+    assert_eq!(
+        row.last_probe_failure_source.as_deref(),
+        Some("thread-list-live"),
+    );
+}
+
+#[tokio::test]
 async fn begin_runtime_acquire_or_retry_retries_after_leader_finishes() {
     let manager = Arc::new(RuntimeManager::new(&std::env::temp_dir()));
     let leader = manager.begin_runtime_acquire("codex", "ws-1").await;

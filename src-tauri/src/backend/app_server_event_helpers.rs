@@ -38,6 +38,34 @@ pub(super) fn build_thread_compaction_failed_event(thread_id: &str, reason: &str
     })
 }
 
+pub(super) fn build_turn_stalled_event(
+    thread_id: &str,
+    turn_id: Option<&str>,
+    reason_code: &str,
+    stage: &str,
+    message: &str,
+    started_at_ms: u64,
+    timeout_ms: u64,
+) -> Value {
+    json!({
+        "method": "turn/stalled",
+        "params": {
+            "threadId": thread_id,
+            "thread_id": thread_id,
+            "turnId": turn_id,
+            "turn_id": turn_id,
+            "reasonCode": reason_code,
+            "reason_code": reason_code,
+            "stage": stage,
+            "message": message,
+            "startedAtMs": started_at_ms,
+            "started_at_ms": started_at_ms,
+            "timeoutMs": timeout_ms,
+            "timeout_ms": timeout_ms,
+        }
+    })
+}
+
 pub(super) fn build_late_turn_started_event(value: &Value) -> Option<Value> {
     let turn = value
         .get("result")

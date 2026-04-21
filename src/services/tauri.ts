@@ -593,11 +593,14 @@ export async function respondToUserInputRequest(
   workspaceId: string,
   requestId: number | string,
   answers: Record<string, { answers: string[] }>,
+  options?: { threadId?: string | null; turnId?: string | null },
 ) {
   return invoke("respond_to_server_request", {
     workspaceId,
     requestId,
     result: { answers },
+    threadId: options?.threadId ?? null,
+    turnId: options?.turnId ?? null,
   });
 }
 

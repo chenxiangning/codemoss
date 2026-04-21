@@ -274,6 +274,8 @@ export type AppSettings = {
 
 export type RuntimePoolState =
   | "starting"
+  | "startup-pending"
+  | "resume-pending"
   | "acquired"
   | "streaming"
   | "graceful-idle"
@@ -311,6 +313,13 @@ export type RuntimePoolRow = {
   activeWorkReason?: string | null;
   activeWorkSinceMs?: number | null;
   activeWorkLastRenewedAtMs?: number | null;
+  foregroundWorkState?: "startup-pending" | "resume-pending" | null;
+  foregroundWorkThreadId?: string | null;
+  foregroundWorkTurnId?: string | null;
+  foregroundWorkSinceMs?: number | null;
+  foregroundWorkTimeoutAtMs?: number | null;
+  foregroundWorkLastEventAtMs?: number | null;
+  foregroundWorkTimedOut?: boolean;
   evictCandidate: boolean;
   evictionReason: string | null;
   error: string | null;

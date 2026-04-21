@@ -100,3 +100,31 @@ Windows 用户反馈 `ccgui` 与多个 `bun` 进程会持续占高 CPU，而 mac
    - 把 slow startup 与 stale probe 拆开，收口 Windows 侧 timeout / retry 预算。
 4. Phase 4: Remote Verification And Rollout
    - 用新增 diagnostics 指导远程 Windows 验证，再决定默认值是否进一步收紧或放宽。
+
+## Implementation Snapshot (workspace code, 2026-04-21)
+
+已落地到工作区代码的部分：
+
+- backend runtime guard 已经进入 `src-tauri/src/runtime/mod.rs` / `src-tauri/src/codex/session_runtime.rs` / `src-tauri/src/shared/workspaces_core.rs`
+  - 已有 `leader / waiter / cooldown / quarantined` 的 acquire guard
+  - explicit connect 会 reset quarantine，避免用户主动重试被 automatic storm loop 误伤
+  - `ensure_codex_session` 与 `connect_workspace_core` 已接入统一 recovery 入口
+- startup / stale evidence 已经开始分离
+  - runtime snapshot 已暴露 `startupState`
+  - `note_probe_failure()` 只会在 runtime 已 `Ready` 时升级成 `SuspectStale`
+  - thread list live timeout 在 frontend 会先降级成 `startup-pending` / `automatic-recovery-cooldown` 等 partial source，而不是无脑再起一轮 reconnect
+- churn diagnostics 与 runtime pool console 已有首版
+  - snapshot / ledger 已包含 `wrapperKind`、`resolvedBin`、`lastRecoverySource`、`lastReplaceReason`、`lastProbeFailure`、`recentSpawnCount`、`recentReplaceCount`、`recentForceKillCount`、`hasStoppingPredecessor`
+  - Runtime Pool Console 已消费这些字段并展示 replacement / probe / recent churn 证据
+- frontend automatic source integration 已有首版
+  - `thread-list-live`、`workspace-restore`、`focus-refresh` 已传入 recovery source
+  - thread list waiter path 会保留 last-good snapshot，并用 `guarded-recovery-waiter` / `automatic-recovery-cooldown` 标注 degraded source
+
+本轮已收口的部分：
+
+- replacement serialization 已补齐 gate + synthetic regression，`replacement_waiter_does_not_swap_in_a_third_runtime` 直接钉住“replacement 期间不会继续拉起第三棵树”
+- runtime pool console 的 UI regression 已补齐，覆盖 startup state、recent churn、recovery source、replace/probe evidence 的展示契约
+
+仍保留的边界：
+
+- 还没有 Windows 实机 closure；当前结论仍以 synthetic tests + diagnostics contract 为主

@@ -966,6 +966,8 @@ describe("tauri invoke wrappers", () => {
           confirm_path: { answers: ["Yes"] },
         },
       },
+      threadId: null,
+      turnId: null,
     });
   });
 
@@ -986,6 +988,8 @@ describe("tauri invoke wrappers", () => {
       result: {
         answers,
       },
+      threadId: null,
+      turnId: null,
     });
   });
 
