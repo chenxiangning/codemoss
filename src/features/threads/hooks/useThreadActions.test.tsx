@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, renderHook, waitFor } from "@testing-library/react";
+import { act, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ConversationItem, WorkspaceInfo } from "../../../types";
 import {
@@ -37,7 +37,11 @@ import {
 } from "../../../utils/threadItems";
 import { loadSidebarSnapshot } from "../utils/sidebarSnapshot";
 import { saveThreadActivity } from "../utils/threadStorage";
-import { useThreadActions } from "./useThreadActions";
+import {
+  expectSetThreadsDispatched,
+  renderActions,
+  workspace,
+} from "./useThreadActions.test-utils";
 
 vi.mock("../../../services/tauri", () => ({
   startThread: vi.fn(),
@@ -90,14 +94,6 @@ vi.mock("../utils/sidebarSnapshot", () => ({
 }));
 
 describe("useThreadActions", () => {
-  const workspace: WorkspaceInfo = {
-    id: "ws-1",
-    name: "ccgui",
-    path: "/tmp/codex",
-    connected: true,
-    settings: { sidebarCollapsed: false },
-  };
-
   beforeEach(() => {
     vi.clearAllMocks();
     vi.useRealTimers();
@@ -138,64 +134,6 @@ describe("useThreadActions", () => {
     vi.mocked(writeWorkspaceFile).mockResolvedValue(undefined);
     vi.mocked(loadSidebarSnapshot).mockReturnValue(null);
   });
-
-  function renderActions(
-    overrides?: Partial<Parameters<typeof useThreadActions>[0]>,
-  ) {
-    const dispatch = vi.fn();
-    const loadedThreadsRef = { current: {} as Record<string, boolean> };
-    const replaceOnResumeRef = { current: {} as Record<string, boolean> };
-    const threadActivityRef = {
-      current: {} as Record<string, Record<string, number>>,
-    };
-    const applyCollabThreadLinksFromThread = vi.fn();
-    const updateThreadParent = vi.fn();
-
-    const args: Parameters<typeof useThreadActions>[0] = {
-      dispatch,
-      itemsByThread: {},
-      userInputRequests: [],
-      threadsByWorkspace: {},
-      activeThreadIdByWorkspace: {},
-      threadListCursorByWorkspace: {},
-      threadStatusById: {},
-      getCustomName: () => undefined,
-      threadActivityRef,
-      loadedThreadsRef,
-      replaceOnResumeRef,
-      applyCollabThreadLinksFromThread,
-      updateThreadParent,
-      onThreadTitleMappingsLoaded: vi.fn(),
-      onRenameThreadTitleMapping: vi.fn(),
-      ...overrides,
-    };
-
-    const utils = renderHook(() => useThreadActions(args));
-
-    return {
-      dispatch,
-      loadedThreadsRef: args.loadedThreadsRef,
-      replaceOnResumeRef: args.replaceOnResumeRef,
-      threadActivityRef: args.threadActivityRef,
-      applyCollabThreadLinksFromThread: args.applyCollabThreadLinksFromThread,
-      updateThreadParent: args.updateThreadParent,
-      ...utils,
-    };
-  }
-
-  function expectSetThreadsDispatched(
-    dispatch: ReturnType<typeof vi.fn>,
-    workspaceId: string,
-    threads: Array<Record<string, unknown>>,
-  ) {
-    expect(dispatch).toHaveBeenCalledWith(
-      expect.objectContaining({
-        type: "setThreads",
-        workspaceId,
-        threads: threads.map((thread) => expect.objectContaining(thread)),
-      }),
-    );
-  }
 
   it("starts a thread and activates it by default", async () => {
     vi.mocked(startThread).mockResolvedValue({
@@ -988,6 +926,122 @@ describe("useThreadActions", () => {
       type: "setActiveThreadId",
       workspaceId: "ws-1",
       threadId: "thread-a",
+    });
+  });
+
+  it("recovers stale unified codex threads by a sole newly discovered replacement thread when local history is insufficient", async () => {
+    vi.mocked(resumeThread).mockImplementation(
+      async (_workspaceId: string, threadId: string) => {
+        if (threadId === "thread-stale") {
+          throw new Error("thread not found: thread-stale");
+        }
+        return {
+          result: {
+            thread: {
+              id: threadId,
+              turns: [{ id: `turn-${threadId}`, items: [] }],
+            },
+          },
+        };
+      },
+    );
+    vi.mocked(listThreads).mockResolvedValue({
+      result: {
+        data: [
+          {
+            id: "thread-recovered",
+            preview: "1",
+            updatedAt: 105,
+            updated_at: 105,
+            cwd: "/tmp/codex",
+          },
+          {
+            id: "thread-known",
+            preview: "1",
+            updatedAt: 90,
+            updated_at: 90,
+            cwd: "/tmp/codex",
+          },
+        ],
+        nextCursor: null,
+      },
+    });
+    vi.mocked(loadCodexSession).mockResolvedValue({ entries: [] });
+    vi.mocked(buildItemsFromThread).mockImplementation((thread) => {
+      const id = (thread as { id?: string }).id;
+      if (id === "thread-recovered") {
+        return [
+          {
+            id: "assistant-recovered",
+            kind: "message",
+            role: "assistant",
+            text: "Recovered",
+          },
+        ];
+      }
+      return [];
+    });
+    const rememberThreadAlias = vi.fn();
+
+    const { result, dispatch } = renderActions({
+      useUnifiedHistoryLoader: true,
+      rememberThreadAlias,
+      threadActivityRef: {
+        current: {
+          "ws-1": {
+            "thread-stale": 100,
+          },
+        },
+      },
+      itemsByThread: {
+        "thread-stale": [
+          {
+            id: "assistant-error",
+            kind: "message",
+            role: "assistant",
+            text: "会话启动失败： thread not found: thread-stale",
+          },
+        ],
+      },
+      threadsByWorkspace: {
+        "ws-1": [
+          {
+            id: "thread-stale",
+            name: "1",
+            updatedAt: 100,
+            engineSource: "codex",
+            threadKind: "native",
+          },
+          {
+            id: "thread-known",
+            name: "1",
+            updatedAt: 90,
+            engineSource: "codex",
+            threadKind: "native",
+          },
+        ],
+      },
+      activeThreadIdByWorkspace: {
+        "ws-1": "thread-stale",
+      },
+    });
+
+    await act(async () => {
+      await result.current.listThreadsForWorkspace(workspace, { preserveState: true });
+    });
+    dispatch.mockClear();
+
+    let resumed: string | null = null;
+    await act(async () => {
+      resumed = await result.current.resumeThreadForWorkspace("ws-1", "thread-stale");
+    });
+
+    expect(resumed).toBe("thread-recovered");
+    expect(rememberThreadAlias).toHaveBeenCalledWith("thread-stale", "thread-recovered");
+    expect(dispatch).toHaveBeenCalledWith({
+      type: "setActiveThreadId",
+      workspaceId: "ws-1",
+      threadId: "thread-recovered",
     });
   });
 

@@ -967,11 +967,11 @@
 - None - task complete
 
 
-## Session 85: merge feature-f-v0-4-6 into current branch
+## Session 85: 修复 Codex stale thread binding recovery 连续性
 
 **Date**: 2026-04-21
-**Task**: merge feature-f-v0-4-6 into current branch
-**Branch**: `codex/2026-04-01-local`
+**Task**: 修复 Codex stale thread binding recovery 连续性
+**Branch**: `feature/f-v0.4.6`
 
 ### Summary
 
@@ -979,18 +979,94 @@
 
 ### Main Changes
 
-任务目标：将本地分支 feature/f-v0.4.6 合并到当前分支 codex/2026-04-01-local，并在冲突场景下以新代码为主完成融合。
-主要改动：先清理 worktree 中残留的未完成 merge 元数据，重新执行 git merge --no-ff -X theirs feature/f-v0.4.6；合并后补充提交 fix(i18n): 去重运行时状态文案键，修复英文 locale 中 runtime 状态 key 重复导致的 typecheck 失败。
-涉及模块：src-tauri runtime/backend 相关改动、src/features/app 与 threads hooks、src/features/settings RuntimePoolSection、src/services/tauri.ts、src/i18n/locales/en.part1.ts、src/i18n/locales/zh.part1.ts，以及相关 tests / openspec / trellis workspace 记录文件。
-验证结果：git merge 成功生成提交 a89ade02；npm run typecheck 通过；cargo test --manifest-path src-tauri/Cargo.toml 通过（含 711 + 475 + 1 测试）。
-后续事项：如需推远端，可基于当前分支继续做业务验证；本次按“新代码优先”处理，额外人工修复点仅为 en locale 的重复 key。
+任务目标
+- 修复 Codex stale thread binding recovery 的连续性问题，覆盖 stale thread alias 持久化、canonical restore/reopen、recover-only UI 以及手动 runtime recovery 语义。
+
+主要改动
+- 新增并持久化 thread alias 映射，读取与写入时统一做 sanitize、链式压平与循环过滤。
+- 在 useThreadStorage/useThreads/useThreadActions 中统一 canonicalize active threadId，并补充 stale thread replacement 选择与恢复路径。
+- 调整 RuntimeReconnectCard，在具备安全 rebind 能力时支持 recover-only 动作，不再强制 resend。
+- 后端调整 Codex ensure/reconnect 恢复模式，用户显式恢复不再继承 automatic quarantine；为 thread/start 增加 thread-create-pending 前台保护。
+- 同步 OpenSpec/Trellis 任务与 spec 文档，补充连续性 contract。
+
+涉及模块
+- frontend threads/messages/settings
+- backend runtime/codex/storage/types
+- openspec 与 .trellis spec/task
+
+验证结果
+- 通过：Vitest 定向回归（threadStorage/useThreadActions/helpers/runtime reconnect）
+- 通过：cargo test 定向回归（leased runtime、thread-create-pending eviction guard）
+- 通过：npm run typecheck
+- 通过：npm run lint（存在仓库既有 react-hooks warnings，无新增 error）
+- 通过：npm run check:large-files（确认现有 3 个超阈值文件，未继续放大）
+
+后续事项
+- 按 large-file governance 继续拆分 src-tauri/src/runtime/mod.rs、useThreadActions.ts、useThreadActions.test.tsx。
+- 视需要继续清理仓库既有 react-hooks/exhaustive-deps warnings。
 
 
 ### Git Commits
 
 | Hash | Message |
 |------|---------|
-| `b0d4d69c` | (see git log) |
+| `2628c4119753547df4461fb16db02dfa0c02bfbb` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 86: runtime 与 thread actions 大文件模块拆分治理
+
+**Date**: 2026-04-21
+**Task**: runtime 与 thread actions 大文件模块拆分治理
+**Branch**: `feature/f-v0.4.6`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+任务目标:
+- 将 large-file gate 报警的 3 个超阈值文件按模块拆分，保持 facade 与行为不变。
+- 让 runtime/mod.rs、useThreadActions.ts、useThreadActions.test.tsx 全部回到 3000 行 hard gate 以内。
+
+主要改动:
+- 抽离 src-tauri/src/runtime/process_diagnostics.rs，承接 process snapshot、engine observability、pid tree terminate 与 diagnostics 汇总逻辑。
+- 保留 src-tauri/src/runtime/mod.rs 作为 runtime registry / state machine / command facade，更新 runtime tests 对新模块的引用。
+- 抽离 src/features/threads/hooks/useThreadActions.sessionActions.ts，承接 shared session start、archive/delete、rename title mapping 等 session mutation 动作。
+- 抽离 src/features/threads/hooks/useThreadActions.test-utils.tsx，承接 useThreadActions 测试公共 workspace / renderActions / setThreads 断言辅助。
+- 保持 useThreadActions 主 hook 对外返回 contract 不变，仅做结构搬移。
+
+涉及模块:
+- src-tauri/src/runtime/*
+- src/features/threads/hooks/useThreadActions*
+
+验证结果:
+- 通过: npm run check:large-files
+- 通过: npm run typecheck
+- 通过: npx vitest run src/features/threads/hooks/useThreadActions.test.tsx
+- 通过: cargo test --manifest-path src-tauri/Cargo.toml runtime::tests:: -- --nocapture
+
+后续事项:
+- 如果 threads/runtime 继续膨胀，下一轮优先沿现有 facade 继续抽 list/recovery 子层，避免再次回堆到单文件。
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `643252092ca5359e507490c8e2071aa69cdf65b3` | (see git log) |
 
 ### Testing
 

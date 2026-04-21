@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-3.md`
-- **Total Sessions**: 85
+- **Total Sessions**: 86
 - **Last Active**: 2026-04-21
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-3.md` | ~1005 | Active |
+| `journal-3.md` | ~1081 | Active |
 | `journal-2.md` | ~1960 | Archived |
 | `journal-1.md` | ~1990 | Archived |
 <!-- @@@/auto:active-documents -->
@@ -31,7 +31,8 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
-| 85 | 2026-04-21 | merge feature-f-v0-4-6 into current branch | `b0d4d69c` | `codex/2026-04-01-local` |
+| 86 | 2026-04-21 | runtime 与 thread actions 大文件模块拆分治理 | `643252092ca5359e507490c8e2071aa69cdf65b3` | `feature/f-v0.4.6` |
+| 85 | 2026-04-21 | 修复 Codex stale thread binding recovery 连续性 | `2628c4119753547df4461fb16db02dfa0c02bfbb` | `feature/f-v0.4.6` |
 | 84 | 2026-04-21 | 收敛 Windows runtime churn 与恢复诊断 | `9218a060a0711204b424d2f63abba6bf4d4d5992` | `feature/f-v0.4.6` |
 | 83 | 2026-04-21 | 修复 Claude Windows 条件编译 import 漂移 | `61738bfd` | `feature/f-v0.4.6` |
 | 82 | 2026-04-21 | 补齐首条消息隐式建会话 loading | `d1bb1639` | `feature/f-v0.4.6` |

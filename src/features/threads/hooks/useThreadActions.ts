@@ -7,11 +7,8 @@ import type {
   WorkspaceInfo,
 } from "../../../types";
 import {
-  archiveThread as archiveThreadService,
   deleteCodexSession as deleteCodexSessionService,
   deleteClaudeSession as deleteClaudeSessionService,
-  deleteGeminiSession as deleteGeminiSessionService,
-  deleteOpenCodeSession as deleteOpenCodeSessionService,
   connectWorkspace as connectWorkspaceService,
   forkClaudeSession as forkClaudeSessionService,
   forkClaudeSessionFromMessage as forkClaudeSessionFromMessageService,
@@ -48,17 +45,14 @@ import { parseGeminiHistoryMessages } from "../loaders/geminiHistoryParser";
 import { createOpenCodeHistoryLoader } from "../loaders/opencodeHistoryLoader";
 import { createSharedHistoryLoader } from "../loaders/sharedHistoryLoader";
 import {
-  deleteSharedSession as deleteSharedSessionService,
   listSharedSessions as listSharedSessionsService,
   loadSharedSession as loadSharedSessionService,
-  startSharedSession as startSharedSessionService,
 } from "../../shared-session/services/sharedSessions";
 import {
   normalizeSharedSessionSummaries,
   toSharedThreadSummary,
 } from "../../shared-session/runtime/sharedSessionSummaries";
-import { normalizeSharedSessionEngine } from "../../shared-session/utils/sharedSessionEngines";
-import { asString, asNumber } from "../utils/threadNormalize";
+import { asString } from "../utils/threadNormalize";
 import { saveThreadActivity } from "../utils/threadStorage";
 import {
   applyClaudeRewindWorkspaceRestore,
@@ -70,6 +64,13 @@ import {
   normalizeComparableWorkspacePath,
 } from "./useThreadActions.workspacePath";
 import { useAutomaticRuntimeRecovery, type AutomaticRuntimeRecoverySource } from "./useAutomaticRuntimeRecovery";
+import {
+  createArchiveClaudeThreadAction,
+  createArchiveThreadAction,
+  createDeleteThreadForWorkspaceAction,
+  createRenameThreadTitleMappingAction,
+  createStartSharedSessionForWorkspace,
+} from "./useThreadActions.sessionActions";
 import {
   collectRelatedThreadIdsFromSnapshot,
   extractThreadSizeBytes,
@@ -97,6 +98,7 @@ import {
   resolveThreadSourceMeta,
   restoreThreadParentLinksFromSnapshot,
   listReplacementThreadCandidates,
+  selectRecoveredNewThreadSummary,
   selectReplacementThreadByMessageHistory,
   selectReplacementThreadSummary,
   shouldIncludeWorkspaceThreadEntry,
@@ -195,7 +197,11 @@ export function useThreadActions({
   const geminiRefreshAttemptedRef = useRef<Record<string, boolean>>({});
   const threadListRequestSeqRef = useRef<Record<string, number>>({});
   const claudeRewindInFlightByThreadRef = useRef<Record<string, boolean>>({});
+  const previousThreadsByWorkspaceRef = useRef(threadsByWorkspace);
   const latestThreadsByWorkspaceRef = useRef(threadsByWorkspace);
+  if (latestThreadsByWorkspaceRef.current !== threadsByWorkspace) {
+    previousThreadsByWorkspaceRef.current = latestThreadsByWorkspaceRef.current;
+  }
   latestThreadsByWorkspaceRef.current = threadsByWorkspace;
   const listWorkspaceSessionsService = Object.prototype.hasOwnProperty.call(
     tauriServices,
@@ -426,52 +432,13 @@ export function useThreadActions({
   );
 
   const startSharedSessionForWorkspace = useCallback(
-    async (
-      workspaceId: string,
-      options?: { activate?: boolean; initialEngine?: "claude" | "codex" | "gemini" | "opencode" },
-    ) => {
-      const shouldActivate = options?.activate !== false;
-      const initialEngine = normalizeSharedSessionEngine(options?.initialEngine);
-      onDebug?.({
-        id: `${Date.now()}-client-shared-thread-start`,
-        timestamp: Date.now(),
-        source: "client",
-        label: "shared-session/start",
-        payload: { workspaceId, initialEngine },
-      });
-      const response = await startSharedSessionService(workspaceId, initialEngine);
-      const threadId = extractThreadId(response);
-      if (!threadId) {
-        return null;
-      }
-      const result =
-        response?.result && typeof response.result === "object"
-          ? (response.result as Record<string, unknown>)
-          : response;
-      const thread =
-        result?.thread && typeof result.thread === "object"
-          ? (result.thread as Record<string, unknown>)
-          : null;
-      const summary: ThreadSummary = {
-        id: threadId,
-        name: asString(thread?.name).trim() || "Shared Session",
-        updatedAt: asNumber(thread?.updatedAt ?? thread?.updated_at) || Date.now(),
-        engineSource: initialEngine,
-        threadKind: "shared",
-        selectedEngine: initialEngine,
-        nativeThreadIds: [],
-      };
-      dispatch({
-        type: "setThreads",
-        workspaceId,
-        threads: [summary, ...(threadsByWorkspace[workspaceId] ?? [])],
-      });
-      if (shouldActivate) {
-        dispatch({ type: "setActiveThreadId", workspaceId, threadId });
-      }
-      loadedThreadsRef.current[threadId] = true;
-      return threadId;
-    },
+    createStartSharedSessionForWorkspace({
+      dispatch,
+      extractThreadId,
+      loadedThreadsRef,
+      onDebug,
+      threadsByWorkspace,
+    }),
     [dispatch, extractThreadId, loadedThreadsRef, onDebug, threadsByWorkspace],
   );
 
@@ -693,13 +660,31 @@ export function useThreadActions({
             latestThreadsByWorkspaceRef.current[workspaceId] ??
             threadsByWorkspace[workspaceId] ??
             [];
+          const recoveryBaselineSummaries =
+            previousThreadsByWorkspaceRef.current[workspaceId] ??
+            threadsByWorkspace[workspaceId] ??
+            [];
           const staleSummary =
             existingSummaries.find((entry) => entry.id === threadId) ??
             (threadsByWorkspace[workspaceId] ?? []).find(
               (entry) => entry.id === threadId,
             );
           const engineSource = inferThreadEngineSource(threadId, staleSummary);
+          const fallbackStaleActivityAt =
+            (threadActivityRef.current[workspaceId] ?? {})[threadId] ?? 0;
+          const effectiveStaleSummary =
+            staleSummary ??
+            (fallbackStaleActivityAt > 0
+              ? {
+                  id: threadId,
+                  name: getCustomName(workspaceId, threadId) ?? "",
+                  updatedAt: fallbackStaleActivityAt,
+                  engineSource,
+                  threadKind: "native",
+                }
+              : undefined);
           let nextSummaries = existingSummaries;
+          let directRecoveredSummaryMatch: ThreadSummary | null = null;
           if (engineSource === "codex") {
             const workspacePath = normalizeComparableWorkspacePath(
               workspacePathsByIdRef.current[workspaceId] ?? "",
@@ -740,7 +725,7 @@ export function useThreadActions({
                   (result.nextCursor ?? result.next_cursor ?? null) as string | null;
                 const replacementCandidate = selectReplacementThreadSummary({
                   staleThreadId: threadId,
-                  staleSummary,
+                  staleSummary: effectiveStaleSummary,
                   summaries: mergeRecoveredThreadSummaries(
                     existingSummaries,
                     matchingThreads
@@ -798,6 +783,12 @@ export function useThreadActions({
                   } satisfies ThreadSummary;
                 })
                 .filter((entry) => entry.id);
+              directRecoveredSummaryMatch = selectRecoveredNewThreadSummary({
+                staleThreadId: threadId,
+                previousSummaries: recoveryBaselineSummaries,
+                summaries: refreshedCodexSummaries,
+                staleSummary: effectiveStaleSummary,
+              });
               nextSummaries = mergeRecoveredThreadSummaries(
                 existingSummaries,
                 refreshedCodexSummaries,
@@ -847,10 +838,22 @@ export function useThreadActions({
           const summaryMatch = selectReplacementThreadSummary({
             staleThreadId: threadId,
             summaries: nextSummaries,
-            staleSummary,
+            staleSummary: effectiveStaleSummary,
           });
           if (summaryMatch) {
             return { threadId: summaryMatch.id };
+          }
+          const newlyRecoveredMatch = selectRecoveredNewThreadSummary({
+            staleThreadId: threadId,
+            previousSummaries: recoveryBaselineSummaries,
+            summaries: nextSummaries,
+            staleSummary: effectiveStaleSummary,
+          });
+          if (newlyRecoveredMatch) {
+            return { threadId: newlyRecoveredMatch.id };
+          }
+          if (directRecoveredSummaryMatch) {
+            return { threadId: directRecoveredSummaryMatch.id };
           }
 
           const staleItems = itemsByThread[threadId] ?? [];
@@ -2878,99 +2881,29 @@ export function useThreadActions({
   );
 
   const archiveThread = useCallback(
-    async (workspaceId: string, threadId: string) => {
-      try {
-        await archiveThreadService(workspaceId, threadId);
-      } catch (error) {
-        onDebug?.({
-          id: `${Date.now()}-client-thread-archive-error`,
-          timestamp: Date.now(),
-          source: "error",
-          label: "thread/archive error",
-          payload: error instanceof Error ? error.message : String(error),
-        });
-        throw error;
-      }
-    },
+    createArchiveThreadAction({ onDebug }),
     [onDebug],
   );
 
   const archiveClaudeThread = useCallback(
-    async (workspaceId: string, threadId: string) => {
-      const sessionId = threadId.startsWith("claude:")
-        ? threadId.slice("claude:".length)
-        : threadId;
-      const workspacePath = workspacePathsByIdRef.current[workspaceId];
-      if (!workspacePath) {
-        throw new Error("workspace not connected");
-      }
-      try {
-        await deleteClaudeSessionService(workspacePath, sessionId);
-      } catch (error) {
-        onDebug?.({
-          id: `${Date.now()}-client-claude-archive-error`,
-          timestamp: Date.now(),
-          source: "error",
-          label: "claude/archive error",
-          payload: error instanceof Error ? error.message : String(error),
-        });
-        throw error;
-      }
-    },
+    createArchiveClaudeThreadAction({ onDebug, workspacePathsByIdRef }),
     [onDebug],
   );
 
   const deleteThreadForWorkspace = useCallback(
-    async (workspaceId: string, threadId: string) => {
-      if (threadId.includes("-pending-")) {
-        return;
-      }
-      const thread = (threadsByWorkspace[workspaceId] ?? []).find((entry) => entry.id === threadId);
-      if (thread?.threadKind === "shared" || threadId.startsWith("shared:")) {
-        await deleteSharedSessionService(workspaceId, threadId);
-        return;
-      }
-      if (threadId.startsWith("claude:")) {
-        await archiveClaudeThread(workspaceId, threadId);
-        return;
-      }
-      if (threadId.startsWith("opencode:")) {
-        const sessionId = threadId.slice("opencode:".length);
-        await deleteOpenCodeSessionService(workspaceId, sessionId);
-        return;
-      }
-      if (threadId.startsWith("gemini:")) {
-        const sessionId = threadId.slice("gemini:".length);
-        const workspacePath = workspacePathsByIdRef.current[workspaceId];
-        if (!workspacePath) {
-          throw new Error("workspace not connected");
-        }
-        await deleteGeminiSessionService(workspacePath, sessionId);
-        return;
-      }
-      await deleteCodexSessionService(workspaceId, threadId);
-    },
+    createDeleteThreadForWorkspaceAction({
+      archiveClaudeThread,
+      threadsByWorkspace,
+      workspacePathsByIdRef,
+    }),
     [archiveClaudeThread, threadsByWorkspace],
   );
 
   const renameThreadTitleMapping = useCallback(
-    async (workspaceId: string, oldThreadId: string, newThreadId: string) => {
-      try {
-        await renameThreadTitleKeyService(workspaceId, oldThreadId, newThreadId);
-        onRenameThreadTitleMapping?.(workspaceId, oldThreadId, newThreadId);
-      } catch {
-        const previousName = getCustomName(workspaceId, oldThreadId);
-        if (!previousName) {
-          return;
-        }
-        try {
-          await setThreadTitleService(workspaceId, newThreadId, previousName);
-          onRenameThreadTitleMapping?.(workspaceId, oldThreadId, newThreadId);
-        } catch {
-          // Best-effort persistence; ignore mapping failures.
-        }
-      }
-    },
+    createRenameThreadTitleMappingAction({
+      getCustomName,
+      onRenameThreadTitleMapping,
+    }),
     [getCustomName, onRenameThreadTitleMapping],
   );
 
