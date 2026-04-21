@@ -1079,3 +1079,41 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 87: merge latest feature-f-v0-4-6 updates
+
+**Date**: 2026-04-21
+**Task**: merge latest feature-f-v0-4-6 updates
+**Branch**: `codex/2026-04-01-local`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+任务目标：将 feature/f-v0.4.6 分支新增的增量提交合并到当前分支 codex/2026-04-01-local，并在必要时按新代码优先处理冲突。
+主要改动：执行 git merge --no-ff -X theirs feature/f-v0.4.6；本次合并直接成功，无需手工冲突修复；引入 stale thread binding recovery、runtime 与 thread actions 拆分、CHANGELOG 与 OpenSpec/Trellis 任务文档更新。
+涉及模块：src-tauri/src/runtime/*、src-tauri/src/codex/session_runtime.rs、src-tauri/src/backend/app_server.rs、src-tauri/src/storage.rs、src-tauri/src/types.rs、src/features/threads/hooks/*、src/features/threads/utils/threadStorage.ts、src/features/messages/components/RuntimeReconnectCard.tsx、src/features/settings/hooks/useAppSettings.ts、CHANGELOG.md、openspec/changes/fix-codex-stale-thread-binding-recovery/**。
+验证结果：git merge 成功生成提交 c646f345；npm run typecheck 通过；cargo test --manifest-path src-tauri/Cargo.toml 通过（714 + 478 + 1 测试全绿）。
+后续事项：如需同步远端，基于当前分支执行 git push；本次未发现需要额外 follow-up 修复的 merge 后遗症。
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `c646f345` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
