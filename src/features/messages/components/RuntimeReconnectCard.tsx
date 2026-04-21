@@ -162,6 +162,8 @@ export function RuntimeReconnectCard({
     ? t("messages.threadRecoveryThreadNotFound")
     : hint.reason === "recovery-quarantined"
       ? t("messages.runtimeReconnectQuarantined")
+    : hint.reason === "runtime-ended"
+      ? t("messages.runtimeReconnectEnded")
     : hint.reason === "broken-pipe"
       ? t("messages.runtimeReconnectBrokenPipe")
       : t("messages.runtimeReconnectWorkspaceNotConnected");

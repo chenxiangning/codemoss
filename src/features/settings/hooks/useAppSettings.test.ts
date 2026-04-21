@@ -43,6 +43,7 @@ describe("useAppSettings", () => {
         uiFontFamily: "",
         codeFontFamily: "  ",
         codeFontSize: 25,
+        experimentalUnifiedExecEnabled: true,
       } as AppSettings,
     );
 
@@ -58,6 +59,7 @@ describe("useAppSettings", () => {
     expect(result.current.settings.uiFontFamily).toMatch(/^Monaco,/);
     expect(result.current.settings.codeFontFamily).toMatch(/^Monaco,/);
     expect(result.current.settings.codeFontSize).toBe(16);
+    expect(result.current.settings.codexUnifiedExecPolicy).toBe("inherit");
     expect(result.current.settings.backendMode).toBe("remote");
     expect(result.current.settings.remoteBackendHost).toBe("example:1234");
   });

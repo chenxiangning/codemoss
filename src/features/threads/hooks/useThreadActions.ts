@@ -59,9 +59,7 @@ import {
 } from "../../shared-session/runtime/sharedSessionSummaries";
 import { normalizeSharedSessionEngine } from "../../shared-session/utils/sharedSessionEngines";
 import { asString, asNumber } from "../utils/threadNormalize";
-import {
-  saveThreadActivity,
-} from "../utils/threadStorage";
+import { saveThreadActivity } from "../utils/threadStorage";
 import {
   applyClaudeRewindWorkspaceRestore,
   findImpactedClaudeRewindItems,
@@ -71,12 +69,14 @@ import {
   collectKnownCodexThreadIds,
   normalizeComparableWorkspacePath,
 } from "./useThreadActions.workspacePath";
+import { useAutomaticRuntimeRecovery, type AutomaticRuntimeRecoverySource } from "./useAutomaticRuntimeRecovery";
 import {
   collectRelatedThreadIdsFromSnapshot,
   extractThreadSizeBytes,
   findFirstHistoryUserMessageId,
   findLastUserMessageIndexById,
   findLatestHistoryUserMessageId,
+  hasHealthyThreadSummaries,
   inferThreadEngineSource,
   isUserConversationMessage,
   isAskUserQuestionToolItem,
@@ -85,10 +85,12 @@ import {
   isThreadResumeNotFoundError,
   isWorkspaceNotConnectedError,
   mapWithConcurrency,
+  markThreadSummariesDegraded,
   mergeCodexCatalogSessionSummaries,
   mergeGeminiSessionSummaries,
   mergeRecoveredThreadSummaries,
   normalizeGeminiSessionSummaries,
+  normalizeThreadListPartialSource,
   normalizeComparableRewindText,
   resolveClaudeRewindMessageIdFromHistory,
   resolveRewindSupportedEngine,
@@ -102,18 +104,10 @@ import {
   withTimeout,
   type GeminiSessionSummary,
 } from "./useThreadActions.helpers";
-import {
-  buildPartialHistoryDiagnostic,
-  resolveThreadStabilityDiagnostic,
-} from "../utils/stabilityDiagnostics";
+import { buildPartialHistoryDiagnostic, resolveThreadStabilityDiagnostic } from "../utils/stabilityDiagnostics";
 import { loadSidebarSnapshot } from "../utils/sidebarSnapshot";
 import { buildThreadDebugCorrelation } from "../utils/threadDebugCorrelation";
-import {
-  normalizeRewindMode,
-  shouldRestoreWorkspaceFiles,
-  shouldRewindMessages,
-  type RewindMode,
-} from "../utils/rewindMode";
+import { normalizeRewindMode, shouldRestoreWorkspaceFiles, shouldRewindMessages, type RewindMode } from "../utils/rewindMode";
 import type { ThreadAction, ThreadState } from "./useThreadsReducer";
 
 type UseThreadActionsOptions = {
@@ -168,37 +162,6 @@ const CODEX_SESSION_CATALOG_FETCH_TIMEOUT_MS = SIDEBAR_THREAD_LIST_TIMEOUT_MS;
 const SESSION_CATALOG_PAGE_SIZE = 200;
 const SESSION_CATALOG_MAX_PAGES = 20;
 
-function normalizeThreadListPartialSource(value: unknown): string | null {
-  if (typeof value !== "string") {
-    return null;
-  }
-  const normalized = value.trim();
-  return normalized.length > 0 ? normalized : null;
-}
-
-function hasHealthyThreadSummaries(
-  threads: ThreadSummary[] | undefined,
-): threads is ThreadSummary[] {
-  return (
-    Array.isArray(threads)
-    && threads.length > 0
-    && !threads.some((thread) => thread.isDegraded)
-  );
-}
-
-function markThreadSummariesDegraded(
-  threads: ThreadSummary[],
-  partialSource: string,
-  degradedReason: string,
-): ThreadSummary[] {
-  return threads.map((thread) => ({
-    ...thread,
-    partialSource,
-    isDegraded: true,
-    degradedReason,
-  }));
-}
-
 type RewindFromMessageOptions = {
   activate?: boolean;
   mode?: RewindMode;
@@ -241,6 +204,10 @@ export function useThreadActions({
     ? tauriServices.listWorkspaceSessions
     : null;
   const canListWorkspaceSessions = typeof listWorkspaceSessionsService === "function";
+  const {
+    beginAutomaticRuntimeRecovery,
+    getAutomaticRuntimeRecoveryPartialSource,
+  } = useAutomaticRuntimeRecovery(connectWorkspaceService);
 
   const getLastGoodThreadSummaries = useCallback(
     (workspaceId: string): ThreadSummary[] => {
@@ -293,7 +260,7 @@ export function useThreadActions({
         return null;
       }
     },
-    [canListWorkspaceSessions],
+    [canListWorkspaceSessions, listWorkspaceSessionsService],
   );
 
   const applySessionArchiveState = useCallback(
@@ -1886,6 +1853,8 @@ export function useThreadActions({
       options?: {
         preserveState?: boolean;
         includeOpenCodeSessions?: boolean;
+        recoverySource?: AutomaticRuntimeRecoverySource;
+        allowRuntimeReconnect?: boolean;
       },
     ) => {
       // Store workspace path for Claude session loading
@@ -1896,6 +1865,8 @@ export function useThreadActions({
         threadListRequestSeqRef.current[workspace.id] === requestSeq;
       const preserveState = options?.preserveState ?? false;
       const includeOpenCodeSessions = options?.includeOpenCodeSessions ?? true;
+      const recoverySource = options?.recoverySource ?? "thread-list-live";
+      const allowRuntimeReconnect = options?.allowRuntimeReconnect ?? true;
       const workspacePath = normalizeComparableWorkspacePath(workspace.path);
       if (!preserveState) {
         dispatch({
@@ -1987,7 +1958,46 @@ export function useThreadActions({
               try {
                 return await listThreadsService(workspace.id, cursor, pageSize);
               } catch (error) {
-                if (!isWorkspaceNotConnectedError(error)) {
+                if (!isWorkspaceNotConnectedError(error) || !allowRuntimeReconnect) {
+                  throw error;
+                }
+                const recovery = beginAutomaticRuntimeRecovery(workspace.id, recoverySource);
+                if (recovery.kind === "waiter") {
+                  rememberPartialSource("guarded-recovery-waiter");
+                  onDebug?.({
+                    id: `${Date.now()}-client-workspace-recovery-waiter`,
+                    timestamp: Date.now(),
+                    source: "client",
+                    label: "workspace/recovery waiter before thread list",
+                    payload: buildThreadDebugCorrelation(
+                      {
+                        workspaceId: workspace.id,
+                        action: "thread-list-refresh",
+                        engine: "codex",
+                        recoveryState: "degraded",
+                      },
+                      { recoverySource },
+                    ),
+                  });
+                  throw error;
+                }
+                if (recovery.kind === "cooldown") {
+                  rememberPartialSource("automatic-recovery-cooldown");
+                  onDebug?.({
+                    id: `${Date.now()}-client-workspace-recovery-cooldown`,
+                    timestamp: Date.now(),
+                    source: "client",
+                    label: "workspace/recovery cooldown before thread list",
+                    payload: buildThreadDebugCorrelation(
+                      {
+                        workspaceId: workspace.id,
+                        action: "thread-list-refresh",
+                        engine: "codex",
+                        recoveryState: "degraded",
+                      },
+                      { recoverySource },
+                    ),
+                  });
                   throw error;
                 }
                 onDebug?.({
@@ -1995,14 +2005,25 @@ export function useThreadActions({
                   timestamp: Date.now(),
                   source: "client",
                   label: "workspace/reconnect before thread list",
-                  payload: { workspaceId: workspace.id },
+                  payload: buildThreadDebugCorrelation(
+                    {
+                      workspaceId: workspace.id,
+                      action: "thread-list-refresh",
+                      engine: "codex",
+                      recoveryState: "recovering",
+                    },
+                    { recoverySource },
+                  ),
                 });
-                await connectWorkspaceService(workspace.id);
+                await recovery.promise;
                 return await listThreadsService(workspace.id, cursor, pageSize);
               }
             })(), THREAD_LIST_LIVE_REQUEST_TIMEOUT_MS);
             if (liveResponse === null) {
-              rememberPartialSource("thread-list-live-timeout");
+              rememberPartialSource(
+                getAutomaticRuntimeRecoveryPartialSource(workspace.id)
+                ?? "thread-list-live-timeout",
+              );
               onDebug?.({
                 id: `${Date.now()}-client-thread-list-live-timeout`,
                 timestamp: Date.now(),
@@ -2671,11 +2692,14 @@ export function useThreadActions({
     },
     [
       applySessionArchiveState,
+      beginAutomaticRuntimeRecovery,
       canListWorkspaceSessions,
       dispatch,
       getCustomName,
+      getAutomaticRuntimeRecoveryPartialSource,
       getLastGoodThreadSummaries,
       loadArchivedSessionMap,
+      listWorkspaceSessionsService,
       onDebug,
       onThreadTitleMappingsLoaded,
       activeThreadIdByWorkspace,

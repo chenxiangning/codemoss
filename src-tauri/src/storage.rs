@@ -248,6 +248,7 @@ pub(crate) fn read_settings(path: &PathBuf) -> Result<AppSettings, String> {
     }
     let data = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
     let mut settings: AppSettings = serde_json::from_str(&data).map_err(|e| e.to_string())?;
+    settings.normalize_unified_exec_policy();
     settings.sanitize_runtime_pool_settings();
     Ok(settings)
 }

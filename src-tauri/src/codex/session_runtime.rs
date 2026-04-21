@@ -109,11 +109,21 @@ pub(crate) async fn ensure_codex_session(
                     .await;
                 return Ok(());
             }
+            state
+                .runtime_manager
+                .note_probe_failure(
+                    "codex",
+                    workspace_id,
+                    "ensure-runtime-ready",
+                    "stale existing session failed health probe",
+                )
+                .await;
             if let Err(quarantine_error) = state
                 .runtime_manager
                 .record_recovery_failure_with_backoff(
                     "codex",
                     workspace_id,
+                    "ensure-runtime-ready",
                     "stale existing session failed health probe",
                 )
                 .await
@@ -128,6 +138,8 @@ pub(crate) async fn ensure_codex_session(
             .begin_runtime_acquire_or_retry(
                 "codex",
                 workspace_id,
+                "ensure-runtime-ready",
+                true,
                 "timed out waiting for concurrent runtime acquire",
             )
             .await
@@ -189,7 +201,12 @@ pub(crate) async fn ensure_codex_session(
                     .await;
                 if let Err(quarantine_error) = state
                     .runtime_manager
-                    .record_recovery_failure_with_backoff("codex", workspace_id, error.as_str())
+                    .record_recovery_failure_with_backoff(
+                        "codex",
+                        workspace_id,
+                        "ensure-runtime-ready",
+                        error.as_str(),
+                    )
                     .await
                 {
                     return Err(quarantine_error);
@@ -221,7 +238,12 @@ pub(crate) async fn ensure_codex_session(
         if let Err(error) = &replace_result {
             if let Err(quarantine_error) = state
                 .runtime_manager
-                .record_recovery_failure_with_backoff("codex", workspace_id, error.as_str())
+                .record_recovery_failure_with_backoff(
+                    "codex",
+                    workspace_id,
+                    "ensure-runtime-ready",
+                    error.as_str(),
+                )
                 .await
             {
                 return Err(quarantine_error);
@@ -302,7 +324,7 @@ mod tests {
     #[tokio::test]
     async fn missing_workspace_after_acquire_releases_runtime_gate() {
         let runtime_root =
-            std::env::temp_dir().join(format!("mossx-session-runtime-test-{}", Uuid::new_v4()));
+            std::env::temp_dir().join(format!("ccgui-session-runtime-test-{}", Uuid::new_v4()));
         let manager = RuntimeManager::new(&runtime_root);
         let workspaces = Mutex::new(HashMap::<String, WorkspaceEntry>::new());
         let acquire_token = match manager.begin_runtime_acquire("codex", "ws-missing").await {

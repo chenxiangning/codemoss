@@ -191,6 +191,23 @@ describe("Messages runtime reconnect", () => {
     expect(screen.getByText("messages.runtimeReconnectQuarantined")).toBeTruthy();
   });
 
+  it("shows reconnect runtime recovery card for runtime ended diagnostics", () => {
+    renderMessages([
+      {
+        id: "assistant-runtime-ended",
+        kind: "message",
+        role: "assistant",
+        text:
+          "[RUNTIME_ENDED] Managed runtime ended before this conversation turn settled.",
+      },
+    ], {
+      threadId: "thread-runtime-ended",
+    });
+
+    expect(screen.getByRole("group", { name: "messages.runtimeReconnectTitle" })).toBeTruthy();
+    expect(screen.getByText("messages.runtimeReconnectEnded")).toBeTruthy();
+  });
+
   it("shows only the resend action for stale thread recovery cards", () => {
     const onRecoverThreadRuntimeAndResend = vi.fn().mockResolvedValue("thread-recovered");
 

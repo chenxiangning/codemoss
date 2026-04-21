@@ -139,7 +139,7 @@ const defaultSettings: AppSettings = {
   experimentalCollaborationModesEnabled: true,
   codexModeEnforcementEnabled: true,
   experimentalSteerEnabled: false,
-  experimentalUnifiedExecEnabled: false,
+  codexUnifiedExecPolicy: "inherit",
   chatCanvasUseNormalizedRealtime: false,
   chatCanvasUseUnifiedHistoryLoader: true,
   chatCanvasUsePresentationProfile: false,
@@ -165,7 +165,7 @@ const defaultSettings: AppSettings = {
   runtimeOrphanSweepOnLaunch: true,
   codexMaxHotRuntimes: 1,
   codexMaxWarmRuntimes: 1,
-  codexWarmTtlSeconds: 90,
+  codexWarmTtlSeconds: 7200,
 };
 
 function normalizeAppSettings(
@@ -200,6 +200,8 @@ function normalizeAppSettings(
   return {
     ...settings,
     experimentalCollabEnabled: false,
+    codexUnifiedExecPolicy: "inherit",
+    experimentalUnifiedExecEnabled: undefined,
     codexBin: settings.codexBin?.trim() ? settings.codexBin.trim() : null,
     codexArgs: settings.codexArgs?.trim() ? settings.codexArgs.trim() : null,
     webServicePort: normalizeWebServicePort(settings.webServicePort),
@@ -236,8 +238,8 @@ function normalizeAppSettings(
       ? Math.max(0, Math.min(16, Math.trunc(settings.codexMaxWarmRuntimes)))
       : 1,
     codexWarmTtlSeconds: Number.isFinite(settings.codexWarmTtlSeconds)
-      ? Math.max(15, Math.min(3600, Math.trunc(settings.codexWarmTtlSeconds)))
-      : 90,
+      ? Math.max(15, Math.min(14400, Math.trunc(settings.codexWarmTtlSeconds)))
+      : 7200,
     codeFontSize: clampCodeFontSize(settings.codeFontSize),
     notificationSoundId: ALLOWED_NOTIFICATION_SOUND_IDS.has(settings.notificationSoundId)
       ? settings.notificationSoundId

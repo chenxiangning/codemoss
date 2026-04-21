@@ -2216,7 +2216,7 @@ describe("useThreadActions", () => {
       await result.current.listThreadsForWorkspace(workspace);
     });
 
-    expect(connectWorkspace).toHaveBeenCalledWith("ws-1");
+    expect(connectWorkspace).toHaveBeenCalledWith("ws-1", "thread-list-live");
     expect(listThreads).toHaveBeenCalledTimes(2);
     expectSetThreadsDispatched(dispatch, "ws-1", [
       {
@@ -2224,6 +2224,69 @@ describe("useThreadActions", () => {
         name: "Recovered",
         updatedAt: 1000,
         engineSource: "codex",
+      },
+    ]);
+  });
+
+  it("collapses concurrent automatic recovery sources into one guarded reconnect", async () => {
+    let resolveRecovery = () => {};
+    const recoveryPromise = new Promise<void>((resolve) => {
+      resolveRecovery = resolve;
+    });
+    vi.mocked(connectWorkspace).mockImplementation(() => recoveryPromise);
+    vi.mocked(listThreads)
+      .mockRejectedValueOnce(new Error("workspace not connected"))
+      .mockRejectedValueOnce(new Error("workspace not connected"))
+      .mockResolvedValueOnce({
+        result: {
+          data: [],
+          nextCursor: null,
+        },
+      } as any);
+    vi.mocked(listClaudeSessions).mockResolvedValue([]);
+    vi.mocked(getOpenCodeSessionList).mockResolvedValue([]);
+
+    const { result, dispatch } = renderActions({
+      threadsByWorkspace: {
+        "ws-1": [
+          {
+            id: "cached-thread",
+            name: "Cached chat",
+            updatedAt: 900,
+            engineSource: "codex",
+          },
+        ],
+      },
+    });
+
+    const leaderRefresh = result.current.listThreadsForWorkspace(workspace, {
+      recoverySource: "thread-list-live",
+    });
+    const waiterRefresh = result.current.listThreadsForWorkspace(workspace, {
+      preserveState: true,
+      recoverySource: "focus-refresh",
+    });
+
+    await waitFor(() => {
+      expect(connectWorkspace).toHaveBeenCalledTimes(1);
+    });
+
+    resolveRecovery();
+
+    await act(async () => {
+      await Promise.all([leaderRefresh, waiterRefresh]);
+    });
+
+    expect(connectWorkspace).toHaveBeenCalledWith("ws-1", "thread-list-live");
+    expectSetThreadsDispatched(dispatch, "ws-1", [
+      {
+        id: "cached-thread",
+        name: "Cached chat",
+        updatedAt: 900,
+        engineSource: "codex",
+        partialSource: "guarded-recovery-waiter",
+        isDegraded: true,
+        degradedReason: "last-good-fallback",
       },
     ]);
   });
@@ -2247,7 +2310,7 @@ describe("useThreadActions", () => {
       await result.current.listThreadsForWorkspace(workspace);
     });
 
-    expect(connectWorkspace).toHaveBeenCalledWith("ws-1");
+    expect(connectWorkspace).toHaveBeenCalledWith("ws-1", "thread-list-live");
     expect(listThreads).toHaveBeenCalledTimes(2);
     expectSetThreadsDispatched(dispatch, "ws-1", [
       {
@@ -2305,7 +2368,7 @@ describe("useThreadActions", () => {
       await result.current.listThreadsForWorkspace(workspace);
     });
 
-    expect(connectWorkspace).toHaveBeenCalledWith("ws-1");
+    expect(connectWorkspace).toHaveBeenCalledWith("ws-1", "thread-list-live");
     expect(listWorkspaceSessions).toHaveBeenCalledWith("ws-1", {
       query: { status: "active", engine: "codex" },
       limit: 200,

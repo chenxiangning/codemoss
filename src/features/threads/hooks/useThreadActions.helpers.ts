@@ -33,6 +33,37 @@ export type CodexCatalogSessionSummary = {
   sourceLabel?: string | null;
 };
 
+export function normalizeThreadListPartialSource(value: unknown): string | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const normalized = value.trim();
+  return normalized.length > 0 ? normalized : null;
+}
+
+export function hasHealthyThreadSummaries(
+  threads: ThreadSummary[] | undefined,
+): threads is ThreadSummary[] {
+  return (
+    Array.isArray(threads) &&
+    threads.length > 0 &&
+    !threads.some((thread) => thread.isDegraded)
+  );
+}
+
+export function markThreadSummariesDegraded(
+  threads: ThreadSummary[],
+  partialSource: string,
+  degradedReason: string,
+): ThreadSummary[] {
+  return threads.map((thread) => ({
+    ...thread,
+    isDegraded: true,
+    partialSource,
+    degradedReason,
+  }));
+}
+
 export function isWorkspaceNotConnectedError(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error);
   return message.toLowerCase().includes("workspace not connected");
