@@ -965,3 +965,41 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 85: merge feature-f-v0-4-6 into current branch
+
+**Date**: 2026-04-21
+**Task**: merge feature-f-v0-4-6 into current branch
+**Branch**: `codex/2026-04-01-local`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+任务目标：将本地分支 feature/f-v0.4.6 合并到当前分支 codex/2026-04-01-local，并在冲突场景下以新代码为主完成融合。
+主要改动：先清理 worktree 中残留的未完成 merge 元数据，重新执行 git merge --no-ff -X theirs feature/f-v0.4.6；合并后补充提交 fix(i18n): 去重运行时状态文案键，修复英文 locale 中 runtime 状态 key 重复导致的 typecheck 失败。
+涉及模块：src-tauri runtime/backend 相关改动、src/features/app 与 threads hooks、src/features/settings RuntimePoolSection、src/services/tauri.ts、src/i18n/locales/en.part1.ts、src/i18n/locales/zh.part1.ts，以及相关 tests / openspec / trellis workspace 记录文件。
+验证结果：git merge 成功生成提交 a89ade02；npm run typecheck 通过；cargo test --manifest-path src-tauri/Cargo.toml 通过（含 711 + 475 + 1 测试）。
+后续事项：如需推远端，可基于当前分支继续做业务验证；本次按“新代码优先”处理，额外人工修复点仅为 en locale 的重复 key。
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `b0d4d69c` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
