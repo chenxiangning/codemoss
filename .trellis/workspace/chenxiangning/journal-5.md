@@ -1570,3 +1570,58 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 165: 合并 feature v0.4.8 新代码
+
+**Date**: 2026-04-24
+**Task**: 合并 feature v0.4.8 新代码
+**Branch**: `codex/2026-04-01-local`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+任务目标：完成本地分支 codex/2026-04-01-local 与 origin/feature/v-0.4.8 的合并，按用户要求以新代码为主处理冲突，并完成提交前验证。
+
+主要改动：
+- 解决 3 个 merge conflict 文件：.trellis/workspace/chenxiangning/index.md、.trellis/workspace/chenxiangning/journal-3.md、src/i18n/locales/en.part1.ts。
+- 对冲突文件采用 feature/v-0.4.8 传入版本，保留最新 Trellis journal/index 与新英文 i18n 文案。
+- 对 staged 变更中 git diff --check 报出的文档空白问题做机械清理，避免把 trailing whitespace / 多余 EOF blank line 带进 merge commit。
+- 生成 merge commit ad7b4486：chore(release): 合并 feature v0.4.8 新代码。
+
+涉及模块：
+- Git merge / release integration
+- Trellis workspace journal/index
+- src/i18n/locales/en.part1.ts
+- feature/v-0.4.8 带入的 frontend/backend/OpenSpec/Trellis/CI/asset 变更
+
+验证结果：
+- git diff --name-only --diff-filter=U 无输出。
+- git diff --check --cached 通过。
+- npm run typecheck 通过。
+- git commit 成功生成 ad7b4486。
+
+后续事项：
+- 完成 Trellis session record 后推送 codex/2026-04-01-local 到 origin。
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `ad7b4486` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
