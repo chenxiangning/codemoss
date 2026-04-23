@@ -9,6 +9,10 @@ pub(crate) fn invoke_handler(
         crate::settings::restore_codex_unified_exec_official_default,
         crate::settings::set_codex_unified_exec_official_override,
         crate::settings::reload_codex_runtime_config,
+        crate::computer_use::get_computer_use_bridge_status,
+        crate::computer_use::run_computer_use_activation_probe,
+        crate::computer_use::run_computer_use_host_contract_diagnostics,
+        crate::computer_use::broker::run_computer_use_codex_broker,
         crate::runtime::get_runtime_pool_snapshot,
         crate::runtime::mutate_runtime_pool,
         crate::runtime::ensure_runtime_ready,
@@ -83,6 +87,7 @@ pub(crate) fn invoke_handler(
         // Codex
         crate::codex::get_config_model,
         crate::codex::codex_doctor,
+        crate::codex::claude_doctor,
         crate::codex::start_thread,
         crate::codex::send_user_message,
         crate::codex::turn_interrupt,

@@ -21,6 +21,7 @@ import {
   remarkFileLinks,
   toFileLink,
 } from "../../../utils/remarkFileLinks";
+import { normalizeOutsideMarkdownCode } from "../../../utils/markdownCodeRegions";
 import { highlightLine } from "../../../utils/syntax";
 import { detectCodexLeadMarker, type CodexLeadMarkerConfig } from "../constants/codexLeadMarkers";
 
@@ -37,6 +38,7 @@ type MarkdownProps = {
   codexLeadMarkerConfig?: CodexLeadMarkerConfig;
   onOpenFileLink?: (path: string) => void;
   onOpenFileLinkMenu?: (event: React.MouseEvent, path: string) => void;
+  onRenderedValueChange?: (value: string) => void;
 };
 
 type CodeBlockProps = {
@@ -88,7 +90,8 @@ function areMarkdownPropsEqual(prev: MarkdownProps, next: MarkdownProps) {
     prev.preserveFormatting === next.preserveFormatting &&
     prev.codexLeadMarkerConfig === next.codexLeadMarkerConfig &&
     prev.onOpenFileLink === next.onOpenFileLink &&
-    prev.onOpenFileLinkMenu === next.onOpenFileLinkMenu
+    prev.onOpenFileLinkMenu === next.onOpenFileLinkMenu &&
+    prev.onRenderedValueChange === next.onRenderedValueChange
   );
 }
 
@@ -233,7 +236,6 @@ const FRAGMENTED_LINE_MIN_RUN = 6;
 const FRAGMENTED_LINE_MAX_LENGTH = 10;
 const FRAGMENTED_LINE_MIN_TOTAL_CHARS = 12;
 const PARAGRAPH_BREAK_SPLIT_REGEX = /\r?\n[^\S\r\n]*\r?\n+/;
-const CODE_FENCE_LINE_REGEX = /^\s*(```|~~~)/;
 const MARKDOWN_IMAGE_FILE_EXTENSION_REGEX =
   /\.(png|jpe?g|gif|webp|bmp|tiff?|svg|ico|avif)(?:[?#].*)?$/i;
 
@@ -893,51 +895,6 @@ function normalizeFragmentedLineBreaks(value: string) {
     return normalizedLines.join("\n");
   });
   return changed ? normalizedBlocks.join("\n\n") : value;
-}
-
-function normalizeOutsideCodeFences(
-  value: string,
-  normalizer: (segment: string) => string,
-) {
-  if (!value.includes("```") && !value.includes("~~~")) {
-    return normalizer(value);
-  }
-  const lines = value.split(/\r?\n/);
-  const segments: string[] = [];
-  let inFence = false;
-  let buffer: string[] = [];
-  let changed = false;
-
-  const flushBuffer = () => {
-    if (buffer.length === 0) {
-      return;
-    }
-    const segment = buffer.join("\n");
-    if (inFence) {
-      segments.push(segment);
-    } else {
-      const normalized = normalizer(segment);
-      if (normalized !== segment) {
-        changed = true;
-      }
-      segments.push(normalized);
-    }
-    buffer = [];
-  };
-
-  for (const line of lines) {
-    if (CODE_FENCE_LINE_REGEX.test(line)) {
-      flushBuffer();
-      segments.push(line);
-      inFence = !inFence;
-      continue;
-    }
-    buffer.push(line);
-  }
-  flushBuffer();
-
-  const normalized = segments.join("\n");
-  return changed ? normalized : value;
 }
 
 function escapeHtmlAttribute(value: string) {
@@ -1650,6 +1607,7 @@ export const Markdown = memo(function Markdown({
   codexLeadMarkerConfig,
   onOpenFileLink,
   onOpenFileLinkMenu,
+  onRenderedValueChange,
 }: MarkdownProps) {
   // Throttle rapid value changes during streaming to reduce expensive
   // ReactMarkdown re-parses that block the main thread and cause input lag.
@@ -1666,11 +1624,22 @@ export const Markdown = memo(function Markdown({
   const throttleTimerRef = useRef<number>(0);
   const mountedRef = useRef(true);
   const latestValueRef = useRef(value);
+  const previousThrottleMsRef = useRef(Math.max(0, streamingThrottleMs));
   const resolvedThrottleMs = Math.max(0, streamingThrottleMs);
   latestValueRef.current = value;
 
   useEffect(() => {
     const now = Date.now();
+    if (previousThrottleMsRef.current !== resolvedThrottleMs) {
+      previousThrottleMsRef.current = resolvedThrottleMs;
+      if (throttleTimerRef.current) {
+        window.clearTimeout(throttleTimerRef.current);
+        throttleTimerRef.current = 0;
+      }
+      setThrottledValue(value);
+      lastUpdateRef.current = now;
+      return;
+    }
     const elapsed = now - lastUpdateRef.current;
     if (resolvedThrottleMs === 0) {
       setThrottledValue(value);
@@ -1714,6 +1683,10 @@ export const Markdown = memo(function Markdown({
 
   const renderValue = throttledValue;
 
+  useEffect(() => {
+    onRenderedValueChange?.(renderValue);
+  }, [onRenderedValueChange, renderValue]);
+
   // Memoize heavy text normalization to avoid re-running on every render
   const content = useMemo(() => {
     if (codeBlock) {
@@ -1742,7 +1715,7 @@ export const Markdown = memo(function Markdown({
           ),
         ),
       );
-    return normalizeOutsideCodeFences(renderValue, normalizeDisplayText);
+    return normalizeOutsideMarkdownCode(renderValue, normalizeDisplayText);
   }, [renderValue, codeBlock, preserveFormatting]);
 
   // Stable callback refs for file link handlers

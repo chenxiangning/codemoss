@@ -61,7 +61,7 @@ Codex external config reload 与 settings 恢复流程 MUST 消费 official exte
 - **THEN** 系统 MUST 忽略这些 private/historical flags
 - **AND** MUST NOT 用这些值覆盖桌面端本地 settings
 
-#### Scenario: inherit mode continues to consume official unified_exec
+#### Scenario: reload continues to consume official unified_exec
 
 - **GIVEN** `~/.codex/config.toml` 中存在 official `unified_exec`
 - **WHEN** 系统执行 external config reload

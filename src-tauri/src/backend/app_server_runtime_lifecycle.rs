@@ -42,6 +42,24 @@ impl WorkspaceSession {
         self.manual_shutdown_requested.store(true, Ordering::SeqCst);
     }
 
+    pub(crate) fn has_manual_shutdown_requested(&self) -> bool {
+        self.manual_shutdown_requested.load(Ordering::SeqCst)
+    }
+
+    pub(crate) fn has_runtime_end_emitted(&self) -> bool {
+        self.runtime_end_emitted.load(Ordering::SeqCst)
+    }
+
+    pub(crate) fn stale_reuse_reason(&self) -> Option<&'static str> {
+        if self.has_manual_shutdown_requested() {
+            Some("manual-shutdown-requested")
+        } else if self.has_runtime_end_emitted() {
+            Some("runtime-end-emitted")
+        } else {
+            None
+        }
+    }
+
     async fn collect_runtime_end_context(&self) -> RuntimeEndContext {
         let active_turns = self.active_turns.lock().await.clone();
         let timed_out_requests = self.timed_out_requests.lock().await.clone();
@@ -262,6 +280,7 @@ async fn process_workspace_stdout_value<E: EventSink>(
         .clear_resume_pending_watch(
             extract_thread_id(&value).as_deref(),
             extract_turn_id(&value).as_deref(),
+            extract_event_method(&value),
         )
         .await;
     if let Some(runtime_manager) = session.runtime_manager() {
@@ -272,7 +291,6 @@ async fn process_workspace_stdout_value<E: EventSink>(
 
     let synthetic_plan_event = session.maybe_emit_plan_blocker_user_input(&value).await;
     let synthetic_plan_apply_event = session.maybe_emit_plan_apply_user_input(&value).await;
-    let auto_compaction_trigger: Option<AutoCompactionTrigger> = None;
     if session
         .should_suppress_after_synthetic_plan_block(&value)
         .await
@@ -289,39 +307,6 @@ async fn process_workspace_stdout_value<E: EventSink>(
     let thread_id = extract_thread_id(&value);
 
     dispatch_workspace_stdout_value(session, event_sink, workspace_id, value).await;
-
-    if let Some(trigger) = auto_compaction_trigger {
-        let compacting_event =
-            build_thread_compacting_event(&trigger.thread_id, trigger.usage_percent);
-        emit_workspace_event(session, event_sink, workspace_id, compacting_event).await;
-
-        let session_for_compaction = Arc::clone(session);
-        let event_sink_for_compaction = event_sink.clone();
-        let workspace_id_for_compaction = workspace_id.to_string();
-        tokio::spawn(async move {
-            if let Err(error) = session_for_compaction
-                .request_thread_auto_compaction(&trigger.thread_id)
-                .await
-            {
-                log::warn!(
-                    "[codex_auto_compaction] request failed thread_id={} error={}",
-                    trigger.thread_id,
-                    error
-                );
-                session_for_compaction
-                    .mark_auto_compaction_failed(&trigger.thread_id)
-                    .await;
-                let failed_event = build_thread_compaction_failed_event(&trigger.thread_id, &error);
-                emit_workspace_event(
-                    &session_for_compaction,
-                    &event_sink_for_compaction,
-                    &workspace_id_for_compaction,
-                    failed_event,
-                )
-                .await;
-            }
-        });
-    }
 
     if let Some(extra_event) = synthetic_plan_event {
         emit_workspace_event(session, event_sink, workspace_id, extra_event).await;

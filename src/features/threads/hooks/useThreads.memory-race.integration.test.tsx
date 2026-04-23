@@ -3,7 +3,7 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { WorkspaceInfo } from "../../../types";
 import type { useAppServerEvents } from "../../app/hooks/useAppServerEvents";
-import { projectMemoryCreate } from "../../../services/tauri";
+import { projectMemoryCreate, resumeThread } from "../../../services/tauri";
 import { useThreads } from "./useThreads";
 
 type AppServerHandlers = Parameters<typeof useAppServerEvents>[0];
@@ -67,6 +67,7 @@ vi.mock("./useThreadMessaging", () => ({
 vi.mock("../../../services/tauri", () => ({
   respondToServerRequest: vi.fn(),
   respondToUserInputRequest: vi.fn(),
+  connectWorkspace: vi.fn().mockResolvedValue(undefined),
   listThreadTitles: vi.fn(),
   setThreadTitle: vi.fn(),
   renameThreadTitleKey: vi.fn(),
@@ -452,6 +453,77 @@ describe("useThreads memory race integration", () => {
       });
     } finally {
       nowSpy.mockRestore();
+    }
+  });
+
+  it("reconciles codex realtime output from history once after turn completion", async () => {
+    vi.useFakeTimers();
+    try {
+      vi.mocked(resumeThread).mockResolvedValue({
+        result: {
+          thread: {
+            id: "codex-thread-1",
+            preview: "Clean history",
+            updated_at: 2000,
+            turns: [
+              {
+                items: [
+                  {
+                    type: "userMessage",
+                    id: "user-1",
+                    content: [{ type: "text", text: "拉起一下 Computer use" }],
+                  },
+                  {
+                    type: "agentMessage",
+                    id: "assistant-history-1",
+                    text: "Computer Use 目前没拉起来，请检查 macOS 权限。",
+                  },
+                ],
+              },
+            ],
+          },
+        },
+      });
+
+      renderHook(() =>
+        useThreads({
+          activeWorkspace: workspace,
+          onWorkspaceConnected: vi.fn(),
+        }),
+      );
+
+      act(() => {
+        handlers?.onTurnStarted?.("ws-1", "codex-thread-1", "turn-1");
+      });
+
+      act(() => {
+        handlers?.onAgentMessageCompleted?.({
+          workspaceId: "ws-1",
+          threadId: "codex-thread-1",
+          itemId: "assistant-live-1",
+          text: "Computer Use 目前没拉起来。Computer Use 目前没拉起来。",
+        });
+      });
+      expect(vi.mocked(resumeThread)).not.toHaveBeenCalled();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(4_500);
+      });
+      expect(vi.mocked(resumeThread)).not.toHaveBeenCalled();
+
+      act(() => {
+        handlers?.onTurnCompleted?.("ws-1", "codex-thread-1", "turn-1");
+        handlers?.onTurnCompleted?.("ws-1", "codex-thread-1", "turn-1");
+      });
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(4_500);
+      });
+
+      expect(vi.mocked(resumeThread)).toHaveBeenCalledWith("ws-1", "codex-thread-1");
+      expect(vi.mocked(resumeThread)).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
     }
   });
 });

@@ -10,6 +10,8 @@ mod codex_args;
 mod codex_collaboration_policy;
 #[path = "../codex/config.rs"]
 mod codex_config;
+#[path = "../codex/doctor.rs"]
+mod codex_doctor;
 #[path = "../codex/home.rs"]
 mod codex_home;
 #[path = "../codex/rewind.rs"]
@@ -26,8 +28,11 @@ mod file_io;
 mod file_ops;
 #[path = "../files/policy.rs"]
 mod file_policy;
+#[allow(dead_code)]
 #[path = "../git_utils.rs"]
 mod git_utils;
+#[path = "cc_gui_daemon/rpc_params.rs"]
+mod rpc_params;
 // `local_usage.rs` is shared with the desktop Tauri app and references
 // `crate::state::AppState` in command wrappers. The daemon only reuses the
 // workspace-backed filesystem helpers, so a minimal stub keeps the shared
@@ -43,6 +48,7 @@ mod state {
     use crate::types::{AppSettings, WorkspaceEntry};
     use std::path::PathBuf;
 
+    #[allow(dead_code)]
     pub(crate) struct AppState {
         pub(crate) workspaces: Mutex<HashMap<String, WorkspaceEntry>>,
         pub(crate) sessions: Mutex<HashMap<String, Arc<WorkspaceSession>>>,
@@ -52,14 +58,18 @@ mod state {
         pub(crate) engine_manager: EngineManager,
     }
 }
+#[allow(dead_code)]
 #[path = "../local_usage.rs"]
 mod local_usage;
 #[path = "../rules.rs"]
 mod rules;
+#[allow(dead_code)]
 #[path = "../runtime/mod.rs"]
 mod runtime;
+#[allow(dead_code)]
 #[path = "../session_management.rs"]
 mod session_management;
+#[allow(dead_code)]
 #[path = "../shared/mod.rs"]
 mod shared;
 #[path = "../storage.rs"]
@@ -79,6 +89,9 @@ mod workspace_settings;
 // Provide feature-style module paths for shared cores when compiled in the daemon.
 mod codex {
     pub(crate) type WorkspaceSession = crate::backend::app_server::WorkspaceSession;
+    pub(crate) use crate::codex_doctor::{
+        run_claude_doctor_with_settings, run_codex_doctor_with_settings,
+    };
     pub(crate) async fn ensure_codex_session(
         _workspace_id: &str,
         _state: &crate::state::AppState,
@@ -130,6 +143,11 @@ use std::sync::{Arc, Mutex as StdMutex};
 use std::time::{Duration, Instant};
 
 use ignore::WalkBuilder;
+use rpc_params::{
+    parse_bool, parse_optional_bool, parse_optional_i64, parse_optional_port,
+    parse_optional_string, parse_optional_string_array, parse_optional_u32, parse_optional_u64,
+    parse_optional_usize, parse_optional_value, parse_string, parse_string_array,
+};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::process::Command;
@@ -1371,137 +1389,6 @@ fn parse_auth_token(params: &Value) -> Option<String> {
     }
 }
 
-fn parse_string(value: &Value, key: &str) -> Result<String, String> {
-    match value {
-        Value::Object(map) => map
-            .get(key)
-            .and_then(|value| value.as_str())
-            .map(|value| value.to_string())
-            .ok_or_else(|| format!("missing or invalid `{key}`")),
-        _ => Err(format!("missing `{key}`")),
-    }
-}
-
-fn parse_bool(value: &Value, key: &str) -> Result<bool, String> {
-    match value {
-        Value::Object(map) => map
-            .get(key)
-            .and_then(|value| value.as_bool())
-            .ok_or_else(|| format!("missing or invalid `{key}`")),
-        _ => Err(format!("missing `{key}`")),
-    }
-}
-
-fn parse_optional_string(value: &Value, key: &str) -> Option<String> {
-    match value {
-        Value::Object(map) => map
-            .get(key)
-            .and_then(|value| value.as_str())
-            .map(|v| v.to_string()),
-        _ => None,
-    }
-}
-
-fn parse_optional_u32(value: &Value, key: &str) -> Option<u32> {
-    match value {
-        Value::Object(map) => map.get(key).and_then(|value| value.as_u64()).and_then(|v| {
-            if v > u32::MAX as u64 {
-                None
-            } else {
-                Some(v as u32)
-            }
-        }),
-        _ => None,
-    }
-}
-
-fn parse_optional_u64(value: &Value, key: &str) -> Option<u64> {
-    match value {
-        Value::Object(map) => map.get(key).and_then(|value| value.as_u64()),
-        _ => None,
-    }
-}
-
-fn parse_optional_usize(value: &Value, key: &str) -> Option<usize> {
-    match value {
-        Value::Object(map) => map
-            .get(key)
-            .and_then(|value| value.as_u64())
-            .and_then(|raw| {
-                if raw > usize::MAX as u64 {
-                    None
-                } else {
-                    Some(raw as usize)
-                }
-            }),
-        _ => None,
-    }
-}
-
-fn parse_optional_i64(value: &Value, key: &str) -> Option<i64> {
-    match value {
-        Value::Object(map) => map.get(key).and_then(|entry| match entry {
-            Value::Number(number) => {
-                if let Some(signed) = number.as_i64() {
-                    return Some(signed);
-                }
-                number.as_u64().and_then(|unsigned| {
-                    if unsigned > i64::MAX as u64 {
-                        None
-                    } else {
-                        Some(unsigned as i64)
-                    }
-                })
-            }
-            _ => None,
-        }),
-        _ => None,
-    }
-}
-
-fn parse_optional_port(value: &Value, key: &str) -> Result<Option<u16>, String> {
-    let Some(raw) = parse_optional_u32(value, key) else {
-        return Ok(None);
-    };
-    if raw > u16::MAX as u32 {
-        return Err(format!("invalid `{key}`"));
-    }
-    Ok(Some(raw as u16))
-}
-
-fn parse_optional_bool(value: &Value, key: &str) -> Option<bool> {
-    match value {
-        Value::Object(map) => map.get(key).and_then(Value::as_bool),
-        _ => None,
-    }
-}
-
-fn parse_optional_string_array(value: &Value, key: &str) -> Option<Vec<String>> {
-    match value {
-        Value::Object(map) => map
-            .get(key)
-            .and_then(|value| value.as_array())
-            .map(|items| {
-                items
-                    .iter()
-                    .filter_map(|item| item.as_str().map(|value| value.to_string()))
-                    .collect::<Vec<_>>()
-            }),
-        _ => None,
-    }
-}
-
-fn parse_string_array(value: &Value, key: &str) -> Result<Vec<String>, String> {
-    parse_optional_string_array(value, key).ok_or_else(|| format!("missing `{key}`"))
-}
-
-fn parse_optional_value(value: &Value, key: &str) -> Option<Value> {
-    match value {
-        Value::Object(map) => map.get(key).cloned(),
-        _ => None,
-    }
-}
-
 fn normalize_custom_spec_root(value: Option<String>) -> Option<String> {
     value.and_then(|entry| {
         let trimmed = entry.trim();
@@ -2319,6 +2206,15 @@ async fn handle_rpc_request(
             let settings = state.get_app_settings().await;
             serde_json::to_value(settings).map_err(|err| err.to_string())
         }
+        "codex_doctor" => {
+            let codex_bin = parse_optional_string(&params, "codexBin");
+            let codex_args = parse_optional_string(&params, "codexArgs");
+            state.codex_doctor(codex_bin, codex_args).await
+        }
+        "claude_doctor" => {
+            let claude_bin = parse_optional_string(&params, "claudeBin");
+            state.claude_doctor(claude_bin).await
+        }
         "update_app_settings" => {
             let settings_value = match params {
                 Value::Object(map) => map.get("settings").cloned().unwrap_or(Value::Null),
@@ -2480,6 +2376,11 @@ async fn handle_rpc_request(
             let session_id = parse_string(&params, "sessionId")?;
             state.load_claude_session(workspace_path, session_id).await
         }
+        "fork_claude_session" => {
+            let workspace_path = parse_string(&params, "workspacePath")?;
+            let session_id = parse_string(&params, "sessionId")?;
+            state.fork_claude_session(workspace_path, session_id).await
+        }
         "fork_claude_session_from_message" => {
             let workspace_path = parse_string(&params, "workspacePath")?;
             let session_id = parse_string(&params, "sessionId")?;
@@ -2487,6 +2388,14 @@ async fn handle_rpc_request(
             state
                 .fork_claude_session_from_message(workspace_path, session_id, message_id)
                 .await
+        }
+        "delete_claude_session" => {
+            let workspace_path = parse_string(&params, "workspacePath")?;
+            let session_id = parse_string(&params, "sessionId")?;
+            state
+                .delete_claude_session(workspace_path, session_id)
+                .await?;
+            Ok(json!({ "ok": true }))
         }
         "list_gemini_sessions" => {
             let workspace_path = parse_string(&params, "workspacePath")?;
@@ -2590,6 +2499,14 @@ async fn handle_rpc_request(
             let workspace_path = parse_string(&params, "workspacePath")?;
             let session_id = parse_string(&params, "sessionId")?;
             state.load_gemini_session(workspace_path, session_id).await
+        }
+        "delete_gemini_session" => {
+            let workspace_path = parse_string(&params, "workspacePath")?;
+            let session_id = parse_string(&params, "sessionId")?;
+            state
+                .delete_gemini_session(workspace_path, session_id)
+                .await?;
+            Ok(json!({ "ok": true }))
         }
         "opencode_session_list" => {
             let workspace_id = parse_string(&params, "workspaceId")?;
@@ -2909,6 +2826,9 @@ async fn handle_client(
 }
 
 fn main() {
+    if let Err(err) = fix_path_env::fix() {
+        eprintln!("Failed to sync PATH from shell: {err}");
+    }
     let config = match parse_args() {
         Ok(config) => config,
         Err(err) => {

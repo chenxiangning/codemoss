@@ -1,4 +1,9 @@
 import type { ConversationItem } from "../../../types";
+import {
+  collapseNearDuplicateParagraphRepeats,
+  mergeNearDuplicateParagraphVariants,
+} from "../../../utils/assistantDuplicateParagraphs";
+import { getMarkdownInlineCodeInfo } from "../../../utils/markdownCodeRegions";
 
 function isUserMessageItem(
   item: ConversationItem | undefined,
@@ -631,61 +636,85 @@ function stripLeadingEchoFromSnapshot(existing: string, candidate: string) {
   return current;
 }
 
+function collapseMergedAssistantRepeats(value: string) {
+  if (!value.includes("\n") || value.includes("```") || value.includes("~~~")) {
+    return value;
+  }
+  return collapseNearDuplicateParagraphRepeats(value);
+}
+
 export function mergeAgentMessageText(existing: string, delta: string) {
-  const normalizedDelta = stripLeadingEchoFromSnapshot(
+  const snapshotCandidate = stripLeadingEchoFromSnapshot(
     existing,
     sanitizeTinyLeadingBreakDelta(existing, delta),
   );
+  const normalizedDelta =
+    existing && snapshotCandidate.startsWith(existing)
+      ? collapseNearDuplicateParagraphRepeats(snapshotCandidate)
+      : snapshotCandidate;
   if (!normalizedDelta) {
     return existing;
   }
   if (!existing) {
-    return normalizedDelta;
+    return collapseMergedAssistantRepeats(normalizedDelta);
   }
   const compactExisting = compactComparableStreamingText(existing);
   const compactDelta = compactComparableStreamingText(normalizedDelta);
+  const existingInlineCode = getMarkdownInlineCodeInfo(existing);
+  const deltaInlineCode = getMarkdownInlineCodeInfo(normalizedDelta);
+  const hasInlineCodeMergeRisk =
+    existingInlineCode.hasInlineCode ||
+    deltaInlineCode.hasInlineCode ||
+    existingInlineCode.hasUnclosedInlineCode ||
+    deltaInlineCode.hasUnclosedInlineCode;
   if (compactExisting && compactDelta) {
     if (compactDelta === compactExisting) {
-      return chooseReadableText(existing, normalizedDelta);
+      return collapseMergedAssistantRepeats(chooseReadableText(existing, normalizedDelta));
     }
     if (compactDelta.startsWith(compactExisting) && normalizedDelta.length >= existing.length) {
-      return normalizedDelta;
+      return collapseMergedAssistantRepeats(normalizedDelta);
     }
     if (compactExisting.startsWith(compactDelta) && existing.length >= normalizedDelta.length) {
-      return existing;
+      return collapseMergedAssistantRepeats(existing);
     }
-    if (compactDelta.includes(compactExisting) && normalizedDelta.length >= existing.length * 0.8) {
+    if (
+      !hasInlineCodeMergeRisk &&
+      compactDelta.includes(compactExisting) &&
+      normalizedDelta.length >= existing.length * 0.8
+    ) {
       const firstIndex = compactDelta.indexOf(compactExisting);
       const secondIndex = compactDelta.indexOf(
         compactExisting,
         firstIndex + Math.max(1, Math.floor(compactExisting.length / 2)),
       );
       if (firstIndex > 0 || secondIndex >= 0) {
-        return chooseReadableText(existing, normalizedDelta);
+        return collapseMergedAssistantRepeats(chooseReadableText(existing, normalizedDelta));
       }
-      return normalizedDelta;
+      return collapseMergedAssistantRepeats(normalizedDelta);
     }
-    const minComparableLength = Math.min(compactDelta.length, compactExisting.length);
-    if (minComparableLength >= 24) {
-      const sharedComparablePrefix = sharedPrefixLength(compactExisting, compactDelta);
-      if (sharedComparablePrefix >= Math.floor(minComparableLength * 0.72)) {
-        return chooseReadableText(existing, normalizedDelta);
+    if (!hasInlineCodeMergeRisk) {
+      const minComparableLength = Math.min(compactDelta.length, compactExisting.length);
+      if (minComparableLength >= 24) {
+        const sharedComparablePrefix = sharedPrefixLength(compactExisting, compactDelta);
+        if (sharedComparablePrefix >= Math.floor(minComparableLength * 0.72)) {
+          return collapseMergedAssistantRepeats(chooseReadableText(existing, normalizedDelta));
+        }
+        const existingTailAnchor = tailAnchor(compactExisting);
+        if (
+          sharedComparablePrefix >= 12 &&
+          existingTailAnchor.length >= 8 &&
+          compactDelta.includes(existingTailAnchor)
+        ) {
+          return collapseMergedAssistantRepeats(chooseReadableText(existing, normalizedDelta));
+        }
       }
-      const existingTailAnchor = tailAnchor(compactExisting);
-      if (
-        sharedComparablePrefix >= 12 &&
-        existingTailAnchor.length >= 8 &&
-        compactDelta.includes(existingTailAnchor)
-      ) {
-        return chooseReadableText(existing, normalizedDelta);
+      const shiftedSnapshot = mergeShiftedSnapshot(existing, normalizedDelta);
+      if (shiftedSnapshot) {
+        return collapseMergedAssistantRepeats(chooseReadableText(existing, shiftedSnapshot));
       }
-    }
-    const shiftedSnapshot = mergeShiftedSnapshot(existing, normalizedDelta);
-    if (shiftedSnapshot) {
-      return chooseReadableText(existing, shiftedSnapshot);
     }
   }
-  return mergeStreamingText(existing, normalizedDelta);
+  return collapseMergedAssistantRepeats(mergeStreamingText(existing, normalizedDelta));
 }
 
 function mergeReasoningText(existing: string, delta: string) {
@@ -815,6 +844,14 @@ export function mergeCompletedAgentText(existing: string, completed: string) {
     return chooseReadableText(existing, normalizedCompleted);
   }
 
+  const nearDuplicateParagraphMerge = mergeNearDuplicateParagraphVariants(
+    existing,
+    normalizedCompleted,
+  );
+  if (nearDuplicateParagraphMerge) {
+    return nearDuplicateParagraphMerge;
+  }
+
   const comparableExisting = compactComparableStreamingText(existing);
   const comparableCompleted = compactComparableStreamingText(normalizedCompleted);
   if (comparableExisting && comparableCompleted) {
@@ -860,6 +897,11 @@ export function mergeCompletedAgentText(existing: string, completed: string) {
 
 function normalizeCompletedAssistantText(value: string) {
   const cleanedValue = stripClaudeApprovalResumeArtifacts(value);
+  const collapsedRawParagraphBlocks =
+    collapseNearDuplicateParagraphRepeats(cleanedValue);
+  if (collapsedRawParagraphBlocks !== cleanedValue) {
+    return collapsedRawParagraphBlocks;
+  }
   const normalizedMessage = normalizeItem({
     id: "__completed-assistant-normalization__",
     kind: "message",
@@ -869,7 +911,7 @@ function normalizeCompletedAssistantText(value: string) {
   const normalizedByItem =
     normalizedMessage.kind === "message" ? normalizedMessage.text : cleanedValue;
   if (normalizedByItem && normalizedByItem !== value) {
-    return normalizedByItem;
+    return collapseNearDuplicateParagraphRepeats(normalizedByItem);
   }
 
   const trimmed = cleanedValue.trim();
@@ -886,7 +928,7 @@ function normalizeCompletedAssistantText(value: string) {
     }
   }
 
-  return cleanedValue;
+  return collapseNearDuplicateParagraphRepeats(cleanedValue);
 }
 
 export function addSummaryBoundary(existing: string) {

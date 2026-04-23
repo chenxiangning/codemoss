@@ -56,6 +56,8 @@ const MEMORY_DEBUG_FLAG_KEY = "ccgui:memory-debug";
 const THREAD_ERROR_DUPLICATE_WINDOW_MS = 8_000;
 const THREAD_SWITCH_RESUME_DELAY_MS = 24;
 const THREAD_SWITCH_LOADED_REFRESH_MS = 20_000;
+const CODEX_REALTIME_HISTORY_RECONCILE_DELAY_MS = 1_200;
+const CODEX_REALTIME_HISTORY_RECONCILE_RETRY_DELAY_MS = 2_800;
 const THREAD_ITEM_CACHE_MAX = 12;
 const THREAD_ITEM_CACHE_TRIM_WATERMARK = 2;
 
@@ -564,6 +566,10 @@ export function useThreads({
   const pendingAssistantCompletionRef = useRef<Record<string, PendingAssistantCompletion>>({});
   const recentThreadErrorsRef = useRef<Record<string, { message: string; at: number }>>({});
   const handledClaudeExitPlanToolIdsRef = useRef<Set<string>>(new Set());
+  const codexRealtimeReconciledTurnByThreadRef = useRef<Record<string, string>>({});
+  const codexRealtimeReconcileTimerByThreadRef = useRef<
+    Record<string, ReturnType<typeof setTimeout> | null>
+  >({});
   const sharedSessionSyncTimerByThreadRef = useRef<
     Record<string, ReturnType<typeof setTimeout> | null>
   >({});
@@ -686,6 +692,13 @@ export function useThreads({
         }
       });
       sharedSessionSyncTimerByThreadRef.current = {};
+      Object.values(codexRealtimeReconcileTimerByThreadRef.current).forEach((timer) => {
+        if (timer) {
+          clearTimeout(timer);
+        }
+      });
+      codexRealtimeReconcileTimerByThreadRef.current = {};
+      codexRealtimeReconciledTurnByThreadRef.current = {};
     };
   }, []);
   const { applyCollabThreadLinks, applyCollabThreadLinksFromThread, updateThreadParent } =
@@ -943,6 +956,122 @@ export function useThreads({
       return rawRefreshThread(workspaceId, canonicalThreadId);
     },
     [dispatch, rawRefreshThread, resolveCanonicalThreadId],
+  );
+
+  const shouldReconcileCodexRealtimeThread = useCallback(
+    (workspaceId: string, threadId: string) => {
+      const canonicalThreadId = resolveCanonicalThreadId(threadId);
+      if (
+        canonicalThreadId.startsWith("claude:") ||
+        canonicalThreadId.startsWith("claude-pending-") ||
+        canonicalThreadId.startsWith("gemini:") ||
+        canonicalThreadId.startsWith("gemini-pending-") ||
+        canonicalThreadId.startsWith("opencode:") ||
+        canonicalThreadId.startsWith("opencode-pending-") ||
+        canonicalThreadId.startsWith("shared:")
+      ) {
+        return false;
+      }
+      const thread = (state.threadsByWorkspace[workspaceId] ?? []).find(
+        (entry) => entry.id === canonicalThreadId,
+      );
+      if (thread?.threadKind === "shared") {
+        return false;
+      }
+      return !thread?.engineSource || thread.engineSource === "codex";
+    },
+    [resolveCanonicalThreadId, state.threadsByWorkspace],
+  );
+
+  const scheduleCodexRealtimeHistoryReconcile = useCallback(
+    (workspaceId: string, threadId: string, turnId: string, attempt = 0) => {
+      const canonicalThreadId = resolveCanonicalThreadId(threadId);
+      if (!shouldReconcileCodexRealtimeThread(workspaceId, canonicalThreadId)) {
+        return;
+      }
+      const reconciliationThreadKey = `${workspaceId}:${canonicalThreadId}`;
+      const reconciliationTurnId = turnId.trim() || "__unknown_turn__";
+      if (
+        attempt === 0 &&
+        codexRealtimeReconciledTurnByThreadRef.current[reconciliationThreadKey] ===
+        reconciliationTurnId
+      ) {
+        return;
+      }
+      codexRealtimeReconciledTurnByThreadRef.current[reconciliationThreadKey] =
+        reconciliationTurnId;
+      const previousTimer =
+        codexRealtimeReconcileTimerByThreadRef.current[reconciliationThreadKey];
+      if (previousTimer) {
+        clearTimeout(previousTimer);
+      }
+      const delay =
+        attempt > 0
+          ? CODEX_REALTIME_HISTORY_RECONCILE_RETRY_DELAY_MS
+          : CODEX_REALTIME_HISTORY_RECONCILE_DELAY_MS;
+      codexRealtimeReconcileTimerByThreadRef.current[reconciliationThreadKey] =
+        setTimeout(() => {
+          delete codexRealtimeReconcileTimerByThreadRef.current[reconciliationThreadKey];
+          const status = threadStatusByIdRef.current[canonicalThreadId];
+          if (status?.isProcessing && attempt === 0) {
+            scheduleCodexRealtimeHistoryReconcile(
+              workspaceId,
+              canonicalThreadId,
+              reconciliationTurnId,
+              attempt + 1,
+            );
+            return;
+          }
+          onDebug?.({
+            id: `${Date.now()}-codex-realtime-history-reconcile`,
+            timestamp: Date.now(),
+            source: "client",
+            label: "codex/realtime history reconcile",
+            payload: {
+              workspaceId,
+              threadId: canonicalThreadId,
+              turnId: reconciliationTurnId,
+              attempt,
+            },
+          });
+          void refreshThread(workspaceId, canonicalThreadId).catch((error) => {
+            onDebug?.({
+              id: `${Date.now()}-codex-realtime-history-reconcile-error`,
+              timestamp: Date.now(),
+              source: "error",
+              label: "codex/realtime history reconcile error",
+              payload: {
+                workspaceId,
+                threadId: canonicalThreadId,
+                turnId: reconciliationTurnId,
+                attempt,
+                error: error instanceof Error ? error.message : String(error),
+              },
+            });
+          });
+        }, delay);
+    },
+    [
+      onDebug,
+      refreshThread,
+      resolveCanonicalThreadId,
+      shouldReconcileCodexRealtimeThread,
+    ],
+  );
+
+  const handleCodexTurnCompletedForHistoryReconcile = useCallback(
+    (payload: {
+      workspaceId: string;
+      threadId: string;
+      turnId: string;
+    }) => {
+      scheduleCodexRealtimeHistoryReconcile(
+        payload.workspaceId,
+        payload.threadId,
+        payload.turnId,
+      );
+    },
+    [scheduleCodexRealtimeHistoryReconcile],
   );
 
   const startThread = useCallback(async () => {
@@ -1574,6 +1703,7 @@ export function useThreads({
   );
 
   const {
+    handleFusionStalled,
     interruptTurn,
     sendUserMessage,
     sendUserMessageToThread,
@@ -2084,6 +2214,7 @@ export function useThreads({
       state.activeTurnIdByThread[threadId] ?? null,
     renamePendingMemoryCaptureKey,
     onAgentMessageCompletedExternal: handleAgentMessageCompletedForMemory,
+    onTurnCompletedExternal: handleCodexTurnCompletedForHistoryReconcile,
     onCollaborationModeResolved: onCollaborationModeResolved
       ? (event) => {
           onCollaborationModeResolved({
@@ -2161,6 +2292,7 @@ export function useThreads({
     loadOlderThreadsForWorkspace,
     sendUserMessage,
     sendUserMessageToThread,
+    handleFusionStalled,
     startFork,
     startReview,
     startResume,

@@ -2,6 +2,110 @@
 
 ---
 
+##### **2026年4月23日（v0.4.8）**
+
+中文：
+
+✨ Features
+- 新增 baseline-aware 大文件治理策略，按路径域为热点文件匹配差异化阈值、watchlist 与 fail gate，并把历史技术债基线纳入 CI，对“新增超限”和“旧债继续膨胀”分别做明确拦截
+- 新增 heavy test noise sentry，为重型 Vitest 回归引入独立噪音门禁，自动识别 repo-owned `act(...)` / stdout / stderr 泄漏，并将环境自带 warning 单独归类，减少 CI 误报
+- 推进大文件热点的兼容性拆分治理，围绕 Opencode command、Git branch command、runtime session lifecycle、thread messaging 与 Tauri facade 建立更细粒度模块边界，为后续能力扩展预留更稳的演进基础
+
+🔧 Improvements
+- 拆分 app shell orchestration、thread action / session runtime、assistant 文本归一化与 thread messaging 工具链，降低消息主链路的大文件复杂度与回归面
+- 拆分 settings、composer rewind modal 与 git history branch compare 样式分片，减轻大 CSS 文件维护压力，后续样式调整不再集中挤在单一热点文件
+- 收敛 app shell、threads、git history、file tree、layout、worktree prompt、Search、Project Memory、Spec Hub 与 OpenCode 面板等多处 exhaustive-deps 告警，补齐 dependency array 与 cleanup-safe 模式，减少 stale closure 和重复副作用风险
+- 稳定 ChatInputBox ButtonArea 与 session radar feed 的 sentinel 刷新路径，收敛 model storage 快照与订阅刷新时机，让输入区、模型配置和会话雷达的状态同步更稳
+- 清理 tauri dev、`cc_gui_daemon` 与 Rust test-target 告警面，收口启动、桥接与测试期的无效 warning，提升本地开发与 backend 回归输出可读性
+- 刷新 large-file baseline、near-threshold watchlist 与治理 playbook，并同步归档本轮 OpenSpec / Trellis 变更，让治理规则、实现拆分和文档状态保持一致
+- 对齐回归门禁和线程测试契约，保证大规模拆分之后，已有线程集成测试和门禁脚本仍能准确覆盖关键链路
+
+🐛 Fixes
+- 修复 TaskCreateModal 在打开和提交阶段的 inline completion 清理与依赖处理，避免创建任务弹窗出现超时、焦点延迟或历史建议残留
+- 修复 git-history 尾部 cleanup timer 的清理方式，避免 create-PR 进度清理依赖陈旧 ref 快照而留下状态尾巴
+- 修复 heavy-test-noise 对环境告警的统计偏差，在外层 npm 输出未被完整捕获时，仍能根据环境变量正确归类 `electron_mirror` 等环境噪音，避免误伤 CI
+- 修复多处 repo-owned heavy test 噪音，包括 `AskUserQuestionDialog` 倒计时、SpecHub / Sidebar / Detached File Explorer / GitStatus / Markdown math / runtime notice 等测试边界泄漏，降低回归日志污染
+- 修复 threads、app shell 与 git history 热点 hook 的依赖漂移，减少长链路交互中的重复监听、状态错位和无效重渲染
+- 修复 Tauri service facade、runtime lifecycle 与 Git branch 命令拆分后的兼容性边界，确保现有调用入口与行为契约在重构后继续可用
+
+English:
+
+✨ Features
+- Add a baseline-aware large-file governance policy that assigns domain-specific thresholds, watchlists, and fail gates by path, while bringing legacy debt baselines into CI so new oversize files and growing legacy debt are blocked differently and explicitly
+- Add a dedicated heavy test noise sentry for heavy Vitest regressions, automatically detecting repo-owned `act(...)`, stdout, and stderr leaks while classifying environment-owned warnings separately to reduce CI false positives
+- Advance compatibility-preserving modularization for the largest hotspots by carving out finer-grained boundaries around the Opencode command surface, Git branch commands, runtime session lifecycle, thread messaging, and the Tauri facade
+
+🔧 Improvements
+- Split app-shell orchestration, thread action/session runtime handling, assistant text normalization, and thread messaging tooling to reduce large-file complexity and shrink the regression surface along the main conversation path
+- Split settings, composer rewind-modal, and git-history branch-compare style shards so future styling work is no longer concentrated in a few oversized CSS hotspots
+- Remediate exhaustive-deps hotspots across app shell, threads, git history, file tree, layout, worktree prompt, Search, Project Memory, Spec Hub, and OpenCode surfaces by completing dependency arrays and cleanup-safe patterns, reducing stale closures and repeated side effects
+- Stabilize the sentinel refresh path for ChatInputBox ButtonArea and the session radar feed so model-storage snapshots, subscriptions, and UI refresh timing stay in sync more reliably
+- Clean up warning surfaces across `tauri dev`, `cc_gui_daemon`, and Rust test targets, reducing startup, bridge, and test-phase warning noise and making local/backend regression output easier to read
+- Refresh the large-file baseline, near-threshold watchlist, and governance playbook, while archiving the related OpenSpec and Trellis changes so governance rules, extraction work, and documentation remain aligned
+- Align regression gates with thread test contracts so the existing thread integration coverage and repo guardrails remain trustworthy after the larger extraction batches
+
+🐛 Fixes
+- Fix inline-completion cleanup and effect dependencies in TaskCreateModal during open and submit flows so the create-task modal no longer drifts into timeout-like delays, focus lag, or stale suggestion state
+- Fix git-history tail cleanup timer handling so create-PR progress cleanup no longer depends on stale ref snapshots that can leave trailing state behind
+- Fix heavy-test-noise environment-warning accounting so `electron_mirror`-style environment noise is still classified correctly even when the outer npm warning output is not fully captured, preventing false CI failures
+- Fix multiple repo-owned heavy-test noise sources, including countdown leakage in `AskUserQuestionDialog` and warning leakage around SpecHub, Sidebar, Detached File Explorer, GitStatus, markdown math, and runtime notice coverage
+- Fix dependency drift in hotspot hooks across threads, app shell, and git history to reduce repeated listeners, state skew, and unnecessary re-renders in long-running interaction paths
+- Fix compatibility edges after splitting the Tauri service facade, runtime lifecycle, and Git branch command modules so existing call sites and behavior contracts continue to work after the refactor
+
+---
+
+##### **2026年4月22日（v0.4.7）**
+
+中文：
+
+✨ Features
+- 新增全局 runtime notice dock，为 Codex / Claude 会话中的恢复、重试与运行时异常提供统一提示区，减少异常状态分散在局部卡片里的割裂感
+- 增强会话创建失败后的恢复承接动作，在建会话、恢复线程或 runtime 异常时补充 toast 级快速重试入口，帮助用户直接续接当前任务
+- 收口 queued follow-up fusion 的续跑体验，在检查点恢复、排队发送与融合承接之间补齐状态连续性，让长链路任务在 stalled 后更容易从原位置继续推进
+
+🔧 Improvements
+- 拆分消息时间线渲染层并瘦身主消息组件，收敛 `Messages` 组件职责，降低消息区持续叠加功能后的维护复杂度和回归面
+- 优化实时吸顶用户问题与历史吸顶标题的对齐关系，统一 live sticky bubble 与历史区域头部的视觉基线，减少长会话中的吸顶错位噪音
+- 补强运行时提示框启动链路与状态语义，补充本地状态迁移、输入历史恢复、界面资源加载与 shell 挂载提示，并在首次 runtime `ready` 时回写状态闭环，让客户端启动阶段更可见
+- 优化运行时提示框的多引擎与跨平台边界处理，根据实际 engine 展示 runtime 文案，并补齐 Windows 反斜杠路径与空工作区元数据场景下的稳定 fallback
+- 优化实时对话中 inline code 的流式渲染与去重作用域，减少 markdown 结构在流式阶段被误拆分、误归并或重复重绘的概率
+- 同步归档本轮已完成的 OpenSpec 变更并刷新相关 proposal / spec，使运行时稳定性、融合续跑与消息区行为说明继续与实现保持一致
+
+🐛 Fixes
+- 修复展开历史消息后的视口跳动问题，避免查看折叠历史时因列表重算而丢失阅读位置
+- 修复会话恢复提示与重试链路中的边界问题，避免恢复失败后 toast 缺失、动作不可达或提示状态与真实 runtime 状态不一致
+- 修复 checkpoint fusion stalled continuity 问题，避免融合续跑在卡住或恢复后出现后续消息未承接、状态悬空或任务推进中断
+- 修复 Windows 下 Claude 对话幕布闪烁风险，并进一步加固 desktop render-safe mode，降低跨平台渲染空白、闪屏和流式渲染不稳定问题
+- 修复消息吸顶与 runtime 恢复重试之间的联动边界，避免实时提示、吸顶气泡与恢复动作同时出现时发生状态错位或视觉重叠
+- 修复运行时提示框在头部状态已回到“空闲”时，最小化图标仍显示叹号的语义错位，避免历史 notice 残留导致外部提示状态与当前状态不一致
+- 修复 assistant 最终消息在长任务或结构化回答中偶发整段重复输出的问题，收口近似重复段落、单换行拼接的 markdown section 与 completed 阶段的双份渲染
+
+English:
+
+✨ Features
+- Add a global runtime notice dock so Codex and Claude conversations expose recovery, retry, and runtime anomalies through one shared surface instead of scattering critical state across local cards
+- Strengthen recovery handoff after session-creation failures by surfacing toast-level retry actions for session bootstrap, thread recovery, and runtime failures, making it easier to continue the current task directly
+- Tighten queued follow-up fusion continuity across checkpoint recovery, queued sends, and fusion handoff so long-running tasks can resume from stalled states with less drift and fewer broken continuations
+
+🔧 Improvements
+- Split the message-timeline rendering layer and slim down the main message component, reducing `Messages` complexity and lowering the regression surface as more message-area capabilities accumulate
+- Align live sticky user-question bubbles with the history sticky header so the visual baseline stays consistent during long conversations and sticky elements compete less for attention
+- Strengthen the runtime notice dock bootstrap flow and status semantics by adding migration, input-history, interface-resource, and shell-mount notices, while writing back the first runtime `ready` state so startup progress reads as a complete lifecycle
+- Improve engine-aware and cross-platform behavior in the runtime notice dock so runtime copy reflects the actual engine, and Windows backslash paths plus empty workspace metadata still resolve to stable labels
+- Improve inline-code streaming rendering and de-duplication scope in live conversations so markdown structures are less likely to be split incorrectly, merged too aggressively, or rendered twice mid-stream
+- Sync and archive the completed OpenSpec changes from this release, keeping runtime-stability, fusion-continuity, and message-behavior documentation aligned with the implementation
+
+🐛 Fixes
+- Fix viewport jumps after expanding conversation history so users can inspect collapsed history without losing their reading position during list recomputation
+- Fix boundary issues in session-recovery notices and retry flows so failed recovery attempts still expose reachable toast actions with runtime state that matches what actually happened
+- Fix stalled checkpoint fusion continuity so follow-up messages, continuation state, and long-running task progress no longer get stranded after recovery
+- Fix Claude conversation-surface flicker on Windows and further harden desktop render-safe mode to reduce blanking, flashing, and unstable streaming presentation across platforms
+- Fix coordination gaps between sticky message state and runtime recovery retries so live notices, sticky bubbles, and retry actions no longer drift out of sync or visually overlap
+- Fix the runtime notice dock minimized icon staying on an exclamation state after the header had already returned to `Idle`, preventing stale notice history from misrepresenting the current runtime state
+- Fix duplicated assistant final messages in long-running or structured responses by collapsing near-duplicate paragraphs, single-newline markdown sections, and repeated completed-stage payloads into one readable result
+
+---
+
 ##### **2026年4月21日（v0.4.6）**
 
 中文：

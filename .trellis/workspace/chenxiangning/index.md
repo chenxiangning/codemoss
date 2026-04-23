@@ -7,9 +7,9 @@
 ## Current Status
 
 <!-- @@@auto:current-status -->
-- **Active File**: `journal-3.md`
-- **Total Sessions**: 87
-- **Last Active**: 2026-04-21
+- **Active File**: `journal-5.md`
+- **Total Sessions**: 164
+- **Last Active**: 2026-04-24
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,9 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-3.md` | ~1119 | Active |
+| `journal-5.md` | ~1572 | Active |
+| `journal-4.md` | ~1975 | Archived |
+| `journal-3.md` | ~1972 | Archived |
 | `journal-2.md` | ~1960 | Archived |
 | `journal-1.md` | ~1990 | Archived |
 <!-- @@@/auto:active-documents -->
@@ -31,7 +33,84 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
-| 87 | 2026-04-21 | merge latest feature-f-v0-4-6 updates | `c646f345` | `codex/2026-04-01-local` |
+| 164 | 2026-04-24 | 归档 Codex 实时画布去重提案 | `dc88b4b2875f2bb81d0a74464deef6caff7bac24` | `feature/v-0.4.8` |
+| 163 | 2026-04-23 | 收紧 Codex 实时消息兜底边界 | `0eb05c319da360074bcba4c383a9c59992b4a94e` | `feature/v-0.4.8` |
+| 162 | 2026-04-23 | 补充 macOS Apple Events 权限声明 | `74ef35c7` | `feature/v-0.4.8` |
+| 161 | 2026-04-23 | 修复 Computer Use broker 非 Git workspace 拦截 | `235d04e4` | `feature/v-0.4.8` |
+| 160 | 2026-04-23 | 让 Computer Use broker 走 Codex CLI exec | `d17522c2` | `feature/v-0.4.8` |
+| 159 | 2026-04-23 | 接入 Codex CLI Computer Use broker | `8ba83421` | `feature/v-0.4.8` |
+| 158 | 2026-04-23 | 接入 Codex CLI Computer Use 插件缓存链路 | `5ecae8d6` | `feature/v-0.4.8` |
+| 157 | 2026-04-23 | Computer Use parent contract 阻塞状态产品化 | `c3b1e9be` | `feature/v-0.4.8` |
+| 156 | 2026-04-23 | 归档 Linux AppImage Wayland 启动修复提案 | `e684bfe7` | `feature/v-0.4.8` |
+| 155 | 2026-04-23 | Computer Use 官方 parent handoff 只读发现 | `e34808e9` | `feature/v-0.4.8` |
+| 154 | 2026-04-23 | Computer Use 宿主契约诊断链路 | `599eb605` | `feature/v-0.4.8` |
+| 153 | 2026-04-23 | 归档 Computer Use 阶段2并创建宿主契约调查提案 | `039d8b2d` | `feature/v-0.4.8` |
+| 152 | 2026-04-23 | 落地 Computer Use helper bridge 显式验证通道 | `62bfbff2` | `feature/v-0.4.8` |
+| 151 | 2026-04-23 | Propose Claude Windows streaming visibility fix | `a13e95724be38fa755bec57053f2d2f7763ecd20` | `feature/v-0.4.8` |
+| 150 | 2026-04-23 | 修复 Linux AppImage Wayland 启动兼容守卫 | `a77dd3d8` | `feature/v-0.4.8` |
+| 149 | 2026-04-23 | 强化中文提交与记录规则 | `d3c725f3` | `feature/v-0.4.8` |
+| 148 | 2026-04-23 | Recalibrate OpenSpec snapshot and strict validation | `e9e98dae` | `feature/v-0.4.8` |
+| 147 | 2026-04-23 | 归档 computer-use bridge 与 Claude doctor OpenSpec 变更 | `46cb7f75` | `feature/v-0.4.8` |
+| 146 | 2026-04-23 | 补充 v0.4.8 CHANGELOG 发布说明 | `52ea36e6adecdbbad62f94ce99d248aae0c41f1b` | `feature/v-0.4.8` |
+| 145 | 2026-04-23 | 修正 heavy-test-noise 环境告警统计 | `48ac9bee` | `feature/v-0.4.8` |
+| 144 | 2026-04-23 | 增加 heavy test 噪音 CI 门禁 | `bf288c25` | `feature/v-0.4.8` |
+| 143 | 2026-04-23 | 清理 heavy 回归测试噪音并归档变更 | `4b08630546a7088e7075d17a85f42d1558171c66` | `feature/v-0.4.8` |
+| 142 | 2026-04-23 | 清理 Rust test-target 告警面 | `30b3680f` | `feature/v-0.4.8` |
+| 141 | 2026-04-23 | 清理 cc_gui_daemon 告警面并归档 OpenSpec 变更 | `472e9e7492369f7055b70748dd5628ef353a5de4` | `feature/v-0.4.8` |
+| 140 | 2026-04-23 | clean-tauri-dev-warning-surface | `43c63fbabc8d0b67bcbbdabc2541448b059cee81` | `feature/v-0.4.8` |
+| 139 | 2026-04-23 | 修复 TaskCreateModal 超时并归档尾部告警变更 | `58e82d82` | `feature/v-0.4.8` |
+| 138 | 2026-04-23 | 收敛 exhaustive-deps 尾部告警 | `66661059` | `feature/v-0.4.8` |
+| 137 | 2026-04-23 | 归档 threads exhaustive-deps OpenSpec 变更 | `15deacbd` | `feature/v-0.4.8` |
+| 136 | 2026-04-23 | 收敛 threads exhaustive-deps 告警 | `01ae0e63` | `feature/v-0.4.8` |
+| 135 | 2026-04-23 | 归档 app-shell-parts exhaustive-deps OpenSpec 变更 | `dbd8fd50` | `feature/v-0.4.8` |
+| 134 | 2026-04-23 | 收敛 app-shell-parts exhaustive-deps 告警 | `d1278a25` | `feature/v-0.4.8` |
+| 133 | 2026-04-23 | 归档 git-history exhaustive-deps OpenSpec 变更 | `c404d71e` | `feature/v-0.4.8` |
+| 132 | 2026-04-23 | 收敛 git-history 第三批 exhaustive-deps 告警 | `33a0472c` | `feature/v-0.4.8` |
+| 131 | 2026-04-23 | 收敛 git-history 第二批 exhaustive-deps 告警 | `3479d297` | `feature/v-0.4.8` |
+| 130 | 2026-04-23 | 收敛 git-history 首批 exhaustive-deps 告警 | `d135ad6e` | `feature/v-0.4.8` |
+| 129 | 2026-04-23 | 归档 exhaustive-deps 治理 OpenSpec 变更 | `c9496469` | `feature/v-0.4.8` |
+| 128 | 2026-04-23 | 稳定 sentinel 刷新路径 | `def54253` | `feature/v-0.4.8` |
+| 127 | 2026-04-23 | 收敛首批 exhaustive-deps 告警 | `0c51f80c` | `feature/v-0.4.8` |
+| 126 | 2026-04-23 | 归档大文件治理 OpenSpec 变更 | `39c78985` | `feature/v-0.4.8` |
+| 125 | 2026-04-23 | 回归门禁修复与线程测试契约对齐 | `a975548c` | `feature/v-0.4.8` |
+| 124 | 2026-04-23 | Split engine OpenCode command surface | `2384c5a6` | `feature/v-0.4.8` |
+| 123 | 2026-04-23 | Split git branch commands and refresh baseline | `332497ee` | `feature/v-0.4.8` |
+| 122 | 2026-04-23 | Split runtime session lifecycle submodule | `8556b2c4` | `feature/v-0.4.8` |
+| 121 | 2026-04-23 | Split settings, composer, and git history style shards | `4c2e28ee` | `feature/v-0.4.8` |
+| 120 | 2026-04-23 | Split thread actions and thread item hotspots | `f4deb70d` | `feature/v-0.4.8` |
+| 119 | 2026-04-23 | Split tauri, app shell, and thread messaging hotspots | `1b25ff26` | `feature/v-0.4.8` |
+| 118 | 2026-04-23 | Upgrade large-file governance policy | `6b6dc1c9` | `feature/v-0.4.8` |
+| 117 | 2026-04-22 | 同步 OpenSpec 提案并归档已完成变更 | `73b9256c` | `feature/v-0.4.8` |
+| 116 | 2026-04-22 | 补写 v0.4.7 changelog 消息区修复说明 | `042f7853` | `feature/v-0.4.7` |
+| 115 | 2026-04-22 | 修复 codex 最终消息 markdown 结构块重复 | `c3b99dba` | `feature/v-0.4.7` |
+| 114 | 2026-04-22 | 收口 assistant 最终回复近似重复段落去重 | `6c0d1606` | `feature/v-0.4.7` |
+| 113 | 2026-04-22 | 收口 inline code 去重作用域并补齐重复渲染回归 | `3600b38d` | `feature/v-0.4.7` |
+| 112 | 2026-04-22 | 更新 v0.4.7 发布说明 | `0db213e2` | `feature/v-0.4.7` |
+| 111 | 2026-04-22 | 补充 markdown code region 回归测试 | `0588973a` | `feature/v-0.4.7` |
+| 110 | 2026-04-22 | 修复 Computer Use 插件清单版本选择 | `a06c730c` | `feature/v-0.4.7` |
+| 109 | 2026-04-22 | 对齐 Claude Doctor 与 CLI 验证链路 | `80829b4c` | `feature/v-0.4.7` |
+| 108 | 2026-04-22 | 修复 OpenCode 自动探测抖动 | `f3448982` | `feature/v-0.4.7` |
+| 107 | 2026-04-22 | 完成 Computer Use Phase 1 状态桥接实现 | `7cbf1f60` | `feature/v-0.4.7` |
+| 106 | 2026-04-22 | fix(notifications): 收紧运行时提示悬浮点右下角定位 | `74fbc0bb` | `feature/v-0.4.7` |
+| 105 | 2026-04-22 | Add codex computer use plugin bridge change | `e8933fdd` | `feature/v-0.4.7` |
+| 104 | 2026-04-22 | 补齐 Claude 流式延迟诊断并启用定向缓解 | `9d16c31953ae2e48919e6da91c6062abe1c8295d` | `feature/v-0.4.7` |
+| 103 | 2026-04-22 | docs(openspec): 回写并归档实时 markdown streaming 兼容性提案 | `cd332b84` | `feature/v-0.4.7` |
+| 102 | 2026-04-22 | 新增 Claude 桌面流式慢体验修复提案 | `16a34090253c0409803301c960f585681917c7ee` | `feature/v-0.4.7` |
+| 101 | 2026-04-22 | fix(messages): 修复实时对话中 inline code 的流式渲染错位 | `4f74ea65` | `feature/v-0.4.7` |
+| 100 | 2026-04-22 | 修正空闲态最小化提示图标语义 | `6373bd82c7111a6614d56c938ebb150f360e6ebc` | `feature/v-0.4.7` |
+| 99 | 2026-04-22 | 补强运行时提示启动链路与边界回写 | `f616a615afb3b7898b48478b4df43ae0cbf4618f` | `feature/v-0.4.7` |
+| 98 | 2026-04-22 | 拆分消息样式并补强桌面渲染守卫 | `7619db05` | `feature/v-0.4.7` |
+| 97 | 2026-04-22 | Harden Claude desktop render-safe mode | `41a12c7b1a3486da89fac055e3169ae8e757c633` | `feature/v-0.4.7` |
+| 96 | 2026-04-22 | OpenSpec 归档六个已完成 change 并回写提案状态 | `708ddc6f77d28abf4dac91b602178d2e52667280` | `feature/v-0.4.7` |
+| 95 | 2026-04-22 | 增强运行时提示与融合续跑收口 | `292147259ed56c835ffefb2c5556b2185ddea4f0` | `feature/v-0.4.7` |
+| 94 | 2026-04-22 | Checkpoint fusion stalled continuity | `486cf0388c6fd9dadc1836d3650e05cea50e87fd` | `feature/v-0.4.7` |
+| 93 | 2026-04-22 | 完善会话恢复 toast 链路并修复边界问题 | `01632817` | `feature/v-0.4.7` |
+| 92 | 2026-04-22 | 统一消息吸顶并补齐会话恢复重试 | `daab536b8115d8e84f66c0d306d7207fafa7c8f6` | `feature/v-0.4.7` |
+| 91 | 2026-04-22 | 修复历史展开后的消息视口跳动 | `8a2c6450eac0675890e36aab6b1cdb2b46a3638a` | `feature/v-0.4.7` |
+| 90 | 2026-04-21 | 拆分 messages 时间线渲染层并瘦身主组件 | `36049224b002c0bf9d0488912cdc435d69300508` | `feature/v-0.4.7` |
+| 89 | 2026-04-21 | 修复 Windows 下 Claude 对话幕布闪烁止血补丁 | `747751b5` | `feature/v-0.4.7` |
+| 88 | 2026-04-21 | Archive Codex stalled recovery change | `e6ad9549` | `feature/v-0.4.7` |
+| 87 | 2026-04-21 | archive completed openspec changes | `007c3b9d` | `feature/v-0.4.7` |
 | 86 | 2026-04-21 | runtime 与 thread actions 大文件模块拆分治理 | `643252092ca5359e507490c8e2071aa69cdf65b3` | `feature/f-v0.4.6` |
 | 85 | 2026-04-21 | 修复 Codex stale thread binding recovery 连续性 | `2628c4119753547df4461fb16db02dfa0c02bfbb` | `feature/f-v0.4.6` |
 | 84 | 2026-04-21 | 收敛 Windows runtime churn 与恢复诊断 | `9218a060a0711204b424d2f63abba6bf4d4d5992` | `feature/f-v0.4.6` |

@@ -1,6 +1,7 @@
 use std::collections::{HashMap, HashSet};
 use std::time::Duration;
 
+#[cfg(any(windows, test))]
 use serde_json::Value;
 
 use super::{
@@ -67,10 +68,7 @@ pub(super) fn terminate_pid_tree(pid: u32) -> Result<bool, String> {
     }
 }
 
-pub(super) fn merge_process_diagnostics(
-    pids: &[u32],
-    category: &str,
-) -> RuntimeProcessDiagnostics {
+pub(super) fn merge_process_diagnostics(pids: &[u32], category: &str) -> RuntimeProcessDiagnostics {
     let mut diagnostics = RuntimeProcessDiagnostics {
         root_processes: pids.len() as u32,
         total_processes: 0,
@@ -138,6 +136,7 @@ pub(crate) fn parse_process_rows_unix_output(stdout: &str) -> Vec<ProcessSnapsho
     rows
 }
 
+#[cfg(any(windows, test))]
 pub(crate) fn parse_process_rows_windows_payload(payload: &Value) -> Vec<ProcessSnapshotRow> {
     let rows = payload
         .as_array()
