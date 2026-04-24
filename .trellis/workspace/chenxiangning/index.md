@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-6.md`
-- **Total Sessions**: 172
+- **Total Sessions**: 173
 - **Last Active**: 2026-04-24
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-6.md` | ~117 | Active |
+| `journal-6.md` | ~172 | Active |
 | `journal-5.md` | ~1949 | Archived |
 | `journal-4.md` | ~1975 | Archived |
 | `journal-3.md` | ~1972 | Archived |
@@ -34,6 +34,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 173 | 2026-04-24 | 合并 feature v0.4.8 Windows 可见性修复 | `4f2abad410cac58a2cd60d24ba5be11b9e65a447` | `codex/2026-04-01-local` |
 | 172 | 2026-04-24 | 记录 Windows Claude 流式可见卡顿抢修 | `ef9876e8` | `feature/v-0.4.8` |
 | 171 | 2026-04-24 | 优化悬浮问题条样式与收起兼容性 | `efde3dec` | `feature/v-0.4.8` |
 | 170 | 2026-04-24 | 修正对话幕布 markdown 卡片渲染兼容性 | `4bbd01113b061d6c225924526a0c0948a36de6dd` | `feature/v-0.4.8` |

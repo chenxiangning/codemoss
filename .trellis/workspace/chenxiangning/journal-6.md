@@ -115,3 +115,58 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 173: 合并 feature v0.4.8 Windows 可见性修复
+
+**Date**: 2026-04-24
+**Task**: 合并 feature v0.4.8 Windows 可见性修复
+**Branch**: `codex/2026-04-01-local`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+任务目标：将 feature/v-0.4.8 中的 Windows Claude 实时输出可见性修复合并到 codex/2026-04-01-local，并完成提交与推送。
+
+主要改动：
+- 解决 .trellis/workspace/chenxiangning/index.md 与 journal-6.md 的 merge 冲突，按传入分支版本收口。
+- 合入 Messages.tsx 中的 Windows 实时渲染缓解逻辑。
+- 合入 Messages.windows-render-mitigation.test.tsx 回归测试。
+- 同步 fix-claude-windows-streaming-visibility-stall 的 OpenSpec proposal、design、spec 与 tasks。
+
+涉及模块：
+- src/features/messages/components/Messages.tsx
+- src/features/messages/components/Messages.windows-render-mitigation.test.tsx
+- openspec/changes/fix-claude-windows-streaming-visibility-stall/*
+- .trellis/workspace/chenxiangning/*
+
+验证结果：
+- git diff --name-only --diff-filter=U 无输出
+- git diff --check --cached 通过
+- npm run typecheck 通过
+- npx vitest run src/features/messages/components/Messages.windows-render-mitigation.test.tsx 通过（8 tests）
+
+后续事项：
+- 关注 Windows 下 Claude 实时输出可见性、滚动连续性和消息渲染流畅性回归。
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `4f2abad410cac58a2cd60d24ba5be11b9e65a447` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
