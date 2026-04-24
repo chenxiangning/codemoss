@@ -202,6 +202,62 @@ describe("streamLatencyDiagnostics", () => {
     );
   });
 
+  it("activates engine-level Claude markdown stream recovery on macOS after visible stall evidence", async () => {
+    mocks.isWindowsPlatform.mockReturnValue(false);
+    mocks.isMacPlatform.mockReturnValue(true);
+    mocks.getCurrentClaudeConfig.mockResolvedValue({
+      apiKey: "",
+      baseUrl: "https://api.anthropic.test",
+      providerId: "anthropic",
+      providerName: "Anthropic",
+    });
+
+    await primeThreadStreamLatencyContext({
+      workspaceId: "ws-1",
+      threadId: "thread-mac-visible-stall",
+      engine: "claude",
+      model: "claude-sonnet-4.5",
+    });
+
+    noteThreadTurnStarted({
+      workspaceId: "ws-1",
+      threadId: "thread-mac-visible-stall",
+      turnId: "turn-mac-visible-stall",
+      startedAt: 4_000,
+    });
+    noteThreadDeltaReceived("thread-mac-visible-stall", 4_050);
+    noteThreadVisibleTextRendered("thread-mac-visible-stall", {
+      itemId: "assistant-mac-visible-stall",
+      visibleTextLength: 2,
+      renderAt: 4_070,
+    });
+    noteThreadDeltaReceived("thread-mac-visible-stall", 4_120);
+
+    reportThreadVisibleOutputStallAfterFirstDelta("thread-mac-visible-stall", {
+      stallAt: 4_900,
+      reason: "mac-visible-gap",
+    });
+
+    const snapshot = getThreadStreamLatencySnapshot("thread-mac-visible-stall");
+    const mitigation = resolveActiveThreadStreamMitigation(snapshot);
+
+    expect(snapshot?.candidateMitigationProfile).toBeNull();
+    expect(snapshot?.mitigationProfile).toBe("claude-markdown-stream-recovery");
+    expect(snapshot?.mitigationReason).toBe("visible-output-stall-after-first-delta");
+    expect(snapshot?.latencyCategory).toBe("visible-output-stall-after-first-delta");
+    expect(mitigation?.id).toBe("claude-markdown-stream-recovery");
+    expect(mitigation?.renderPlainTextWhileStreaming).toBe(true);
+    expect(mocks.appendRendererDiagnostic).toHaveBeenCalledWith(
+      "stream-latency/mitigation-activated",
+      expect.objectContaining({
+        threadId: "thread-mac-visible-stall",
+        platform: "macos",
+        mitigationProfile: "claude-markdown-stream-recovery",
+        latencyCategory: "visible-output-stall-after-first-delta",
+      }),
+    );
+  });
+
   it("tracks visible text growth per assistant item instead of comparing global length", async () => {
     mocks.isWindowsPlatform.mockReturnValue(true);
     mocks.getCurrentClaudeConfig.mockResolvedValue({
@@ -359,7 +415,7 @@ describe("streamLatencyDiagnostics", () => {
     ).toBeNull();
   });
 
-  it("does not activate engine-level mitigation for non-Claude engines or macOS Claude", async () => {
+  it("does not activate engine-level mitigation for non-Claude engines or macOS Claude without evidence", async () => {
     mocks.isWindowsPlatform.mockReturnValue(true);
     await primeThreadStreamLatencyContext({
       workspaceId: "ws-1",

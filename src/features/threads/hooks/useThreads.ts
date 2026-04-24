@@ -58,6 +58,8 @@ const THREAD_SWITCH_RESUME_DELAY_MS = 24;
 const THREAD_SWITCH_LOADED_REFRESH_MS = 20_000;
 const CODEX_REALTIME_HISTORY_RECONCILE_DELAY_MS = 1_200;
 const CODEX_REALTIME_HISTORY_RECONCILE_RETRY_DELAY_MS = 2_800;
+const CLAUDE_REALTIME_HISTORY_RECONCILE_DELAY_MS = 1_200;
+const CLAUDE_REALTIME_HISTORY_RECONCILE_RETRY_DELAY_MS = 2_800;
 const THREAD_ITEM_CACHE_MAX = 12;
 const THREAD_ITEM_CACHE_TRIM_WATERMARK = 2;
 
@@ -570,6 +572,10 @@ export function useThreads({
   const codexRealtimeReconcileTimerByThreadRef = useRef<
     Record<string, ReturnType<typeof setTimeout> | null>
   >({});
+  const claudeRealtimeReconciledTurnByThreadRef = useRef<Record<string, string>>({});
+  const claudeRealtimeReconcileTimerByThreadRef = useRef<
+    Record<string, ReturnType<typeof setTimeout> | null>
+  >({});
   const sharedSessionSyncTimerByThreadRef = useRef<
     Record<string, ReturnType<typeof setTimeout> | null>
   >({});
@@ -697,8 +703,15 @@ export function useThreads({
           clearTimeout(timer);
         }
       });
+      Object.values(claudeRealtimeReconcileTimerByThreadRef.current).forEach((timer) => {
+        if (timer) {
+          clearTimeout(timer);
+        }
+      });
       codexRealtimeReconcileTimerByThreadRef.current = {};
       codexRealtimeReconciledTurnByThreadRef.current = {};
+      claudeRealtimeReconcileTimerByThreadRef.current = {};
+      claudeRealtimeReconciledTurnByThreadRef.current = {};
     };
   }, []);
   const { applyCollabThreadLinks, applyCollabThreadLinksFromThread, updateThreadParent } =
@@ -1072,6 +1085,115 @@ export function useThreads({
       );
     },
     [scheduleCodexRealtimeHistoryReconcile],
+  );
+
+  const shouldReconcileClaudeRealtimeThread = useCallback((threadId: string) => {
+    const canonicalThreadId = resolveCanonicalThreadId(threadId);
+    return canonicalThreadId.startsWith("claude:");
+  }, [resolveCanonicalThreadId]);
+
+  const scheduleClaudeRealtimeHistoryReconcile = useCallback(
+    (workspaceId: string, threadId: string, turnId: string, attempt = 0) => {
+      const canonicalThreadId = resolveCanonicalThreadId(threadId);
+      if (!shouldReconcileClaudeRealtimeThread(canonicalThreadId)) {
+        return;
+      }
+      const reconciliationThreadKey = `${workspaceId}:${canonicalThreadId}`;
+      const reconciliationTurnId = turnId.trim() || "__unknown_turn__";
+      if (
+        attempt === 0 &&
+        claudeRealtimeReconciledTurnByThreadRef.current[reconciliationThreadKey] ===
+        reconciliationTurnId
+      ) {
+        return;
+      }
+      claudeRealtimeReconciledTurnByThreadRef.current[reconciliationThreadKey] =
+        reconciliationTurnId;
+      const previousTimer =
+        claudeRealtimeReconcileTimerByThreadRef.current[reconciliationThreadKey];
+      if (previousTimer) {
+        clearTimeout(previousTimer);
+      }
+      const delay =
+        attempt > 0
+          ? CLAUDE_REALTIME_HISTORY_RECONCILE_RETRY_DELAY_MS
+          : CLAUDE_REALTIME_HISTORY_RECONCILE_DELAY_MS;
+      claudeRealtimeReconcileTimerByThreadRef.current[reconciliationThreadKey] =
+        setTimeout(() => {
+          delete claudeRealtimeReconcileTimerByThreadRef.current[reconciliationThreadKey];
+          const status = threadStatusByIdRef.current[canonicalThreadId];
+          if (status?.isProcessing && attempt === 0) {
+            scheduleClaudeRealtimeHistoryReconcile(
+              workspaceId,
+              canonicalThreadId,
+              reconciliationTurnId,
+              attempt + 1,
+            );
+            return;
+          }
+          onDebug?.({
+            id: `${Date.now()}-claude-realtime-history-reconcile`,
+            timestamp: Date.now(),
+            source: "client",
+            label: "claude/realtime history reconcile",
+            payload: {
+              workspaceId,
+              threadId: canonicalThreadId,
+              turnId: reconciliationTurnId,
+              attempt,
+            },
+          });
+          void refreshThread(workspaceId, canonicalThreadId).catch((error) => {
+            onDebug?.({
+              id: `${Date.now()}-claude-realtime-history-reconcile-error`,
+              timestamp: Date.now(),
+              source: "error",
+              label: "claude/realtime history reconcile error",
+              payload: {
+                workspaceId,
+                threadId: canonicalThreadId,
+                turnId: reconciliationTurnId,
+                attempt,
+                error: error instanceof Error ? error.message : String(error),
+              },
+            });
+          });
+        }, delay);
+    },
+    [onDebug, refreshThread, resolveCanonicalThreadId, shouldReconcileClaudeRealtimeThread],
+  );
+
+  const handleClaudeTurnCompletedForHistoryReconcile = useCallback(
+    (payload: {
+      workspaceId: string;
+      threadId: string;
+      turnId: string;
+    }) => {
+      scheduleClaudeRealtimeHistoryReconcile(
+        payload.workspaceId,
+        payload.threadId,
+        payload.turnId,
+      );
+    },
+    [scheduleClaudeRealtimeHistoryReconcile],
+  );
+
+  const handleTurnCompletedForHistoryReconcile = useCallback(
+    (payload: {
+      workspaceId: string;
+      threadId: string;
+      turnId: string;
+    }) => {
+      if (payload.threadId.startsWith("claude:")) {
+        handleClaudeTurnCompletedForHistoryReconcile(payload);
+        return;
+      }
+      handleCodexTurnCompletedForHistoryReconcile(payload);
+    },
+    [
+      handleClaudeTurnCompletedForHistoryReconcile,
+      handleCodexTurnCompletedForHistoryReconcile,
+    ],
   );
 
   const startThread = useCallback(async () => {
@@ -2214,7 +2336,7 @@ export function useThreads({
       state.activeTurnIdByThread[threadId] ?? null,
     renamePendingMemoryCaptureKey,
     onAgentMessageCompletedExternal: handleAgentMessageCompletedForMemory,
-    onTurnCompletedExternal: handleCodexTurnCompletedForHistoryReconcile,
+    onTurnCompletedExternal: handleTurnCompletedForHistoryReconcile,
     onCollaborationModeResolved: onCollaborationModeResolved
       ? (event) => {
           onCollaborationModeResolved({

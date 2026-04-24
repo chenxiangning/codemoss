@@ -74,7 +74,7 @@ describe("Messages live behavior", () => {
     });
   };
 
-  it("keeps only the latest title-only reasoning row for non-codex engines", () => {
+  it("keeps only the latest title-only reasoning row for gemini and mirrors it in the working indicator", () => {
     const items: ConversationItem[] = [
       {
         id: "reasoning-title-only-old",
@@ -102,10 +102,11 @@ describe("Messages live behavior", () => {
     const { container } = render(
       <Messages
         items={items}
-        threadId="thread-1"
+        threadId="gemini:thread-1"
         workspaceId="ws-1"
         isThinking
         processingStartedAt={Date.now() - 1_000}
+        activeEngine="gemini"
         openTargets={[]}
         selectedOpenAppId=""
       />,
@@ -116,6 +117,124 @@ describe("Messages live behavior", () => {
     const reasoningRows = container.querySelectorAll(".thinking-block");
     expect(reasoningRows.length).toBe(1);
     expect(container.querySelector(".thinking-title")).toBeTruthy();
+  });
+
+  it("keeps the latest Claude title-only reasoning row on the curtain before the first assistant chunk", () => {
+    const items: ConversationItem[] = [
+      {
+        id: "user-claude-reasoning-visible",
+        kind: "message",
+        role: "user",
+        text: "帮我分析一下项目结构",
+      },
+      {
+        id: "reasoning-claude-old",
+        kind: "reasoning",
+        summary: "先定位仓库入口",
+        content: "",
+      },
+      {
+        id: "reasoning-claude-latest",
+        kind: "reasoning",
+        summary: "这是一个包含多个子项目的目录。让我探索一下项目结构。",
+        content: "",
+      },
+      {
+        id: "tool-claude-read-old",
+        kind: "tool",
+        title: "批量读取文件 (2)",
+        detail: "package.json pyproject.toml",
+        toolType: "read",
+        output: "",
+        status: "completed",
+      },
+      {
+        id: "tool-claude-read-latest",
+        kind: "tool",
+        title: "批量读取文件 (4)",
+        detail: "AGENTS.md next.config.ts README.md",
+        toolType: "read",
+        output: "",
+        status: "running",
+      },
+    ];
+
+    const { container } = render(
+      <Messages
+        items={items}
+        threadId="claude:thread-1"
+        workspaceId="ws-1"
+        isThinking
+        processingStartedAt={Date.now() - 1_000}
+        activeEngine="claude"
+        openTargets={[]}
+        selectedOpenAppId=""
+      />,
+    );
+
+    const reasoningRows = container.querySelectorAll(".thinking-block");
+    expect(reasoningRows.length).toBe(1);
+    const reasoningTitle = container.querySelector(".thinking-title");
+    expect(reasoningTitle?.textContent ?? "").toBeTruthy();
+    expect(container.querySelector(".working-text")?.textContent ?? "").not.toContain(
+      "这是一个包含多个子项目的目录。让我探索一下项目结构。",
+    );
+    expect(container.querySelector(".working-activity")?.textContent ?? "").toContain(
+      "批量读取文件 (4)",
+    );
+  });
+
+  it("renders Claude reasoning and assistant message together when conversation state reuses the same item id", () => {
+    const conversationState: ConversationState = {
+      items: [
+        {
+          id: "user-shared-id",
+          kind: "message",
+          role: "user",
+          text: "分析一下这个项目",
+        },
+        {
+          id: "claude-live-shared",
+          kind: "reasoning",
+          summary: "我先梳理目录结构。",
+          content: "我先梳理目录结构。",
+        },
+        {
+          id: "claude-live-shared",
+          kind: "message",
+          role: "assistant",
+          text: "# 项目分析\n\n这里是实时正文。",
+        },
+      ],
+      plan: null,
+      userInputQueue: [],
+      meta: {
+        workspaceId: "ws-1",
+        threadId: "claude:thread-shared-id",
+        engine: "claude",
+        activeTurnId: "turn-1",
+        isThinking: true,
+        heartbeatPulse: null,
+        historyRestoredAtMs: null,
+      },
+    };
+
+    const { container } = render(
+      <Messages
+        items={[]}
+        threadId="claude:thread-shared-id"
+        workspaceId="ws-1"
+        isThinking
+        processingStartedAt={Date.now() - 1_000}
+        activeEngine="claude"
+        conversationState={conversationState}
+        openTargets={[]}
+        selectedOpenAppId=""
+      />,
+    );
+
+    expect(container.querySelectorAll(".thinking-block").length).toBe(1);
+    expect(container.textContent ?? "").toContain("这里是实时正文。");
   });
 
   it("hides command cards in codex canvas while keeping non-command tool cards", () => {

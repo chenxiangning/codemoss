@@ -854,7 +854,7 @@ export function useThreadActions({
       const workspacePath = workspacePathsByIdRef.current[workspaceId];
       if (threadId.startsWith("claude:")) {
         dispatch({ type: "ensureThread", workspaceId, threadId, engine: "claude" });
-        if (workspacePath && !loadedThreadsRef.current[threadId]) {
+        if (workspacePath && (force || !loadedThreadsRef.current[threadId])) {
           const realSessionId = threadId.slice("claude:".length);
           try {
             const result = await loadClaudeSessionService(

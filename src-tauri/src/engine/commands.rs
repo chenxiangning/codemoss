@@ -26,7 +26,9 @@ use crate::state::AppState;
 use crate::types::WorkspaceEntry;
 
 use super::codex_prompt_service::{normalize_custom_spec_root, run_codex_prompt_sync};
-use super::events::{engine_event_to_app_server_event, EngineEvent};
+use super::events::{
+    engine_event_to_app_server_event, resolve_claude_realtime_item_id, EngineEvent,
+};
 use super::remote_bridge::{
     call_remote_typed, remote_detect_engines_request, remote_engine_interrupt_request,
     remote_engine_send_message_sync_request,
@@ -1146,16 +1148,21 @@ pub async fn engine_send_message(
                 custom_spec_root: normalized_custom_spec_root.clone(),
             };
 
-            // Generate a unique turn ID and item ID for this turn
+            // Generate unique render item ids for Claude's assistant/reasoning lanes.
+            // The conversation curtain keeps message/reasoning as separate items.
+            // Reusing one id across kinds causes realtime assistant text to be
+            // overwritten by reasoning snapshots in the normalized assembler path.
             let turn_id = format!("claude-turn-{}", uuid::Uuid::new_v4());
             let thread_id = thread_id.unwrap_or_else(|| turn_id.clone());
-            let item_id = format!("claude-item-{}", uuid::Uuid::new_v4());
+            let assistant_item_id = format!("claude-item-{}", uuid::Uuid::new_v4());
+            let reasoning_item_id = format!("claude-reasoning-{}", uuid::Uuid::new_v4());
 
             // Subscribe to session events BEFORE spawning send_message
             let mut receiver = session.subscribe();
             let app_clone = app.clone();
             let mut current_thread_id = thread_id.clone();
-            let item_id_clone = item_id.clone();
+            let assistant_item_id_clone = assistant_item_id.clone();
+            let reasoning_item_id_clone = reasoning_item_id.clone();
             let turn_id_for_forwarder = turn_id.clone();
             let mut accumulated_agent_text = String::new();
             let runtime_manager = state.runtime_manager.clone();
@@ -1255,7 +1262,7 @@ pub async fn engine_send_message(
                                     "params": {
                                         "threadId": &current_thread_id,
                                         "item": {
-                                            "id": &item_id_clone,
+                                            "id": &assistant_item_id_clone,
                                             "type": "agentMessage",
                                             "text": completed_text,
                                             "status": "completed",
@@ -1270,7 +1277,15 @@ pub async fn engine_send_message(
                     // Emit event with CURRENT thread_id (for SessionStarted, this is the OLD pending id)
                     // Frontend uses this to rename claude-pending-xxx to claude:{sessionId}
                     if let Some(payload) =
-                        engine_event_to_app_server_event(&event, &current_thread_id, &item_id_clone)
+                        engine_event_to_app_server_event(
+                            &event,
+                            &current_thread_id,
+                            resolve_claude_realtime_item_id(
+                                &event,
+                                &assistant_item_id_clone,
+                                &reasoning_item_id_clone,
+                            ),
+                        )
                     {
                         let _ = app_clone.emit("app-server-event", payload);
                     }

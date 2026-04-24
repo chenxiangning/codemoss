@@ -1572,11 +1572,11 @@
 - None - task complete
 
 
-## Session 165: 合并 feature v0.4.8 新代码
+## Session 165: 修复 Claude Windows 实时输出卡顿
 
 **Date**: 2026-04-24
-**Task**: 合并 feature v0.4.8 新代码
-**Branch**: `codex/2026-04-01-local`
+**Task**: 修复 Claude Windows 实时输出卡顿
+**Branch**: `feature/v-0.4.8`
 
 ### Summary
 
@@ -1584,35 +1584,182 @@
 
 ### Main Changes
 
-任务目标：完成本地分支 codex/2026-04-01-local 与 origin/feature/v-0.4.8 的合并，按用户要求以新代码为主处理冲突，并完成提交前验证。
+任务目标：
+修复 Claude Code 引擎在 Windows native 实时对话中首 delta 后正文可见输出停滞，避免直到 turn 完成才整段输出；保持 macOS 与非 Claude 引擎 baseline。
 
 主要改动：
-- 解决 3 个 merge conflict 文件：.trellis/workspace/chenxiangning/index.md、.trellis/workspace/chenxiangning/journal-3.md、src/i18n/locales/en.part1.ts。
-- 对冲突文件采用 feature/v-0.4.8 传入版本，保留最新 Trellis journal/index 与新英文 i18n 文案。
-- 对 staged 变更中 git diff --check 报出的文档空白问题做机械清理，避免把 trailing whitespace / 多余 EOF blank line 带进 merge commit。
-- 生成 merge commit ad7b4486：chore(release): 合并 feature v0.4.8 新代码。
+- 新增 Claude+Windows engine-level visible streaming profile，first delta 只 prime candidate profile，证据出现后才记录 mitigation-activated。
+- Markdown 增加 onRenderedValueChange，Messages -> MessagesTimeline -> MessagesRows 回传实际可见文本。
+- Claude Windows streaming 中间态使用 plain text live surface，完成后恢复 Markdown。
+- visible text growth 按 assistant itemId 隔离，visibleTextLength sanitize 为有限非负整数。
+- visible-stall timer 自动上报并在 turn completion/test reset 清理。
+- streaming 样式拆到 src/styles/messages.streaming.css，messages.part1.css 降到 2196 行，退出本次 near-threshold watch。
+- 更新 OpenSpec tasks 与 .trellis/spec/frontend/component-guidelines.md。
 
 涉及模块：
-- Git merge / release integration
-- Trellis workspace journal/index
-- src/i18n/locales/en.part1.ts
-- feature/v-0.4.8 带入的 frontend/backend/OpenSpec/Trellis/CI/asset 变更
+- src/features/threads/utils/streamLatencyDiagnostics.ts
+- src/features/messages/components/Markdown.tsx
+- src/features/messages/components/Messages.tsx
+- src/features/messages/components/MessagesTimeline.tsx
+- src/features/messages/components/MessagesRows.tsx
+- src/styles/messages.css / messages.streaming.css
+- openspec/changes/fix-claude-windows-streaming-visibility-stall/tasks.md
+- .trellis/spec/frontend/component-guidelines.md
 
 验证结果：
-- git diff --name-only --diff-filter=U 无输出。
-- git diff --check --cached 通过。
-- npm run typecheck 通过。
-- git commit 成功生成 ad7b4486。
+- targeted Vitest: 5 files / 36 tests passed.
+- npm run typecheck passed.
+- npm run lint passed.
+- npm run check:large-files:near-threshold passed; found=25; messages.part1.css removed from warning list.
+- npm run check:large-files:gate passed; found=0.
+- node --test scripts/check-heavy-test-noise.test.mjs passed; 5 tests.
+- npm run check:heavy-test-noise completed 350 test files; act warnings=0, stdout payload lines=0, stderr payload lines=0.
+- openspec validate fix-claude-windows-streaming-visibility-stall --type change --strict --no-interactive passed.
+- git diff --check passed.
+- Windows native manual verification remains pending and is not faked.
 
 后续事项：
-- 完成 Trellis session record 后推送 codex/2026-04-01-local 到 origin。
+- 提交后在 Windows native Claude Code 环境验证首 delta 后正文是否持续增长、最终 Markdown 是否恢复、macOS/非 Claude 控制路径是否保持 baseline。
 
 
 ### Git Commits
 
 | Hash | Message |
 |------|---------|
-| `ad7b4486` | (see git log) |
+| `58676abee55f6b570fb6a1822216b0e0cb49b061` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 166: 修复 Claude 长文实时渲染与门禁回归
+
+**Date**: 2026-04-24
+**Task**: 修复 Claude 长文实时渲染与门禁回归
+**Branch**: `feature/v-0.4.8`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+| 项目 | 说明 |
+|------|------|
+| 目标 | 修复 Claude Code 长对话中最终长文一次性冒出、completed 后重复追加，以及幕布层 reasoning / assistant 可见性断裂 |
+| OpenSpec | `fix-claude-long-markdown-progressive-reveal` |
+| 范围 | Claude runtime forwarder、conversation assembler、messages curtain、thread history reconcile、测试门禁收尾 |
+
+**主要改动**:
+- 在 Rust runtime 中为 Claude realtime 的 reasoning 与 assistant text 拆分独立 render lane，避免 provider 复用同一 native item id 时在幕布层互相覆盖。
+- 在 `conversationAssembler` 与 history hydrate 中改为按 `kind + id` 做 identity / dedupe，保证 realtime 与 history parity。
+- 为 Claude `text_delta` 与最终 assistant snapshot 增加 emitted-text tracker，避免 completed 前后整段正文重复追加。
+- 扩展 Claude markdown stall recovery 与 `refreshThread()` history reconcile，修复长文中段停滞、收尾重复与 completed 态脏尾巴。
+- 按 large-file governance 将 `useThreadActions.test.tsx` 拆为主文件、Claude history 专项文件、native session bridge 专项文件，消除 hard gate 并移出 near-threshold watch。
+- 修复 `FileTreePanel` lazy-load retry 的 ref/state 竞争，避免失败后快速重试被错误短路。
+
+**涉及模块**:
+- `src-tauri/src/engine/commands.rs`
+- `src-tauri/src/bin/cc_gui_daemon/daemon_state.rs`
+- `src-tauri/src/engine/events.rs`
+- `src-tauri/src/engine/claude.rs`
+- `src-tauri/src/engine/claude/event_conversion.rs`
+- `src/features/threads/contracts/conversationAssembler.ts`
+- `src/features/messages/components/Messages.tsx`
+- `src/features/threads/hooks/useThreads.ts`
+- `src/features/threads/hooks/useThreadActions*.tsx`
+- `src/features/files/components/FileTreePanel.tsx`
+- `openspec/changes/fix-claude-long-markdown-progressive-reveal/**`
+
+**验证结果**:
+- [OK] `npm exec vitest run src/features/threads/hooks/useThreadActions.test.tsx src/features/threads/hooks/useThreadActions.claude-history.test.tsx src/features/threads/hooks/useThreadActions.native-session-bridges.test.tsx`
+- [OK] `npm exec -- vitest run src/features/files/components/FileTreePanel.run.test.tsx`
+- [OK] `npm run check:large-files:near-threshold`
+- [OK] `npm run check:large-files:gate`
+- [OK] `npm run check:heavy-test-noise`
+- [OK] `npm run lint`
+- [OK] `npm run typecheck`
+- [OK] `cargo test --manifest-path src-tauri/Cargo.toml convert_event_ -- --nocapture`
+- [OK] `git diff --check`
+
+**后续事项**:
+- 可以继续做人工长对话回归，重点观察 Claude 长文幕布增长是否稳定，以及 completed 后是否仍有重复段。
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `1571d17c` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 167: 修复 Claude 汇总长文实时流误路由
+
+**Date**: 2026-04-24
+**Task**: 修复 Claude 汇总长文实时流误路由
+**Branch**: `feature/v-0.4.8`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+任务目标:
+- 修复 Claude Code 在长任务汇总阶段卡住后一次性整篇输出的问题。
+- 保证最终总结正文进入 assistant 幕布实时流，而不是误落到 tool output。
+
+主要改动:
+- 在 `src-tauri/src/engine/claude.rs` 新增 `clear_tool_block_indices_for_tool` 与 `clear_tool_block_tracking`，按 `tool_id` 清理当前 turn 下全部 stale block 映射。
+- 在 `src-tauri/src/engine/claude/event_conversion.rs` 的 assistant/user/tool_result/stream_event 完成与 blocked 分支统一使用完整映射清理，避免汇总正文复用旧 index 时继续被映射成 `ToolOutputDelta`。
+- 在 `src-tauri/src/engine/claude/tests_core.rs` 增加 `convert_event_clears_stale_tool_block_mapping_after_tool_completion` 回归测试，锁定“工具完成后旧 index 上的后续 text_delta 必须回到 assistant TextDelta”。
+- 同批保留并纳入提交的前端实时桥接修复位于 `src/features/app/hooks/useAppServerEvents.*` 与 `src/features/threads/hooks/useThreadEventHandlers.*`，用于覆盖 Claude snapshot ingress 与实时桥接行为。
+
+涉及模块:
+- Claude backend realtime event conversion
+- Claude tool block lifecycle tracking
+- Thread realtime bridge / diagnostics tests
+
+验证结果:
+- `cargo test --manifest-path src-tauri/Cargo.toml engine::claude::tests_core::convert_ -- --nocapture`
+- `npm run typecheck`
+- `npm run lint`
+- `git diff --check`
+- 本机真实时间线对比验证:
+  - 修复前首个 `# 项目全面分析报告` 先出现在 `item/commandExecution/outputDelta`
+  - 修复后源码版 `cc_gui_daemon` 实跑中，首个报告标题已直接出现在 `item/agentMessage/delta`
+
+后续事项:
+- 当前人工测试已通过。
+- 本次仅完成本地提交与 session record，尚未推送远端。
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `490ec5f973e729f81594f8afff82586317555aae` | (see git log) |
 
 ### Testing
 

@@ -21,6 +21,22 @@ TBD - created by archiving change fix-claude-chat-canvas-cross-platform-blanking
 - **THEN** 消息幕布 MUST 保持至少一条可见 conversation content、working indicator 或等价可读反馈
 - **AND** 系统 MUST NOT 进入“短暂闪现后整块空白”的状态
 
+#### Scenario: visible stalled markdown can fall back to a plain-text live surface
+
+- **WHEN** Claude live assistant markdown 已收到正文 delta
+- **AND** live visible text 在 bounded window 内停止增长
+- **THEN** 系统 MAY 将当前 streaming assistant message 临时切换到 plain-text live surface 或等价恢复路径
+- **AND** completed assistant message MUST 立即回到最终 Markdown render
+
+#### Scenario: latest claude reasoning row stays on the curtain before the first assistant chunk
+
+- **WHEN** 当前会话引擎为 `claude`
+- **AND** 当前线程处于 processing
+- **AND** 最新 user turn 之后已经出现 `reasoning` 与后续 tool activity
+- **AND** 首个 assistant message 仍未出现
+- **THEN** live canvas MUST 保留 latest reasoning row 在消息幕布上
+- **AND** `WorkingIndicator` MUST NOT 成为该 reasoning 文案的唯一可见承载面
+
 #### Scenario: history and sticky contracts remain readable during degradation
 
 - **WHEN** render-safe mode 已启用

@@ -138,6 +138,55 @@ describe("threadReducer completed duplicate collapse", () => {
     ].join("\n"));
   });
 
+  it("keeps the existing long markdown when completed snapshot is already contained inside it", () => {
+    const itemId = "assistant-markdown-contained-completed-1";
+    const completed = [
+      "# JinSen 后端架构分析报告",
+      "",
+      "## 技术栈",
+      "",
+      "| 组件 | 技术 |",
+      "| --- | --- |",
+      "| 框架 | FastAPI + Uvicorn |",
+      "| 数据库 | PostgreSQL + SQLAlchemy 2.0 |",
+      "",
+      "## 改进建议",
+      "",
+      "1. 拆分巨型文件",
+      "2. 引入 Repository 模式",
+      "3. 清理 Domain Policies 边界",
+    ].join("\n");
+    const streamed = [
+      completed,
+      "",
+      "总结：这是一个 DDD 架构良好的项目，主要瓶颈集中在 facade 和 routes。",
+    ].join("\n");
+
+    const withDelta = threadReducer(initialState, {
+      type: "appendAgentDelta",
+      workspaceId: "ws-1",
+      threadId: "thread-1",
+      itemId,
+      delta: streamed,
+      hasCustomName: false,
+    });
+    const merged = threadReducer(withDelta, {
+      type: "completeAgentMessage",
+      workspaceId: "ws-1",
+      threadId: "thread-1",
+      itemId,
+      text: completed,
+      hasCustomName: false,
+    });
+
+    const messages = (merged.itemsByThread["thread-1"] ?? []).filter(
+      (item): item is Extract<ConversationItem, { kind: "message" }> =>
+        item.kind === "message" && item.role === "assistant" && item.id === itemId,
+    );
+    expect(messages).toHaveLength(1);
+    expect(messages[0]?.text).toBe(streamed);
+  });
+
   it("merges equivalent codex completion when fallback uses a different item id", () => {
     const streamed = "Computer Use 现在还没有拿到系统层面的控制权限。";
     const withDelta = threadReducer(initialState, {

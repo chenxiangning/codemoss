@@ -84,6 +84,7 @@ import {
   resolveWorkingActivityLabel,
   SCROLL_THRESHOLD_PX,
   scrollKeyForItems,
+  shouldDisplayWorkingActivityLabel,
   shouldHideClaudeReasoningModule,
   toConversationEngine,
   VISIBLE_MESSAGE_WINDOW,
@@ -964,11 +965,21 @@ export const Messages = memo(function Messages({
       if (!item) {
         continue;
       }
+      const shouldKeepLatestClaudeReasoningVisible =
+        activeEngine === "claude"
+        && latestAssistantMessageId === null
+        && latestReasoningId !== null
+        && item.kind === "reasoning"
+        && item.id === latestReasoningId;
       if (index <= lastUserIndex || index === lastIndex) {
         nextTimelineItems.push(item);
         continue;
       }
       if (isMessageConversationItem(item)) {
+        nextTimelineItems.push(item);
+        continue;
+      }
+      if (shouldKeepLatestClaudeReasoningVisible) {
         nextTimelineItems.push(item);
         continue;
       }
@@ -978,7 +989,31 @@ export const Messages = memo(function Messages({
     return hiddenItems.length > 0
       ? { timelineItems: nextTimelineItems, collapsedMiddleStepCount: collapsedEntryCount }
       : { timelineItems: visibleItems, collapsedMiddleStepCount: 0 };
-  }, [activeEngine, collapseLiveMiddleStepsEnabled, isThinking, visibleItems]);
+  }, [
+    activeEngine,
+    collapseLiveMiddleStepsEnabled,
+    isThinking,
+    latestAssistantMessageId,
+    latestReasoningId,
+    visibleItems,
+  ]);
+  const latestReasoningVisibleInTimeline = useMemo(() => {
+    if (!latestReasoningId) {
+      return false;
+    }
+    return timelineItems.some((item) => item.kind === "reasoning" && item.id === latestReasoningId);
+  }, [latestReasoningId, timelineItems]);
+  const workingIndicatorShowsActivityLabel = shouldDisplayWorkingActivityLabel(
+    latestReasoningLabel,
+    latestWorkingActivityLabel,
+  );
+  const workingIndicatorReasoningLabel =
+    activeEngine === "claude"
+    && latestAssistantMessageId === null
+    && workingIndicatorShowsActivityLabel
+    && latestReasoningVisibleInTimeline
+      ? null
+      : latestReasoningLabel;
   useEffect(() => {
     if (activeEngine !== "claude") {
       return;
@@ -1635,7 +1670,7 @@ export const Messages = memo(function Messages({
           isWorking={isWorking}
           lastDurationMs={lastDurationMs}
           latestAssistantMessageId={latestAssistantMessageId}
-          latestReasoningLabel={latestReasoningLabel}
+          latestReasoningLabel={workingIndicatorReasoningLabel}
           latestReasoningId={latestReasoningId}
           latestRetryMessage={latestRetryMessage}
           latestRuntimeReconnectItemId={latestRuntimeReconnectItemId}

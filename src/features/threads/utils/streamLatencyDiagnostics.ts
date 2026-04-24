@@ -11,7 +11,8 @@ export type StreamLatencyCategory =
   | "visible-output-stall-after-first-delta";
 export type StreamMitigationProfileId =
   | "claude-qwen-windows-render-safe"
-  | "claude-windows-visible-stream";
+  | "claude-windows-visible-stream"
+  | "claude-markdown-stream-recovery";
 
 export type StreamMitigationProfile = {
   id: StreamMitigationProfileId;
@@ -71,6 +72,12 @@ const STREAM_MITIGATION_PROFILES: Readonly<Record<StreamMitigationProfileId, Str
   },
   "claude-windows-visible-stream": {
     id: "claude-windows-visible-stream",
+    messageStreamingThrottleMs: 120,
+    reasoningStreamingThrottleMs: 260,
+    renderPlainTextWhileStreaming: true,
+  },
+  "claude-markdown-stream-recovery": {
+    id: "claude-markdown-stream-recovery",
     messageStreamingThrottleMs: 120,
     reasoningStreamingThrottleMs: 260,
     renderPlainTextWhileStreaming: true,
@@ -234,6 +241,12 @@ function isClaudeWindowsStream(
   return snapshot.engine === "claude" && snapshot.platform === "windows";
 }
 
+function isClaudeStream(
+  snapshot: Pick<ThreadStreamLatencySnapshot, "engine">,
+) {
+  return snapshot.engine === "claude";
+}
+
 export function matchesQwenCompatibleClaudeWindowsFingerprint(
   snapshot: Pick<
     ThreadStreamLatencySnapshot,
@@ -264,6 +277,16 @@ function resolveClaudeWindowsMitigationProfileId(
   return matchesQwenCompatibleClaudeWindowsFingerprint(snapshot)
     ? "claude-qwen-windows-render-safe"
     : "claude-windows-visible-stream";
+}
+
+function resolveClaudeVisibleStallMitigationProfileId(
+  snapshot: ThreadStreamLatencySnapshot,
+): StreamMitigationProfileId | null {
+  if (!isClaudeStream(snapshot)) {
+    return null;
+  }
+  return resolveClaudeWindowsMitigationProfileId(snapshot)
+    ?? "claude-markdown-stream-recovery";
 }
 
 function activateMitigationProfile(
@@ -297,6 +320,18 @@ function maybeActivateClaudeWindowsMitigation(
   extra: Record<string, unknown> = {},
 ) {
   const profileId = resolveClaudeWindowsMitigationProfileId(snapshot);
+  if (!profileId) {
+    return snapshot;
+  }
+  return activateMitigationProfile(snapshot, profileId, reason, extra);
+}
+
+function maybeActivateClaudeVisibleStallMitigation(
+  snapshot: ThreadStreamLatencySnapshot,
+  reason: string,
+  extra: Record<string, unknown> = {},
+) {
+  const profileId = resolveClaudeVisibleStallMitigationProfileId(snapshot);
   if (!profileId) {
     return snapshot;
   }
@@ -634,7 +669,7 @@ function scheduleVisibleOutputStallTimer(
   snapshot: ThreadStreamLatencySnapshot,
 ) {
   if (
-    !isClaudeWindowsStream(snapshot) ||
+    !isClaudeStream(snapshot) ||
     snapshot.firstDeltaAt === null ||
     snapshot.pendingVisibleTextSinceDeltaAt === null ||
     snapshot.visibleOutputStallReported ||
@@ -701,7 +736,7 @@ export function reportThreadVisibleOutputStallAfterFirstDelta(
   const stallAt = input.stallAt ?? Date.now();
   updateThreadSnapshot(threadId, (current) => {
     if (
-      !isClaudeWindowsStream(current) ||
+      !isClaudeStream(current) ||
       current.startedAt === null ||
       current.firstDeltaAt === null ||
       current.pendingVisibleTextSinceDeltaAt === null ||
@@ -715,7 +750,7 @@ export function reportThreadVisibleOutputStallAfterFirstDelta(
       latencyCategory: "visible-output-stall-after-first-delta",
       visibleOutputStallReported: true,
     };
-    nextSnapshot = maybeActivateClaudeWindowsMitigation(
+    nextSnapshot = maybeActivateClaudeVisibleStallMitigation(
       nextSnapshot,
       "visible-output-stall-after-first-delta",
       {

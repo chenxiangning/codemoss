@@ -855,6 +855,13 @@ export function mergeCompletedAgentText(existing: string, completed: string) {
   const comparableExisting = compactComparableStreamingText(existing);
   const comparableCompleted = compactComparableStreamingText(normalizedCompleted);
   if (comparableExisting && comparableCompleted) {
+    if (
+      comparableExisting.length >= 48 &&
+      comparableExisting.length > comparableCompleted.length &&
+      comparableExisting.includes(comparableCompleted)
+    ) {
+      return existing;
+    }
     const comparableLengthDelta = Math.abs(
       comparableCompleted.length - comparableExisting.length,
     );
