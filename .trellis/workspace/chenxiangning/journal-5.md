@@ -1774,11 +1774,11 @@
 - None - task complete
 
 
-## Session 168: 合并 feature v0.4.8 长文流修复
+## Session 168: 拆分 useAppServerEvents 路由测试
 
 **Date**: 2026-04-24
-**Task**: 合并 feature v0.4.8 长文流修复
-**Branch**: `codex/2026-04-01-local`
+**Task**: 拆分 useAppServerEvents 路由测试
+**Branch**: `feature/v-0.4.8`
 
 ### Summary
 
@@ -1786,36 +1786,98 @@
 
 ### Main Changes
 
-任务目标：把 feature/v-0.4.8 新增的 Claude 长文流式修复合并到 codex/2026-04-01-local，并完成冲突解决、验证、提交与后续记录。
+## 任务目标
+- 拆分 `src/features/app/hooks/useAppServerEvents.test.tsx`，消除 large-file gate fail。
+- 保持 `useAppServerEvents` 测试行为不变，不修改 hook 实现。
 
-主要改动：
-- 合并 1571d17c 与 490ec5f9 对应的 Claude 长文 realtime streaming 修复增量，以及相关 OpenSpec / Trellis / 测试更新。
-- 解决 2 个冲突文件：.trellis/workspace/chenxiangning/index.md、.trellis/workspace/chenxiangning/journal-5.md。
-- 冲突按 feature/v-0.4.8 传入版本处理，保留最新 Trellis workspace 记录。
-- 修复 openspec/changes/fix-claude-long-markdown-progressive-reveal/design.md 的行尾空白，确保 merge commit 通过 git diff --check。
-- 生成 merge commit 32bab08e：chore(release): 合并 feature v0.4.8 长文流修复。
+## 主要改动
+- 新增 `src/features/app/hooks/useAppServerEvents.routing.test.tsx`，承接原文件中的综合路由用例 `routes app-server events to handlers`。
+- 从 `src/features/app/hooks/useAppServerEvents.test.tsx` 删除同一段测试，其余测试保持原位。
+- 不触碰 `useAppServerEvents.ts`、`runtime-ended`、`turn-stalled` 等实现与其他专项测试文件。
 
-涉及模块：
-- Trellis workspace journal/index
-- OpenSpec change: fix-claude-long-markdown-progressive-reveal
-- Claude stream 相关 frontend/backend/runtime 路径
-- 与长 markdown progressive reveal 相关的 tests/specs
+## 涉及模块
+- `src/features/app/hooks/useAppServerEvents.test.tsx`
+- `src/features/app/hooks/useAppServerEvents.routing.test.tsx`
 
-验证结果：
-- git diff --name-only --diff-filter=U 无输出。
-- git diff --check --cached 通过。
-- npm run typecheck 通过。
-- git commit 成功生成 32bab08e。
+## 验证结果
+- `npm exec vitest run src/features/app/hooks/useAppServerEvents.routing.test.tsx src/features/app/hooks/useAppServerEvents.test.tsx src/features/app/hooks/useAppServerEvents.runtime-ended.test.tsx src/features/app/hooks/useAppServerEvents.turn-stalled.test.tsx` 通过（4 files, 52 tests）。
+- `npm run check:large-files` 通过（found=0）。
+- `npm run lint` 通过。
+- `npm run typecheck` 通过。
 
-后续事项：
-- 完成 Trellis session record 后，将当前分支推送到 origin/codex/2026-04-01-local。
+## 后续事项
+- 当前 `useAppServerEvents` 相关测试文件仍存在重复的 harness/mock setup，后续若继续拆分可再统一抽出 test util。
+- 工作区中仍有与本次无关的 OpenSpec 未提交改动，未纳入本次提交。
 
 
 ### Git Commits
 
 | Hash | Message |
 |------|---------|
-| `32bab08e` | (see git log) |
+| `97896a18` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 169: 修复 Claude 空白幕布与终态重复
+
+**Date**: 2026-04-24
+**Task**: 修复 Claude 空白幕布与终态重复
+**Branch**: `feature/v-0.4.8`
+
+### Summary
+
+交付 Claude 白屏恢复、sidebar truth parity 和 completed output duplication 修复，并补齐 OpenSpec 变更与回归验证。
+
+### Main Changes
+
+任务目标
+- 收敛 Claude 第 2 轮及之后的空白幕布问题。
+- 修复 Claude sidebar 会话显示与真实 session 状态不一致、删除 not found 后残留 ghost entry 的问题。
+- 修复 Claude completed 最后一跳把已流出的 Markdown 前缀和完整正文一起重放，导致终态大段重复的问题。
+
+主要改动
+- 在 Messages / streamLatencyDiagnostics 上新增 repeat-turn blanking diagnostics 与 recovery path，保证空幕布时仍保留可读 surface。
+- 在 Claude reopen / delete 路径增加 authoritative reconcile，避免 stale session 被继续当成正常会话。
+- 在 threadReducerTextMerge 的 completed merge 增加 leading replay collapse，收敛 `prefix + full snapshot` 形态的 terminal duplication。
+- 新增并落盘三个 OpenSpec changes：fix-claude-repeat-turn-blanking、fix-claude-session-sidebar-state-parity、fix-claude-completed-output-duplication。
+
+涉及模块
+- src/features/messages/components/Messages.tsx
+- src/features/threads/hooks/useThreadActions.ts
+- src/features/threads/hooks/useThreads.ts
+- src/features/threads/utils/streamLatencyDiagnostics.ts
+- src/features/threads/hooks/threadReducerTextMerge.ts
+- 对应 Vitest 回归测试与 OpenSpec artifacts
+
+验证结果
+- openspec validate fix-claude-repeat-turn-blanking --type change --strict --no-interactive
+- openspec validate fix-claude-session-sidebar-state-parity --type change --strict --no-interactive
+- openspec validate fix-claude-completed-output-duplication --type change --strict --no-interactive
+- npm exec vitest run src/features/threads/hooks/threadReducerTextMerge.test.ts src/features/threads/hooks/useThreadsReducer.completed-duplicate.test.ts src/features/threads/hooks/useThreadsReducer.test.ts src/features/threads/hooks/useThreads.memory-race.integration.test.tsx
+- npm run typecheck
+- 用户在 macOS 上针对 Claude 实时对话复现场景自测反馈“目前还行没什么问题”。
+
+后续事项
+- 下一步需要基于本次提交打包 Windows 版本，继续验证 native Claude Code 的 streaming / blanking / completed duplication 路径。
+- 当前工作树仍有两个未纳入本次提交的旧脏文件：openspec/changes/fix-claude-long-markdown-progressive-reveal/tasks.md、openspec/changes/fix-claude-windows-streaming-visibility-stall/tasks.md。
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `4b44af80` | (see git log) |
 
 ### Testing
 
