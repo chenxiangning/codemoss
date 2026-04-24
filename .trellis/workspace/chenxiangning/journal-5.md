@@ -1890,3 +1890,58 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 170: 合并 feature v0.4.8 Claude 会话修复
+
+**Date**: 2026-04-24
+**Task**: 合并 feature v0.4.8 Claude 会话修复
+**Branch**: `codex/2026-04-01-local`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+任务目标：把 feature/v-0.4.8 新增的 Claude 会话修复增量合并到 codex/2026-04-01-local，并完成冲突解决、验证、提交、记录与推送。
+
+主要改动：
+- 合并 4b44af80 与 97896a18、75d8e546 对应的增量，包括 repeat-turn blanking recovery、completed output duplication 修复、session sidebar state parity、routing tests 与 OpenSpec 任务状态同步。
+- 解决 2 个冲突文件：.trellis/workspace/chenxiangning/index.md、.trellis/workspace/chenxiangning/journal-5.md。
+- 冲突按 feature/v-0.4.8 传入版本处理，保留最新 Trellis workspace 记录。
+- 修复新 OpenSpec 文档中的行尾空格与 EOF blank line，确保 merge commit 通过 git diff --check。
+- 生成 merge commit d0aec43d：chore(release): 合并 feature v0.4.8 Claude 会话修复。
+
+涉及模块：
+- Trellis workspace journal/index
+- OpenSpec changes: fix-claude-completed-output-duplication, fix-claude-repeat-turn-blanking, fix-claude-session-sidebar-state-parity
+- Messages / threads / app hooks 与 stream diagnostics 路径
+
+验证结果：
+- git diff --name-only --diff-filter=U 无输出。
+- git diff --check --cached 通过。
+- npm run typecheck 通过。
+- git commit 成功生成 d0aec43d。
+
+后续事项：
+- 完成 Trellis session record 后，将当前分支推送到 origin/codex/2026-04-01-local。
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `d0aec43d` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
