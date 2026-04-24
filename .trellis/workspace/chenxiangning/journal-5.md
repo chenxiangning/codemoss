@@ -1892,11 +1892,11 @@
 - None - task complete
 
 
-## Session 170: 合并 feature v0.4.8 Claude 会话修复
+## Session 170: 修正对话幕布 markdown 卡片渲染兼容性
 
 **Date**: 2026-04-24
-**Task**: 合并 feature v0.4.8 Claude 会话修复
-**Branch**: `codex/2026-04-01-local`
+**Task**: 修正对话幕布 markdown 卡片渲染兼容性
+**Branch**: `feature/v-0.4.8`
 
 ### Summary
 
@@ -1904,35 +1904,37 @@
 
 ### Main Changes
 
-任务目标：把 feature/v-0.4.8 新增的 Claude 会话修复增量合并到 codex/2026-04-01-local，并完成冲突解决、验证、提交、记录与推送。
+任务目标:
+- 修正 codex 对话幕布浅色系卡片着色问题。
+- 让 markdown 卡片正确进行富文本渲染，同时补齐兼容性修复。
 
-主要改动：
-- 合并 4b44af80 与 97896a18、75d8e546 对应的增量，包括 repeat-turn blanking recovery、completed output duplication 修复、session sidebar state parity、routing tests 与 OpenSpec 任务状态同步。
-- 解决 2 个冲突文件：.trellis/workspace/chenxiangning/index.md、.trellis/workspace/chenxiangning/journal-5.md。
-- 冲突按 feature/v-0.4.8 传入版本处理，保留最新 Trellis workspace 记录。
-- 修复新 OpenSpec 文档中的行尾空格与 EOF blank line，确保 merge commit 通过 git diff --check。
-- 生成 merge commit d0aec43d：chore(release): 合并 feature v0.4.8 Claude 会话修复。
+主要改动:
+- 为 markdown/md/mdx fenced block 增加顶层判定，仅将顶层围栏渲染为 markdown card。
+- 保持嵌套 markdown fenced example 作为字面量源码展示，避免示例内容被误渲染。
+- 将 GitHub alert 容器样式从 CSS :has() 依赖切换为渲染期 class 标记，提升旧版 WebView 兼容性。
+- 优化浅色主题下 markdown/code 卡片的 surface、border 与 syntax token 配色。
+- 新增 markdown 卡片渲染回归测试，覆盖 alert、file link 与 nested fence 场景。
 
-涉及模块：
-- Trellis workspace journal/index
-- OpenSpec changes: fix-claude-completed-output-duplication, fix-claude-repeat-turn-blanking, fix-claude-session-sidebar-state-parity
-- Messages / threads / app hooks 与 stream diagnostics 路径
+涉及模块:
+- src/features/messages/components/Markdown.tsx
+- src/styles/messages.part2.css
+- src/features/messages/components/Markdown.codeblock-rendering.test.tsx
 
-验证结果：
-- git diff --name-only --diff-filter=U 无输出。
-- git diff --check --cached 通过。
-- npm run typecheck 通过。
-- git commit 成功生成 d0aec43d。
+验证结果:
+- npx vitest run src/features/messages/components/Markdown.codeblock-rendering.test.tsx src/features/messages/components/Markdown.file-links.test.tsx src/features/messages/components/Markdown.list-rendering.test.tsx src/features/messages/components/Markdown.math-rendering.test.tsx
+- npm run typecheck
+- npx eslint src/features/messages/components/Markdown.tsx src/features/messages/components/Markdown.codeblock-rendering.test.tsx
+- npm run check:large-files
 
-后续事项：
-- 完成 Trellis session record 后，将当前分支推送到 origin/codex/2026-04-01-local。
+后续事项:
+- 如需进一步收口视觉一致性，可继续做 MARKDOWN / JSON / JAVA 卡片的截图级 smoke review。
 
 
 ### Git Commits
 
 | Hash | Message |
 |------|---------|
-| `d0aec43d` | (see git log) |
+| `4bbd01113b061d6c225924526a0c0948a36de6dd` | (see git log) |
 
 ### Testing
 
