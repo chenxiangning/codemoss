@@ -1772,3 +1772,59 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 168: 合并 feature v0.4.8 长文流修复
+
+**Date**: 2026-04-24
+**Task**: 合并 feature v0.4.8 长文流修复
+**Branch**: `codex/2026-04-01-local`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+任务目标：把 feature/v-0.4.8 新增的 Claude 长文流式修复合并到 codex/2026-04-01-local，并完成冲突解决、验证、提交与后续记录。
+
+主要改动：
+- 合并 1571d17c 与 490ec5f9 对应的 Claude 长文 realtime streaming 修复增量，以及相关 OpenSpec / Trellis / 测试更新。
+- 解决 2 个冲突文件：.trellis/workspace/chenxiangning/index.md、.trellis/workspace/chenxiangning/journal-5.md。
+- 冲突按 feature/v-0.4.8 传入版本处理，保留最新 Trellis workspace 记录。
+- 修复 openspec/changes/fix-claude-long-markdown-progressive-reveal/design.md 的行尾空白，确保 merge commit 通过 git diff --check。
+- 生成 merge commit 32bab08e：chore(release): 合并 feature v0.4.8 长文流修复。
+
+涉及模块：
+- Trellis workspace journal/index
+- OpenSpec change: fix-claude-long-markdown-progressive-reveal
+- Claude stream 相关 frontend/backend/runtime 路径
+- 与长 markdown progressive reveal 相关的 tests/specs
+
+验证结果：
+- git diff --name-only --diff-filter=U 无输出。
+- git diff --check --cached 通过。
+- npm run typecheck 通过。
+- git commit 成功生成 32bab08e。
+
+后续事项：
+- 完成 Trellis session record 后，将当前分支推送到 origin/codex/2026-04-01-local。
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `32bab08e` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
