@@ -14,6 +14,12 @@ The system MUST preserve progressive visible assistant text for `Claude Code` re
 - **THEN** the live assistant message MUST reflect intermediate text growth before `turn/completed`
 - **AND** the final completed message MUST reconcile with the streamed text without replacing a stalled live surface as the first meaningful output
 
+#### Scenario: degraded prefix stub does not replace a more readable same-turn live surface
+- **WHEN** a `Claude Code` turn on Windows has already rendered a longer live assistant body in the current turn
+- **AND** the live surface later regresses to a shorter prefix or stub while `visible-output-stall-after-first-delta` evidence is active
+- **THEN** the frontend MUST preserve or recover the most recent more-readable same-turn live surface
+- **AND** the shorter stub MUST NOT become the only meaningful visible assistant output before completion
+
 ### Requirement: Claude Code Stream Visibility Mitigation MUST Be Engine-Level And Model-Independent
 The system MUST activate Claude Code stream visibility protection from engine/platform evidence, not from model or provider identity.
 

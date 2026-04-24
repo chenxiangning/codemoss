@@ -63,11 +63,11 @@
 - None - task complete
 
 
-## Session 172: 合并 feature v0.4.8 markdown 渲染更新
+## Session 172: 记录 Windows Claude 流式可见卡顿抢修
 
 **Date**: 2026-04-24
-**Task**: 合并 feature v0.4.8 markdown 渲染更新
-**Branch**: `codex/2026-04-01-local`
+**Task**: 记录 Windows Claude 流式可见卡顿抢修
+**Branch**: `feature/v-0.4.8`
 
 ### Summary
 
@@ -75,35 +75,34 @@
 
 ### Main Changes
 
-任务目标：将 feature/v-0.4.8 新增的 markdown 渲染兼容与悬浮问题条交互更新合并到 codex/2026-04-01-local，并完成提交与推送。
+## 任务目标
+- 抢修 `Windows + Claude Code realtime` 场景下 live delta 已到达但可见输出长时间卡在短 stub，最终完成态整片落下的问题。
 
-主要改动：
-- 解决 .trellis/workspace/chenxiangning/index.md 与 journal-5.md 的 merge 冲突，按传入分支版本收口。
-- 合入 Markdown code block rendering 回归测试、实时消息行为测试、MessagesTimeline 与样式更新。
-- 同步 src/i18n/locales/en.part1.ts 与 src/i18n/locales/zh.part1.ts 文案。
+## 主要改动
+- 在 `Messages.tsx` 为 `visible-output-stall-after-first-delta` 接入 readable-window recovery。
+- 将 preserved readable window 收紧到 `same thread + same turn`，避免短前缀 stub 覆盖之前已可读的正文。
+- 新增回归测试，覆盖“同一 turn 先有可读正文，随后退化成短 stub”的 Windows mitigation 场景。
+- 同步更新 OpenSpec proposal/design/spec/tasks，补齐该边界条件并标记自动化验证进度。
 
-涉及模块：
-- src/features/messages/components/*
-- src/styles/messages.history-sticky.css
-- src/styles/messages.part2.css
-- src/i18n/locales/en.part1.ts
-- src/i18n/locales/zh.part1.ts
-- .trellis/workspace/chenxiangning/*
+## 涉及模块
+- `src/features/messages/components/Messages.tsx`
+- `src/features/messages/components/Messages.windows-render-mitigation.test.tsx`
+- `openspec/changes/fix-claude-windows-streaming-visibility-stall/**`
 
-验证结果：
-- git diff --name-only --diff-filter=U 无输出
-- git diff --check --cached 通过
-- npm run typecheck 通过
+## 验证结果
+- `npm exec vitest run src/features/messages/components/Messages.windows-render-mitigation.test.tsx src/features/threads/utils/streamLatencyDiagnostics.test.ts src/features/messages/components/MessagesRows.stream-mitigation.test.tsx` 通过（26 passed）
+- `npm run typecheck` 通过
 
-后续事项：
-- 关注远端 CI 与 messages 相关 UI 回归，重点查看 markdown 卡片渲染与悬浮问题条交互。
+## 后续事项
+- 仍需在 Windows 原生 Claude Code 环境执行人工复测，确认首段输出后继续增量推进，不再卡成短 stub。
+- 仍需补 macOS Claude / 非 Claude engine 的人工对照验证。
 
 
 ### Git Commits
 
 | Hash | Message |
 |------|---------|
-| `9a0dee86c733936ddb05b3ad717c82346d5b40b5` | (see git log) |
+| `ef9876e8` | (see git log) |
 
 ### Testing
 

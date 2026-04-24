@@ -2,6 +2,8 @@
 
 The observed failure is specific to `Claude Code` realtime conversation output on Windows desktop surfaces. The live UI can show the first one or two characters, then remain in `loading/processing` until the turn finishes and the full assistant message appears at once. The user has confirmed this is unrelated to model choice.
 
+2026-04-24 的补充现场进一步说明，该故障不一定总表现为“完全无字”。部分会话会先显示一个很短的 prefix/stub，随后主内容区长时间不再推进，直到 completed 才整片补齐。这个 stub 不能被当作“已拥有 meaningful live progress”的正常 surface。
+
 Current implementation has three relevant facts:
 
 - `src-tauri/src/engine/claude.rs` already contains Windows-only text delta coalescing (`CLAUDE_TEXT_DELTA_COALESCE_WINDOW_MS = 32`), introduced by `41aba520` to reduce over-fragmented Claude deltas.
@@ -109,6 +111,16 @@ Mitigation may adjust render pacing, Markdown throttle, or live-row lightweight 
 **Why**
 
 The goal is to restore progressive visibility, not to hide streaming or collapse live output into a final-only path.
+
+### Decision 6: Prefix-only degraded live surfaces must not replace the last readable same-turn surface
+
+**Decision**
+
+当同一 `Claude` turn 的 live assistant surface 先显示过更长正文，随后又回退成更短 prefix/stub 且命中 `visible-output-stall-after-first-delta` 证据时，renderer MUST 保留最近一次更可读的同 turn surface，直到当前 surface 再次追平或超过它。
+
+**Why**
+
+这类故障不是“没有任何 surface”，而是“surface 退化成了前缀 stub”。如果恢复逻辑只在 `0 items` 时触发，系统会错误地把退化 stub 继续当成 authoritative live UI，用户看到的就仍然是大面积空白 + 几个字。
 
 ## Risks / Trade-offs
 

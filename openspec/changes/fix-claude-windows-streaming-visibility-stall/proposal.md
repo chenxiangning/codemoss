@@ -15,6 +15,7 @@
 
 - 只聚焦 `Claude Code` 引擎，不碰 `Codex / Gemini / OpenCode`。
 - 修复 `Claude Code + Windows` 实时对话中“前几个字后卡住，完成后一次性整体输出”的 progressive reveal 失效。
+- 覆盖 `live assistant` 先出现一小段 prefix/stub，随后长时间不再推进、直到 completed 才整片落下的同类退化；该 stub MUST NOT 被视为“已有 meaningful live progress”。
 - 将 diagnostics 从 provider/model 归因改为 engine-level stream pipeline 归因，明确区分：
   - runtime 未收到首包
   - runtime / thread 已收到 delta，但 frontend visible render 未持续推进
@@ -69,6 +70,7 @@
 ## 验收标准
 
 - `Windows + native Claude Code` 在实时对话中收到首个 assistant delta 后，assistant text MUST 持续可见推进，不能长期停在前几个字后只剩 loading，直到 completed 才整体输出。
+- 若同一 turn 的 live assistant surface 曾显示过更长的可读正文，但随后退化成更短的 prefix/stub，系统 MUST 保留或恢复该 turn 最近一次更可读的 live surface，而不能把退化后的 stub 当作唯一可见正文。
 - 同一故障场景下 diagnostics MUST 能记录并归类为 `visible-output-stall-after-first-delta` 或等价分类，且该分类 MUST NOT 依赖 model/provider。
 - mitigation 激活条件 MUST 以 `engine=claude`、`platform=windows`、`firstDeltaAt`、`visible render lag / progressive reveal gap` 等 evidence 为准。
 - 既有 `Qwen-compatible provider + Windows` diagnostics 可以保留，但不能作为原生 `Claude Code` Windows 修复是否生效的必要条件。

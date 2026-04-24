@@ -150,6 +150,13 @@ type HistoryExpansionScrollSnapshot = {
   scrollTop: number;
 };
 
+type PreservedReadableWindow = {
+  threadId: string | null;
+  turnId: string | null;
+  renderedItems: ConversationItem[];
+  visibleCollapsedHistoryItemCount: number;
+};
+
 function readHistoryExpansionScrollSnapshot(
   container: HTMLDivElement | null,
 ): HistoryExpansionScrollSnapshot | null {
@@ -178,6 +185,31 @@ function restoreHistoryExpansionScrollPosition(
   }
   container.scrollTop = Math.max(0, nextScrollTop);
   return true;
+}
+
+function findLatestAssistantTextLength(items: ConversationItem[]) {
+  for (let index = items.length - 1; index >= 0; index -= 1) {
+    const item = items[index];
+    if (!item || item.kind !== "message" || item.role !== "assistant") {
+      continue;
+    }
+    return item.text.length;
+  }
+  return 0;
+}
+
+function mergeReadableRecoveryItems(
+  preservedItems: ConversationItem[],
+  currentItems: ConversationItem[],
+) {
+  if (currentItems.length === 0) {
+    return preservedItems;
+  }
+  const preservedItemIds = new Set(preservedItems.map((item) => item.id));
+  const appendedCurrentItems = currentItems.filter((item) => !preservedItemIds.has(item.id));
+  return appendedCurrentItems.length > 0
+    ? [...preservedItems, ...appendedCurrentItems]
+    : preservedItems;
 }
 
 export const Messages = memo(function Messages({
@@ -261,6 +293,7 @@ export const Messages = memo(function Messages({
   const userInputRequests = effectiveState.userInputQueue;
   const workspaceId = effectiveState.meta.workspaceId || legacyWorkspaceId;
   const threadId = effectiveState.meta.threadId || legacyThreadId;
+  const activeTurnId = effectiveState.meta.activeTurnId ?? null;
   const activeEngine = toConversationEngine(effectiveState.meta.engine);
   const isThinking = conversationState
     ? effectiveState.meta.isThinking
@@ -278,6 +311,12 @@ export const Messages = memo(function Messages({
     activeEngine === "claude" &&
     isThinking &&
     threadStreamLatencySnapshot?.latencyCategory === "repeat-turn-blanking";
+  const visibleStallRecoveryActive =
+    activeEngine === "claude" &&
+    isThinking &&
+    threadStreamLatencySnapshot?.latencyCategory === "visible-output-stall-after-first-delta";
+  const readableWindowRecoveryActive =
+    blankingRecoveryActive || visibleStallRecoveryActive;
   const latestRuntimeReconnectItemId = useMemo(() => {
     for (let index = items.length - 1; index >= 0; index -= 1) {
       const item = items[index];
@@ -320,12 +359,9 @@ export const Messages = memo(function Messages({
     heartbeatPulse: number;
     threadId: string | null;
   } | null>(null);
-  const preservedReadableWindowRef = useRef<{
-    threadId: string | null;
-    renderedItems: ConversationItem[];
-    visibleCollapsedHistoryItemCount: number;
-  }>({
+  const preservedReadableWindowRef = useRef<PreservedReadableWindow>({
     threadId: null,
+    turnId: null,
     renderedItems: [],
     visibleCollapsedHistoryItemCount: 0,
   });
@@ -1085,11 +1121,20 @@ export const Messages = memo(function Messages({
       timelineItems,
     ],
   );
+  const currentLatestAssistantTextLength = useMemo(
+    () => findLatestAssistantTextLength(renderedItems),
+    [renderedItems],
+  );
   useEffect(() => {
     const currentThreadId = threadId ?? null;
-    if (preservedReadableWindowRef.current.threadId !== currentThreadId) {
+    const currentTurnId = activeTurnId;
+    if (
+      preservedReadableWindowRef.current.threadId !== currentThreadId ||
+      preservedReadableWindowRef.current.turnId !== currentTurnId
+    ) {
       preservedReadableWindowRef.current = {
         threadId: currentThreadId,
+        turnId: currentTurnId,
         renderedItems: renderedItems.length > 0 ? renderedItems : [],
         visibleCollapsedHistoryItemCount:
           renderedItems.length > 0 ? visibleCollapsedHistoryItemCount : 0,
@@ -1097,8 +1142,12 @@ export const Messages = memo(function Messages({
       return;
     }
     if (renderedItems.length > 0) {
+      if (readableWindowRecoveryActive) {
+        return;
+      }
       preservedReadableWindowRef.current = {
         threadId: currentThreadId,
+        turnId: currentTurnId,
         renderedItems,
         visibleCollapsedHistoryItemCount,
       };
@@ -1107,21 +1156,55 @@ export const Messages = memo(function Messages({
     if (!isThinking) {
       preservedReadableWindowRef.current = {
         threadId: currentThreadId,
+        turnId: null,
         renderedItems: [],
         visibleCollapsedHistoryItemCount: 0,
       };
     }
-  }, [isThinking, renderedItems, threadId, visibleCollapsedHistoryItemCount]);
+  }, [
+    activeTurnId,
+    isThinking,
+    readableWindowRecoveryActive,
+    renderedItems,
+    threadId,
+    visibleCollapsedHistoryItemCount,
+  ]);
+  const preservedLatestAssistantTextLength = findLatestAssistantTextLength(
+    preservedReadableWindowRef.current.renderedItems,
+  );
+  const recoveredReadableWindow = useMemo(() => {
+    if (
+      !readableWindowRecoveryActive ||
+      preservedReadableWindowRef.current.threadId !== (threadId ?? null) ||
+      preservedReadableWindowRef.current.turnId !== activeTurnId ||
+      preservedReadableWindowRef.current.renderedItems.length === 0
+    ) {
+      return null;
+    }
+    return {
+      renderedItems: mergeReadableRecoveryItems(
+        preservedReadableWindowRef.current.renderedItems,
+        renderedItems,
+      ),
+      visibleCollapsedHistoryItemCount:
+        preservedReadableWindowRef.current.visibleCollapsedHistoryItemCount,
+    };
+  }, [activeTurnId, readableWindowRecoveryActive, renderedItems, threadId]);
   const shouldUseReadableWindowRecovery =
-    blankingRecoveryActive &&
-    renderedItems.length === 0 &&
-    preservedReadableWindowRef.current.threadId === (threadId ?? null) &&
-    preservedReadableWindowRef.current.renderedItems.length > 0;
+    recoveredReadableWindow !== null &&
+    (
+      (blankingRecoveryActive && renderedItems.length === 0) ||
+      (
+        visibleStallRecoveryActive &&
+        currentLatestAssistantTextLength > 0 &&
+        currentLatestAssistantTextLength < preservedLatestAssistantTextLength
+      )
+    );
   const presentationRenderedItems = shouldUseReadableWindowRecovery
-    ? preservedReadableWindowRef.current.renderedItems
+    ? recoveredReadableWindow.renderedItems
     : renderedItems;
   const presentationCollapsedHistoryItemCount = shouldUseReadableWindowRecovery
-    ? preservedReadableWindowRef.current.visibleCollapsedHistoryItemCount
+    ? recoveredReadableWindow.visibleCollapsedHistoryItemCount
     : visibleCollapsedHistoryItemCount;
   const historyStickyCandidates = useMemo(() => {
     const candidates: HistoryStickyCandidate[] = [];

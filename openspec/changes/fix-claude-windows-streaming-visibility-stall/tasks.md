@@ -9,6 +9,7 @@
 - [x] 2.1 [P0][depends:1.1][I: active thread stream latency snapshot][O: `Claude Code + Windows + evidence` mitigation profile resolver][V: tests show native Claude Windows activates without Qwen/provider fingerprint] Add engine/platform-scoped mitigation resolution.
 - [x] 2.2 [P0][depends:2.1][I: `Messages.tsx`, `MessagesTimeline.tsx`, `MessagesRows.tsx`, `Markdown.tsx`][O: active profile reaches live assistant/reasoning render path][V: targeted render tests verify profile-specific throttle/light-path behavior] Wire mitigation profile through the live message render chain.
 - [x] 2.3 [P0][depends:2.2][I: Claude live assistant message row and Markdown streaming throttle][O: progressive visible text continues after first delta][V: test simulates repeated deltas and asserts intermediate text becomes visible before completion] Preserve progressive assistant text visibility during processing.
+- [x] 2.4 [P0][depends:2.3][I: `Messages.tsx`, readable-window recovery path][O: same-turn readable surface is preserved when live assistant regresses to a shorter stub][V: renderer regression test covers stub regression under `visible-output-stall-after-first-delta`] Prevent degraded prefix-only live surfaces from replacing the last readable same-turn body.
 
 ## 3. Boundary Protection
 
@@ -18,7 +19,7 @@
 
 ## 4. Validation
 
-- [ ] 4.1 [P0][depends:1.1,2.3,3.1][I: affected frontend modules][O: targeted Vitest pass][V: `npm exec vitest run <targeted test files>`] Run targeted diagnostics/render tests.
+- [x] 4.1 [P0][depends:1.1,2.3,3.1][I: affected frontend modules][O: targeted Vitest pass][V: `npm exec vitest run <targeted test files>`] Run targeted diagnostics/render tests.
 - [x] 4.2 [P1][depends:4.1][I: TypeScript frontend][O: type safety pass][V: `npm run typecheck`] Run typecheck after implementation.
 - [ ] 4.3 [P1][depends:4.1][I: Windows native Claude Code environment][O: manual matrix result][V: first delta and intermediate text visibly progress before completion] Manually verify Windows native Claude Code streaming. Blocked in this macOS session; requires a Windows native Claude Code run.
 - [ ] 4.4 [P1][depends:4.3][I: macOS Claude and non-Claude control paths][O: control matrix result][V: macOS and other engines remain baseline] Verify no cross-engine/platform regression. Pending after Windows manual matrix; automated non-Claude/macOS guard tests pass.

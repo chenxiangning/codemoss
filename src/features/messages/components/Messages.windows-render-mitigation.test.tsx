@@ -28,11 +28,12 @@ vi.mock("../../threads/utils/streamLatencyDiagnostics", () => ({
 import { Messages } from "./Messages";
 
 function renderMessages(options?: {
+  items?: ConversationItem[];
   isThinking?: boolean;
   activeEngine?: "claude" | "codex" | "gemini" | "opencode";
   conversationState?: ConversationState | null;
 }) {
-  const items: ConversationItem[] = [
+  const items: ConversationItem[] = options?.items ?? [
     {
       id: "user-msg",
       kind: "message",
@@ -260,5 +261,85 @@ describe("Messages desktop render-safe mode", () => {
 
     expect(screen.queryAllByText("继续")).toHaveLength(0);
     expect(screen.queryByText("正在处理")).toBeNull();
+  });
+
+  it("preserves the last readable same-turn assistant surface when visible stall regresses to a short stub", () => {
+    mocks.useThreadStreamLatencySnapshot.mockReturnValue(null);
+
+    const fullerTurnItems: ConversationItem[] = [
+      {
+        id: "user-stall",
+        kind: "message",
+        role: "user",
+        text: "帮我分析这个项目",
+      },
+      {
+        id: "assistant-stall",
+        kind: "message",
+        role: "assistant",
+        text: "The user is asking for a project analysis. I should explore the codebase to understand the project structure.",
+      },
+    ];
+
+    const degradedTurnItems: ConversationItem[] = [
+      {
+        id: "user-stall",
+        kind: "message",
+        role: "user",
+        text: "帮我分析这个项目",
+      },
+      {
+        id: "assistant-stall",
+        kind: "message",
+        role: "assistant",
+        text: "The user",
+      },
+    ];
+
+    const activeConversationState: ConversationState = {
+      items: fullerTurnItems,
+      plan: null,
+      userInputQueue: [],
+      meta: {
+        workspaceId: "ws-1",
+        threadId: "thread-1",
+        engine: "claude",
+        activeTurnId: "turn-visible-stall",
+        isThinking: true,
+        heartbeatPulse: null,
+        historyRestoredAtMs: null,
+      },
+    };
+
+    const { rerender } = renderMessages({
+      items: fullerTurnItems,
+      conversationState: activeConversationState,
+    });
+
+    expect(screen.getByText(/The user is asking for a project analysis\./)).toBeTruthy();
+
+    mocks.useThreadStreamLatencySnapshot.mockReturnValue({
+      latencyCategory: "visible-output-stall-after-first-delta",
+      mitigationProfile: "claude-windows-visible-stream",
+    });
+
+    rerender(
+      <Messages
+        items={degradedTurnItems}
+        threadId="thread-1"
+        workspaceId="ws-1"
+        isThinking
+        activeEngine="claude"
+        conversationState={{
+          ...activeConversationState,
+          items: degradedTurnItems,
+        }}
+        openTargets={[]}
+        selectedOpenAppId=""
+      />,
+    );
+
+    expect(screen.getByText(/The user is asking for a project analysis\./)).toBeTruthy();
+    expect(screen.getByText("帮我分析这个项目")).toBeTruthy();
   });
 });
