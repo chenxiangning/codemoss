@@ -2036,6 +2036,7 @@
 .explore-inline {
   border-left: none;
   padding-left: 0;
+  margin: 4px 0;
 }
 
 .explore-inline .tool-inline-content {
@@ -2048,7 +2049,7 @@
   align-items: center;
   gap: 8px;
   padding: 2px 8px;
-  border-radius: 0;
+  border-radius: 4px;
   background: color-mix(in srgb, var(--surface-hover) 58%, transparent);
   font-size: 12px;
   color: var(--text-stronger);
@@ -2087,6 +2088,7 @@
 
 .explore-inline-title {
   font-weight: 600;
+  min-width: 0;
 }
 
 .explore-inline-list {
@@ -2111,10 +2113,23 @@
   background: var(--border-subtle);
 }
 
-.explore-inline-list.is-collapsed {
-  display: block;
-  max-height: 24px;
+.explore-inline.is-inline-summary .explore-inline-list {
+  display: none;
+}
+
+.explore-inline.is-inline-summary .explore-inline-header {
+  min-width: 0;
+}
+
+.explore-inline.is-inline-summary .explore-inline-header-toggle {
+  min-width: 0;
+}
+
+.explore-inline.is-inline-summary .explore-inline-title {
+  flex: 1 1 auto;
   overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .explore-inline-item {

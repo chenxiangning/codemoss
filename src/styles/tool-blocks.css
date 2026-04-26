@@ -274,14 +274,40 @@
 .tool-change-stack-entry.task-container.task-container-collapsed {
   border-color: transparent;
   border-bottom-color: color-mix(in srgb, var(--border-subtle) 72%, transparent);
-  border-radius: 0;
+  border-radius: 4px;
+  background: var(--bg-primary, var(--surface-card));
+}
+
+.tool-change-expanded-card.task-container {
+  border-color: transparent;
+  border-bottom-color: color-mix(in srgb, var(--border-subtle) 72%, transparent);
+  border-radius: 4px;
   background: var(--bg-primary, var(--surface-card));
 }
 
 .tool-change-collapsed-card .task-header,
 .tool-change-stack-header {
-  min-height: 34px;
-  padding: 4px 10px;
+  min-height: 0;
+  padding: 2px 8px;
+}
+
+.tool-change-expanded-card .tool-change-details .task-content-wrapper {
+  padding: 4px 0 8px 28px;
+}
+
+.tool-change-expanded-card .tool-change-entry {
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.tool-change-expanded-card .tool-change-inline-diff.edit-diff-viewer {
+  margin: 4px 0 0;
+  border-radius: 0;
+  border-left: none;
+  border-right: none;
 }
 
 .tool-change-collapsed-card .tool-title-text,

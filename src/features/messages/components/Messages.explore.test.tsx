@@ -93,6 +93,50 @@ describe("Messages explore rows", () => {
     );
   });
 
+  it("uses the same collapsed summary and expand path for a single-step explored block", async () => {
+    const items: ConversationItem[] = [
+      {
+        id: "explore-single-step",
+        kind: "explore",
+        status: "explored",
+        entries: [{ kind: "read", label: "package.json" }],
+      },
+    ];
+
+    const { container } = render(
+      <Messages
+        items={items}
+        threadId="thread-1"
+        workspaceId="ws-1"
+        isThinking={false}
+        openTargets={[]}
+        selectedOpenAppId=""
+      />,
+    );
+
+    const block = container.querySelector(".explore-inline");
+    expect(block?.className ?? "").toContain("is-collapsible");
+    expect(block?.className ?? "").toContain("is-inline-summary");
+    expect(container.querySelector(".explore-inline-title")?.textContent ?? "").toBe(
+      "Explored · Read package.json",
+    );
+    expect(container.querySelector(".explore-inline-list")?.className ?? "").toContain(
+      "is-collapsed",
+    );
+
+    const toggle = screen.getByRole("button", {
+      name: /Explored · Read package\.json · messages\.toggleDetails/i,
+    });
+    fireEvent.click(toggle);
+
+    expect(block?.className ?? "").not.toContain("is-inline-summary");
+    expect(container.querySelector(".explore-inline-title")?.textContent ?? "").toBe("Explored");
+    expect(container.querySelector(".explore-inline-list")?.className ?? "").not.toContain(
+      "is-collapsed",
+    );
+    expect(screen.getByText("package.json")).toBeTruthy();
+  });
+
   it("expands explored card during thinking and auto-collapses after thinking ends", async () => {
     const items: ConversationItem[] = [
       {
@@ -223,6 +267,7 @@ describe("Messages explore rows", () => {
 
     const exploreBlock = container.querySelector(".explore-inline.is-collapsible");
     expect(exploreBlock).toBeTruthy();
+    expect(exploreBlock?.className ?? "").toContain("is-collapsed");
     const list = container.querySelector(".explore-inline-list");
     expect(list?.className ?? "").toContain("is-collapsed");
 
@@ -231,6 +276,7 @@ describe("Messages explore rows", () => {
     );
     expect(toggle).toBeTruthy();
     fireEvent.click(toggle as HTMLElement);
+    expect(exploreBlock?.className ?? "").not.toContain("is-collapsed");
     expect(container.querySelector(".explore-inline-list")?.className ?? "").not.toContain(
       "is-collapsed",
     );

@@ -989,6 +989,19 @@ function exploreKindLabel(kind: ExploreRowProps["item"]["entries"][number]["kind
   return (kind[0] ?? "").toUpperCase() + kind.slice(1);
 }
 
+function buildInlineExploreTitle(
+  title: string,
+  entry: ExploreRowProps["item"]["entries"][number] | undefined,
+) {
+  if (!entry) {
+    return title;
+  }
+  const detail = entry.detail && entry.detail !== entry.label ? entry.detail : "";
+  return [title, "·", exploreKindLabel(entry.kind), entry.label, detail]
+    .filter(Boolean)
+    .join(" ");
+}
+
 export const ExploreRow = memo(function ExploreRow({
   item,
   isExpanded,
@@ -997,8 +1010,15 @@ export const ExploreRow = memo(function ExploreRow({
   const { t } = useTranslation();
   const title = item.title ?? (item.status === "exploring" ? "Exploring" : "Explored");
   const isCollapsible =
-    item.collapsible ?? (item.status === "explored" && item.entries.length > 1);
+    item.collapsible ?? (item.status === "explored" && item.entries.length > 0);
   const listCollapsed = isCollapsible && !isExpanded;
+  const inlineSummary = listCollapsed;
+  const rowClassName = `tool-inline explore-inline${isCollapsible ? " is-collapsible" : ""}${
+    listCollapsed ? " is-collapsed" : ""
+  }${inlineSummary ? " is-inline-summary" : ""}`;
+  const displayTitle = inlineSummary
+    ? buildInlineExploreTitle(title, item.entries[0])
+    : title;
   const handleToggle = () => {
     if (!isCollapsible) {
       return;
@@ -1006,7 +1026,7 @@ export const ExploreRow = memo(function ExploreRow({
     onToggle(item.id);
   };
   return (
-    <div className={`tool-inline explore-inline${isCollapsible ? " is-collapsible" : ""}`}>
+    <div className={rowClassName}>
       <div className="tool-inline-content">
         <div className="explore-inline-header">
           {isCollapsible ? (
@@ -1015,7 +1035,7 @@ export const ExploreRow = memo(function ExploreRow({
               className="explore-inline-header-toggle"
               onClick={handleToggle}
               aria-expanded={isExpanded}
-              aria-label={t("messages.toggleDetails")}
+              aria-label={`${displayTitle} · ${t("messages.toggleDetails")}`}
             >
               <Terminal
                 className={`tool-inline-icon explore-inline-toggle-icon${
@@ -1024,7 +1044,9 @@ export const ExploreRow = memo(function ExploreRow({
                 size={14}
                 aria-hidden
               />
-              <span className="explore-inline-title">{title}</span>
+              <span className="explore-inline-title" title={displayTitle}>
+                {displayTitle}
+              </span>
             </button>
           ) : (
             <>
@@ -1035,7 +1057,9 @@ export const ExploreRow = memo(function ExploreRow({
                 size={14}
                 aria-hidden
               />
-              <span className="explore-inline-title">{title}</span>
+              <span className="explore-inline-title" title={displayTitle}>
+                {displayTitle}
+              </span>
             </>
           )}
         </div>

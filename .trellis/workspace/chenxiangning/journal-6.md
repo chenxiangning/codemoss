@@ -923,3 +923,218 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 186: 修复 0.4.9 边界审查问题
+
+**Date**: 2026-04-26
+**Task**: 修复 0.4.9 边界审查问题
+**Branch**: `feature/v0.4.9`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+任务目标：对 v0.4.8 之后的新代码进行边界条件、跨平台兼容、大文件治理与 heavy-test-noise 门禁审查，并对发现的问题做谨慎修复。
+
+主要改动：
+- 清理多个 OpenSpec design 文件中的 trailing whitespace，修复 git diff --check 硬失败。
+- 加强 generatedImageArtifacts 的 raw text 本地图片路径提取，覆盖带空格的 macOS 路径、Windows drive 路径与 UNC 路径。
+- 为 Git diff section actions 的 aria label 接入 i18n，避免英文硬编码，并同步 en/zh locale。
+- 补充 generatedImageArtifacts 与 GitDiffPanel 目标测试。
+
+涉及模块：
+- openspec/changes/*/design.md
+- src/utils/generatedImageArtifacts.ts
+- src/features/git/components/GitDiffPanelSectionActions.tsx
+- src/i18n/locales/en.part1.ts
+- src/i18n/locales/zh.part1.ts
+- 对应测试文件
+
+验证结果：
+- git diff --check 通过。
+- npm run lint 通过。
+- npm run typecheck 通过。
+- npx vitest run src/utils/generatedImageArtifacts.test.ts src/features/git/components/GitDiffPanel.test.tsx 通过。
+- npm run check:large-files:gate 通过，found=0。
+- npm run check:large-files:near-threshold 仅保留既有 watch warning，无 hard failure。
+- npm run check:heavy-test-noise 完整通过，366 个测试文件完成，act warnings=0，stdout/stderr payload lines=0。
+
+后续事项：
+- near-threshold 大文件仍建议单独开拆分任务处理，不混入本次 review 修复。
+- 本轮未纳入已有未跟踪目录 openspec/changes/fix-updater-check-fallback/ 与 updater/composer 相关未提交改动。
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `06678e28` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 187: 完成工作区变更多次提交化与功能拆分
+
+**Date**: 2026-04-27
+**Task**: 完成工作区变更多次提交化与功能拆分
+**Branch**: `feature/v0.4.9`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+任务目标: 将当前工作区未提交变更按功能拆分为多次中文 Conventional commits，完成 updater 降级与并发保护、Codex 模型体系重构、线程失败 runtime notice 统一化、AppShell 逻辑拆分，以及 claude passthrough 测试边界补充。
+主要改动: 1) feat(updater): 完善更新检查意图与并发保护（hooks/菜单触发/OpenSpec）；2) feat(models): 重构 Codex 模型目录与选择策略（composer/model hooks/engine 映射）；3) feat(runtime): 统一会话失败运行时告警上报（globalRuntimeNotices + thread hooks）；4) refactor(app-shell): 抽取计划应用与面板锁定逻辑；5) test(engine): 扩展 claude passthrough 模型边界用例。
+涉及模块: features/update, features/models, features/composer, features/threads, services, app-shell, src-tauri/engine tests, openspec.
+验证结果: npm exec vitest run src/features/update/hooks/useUpdater.test.ts src/features/models/hooks/useModels.test.tsx src/features/models/hooks/useEngineController.test.tsx src/features/threads/hooks/useThreadMessaging.test.tsx src/features/threads/hooks/useThreadTurnEvents.test.tsx（通过）；npm run typecheck（通过）。
+后续事项: 如需覆盖历史任务，请与 .trellis/task .trellis/tasks/04-24-show-codex-history-loading-state 对齐。
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `cc74d44b` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 188: 收窄吸顶折叠把手
+
+**Date**: 2026-04-27
+**Task**: 收窄吸顶折叠把手
+**Branch**: `feature/v0.4.9`
+
+### Summary
+
+调整用户对话幕布吸顶折叠态为右侧贴边直角抽屉把手。
+
+### Main Changes
+
+任务目标：
+- 用户对话幕布吸顶条折叠后，右上角按钮需要更贴近右侧边缘。
+- 折叠按钮从胶囊/半圆形改为更窄的直角抽屉把手，并加粗把手线条。
+
+主要改动：
+- `src/styles/messages.history-sticky.css`
+  - 折叠态补偿外层 main panel padding，让按钮视觉上贴到幕布右边缘。
+  - 将折叠按钮收窄到 16px，并移除宽标题占位与 translate 偏移。
+  - 改为直角抽屉把手样式，通过 `::before` 绘制 5px 加粗竖向把手。
+  - 折叠态隐藏原 SVG 并移出布局，避免 invisible SVG 继续撑宽。
+- `src/styles/layout-swapped-platform-guard.test.ts`
+  - 补充 CSS contract 检查，覆盖右侧贴边、宽屏补偿、16px 收窄宽度、无 transform 偏移、抽屉把手伪元素与 SVG 不占位。
+
+涉及模块：
+- frontend messages sticky header 样式。
+- CSS platform guard 测试。
+
+验证结果：
+- `npx vitest run src/styles/layout-swapped-platform-guard.test.ts src/features/messages/components/Messages.live-behavior.test.tsx` 通过。
+- `npm run typecheck` 通过。
+- `npm run check:large-files` 通过。
+- review 过程中额外运行 `npx vitest run src/features/messages/components/Messages.explore.test.tsx` 通过。
+
+后续事项：
+- 当前工作区仍有 5 个无关既有改动，未纳入本次业务提交。
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `13f388ee` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 189: 统一 Explored 与文件变更卡片样式
+
+**Date**: 2026-04-27
+**Task**: 统一 Explored 与文件变更卡片样式
+**Branch**: `feature/v0.4.9`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+任务目标：
+- 根据人工视觉反馈，统一消息流中 Explored 卡片与 File changes 卡片的折叠、展开视觉节奏。
+- 保持现有行为不漂移：Explored 仍可自动折叠/展开，File changes 仍保留 diff 预览与文件跳转能力。
+
+主要改动：
+- 将 completed Explored 卡片折叠态归一化为单行摘要：标题中展示第一条 explore entry，例如 `Explored · Read package.json`。
+- 让单条和多条 Explored 使用同一套 collapsible 交互；单条折叠态也可以点击展开，展开后恢复列表详情。
+- 移除旧的半折叠 `explore-inline-list.is-collapsed` 视觉规则，统一通过 `is-inline-summary` 隐藏列表并做单行 ellipsis。
+- 为 File changes 折叠态与展开态增加轻量化样式：紧凑 header、小圆角、展开态去重卡片外壳，并收紧 diff preview 外层间距。
+- 为 file-change 展开态增加 `tool-change-expanded-card` class，避免用 stack-entry selector 误打真实 DOM。
+
+涉及模块：
+- `src/features/messages/components/MessagesRows.tsx`
+- `src/features/messages/components/Messages.explore.test.tsx`
+- `src/features/messages/components/toolBlocks/GenericToolBlock.tsx`
+- `src/styles/messages.part1.css`
+- `src/styles/tool-blocks.css`
+
+验证结果：
+- 通过：`npx vitest run src/features/messages/components/Messages.explore.test.tsx src/features/messages/components/toolBlocks/GenericToolBlock.test.tsx`
+- 通过：`npm run typecheck`
+- 通过：`npm run check:large-files`
+
+后续事项：
+- 视觉类变更仍建议人工在实际消息流中复核像素效果，尤其是 File changes 展开态 diff viewer 的内层行高与滚动体验。
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `dcd1dd99` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
