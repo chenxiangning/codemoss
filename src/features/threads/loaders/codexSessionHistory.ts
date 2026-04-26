@@ -36,6 +36,7 @@ const COLLAB_TOOL_CALL_NAMES = new Set([
   "spawn_agent",
   "send_input",
   "wait",
+  "wait_agent",
   "resume_agent",
   "close_agent",
 ]);
@@ -299,8 +300,12 @@ function uniqueStringList(values: string[]): string[] {
   return deduped;
 }
 
+function normalizeCollabToolName(name: string) {
+  return name.trim().toLowerCase();
+}
+
 function isCollabToolCall(name: string) {
-  return COLLAB_TOOL_CALL_NAMES.has(name.trim());
+  return COLLAB_TOOL_CALL_NAMES.has(normalizeCollabToolName(name));
 }
 
 function extractCollabPrompt(argumentsRecord: Record<string, unknown>) {
@@ -320,6 +325,7 @@ function extractThreadIdsFromRecord(record: Record<string, unknown>): string[] {
         record.receiver_thread_ids ??
         record.newThreadIds ??
         record.new_thread_ids ??
+        record.targets ??
         record.threadIds ??
         record.thread_ids ??
         record.agentIds ??
@@ -331,6 +337,7 @@ function extractThreadIdsFromRecord(record: Record<string, unknown>): string[] {
         record.receiver_thread_id ??
         record.newThreadId ??
         record.new_thread_id ??
+        record.target ??
         record.threadId ??
         record.thread_id ??
         record.agentId ??
@@ -593,7 +600,7 @@ function stageCollabToolCall(
   payload: Record<string, unknown>,
   pendingCollabToolCalls: Map<string, PendingCollabToolCall>,
 ) {
-  const tool = asString(payload.name).trim();
+  const tool = normalizeCollabToolName(asString(payload.name));
   if (!isCollabToolCall(tool)) {
     return false;
   }

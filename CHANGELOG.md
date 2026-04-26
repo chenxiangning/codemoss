@@ -2,6 +2,90 @@
 
 ---
 
+##### **2026年4月27日（v0.4.9）**
+
+中文：
+
+✨ Features
+- 新增 Git 按文件范围提交能力，支持在 diff 面板内按文件选择本次 commit 范围，并在批量操作后恢复选择状态，让多文件改动可以更精确地拆分提交
+- 新增 Codex 历史会话加载态，在打开历史线程、恢复侧栏缓存和承接空白历史页时展示明确的 loading 与空态过渡，减少“点击后无反馈”的误判
+- 新增 Codex 生成图片展示与占位链路，支持从实时事件和历史回放中识别生成图片 artifact，并把占位消息、最终图片和所属 turn 稳定关联起来
+- 重构 Codex 模型目录与选择策略，补齐模型 catalog、selector、engine controller 与输入区 ButtonArea 的联动，让模型展示、默认选择和 passthrough 边界更一致
+- 完善应用更新检查意图与并发保护，区分主动检查和后台检查，避免重复触发、状态覆盖与失败 fallback 不清晰的问题
+- 统一会话失败 runtime 告警上报，把发送失败、turn 异常和 runtime 断链统一送入全局 runtime notice，减少失败状态只停留在局部链路里的断点
+- 增强 Computer Use 授权连续性与跨平台 broker 边界，补齐未签名宿主、helper bridge、availability surface 与 status card 的可见诊断链路
+
+🔧 Improvements
+- 收口 Claude 会话连续性、并发实时隔离与审批线程作用域，让 approval toast、thread approval、历史加载和侧栏状态更严格绑定当前 thread
+- 统一 Codex 对话幕布归一化与 assembler 链路，拆分 conversation assembly / normalization / realtime-history parity 逻辑，降低实时消息与历史回放的结构漂移
+- 优化 Codex 排队跟进气泡，修复 queued handoff 与历史回放重叠边界，并补齐 queued send、memory race 与 reducer 回归覆盖
+- 稳定 Codex 会话侧栏连续性，补齐 cross-source history、session radar feed、pending thread list 和手动恢复入口之间的状态一致性
+- 补强线程恢复与降级侧栏归档回放，新增手动恢复 helper 与布局节点恢复测试，让 degraded thread 可以从侧栏更可靠地承接回主会话
+- 抽取 app shell 计划应用与面板锁定逻辑，将 legacy context defaults、plan apply handlers 和 panel lock state 从主 shell 中拆出，降低 app-shell 热点复杂度
+- 拆分 Git diff 面板提交范围、文件分区、include/exclude 与 section action 组件，减少 `GitDiffPanel` 大文件压力，并让 selective commit UI 更容易维护
+- 优化消息区视觉一致性，统一 Explored 工具块与文件变更卡片样式，并收窄历史吸顶折叠把手，降低长会话里的视觉噪音
+- 加固生成图片 artifact 路径解析、placeholder matching 与 optimistic reconciliation，让图片生成在实时事件、历史加载和 reducer 合并阶段保持同一语义
+- 同步补充 OpenSpec / Trellis 规范与验证记录，覆盖 Git selective commit、Computer Use authorization、Claude thread continuity、Codex session parity、conversation curtain 与 updater fallback 等变更
+- 扩展 engine 与模型边界测试，补齐 Claude passthrough model、Codex model selector、useModels、engine controller 和 ButtonArea 的回归用例
+- 补齐评审发现的跨层边界治理，包括 Git section action 文案、生成图片路径处理、大文件拆分边界与 Computer Use authorization 判定细节
+
+🐛 Fixes
+- 修复 Codex 历史会话打开后可能出现空白页的问题，并补齐历史消息加载、sidebar cache 与 layout nodes 的过渡状态
+- 修复 Codex 排队用户气泡与历史回放内容重叠的问题，避免 queued follow-up 在恢复或回放时遮挡已有消息
+- 修复 Computer Use 未签名宿主被错误判定为已授权连续的问题，并收紧不同平台下 broker、host contract 与 status card 的边界提示
+- 修复 Claude 会话恢复、审批事件与并发实时消息可能串到错误线程的问题，降低多会话并行时的审批误归属和历史状态漂移
+- 修复 Codex 生成图片在占位、最终 artifact、历史加载和实时事件之间可能断链的问题，避免图片缺失、重复或挂到错误 turn
+- 修复 Codex realtime 消息归一化与输入响应边界，减少幕布内容重复、增量文本合并错位和用户输入状态未及时承接的问题
+- 修复图片生成占位链路的实时事件边界，覆盖 optimistic user reconciliation、turn events、thread messaging 与 placeholder matching 的异常路径
+- 修复 Codex 会话侧栏状态与历史来源不一致的问题，让 thread list pending、session radar 和 manual action helpers 对同一会话给出一致结果
+- 修复线程恢复与 degraded sidebar archive replay 的承接问题，避免侧栏归档回放后无法回到可操作会话
+- 修复 Windows UNC 图片路径解析问题，确保 `\\server\share` 等路径可以被正确识别为可展示的本地图片 artifact
+- 修复 updater 检查失败或重复点击后状态残留的问题，确保手动检查、自动检查和 fallback 提示不会相互覆盖
+- 修复 Git selective commit 边界审查问题，补齐 section action i18n 与测试，避免文件范围提交时按钮文案或选择状态不一致
+- 修复消息吸顶折叠把手过宽与工具块卡片样式不一致的问题，让 Explored、file change 和 sticky history 区域在长会话中更协调
+
+English:
+
+✨ Features
+- Add file-scoped Git commits so the diff panel can include or exclude files for a specific commit, while restoring selection state after batch operations for cleaner multi-file commit splitting
+- Add a Codex history-session loading state so opening history threads, restoring sidebar cache, and recovering blank history pages now show explicit loading and empty-state transitions instead of appearing unresponsive
+- Add Codex generated-image rendering and placeholder linkage, allowing realtime events and history replay to identify image artifacts and keep placeholders, final images, and turns connected
+- Rework the Codex model catalog and selection strategy across the model catalog, selector, engine controller, and input ButtonArea so model display, defaults, and passthrough behavior stay aligned
+- Improve updater check intent and concurrency protection by separating manual checks from background checks and preventing duplicate triggers, state overwrites, and unclear fallback states
+- Unify runtime notice reporting for failed sessions so send failures, turn errors, and runtime disconnects flow into the global runtime notice surface instead of stopping inside local paths
+- Strengthen Computer Use authorization continuity and cross-platform broker boundaries with clearer diagnostics for unsigned hosts, helper bridge status, availability surface, and the status card
+
+🔧 Improvements
+- Tighten Claude session continuity, concurrent realtime isolation, and approval thread scoping so approval toasts, thread approvals, history loading, and sidebar state bind to the active thread more strictly
+- Unify Codex conversation-curtain normalization and assembler flow by splitting conversation assembly, normalization, and realtime-history parity logic to reduce drift between live messages and history replay
+- Improve Codex queued follow-up bubbles by fixing queued handoff overlap with history replay and adding regression coverage for queued send, memory races, and reducer behavior
+- Stabilize Codex sidebar continuity by aligning cross-source history, session radar feed, pending thread lists, and manual recovery actions around the same session state
+- Strengthen thread recovery and degraded sidebar archive replay with a manual recovery helper and layout-node recovery coverage so degraded threads can return to the main conversation more reliably
+- Extract app-shell plan-apply and panel-lock logic into focused modules, moving legacy context defaults, plan apply handlers, and panel lock state out of the main shell hotspot
+- Split Git diff commit-scope, file-section, include/exclude, and section-action components to reduce `GitDiffPanel` complexity and make the selective-commit UI easier to maintain
+- Refine message-area visual consistency by aligning Explored tool blocks with file-change cards and narrowing the history-sticky collapse handle to reduce noise in long conversations
+- Harden generated-image artifact path parsing, placeholder matching, and optimistic reconciliation so image generation keeps the same semantics through realtime events, history loading, and reducer merges
+- Sync OpenSpec and Trellis records for Git selective commit, Computer Use authorization, Claude thread continuity, Codex session parity, conversation curtain behavior, and updater fallback changes
+- Expand engine and model boundary coverage for Claude passthrough models, the Codex model selector, `useModels`, the engine controller, and the input ButtonArea
+- Address cross-layer review findings around Git section-action copy, generated-image path handling, large-file extraction boundaries, and Computer Use authorization checks
+
+🐛 Fixes
+- Fix blank Codex history sessions by adding clear loading coverage across history message loading, sidebar cache restoration, and layout-node transitions
+- Fix Codex queued user bubbles overlapping history replay content so queued follow-ups no longer cover existing messages during recovery or replay
+- Fix unsigned Computer Use hosts being treated as authorization-continuous, while tightening broker, host-contract, and status-card messaging across platforms
+- Fix Claude session recovery, approval events, and concurrent realtime messages drifting into the wrong thread, reducing approval misrouting and history-state skew during parallel sessions
+- Fix Codex generated images losing their placeholder, final artifact, history-loading, or realtime-event linkage, preventing missing, duplicated, or wrong-turn images
+- Fix Codex realtime message normalization and input-response boundaries to reduce duplicated curtain content, misplaced incremental text merges, and delayed user-input handoff
+- Fix realtime-event edges in the generated-image placeholder path, covering optimistic user reconciliation, turn events, thread messaging, and placeholder matching failure cases
+- Fix Codex sidebar session state mismatches so thread-list pending state, session radar, and manual action helpers report consistent results for the same conversation
+- Fix thread recovery and degraded sidebar archive replay handoff so archived sidebar state can return to an actionable conversation
+- Fix Windows UNC image path parsing so `\\server\share` style paths are recognized as displayable local image artifacts
+- Fix updater state residue after failures or repeated checks so manual checks, automatic checks, and fallback notices no longer overwrite each other incorrectly
+- Fix selective Git commit review findings by completing section-action i18n and tests, preventing button copy or selection state drift while committing by file scope
+- Fix oversized history-sticky collapse handles and inconsistent tool-block card styling so Explored, file-change, and sticky-history areas feel visually aligned in long conversations
+
+---
+
 ##### **2026年4月23日（v0.4.8）**
 
 中文：

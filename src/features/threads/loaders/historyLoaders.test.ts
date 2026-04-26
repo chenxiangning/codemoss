@@ -779,6 +779,79 @@ describe("history loaders", () => {
     );
   });
 
+  it("reconstructs current codex collab tool schema target fields", () => {
+    const items = parseCodexSessionHistory({
+      entries: [
+        {
+          type: "response_item",
+          payload: {
+            type: "function_call",
+            call_id: "send-current-1",
+            name: "send_input",
+            arguments: JSON.stringify({
+              target: "agent-current-1",
+              message: "继续看跨平台边界",
+            }),
+          },
+        },
+        {
+          type: "response_item",
+          payload: {
+            type: "function_call_output",
+            call_id: "send-current-1",
+            output: JSON.stringify({ ok: true }),
+          },
+        },
+        {
+          type: "response_item",
+          payload: {
+            type: "function_call",
+            call_id: "wait-current-1",
+            name: "wait_agent",
+            arguments: JSON.stringify({
+              targets: ["agent-current-1", "agent-current-2"],
+            }),
+          },
+        },
+        {
+          type: "response_item",
+          payload: {
+            type: "function_call_output",
+            call_id: "wait-current-1",
+            output: JSON.stringify({
+              statuses: {
+                "agent-current-1": { status: "completed" },
+              },
+            }),
+          },
+        },
+      ],
+    });
+
+    expect(items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "send-current-1",
+          kind: "tool",
+          toolType: "collabToolCall",
+          title: "Collab: send_input",
+          receiverThreadIds: ["agent-current-1"],
+          output: "继续看跨平台边界",
+        }),
+        expect.objectContaining({
+          id: "wait-current-1",
+          kind: "tool",
+          toolType: "collabToolCall",
+          title: "Collab: wait_agent",
+          receiverThreadIds: ["agent-current-1", "agent-current-2"],
+          agentStatus: {
+            "agent-current-1": { status: "completed" },
+          },
+        }),
+      ]),
+    );
+  });
+
   it("reconstructs codex generic search tool calls from local function history", () => {
     const items = parseCodexSessionHistory({
       entries: [
