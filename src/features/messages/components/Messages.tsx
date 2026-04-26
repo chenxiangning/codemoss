@@ -33,6 +33,7 @@ import {
 } from "../../threads/utils/streamLatencyDiagnostics";
 import type { AgentTaskScrollRequest } from "../types";
 import type { PresentationProfile } from "../presentation/presentationProfile";
+import { getVisibleApprovalsForThread } from "../../../utils/approvalBatching";
 import {
   MESSAGES_LIVE_AUTO_FOLLOW_FLAG_KEY,
   MESSAGES_LIVE_COLLAPSE_MIDDLE_STEPS_FLAG_KEY,
@@ -96,6 +97,7 @@ type MessagesProps = {
   threadId: string | null;
   workspaceId?: string | null;
   isThinking: boolean;
+  isHistoryLoading?: boolean;
   isContextCompacting?: boolean;
   proxyEnabled?: boolean;
   proxyUrl?: string | null;
@@ -116,7 +118,7 @@ type MessagesProps = {
   ) => Promise<void> | void;
   onApprovalDecision?: (
     request: ApprovalRequest,
-    decision: "accept" | "decline",
+    decision: "accept" | "decline" | "dismiss",
   ) => void;
   onApprovalBatchAccept?: (requests: ApprovalRequest[]) => void;
   onApprovalRemember?: (request: ApprovalRequest, command: string[]) => void;
@@ -217,6 +219,7 @@ export const Messages = memo(function Messages({
   threadId: legacyThreadId,
   workspaceId: legacyWorkspaceId = null,
   isThinking: legacyIsThinking,
+  isHistoryLoading = false,
   isContextCompacting = false,
   proxyEnabled = false,
   proxyUrl = null,
@@ -1692,14 +1695,8 @@ export const Messages = memo(function Messages({
     (activeEngine === "codex" || activeEngine === "claude") &&
     Boolean(legacyOnUserInputSubmit);
   const visibleApprovals = useMemo(() => {
-    if (!approvals.length) {
-      return [];
-    }
-
-    return approvals.filter((approval) =>
-      !workspaceId || approval.workspace_id === workspaceId,
-    );
-  }, [approvals, workspaceId]);
+    return getVisibleApprovalsForThread(approvals, workspaceId, threadId);
+  }, [approvals, threadId, workspaceId]);
   const approvalNode =
     visibleApprovals.length > 0 && onApprovalDecision
       ? (
@@ -1726,6 +1723,10 @@ export const Messages = memo(function Messages({
         />
       )
       : null;
+  const hasVisibleUserInputRequest =
+    shouldRenderUserInputNode &&
+    Boolean(legacyOnUserInputSubmit) &&
+    activeUserInputRequestId !== null;
 
   const scrollToAnchor = useCallback((messageId: string) => {
     const node = messageNodeByIdRef.current.get(messageId);
@@ -1807,6 +1808,7 @@ export const Messages = memo(function Messages({
           handleCopyMessage={handleCopyMessage}
           handleExitPlanModeExecuteForItem={handleExitPlanModeExecuteForItem}
           heartbeatPulse={heartbeatPulse}
+          isHistoryLoading={isHistoryLoading}
           isThinking={isThinking}
           isWorking={isWorking}
           lastDurationMs={lastDurationMs}
@@ -1837,6 +1839,7 @@ export const Messages = memo(function Messages({
           streamActivityPhase={streamActivityPhase}
           threadId={threadId}
           toggleExpanded={toggleExpanded}
+          hasVisibleUserInputRequest={hasVisibleUserInputRequest}
           userInputNode={userInputNode}
           visibleCollapsedHistoryItemCount={presentationCollapsedHistoryItemCount}
           waitingForFirstChunk={waitingForFirstChunk}

@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-6.md`
-- **Total Sessions**: 173
-- **Last Active**: 2026-04-24
+- **Total Sessions**: 185
+- **Last Active**: 2026-04-26
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-6.md` | ~172 | Active |
+| `journal-6.md` | ~930 | Active |
 | `journal-5.md` | ~1949 | Archived |
 | `journal-4.md` | ~1975 | Archived |
 | `journal-3.md` | ~1972 | Archived |
@@ -34,7 +34,19 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
-| 173 | 2026-04-24 | 合并 feature v0.4.8 Windows 可见性修复 | `4f2abad410cac58a2cd60d24ba5be11b9e65a447` | `codex/2026-04-01-local` |
+| 185 | 2026-04-26 | 修复 Windows UNC 图片路径解析 | `e06fd7541d2f94acab04a736e62594862fd67c56` | `feature/v0.4.9` |
+| 184 | 2026-04-26 | 修复线程恢复与降级侧栏归档回放 | `f55cb0376705106558078476c9fae4e35ea87a0f` | `feature/v0.4.9` |
+| 183 | 2026-04-26 | 修复 Codex 会话侧栏连续性 | `97efa538bf5652f070241b7063587b0d64cffc69` | `feature/v0.4.9` |
+| 182 | 2026-04-26 | 图片生成幕布链路收口与边界修复 | `86f2a752` | `feature/v0.4.9` |
+| 181 | 2026-04-26 | 收口 Codex 幕布归一化与输入响应 | `9de08c06` | `feature/v0.4.9` |
+| 180 | 2026-04-25 | 评审最近12条提交并修复跨平台边界问题 | `db492ad3` | `feature/v0.4.9` |
+| 179 | 2026-04-25 | 修复 Codex 生成图片展示与占位链路 | `44907b6c` | `feature/v0.4.9` |
+| 178 | 2026-04-25 | 收口 Claude 会话连续性与审批线程作用域 | `50a3fd774fa485590a823ad119cf8e880c3fc8e4` | `feature/v0.4.9` |
+| 177 | 2026-04-25 | 收紧 Computer Use 未签名宿主连续性判定 | `2958f3f75896de366210d94e8bc2ce637a248f0e` | `feature/v0.4.9` |
+| 176 | 2026-04-25 | 拆分 Git selective commit、queued bubble 与 Computer Use continuity | `3c8df523`, `58db55b0`, `ef17894b` | `feature/v0.4.9` |
+| 175 | 2026-04-24 | 修复 Codex 历史会话空白页并补加载态 | `c3f5c27bf6f19fae08b05def52a531d09a40d144` | `feature/v0.4.9` |
+| 174 | 2026-04-24 | 归档已验证的 Claude 稳定性提案 | `5c91e83d8311bf5b67d0de7c869e0a1a4314de68` | `feature/v-0.4.8` |
+| 173 | 2026-04-24 | 补充 v0.4.8 发布说明 | `55be1cdbea349c971585e82b361dbf97ce854456` | `feature/v-0.4.8` |
 | 172 | 2026-04-24 | 记录 Windows Claude 流式可见卡顿抢修 | `ef9876e8` | `feature/v-0.4.8` |
 | 171 | 2026-04-24 | 优化悬浮问题条样式与收起兼容性 | `efde3dec` | `feature/v-0.4.8` |
 | 170 | 2026-04-24 | 修正对话幕布 markdown 卡片渲染兼容性 | `4bbd01113b061d6c225924526a0c0948a36de6dd` | `feature/v-0.4.8` |

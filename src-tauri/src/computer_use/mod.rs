@@ -8,9 +8,17 @@ use std::time::{Duration, Instant};
 use tauri::State;
 
 use crate::codex::{config as codex_config, home as codex_home};
+use crate::types::BackendMode;
 
+mod authorization_continuity;
 pub(crate) mod broker;
 mod platform;
+
+pub(crate) use authorization_continuity::{
+    build_authorization_continuity_status, computer_use_authorization_continuity_path,
+    persist_last_successful_authorization_host, ComputerUseAuthorizationContinuityKind,
+    ComputerUseAuthorizationContinuityStatus,
+};
 
 const COMPUTER_USE_BRIDGE_ENABLED: bool = true;
 const COMPUTER_USE_ACTIVATION_ENABLED: bool = true;
@@ -80,6 +88,7 @@ pub(crate) struct ComputerUseBridgeStatus {
     pub(crate) helper_descriptor_path: Option<String>,
     pub(crate) marketplace_path: Option<String>,
     pub(crate) diagnostic_message: Option<String>,
+    pub(crate) authorization_continuity: ComputerUseAuthorizationContinuityStatus,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -282,8 +291,15 @@ pub(crate) async fn get_computer_use_bridge_status(
         .lock()
         .await
         .clone();
+    let backend_mode = state.app_settings.lock().await.backend_mode.clone();
+    let continuity_store_path =
+        computer_use_authorization_continuity_path(&state.settings_path);
     tokio::task::spawn_blocking(move || {
-        resolve_computer_use_bridge_status(activation_verification.as_ref())
+        resolve_computer_use_bridge_status(
+            activation_verification.as_ref(),
+            backend_mode,
+            continuity_store_path,
+        )
     })
     .await
     .map_err(|error| format!("failed to join computer use bridge status task: {error}"))
@@ -298,8 +314,15 @@ pub(crate) async fn run_computer_use_activation_probe(
         .lock()
         .await
         .clone();
+    let backend_mode = state.app_settings.lock().await.backend_mode.clone();
+    let continuity_store_path =
+        computer_use_authorization_continuity_path(&state.settings_path);
     let context = tokio::task::spawn_blocking(move || {
-        resolve_activation_context(activation_verification.as_ref())
+        resolve_activation_context(
+            activation_verification.as_ref(),
+            backend_mode,
+            continuity_store_path,
+        )
     })
     .await
     .map_err(|error| format!("failed to join computer use activation preflight task: {error}"))?;
@@ -382,12 +405,18 @@ pub(crate) async fn run_computer_use_activation_probe(
     }
 
     let verified_bridge_message = probe_execution.diagnostic_message.clone();
-    let refreshed_context =
-        tokio::task::spawn_blocking(move || resolve_activation_context(Some(&verification)))
-            .await
-            .map_err(|error| {
-                format!("failed to join computer use activation refresh task: {error}")
-            })?;
+    let refreshed_backend_mode = state.app_settings.lock().await.backend_mode.clone();
+    let refreshed_continuity_store_path =
+        computer_use_authorization_continuity_path(&state.settings_path);
+    let refreshed_context = tokio::task::spawn_blocking(move || {
+        resolve_activation_context(
+            Some(&verification),
+            refreshed_backend_mode,
+            refreshed_continuity_store_path,
+        )
+    })
+    .await
+    .map_err(|error| format!("failed to join computer use activation refresh task: {error}"))?;
 
     let (outcome, failure_kind, diagnostic_message) = match refreshed_context.bridge_status.status {
         ComputerUseAvailabilityStatus::Ready => (
@@ -433,8 +462,15 @@ pub(crate) async fn run_computer_use_host_contract_diagnostics(
         .lock()
         .await
         .clone();
+    let backend_mode = state.app_settings.lock().await.backend_mode.clone();
+    let continuity_store_path =
+        computer_use_authorization_continuity_path(&state.settings_path);
     let context = tokio::task::spawn_blocking(move || {
-        resolve_activation_context(activation_verification.as_ref())
+        resolve_activation_context(
+            activation_verification.as_ref(),
+            backend_mode,
+            continuity_store_path,
+        )
     })
     .await
     .map_err(|error| {
@@ -537,6 +573,8 @@ pub(crate) async fn run_computer_use_host_contract_diagnostics(
 
 fn resolve_computer_use_bridge_status(
     activation_verification: Option<&ComputerUseActivationVerification>,
+    backend_mode: BackendMode,
+    continuity_store_path: PathBuf,
 ) -> ComputerUseBridgeStatus {
     if !COMPUTER_USE_BRIDGE_ENABLED {
         return ComputerUseBridgeStatus {
@@ -555,18 +593,32 @@ fn resolve_computer_use_bridge_status(
             helper_descriptor_path: None,
             marketplace_path: None,
             diagnostic_message: Some("computer use bridge is disabled by host flag".to_string()),
+            authorization_continuity: build_authorization_continuity_status(
+                backend_mode,
+                &continuity_store_path,
+            ),
         };
     }
 
-    resolve_activation_context(activation_verification).bridge_status
+    resolve_activation_context(
+        activation_verification,
+        backend_mode,
+        continuity_store_path,
+    )
+    .bridge_status
 }
 
 fn resolve_activation_context(
     activation_verification: Option<&ComputerUseActivationVerification>,
+    backend_mode: BackendMode,
+    continuity_store_path: PathBuf,
 ) -> ComputerUseActivationContext {
     let mut adapter_result = platform::detect_platform_state(detect_computer_use_snapshot());
     apply_activation_verification(&mut adapter_result.snapshot, activation_verification);
-    let bridge_status = build_bridge_status(adapter_result.clone());
+    let bridge_status = build_bridge_status(
+        adapter_result.clone(),
+        build_authorization_continuity_status(backend_mode, &continuity_store_path),
+    );
 
     ComputerUseActivationContext {
         adapter_result,
@@ -624,7 +676,10 @@ fn apply_activation_verification(
     }
 }
 
-fn build_bridge_status(adapter_result: PlatformAdapterResult) -> ComputerUseBridgeStatus {
+fn build_bridge_status(
+    adapter_result: PlatformAdapterResult,
+    authorization_continuity: ComputerUseAuthorizationContinuityStatus,
+) -> ComputerUseBridgeStatus {
     let snapshot = adapter_result.snapshot;
     let (status, blocked_reasons, guidance_codes) =
         classify_status(adapter_result.availability, &snapshot);
@@ -645,6 +700,7 @@ fn build_bridge_status(adapter_result: PlatformAdapterResult) -> ComputerUseBrid
         helper_descriptor_path: snapshot.helper_descriptor_path,
         marketplace_path: snapshot.marketplace_path,
         diagnostic_message: snapshot.diagnostic_message,
+        authorization_continuity,
     }
 }
 
@@ -1979,6 +2035,13 @@ mod tests {
                     .to_string(),
             ),
             diagnostic_message: None,
+            authorization_continuity: ComputerUseAuthorizationContinuityStatus {
+                kind: ComputerUseAuthorizationContinuityKind::NoSuccessfulHost,
+                diagnostic_message: None,
+                current_host: None,
+                last_successful_host: None,
+                drift_fields: Vec::new(),
+            },
         }
     }
 

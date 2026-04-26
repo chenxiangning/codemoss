@@ -45,6 +45,7 @@ const makeOptions = (overrides: SetupOverrides = {}) => {
   const renameAutoTitlePendingKey = vi.fn();
   const renameThreadTitleMapping = vi.fn();
   const resolvePendingThreadForSession = vi.fn();
+  const resolvePendingThreadForTurn = vi.fn();
   const activeTurnIdByThread = overrides.activeTurnIdByThread ?? {};
   const getActiveTurnIdForThread = vi.fn(
     (threadId: string) => activeTurnIdByThread[threadId] ?? null,
@@ -76,6 +77,7 @@ const makeOptions = (overrides: SetupOverrides = {}) => {
       renameAutoTitlePendingKey,
       renameThreadTitleMapping,
       resolvePendingThreadForSession,
+      resolvePendingThreadForTurn,
       getActiveTurnIdForThread,
       renamePendingMemoryCaptureKey,
     }),
@@ -97,6 +99,7 @@ const makeOptions = (overrides: SetupOverrides = {}) => {
     renameAutoTitlePendingKey,
     renameThreadTitleMapping,
     resolvePendingThreadForSession,
+    resolvePendingThreadForTurn,
     getActiveTurnIdForThread,
     renamePendingMemoryCaptureKey,
     pendingInterruptsRef,
@@ -345,7 +348,13 @@ describe("useThreadTurnEvents", () => {
   });
 
   it("clears pending interrupt and active turn on turn completed", () => {
-    const { result, dispatch, markProcessing, setActiveTurnId, pendingInterruptsRef } =
+    const {
+      result,
+      dispatch,
+      markProcessing,
+      setActiveTurnId,
+      pendingInterruptsRef,
+    } =
       makeOptions({ pendingInterrupts: ["thread-1"] });
 
     act(() => {
@@ -356,6 +365,10 @@ describe("useThreadTurnEvents", () => {
       type: "finalizePendingToolStatuses",
       threadId: "thread-1",
       status: "completed",
+    });
+    expect(dispatch).toHaveBeenCalledWith({
+      type: "clearProcessingGeneratedImages",
+      threadId: "thread-1",
     });
     expect(dispatch).toHaveBeenCalledWith({
       type: "settleThreadPlanInProgress",
@@ -759,6 +772,202 @@ describe("useThreadTurnEvents", () => {
     );
   });
 
+  it("rebinds the anchored Claude pending thread when the active selection already points at the finalized target", () => {
+    const {
+      result,
+      dispatch,
+      renameCustomNameKey,
+      renameAutoTitlePendingKey,
+      renameThreadTitleMapping,
+      resolvePendingThreadForSession,
+      renamePendingMemoryCaptureKey,
+    } = makeOptions({
+      activeThreadId: "claude:session-xyz",
+    });
+    resolvePendingThreadForSession.mockImplementation(
+      (_workspaceId: string, engine: "claude" | "gemini" | "opencode") =>
+        engine === "claude" ? "claude-pending-active" : null,
+    );
+
+    act(() => {
+      result.current.onThreadSessionIdUpdated(
+        "ws-1",
+        "claude:session-xyz",
+        "session-xyz",
+      );
+    });
+
+    expect(dispatch).toHaveBeenCalledWith({
+      type: "renameThreadId",
+      workspaceId: "ws-1",
+      oldThreadId: "claude-pending-active",
+      newThreadId: "claude:session-xyz",
+    });
+    expect(renameCustomNameKey).toHaveBeenCalledWith(
+      "ws-1",
+      "claude-pending-active",
+      "claude:session-xyz",
+    );
+    expect(renameAutoTitlePendingKey).toHaveBeenCalledWith(
+      "ws-1",
+      "claude-pending-active",
+      "claude:session-xyz",
+    );
+    expect(renamePendingMemoryCaptureKey).toHaveBeenCalledWith(
+      "claude-pending-active",
+      "claude:session-xyz",
+    );
+    expect(renameThreadTitleMapping).toHaveBeenCalledWith(
+      "ws-1",
+      "claude-pending-active",
+      "claude:session-xyz",
+    );
+  });
+
+  it("prefers turn-bound Claude pending thread when concurrent realtime sessions exist", () => {
+    const {
+      result,
+      dispatch,
+      renameCustomNameKey,
+      renameAutoTitlePendingKey,
+      renameThreadTitleMapping,
+      renamePendingMemoryCaptureKey,
+      resolvePendingThreadForSession,
+      resolvePendingThreadForTurn,
+    } = makeOptions({
+      activeThreadId: "claude-pending-other",
+      activeTurnIdByThread: {
+        "claude-pending-target": "turn-target",
+        "claude-pending-other": "turn-other",
+      },
+    });
+    resolvePendingThreadForSession.mockImplementation(
+      (_workspaceId: string, engine: "claude" | "gemini" | "opencode") =>
+        engine === "claude" ? "claude-pending-other" : null,
+    );
+    resolvePendingThreadForTurn.mockImplementation(
+      (
+        _workspaceId: string,
+        engine: "claude" | "gemini" | "opencode",
+        turnId: string | null | undefined,
+      ) => (engine === "claude" && turnId === "turn-target" ? "claude-pending-target" : null),
+    );
+
+    act(() => {
+      result.current.onThreadSessionIdUpdated(
+        "ws-1",
+        "claude:session-xyz",
+        "session-xyz",
+        "claude",
+        "turn-target",
+      );
+    });
+
+    expect(resolvePendingThreadForTurn).toHaveBeenCalledWith(
+      "ws-1",
+      "claude",
+      "turn-target",
+    );
+    expect(resolvePendingThreadForSession).toHaveBeenCalledWith("ws-1", "claude");
+    expect(dispatch).toHaveBeenCalledWith({
+      type: "renameThreadId",
+      workspaceId: "ws-1",
+      oldThreadId: "claude-pending-target",
+      newThreadId: "claude:session-xyz",
+    });
+    expect(renameCustomNameKey).toHaveBeenCalledWith(
+      "ws-1",
+      "claude-pending-target",
+      "claude:session-xyz",
+    );
+    expect(renameAutoTitlePendingKey).toHaveBeenCalledWith(
+      "ws-1",
+      "claude-pending-target",
+      "claude:session-xyz",
+    );
+    expect(renamePendingMemoryCaptureKey).toHaveBeenCalledWith(
+      "claude-pending-target",
+      "claude:session-xyz",
+    );
+    expect(renameThreadTitleMapping).toHaveBeenCalledWith(
+      "ws-1",
+      "claude-pending-target",
+      "claude:session-xyz",
+    );
+  });
+
+  it("prefers turn-bound Claude pending thread for non-prefixed realtime session updates", () => {
+    const {
+      result,
+      dispatch,
+      renameCustomNameKey,
+      renameAutoTitlePendingKey,
+      renameThreadTitleMapping,
+      renamePendingMemoryCaptureKey,
+      resolvePendingThreadForSession,
+      resolvePendingThreadForTurn,
+    } = makeOptions({
+      activeThreadId: "claude-pending-other",
+      activeTurnIdByThread: {
+        "claude-pending-target": "turn-target",
+        "claude-pending-other": "turn-other",
+      },
+    });
+    resolvePendingThreadForSession.mockImplementation(
+      (_workspaceId: string, engine: "claude" | "gemini" | "opencode") =>
+        engine === "claude" ? "claude-pending-other" : null,
+    );
+    resolvePendingThreadForTurn.mockImplementation(
+      (
+        _workspaceId: string,
+        engine: "claude" | "gemini" | "opencode",
+        turnId: string | null | undefined,
+      ) => (engine === "claude" && turnId === "turn-target" ? "claude-pending-target" : null),
+    );
+
+    act(() => {
+      result.current.onThreadSessionIdUpdated(
+        "ws-1",
+        "session-raw-id",
+        "session-xyz",
+        "claude",
+        "turn-target",
+      );
+    });
+
+    expect(resolvePendingThreadForTurn).toHaveBeenCalledWith(
+      "ws-1",
+      "claude",
+      "turn-target",
+    );
+    expect(resolvePendingThreadForSession).toHaveBeenCalledWith("ws-1", "claude");
+    expect(dispatch).toHaveBeenCalledWith({
+      type: "renameThreadId",
+      workspaceId: "ws-1",
+      oldThreadId: "claude-pending-target",
+      newThreadId: "claude:session-xyz",
+    });
+    expect(renameCustomNameKey).toHaveBeenCalledWith(
+      "ws-1",
+      "claude-pending-target",
+      "claude:session-xyz",
+    );
+    expect(renameAutoTitlePendingKey).toHaveBeenCalledWith(
+      "ws-1",
+      "claude-pending-target",
+      "claude:session-xyz",
+    );
+    expect(renamePendingMemoryCaptureKey).toHaveBeenCalledWith(
+      "claude-pending-target",
+      "claude:session-xyz",
+    );
+    expect(renameThreadTitleMapping).toHaveBeenCalledWith(
+      "ws-1",
+      "claude-pending-target",
+      "claude:session-xyz",
+    );
+  });
+
   it("does not rename finalized opencode thread when no pending mapping exists", () => {
     const {
       result,
@@ -1134,6 +1343,10 @@ describe("useThreadTurnEvents", () => {
       workspaceId: "ws-1",
       threadId: "thread-1",
       engine: "codex",
+    });
+    expect(dispatch).toHaveBeenCalledWith({
+      type: "clearProcessingGeneratedImages",
+      threadId: "thread-1",
     });
     expect(dispatch).toHaveBeenCalledWith({
       type: "finalizePendingToolStatuses",

@@ -70,6 +70,10 @@ import {
 } from "./threadMessagingHelpers";
 import { resolveThreadStabilityDiagnostic } from "../utils/stabilityDiagnostics";
 import { useThreadMessagingSessionTooling } from "./useThreadMessagingSessionTooling";
+import {
+  createOptimisticGeneratedImageProcessingItem,
+  extractOptimisticGeneratedImagePrompt,
+} from "../utils/generatedImagePlaceholder";
 
 type SendMessageOptions = {
   skipPromptExpansion?: boolean;
@@ -676,6 +680,10 @@ export function useThreadMessaging({
         !options?.skipOptimisticUserBubble &&
         (resolvedEngine === "codex" || wasProcessing || threadKind === "shared");
       let optimisticUserItem: Extract<ConversationItem, { kind: "message" }> | null = null;
+      let optimisticGeneratedImageItem: Extract<
+        ConversationItem,
+        { kind: "generatedImage" }
+      > | null = null;
       if (shouldAddOptimisticUserBubble) {
         const optimisticText = visibleUserText;
         if (optimisticText || images.length > 0) {
@@ -698,6 +706,24 @@ export function useThreadMessaging({
             item: optimisticUserItem,
             hasCustomName: Boolean(getCustomName(workspace.id, threadId)),
           });
+          const optimisticGeneratedImagePrompt =
+            resolvedEngine === "codex"
+              ? extractOptimisticGeneratedImagePrompt(optimisticText)
+              : null;
+          if (optimisticGeneratedImagePrompt) {
+            optimisticGeneratedImageItem = createOptimisticGeneratedImageProcessingItem({
+              threadId,
+              userMessageId: optimisticUserItem.id,
+              promptText: optimisticGeneratedImagePrompt,
+            });
+            dispatch({
+              type: "upsertItem",
+              workspaceId: workspace.id,
+              threadId,
+              item: optimisticGeneratedImageItem,
+              hasCustomName: Boolean(getCustomName(workspace.id, threadId)),
+            });
+          }
         }
       }
       const timestamp = Date.now();
@@ -798,7 +824,9 @@ export function useThreadMessaging({
               type: "setThreadItems",
               threadId,
               items: (itemsByThread[threadId] ?? []).filter(
-                (item) => item.id !== optimisticUserItem?.id,
+                (item) =>
+                  item.id !== optimisticUserItem?.id &&
+                  item.id !== optimisticGeneratedImageItem?.id,
               ),
             });
             dispatch({
@@ -808,6 +836,18 @@ export function useThreadMessaging({
               item: optimisticUserItem,
               hasCustomName: Boolean(getCustomName(workspace.id, reboundThreadId)),
             });
+            if (optimisticGeneratedImageItem) {
+              dispatch({
+                type: "upsertItem",
+                workspaceId: workspace.id,
+                threadId: reboundThreadId,
+                item: {
+                  ...optimisticGeneratedImageItem,
+                  id: `optimistic-generated-image:${reboundThreadId}:${optimisticUserItem.id}`,
+                },
+                hasCustomName: Boolean(getCustomName(workspace.id, reboundThreadId)),
+              });
+            }
           }
         }
         markProcessing(threadId, false);

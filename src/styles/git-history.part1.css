@@ -673,6 +673,11 @@ body[data-git-history-column-resizing="true"] .git-history-vertical-resizer::aft
   gap: 8px;
 }
 
+.git-history-worktree-commit-hint {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
 .git-history-worktree-commit-input-wrap {
   position: relative;
 }

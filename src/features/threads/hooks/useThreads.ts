@@ -14,6 +14,10 @@ import { useThreadSelectors } from "./useThreadSelectors";
 import { useThreadStatus } from "./useThreadStatus";
 import { useThreadUserInput } from "./useThreadUserInput";
 import {
+  resolveClaudeContinuationThreadId as resolveClaudeContinuationThreadIdFromState,
+  shouldShowHistoryLoadingForSelectionThread,
+} from "../utils/claudeThreadContinuity";
+import {
   makeCustomNameKey,
   saveCustomName,
 } from "../utils/threadStorage";
@@ -48,6 +52,7 @@ import {
   syncSharedSessionSnapshot as syncSharedSessionSnapshotService,
 } from "../../shared-session/services/sharedSessions";
 import { normalizeSharedSessionEngine } from "../../shared-session/utils/sharedSessionEngines";
+import { hasPendingOptimisticUserBubble } from "../utils/queuedHandoffBubble";
 
 const AUTO_TITLE_REQUEST_TIMEOUT_MS = 8_000;
 const AUTO_TITLE_MAX_ATTEMPTS = 2;
@@ -405,6 +410,13 @@ type PendingResolutionInput = {
   itemsByThread: Record<string, unknown[] | undefined>;
 };
 
+type PendingTurnResolutionInput = Pick<
+  PendingResolutionInput,
+  "workspaceId" | "engine" | "threadsByWorkspace" | "activeThreadIdByWorkspace" | "activeTurnIdByThread"
+> & {
+  turnId: string | null | undefined;
+};
+
 export type ThreadDeleteErrorCode =
   | "WORKSPACE_NOT_CONNECTED"
   | "SESSION_NOT_FOUND"
@@ -528,6 +540,47 @@ export function resolvePendingThreadIdForSession({
   return null;
 }
 
+export function resolvePendingThreadIdForTurn({
+  workspaceId,
+  engine,
+  turnId,
+  threadsByWorkspace,
+  activeThreadIdByWorkspace,
+  activeTurnIdByThread,
+}: PendingTurnResolutionInput): string | null {
+  const normalizedTurnId = typeof turnId === "string" ? turnId.trim() : "";
+  if (!normalizedTurnId) {
+    return null;
+  }
+
+  const prefix = `${engine}-pending-`;
+  const pendingThreads = (threadsByWorkspace[workspaceId] ?? []).filter((thread) =>
+    thread.id.startsWith(prefix),
+  );
+  if (pendingThreads.length === 0) {
+    return null;
+  }
+
+  const matchedPendingThreads = pendingThreads.filter(
+    (thread) => (activeTurnIdByThread[thread.id] ?? null) === normalizedTurnId,
+  );
+  if (matchedPendingThreads.length === 1) {
+    return matchedPendingThreads[0]?.id ?? null;
+  }
+  if (matchedPendingThreads.length > 1) {
+    const activePendingId = activeThreadIdByWorkspace[workspaceId] ?? null;
+    if (
+      activePendingId &&
+      activePendingId.startsWith(prefix) &&
+      matchedPendingThreads.some((thread) => thread.id === activePendingId)
+    ) {
+      return activePendingId;
+    }
+  }
+
+  return null;
+}
+
 export function useThreads({
   activeWorkspace,
   onWorkspaceConnected,
@@ -540,7 +593,7 @@ export function useThreads({
   customPrompts = [],
   onMessageActivity,
   activeEngine = "claude",
-  useNormalizedRealtimeAdapters = false,
+  useNormalizedRealtimeAdapters = true,
   useUnifiedHistoryLoader = false,
   resolveOpenCodeAgent,
   resolveOpenCodeVariant,
@@ -556,10 +609,12 @@ export function useThreads({
   );
   const loadedThreadsRef = useRef<Record<string, boolean>>({});
   const threadStatusByIdRef = useRef(state.threadStatusById);
+  const itemsByThreadRef = useRef(state.itemsByThread);
   const loadedThreadLastRefreshAtRef = useRef<Record<string, number>>({});
   const lazyResumeTimerByWorkspaceRef = useRef<
     Record<string, ReturnType<typeof setTimeout> | null>
   >({});
+  const historyLoadingThreadByWorkspaceRef = useRef<Record<string, string | null>>({});
   const activeThreadIdByWorkspaceRef = useRef(state.activeThreadIdByWorkspace);
   const replaceOnResumeRef = useRef<Record<string, boolean>>({});
   const pendingInterruptsRef = useRef<Set<string>>(new Set());
@@ -580,16 +635,6 @@ export function useThreads({
     Record<string, ReturnType<typeof setTimeout> | null>
   >({});
   const sharedSessionLastSignatureByThreadRef = useRef<Record<string, string>>({});
-  const {
-    approvalAllowlistRef,
-    handleApprovalDecision,
-    handleApprovalBatchAccept,
-    handleApprovalRemember,
-  } = useThreadApprovals({
-    dispatch,
-    onDebug,
-  });
-  const { handleUserInputSubmit } = useThreadUserInput({ dispatch });
   const {
     customNamesRef,
     threadActivityRef,
@@ -685,6 +730,10 @@ export function useThreads({
   }, [state.threadStatusById]);
 
   useEffect(() => {
+    itemsByThreadRef.current = state.itemsByThread;
+  }, [state.itemsByThread]);
+
+  useEffect(() => {
     return () => {
       Object.values(lazyResumeTimerByWorkspaceRef.current).forEach((timer) => {
         if (timer) {
@@ -692,6 +741,7 @@ export function useThreads({
         }
       });
       lazyResumeTimerByWorkspaceRef.current = {};
+      historyLoadingThreadByWorkspaceRef.current = {};
       Object.values(sharedSessionSyncTimerByThreadRef.current).forEach((timer) => {
         if (timer) {
           clearTimeout(timer);
@@ -835,6 +885,60 @@ export function useThreads({
     ],
   );
 
+  const resolvePendingThreadForTurn = useCallback(
+    (
+      workspaceId: string,
+      engine: "claude" | "gemini" | "opencode",
+      turnId: string | null | undefined,
+    ): string | null =>
+      resolvePendingThreadIdForTurn({
+        workspaceId,
+        engine,
+        turnId,
+        threadsByWorkspace: state.threadsByWorkspace,
+        activeThreadIdByWorkspace: state.activeThreadIdByWorkspace,
+        activeTurnIdByThread: state.activeTurnIdByThread,
+      }),
+    [
+      state.activeThreadIdByWorkspace,
+      state.activeTurnIdByThread,
+      state.threadsByWorkspace,
+    ],
+  );
+
+  const resolveClaudeContinuationThreadId = useCallback(
+    (
+      workspaceId: string,
+      threadId: string,
+      turnId?: string | null,
+    ) =>
+      resolveClaudeContinuationThreadIdFromState({
+        workspaceId,
+        threadId,
+        turnId,
+        resolveCanonicalThreadId,
+        resolvePendingThreadForSession,
+        getActiveTurnIdForThread: (candidateThreadId) =>
+          state.activeTurnIdByThread[candidateThreadId] ?? null,
+      }),
+    [resolveCanonicalThreadId, resolvePendingThreadForSession, state.activeTurnIdByThread],
+  );
+
+  const {
+    approvalAllowlistRef,
+    handleApprovalDecision,
+    handleApprovalBatchAccept,
+    handleApprovalRemember,
+  } = useThreadApprovals({
+    dispatch,
+    onDebug,
+    resolveClaudeContinuationThreadId,
+  });
+  const { handleUserInputSubmit } = useThreadUserInput({
+    dispatch,
+    resolveClaudeContinuationThreadId,
+  });
+
   const renameCustomNameKey = useCallback(
     (workspaceId: string, oldThreadId: string, newThreadId: string) => {
       const fromKey = makeCustomNameKey(workspaceId, oldThreadId);
@@ -923,6 +1027,8 @@ export function useThreads({
     loadOlderThreadsForWorkspace,
     deleteThreadForWorkspace,
     renameThreadTitleMapping,
+    setThreadHistoryLoading,
+    historyLoadingByThreadId,
   } = useThreadActions({
     dispatch,
     itemsByThread: state.itemsByThread,
@@ -1027,6 +1133,20 @@ export function useThreads({
           delete codexRealtimeReconcileTimerByThreadRef.current[reconciliationThreadKey];
           const status = threadStatusByIdRef.current[canonicalThreadId];
           if (status?.isProcessing && attempt === 0) {
+            scheduleCodexRealtimeHistoryReconcile(
+              workspaceId,
+              canonicalThreadId,
+              reconciliationTurnId,
+              attempt + 1,
+            );
+            return;
+          }
+          if (
+            attempt === 0 &&
+            hasPendingOptimisticUserBubble(
+              itemsByThreadRef.current[canonicalThreadId] ?? [],
+            )
+          ) {
             scheduleCodexRealtimeHistoryReconcile(
               workspaceId,
               canonicalThreadId,
@@ -1910,12 +2030,32 @@ export function useThreads({
       if (!targetId) {
         return;
       }
+      const clearHistoryLoadingForThread = (targetThreadId: string | null) => {
+        if (!targetThreadId) {
+          return;
+        }
+        setThreadHistoryLoading(targetThreadId, false);
+        if (historyLoadingThreadByWorkspaceRef.current[targetId] === targetThreadId) {
+          historyLoadingThreadByWorkspaceRef.current[targetId] = null;
+        }
+      };
       const canonicalThreadId = threadId ? resolveCanonicalThreadId(threadId) : null;
       dispatch({ type: "setActiveThreadId", workspaceId: targetId, threadId: canonicalThreadId });
       const previousTimer = lazyResumeTimerByWorkspaceRef.current[targetId];
       if (previousTimer) {
         clearTimeout(previousTimer);
         lazyResumeTimerByWorkspaceRef.current[targetId] = null;
+      }
+      const previousHistoryLoadingThreadId =
+        historyLoadingThreadByWorkspaceRef.current[targetId] ?? null;
+      if (
+        previousHistoryLoadingThreadId &&
+        previousHistoryLoadingThreadId !== canonicalThreadId
+      ) {
+        clearHistoryLoadingForThread(previousHistoryLoadingThreadId);
+      }
+      if (!canonicalThreadId) {
+        return;
       }
       if (canonicalThreadId) {
         const now = Date.now();
@@ -1930,21 +2070,76 @@ export function useThreads({
           isLoaded && !isProcessing && now - lastRefreshAt >= THREAD_SWITCH_LOADED_REFRESH_MS;
         const shouldScheduleResume = !isLoaded || shouldRefreshLoaded;
         if (!shouldScheduleResume) {
+          clearHistoryLoadingForThread(canonicalThreadId);
           return;
+        }
+        const shouldShowHistoryLoading =
+          !isLoaded &&
+          shouldShowHistoryLoadingForSelectionThread(canonicalThreadId);
+        if (shouldShowHistoryLoading) {
+          setThreadHistoryLoading(canonicalThreadId, true);
+          historyLoadingThreadByWorkspaceRef.current[targetId] = canonicalThreadId;
+        } else {
+          clearHistoryLoadingForThread(canonicalThreadId);
         }
         lazyResumeTimerByWorkspaceRef.current[targetId] = setTimeout(() => {
           lazyResumeTimerByWorkspaceRef.current[targetId] = null;
           const activeThreadIdForWorkspace =
             activeThreadIdByWorkspaceRef.current[targetId] ?? null;
           if (activeThreadIdForWorkspace !== canonicalThreadId) {
+            clearHistoryLoadingForThread(canonicalThreadId);
             return;
           }
           const loadedAtCallback = Boolean(loadedThreadsRef.current[canonicalThreadId]);
           if (!loadedAtCallback) {
             loadedThreadLastRefreshAtRef.current[canonicalThreadId] = Date.now();
-            void resumeThreadForWorkspace(targetId, canonicalThreadId);
+            void resumeThreadForWorkspace(targetId, canonicalThreadId)
+              .then((recoveredThreadId) => {
+                const recoveredCanonicalThreadId = recoveredThreadId
+                  ? resolveCanonicalThreadId(recoveredThreadId)
+                  : null;
+                if (
+                  shouldShowHistoryLoading &&
+                  recoveredCanonicalThreadId &&
+                  recoveredCanonicalThreadId !== canonicalThreadId
+                ) {
+                  clearHistoryLoadingForThread(canonicalThreadId);
+                  setThreadHistoryLoading(recoveredCanonicalThreadId, true);
+                  historyLoadingThreadByWorkspaceRef.current[targetId] =
+                    recoveredCanonicalThreadId;
+                }
+                if (
+                  recoveredCanonicalThreadId &&
+                  recoveredCanonicalThreadId !== canonicalThreadId &&
+                  activeThreadIdByWorkspaceRef.current[targetId] === canonicalThreadId
+                ) {
+                  onDebug?.({
+                    id: `${Date.now()}-thread-selection-recovered-canonical`,
+                    timestamp: Date.now(),
+                    source: "client",
+                    label: "thread/selection recovered canonical",
+                    payload: {
+                      workspaceId: targetId,
+                      staleThreadId: canonicalThreadId,
+                      recoveredThreadId: recoveredCanonicalThreadId,
+                    },
+                  });
+                  dispatch({
+                    type: "setActiveThreadId",
+                    workspaceId: targetId,
+                    threadId: recoveredCanonicalThreadId,
+                  });
+                }
+              })
+              .finally(() => {
+                clearHistoryLoadingForThread(
+                  historyLoadingThreadByWorkspaceRef.current[targetId] ??
+                    canonicalThreadId,
+                );
+              });
             return;
           }
+          clearHistoryLoadingForThread(canonicalThreadId);
           const processingAtCallback = Boolean(
             threadStatusByIdRef.current[canonicalThreadId]?.isProcessing,
           );
@@ -1957,11 +2152,47 @@ export function useThreads({
             return;
           }
           loadedThreadLastRefreshAtRef.current[canonicalThreadId] = Date.now();
-          void resumeThreadForWorkspace(targetId, canonicalThreadId, true);
+          void resumeThreadForWorkspace(targetId, canonicalThreadId, true).then(
+            (recoveredThreadId) => {
+              const recoveredCanonicalThreadId = recoveredThreadId
+                ? resolveCanonicalThreadId(recoveredThreadId)
+                : null;
+              if (
+                recoveredCanonicalThreadId &&
+                recoveredCanonicalThreadId !== canonicalThreadId &&
+                activeThreadIdByWorkspaceRef.current[targetId] === canonicalThreadId
+              ) {
+                onDebug?.({
+                  id: `${Date.now()}-thread-selection-recovered-canonical-refresh`,
+                  timestamp: Date.now(),
+                  source: "client",
+                  label: "thread/selection recovered canonical",
+                  payload: {
+                    workspaceId: targetId,
+                    staleThreadId: canonicalThreadId,
+                    recoveredThreadId: recoveredCanonicalThreadId,
+                    trigger: "refresh",
+                  },
+                });
+                dispatch({
+                  type: "setActiveThreadId",
+                  workspaceId: targetId,
+                  threadId: recoveredCanonicalThreadId,
+                });
+              }
+            },
+          );
         }, THREAD_SWITCH_RESUME_DELAY_MS);
       }
     },
-    [activeWorkspaceId, dispatch, resolveCanonicalThreadId, resumeThreadForWorkspace],
+    [
+      activeWorkspaceId,
+      dispatch,
+      onDebug,
+      resolveCanonicalThreadId,
+      resumeThreadForWorkspace,
+      setThreadHistoryLoading,
+    ],
   );
 
   useEffect(() => {
@@ -2342,7 +2573,9 @@ export function useThreads({
     renameCustomNameKey,
     renameAutoTitlePendingKey,
     renameThreadTitleMapping,
+    resolveClaudeContinuationThreadId,
     resolvePendingThreadForSession,
+    resolvePendingThreadForTurn,
     getActiveTurnIdForThread: (threadId: string) =>
       state.activeTurnIdByThread[threadId] ?? null,
     renamePendingMemoryCaptureKey,
@@ -2390,6 +2623,7 @@ export function useThreads({
     threadsByWorkspace: state.threadsByWorkspace,
     threadParentById: state.threadParentById,
     threadStatusById: state.threadStatusById,
+    historyLoadingByThreadId,
     threadListLoadingByWorkspace: state.threadListLoadingByWorkspace,
     threadListPagingByWorkspace: state.threadListPagingByWorkspace,
     threadListCursorByWorkspace: state.threadListCursorByWorkspace,

@@ -1,4 +1,5 @@
 import type { ConversationItem } from "../../../types";
+import { findEquivalentReasoningObservationIndex } from "../assembly/conversationNormalization";
 import { normalizeCollabAgentStatusMap } from "../../../utils/collabToolParsing";
 import { buildConversationItemFromThreadItem } from "../../../utils/threadItems";
 import { asRecord, asString } from "./historyLoaderUtils";
@@ -45,66 +46,11 @@ const SKIP_GENERIC_TOOL_CALL_NAMES = new Set([
   "request_user_input",
 ]);
 
-function compactComparableReasoningSnapshotText(value: string) {
-  return value
-    .replace(/\s+/g, "")
-    .replace(/[！!]/g, "!")
-    .replace(/[？?]/g, "?")
-    .replace(/[，,]/g, ",")
-    .replace(/[。．.]/g, ".");
-}
-
-function isReasoningSnapshotDuplicate(previous: string, incoming: string) {
-  const previousCompact = compactComparableReasoningSnapshotText(previous);
-  const incomingCompact = compactComparableReasoningSnapshotText(incoming);
-  if (!previousCompact || !incomingCompact) {
-    return false;
-  }
-  if (previousCompact === incomingCompact) {
-    return true;
-  }
-  if (previousCompact.length >= 8 && incomingCompact.includes(previousCompact)) {
-    return true;
-  }
-  if (incomingCompact.length >= 8 && previousCompact.includes(incomingCompact)) {
-    return true;
-  }
-  const max = Math.min(previousCompact.length, incomingCompact.length);
-  let sharedPrefix = 0;
-  while (
-    sharedPrefix < max &&
-    previousCompact[sharedPrefix] === incomingCompact[sharedPrefix]
-  ) {
-    sharedPrefix += 1;
-  }
-  return sharedPrefix >= 8 && sharedPrefix >= Math.floor(max * 0.72);
-}
-
 function findDuplicateReasoningIndex(
   items: ConversationItem[],
   incoming: Extract<ConversationItem, { kind: "reasoning" }>,
 ) {
-  const incomingText = (incoming.content || incoming.summary || "").trim();
-  if (!incomingText) {
-    return -1;
-  }
-  for (let index = items.length - 1; index >= 0; index -= 1) {
-    const candidate = items[index];
-    if (!candidate) {
-      continue;
-    }
-    if (candidate.kind !== "reasoning") {
-      continue;
-    }
-    const candidateText = (candidate.content || candidate.summary || "").trim();
-    if (!candidateText) {
-      continue;
-    }
-    if (isReasoningSnapshotDuplicate(candidateText, incomingText)) {
-      return index;
-    }
-  }
-  return -1;
+  return findEquivalentReasoningObservationIndex(items, incoming);
 }
 
 function mergeReasoningSnapshot(
@@ -570,6 +516,23 @@ function buildApplyPatchItem({
   });
 }
 
+function buildGeneratedImageHistoryItem(
+  payload: Record<string, unknown>,
+  fallbackId: string,
+) {
+  const resolvedId =
+    asString(payload.id ?? payload.call_id ?? payload.callId ?? "").trim() || fallbackId;
+  const resolvedType = asString(payload.type ?? "").trim();
+  return buildConversationItem({
+    ...payload,
+    id: resolvedId,
+    type:
+      resolvedType === "image_generation_end"
+        ? "image_generation_end"
+        : "image_generation_call",
+  });
+}
+
 function buildCollabToolCallItem(pending: PendingCollabToolCall) {
   if (!pending.callId.trim() || !pending.tool.trim()) {
     return null;
@@ -1013,6 +976,20 @@ export function parseCodexSessionHistory(input: unknown): ConversationItem[] {
         return;
       }
 
+      if (
+        payloadType === "image_generation_call" ||
+        payloadType === "image_generation_end"
+      ) {
+        const generatedImage = buildGeneratedImageHistoryItem(
+          payload,
+          `codex-generated-image-${index + 1}`,
+        );
+        if (generatedImage) {
+          appendCodexHistoryItem(items, generatedImage);
+        }
+        return;
+      }
+
       if (payloadType === "function_call") {
         const functionName = asString(payload.name).trim();
         if (functionName === "exec_command") {
@@ -1114,6 +1091,19 @@ export function parseCodexSessionHistory(input: unknown): ConversationItem[] {
             messageTimestampById.set(message.id, entryTimestampMs);
           }
           appendCodexHistoryItem(items, message);
+        }
+        return;
+      }
+      if (
+        payloadType === "image_generation_end" ||
+        payloadType === "image_generation_call"
+      ) {
+        const generatedImage = buildGeneratedImageHistoryItem(
+          payload,
+          `codex-generated-image-${index + 1}`,
+        );
+        if (generatedImage) {
+          appendCodexHistoryItem(items, generatedImage);
         }
         return;
       }
