@@ -1240,3 +1240,62 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 192: 合并 feature v0.4.9 边界审查更新
+
+**Date**: 2026-04-27
+**Task**: 合并 feature v0.4.9 边界审查更新
+**Branch**: `codex/2026-04-01-local`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+任务目标：将 feature/v0.4.9 最新 changelog 与边界审查修复合并到 codex/2026-04-01-local，并完成提交与推送。
+
+主要改动：
+- 解决 .trellis/workspace/chenxiangning/index.md 的 merge 冲突，采用传入分支 Session 191 状态并校准 journal 行数。
+- 合入 v0.4.9 changelog 发布说明补齐。
+- 合入 Computer Use plugin contract 测试拆分与 large-file policy 更新。
+- 合入 Codex session history loader 边界修复与对应回归测试。
+
+涉及模块：
+- .trellis/workspace/chenxiangning/index.md
+- .trellis/workspace/chenxiangning/journal-6.md
+- CHANGELOG.md
+- scripts/check-large-files.policy.json
+- src-tauri/src/computer_use/mod.rs
+- src-tauri/src/computer_use/plugin_contract_tests.rs
+- src/features/threads/loaders/codexSessionHistory.ts
+- src/features/threads/loaders/historyLoaders.test.ts
+
+验证结果：
+- git diff --name-only --diff-filter=U 无输出
+- rg ^冲突标记检查无输出
+- git diff --check --cached 通过
+- npm run typecheck 通过
+
+后续事项：
+- 推送后关注远端 CI，重点看 Rust Computer Use plugin contract 测试与 Codex history loader 回归。
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `db8d8462b8442ac011fe7012363e97fb1f190803` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
