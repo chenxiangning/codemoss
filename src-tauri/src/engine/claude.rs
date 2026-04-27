@@ -1600,3 +1600,6 @@ impl ClaudeSession {
 #[cfg(test)]
 #[path = "claude/tests_core.rs"]
 mod tests_core;
+#[cfg(test)]
+#[path = "claude/tests_path_approval.rs"]
+mod tests_path_approval;

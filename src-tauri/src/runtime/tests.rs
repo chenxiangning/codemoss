@@ -1,5 +1,6 @@
 use super::process_diagnostics::{
-    is_engine_root_process, parse_process_rows_unix_output, parse_process_rows_windows_payload,
+    cached_process_rows_with_loader, is_engine_root_process, parse_process_rows_unix_output,
+    parse_process_rows_windows_payload, reset_process_rows_cache_for_tests, ProcessRowsLoadResult,
     ProcessSnapshotRow,
 };
 use super::{
@@ -16,7 +17,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tokio::sync::{Mutex, Notify};
 use uuid::Uuid;
 
@@ -192,6 +193,178 @@ async fn record_runtime_ended_clears_leases_and_persists_exit_diagnostics() {
         Some("[RUNTIME_ENDED] Managed runtime process exited unexpectedly."),
     );
     assert_eq!(row.pid, None);
+}
+
+#[tokio::test]
+async fn claude_stream_activity_touch_protects_runtime_without_ledger_persist() {
+    let temp_dir = std::env::temp_dir().join(format!("ccgui-runtime-touch-{}", Uuid::new_v4()));
+    fs::create_dir_all(&temp_dir).expect("create temp dir");
+    let manager = RuntimeManager::new(&temp_dir);
+    let entry = workspace_entry("claude-touch");
+
+    manager
+        .touch_claude_turn_activity(&entry, "turn:claude-1")
+        .await;
+    manager
+        .touch_claude_stream_activity(&entry, "stream:claude-1")
+        .await;
+    manager
+        .touch_claude_stream_activity(&entry, "stream:claude-1")
+        .await;
+
+    let snapshot = manager.snapshot(&AppSettings::default()).await;
+    let row = snapshot
+        .rows
+        .iter()
+        .find(|item| item.workspace_id == "claude-touch")
+        .expect("claude runtime row should exist");
+    assert!(row.active_work_protected);
+    assert_eq!(row.turn_lease_count, 1);
+    assert_eq!(row.stream_lease_count, 1);
+    assert_eq!(row.wrapper_kind.as_deref(), Some("claude-cli"));
+    assert!(
+        !temp_dir.join("runtime-pool-ledger.json").exists(),
+        "activity touch must not durably persist each stream delta"
+    );
+
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[tokio::test]
+async fn delayed_claude_runtime_sync_does_not_resurrect_released_turn() {
+    let manager = RuntimeManager::new(&std::env::temp_dir());
+    let entry = workspace_entry("claude-stale-sync");
+    manager
+        .touch_claude_turn_activity(&entry, "turn:stale")
+        .await;
+    manager.record_removed("claude", "claude-stale-sync").await;
+
+    manager
+        .sync_claude_runtime_if_source_active(&entry, &[4242], "turn:stale")
+        .await;
+
+    let snapshot = manager.snapshot(&AppSettings::default()).await;
+    assert!(
+        snapshot
+            .rows
+            .iter()
+            .all(|row| row.workspace_id != "claude-stale-sync"),
+        "stale background sync must not recreate a removed Claude runtime"
+    );
+}
+
+#[tokio::test]
+async fn claude_terminal_release_preserves_newer_active_turn_leases() {
+    let temp_dir = std::env::temp_dir().join(format!("ccgui-runtime-release-{}", Uuid::new_v4()));
+    fs::create_dir_all(&temp_dir).expect("create temp dir");
+    let manager = RuntimeManager::new(&temp_dir);
+    let entry = workspace_entry("claude-release-race");
+
+    manager.touch_claude_turn_activity(&entry, "turn:old").await;
+    manager
+        .touch_claude_stream_activity(&entry, "stream:old")
+        .await;
+    manager.touch_claude_turn_activity(&entry, "turn:new").await;
+    manager
+        .touch_claude_stream_activity(&entry, "stream:new")
+        .await;
+
+    manager
+        .release_claude_terminal_activity("claude-release-race", "turn:old", "stream:old")
+        .await;
+
+    let snapshot = manager.snapshot(&AppSettings::default()).await;
+    let row = snapshot
+        .rows
+        .iter()
+        .find(|item| item.workspace_id == "claude-release-race")
+        .expect("newer active Claude runtime row should survive old terminal release");
+    assert!(row.active_work_protected);
+    assert_eq!(row.turn_lease_count, 1);
+    assert_eq!(row.stream_lease_count, 1);
+    assert_eq!(row.lease_sources, vec!["turn:new", "stream:new"]);
+
+    manager
+        .release_claude_terminal_activity("claude-release-race", "turn:new", "stream:new")
+        .await;
+    let settled = manager.snapshot(&AppSettings::default()).await;
+    assert!(
+        settled
+            .rows
+            .iter()
+            .all(|row| row.workspace_id != "claude-release-race"),
+        "last terminal release should remove the idle Claude runtime row"
+    );
+
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
+fn process_rows_cache_reuses_fresh_snapshot_and_preserves_stale_on_degrade() {
+    reset_process_rows_cache_for_tests();
+    let calls = AtomicU64::new(0);
+    let first_row = ProcessSnapshotRow {
+        pid: 100,
+        ppid: 1,
+        command: "node.exe".to_string(),
+        args: "node claude".to_string(),
+    };
+
+    let (first, first_reason) = cached_process_rows_with_loader(Duration::from_secs(60), || {
+        calls.fetch_add(1, Ordering::SeqCst);
+        ProcessRowsLoadResult::Fresh(vec![first_row.clone()])
+    });
+    let (second, second_reason) = cached_process_rows_with_loader(Duration::from_secs(60), || {
+        calls.fetch_add(1, Ordering::SeqCst);
+        ProcessRowsLoadResult::Fresh(Vec::new())
+    });
+
+    assert_eq!(calls.load(Ordering::SeqCst), 1);
+    assert!(first_reason.is_none());
+    assert!(second_reason.is_none());
+    assert_eq!(first.expect("first rows")[0].pid, 100);
+    assert_eq!(second.expect("second rows")[0].pid, 100);
+
+    let (stale, stale_reason) = cached_process_rows_with_loader(Duration::ZERO, || {
+        calls.fetch_add(1, Ordering::SeqCst);
+        ProcessRowsLoadResult::Degraded("snapshot-timeout")
+    });
+    assert_eq!(calls.load(Ordering::SeqCst), 2);
+    assert_eq!(stale_reason, Some("snapshot-timeout"));
+    assert_eq!(stale.expect("stale rows")[0].pid, 100);
+
+    reset_process_rows_cache_for_tests();
+    let concurrent_calls = Arc::new(AtomicU64::new(0));
+    let mut workers = Vec::new();
+    let started_at = Instant::now();
+
+    for _ in 0..2 {
+        let concurrent_calls = Arc::clone(&concurrent_calls);
+        workers.push(std::thread::spawn(move || {
+            cached_process_rows_with_loader(Duration::from_secs(60), || {
+                concurrent_calls.fetch_add(1, Ordering::SeqCst);
+                std::thread::sleep(Duration::from_millis(40));
+                ProcessRowsLoadResult::Fresh(vec![ProcessSnapshotRow {
+                    pid: 200,
+                    ppid: 1,
+                    command: "powershell.exe".to_string(),
+                    args: "Get-CimInstance".to_string(),
+                }])
+            })
+            .0
+            .expect("rows should resolve")
+        }));
+    }
+
+    let results = workers
+        .into_iter()
+        .map(|worker| worker.join().expect("worker join"))
+        .collect::<Vec<_>>();
+
+    assert_eq!(concurrent_calls.load(Ordering::SeqCst), 1);
+    assert!(started_at.elapsed() >= Duration::from_millis(40));
+    assert_eq!(results[0][0].pid, 200);
+    assert_eq!(results[1][0].pid, 200);
 }
 
 #[tokio::test]

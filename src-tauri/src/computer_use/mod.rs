@@ -13,12 +13,14 @@ use crate::types::BackendMode;
 mod authorization_continuity;
 pub(crate) mod broker;
 mod platform;
+mod plist_helpers;
 
 pub(crate) use authorization_continuity::{
     build_authorization_continuity_status, computer_use_authorization_continuity_path,
     persist_last_successful_authorization_host, ComputerUseAuthorizationContinuityKind,
     ComputerUseAuthorizationContinuityStatus,
 };
+use plist_helpers::{plist_array_strings, plist_string};
 
 const COMPUTER_USE_BRIDGE_ENABLED: bool = true;
 const COMPUTER_USE_ACTIVATION_ENABLED: bool = true;
@@ -1133,7 +1135,7 @@ fn discover_official_parent_handoff(
             } else {
                 "medium".to_string()
             },
-            notes: "MCP descriptor is treated as a Codex CLI/plugin handoff candidate. This is evidence only and was not launched by mossx."
+            notes: "MCP descriptor is treated as a Codex CLI/plugin handoff candidate. This is evidence only and was not launched by ccgui."
                 .to_string(),
         });
     }
@@ -1276,60 +1278,6 @@ fn resolve_service_app_root_from_helper_app(helper_app_root: &Path) -> Option<&P
         .and_then(Path::parent)
         .and_then(Path::parent)
         .filter(|path| path.extension().is_some_and(|extension| extension == "app"))
-}
-
-fn plist_string(contents: &str, key: &str) -> Option<String> {
-    let key_marker = format!("<key>{key}</key>");
-    let key_start = contents.find(&key_marker)?;
-    let after_key = &contents[key_start + key_marker.len()..];
-    first_xml_string(after_key)
-}
-
-fn plist_array_strings(contents: &str, key: &str) -> Vec<String> {
-    let key_marker = format!("<key>{key}</key>");
-    let Some(key_start) = contents.find(&key_marker) else {
-        return Vec::new();
-    };
-    let after_key = &contents[key_start + key_marker.len()..];
-    let Some(array_start) = after_key.find("<array>") else {
-        return Vec::new();
-    };
-    let after_array = &after_key[array_start + "<array>".len()..];
-    let Some(array_end) = after_array.find("</array>") else {
-        return Vec::new();
-    };
-
-    xml_strings(&after_array[..array_end])
-}
-
-fn first_xml_string(contents: &str) -> Option<String> {
-    xml_strings(contents).into_iter().next()
-}
-
-fn xml_strings(contents: &str) -> Vec<String> {
-    let mut values = Vec::new();
-    let mut remaining = contents;
-
-    while let Some(start) = remaining.find("<string>") {
-        let value_start = start + "<string>".len();
-        let after_start = &remaining[value_start..];
-        let Some(end) = after_start.find("</string>") else {
-            break;
-        };
-        values.push(unescape_minimal_xml(&after_start[..end]));
-        remaining = &after_start[end + "</string>".len()..];
-    }
-
-    values
-}
-
-fn unescape_minimal_xml(value: &str) -> String {
-    value
-        .replace("&amp;", "&")
-        .replace("&lt;", "<")
-        .replace("&gt;", ">")
-        .replace("&quot;", "\"")
-        .replace("&apos;", "'")
 }
 
 fn collect_application_groups(plists: [Option<&str>; 2]) -> Vec<String> {
@@ -1550,7 +1498,7 @@ async fn run_helper_bridge_probe(
             succeeded: true,
             failure_kind: None,
             diagnostic_message:
-                "Codex CLI Computer Use plugin cache launch contract verified. mossx did not direct-exec the helper; Codex CLI remains the supported parent."
+                "Codex CLI Computer Use plugin cache launch contract verified. ccgui did not direct-exec the helper; Codex CLI remains the supported parent."
                     .to_string(),
             stderr_snippet: None,
             exit_code: None,
@@ -2245,7 +2193,7 @@ mod tests {
         let kind = classify_host_contract_diagnostics(
             &status,
             status.helper_path.as_deref(),
-            Some("/Applications/Mossx.app/Contents/MacOS/mossx"),
+            Some("/Applications/ccgui.app/Contents/MacOS/ccgui"),
         );
 
         assert_eq!(

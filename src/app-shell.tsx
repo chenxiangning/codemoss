@@ -2,7 +2,6 @@
 import {
   cloneElement,
   isValidElement,
-  lazy,
   Suspense,
   useCallback,
   useEffect,
@@ -71,7 +70,6 @@ import { useLiveEditPreview } from "./features/live-edit-preview/hooks/useLiveEd
 import { useGitHubPanelController } from "./features/app/hooks/useGitHubPanelController";
 import { useSettingsModalState } from "./features/app/hooks/useSettingsModalState";
 import { useLoadingProgressDialogState } from "./features/app/hooks/useLoadingProgressDialogState";
-import { runWithLoadingProgress } from "./features/app/utils/loadingProgressActions";
 import { usePersistComposerSettings } from "./features/app/hooks/usePersistComposerSettings";
 import { useSyncSelectedDiffPath } from "./features/app/hooks/useSyncSelectedDiffPath";
 import { useMenuAcceleratorController } from "./features/app/hooks/useMenuAcceleratorController";
@@ -165,23 +163,14 @@ import { useSelectedAgentSession } from "./app-shell-parts/useSelectedAgentSessi
 import { APP_SHELL_LEGACY_CONTEXT_DEFAULTS } from "./app-shell-parts/legacyContextDefaults";
 import { usePanelLockState } from "./app-shell-parts/usePanelLockState";
 import { usePlanApplyHandlers } from "./app-shell-parts/usePlanApplyHandlers";
+import { useThreadScopedCollaborationMode } from "./app-shell-parts/useThreadScopedCollaborationMode";
+import { GitHubPanelData, SettingsView } from "./app-shell-parts/lazyViews";
+import { useCreateSessionLoading } from "./app-shell-parts/useCreateSessionLoading";
 import type { AgentTaskScrollRequest } from "./features/messages/types";
 import type { SubagentInfo } from "./features/status-panel/types";
 
 const EMPTY_OPEN_APP_ICON_MAP: Record<string, string> = {};
 const DEFAULT_CLAUDE_MODEL_ID = "claude-sonnet-4-6";
-
-const SettingsView = lazy(() =>
-  import("./features/settings/components/SettingsView").then((module) => ({
-    default: module.SettingsView,
-  })),
-);
-
-const GitHubPanelData = lazy(() =>
-  import("./features/git/components/GitHubPanelData").then((module) => ({
-    default: module.GitHubPanelData,
-  })),
-);
 
 export function AppShell() {
   const { t } = useTranslation();
@@ -353,37 +342,11 @@ export function AppShell() {
     dismissLoadingProgressDialog,
   } = useLoadingProgressDialogState();
 
-  const runWithCreateSessionLoading = useCallback(
-    async <T,>(
-      params: {
-        workspace: WorkspaceInfo;
-        engine: EngineType;
-      },
-      action: () => Promise<T>,
-    ): Promise<T> => {
-      const engineLabel =
-        params.engine === "codex"
-          ? t("workspace.engineCodex")
-          : params.engine === "gemini"
-            ? t("workspace.engineGemini")
-            : params.engine === "opencode"
-              ? t("workspace.engineOpenCode")
-              : t("workspace.engineClaudeCode");
-      const workspaceLabel = params.workspace.name.trim() || params.workspace.path;
-      return runWithLoadingProgress(
-        { showLoadingProgressDialog, hideLoadingProgressDialog },
-        {
-          title: t("workspace.loadingProgressCreateSessionTitle"),
-          message: t("workspace.loadingProgressCreateSessionMessage", {
-            engine: engineLabel,
-            workspace: workspaceLabel,
-          }),
-        },
-        action,
-      );
-    },
-    [hideLoadingProgressDialog, showLoadingProgressDialog, t],
-  );
+  const runWithCreateSessionLoading = useCreateSessionLoading({
+    hideLoadingProgressDialog,
+    showLoadingProgressDialog,
+    t,
+  });
 
   const handleOpenModelSettings = useCallback(
     (providerId?: string) => {
@@ -601,96 +564,22 @@ export function AppShell() {
     enabled: true,
     onDebug: addDebugEntry,
   });
-  const [collaborationUiModeByThread, setCollaborationUiModeByThread] = useState<
-    Record<string, "plan" | "code">
-  >({});
-  const [collaborationRuntimeModeByThread, setCollaborationRuntimeModeByThread] = useState<
-    Record<string, "plan" | "code">
-  >({});
-  const activeThreadIdForModeRef = useRef<string | null>(null);
-  const lastCodexModeSyncThreadRef = useRef<string | null>(null);
-  const codexComposerModeRef = useRef<"plan" | "code" | null>(null);
-  const applySelectedCollaborationMode = useCallback(
-    (modeId: string | null) => {
-      if (!modeId) {
-        codexComposerModeRef.current = null;
-        setSelectedCollaborationModeId(null);
-        return;
-      }
-      const normalized = modeId === "plan" ? "plan" : "code";
-      codexComposerModeRef.current = normalized;
-      const threadId = activeThreadIdForModeRef.current;
-      if (threadId) {
-        setCollaborationUiModeByThread((prev) => {
-          if (prev[threadId] === normalized) {
-            return prev;
-          }
-          return {
-            ...prev,
-            [threadId]: normalized,
-          };
-        });
-      }
-      setSelectedCollaborationModeId(normalized);
-    },
-    [setSelectedCollaborationModeId],
-  );
-  const setCodexCollaborationMode = useCallback(
-    (mode: "plan" | "code") => {
-      applySelectedCollaborationMode(mode);
-    },
-    [applySelectedCollaborationMode],
-  );
-  const resolveCollaborationRuntimeMode = useCallback(
-    (threadId: string): "plan" | "code" | null =>
-      collaborationRuntimeModeByThread[threadId] ?? null,
-    [collaborationRuntimeModeByThread],
-  );
-  const resolveCollaborationUiMode = useCallback(
-    (threadId: string): "plan" | "code" | null =>
-      collaborationUiModeByThread[threadId] ?? null,
-    [collaborationUiModeByThread],
-  );
-  const handleCollaborationModeResolved = useCallback(
-    (payload: {
-      workspaceId: string;
-      threadId: string;
-      selectedUiMode: "plan" | "default";
-      effectiveRuntimeMode: "plan" | "code";
-      effectiveUiMode: "plan" | "default";
-      fallbackReason: string | null;
-    }) => {
-      const threadId = payload.threadId.trim();
-      if (!threadId) {
-        return;
-      }
-      const effectiveRuntimeMode = payload.effectiveRuntimeMode === "plan"
-        ? "plan"
-        : "code";
-      const effectiveUiMode = payload.effectiveUiMode === "plan"
-        ? "plan"
-        : "code";
-      setCollaborationRuntimeModeByThread((prev) => {
-        if (prev[threadId] === effectiveRuntimeMode) {
-          return prev;
-        }
-        return {
-          ...prev,
-          [threadId]: effectiveRuntimeMode,
-        };
-      });
-      setCollaborationUiModeByThread((prev) => {
-        if (prev[threadId] === effectiveUiMode) {
-          return prev;
-        }
-        return {
-          ...prev,
-          [threadId]: effectiveUiMode,
-        };
-      });
-    },
-    [],
-  );
+  const {
+    collaborationUiModeByThread,
+    setCollaborationUiModeByThread,
+    collaborationRuntimeModeByThread,
+    setCollaborationRuntimeModeByThread,
+    activeThreadIdForModeRef,
+    lastCodexModeSyncThreadRef,
+    codexComposerModeRef,
+    applySelectedCollaborationMode,
+    setCodexCollaborationMode,
+    resolveCollaborationRuntimeMode,
+    resolveCollaborationUiMode,
+    handleCollaborationModeResolved,
+  } = useThreadScopedCollaborationMode({
+    setSelectedCollaborationModeId,
+  });
 
   const { skills } = useSkills({ activeWorkspace, onDebug: addDebugEntry });
   const {
@@ -1719,7 +1608,7 @@ export function AppShell() {
     : timelinePlan;
   useEffect(() => {
     activeThreadIdForModeRef.current = activeThreadId;
-  }, [activeThreadId]);
+  }, [activeThreadId, activeThreadIdForModeRef]);
 
   useEffect(() => {
     const syncResult = resolveThreadScopedCollaborationModeSync({
@@ -1743,7 +1632,9 @@ export function AppShell() {
   }, [
     activeEngine,
     activeThreadId,
+    codexComposerModeRef,
     collaborationUiModeByThread,
+    lastCodexModeSyncThreadRef,
     selectedCollaborationModeId,
     setSelectedCollaborationModeId,
   ]);

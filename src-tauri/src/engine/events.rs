@@ -896,9 +896,8 @@ mod tests {
             turn_id: Some("turn-123".to_string()),
         };
 
-        let mapped =
-            engine_event_to_app_server_event(&event, "claude-pending-1", "item-1")
-                .expect("mapped event");
+        let mapped = engine_event_to_app_server_event(&event, "claude-pending-1", "item-1")
+            .expect("mapped event");
 
         assert_eq!(
             mapped.message["method"],

@@ -34,6 +34,7 @@ const MAX_ITEM_TEXT = 20000;
 const TOOL_OUTPUT_RECENT_ITEMS = 12;
 const NO_TRUNCATE_TOOL_OUTPUT_RECENT_ITEMS = 4;
 const NO_TRUNCATE_TOOL_TYPES = new Set(["fileChange", "commandExecution"]);
+let prepareThreadItemsCallCountForTests = 0;
 const MAX_DEFAULT_THREAD_TITLE_CHARS = 10;
 const USER_INPUT_BLOCK_MARKER_REGEX = /\[User Input\]\s*/g;
 const AGENT_PROMPT_BLOCK_AT_TAIL_REGEX =
@@ -916,6 +917,7 @@ function annotateGeneratedImageAnchor(
 }
 
 export function prepareThreadItems(items: ConversationItem[]) {
+  prepareThreadItemsCallCountForTests += 1;
   const coalesced: ConversationItem[] = [];
   const coalescedIndexByKey = new Map<string, number>();
   for (const rawItem of items) {
@@ -987,6 +989,14 @@ export function prepareThreadItems(items: ConversationItem[]) {
     }
     return { ...item, output, changes };
   });
+}
+
+export function __resetPrepareThreadItemsCallCountForTests() {
+  prepareThreadItemsCallCountForTests = 0;
+}
+
+export function __getPrepareThreadItemsCallCountForTests() {
+  return prepareThreadItemsCallCountForTests;
 }
 
 export function upsertItem(list: ConversationItem[], item: ConversationItem) {

@@ -6,11 +6,10 @@ use tauri::{AppHandle, State};
 use tokio::time::{timeout, Duration};
 
 use super::{
-    computer_use_authorization_continuity_path,
-    path_looks_like_codex_cli_computer_use_cache, persist_last_successful_authorization_host,
-    resolve_computer_use_bridge_status, ComputerUseAuthorizationContinuityKind,
-    ComputerUseAvailabilityStatus, ComputerUseBlockedReason, ComputerUseBridgeStatus,
-    COMPUTER_USE_BRIDGE_ENABLED,
+    computer_use_authorization_continuity_path, path_looks_like_codex_cli_computer_use_cache,
+    persist_last_successful_authorization_host, resolve_computer_use_bridge_status,
+    ComputerUseAuthorizationContinuityKind, ComputerUseAvailabilityStatus,
+    ComputerUseBlockedReason, ComputerUseBridgeStatus, COMPUTER_USE_BRIDGE_ENABLED,
 };
 
 const COMPUTER_USE_BROKER_RESULT_LIMIT: usize = 4_000;
@@ -75,8 +74,7 @@ pub(crate) async fn run_computer_use_codex_broker(
         .await
         .clone();
     let backend_mode = state.app_settings.lock().await.backend_mode.clone();
-    let continuity_store_path =
-        computer_use_authorization_continuity_path(&state.settings_path);
+    let continuity_store_path = computer_use_authorization_continuity_path(&state.settings_path);
     let bridge_status = tokio::task::spawn_blocking(move || {
         resolve_computer_use_bridge_status(
             activation_verification.as_ref(),
@@ -152,15 +150,11 @@ pub(crate) async fn run_computer_use_codex_broker(
 
     match broker_result {
         Ok(text) => {
-            let updated_bridge_status = if let Some(current_host) = bridge_status
-                .authorization_continuity
-                .current_host
-                .clone()
+            let updated_bridge_status = if let Some(current_host) =
+                bridge_status.authorization_continuity.current_host.clone()
             {
-                let persist_path =
-                    computer_use_authorization_continuity_path(&state.settings_path);
-                let refresh_path =
-                    computer_use_authorization_continuity_path(&state.settings_path);
+                let persist_path = computer_use_authorization_continuity_path(&state.settings_path);
+                let refresh_path = computer_use_authorization_continuity_path(&state.settings_path);
                 let refreshed_activation_verification = state
                     .computer_use_activation_verification
                     .lock()
@@ -575,7 +569,7 @@ fn build_codex_broker_prompt(instruction: &str) -> String {
     format!(
         r#"You are running inside the official Codex runtime with the official Computer Use plugin available when this host is authorized.
 
-This is an explicit user-requested Computer Use task from mossx.
+This is an explicit user-requested Computer Use task from ccgui.
 
 Task:
 """

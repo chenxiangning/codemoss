@@ -1515,11 +1515,46 @@ describe("useThreadTurnEvents", () => {
       engine: "codex",
     });
     expect(dispatch).toHaveBeenCalledWith({
+      type: "markContextCompacting",
+      threadId: "thread-1",
+      isCompacting: false,
+      timestamp: 2222,
+    });
+    expect(dispatch).toHaveBeenCalledWith({
       type: "appendContextCompacted",
       threadId: "thread-1",
       turnId: "turn-9",
     });
     expect(recordThreadActivity).toHaveBeenCalledWith("ws-1", "thread-1", 2222);
+    expect(safeMessageActivity).toHaveBeenCalled();
+
+    nowSpy.mockRestore();
+  });
+
+  it("marks context compacting immediately when compaction starts", () => {
+    const nowSpy = vi.spyOn(Date, "now").mockReturnValue(1111);
+    const { result, dispatch, safeMessageActivity } = makeOptions();
+
+    act(() => {
+      result.current.onContextCompacting("ws-1", "thread-1", {
+        usagePercent: 96,
+        thresholdPercent: 92,
+        targetPercent: 70,
+      });
+    });
+
+    expect(dispatch).toHaveBeenCalledWith({
+      type: "ensureThread",
+      workspaceId: "ws-1",
+      threadId: "thread-1",
+      engine: "codex",
+    });
+    expect(dispatch).toHaveBeenCalledWith({
+      type: "markContextCompacting",
+      threadId: "thread-1",
+      isCompacting: true,
+      timestamp: 1111,
+    });
     expect(safeMessageActivity).toHaveBeenCalled();
 
     nowSpy.mockRestore();
@@ -1543,6 +1578,7 @@ describe("useThreadTurnEvents", () => {
   });
 
   it("pushes thread error when context compaction fails", () => {
+    const nowSpy = vi.spyOn(Date, "now").mockReturnValue(4444);
     const { result, dispatch, pushThreadErrorMessage, safeMessageActivity } = makeOptions();
 
     act(() => {
@@ -1554,6 +1590,12 @@ describe("useThreadTurnEvents", () => {
       workspaceId: "ws-1",
       threadId: "thread-1",
       engine: "codex",
+    });
+    expect(dispatch).toHaveBeenCalledWith({
+      type: "markContextCompacting",
+      threadId: "thread-1",
+      isCompacting: false,
+      timestamp: 4444,
     });
     expect(pushThreadErrorMessage).toHaveBeenCalledWith(
       "thread-1",
@@ -1571,6 +1613,8 @@ describe("useThreadTurnEvents", () => {
       }),
     ]);
     expect(safeMessageActivity).toHaveBeenCalled();
+
+    nowSpy.mockRestore();
   });
 
   it("suppresses error message for user-interrupted threads", () => {

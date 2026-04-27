@@ -774,7 +774,6 @@ impl WorkspaceSession {
         self.write_message(json!({ "id": id, "method": method, "params": params }))
             .await
     }
-
 }
 
 pub(crate) async fn spawn_workspace_session<E: EventSink>(

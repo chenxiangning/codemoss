@@ -150,41 +150,6 @@
 - None - task complete
 
 
-## Preserved Local Merge Record: 合并 feature v0.4.8 Windows 可见性修复
-
-**Date**: 2026-04-24
-**Task**: 合并 feature v0.4.8 Windows 可见性修复
-**Branch**: `codex/2026-04-01-local`
-
-### Summary
-
-本地分支在合并 `feature/v-0.4.8` 的 Windows Claude 实时输出可见性修复时生成过独立 Trellis 记录。由于传入分支同样占用了 Session 173 编号，这里保留为本地合并记录，避免覆盖传入分支的正式 Session 173-185 序列。
-
-### Main Changes
-
-- 解决 `.trellis/workspace/chenxiangning/index.md` 与 `journal-6.md` 的 merge 冲突，按传入分支版本收口。
-- 合入 `Messages.tsx` 中的 Windows 实时渲染缓解逻辑。
-- 合入 `Messages.windows-render-mitigation.test.tsx` 回归测试。
-- 同步 `fix-claude-windows-streaming-visibility-stall` 的 OpenSpec proposal、design、spec 与 tasks。
-
-### Git Commits
-
-| Hash | Message |
-|------|---------|
-| `4f2abad410cac58a2cd60d24ba5be11b9e65a447` | `chore(release): 合并 feature v0.4.8 Windows 可见性修复` |
-
-### Testing
-
-- [OK] `git diff --name-only --diff-filter=U` 无输出
-- [OK] `git diff --check --cached`
-- [OK] `npm run typecheck`
-- [OK] `npx vitest run src/features/messages/components/Messages.windows-render-mitigation.test.tsx`
-
-### Status
-
-[OK] **Completed**
-
-
 ## Session 174: 归档已验证的 Claude 稳定性提案
 
 **Date**: 2026-04-24
@@ -1242,7 +1207,7 @@
 - None - task complete
 
 
-## Session 192: 合并 feature v0.4.9 边界审查更新
+## Preserved Local Merge Record: 合并 feature v0.4.9 边界审查更新
 
 **Date**: 2026-04-27
 **Task**: 合并 feature v0.4.9 边界审查更新
@@ -1250,43 +1215,354 @@
 
 ### Summary
 
-(Add summary)
+本地分支在合并 `feature/v0.4.9` 的 changelog、Computer Use plugin contract 测试拆分与 Codex session history loader 边界修复时生成过独立 Trellis 记录。由于传入分支同样占用了 Session 192 编号，这里保留为本地合并记录，避免覆盖传入分支的正式 Session 192-196 序列。
 
 ### Main Changes
 
-任务目标：将 feature/v0.4.9 最新 changelog 与边界审查修复合并到 codex/2026-04-01-local，并完成提交与推送。
-
-主要改动：
-- 解决 .trellis/workspace/chenxiangning/index.md 的 merge 冲突，采用传入分支 Session 191 状态并校准 journal 行数。
+- 解决 `.trellis/workspace/chenxiangning/index.md` 的 merge 冲突，采用传入分支 Session 191 状态并校准 journal 行数。
 - 合入 v0.4.9 changelog 发布说明补齐。
 - 合入 Computer Use plugin contract 测试拆分与 large-file policy 更新。
 - 合入 Codex session history loader 边界修复与对应回归测试。
 
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `db8d8462b8442ac011fe7012363e97fb1f190803` | `chore(release): 合并 feature v0.4.9 边界审查更新` |
+
+### Testing
+
+- [OK] `git diff --name-only --diff-filter=U` 无输出
+- [OK] `git diff --check --cached`
+- [OK] `npm run typecheck`
+
+### Status
+
+[OK] **Completed**
+
+
+## Session 192: Linux Nix 打包链路修复
+
+**Date**: 2026-04-27
+**Task**: Linux Nix 打包链路修复
+**Branch**: `feature/v0.4.9`
+
+### Summary
+
+实现 Linux/Nix packaging 可复现性修复，并保留 macOS/Windows 发布链路隔离。
+
+### Main Changes
+
+任务目标：
+- 基于 OpenSpec change fix-linux-nix-flake-packaging，吸收 PR #428 中有价值的 Linux/Nix packaging 修复。
+- 修复 Nix flake package 的 source/cargo root/frontendDist/native deps/run entrypoint 边界。
+- 补齐源码 direct import 但 root manifest 未声明的 npm dependencies。
+- 明确 macOS/Windows packaging scripts、bundle config、release workflow 不受影响。
+
+主要改动：
+- 新增 OpenSpec artifacts：proposal、design、tasks、nix-flake-build-reproducibility delta spec。
+- flake.nix：改为 repo root source + cargoRoot/buildAndTestSubdir；frontendDist 改为 ../dist；新增 Linux-only native deps 与 Linux-only bindgenHook；保留 npmBuildScript = build；新增 npmDepsFetcherVersion = 2、npmFlags = ["--legacy-peer-deps"]、meta.mainProgram = "cc-gui"。
+- package.json / package-lock.json：只补齐 antd 与 remark-breaks 两个 direct imports，避免提升 @lobehub/ui/motion/es-toolkit 等无关 peer/transitive 包。
+
 涉及模块：
-- .trellis/workspace/chenxiangning/index.md
-- .trellis/workspace/chenxiangning/journal-6.md
-- CHANGELOG.md
-- scripts/check-large-files.policy.json
-- src-tauri/src/computer_use/mod.rs
-- src-tauri/src/computer_use/plugin_contract_tests.rs
-- src/features/threads/loaders/codexSessionHistory.ts
-- src/features/threads/loaders/historyLoaders.test.ts
+- Nix packaging：flake.nix
+- npm manifest：package.json、package-lock.json
+- OpenSpec：openspec/changes/fix-linux-nix-flake-packaging/**
 
 验证结果：
-- git diff --name-only --diff-filter=U 无输出
-- rg ^冲突标记检查无输出
-- git diff --check --cached 通过
-- npm run typecheck 通过
+- npm run typecheck：通过。
+- npm run build：通过，日志确认仍执行 tsc && vite build。
+- cargo test --manifest-path src-tauri/Cargo.toml：通过。
+- openspec validate fix-linux-nix-flake-packaging --type change --strict --no-interactive：通过。
+- git diff --check：通过。
+- npm ci --dry-run --ignore-scripts --legacy-peer-deps：通过。
 
 后续事项：
-- 推送后关注远端 CI，重点看 Rust Computer Use plugin contract 测试与 Codex history loader 回归。
+- 当前机器没有 nix，已按 shell 基线确认 nix 不可用；因此 npmDepsHash 刷新、nix build .#、nix flake check、nix run entrypoint resolution 仍需在 Nix-capable host 上完成。
+- 当前改动未修改 macOS/Windows build scripts、Tauri bundle config、release workflow 或 runtime 代码。
 
 
 ### Git Commits
 
 | Hash | Message |
 |------|---------|
-| `db8d8462b8442ac011fe7012363e97fb1f190803` | (see git log) |
+| `4e451a5c` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 193: 修复 Codex 多轮 Explored 串行
+
+**Date**: 2026-04-27
+**Task**: 修复 Codex 多轮 Explored 串行
+**Branch**: `feature/v0.4.9`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+任务目标：修复 Codex live 多轮对话中 completed Explored 卡片偶发夹在两条 user bubble 中间的视觉串行问题。
+
+主要改动：
+- 在 messagesLiveWindow 增加 live turn 边界过滤 helper，只在 presentation 层隐藏夹在上一轮 user 与最新 user 之间的 completed Explored。
+- 在 Messages 的 Codex + isThinking 路径接入该 guard，不修改 runtime/backend contract，不改历史原始数据。
+- 为 Messages explore rows 增加回归测试，覆盖夹心 Explored 隐藏、当前 turn Explored 保留、finished history 保留。
+
+涉及模块：
+- src/features/messages/components/Messages.tsx
+- src/features/messages/components/messagesLiveWindow.ts
+- src/features/messages/components/Messages.explore.test.tsx
+
+验证结果：
+- npx vitest run src/features/messages/components/Messages.explore.test.tsx src/features/threads/utils/queuedHandoffBubble.test.ts 通过。
+- npm run typecheck 通过。
+- npx eslint src/features/messages/components/Messages.tsx src/features/messages/components/messagesLiveWindow.ts src/features/messages/components/Messages.explore.test.tsx 通过。
+- git diff --check -- src/features/messages/components/Messages.tsx src/features/messages/components/messagesLiveWindow.ts src/features/messages/components/Messages.explore.test.tsx 通过。
+
+后续事项：
+- 真实 Codex 连续追问场景仍建议手测确认，因为原问题来自 event ordering race。
+- 工作区仍存在用户/其他任务的未提交拆分改动，本次提交未纳入。
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `c342b172f7e6c5ce7f36efeba9f55218e6c5db7b` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 194: 大文件拆分与边界修复
+
+**Date**: 2026-04-27
+**Task**: 大文件拆分与边界修复
+**Branch**: `feature/v0.4.9`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+任务目标：
+- 完成 split-p0-p1-large-files OpenSpec 提案的 P0/P1 大文件拆分、规范同步与归档。
+- 对当前工作区进行边界条件、跨平台兼容性、large-file governance、heavy-test-noise sentry review，并修复发现的问题。
+
+主要改动：
+- Rust：拆分 cc_gui_daemon、codex、computer_use、claude/gemini engine、local_usage、runtime 等大文件，新增 workspace_io/file_access、commit_message/model_selection/run_metadata、plist_helpers、gemini_event_parsing、gemini_sessions、event_sources 等模块。
+- Frontend：拆分 app-shell、GitHistoryPanel、SettingsView、useThreads/useThreadsReducer，抽出 lazy views、创建会话 loading、线程协作模式、分支比较 handlers、听写设置、线程记忆与 reducer helper。
+- Styles：拆分 file-view、git-history、messages、sidebar、spec-hub、tool-blocks 等大型 CSS surface 到 shell/support/header 局部文件。
+- OpenSpec：同步 large-file-modularization-governance 主 spec，并归档 split-p0-p1-large-files change。
+- Review 修复：补齐 daemon workspace 文件路径校验，external spec 写入拒绝 symlink，Codex worktree name sanitize 增强，Gemini session 扫描避免 symlink directory 与 home 缺失 fallback，large-file workflow 增加 timeout，Computer Use shipping 文案清理旧品牌名。
+
+涉及模块：
+- src-tauri/src/bin/cc_gui_daemon/**
+- src-tauri/src/codex/**
+- src-tauri/src/computer_use/**
+- src-tauri/src/engine/**
+- src-tauri/src/local_usage/**
+- src-tauri/src/runtime/**
+- src/app-shell.tsx 与 src/app-shell-parts/**
+- src/features/git-history/**
+- src/features/settings/**
+- src/features/threads/**
+- src/styles/**
+- .github/workflows/large-file-governance.yml
+- openspec/specs/large-file-modularization-governance/spec.md
+- openspec/changes/archive/2026-04-27-split-p0-p1-large-files/**
+
+验证结果：
+- npm run lint：通过。
+- npm run typecheck：通过。
+- npm run check:runtime-contracts：通过。
+- npm run doctor:strict：通过。
+- npm run check:large-files:gate：通过，found=0。
+- npm run check:large-files:near-threshold：通过，18 个 watch 项，无 hard gate。
+- node --test scripts/check-heavy-test-noise.test.mjs：通过。
+- npm run check:heavy-test-noise：通过，368 个测试文件，act/stdout/stderr 噪声违规 0。
+- cargo test --manifest-path src-tauri/Cargo.toml：通过。
+- cargo test --manifest-path src-tauri/Cargo.toml computer_use：通过。
+- git diff --check：通过。
+
+后续事项：
+- Watchlist 仍有 18 个 near-threshold 文件，建议下一轮继续优先处理 P0/P1：computer_use/mod.rs、codex/mod.rs、runtime/mod.rs、SettingsView.tsx、GitHistoryPanelImpl.tsx、useThreads.ts、useGitHistoryPanelInteractions.tsx。
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `e8c51d51c7a239d1eef4d6555cfd499edf5d3fc1` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 195: OpenSpec 回写并归档已验证提案
+
+**Date**: 2026-04-27
+**Task**: OpenSpec 回写并归档已验证提案
+**Branch**: `feature/v0.4.9`
+
+### Summary
+
+基于代码将已验证 OpenSpec 提案回写到主 specs 并归档 11 个 completed changes
+
+### Main Changes
+
+任务目标：
+- 基于当前代码状态，将已完成且已验证的 OpenSpec proposal/delta specs 回写到 `openspec/specs/**`。
+- 将回写后的已验证 change 从 active changes 移动到 `openspec/changes/archive/2026-04-27-*`。
+
+主要改动：
+- 回写 11 个 completed changes 的 delta requirements/scenarios 到主 specs。
+- 新增主 spec capability：`updater-check-fallback`、`conversation-curtain-normalization-core`、`conversation-curtain-assembly-core`、`conversation-approval-thread-scoping`、`claude-thread-session-continuity`、`claude-concurrent-realtime-session-isolation`、`codex-session-sidebar-state-parity`、`codex-generated-image-turn-linkage`、`codex-queued-user-bubble-continuity`、`computer-use-authorization-continuity`、`git-selective-commit`。
+- 补齐已有主 specs 中缺失的 requirements/scenarios：`conversation-lifecycle-contract`、`conversation-runtime-stability`、`codex-cross-source-history-unification`、`codex-realtime-canvas-message-idempotency`、`codex-cli-computer-use-broker`、`computer-use-availability-surface`、`git-panel-diff-view`、`claude-session-sidebar-state-parity`。
+- 归档 11 个已完成 changes：`fix-updater-check-fallback`、`unify-conversation-curtain-normalization`、`fix-codex-session-sidebar-state-parity`、`fix-approval-ui-thread-scoping`、`fix-claude-thread-session-continuity`、`complete-conversation-curtain-assembler`、`fix-claude-concurrent-realtime-isolation`、`fix-codex-generated-image-turn-linkage`、`fix-codex-computer-use-authorization-continuity`、`add-git-selective-commit`、`fix-codex-queued-user-bubble-gap`。
+
+涉及模块：
+- `openspec/specs/**`
+- `openspec/changes/archive/**`
+
+验证结果：
+- `openspec validate --all --strict`：通过，归档前 204 passed / 0 failed；归档后 193 passed / 0 failed。
+- `openspec list --json`：active changes 从 15 个收敛为 4 个未完成项。
+- `git diff --cached --name-only | rg -v '^openspec/' || true`：无非 OpenSpec 文件混入业务提交。
+
+后续事项：
+- 剩余 active changes 仍为未完成状态：`fix-linux-nix-flake-packaging`、`project-memory-refactor`、`claude-code-mode-progressive-rollout`、`add-codex-structured-launch-profile`。
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `74347a25` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 196: 记录 Claude 流式与 Runtime Pool 修复
+
+**Date**: 2026-04-27
+**Task**: 记录 Claude 流式与 Runtime Pool 修复
+**Branch**: `feature/v0.4.9`
+
+### Summary
+
+完成 Claude Windows 流式热路径、长线程实时渲染成本与 Runtime Pool 首屏恢复空态修复
+
+### Main Changes
+
+## 任务目标
+
+- 对当前工作区代码做边界条件、large-file governance、heavy-test-noise sentry、Windows/macOS 兼容性 review。
+- 发现问题后直接修复，并按中文 Conventional Commits 拆分提交。
+
+## 主要改动
+
+1. Claude Windows 流式转发阻塞
+   - 将 Claude forwarder 从 `commands.rs` 拆到 `src-tauri/src/engine/claude_forwarder.rs`。
+   - realtime delta 先 emit 到 frontend，再异步/限频做 runtime sync。
+   - 增加 `touch_claude_turn_activity`、`touch_claude_stream_activity`、`sync_claude_runtime_if_source_active`、`release_claude_terminal_activity`，保护 active-work lease 边界。
+   - Windows process diagnostics 增加 TTL cache、timeout、degraded fallback。
+
+2. Claude 长线程实时渲染成本
+   - `appendAgentDelta` 增加 Claude live assistant text fast path，避免每个 delta 都执行完整 `prepareThreadItems`。
+   - `Messages` 引入 bounded live tail working set，在主要 render 推导前裁剪默认实时窗口。
+   - 补充 live window、reducer fast path、compaction 状态链回归测试。
+
+3. Runtime Pool 首屏恢复空态
+   - `SettingsView` 为 Runtime 面板提供非空 workspace inventory fallback。
+   - `RuntimePoolSection` 增加 snapshot-first bootstrap、eligible workspace 去重/空值过滤、bounded fallback refresh、unmount cleanup。
+   - 补充非空 snapshot、空首屏 bootstrap、重复/空 id、disconnected skip、bounded retry 与 timer cleanup 测试。
+
+4. OpenSpec
+   - 新增并验证：
+     - `fix-claude-windows-streaming-latency`
+     - `fix-claude-long-thread-render-amplification`
+     - `fix-windows-runtime-pool-initial-load`
+
+## 涉及模块
+
+- backend runtime / engine：`src-tauri/src/engine/**`、`src-tauri/src/runtime/**`
+- frontend messages/thread state：`src/features/messages/**`、`src/features/threads/**`、`src/utils/threadItems.ts`
+- settings runtime console：`src/features/settings/components/**`
+- specs：`openspec/changes/**`
+
+## 验证结果
+
+已通过：
+
+- `cargo fmt --manifest-path src-tauri/Cargo.toml`
+- `npm run lint`
+- `npm run typecheck`
+- `npm run check:large-files:near-threshold`
+- `npm run check:large-files:gate`
+- `node --test scripts/check-heavy-test-noise.test.mjs`
+- `npm run check:heavy-test-noise`
+- `npm run check:runtime-contracts`
+- `npm run doctor:strict`
+- `cargo test --manifest-path src-tauri/Cargo.toml`
+- `git diff --check`
+- `openspec validate fix-claude-windows-streaming-latency --strict`
+- `openspec validate fix-claude-long-thread-render-amplification --strict`
+- `openspec validate fix-windows-runtime-pool-initial-load --strict`
+
+## 后续事项
+
+- 建议在 Windows native Claude Code 环境补一次人工 smoke：首轮/第二轮流式、tool-heavy prompt、prompt overflow compaction、Runtime Pool 冷启动首屏。
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `823727fe` | (see git log) |
+| `4c377c1c` | (see git log) |
+| `37cbdfe8` | (see git log) |
 
 ### Testing
 

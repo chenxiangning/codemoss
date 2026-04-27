@@ -76,9 +76,7 @@ struct ComputerUseHostSigningMetadata {
     signing_summary: Option<String>,
 }
 
-pub(crate) fn computer_use_authorization_continuity_path(
-    settings_path: &Path,
-) -> PathBuf {
+pub(crate) fn computer_use_authorization_continuity_path(settings_path: &Path) -> PathBuf {
     settings_path
         .parent()
         .unwrap_or_else(|| Path::new("."))
@@ -129,9 +127,7 @@ pub(crate) fn build_authorization_continuity_status(
 
     let drift_fields = last_successful_host
         .as_ref()
-        .map(|last_successful| {
-            authorization_host_drift_fields(&current_host, last_successful)
-        })
+        .map(|last_successful| authorization_host_drift_fields(&current_host, last_successful))
         .unwrap_or_default();
 
     let (kind, diagnostic_message) = match last_successful_host.as_ref() {
@@ -170,12 +166,10 @@ pub(crate) fn build_authorization_continuity_status(
 fn read_last_successful_authorization_host(
     continuity_store_path: &Path,
 ) -> Option<ComputerUseAuthorizationHostSnapshot> {
-    crate::storage::read_json_file::<ComputerUseAuthorizationContinuityStore>(
-        continuity_store_path,
-    )
-    .ok()
-    .flatten()
-    .and_then(|store| store.last_successful_host)
+    crate::storage::read_json_file::<ComputerUseAuthorizationContinuityStore>(continuity_store_path)
+        .ok()
+        .flatten()
+        .and_then(|store| store.last_successful_host)
 }
 
 fn capture_current_authorization_host_snapshot(
@@ -201,9 +195,7 @@ fn capture_current_authorization_host_snapshot(
     })
 }
 
-fn authorization_backend_mode(
-    backend_mode: &BackendMode,
-) -> ComputerUseAuthorizationBackendMode {
+fn authorization_backend_mode(backend_mode: &BackendMode) -> ComputerUseAuthorizationBackendMode {
     match backend_mode {
         BackendMode::Local => ComputerUseAuthorizationBackendMode::Local,
         BackendMode::Remote => ComputerUseAuthorizationBackendMode::Remote,
@@ -211,7 +203,10 @@ fn authorization_backend_mode(
 }
 
 fn authorization_host_role_for_path(path: &Path) -> ComputerUseAuthorizationHostRole {
-    let normalized = path.to_string_lossy().replace('\\', "/").to_ascii_lowercase();
+    let normalized = path
+        .to_string_lossy()
+        .replace('\\', "/")
+        .to_ascii_lowercase();
     let file_name = path
         .file_name()
         .and_then(|value| value.to_str())
@@ -233,22 +228,14 @@ fn authorization_host_role_for_path(path: &Path) -> ComputerUseAuthorizationHost
     ComputerUseAuthorizationHostRole::Unknown
 }
 
-fn authorization_launch_mode_for_path(
-    path: &Path,
-) -> ComputerUseAuthorizationLaunchMode {
+fn authorization_launch_mode_for_path(path: &Path) -> ComputerUseAuthorizationLaunchMode {
     match authorization_host_role_for_path(path) {
-        ComputerUseAuthorizationHostRole::DebugBinary => {
-            ComputerUseAuthorizationLaunchMode::Debug
-        }
-        ComputerUseAuthorizationHostRole::Daemon => {
-            ComputerUseAuthorizationLaunchMode::Daemon
-        }
+        ComputerUseAuthorizationHostRole::DebugBinary => ComputerUseAuthorizationLaunchMode::Debug,
+        ComputerUseAuthorizationHostRole::Daemon => ComputerUseAuthorizationLaunchMode::Daemon,
         ComputerUseAuthorizationHostRole::ForegroundApp => {
             ComputerUseAuthorizationLaunchMode::PackagedApp
         }
-        ComputerUseAuthorizationHostRole::Unknown => {
-            ComputerUseAuthorizationLaunchMode::Unknown
-        }
+        ComputerUseAuthorizationHostRole::Unknown => ComputerUseAuthorizationLaunchMode::Unknown,
     }
 }
 
@@ -284,7 +271,11 @@ fn read_current_host_signing_metadata(path: &Path) -> ComputerUseHostSigningMeta
 
     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-    let detail = if stderr.trim().is_empty() { &stdout } else { &stderr };
+    let detail = if stderr.trim().is_empty() {
+        &stdout
+    } else {
+        &stderr
+    };
 
     ComputerUseHostSigningMetadata {
         identifier: parse_codesign_field(detail.as_str(), "Identifier="),
@@ -496,8 +487,7 @@ mod tests {
                 ComputerUseAuthorizationLaunchMode::PackagedApp,
             )),
         };
-        crate::storage::write_json_file(&temp_path, &store)
-            .expect("write continuity store");
+        crate::storage::write_json_file(&temp_path, &store).expect("write continuity store");
 
         let current_host = host_snapshot(
             "/Users/demo/code/project/target/debug/cc-gui",
@@ -505,10 +495,9 @@ mod tests {
             ComputerUseAuthorizationHostRole::DebugBinary,
             ComputerUseAuthorizationLaunchMode::Debug,
         );
-        let last_successful_host = read_last_successful_authorization_host(&temp_path)
-            .expect("last successful host");
-        let drift_fields =
-            authorization_host_drift_fields(&current_host, &last_successful_host);
+        let last_successful_host =
+            read_last_successful_authorization_host(&temp_path).expect("last successful host");
+        let drift_fields = authorization_host_drift_fields(&current_host, &last_successful_host);
 
         assert!(drift_fields.contains(&"host_role".to_string()));
         assert!(drift_fields.contains(&"launch_mode".to_string()));
@@ -536,8 +525,8 @@ mod tests {
         persist_last_successful_authorization_host(&temp_path, &expected_host)
             .expect("persist continuity store");
 
-        let actual_host = read_last_successful_authorization_host(&temp_path)
-            .expect("read continuity store");
+        let actual_host =
+            read_last_successful_authorization_host(&temp_path).expect("read continuity store");
         assert_eq!(actual_host, expected_host);
 
         let _ = std::fs::remove_file(temp_path);
@@ -589,8 +578,7 @@ mod tests {
             ComputerUseAuthorizationLaunchMode::PackagedApp,
         );
 
-        let drift_fields =
-            authorization_host_drift_fields(&current_host, &last_successful_host);
+        let drift_fields = authorization_host_drift_fields(&current_host, &last_successful_host);
 
         assert!(
             !drift_fields.contains(&"executable_path".to_string()),
@@ -628,9 +616,8 @@ mod tests {
             ComputerUseAuthorizationLaunchMode::PackagedApp,
         );
         current_host.team_identifier = None;
-        current_host.signing_summary = Some(
-            "flags=0x20002(adhoc,linker-signed) TeamIdentifier=not set".to_string(),
-        );
+        current_host.signing_summary =
+            Some("flags=0x20002(adhoc,linker-signed) TeamIdentifier=not set".to_string());
 
         assert_eq!(
             unsupported_authorization_context_message(&current_host),
