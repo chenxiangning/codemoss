@@ -1575,3 +1575,66 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 197: 合并 feature v0.4.9 稳定性与大文件更新
+
+**Date**: 2026-04-27
+**Task**: 合并 feature v0.4.9 稳定性与大文件更新
+**Branch**: `codex/2026-04-01-local`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+任务目标：将 feature/v0.4.9 最新稳定性、OpenSpec 归档、大文件拆分与 Runtime Pool 修复合并到 codex/2026-04-01-local，并完成提交与推送。
+
+主要改动：
+- 解决 .trellis/workspace/chenxiangning/index.md 与 journal-6.md 的 merge 冲突，采用传入分支 Session 196 记录，并保留本地上一轮 merge record。
+- 合入 Linux Nix 打包链路修复。
+- 合入 Codex 多轮 Explored 串行修复。
+- 合入 P0/P1 大文件拆分与边界守卫。
+- 合入 OpenSpec 已验证提案回写与归档。
+- 合入 Claude Windows 流式延迟、长线程渲染成本与 Runtime Pool 首屏恢复修复。
+
+涉及模块：
+- .trellis/workspace/chenxiangning/*
+- openspec/changes/** 与 openspec/specs/**
+- src-tauri/src/bin/cc_gui_daemon/**
+- src-tauri/src/codex/**
+- src-tauri/src/engine/**
+- src-tauri/src/runtime/**
+- src/features/messages/**
+- src/features/settings/**
+- src/features/threads/**
+- src/styles/**
+
+验证结果：
+- git diff --name-only --diff-filter=U 无输出
+- rg ^冲突标记检查无输出
+- git diff --check --cached 通过
+- npm run typecheck 通过
+
+后续事项：
+- 推送后关注远端 CI，重点看 Rust backend、large-file governance、messages live rendering 与 Runtime Pool 首屏恢复相关检查。
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `456c0c0f8177a8ccc929d6e2ffc30f1e84fff93e` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
