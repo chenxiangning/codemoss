@@ -4,12 +4,14 @@ use super::process_diagnostics::{
     ProcessSnapshotRow,
 };
 use super::{
-    build_engine_observability, replace_workspace_session_with_terminator,
-    terminate_replaced_workspace_session, write_json_atomically, RuntimeEndedRecord,
-    RuntimeEngineObservability, RuntimeManager, RuntimeProcessDiagnostics, RuntimeState,
+    build_engine_observability, replace_workspace_session_with_source,
+    replace_workspace_session_with_terminator, terminate_replaced_workspace_session,
+    write_json_atomically, RuntimeEndedRecord, RuntimeEngineObservability, RuntimeManager,
+    RuntimeProcessDiagnostics, RuntimeState,
 };
 use crate::backend::app_server::{
-    dispose_test_workspace_session, make_test_workspace_session, WorkspaceSession,
+    dispose_test_workspace_session, make_test_workspace_session, RuntimeShutdownSource,
+    WorkspaceSession,
 };
 use crate::types::{AppSettings, WorkspaceEntry, WorkspaceKind, WorkspaceSettings};
 use serde_json::json;
@@ -125,6 +127,39 @@ async fn manual_release_waits_for_active_work_protection() {
 }
 
 #[tokio::test]
+async fn pin_intent_survives_runtime_row_removal_and_recreation() {
+    let manager = RuntimeManager::new(&std::env::temp_dir());
+    let entry = workspace_entry("pin-recreate");
+
+    manager.record_starting(&entry, "codex", "test").await;
+    manager.pin_runtime("codex", "pin-recreate", true).await;
+    manager.record_removed("codex", "pin-recreate").await;
+    manager.record_starting(&entry, "codex", "recreate").await;
+
+    let snapshot = manager.snapshot(&AppSettings::default()).await;
+    let row = snapshot
+        .rows
+        .iter()
+        .find(|item| item.workspace_id == "pin-recreate")
+        .expect("recreated runtime row should exist");
+    assert!(row.pinned);
+
+    manager.pin_runtime("codex", "pin-recreate", false).await;
+    manager.record_removed("codex", "pin-recreate").await;
+    manager
+        .record_starting(&entry, "codex", "after-unpin")
+        .await;
+
+    let snapshot = manager.snapshot(&AppSettings::default()).await;
+    let row = snapshot
+        .rows
+        .iter()
+        .find(|item| item.workspace_id == "pin-recreate")
+        .expect("recreated runtime row should exist after unpin");
+    assert!(!row.pinned);
+}
+
+#[tokio::test]
 async fn record_runtime_ended_clears_leases_and_persists_exit_diagnostics() {
     let manager = RuntimeManager::new(&std::env::temp_dir());
     let entry = workspace_entry("ended");
@@ -193,6 +228,134 @@ async fn record_runtime_ended_clears_leases_and_persists_exit_diagnostics() {
         Some("[RUNTIME_ENDED] Managed runtime process exited unexpectedly."),
     );
     assert_eq!(row.pid, None);
+}
+
+#[tokio::test]
+async fn record_runtime_ended_for_session_does_not_overwrite_successor_row() {
+    let manager = RuntimeManager::new(&std::env::temp_dir());
+    let original_session = make_test_workspace_session("ended-successor").await;
+    let successor_session = make_test_workspace_session("ended-successor").await;
+    manager.record_ready(&original_session, "original").await;
+    manager.record_ready(&successor_session, "successor").await;
+
+    let recorded = manager
+        .record_runtime_ended_for_session(
+            "codex",
+            "ended-successor",
+            original_session.process_id,
+            RuntimeEndedRecord {
+                reason_code: "manual_shutdown".to_string(),
+                message: Some("[RUNTIME_ENDED] old predecessor stopped".to_string()),
+                exit_code: None,
+                exit_signal: None,
+                pending_request_count: 0,
+            },
+        )
+        .await;
+
+    assert!(!recorded);
+    let snapshot = manager.snapshot(&AppSettings::default()).await;
+    let row = snapshot
+        .rows
+        .iter()
+        .find(|item| item.workspace_id == "ended-successor")
+        .expect("successor runtime row should exist");
+    assert_eq!(row.pid, successor_session.process_id);
+    assert!(row.last_exit_reason_code.is_none());
+    assert!(row.error.is_none());
+
+    dispose_test_workspace_session(&original_session).await;
+    dispose_test_workspace_session(&successor_session).await;
+}
+
+#[tokio::test]
+async fn unknown_session_pid_does_not_overwrite_or_borrow_successor_row() {
+    let manager = RuntimeManager::new(&std::env::temp_dir());
+    let successor_session = make_test_workspace_session("ended-unknown-pid").await;
+    manager.record_ready(&successor_session, "successor").await;
+    manager
+        .acquire_turn_lease(&successor_session.entry, "codex", "turn:successor")
+        .await;
+
+    assert!(
+        !manager
+            .has_active_work_protection_for_session("codex", "ended-unknown-pid", None)
+            .await
+    );
+
+    let recorded = manager
+        .record_runtime_ended_for_session(
+            "codex",
+            "ended-unknown-pid",
+            None,
+            RuntimeEndedRecord {
+                reason_code: "manual_shutdown".to_string(),
+                message: Some("[RUNTIME_ENDED] unknown predecessor stopped".to_string()),
+                exit_code: None,
+                exit_signal: None,
+                pending_request_count: 0,
+            },
+        )
+        .await;
+
+    assert!(!recorded);
+    let snapshot = manager.snapshot(&AppSettings::default()).await;
+    let row = snapshot
+        .rows
+        .iter()
+        .find(|item| item.workspace_id == "ended-unknown-pid")
+        .expect("successor runtime row should exist");
+    assert_eq!(row.pid, successor_session.process_id);
+    assert!(row.active_work_protected);
+    assert!(row.last_exit_reason_code.is_none());
+    assert!(row.error.is_none());
+    assert_eq!(snapshot.diagnostics.runtime_end_diagnostics_recorded, 1);
+
+    dispose_test_workspace_session(&successor_session).await;
+}
+
+#[tokio::test]
+async fn runtime_end_diagnostics_survive_runtime_row_removal() {
+    let manager = RuntimeManager::new(&std::env::temp_dir());
+    let entry = workspace_entry("ended-removed");
+    manager.record_starting(&entry, "codex", "test").await;
+    manager
+        .record_runtime_ended(
+            "codex",
+            "ended-removed",
+            RuntimeEndedRecord {
+                reason_code: "manual_shutdown".to_string(),
+                message: Some("[RUNTIME_ENDED] expected cleanup".to_string()),
+                exit_code: None,
+                exit_signal: None,
+                pending_request_count: 0,
+            },
+        )
+        .await;
+    manager.record_removed("codex", "ended-removed").await;
+
+    let snapshot = manager.snapshot(&AppSettings::default()).await;
+    assert!(snapshot.rows.is_empty());
+    assert_eq!(snapshot.diagnostics.runtime_end_diagnostics_recorded, 1);
+    assert_eq!(
+        snapshot.diagnostics.last_runtime_end_reason_code.as_deref(),
+        Some("manual_shutdown")
+    );
+    assert_eq!(
+        snapshot.diagnostics.last_runtime_end_message.as_deref(),
+        Some("[RUNTIME_ENDED] expected cleanup")
+    );
+    assert_eq!(
+        snapshot
+            .diagnostics
+            .last_runtime_end_workspace_id
+            .as_deref(),
+        Some("ended-removed")
+    );
+    assert_eq!(
+        snapshot.diagnostics.last_runtime_end_engine.as_deref(),
+        Some("codex")
+    );
 }
 
 #[tokio::test]
@@ -517,6 +680,7 @@ async fn replacement_waiter_does_not_swap_in_a_third_runtime() {
                         terminate_replaced_workspace_session(old_session, runtime_manager).await
                     })
                 },
+                RuntimeShutdownSource::InternalReplacement,
             )
             .await
         })
@@ -555,6 +719,7 @@ async fn replacement_waiter_does_not_swap_in_a_third_runtime() {
                         terminate_replaced_workspace_session(old_session, runtime_manager).await
                     })
                 },
+                RuntimeShutdownSource::InternalReplacement,
             )
             .await
         })
@@ -610,6 +775,39 @@ async fn replacement_waiter_does_not_swap_in_a_third_runtime() {
     assert!(!settled_row.has_stopping_predecessor);
 
     dispose_test_workspace_session(&current_after_replacement).await;
+}
+
+#[tokio::test]
+async fn replace_workspace_session_with_source_marks_old_session_shutdown_source() {
+    let sessions: Arc<Mutex<HashMap<String, Arc<WorkspaceSession>>>> =
+        Arc::new(Mutex::new(HashMap::new()));
+    let workspace_id = "replacement-settings-source".to_string();
+
+    let original_session = make_test_workspace_session(&workspace_id).await;
+    let replacement_session = make_test_workspace_session(&workspace_id).await;
+    sessions
+        .lock()
+        .await
+        .insert(workspace_id.clone(), Arc::clone(&original_session));
+
+    replace_workspace_session_with_source(
+        sessions.as_ref(),
+        None,
+        workspace_id.clone(),
+        Arc::clone(&replacement_session),
+        "settings-restart",
+        RuntimeShutdownSource::SettingsRestart,
+    )
+    .await
+    .expect("settings replacement should succeed");
+
+    assert_eq!(
+        original_session.shutdown_source(),
+        Some(RuntimeShutdownSource::SettingsRestart)
+    );
+
+    dispose_test_workspace_session(&original_session).await;
+    dispose_test_workspace_session(&replacement_session).await;
 }
 
 #[test]

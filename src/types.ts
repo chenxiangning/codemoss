@@ -592,6 +592,12 @@ export type RuntimePoolSnapshot = {
     startupOrphanResidueProcesses: number;
     lastOrphanSweepAtMs: number | null;
     lastShutdownAtMs: number | null;
+    runtimeEndDiagnosticsRecorded?: number;
+    lastRuntimeEndReasonCode?: string | null;
+    lastRuntimeEndMessage?: string | null;
+    lastRuntimeEndAtMs?: number | null;
+    lastRuntimeEndWorkspaceId?: string | null;
+    lastRuntimeEndEngine?: string | null;
   };
   engineObservability: RuntimeEngineObservability[];
 };

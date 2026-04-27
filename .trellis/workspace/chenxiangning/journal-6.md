@@ -1207,40 +1207,6 @@
 - None - task complete
 
 
-## Preserved Local Merge Record: 合并 feature v0.4.9 边界审查更新
-
-**Date**: 2026-04-27
-**Task**: 合并 feature v0.4.9 边界审查更新
-**Branch**: `codex/2026-04-01-local`
-
-### Summary
-
-本地分支在合并 `feature/v0.4.9` 的 changelog、Computer Use plugin contract 测试拆分与 Codex session history loader 边界修复时生成过独立 Trellis 记录。由于传入分支同样占用了 Session 192 编号，这里保留为本地合并记录，避免覆盖传入分支的正式 Session 192-196 序列。
-
-### Main Changes
-
-- 解决 `.trellis/workspace/chenxiangning/index.md` 的 merge 冲突，采用传入分支 Session 191 状态并校准 journal 行数。
-- 合入 v0.4.9 changelog 发布说明补齐。
-- 合入 Computer Use plugin contract 测试拆分与 large-file policy 更新。
-- 合入 Codex session history loader 边界修复与对应回归测试。
-
-### Git Commits
-
-| Hash | Message |
-|------|---------|
-| `db8d8462b8442ac011fe7012363e97fb1f190803` | `chore(release): 合并 feature v0.4.9 边界审查更新` |
-
-### Testing
-
-- [OK] `git diff --name-only --diff-filter=U` 无输出
-- [OK] `git diff --check --cached`
-- [OK] `npm run typecheck`
-
-### Status
-
-[OK] **Completed**
-
-
 ## Session 192: Linux Nix 打包链路修复
 
 **Date**: 2026-04-27
@@ -1577,7 +1543,7 @@
 - None - task complete
 
 
-## Session 197: 合并 feature v0.4.9 稳定性与大文件更新
+## Preserved Local Merge Record: 合并 feature v0.4.9 稳定性与大文件更新
 
 **Date**: 2026-04-27
 **Task**: 合并 feature v0.4.9 稳定性与大文件更新
@@ -1585,47 +1551,300 @@
 
 ### Summary
 
-(Add summary)
+本地分支在合并 `feature/v0.4.9` 的稳定性、OpenSpec 归档、大文件拆分与 Runtime Pool 修复时生成过独立 Trellis 记录。由于传入分支同样占用了 Session 197 编号，这里保留为本地合并记录，避免覆盖传入分支的正式 Session 197-201 序列。
 
 ### Main Changes
 
-任务目标：将 feature/v0.4.9 最新稳定性、OpenSpec 归档、大文件拆分与 Runtime Pool 修复合并到 codex/2026-04-01-local，并完成提交与推送。
-
-主要改动：
-- 解决 .trellis/workspace/chenxiangning/index.md 与 journal-6.md 的 merge 冲突，采用传入分支 Session 196 记录，并保留本地上一轮 merge record。
+- 解决 `.trellis/workspace/chenxiangning/index.md` 与 `journal-6.md` 的 merge 冲突，采用传入分支 Session 196 记录，并保留上一轮本地 merge record。
 - 合入 Linux Nix 打包链路修复。
 - 合入 Codex 多轮 Explored 串行修复。
 - 合入 P0/P1 大文件拆分与边界守卫。
 - 合入 OpenSpec 已验证提案回写与归档。
 - 合入 Claude Windows 流式延迟、长线程渲染成本与 Runtime Pool 首屏恢复修复。
 
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `456c0c0f8177a8ccc929d6e2ffc30f1e84fff93e` | `chore(release): 合并 feature v0.4.9 稳定性与大文件更新` |
+
+### Testing
+
+- [OK] `git diff --name-only --diff-filter=U` 无输出
+- [OK] `git diff --check --cached`
+- [OK] `npm run typecheck`
+
+### Status
+
+[OK] **Completed**
+
+
+## Session 197: 记录 Nix npmDepsHash 刷新
+
+**Date**: 2026-04-27
+**Task**: 记录 Nix npmDepsHash 刷新
+**Branch**: `feature/v0.4.9`
+
+### Summary
+
+修复 Nix 前端 npm 依赖闭包 hash mismatch，并记录 OpenSpec 任务状态。
+
+### Main Changes
+
+任务目标：修复 `nix run github:chenxiangning/codemoss/feature/v0.4.9` 报出的 frontend npm deps fixed-output derivation hash mismatch。
+
+主要改动：
+- 更新 `flake.nix` 中 `npmDepsHash`，从旧值 `sha256-TT9Po/VVzuObcqAkv4HoRSo41IMvouorlPnPTabxcTA=` 切换为 Nix 实际计算出的 `sha256-FEbcbD0BtGpTLhhxIleci5ld9s7Ds43Qw5wYCRPI1+k=`。
+- 更新 `openspec/changes/fix-linux-nix-flake-packaging/tasks.md`，将 `3.7 Update npmDepsHash after dependency closure changes` 标记完成。
+- 保留 `5.2 Run Nix packaging validation on a Nix-capable host` 未完成，因为当前本机没有可用 `nix` 命令。
+
 涉及模块：
-- .trellis/workspace/chenxiangning/*
-- openspec/changes/** 与 openspec/specs/**
-- src-tauri/src/bin/cc_gui_daemon/**
-- src-tauri/src/codex/**
-- src-tauri/src/engine/**
-- src-tauri/src/runtime/**
-- src/features/messages/**
-- src/features/settings/**
-- src/features/threads/**
-- src/styles/**
+- Nix packaging：`flake.nix`
+- OpenSpec 变更：`fix-linux-nix-flake-packaging`
 
 验证结果：
-- git diff --name-only --diff-filter=U 无输出
-- rg ^冲突标记检查无输出
-- git diff --check --cached 通过
-- npm run typecheck 通过
+- `openspec validate fix-linux-nix-flake-packaging --type change --strict --no-interactive` 通过。
+- `git diff --check` 通过。
+- 按 shell 基线检查 `nix --version`、`zsh -lc 'source ~/.zshrc && nix --version'`、`zsh -lc 'source ~/.zshrc && which nix && echo $PATH'`，本机仍不可用，因此未执行 Nix 实机构建验证。
 
 后续事项：
-- 推送后关注远端 CI，重点看 Rust backend、large-file governance、messages live rendering 与 Runtime Pool 首屏恢复相关检查。
+- 在 Nix-capable host 上运行 `nix run github:chenxiangning/codemoss/feature/v0.4.9` 或 `nix build .# --no-link --print-build-logs`。
+- 若 hash mismatch 已通过但出现下一层构建错误，继续按 OpenSpec `5.2` 收集证据处理。
 
 
 ### Git Commits
 
 | Hash | Message |
 |------|---------|
-| `456c0c0f8177a8ccc929d6e2ffc30f1e84fff93e` | (see git log) |
+| `d844034632db71cf8d412778ac69b358aad7187b` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 198: 补充 v0.4.9 发布说明
+
+**Date**: 2026-04-27
+**Task**: 补充 v0.4.9 发布说明
+**Branch**: `feature/v0.4.9`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+任务目标：
+- 按用户要求为 CHANGELOG.md 的 v0.4.9 区块追加更详细的补充内容。
+- 使用中文 Conventional Commit 提交，并保留中英文双语发布说明结构。
+
+主要改动：
+- 在 v0.4.9 中文 Improvements / Fixes 中追加 P0/P1 大文件拆分治理、Computer Use P0 阈值、Runtime Pool 首屏恢复、Claude Windows 流式诊断、Claude 长线程实时渲染成本、Codex 多轮 Explored、Codex 协作工具历史 schema、Linux Nix flake 打包等补充条目。
+- 在 v0.4.9 English Improvements / Fixes 中追加对应英文条目，保持双语内容对齐。
+- 未修改运行时代码、规范结构或其他版本 changelog 区块。
+
+涉及模块：
+- CHANGELOG.md
+
+验证结果：
+- git diff --check -- CHANGELOG.md 通过。
+- 提交前确认本次业务 diff 仅包含 CHANGELOG.md，新增 24 行。
+
+后续事项：
+- 如发版前继续合入 v0.4.9 修复，需要再次按提交范围增量补充 changelog。
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `decec32b` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 199: 修复 VendorSettingsPanel unified_exec 提示测试竞态
+
+**Date**: 2026-04-27
+**Task**: 修复 VendorSettingsPanel unified_exec 提示测试竞态
+**Branch**: `feature/v0.4.9`
+
+### Summary
+
+修复 CI 中 VendorSettingsPanel unified_exec 成功提示断言偶发失败
+
+### Main Changes
+
+任务目标：
+- 处理 heavy-test-noise-sentry workflow 在 CI 第 84 批暴露的 VendorSettingsPanel 测试失败。
+- 保持本次业务提交原子化，只包含测试修复文件。
+
+主要改动：
+- 将 restore official default 成功提示断言从同步 getByText 改为 await findByText。
+- 将 enable official unified_exec 成功提示断言同样改为 await findByText，消除同类 async render race。
+- 对目标测试文件执行 Prettier 格式化。
+
+涉及模块：
+- frontend vendors settings tests：src/features/vendors/components/VendorSettingsPanel.test.tsx
+
+验证结果：
+- npx vitest run src/features/vendors/components/VendorSettingsPanel.test.tsx：通过，5/5 tests。
+- npm run check:heavy-test-noise：通过，370 test files completed；第 84 批 VendorSettingsPanel.test.tsx 通过。
+- heavy-test-noise summary：act warnings 0，stdout payload lines 0，stderr payload lines 0。
+- npx prettier --check src/features/vendors/components/VendorSettingsPanel.test.tsx：通过。
+
+后续事项：
+- 当前工作区仍有既有 Rust/OpenSpec 未提交改动，本次提交未纳入。
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `0c1b87b91dc81dddbc7d354d6dd6f9d55aef02eb` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 200: 标记 Windows Claude 实测结果
+
+**Date**: 2026-04-27
+**Task**: 标记 Windows Claude 实测结果
+**Branch**: `feature/v0.4.9`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+任务目标：
+- 将 Windows native Claude Code 最新人工测试结论落入 OpenSpec，明确“卡顿 / final-only burst flush”主修复归属。
+
+主要改动：
+- 在 `fix-claude-windows-streaming-latency` 中补充 2026-04-27 当前验证记录，并将 Windows manual matrix 5.3 标记为已通过。
+- 在 `fix-claude-long-thread-render-amplification` 中补充边界说明：普通对话 smoke 已正常，但长线程、prompt overflow compaction、macOS/non-Claude smoke 仍未关闭。
+- 在 `fix-windows-runtime-pool-initial-load` 中标明该 change 是 Runtime Pool 首屏 visibility/bootstrap 支撑项，不用于关闭 Claude streaming latency 验收。
+
+涉及模块：
+- OpenSpec: `fix-claude-windows-streaming-latency`
+- OpenSpec: `fix-claude-long-thread-render-amplification`
+- OpenSpec: `fix-windows-runtime-pool-initial-load`
+
+验证结果：
+- `openspec validate fix-claude-windows-streaming-latency --strict` 通过。
+- `openspec validate fix-claude-long-thread-render-amplification --strict` 通过。
+- `openspec validate fix-windows-runtime-pool-initial-load --strict` 通过。
+
+后续事项：
+- 如需完全关闭 `fix-claude-windows-streaming-latency`，仍需补 macOS Claude 与一个 non-Claude engine smoke。
+- `fix-claude-long-thread-render-amplification` 仍需长线程压力、prompt overflow compaction、macOS/non-Claude smoke。
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `7e4649aa` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 201: 修复 Codex 运行时生命周期恢复
+
+**Date**: 2026-04-27
+**Task**: 修复 Codex 运行时生命周期恢复
+**Branch**: `feature/v0.4.9`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+任务目标：
+- 全面 review runtime lifecycle 相关边界条件，修复 Codex runtime 退出、恢复、stale session、active work protection 与 Runtime Pool snapshot 诊断丢失问题。
+- 按要求只做语义保持拆分，将 src-tauri/src/runtime/mod.rs 拆到 large-file warning 阈值以下。
+- 使用中文 Conventional Commit 完成本地提交。
+
+主要改动：
+- 补强 runtime end 事件处理，持久化 reason code、message、exit code/signal、pending request count，并避免旧 runtime 结束事件覆盖 successor runtime。
+- 增加 foreground work / active work protection 诊断字段，覆盖 startup、resume、stream、manual release、idle eviction、shutdown source 等边界路径。
+- 拆分 src-tauri/src/runtime/mod.rs：Runtime Pool command surface 移入 src-tauri/src/runtime/commands.rs；DTO 与 snapshot 类型移入 src-tauri/src/runtime/pool_types.rs；保留 Tauri command 名称和序列化字段语义。
+- 同步 OpenSpec change fix-codex-runtime-lifecycle-recovery 与 .trellis/spec/backend/quality-guidelines.md，沉淀可执行契约和验证矩阵。
+- 更新 frontend shared types，保持 Runtime Pool snapshot 字段与 Rust response shape 对齐。
+
+涉及模块：
+- src-tauri/src/runtime/**
+- src-tauri/src/backend/app_server*.rs
+- src-tauri/src/codex/session_runtime.rs
+- src-tauri/src/settings/mod.rs
+- src-tauri/src/shared/workspaces_core.rs
+- src/types.ts
+- openspec/changes/fix-codex-runtime-lifecycle-recovery/**
+- .trellis/spec/backend/quality-guidelines.md
+
+验证结果：
+- npm run lint：通过
+- npm run typecheck：通过
+- npm run test：通过，367 test files completed
+- npm run check:runtime-contracts：通过
+- npm run doctor:strict：通过
+- npm run check:large-files:near-threshold：通过，runtime/mod.rs 已不在 warning 列表
+- npm run check:large-files:gate：通过，found=0
+- cargo test --manifest-path src-tauri/Cargo.toml --no-run：通过
+- cargo test --manifest-path src-tauri/Cargo.toml：通过
+- openspec validate fix-codex-runtime-lifecycle-recovery --strict：通过
+- git diff --check：通过
+
+后续事项：
+- 当前提交已完成本地业务 commit；如要进一步降低 large-file warning，可继续拆分 computer_use/mod.rs、codex/mod.rs、backend/app_server.rs。
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `4b3ac419df7703aa70a13482f8a723246575172f` | (see git log) |
 
 ### Testing
 

@@ -28,6 +28,11 @@
 - 同步补充 OpenSpec / Trellis 规范与验证记录，覆盖 Git selective commit、Computer Use authorization、Claude thread continuity、Codex session parity、conversation curtain 与 updater fallback 等变更
 - 扩展 engine 与模型边界测试，补齐 Claude passthrough model、Codex model selector、useModels、engine controller 和 ButtonArea 的回归用例
 - 补齐评审发现的跨层边界治理，包括 Git section action 文案、生成图片路径处理、大文件拆分边界与 Computer Use authorization 判定细节
+- 深化 P0 / P1 大文件拆分治理，把 `cc_gui_daemon` 的 workspace / file access、Gemini event parsing、Codex model selection / run metadata、local usage、thread reducer helpers、Git history branch compare handlers、Settings dictation section 与多组样式分片拆出独立模块，并同步 CI large-file gate，减少热点文件继续膨胀的风险
+- 补齐 Computer Use bridge-runtime-critical 治理边界，将 `src-tauri/src/computer_use/` 纳入 P0 大文件阈值，并把插件 descriptor、activation contract 与可用性契约测试拆到独立测试模块，降低 Computer Use 主模块的回归半径
+- 增强 Runtime Pool 设置页首屏恢复路径，采用 snapshot-first bootstrap、workspace inventory fallback、eligible workspace 去重与 bounded fallback refresh，让设置页能更稳定承接空 snapshot、断开 workspace 与首次恢复中的中间态
+- 补强 Claude Windows 流式链路的 runtime diagnostics，把流式 forwarder、进程诊断、阻塞判定与 Runtime Pool console 状态写入 OpenSpec，使 Windows 下“有输出但 UI 延迟”的问题更容易定位
+- 追加归档并回写 v0.4.9 后续验证提案，覆盖 Linux Nix flake packaging、Windows Runtime Pool initial load、Claude long-thread render amplification、Claude Windows streaming latency 与 P0/P1 large-file modularization governance，确保行为规范与实际实现继续对齐
 
 🐛 Fixes
 - 修复 Codex 历史会话打开后可能出现空白页的问题，并补齐历史消息加载、sidebar cache 与 layout nodes 的过渡状态
@@ -43,6 +48,13 @@
 - 修复 updater 检查失败或重复点击后状态残留的问题，确保手动检查、自动检查和 fallback 提示不会相互覆盖
 - 修复 Git selective commit 边界审查问题，补齐 section action i18n 与测试，避免文件范围提交时按钮文案或选择状态不一致
 - 修复消息吸顶折叠把手过宽与工具块卡片样式不一致的问题，让 Explored、file change 和 sticky history 区域在长会话中更协调
+- 修复 Linux Nix flake 打包链路，补齐前端 npm 依赖闭包 hash 与 packaging OpenSpec 任务状态，避免 Nix 构建在依赖闭包变化后因 hash 不匹配失败
+- 修复 Runtime Pool 设置页首屏恢复时误显示空态的问题：初始 snapshot 非空时直接展示，初始为空但存在可连接 workspace 时触发一次受控 bootstrap，并在短窗口内 bounded refresh，避免“正在恢复”被错误渲染成“没有 runtime”
+- 修复 Claude Windows 流式转发阻塞，拆出 `claude_forwarder` 并补充 runtime process diagnostics、阻塞检测与回归测试，降低 Windows 下实时输出已经到达 backend 但前端迟迟不可见的概率
+- 修复 Claude 长线程实时渲染成本放大的问题，通过 live window 收敛、assistant fast path metadata 合并与 reducer 回归覆盖，减少长线程中每个增量事件触发的大范围重算和 UI 卡顿
+- 修复 Codex 多轮 Explored 串行展示问题，过滤相邻用户 turn 之间已完成的旧 Explored 卡片，避免多轮思考时上一轮 explored 状态继续挤占当前实时窗口
+- 修复 Codex 当前协作工具历史 schema 兼容问题，支持 `wait_agent`、`target` 与 `targets` 字段，避免历史回放时 send_input / wait_agent 的 agent 目标丢失或被误归类为普通工具
+- 修复 v0.4.9 边界审查遗留问题，补齐 Codex history loader 的 send_input target / wait_agent targets 回归测试，并收紧 Computer Use 插件契约测试与大文件治理阈值
 
 English:
 
@@ -68,6 +80,11 @@ English:
 - Sync OpenSpec and Trellis records for Git selective commit, Computer Use authorization, Claude thread continuity, Codex session parity, conversation curtain behavior, and updater fallback changes
 - Expand engine and model boundary coverage for Claude passthrough models, the Codex model selector, `useModels`, the engine controller, and the input ButtonArea
 - Address cross-layer review findings around Git section-action copy, generated-image path handling, large-file extraction boundaries, and Computer Use authorization checks
+- Deepen the P0/P1 large-file modularization pass by extracting `cc_gui_daemon` workspace/file access, Gemini event parsing, Codex model selection/run metadata, local usage, thread reducer helpers, Git history branch-compare handlers, the Settings dictation section, and multiple style shards into focused modules, while updating the CI large-file gate to keep hotspots from growing again
+- Tighten Computer Use bridge-runtime-critical governance by bringing `src-tauri/src/computer_use/` under the P0 large-file threshold and moving plugin descriptor, activation-contract, and availability-contract coverage into a dedicated test module
+- Strengthen the Runtime Pool settings first-load path with snapshot-first bootstrap, workspace-inventory fallback, eligible-workspace de-duplication, and bounded fallback refresh so the settings panel handles empty snapshots, disconnected workspaces, and initial restore transitions more reliably
+- Add deeper Claude Windows streaming diagnostics across the forwarder, process-diagnostics layer, blocking detection, and Runtime Pool console specs so “backend output arrived but UI is delayed” cases are easier to trace
+- Archive and sync the follow-up v0.4.9 verified proposals for Linux Nix flake packaging, Windows Runtime Pool initial load, Claude long-thread render amplification, Claude Windows streaming latency, and P0/P1 large-file modularization governance
 
 🐛 Fixes
 - Fix blank Codex history sessions by adding clear loading coverage across history message loading, sidebar cache restoration, and layout-node transitions
@@ -83,6 +100,13 @@ English:
 - Fix updater state residue after failures or repeated checks so manual checks, automatic checks, and fallback notices no longer overwrite each other incorrectly
 - Fix selective Git commit review findings by completing section-action i18n and tests, preventing button copy or selection state drift while committing by file scope
 - Fix oversized history-sticky collapse handles and inconsistent tool-block card styling so Explored, file-change, and sticky-history areas feel visually aligned in long conversations
+- Fix the Linux Nix flake packaging path, including the frontend npm dependency closure hash and packaging OpenSpec task state, so Nix builds do not fail after dependency-closure changes
+- Fix the Runtime Pool settings panel showing an empty state during first-load recovery: non-empty initial snapshots now render immediately, empty snapshots with eligible workspaces trigger one controlled bootstrap, and bounded refresh covers the short restore window
+- Fix Claude streaming forwarding stalls on Windows by extracting `claude_forwarder` and adding runtime process diagnostics, blocking detection, and regression coverage, reducing cases where backend output arrives but the frontend remains delayed
+- Fix Claude long-thread realtime render amplification with live-window narrowing, assistant fast-path metadata merging, and reducer coverage, reducing broad recomputation and UI stalls on every incremental event
+- Fix Codex multi-turn Explored serialization by suppressing completed older Explored cards between adjacent user turns, so previous-turn explored state no longer crowds the current live window
+- Fix Codex history compatibility with the current collaboration-tool schema by supporting `wait_agent`, `target`, and `targets`, preventing send_input / wait_agent agent targets from being lost or treated as generic tools during history replay
+- Fix remaining v0.4.9 review edges by adding Codex history-loader coverage for send_input target and wait_agent targets, while tightening Computer Use plugin-contract tests and large-file governance thresholds
 
 ---
 
