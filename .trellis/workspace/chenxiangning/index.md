@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-7.md`
-- **Total Sessions**: 204
+- **Total Sessions**: 205
 - **Last Active**: 2026-04-27
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-7.md` | ~63 | Active |
+| `journal-7.md` | ~127 | Active |
 | `journal-6.md` | ~1961 | Archived |
 | `journal-5.md` | ~1949 | Archived |
 | `journal-4.md` | ~1975 | Archived |
@@ -35,6 +35,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 205 | 2026-04-27 | 合并 feature v0.4.9 手动恢复更新 | `3d46b9e074daaadcbb4d4f5c7abfcde8b6950904` | `codex/2026-04-01-local` |
 | 204 | 2026-04-27 | 合并 feature v0.4.9 运行时恢复更新 | `30c9b1b1ac20c886aef09dadc3bba73eaf64ccd1` | `codex/2026-04-01-local` |
 | 203 | 2026-04-27 | 修复失效会话手动恢复分流 | `85aaefa6` | `feature/v0.4.9` |
 | 202 | 2026-04-27 | 归档运行时 OpenSpec 提案 | `9007e01a` | `feature/v0.4.9` |
