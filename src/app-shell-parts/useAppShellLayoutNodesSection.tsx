@@ -4,7 +4,10 @@ import { ask } from "@tauri-apps/plugin-dialog";
 import { useLayoutNodes } from "../features/layout/hooks/useLayoutNodes";
 import { MainHeaderActions } from "../features/app/components/MainHeaderActions";
 import { normalizeSharedSessionEngine } from "../features/shared-session/utils/sharedSessionEngines";
-import { recoverThreadBindingForManualRecovery } from "./manualThreadRecovery";
+import {
+  recoverThreadBindingForManualRecovery,
+  shouldSuppressManualRecoveryResendUserMessage,
+} from "./manualThreadRecovery";
 import { OPENCODE_VARIANT_OPTIONS } from "./utils";
 
 export function useAppShellLayoutNodesSection(ctx: any) {
@@ -214,6 +217,7 @@ export function useAppShellLayoutNodesSection(ctx: any) {
         threadsByWorkspace,
         refreshThread,
         startThreadForWorkspace,
+        allowFreshThread: false,
       }),
     onRecoverThreadRuntimeAndResend: async (workspaceId, threadId, message) => {
       const workspace =
@@ -221,30 +225,36 @@ export function useAppShellLayoutNodesSection(ctx: any) {
         ?? workspaces.find((entry: any) => entry.id === workspaceId)
         ?? null;
       if (!workspace) {
-        return null;
+        return { kind: "failed", reason: "workspace unavailable" };
       }
-      const recoveredThreadId = await recoverThreadBindingForManualRecovery({
+      const recoveryResult = await recoverThreadBindingForManualRecovery({
         workspaceId,
         threadId,
         threadsByWorkspace,
         refreshThread,
         startThreadForWorkspace,
       });
-      const targetThreadId =
-        typeof recoveredThreadId === "string" ? recoveredThreadId.trim() : "";
+      if (recoveryResult.kind === "failed") {
+        return recoveryResult;
+      }
+      const targetThreadId = recoveryResult.threadId.trim();
       const nextText = message.text.trim();
       const nextImages = message.images ?? [];
       if (!targetThreadId || (!nextText && nextImages.length === 0)) {
-        return targetThreadId || null;
+        return targetThreadId
+          ? recoveryResult
+          : { kind: "failed", reason: "recovery target unavailable" };
       }
       if (!workspace.connected) {
         await connectWorkspace(workspace);
       }
+      const suppressRecoveredUserMessage =
+        shouldSuppressManualRecoveryResendUserMessage(recoveryResult);
       await sendUserMessageToThread(workspace, targetThreadId, nextText, nextImages, {
-        suppressUserMessageRender: true,
-        skipOptimisticUserBubble: true,
+        suppressUserMessageRender: suppressRecoveredUserMessage,
+        skipOptimisticUserBubble: suppressRecoveredUserMessage,
       });
-      return targetThreadId;
+      return recoveryResult;
     },
     handleExitPlanModeExecute,
     onOpenSettings: () => openSettings(),

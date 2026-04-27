@@ -92,7 +92,11 @@ import {
   toConversationEngine,
   VISIBLE_MESSAGE_WINDOW,
 } from "./messagesRenderUtils";
-import { resolveAssistantRuntimeReconnectHint, resolveRetryMessageForReconnectItem } from "./runtimeReconnect";
+import {
+  resolveAssistantRuntimeReconnectHint,
+  resolveRetryMessageForReconnectItem,
+  type RuntimeReconnectRecoveryCallbackResult,
+} from "./runtimeReconnect";
 
 type MessagesProps = {
   items: ConversationItem[];
@@ -141,12 +145,12 @@ type MessagesProps = {
   onRecoverThreadRuntime?: (
     workspaceId: string,
     threadId: string,
-  ) => Promise<string | null | void> | string | null | void;
+  ) => Promise<RuntimeReconnectRecoveryCallbackResult> | RuntimeReconnectRecoveryCallbackResult;
   onRecoverThreadRuntimeAndResend?: (
     workspaceId: string,
     threadId: string,
     message: Pick<QueuedMessage, "text" | "images">,
-  ) => Promise<string | null | void> | string | null | void;
+  ) => Promise<RuntimeReconnectRecoveryCallbackResult> | RuntimeReconnectRecoveryCallbackResult;
 };
 
 type HistoryExpansionScrollSnapshot = {

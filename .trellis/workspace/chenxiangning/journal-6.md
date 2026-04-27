@@ -1543,42 +1543,6 @@
 - None - task complete
 
 
-## Preserved Local Merge Record: 合并 feature v0.4.9 稳定性与大文件更新
-
-**Date**: 2026-04-27
-**Task**: 合并 feature v0.4.9 稳定性与大文件更新
-**Branch**: `codex/2026-04-01-local`
-
-### Summary
-
-本地分支在合并 `feature/v0.4.9` 的稳定性、OpenSpec 归档、大文件拆分与 Runtime Pool 修复时生成过独立 Trellis 记录。由于传入分支同样占用了 Session 197 编号，这里保留为本地合并记录，避免覆盖传入分支的正式 Session 197-201 序列。
-
-### Main Changes
-
-- 解决 `.trellis/workspace/chenxiangning/index.md` 与 `journal-6.md` 的 merge 冲突，采用传入分支 Session 196 记录，并保留上一轮本地 merge record。
-- 合入 Linux Nix 打包链路修复。
-- 合入 Codex 多轮 Explored 串行修复。
-- 合入 P0/P1 大文件拆分与边界守卫。
-- 合入 OpenSpec 已验证提案回写与归档。
-- 合入 Claude Windows 流式延迟、长线程渲染成本与 Runtime Pool 首屏恢复修复。
-
-### Git Commits
-
-| Hash | Message |
-|------|---------|
-| `456c0c0f8177a8ccc929d6e2ffc30f1e84fff93e` | `chore(release): 合并 feature v0.4.9 稳定性与大文件更新` |
-
-### Testing
-
-- [OK] `git diff --name-only --diff-filter=U` 无输出
-- [OK] `git diff --check --cached`
-- [OK] `npm run typecheck`
-
-### Status
-
-[OK] **Completed**
-
-
 ## Session 197: 记录 Nix npmDepsHash 刷新
 
 **Date**: 2026-04-27
@@ -1859,11 +1823,11 @@
 - None - task complete
 
 
-## Session 202: 合并 feature v0.4.9 运行时恢复更新
+## Session 202: 归档运行时 OpenSpec 提案
 
 **Date**: 2026-04-27
-**Task**: 合并 feature v0.4.9 运行时恢复更新
-**Branch**: `codex/2026-04-01-local`
+**Task**: 归档运行时 OpenSpec 提案
+**Branch**: `feature/v0.4.9`
 
 ### Summary
 
@@ -1872,36 +1836,117 @@
 ### Main Changes
 
 任务目标：
-- 将 feature/v0.4.9 最新内容合并到当前分支 codex/2026-04-01-local。
-- 解决合并冲突，完成验证、提交并准备推送。
+- 基于当前代码实现核查截图中的 OpenSpec 提案完成度。
+- 将已由代码满足的任务状态回写到 OpenSpec artifacts。
+- 将已完成的运行时相关 change 同步到主 specs 并归档。
+- 按仓库提交规则创建中文 Conventional Commit。
 
 主要改动：
-- 合入 Nix npmDepsHash 刷新、v0.4.9 changelog 补充、Vendor unified_exec 成功提示测试修复、Windows Claude 实测 OpenSpec 标记。
-- 合入 Codex runtime lifecycle recovery 相关后端改动，包括 runtime acquire/recovery、session lifecycle、runtime commands/pool types 拆分与相关 tests。
-- 合并 Trellis workspace 冲突时采用 incoming Session 201 索引，并保留当前分支上一轮 merge record，避免 journal session 编号覆盖。
+- 回写 `fix-claude-windows-streaming-latency` 的 wrapper / resolved binary / runtime row diagnostics 任务证据，使该 change 达到 complete。
+- 回写 `fix-windows-runtime-pool-initial-load` 的 `runtime-panel-bootstrap` recovery source 观测链路任务证据，同时保留 Windows cold launch 人工验证项未关闭。
+- 同步 `fix-claude-windows-streaming-latency` 的 delta specs 到主 specs，新增 `claude-code-stream-forwarding-latency` capability，并补充 stream latency diagnostics 与 runtime pool console 契约。
+- 同步 `fix-codex-runtime-lifecycle-recovery` 的 delta specs 到主 specs，补充 runtime orchestrator、runtime stability、long-task protection、runtime pool console 契约。
+- 归档两个已完成 change：`fix-claude-windows-streaming-latency` 与 `fix-codex-runtime-lifecycle-recovery`。
 
 涉及模块：
-- Git/Trellis workspace：.trellis/workspace/chenxiangning/index.md, journal-6.md
-- Backend runtime：src-tauri/src/runtime/**, src-tauri/src/backend/**, src-tauri/src/codex/session_runtime.rs, src-tauri/src/shared/workspaces_core.rs
-- Frontend/vendor test：src/features/vendors/components/VendorSettingsPanel.test.tsx
-- Release/OpenSpec：CHANGELOG.md, flake.nix, openspec/changes/**
+- `openspec/changes/archive/2026-04-27-fix-claude-windows-streaming-latency/`
+- `openspec/changes/archive/2026-04-27-fix-codex-runtime-lifecycle-recovery/`
+- `openspec/specs/claude-code-stream-forwarding-latency/spec.md`
+- `openspec/specs/conversation-stream-latency-diagnostics/spec.md`
+- `openspec/specs/runtime-pool-console/spec.md`
+- `openspec/specs/runtime-orchestrator/spec.md`
+- `openspec/specs/codex-long-task-runtime-protection/spec.md`
+- `openspec/specs/conversation-runtime-stability/spec.md`
+- `openspec/changes/fix-windows-runtime-pool-initial-load/tasks.md`
 
 验证结果：
-- git diff --name-only --diff-filter=U 无输出。
-- rg '^(<<<<<<<|=======|>>>>>>>)' 未发现冲突标记。
-- git diff --check --cached 通过。
-- npm run typecheck 通过。
-- cargo test --manifest-path src-tauri/Cargo.toml 通过，lib tests 504 passed，tauri_config 1 passed，doc tests 0 passed。
+- `openspec validate fix-claude-windows-streaming-latency --strict` 通过。
+- `openspec validate fix-codex-runtime-lifecycle-recovery --strict` 通过。
+- `openspec validate --specs --strict --no-interactive` 通过：190 passed, 0 failed。
+- `openspec validate --changes --strict --no-interactive` 通过：6 passed, 0 failed。
+- `openspec validate --all --strict --no-interactive` 通过：196 passed, 0 failed。
 
 后续事项：
-- Trellis record 完成后推送 origin/codex/2026-04-01-local。
+- `fix-windows-runtime-pool-initial-load` 仍需 Windows cold launch 人工验证。
+- `fix-claude-long-thread-render-amplification` 仍需 long-thread / compaction / macOS/non-Claude 人工矩阵。
+- `fix-linux-nix-flake-packaging` 仍需 Nix-capable host 执行 Nix packaging validation。
+- 未提交新出现的未跟踪 change 目录：`openspec/changes/fix-codex-stale-thread-manual-recovery/`。
 
 
 ### Git Commits
 
 | Hash | Message |
 |------|---------|
-| `30c9b1b1ac20c886aef09dadc3bba73eaf64ccd1` | (see git log) |
+| `9007e01a` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 203: 修复失效会话手动恢复分流
+
+**Date**: 2026-04-27
+**Task**: 修复失效会话手动恢复分流
+**Branch**: `feature/v0.4.9`
+
+### Summary
+
+修复 Codex stale thread 手动恢复在 recover-only 与 recover-and-resend 下的语义分流，并补齐自测与 OpenSpec 记录。
+
+### Main Changes
+
+任务目标:
+- 修复旧 Codex thread 出现 `thread not found` 后，点击“尝试恢复会话”和“恢复并发送上一条提示词”无效或误反馈的问题。
+- 重点收紧边界条件、大文件治理门禁、heavy-test-noise 告警门禁，以及 Windows/macOS 兼容风险。
+
+主要改动:
+- 将 manual stale thread recovery 结果结构化为 `rebound` / `fresh` / `failed`，避免调用方用 `string | null` 猜测语义。
+- recover-only 只允许 verified `rebound` 成功；没有 verified replacement 时不把 fresh thread 伪装成旧会话恢复成功。
+- recover-and-resend 按 result kind 分流：`rebound` 保留重复 user bubble suppression，`fresh` 可见发送上一条 prompt。
+- `RuntimeReconnectCard` 增加 structured result 归一化和 fresh fallback 提示，malformed callback result / 空 thread id / unknown kind 均显式失败。
+- `manualThreadRecovery` 增加空 workspace/thread id 早失败、refresh 抛错原因保留、异常信息安全字符串化。
+- 新增 OpenSpec change `fix-codex-stale-thread-manual-recovery`，并回写 Self-Test Record 与 4.4-4.7 验证门禁。
+
+涉及模块:
+- Frontend recovery contract: `src/app-shell-parts/manualThreadRecovery.ts`
+- App shell adapter: `src/app-shell-parts/useAppShellLayoutNodesSection.tsx`
+- Message recovery UI: `src/features/messages/components/RuntimeReconnectCard.tsx` 与 Messages prop 链路
+- Tests: app-shell recovery、Messages runtime reconnect、runtimeReconnect helper tests
+- i18n: `src/i18n/locales/en.part1.ts`、`src/i18n/locales/zh.part1.ts`
+- OpenSpec: `openspec/changes/fix-codex-stale-thread-manual-recovery/**`
+
+验证结果:
+- `pnpm vitest run src/app-shell-parts/useAppShellLayoutNodesSection.recovery.test.ts src/features/messages/components/Messages.runtime-reconnect.test.tsx src/features/messages/components/runtimeReconnect.test.ts` 通过，3 files / 35 tests passed。
+- `pnpm typecheck` 通过。
+- `pnpm lint` 通过。
+- `npm run check:large-files:near-threshold` 完成，仅 19 个既有 watch warning，无 hard failure。
+- `npm run check:large-files:gate` 通过，found=0。
+- `node --test scripts/check-heavy-test-noise.test.mjs` 通过，5 tests passed。
+- `npm run check:heavy-test-noise` 完成 370 test files，repo-owned act/stdout/stderr noise 均为 0。
+- `npm run check:runtime-contracts` 通过。
+- `npm run doctor:strict` 通过。
+- `cargo test --manifest-path src-tauri/Cargo.toml` 通过。
+- `openspec validate fix-codex-stale-thread-manual-recovery --strict` 通过。
+- `git diff --check` 通过。
+
+后续事项:
+- 可在真实旧会话 `thread not found` 场景下手动点一次 recover-only 与 recover-and-resend，确认 UI copy 和 fresh thread 切换体感符合预期。
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `85aaefa6` | (see git log) |
 
 ### Testing
 

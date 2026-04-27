@@ -1865,6 +1865,7 @@ const enPart1 = {
     threadRecoveryResendUnavailable: "There is no previous prompt available to resend.",
     threadRecoveryFailed: "Recovery failed. Try again, or reopen the conversation before retrying.",
     threadRecoveryRecoverFailed: "Recovery ran, but this thread could not resume automatically. Reopen the conversation or start a new one, then retry.",
+    threadRecoveryFreshFallbackRequired: "The original conversation could not be rebound. Use recovery with resend to continue the previous prompt in a new conversation.",
     threadRecoveryUnavailable: "This message is missing the workspace or thread binding needed for automatic recovery.",
     memoryContextSummary: "Memory context summary",
     memoryContextSummaryCount: "{{count}} memories",

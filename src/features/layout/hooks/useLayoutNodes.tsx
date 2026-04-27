@@ -88,6 +88,7 @@ import type {
   ConversationEngine,
   ConversationState,
 } from "../../threads/contracts/conversationCurtainContracts";
+import type { RuntimeReconnectRecoveryCallbackResult } from "../../messages/components/runtimeReconnect";
 import { resolveDiffPathFromWorkspacePath } from "../../../utils/workspacePaths";
 import { resolvePresentationProfile } from "../../messages/presentation/presentationProfile";
 import {
@@ -217,12 +218,12 @@ type LayoutNodesOptions = {
   onRecoverThreadRuntime?: (
     workspaceId: string,
     threadId: string,
-  ) => Promise<string | null | void> | string | null | void;
+  ) => Promise<RuntimeReconnectRecoveryCallbackResult> | RuntimeReconnectRecoveryCallbackResult;
   onRecoverThreadRuntimeAndResend?: (
     workspaceId: string,
     threadId: string,
     message: Pick<QueuedMessage, "text" | "images">,
-  ) => Promise<string | null | void> | string | null | void;
+  ) => Promise<RuntimeReconnectRecoveryCallbackResult> | RuntimeReconnectRecoveryCallbackResult;
   handleExitPlanModeExecute?: (
     mode: Extract<AccessMode, "default" | "full-access">,
   ) => Promise<void> | void;

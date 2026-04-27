@@ -22,7 +22,10 @@ import { parseMemoryContextSummary } from "./messagesMemoryContext";
 import { parseReasoning } from "./messagesReasoning";
 import { resolveUserMessagePresentation } from "./messagesUserPresentation";
 import { RuntimeReconnectCard } from "./RuntimeReconnectCard";
-import { resolveAssistantRuntimeReconnectHint } from "./runtimeReconnect";
+import {
+  resolveAssistantRuntimeReconnectHint,
+  type RuntimeReconnectRecoveryCallbackResult,
+} from "./runtimeReconnect";
 import {
   basenameFromPath,
   formatDurationMs,
@@ -65,12 +68,12 @@ type MessageRowProps = {
   onRecoverThreadRuntime?: (
     workspaceId: string,
     threadId: string,
-  ) => Promise<string | null | void> | string | null | void;
+  ) => Promise<RuntimeReconnectRecoveryCallbackResult> | RuntimeReconnectRecoveryCallbackResult;
   onRecoverThreadRuntimeAndResend?: (
     workspaceId: string,
     threadId: string,
     message: Pick<QueuedMessage, "text" | "images">,
-  ) => Promise<string | null | void> | string | null | void;
+  ) => Promise<RuntimeReconnectRecoveryCallbackResult> | RuntimeReconnectRecoveryCallbackResult;
   retryMessage?: Pick<QueuedMessage, "text" | "images"> | null;
   isCopied: boolean;
   onCopy: (

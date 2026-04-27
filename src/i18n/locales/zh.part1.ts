@@ -1864,6 +1864,7 @@ const zhPart1 = {
     threadRecoveryResendUnavailable: "当前没有可重发的上一条提示词。",
     threadRecoveryFailed: "恢复失败。请稍后再试，或重新打开该会话后再继续。",
     threadRecoveryRecoverFailed: "恢复动作已执行，但当前会话没有自动续接成功。请重新打开该会话或新建会话后重试。",
+    threadRecoveryFreshFallbackRequired: "原会话无法安全重新绑定。请使用“恢复并发送上一条提示词”，在新会话中继续这条请求。",
     threadRecoveryUnavailable: "当前消息缺少可恢复的工作区或会话绑定，暂时无法自动恢复。",
     memoryContextSummary: "记忆上下文摘要",
     memoryContextSummaryCount: "{{count}} 条记忆",

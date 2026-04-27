@@ -1,5 +1,30 @@
 type ManualRecoveryEngine = "claude" | "codex" | "gemini" | "opencode";
 
+export type ManualThreadRecoveryResult =
+  | { kind: "rebound"; threadId: string }
+  | { kind: "fresh"; threadId: string }
+  | { kind: "failed"; reason?: string | null };
+
+export function shouldSuppressManualRecoveryResendUserMessage(
+  result: ManualThreadRecoveryResult,
+): boolean {
+  return result.kind === "rebound";
+}
+
+function normalizeManualRecoveryError(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message;
+  }
+  if (typeof error === "string") {
+    return error;
+  }
+  try {
+    return JSON.stringify(error) ?? String(error);
+  } catch {
+    return String(error);
+  }
+}
+
 function inferManualRecoveryEngine(
   workspaceId: string,
   threadId: string,
@@ -34,27 +59,51 @@ export async function recoverThreadBindingForManualRecovery(params: {
       engine?: ManualRecoveryEngine;
     },
   ) => Promise<string | null>;
-}): Promise<string | null> {
+  allowFreshThread?: boolean;
+}): Promise<ManualThreadRecoveryResult> {
+  const normalizedThreadId = params.threadId.trim();
+  if (!params.workspaceId.trim() || !normalizedThreadId) {
+    return { kind: "failed", reason: "missing workspace or thread id" };
+  }
+
   let recoveredThreadId: string | null = null;
+  let refreshErrorMessage: string | null = null;
   try {
-    recoveredThreadId = await params.refreshThread(params.workspaceId, params.threadId);
-  } catch {
+    recoveredThreadId = await params.refreshThread(params.workspaceId, normalizedThreadId);
+  } catch (error) {
+    refreshErrorMessage = normalizeManualRecoveryError(error);
     recoveredThreadId = null;
   }
   const normalizedRecoveredThreadId =
     typeof recoveredThreadId === "string" ? recoveredThreadId.trim() : "";
   if (normalizedRecoveredThreadId) {
-    return normalizedRecoveredThreadId;
+    return { kind: "rebound", threadId: normalizedRecoveredThreadId };
   }
-  const freshThreadId = await params.startThreadForWorkspace(params.workspaceId, {
-    activate: true,
-    engine: inferManualRecoveryEngine(
-      params.workspaceId,
-      params.threadId,
-      params.threadsByWorkspace,
-    ),
-  });
+  if (params.allowFreshThread === false) {
+    return {
+      kind: "failed",
+      reason: refreshErrorMessage ?? "no verified replacement thread",
+    };
+  }
+  let freshThreadId: string | null = null;
+  try {
+    freshThreadId = await params.startThreadForWorkspace(params.workspaceId, {
+      activate: true,
+      engine: inferManualRecoveryEngine(
+        params.workspaceId,
+        normalizedThreadId,
+        params.threadsByWorkspace,
+      ),
+    });
+  } catch (error) {
+    return { kind: "failed", reason: normalizeManualRecoveryError(error) };
+  }
   const normalizedFreshThreadId =
     typeof freshThreadId === "string" ? freshThreadId.trim() : "";
-  return normalizedFreshThreadId || null;
+  return normalizedFreshThreadId
+    ? { kind: "fresh", threadId: normalizedFreshThreadId }
+    : {
+        kind: "failed",
+        reason: refreshErrorMessage ?? "fresh thread unavailable",
+      };
 }

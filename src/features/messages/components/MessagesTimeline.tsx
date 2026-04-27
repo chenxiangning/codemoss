@@ -38,6 +38,7 @@ import {
   WorkingIndicator,
 } from "./MessagesRows";
 import { parseReasoning } from "./messagesReasoning";
+import type { RuntimeReconnectRecoveryCallbackResult } from "./runtimeReconnect";
 import {
   formatCompletedTimeMs,
   type HistoryStickyCandidate,
@@ -94,12 +95,12 @@ type MessagesTimelineProps = {
   onRecoverThreadRuntime?: (
     workspaceId: string,
     threadId: string,
-  ) => Promise<string | null | void> | string | null | void;
+  ) => Promise<RuntimeReconnectRecoveryCallbackResult> | RuntimeReconnectRecoveryCallbackResult;
   onRecoverThreadRuntimeAndResend?: (
     workspaceId: string,
     threadId: string,
     message: Pick<QueuedMessage, "text" | "images">,
-  ) => Promise<string | null | void> | string | null | void;
+  ) => Promise<RuntimeReconnectRecoveryCallbackResult> | RuntimeReconnectRecoveryCallbackResult;
   onAssistantVisibleTextRender?: (payload: {
     itemId: string;
     visibleText: string;
