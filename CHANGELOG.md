@@ -32,6 +32,8 @@
 - 补齐 Computer Use bridge-runtime-critical 治理边界，将 `src-tauri/src/computer_use/` 纳入 P0 大文件阈值，并把插件 descriptor、activation contract 与可用性契约测试拆到独立测试模块，降低 Computer Use 主模块的回归半径
 - 增强 Runtime Pool 设置页首屏恢复路径，采用 snapshot-first bootstrap、workspace inventory fallback、eligible workspace 去重与 bounded fallback refresh，让设置页能更稳定承接空 snapshot、断开 workspace 与首次恢复中的中间态
 - 补强 Claude Windows 流式链路的 runtime diagnostics，把流式 forwarder、进程诊断、阻塞判定与 Runtime Pool console 状态写入 OpenSpec，使 Windows 下“有输出但 UI 延迟”的问题更容易定位
+- 加固 Codex 运行时生命周期恢复链路，收敛 runtime session create / shutdown / restore 之间的状态交接，让失效会话、历史恢复和手动恢复入口共享更明确的恢复语义
+- 补强 vendor 运行时回归验证，等待 `unified_exec` 成功提示实际渲染后再断言，降低异步启动提示造成的测试抖动
 - 追加归档并回写 v0.4.9 后续验证提案，覆盖 Linux Nix flake packaging、Windows Runtime Pool initial load、Claude long-thread render amplification、Claude Windows streaming latency 与 P0/P1 large-file modularization governance，确保行为规范与实际实现继续对齐
 
 🐛 Fixes
@@ -55,6 +57,9 @@
 - 修复 Codex 多轮 Explored 串行展示问题，过滤相邻用户 turn 之间已完成的旧 Explored 卡片，避免多轮思考时上一轮 explored 状态继续挤占当前实时窗口
 - 修复 Codex 当前协作工具历史 schema 兼容问题，支持 `wait_agent`、`target` 与 `targets` 字段，避免历史回放时 send_input / wait_agent 的 agent 目标丢失或被误归类为普通工具
 - 修复 v0.4.9 边界审查遗留问题，补齐 Codex history loader 的 send_input target / wait_agent targets 回归测试，并收紧 Computer Use 插件契约测试与大文件治理阈值
+- 修复失效会话手动恢复分流问题，让恢复动作能按当前 thread / runtime 状态进入正确路径，避免可恢复会话被误导向错误入口
+- 修复 Codex runtime 生命周期恢复边界，降低 session 创建失败、shutdown 竞态或历史恢复期间出现 runtime 状态悬空的概率
+- 修复 vendor 测试中 `unified_exec` 成功提示断言过早的问题，避免 UI 文案尚未渲染完成时产生偶发失败
 
 English:
 
@@ -84,6 +89,8 @@ English:
 - Tighten Computer Use bridge-runtime-critical governance by bringing `src-tauri/src/computer_use/` under the P0 large-file threshold and moving plugin descriptor, activation-contract, and availability-contract coverage into a dedicated test module
 - Strengthen the Runtime Pool settings first-load path with snapshot-first bootstrap, workspace-inventory fallback, eligible-workspace de-duplication, and bounded fallback refresh so the settings panel handles empty snapshots, disconnected workspaces, and initial restore transitions more reliably
 - Add deeper Claude Windows streaming diagnostics across the forwarder, process-diagnostics layer, blocking detection, and Runtime Pool console specs so “backend output arrived but UI is delayed” cases are easier to trace
+- Harden Codex runtime lifecycle recovery across session create, shutdown, and restore handoffs so invalid sessions, history recovery, and manual recovery actions share clearer recovery semantics
+- Strengthen vendor runtime regression coverage by waiting for the `unified_exec` success notice to render before asserting, reducing async startup-notice test flake
 - Archive and sync the follow-up v0.4.9 verified proposals for Linux Nix flake packaging, Windows Runtime Pool initial load, Claude long-thread render amplification, Claude Windows streaming latency, and P0/P1 large-file modularization governance
 
 🐛 Fixes
@@ -107,6 +114,9 @@ English:
 - Fix Codex multi-turn Explored serialization by suppressing completed older Explored cards between adjacent user turns, so previous-turn explored state no longer crowds the current live window
 - Fix Codex history compatibility with the current collaboration-tool schema by supporting `wait_agent`, `target`, and `targets`, preventing send_input / wait_agent agent targets from being lost or treated as generic tools during history replay
 - Fix remaining v0.4.9 review edges by adding Codex history-loader coverage for send_input target and wait_agent targets, while tightening Computer Use plugin-contract tests and large-file governance thresholds
+- Fix invalid-session manual recovery routing so recovery actions follow the current thread and runtime state instead of sending recoverable sessions to the wrong entry point
+- Fix Codex runtime lifecycle recovery boundaries, reducing dangling runtime state during session creation failures, shutdown races, or history restore transitions
+- Fix an early `unified_exec` success-notice assertion in vendor coverage so tests no longer fail before the UI copy has rendered
 
 ---
 
