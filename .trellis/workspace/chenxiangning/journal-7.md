@@ -234,3 +234,67 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 208: 合并 feature v0.4.11 wrapper 启动修复
+
+**Date**: 2026-04-28
+**Task**: 合并 feature v0.4.11 wrapper 启动修复
+**Branch**: `codex/2026-04-01-local`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+任务目标：
+- 将新分支 feature/v0.4.11 合并到当前分支 codex/2026-04-01-local。
+- 处理合并冲突，完成验证、提交并准备推送。
+
+主要改动：
+- 合入版本号 0.4.11：package.json、package-lock.json、src-tauri/tauri.conf.json。
+- 合入 CHANGELOG v0.4.9 后续补充内容。
+- 合入 Windows Codex app-server wrapper 启动降级修复：Windows .cmd/.bat wrapper primary 启动失败后执行兼容 retry，retry 保留用户 codexArgs 并跳过内部 developer_instructions quoted config。
+- 合入 DeferredStartupEventSink，避免 primary 失败但 fallback 成功时将早期 runtime/ended/stderr 事件泄漏到前端。
+- 合入 OpenSpec change fix-windows-codex-app-server-wrapper-launch。
+- 处理 Trellis workspace 冲突：以 feature/v0.4.11 记录为基底，保留当前分支既有 merge records 并顺延为 Session 205/206，Windows wrapper 记录调整为 Session 207。
+- 修正传入 OpenSpec design 的 trailing whitespace。
+
+涉及模块：
+- Trellis workspace：.trellis/workspace/chenxiangning/index.md, journal-7.md
+- Release/version：CHANGELOG.md, package.json, package-lock.json, src-tauri/tauri.conf.json
+- Backend runtime wrapper：src-tauri/src/backend/app_server.rs, src-tauri/src/backend/app_server_cli.rs
+- OpenSpec：openspec/changes/fix-windows-codex-app-server-wrapper-launch/**
+
+验证结果：
+- git diff --name-only --diff-filter=U 无输出。
+- rg '^(<<<<<<<|=======|>>>>>>>)' 未发现冲突标记。
+- git diff --check --cached 通过。
+- npm run typecheck 通过。
+- cargo test --manifest-path src-tauri/Cargo.toml app_server_cli 通过，相关测试 20 passed。
+- cargo test --manifest-path src-tauri/Cargo.toml app_server 通过，相关测试 138 passed。
+- openspec validate fix-windows-codex-app-server-wrapper-launch --strict 通过。
+- openspec validate --changes --strict --no-interactive 通过，8 passed。
+
+后续事项：
+- Trellis record 完成后推送 origin/codex/2026-04-01-local。
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `a50fc09789162565498eae037672b3810ed43e68` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

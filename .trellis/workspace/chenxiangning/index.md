@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-7.md`
-- **Total Sessions**: 207
+- **Total Sessions**: 208
 - **Last Active**: 2026-04-28
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-7.md` | ~236 | Active |
+| `journal-7.md` | ~300 | Active |
 | `journal-6.md` | ~1961 | Archived |
 | `journal-5.md` | ~1949 | Archived |
 | `journal-4.md` | ~1975 | Archived |
@@ -35,6 +35,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 208 | 2026-04-28 | 合并 feature v0.4.11 wrapper 启动修复 | `a50fc09789162565498eae037672b3810ed43e68` | `codex/2026-04-01-local` |
 | 207 | 2026-04-28 | 修复 Windows Codex wrapper 会话启动降级 | `a3d3744b` | `feature/v0.4.11` |
 | 206 | 2026-04-27 | 合并 feature v0.4.9 手动恢复更新 | `3d46b9e074daaadcbb4d4f5c7abfcde8b6950904` | `codex/2026-04-01-local` |
 | 205 | 2026-04-27 | 合并 feature v0.4.9 运行时恢复更新 | `30c9b1b1ac20c886aef09dadc3bba73eaf64ccd1` | `codex/2026-04-01-local` |
