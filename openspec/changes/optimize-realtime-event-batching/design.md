@@ -52,10 +52,10 @@ The batcher may change delivery cadence, but MUST NOT change `NormalizedThreadEv
 | Area | Evidence |
 |---|---|
 | Type safety | `npm run typecheck` |
-| Regression | `npm run test` |
+| Regression | targeted realtime contract/replay/boundary Vitest; full `npm run test` only when preparing a release candidate |
 | Realtime perf | `npm run perf:realtime:extended-baseline` |
 | Boundary guard | `npm run perf:realtime:boundary-guard` |
-| Heavy test noise | `npm run check:heavy-test-noise` |
+| Heavy test noise | parser sentry locally; full `.github/workflows/heavy-test-noise-sentry.yml` parity in CI/release gate |
 | OpenSpec | `openspec validate optimize-realtime-event-batching --strict --no-interactive` |
 
 ## Rollback Strategy

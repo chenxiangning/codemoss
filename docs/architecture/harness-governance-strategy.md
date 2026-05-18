@@ -1,6 +1,6 @@
 # Harness Governance Layer — mossx 战略架构文档
 
-> **状态**：v1.6（实施约束加固版）
+> **状态**：v1.8（non-UI 实施校准版）
 > **作者**：陈湘宁 × AI Co-Architect
 > **日期**：2026-05-17
 > **类型**：架构战略文档（Strategic Architecture）
@@ -16,7 +16,7 @@
 2. **mossx 的战略空地是"Harness 治理层（Meta-Harness）"** —— 不与 Claude Code/Codex 竞争内核，而是做"agent 的 control plane"。
 3. **mossx 已经走了 60%** —— 治理层的物理骨架已存在，缺的不是代码，是"治理"语言的显式化与几处关键重构。
 
-### 现状校准结论（v1.6）
+### 现状校准结论（v1.8）
 
 4. **引擎数量被低估**：实际已支持 **4 个引擎**（claude / codex / gemini / opencode），而非"双引擎"。EAL 雏形已落在 `src/features/threads/contracts/`、`src/features/threads/adapters/`、`src/features/engine/` 与 `src-tauri/src/engine/`，**不需要新建，需要显式化**。
 5. **治理资产已经分散落地**：`context-ledger`（上下文/成本治理雏形）+ `session-activity`（审计投影）+ `Checkpoint`（SLA 判决）+ `SpecHub`（spec-as-policy）+ `engine-control-plane-isolation` spec —— **治理语言已经在用，只是没有统一旗帜**。
@@ -25,13 +25,13 @@
 
 > 💡 **核心洞察**：mossx 不需要"启动一个治理层项目"，而是需要"给已有的治理资产一个统一的叙事和正式化的接口"。
 >
-> **v1.6 收口结论**：治理层设计已经完成第一轮闭环。下一步不再继续扩写战略，而是按 OpenSpec change 进入实施队列：先 contract/legal layer，再治理能力，再 substrate 风险切片。所有治理实现必须通过 heavy-test-noise、large-file governance 与 Win/macOS/Linux 三平台约束。
+> **v1.8 收口结论**：治理层设计已经完成第一轮闭环，且 non-UI core 第一批可以实施/已在实施中。这里的“完成”只指 contract、schema、fixture、pure function、test、CI gate；不代表 UI surface、runtime 主路径 reroute、live jitter 改善已经完成。任何 StatusPanel / CheckpointPanel / MessagesRows / bundle import / design-system surface 改动都延后到 UI 重构落稳后。
 
 ---
 
 ## 目录
 
-- [零、现状校准 Review（v1.6 必读）](#零现状校准-reviewv16-必读)
+- [零、现状校准 Review（v1.8 必读）](#零现状校准-reviewv18-必读)
 
 - [一、Harness Engineering 基础原理](#一harness-engineering-基础原理)
 - [二、开源生态全景（2025-2026）](#二开源生态全景2025-2026)
@@ -46,7 +46,7 @@
 
 ---
 
-## 零、现状校准 Review（v1.6 必读）
+## 零、现状校准 Review（v1.8 必读）
 
 > 本章基于对 `src/` 全量代码、`openspec/changes`、`openspec/specs`、`docs/architecture` 的事实扫描。每个结论都附带文件证据。**这是"治理层在 mossx 当前阶段应该怎么做"的回答。**
 
@@ -126,7 +126,7 @@
 
 > 结论：这四个提案不是"和治理无关的性能任务"，而是治理层能否安全落地的 **substrate work**。它们可以阻塞治理层实现，但不应该阻塞治理层的法律文本设计；当前阶段应先把设计/任务边界写清楚，编码排期再按风险切片。
 
-### 0.5 修订后的 Quick Win 顺序（v1.6 推荐）
+### 0.5 修订后的 Quick Win 顺序（v1.8 推荐）
 
 ```
 旧顺序（v1.0）：
@@ -134,15 +134,15 @@
   2️⃣ EAL（5 个方法）
   3️⃣ Policy Gate
 
-新顺序（v1.6 基于事实）：
+新顺序（v1.8 基于事实）：
   1️⃣ Engine Runtime Contract 正式化（基于已完成的 stabilize-core-runtime change）
        ├─ 将现有 RealtimeAdapter / HistoryLoader / NormalizedThreadEvent 上升为治理 contract
        └─ 立项 add-engine-capability-matrix-spec
   2️⃣ context-ledger 升级为 Cost/Context Ledger（跨引擎视图 + Token SLO）
        ├─ 复用现有 ledger 数据结构
-       └─ 在 StatusPanel 增加 "本会话花了 $X / 预算还剩 Y" 显示
+       └─ 第一阶段只做 pricing / cost / budget core；StatusPanel 显示延后
   3️⃣ Checkpoint 扩展为 Policy Chain 宿主
-       ├─ 现有四态判决 → 可插拔策略链
+       ├─ 第一阶段做 corePolicy adapter + registry，不替换 buildCheckpointViewModel 主路径
        └─ 第一批仅插件化现有 lint/typecheck/tests validation evidence
   4️⃣ AgentDomainEvent schema 立法（type-only schema + pure factory，先不接 runtime）
   5️⃣ session-activity 升级为 Audit Trail（消费 AgentDomainEvent）
@@ -192,22 +192,22 @@ src-tauri/src/engine + codex/shared  ─→ MCP Governance IPC
 
 > ⚠️ **避坑提醒**：在 R1（shell 拆解）有显著进展之前，不要急于做 EventBus 这类全局基础设施 —— 它们注入点都在 shell 里，shell 不拆，新基建无处下脚。
 
-### 0.9 v1.6 收口：OpenSpec 执行队列与依赖矩阵
+### 0.9 v1.8 收口：OpenSpec 执行队列与依赖矩阵
 
 当前 OpenSpec workspace 已识别 11 个 active changes，其中 9 个属于 harness governance 设计闭环。它们不是同一层级的任务，必须按依赖分层推进。
 
-| 执行层级 | Change | 角色 | 依赖判断 | 下一步 |
+| 执行层级 | Change | 角色 | 依赖判断 | 当前状态 / 下一步 |
 |---|---|---|---|---|
-| L0 已交付基线 | `stabilize-core-runtime-and-realtime-contracts` | runtime/realtime 主干稳定化证据 | 后续治理 contract 必须复用其成果，不回头重做 | 保持 completed 基线，作为 formalization 的事实输入 |
-| L1 法律文本 | `formalize-engine-runtime-contract` | 把 `RealtimeAdapter` / `HistoryLoader` / `NormalizedThreadEvent` 正式化 | 所有跨引擎 streaming/history parity 的前置 | 第一批实施 |
-| L1 法律文本 | `add-engine-capability-matrix-spec` | 统一 TS/Rust/UI capability 语言 | cost/policy/UI degradation 的前置；可与 runtime contract 并行 inventory | 第一批实施 |
-| L2 治理能力 | `evolve-context-ledger-to-cost-budget` | 把已有 context-ledger 升级为 cost/budget 视图 | 依赖 capability matrix 的 `cost.report` 语义；数据源用现有 `ThreadTokenUsage` | 第二批实施 |
-| L2 治理能力 | `evolve-checkpoint-to-policy-chain` | 把 Checkpoint 升级为 policy host | 不强依赖 capability matrix，但后续 reasoning/cost policy 会受益 | 第二批实施，可软并行 |
-| L2 治理能力 | `add-agent-domain-event-schema` | 先定领域事件 schema/factory/fixture | 不接 runtime，不建 bus；可在 runtime contract 后校准事件语义 | 第二批末尾实施 |
-| S1 结构基座 | `refactor-mega-hub-split` | 降低全局治理注入点的语义风险 | 不阻塞法律文本，但阻塞大规模 runtime 接入 | 与 L1 并行做 inventory，实施时一次只拆一个 hub |
-| S1 传播基座 | `optimize-realtime-event-batching` | 给高频 delta 建 delivery cadence contract | runtime contract 后更关键；不改 canonical schema | 在 L1 后启动 |
-| S1 渲染基座 | `optimize-long-list-virtualization` | 支撑 audit/cost/policy log 长列表 | 不阻塞 L1/L2 设计，阻塞长会话可用性 | 在治理视图接入前启动 |
-| S1 交付基座 | `optimize-bundle-chunking` | 防止 governance surface 拖慢 Tauri 首屏 | 不阻塞 L1/L2 设计，阻塞治理面板规模化 | 与 UI-heavy 治理功能前后衔接 |
+| L0 已交付基线 | `stabilize-core-runtime-and-realtime-contracts` | runtime/realtime 主干稳定化证据 | 后续治理 contract 必须复用其成果，不回头重做 | completed 基线 |
+| L1 法律文本 | `formalize-engine-runtime-contract` | 把 `RealtimeAdapter` / `HistoryLoader` / `NormalizedThreadEvent` 正式化 | 所有跨引擎 streaming/history parity 的前置 | complete |
+| L1 法律文本 | `add-engine-capability-matrix-spec` | 统一 TS/Rust/UI capability 语言 | cost/policy/UI degradation 的前置；可与 runtime contract 并行 inventory | core-complete；UI degradation pilot `[UI-DEFER]` |
+| L1.5 Non-UI 治理能力 | `add-agent-domain-event-schema` | 先定领域事件 schema/factory/fixture | 不接 runtime，不建 bus，不碰 UI；可在 runtime contract 后校准事件语义 | complete；runtime emit / session-activity 消费另起 change |
+| L2 Non-UI 治理能力 | `evolve-context-ledger-to-cost-budget` | 把已有 context-ledger 升级为 cost/budget 视图 | 先做 pricing/cost/budget pure core；StatusPanel 接入等 UI 重构落稳 | core-complete；StatusPanel/i18n `[UI-DEFER]` |
+| L2 Non-UI 治理能力 | `evolve-checkpoint-to-policy-chain` | 把 Checkpoint 升级为 policy host | 先做 policy core、registry、tests；CheckpointPanel log UI 延后 | core-complete；`buildCheckpointViewModel` reroute `[RUNTIME-DEFER]` |
+| S1 结构基座 | `refactor-mega-hub-split` | 降低全局治理注入点的语义风险 | 与 UI 重构可能冲突，尤其 Composer/MessagesRows/app-shell | 只做 inventory/计划，代码拆分等 UI 重构落稳 |
+| S1 传播基座 | `optimize-realtime-event-batching` | 给高频 delta 建 delivery cadence contract | 当前 Codex/Claude realtime 表现可接受；属规模化保险丝 | contract planner complete；production hook/reducer reroute `[RUNTIME-DEFER]` |
+| S1 渲染基座 | `optimize-long-list-virtualization` | 支撑 audit/cost/policy log 长列表 | 高概率碰 UI render/import，和 UI 重构重叠 | 暂缓到 UI 重构后 |
+| S1 交付基座 | `optimize-bundle-chunking` | 防止 governance surface 拖慢 Tauri 首屏 | 高概率碰 import/dependency/chunk 边界，和 UI 依赖统一重叠 | 暂缓到 UI 重构后 |
 
 **执行原则**：
 
@@ -217,8 +217,29 @@ src-tauri/src/engine + codex/shared  ─→ MCP Governance IPC
 4. **substrate 可并行，但不能吞并治理语义**：四个性能/结构 blocker 是治理交付基座，不是 governance 业务层本身；它们应该保护注入点、传播节奏、渲染承载与首屏预算。
 5. **两条 GitHub sentry 是硬约束，不是建议**：涉及新增/修改 tests 的 change 必须满足 `.github/workflows/heavy-test-noise-sentry.yml` 等价约束；涉及 spec/fixture/source 体积增长的 change 必须满足 `.github/workflows/large-file-governance.yml` 等价约束。
 6. **跨平台是产品属性，不是 CI 附录**：mossx 是通用桌面客户端，治理层代码不得写入 POSIX-only 路径、shell quoting、newline、可执行名或平台条件语义；差异必须封装在 adapter/IPC 层，并在 ubuntu/macos/windows 三端验证。
+7. **UI 重构并行期只做 non-UI core**：在前端 UI 引用/依赖统一重构未落稳前，治理实现不得修改 StatusPanel、CheckpointPanel、Composer、MessagesRows、全局样式、UI package import 或 bundle chunk 配置。必要的 UI inventory 只能只读记录。
 
-**收口判定**：截至 v1.6，harness governance 的设计阶段已经完成第一轮闭环；剩余工作是执行、验证、归档，而不是继续增加新概念。
+**收口判定**：截至 v1.8，harness governance 的战略设计已完成第一轮闭环；non-UI core 已具备实施基础。不得把 `core-complete` 误写成“治理层全部完成”：凡是涉及 UI surface、runtime 主路径切换、live 性能改善的任务，必须继续以 `[UI-DEFER]` / `[RUNTIME-DEFER]` 留在 OpenSpec 中。
+
+### 0.10 UI 重构并行期的安全执行计划
+
+当前假设：前端同事正在统一 UI 引用和依赖，具体改动尚不可见。为避免互相踩文件，本阶段按“可发版、低冲突、低用户感知回归”的方式切片。
+
+| 阶段 | 允许做 | 暂不做 | 是否影响客户端正常使用 | 发版影响 |
+|---|---|---|---|---|
+| A1 | `formalize-engine-runtime-contract`：contract inventory、spec、adapter/loader parity tests、replay tests | 不改 UI、不改 render surface、不改 message row | 正常使用；预期 0 UI 行为变化 | 可随发版，属于测试/契约加固 |
+| A2 | `add-engine-capability-matrix-spec` core：fixture、TS/Rust matrix、mapping helper、consistency script | 暂停 UI degradation pilot、i18n 文案、按钮降级展示 | 正常使用；matrix 默认只读，不改变现有 UI | 可随发版，但必须保证旧字段形状不变 |
+| A3 | `add-agent-domain-event-schema`：type、pure factory、derivation fixtures | 不接 reducer runtime、不建 EventBus、不接 session-activity | 正常使用；无 runtime 行为变化 | 可随发版，属 schema/test 基建 |
+| B1 | `evolve-context-ledger-to-cost-budget` core：pricing registry、cost projection、budget pure logic | 暂停 StatusPanel dock/popover 接入 | 正常使用；除非主动接 UI，否则用户无感 | 可 feature-flag 或纯 core 发版 |
+| B2 | `evolve-checkpoint-to-policy-chain` core：policy types、registry、corePolicy 等价测试 | 暂停 CheckpointPanel policy log UI | 正常使用；必须保持现有 checkpoint verdict 0 regression | 可发版，但默认行为必须等价 |
+| C | realtime batching contract planner、mega hub / long-list / bundle 的只读 inventory | production hook/reducer reroute、UI render、import、dependency、chunk 边界相关实现 | contract-only 无用户感知；runtime/UI wiring 等 UI 重构后再评估 | contract-only 可发版；UI/runtime wiring 不建议并行发版 |
+
+**发版结论**：
+
+1. A1/A2/A3 可以现在开，原则上不影响客户端正常使用，因为它们主要是 contract、fixture、pure helper、test 和 CI。
+2. B1/B2 可以做 core-first，但任何 UI 接入必须等 UI 重构落稳后再开。
+3. C 类全部暂缓，避免和 UI 依赖统一、render surface、bundle import 重构冲突。
+4. 如果 A/B 阶段只改 non-UI core 且 `npm run typecheck`、targeted tests、OpenSpec strict、heavy-test-noise parser/CI sentry、large-file gate 全绿，可以正常进入发版候选；不得用 targeted tests 冒充全量 `npm run test`。
 
 ---
 
@@ -378,7 +399,7 @@ Harness engineering 现在没有"绝对权威"，而是**协议派**和**实现�
 
 ## 四、当前客户端落地路径
 
-> ⚠️ **v1.6 执行校准**：本章不再推荐"先建 EventBus / 新建治理目录"。当前代码已经有 runtime contract、context ledger、session activity、checkpoint、SpecHub 等治理资产；正确动作是**先正式化现有 contract，再补 capability / ledger / policy / event schema**。
+> ⚠️ **v1.8 执行校准**：本章不再推荐"先建 EventBus / 新建治理目录"。当前代码已经有 runtime contract、context ledger、session activity、checkpoint、SpecHub 等治理资产；正确动作是**先正式化现有 contract，再补 capability / ledger / policy / event schema**。若 UI 引用/依赖重构并行，先做 non-UI core，暂不接 UI surface。
 
 ### 4.1 代码真实对比度矩阵
 
@@ -395,7 +416,7 @@ Harness engineering 现在没有"绝对权威"，而是**协议派**和**实现�
 
 > 💡 **判断标准**：对比度低于 50% 的领域，不应该先大规模抽象；先补 schema / contract / evidence，再决定是否需要 runtime infrastructure。
 
-### 4.2 五件 Quick Win（按优先级，v1.6 版）
+### 4.2 五件 Quick Win（按优先级，v1.8 版）
 
 #### 第 1 件：Engine Runtime Contract 正式化
 
@@ -557,9 +578,9 @@ steps:
 
 ## 六、演进路线与时间线
 
-> ⚠️ **v1.6 校准**：本章时间线以"已有治理资产正式化"为前提，不再以"从零建立 governance kernel"为前提。团队实际节奏应以 OpenSpec change + Trellis task 为执行载体。
+> ⚠️ **v1.8 校准**：本章时间线以"已有治理资产正式化"为前提，不再以"从零建立 governance kernel"为前提。团队实际节奏应以 OpenSpec change + Trellis task 为执行载体；UI 重构并行期只推进 non-UI core。
 
-### 6.1 三阶段路线图（v1.6 执行版）
+### 6.1 三阶段路线图（v1.8 执行版）
 
 ```
 ─────────────────────────────────────────────────────────────────
@@ -745,6 +766,8 @@ steps:
 | v1.4 | 2026-05-17 | 陈湘宁 × AI Co-Architect | **治理阻塞提案校准版**：补齐 bundle chunking、long-list virtualization、realtime batching、mega hub split 与 harness 治理层的强关联，明确它们是治理交付基座而非外围性能优化。 |
 | v1.5 | 2026-05-17 | 陈湘宁 × AI Co-Architect | **治理设计收口版**：补齐 OpenSpec 执行队列与依赖矩阵，明确 9 个 governance changes 的实施层级、并行边界与收口判定；后续进入执行/验证/归档，不再继续扩写战略概念。 |
 | v1.6 | 2026-05-17 | 陈湘宁 × AI Co-Architect | **实施约束加固版**：把 heavy-test-noise sentry、large-file governance sentry 与 Win/macOS/Linux 三平台兼容写入治理实施硬约束；修正 runtime contract 任务文案，防止实施阶段把 contract 立法误读成 capability spec。 |
+| v1.7 | 2026-05-18 | 陈湘宁 × AI Co-Architect | **UI 重构并行执行版**：新增 UI 依赖统一并行期的安全实施计划，明确 A1/A2/A3 可先做 non-UI core，B 类 core-first，C 类 UI-heavy / dependency-heavy 工作暂缓；补充正常使用与发版影响判断。 |
+| v1.8 | 2026-05-18 | 陈湘宁 × AI Co-Architect | **non-UI 实施校准版**：把 core-complete、UI-DEFER、RUNTIME-DEFER 三类状态写清，修正“targeted tests 冒充全量 test”和“contract planner 冒充 live runtime 改善”的口径，确保 OpenSpec 状态与代码真实进度一致。 |
 
 ---
 

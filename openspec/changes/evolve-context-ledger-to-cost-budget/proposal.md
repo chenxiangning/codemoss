@@ -124,16 +124,16 @@
 2. 完成本 proposal + design 评审。
 3. 起草 spec.md + tasks.md。
 4. 实现 pricing/ 子模块（pure data + lookup），不动 UI。
-5. 实现 budget/ 子模块 + reducer hook。
+5. 实现 budget/ 子模块 pure logic，不接 reducer/runtime 中断。
 6. 实现 cost/ projection（`ThreadTokenUsage` × pricing → per-turn / per-session / per-engine cost record；block-level cost 明确留 future）。
-7. StatusPanel 接入显示位 + i18n。
+7. StatusPanel 接入显示位 + i18n（`[UI-DEFER]`，等 UI 引用/依赖重构落稳）。
 8. 通过 strict validate，同步 spec 到主仓。
 
 ## Validation
 
 ```bash
 npm run typecheck
-npm run test
+npm exec vitest run src/features/context-ledger/pricing/pricingRegistry.test.ts src/features/context-ledger/cost/projectCost.test.ts src/features/context-ledger/budget/budgetThresholds.test.ts
 npm run check:context-ledger-cost-budget   # 新增
 openspec validate evolve-context-ledger-to-cost-budget --strict --no-interactive
 ```
@@ -147,6 +147,8 @@ node --test scripts/check-large-files.test.mjs
 npm run check:large-files:near-threshold
 npm run check:large-files:gate
 ```
+
+Release-candidate validation MAY add full `npm run test`, but this change's core-complete evidence is targeted test coverage plus CI parity gates.
 
 Required CI parity:
 

@@ -144,17 +144,17 @@
 
 1. 完成 proposal + design 评审。
 2. 起草 spec + tasks。
-3. Phase 1：抽取 corePolicy，行为等价（test 全绿）。
-4. Phase 2：引入 policy 接口与注册表（test 全绿）。
+3. Phase 1：抽取 corePolicy adapter，行为等价（targeted checkpoint test 全绿；不替换 runtime 主路径）。
+4. Phase 2：引入 policy 接口与注册表（targeted policy test 全绿）。
 5. Phase 3：第一批 policy 接入（test 扩充）。
-6. Phase 4：UI policy log 展示。
+6. Phase 4：UI policy log 展示（`[UI-DEFER]`，等 UI 引用/依赖重构落稳）。
 7. Phase 5：strict validate + 同步 spec。
 
 ## Validation
 
 ```bash
 npm run typecheck
-npm run test
+npm exec vitest run src/features/status-panel/utils/policies/policyRegistry.test.ts src/features/status-panel/utils/checkpoint.test.ts
 npm run check:checkpoint-policy-chain   # 新增
 openspec validate evolve-checkpoint-to-policy-chain --strict --no-interactive
 ```
@@ -168,6 +168,8 @@ node --test scripts/check-large-files.test.mjs
 npm run check:large-files:near-threshold
 npm run check:large-files:gate
 ```
+
+Release-candidate validation MAY add full `npm run test`, but this change's core-complete evidence is targeted test coverage plus CI parity gates.
 
 Required CI parity:
 

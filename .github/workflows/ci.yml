@@ -92,8 +92,98 @@ jobs:
         run: npm ci
       - name: Runtime contracts
         run: npm run check:runtime-contracts
+      - name: Engine capability matrix
+        run: npm run check:engine-capability-matrix
+      - name: Agent domain event schema
+        run: npm run check:agent-domain-event-schema
+      - name: Context ledger cost budget
+        run: npm run check:context-ledger-cost-budget
+      - name: Checkpoint policy chain
+        run: npm run check:checkpoint-policy-chain
+      - name: Realtime event batching
+        run: npm run check:realtime-event-batching
       - name: Typecheck
         run: npm run typecheck
+  engine-capability-matrix:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+      - name: Install dependencies
+        run: npm ci
+      - name: Engine capability matrix
+        run: npm run check:engine-capability-matrix
+  agent-domain-event-schema:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+      - name: Install dependencies
+        run: npm ci
+      - name: Agent domain event schema
+        run: npm run check:agent-domain-event-schema
+  context-ledger-cost-budget:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+      - name: Install dependencies
+        run: npm ci
+      - name: Context ledger cost budget
+        run: npm run check:context-ledger-cost-budget
+  checkpoint-policy-chain:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+      - name: Install dependencies
+        run: npm ci
+      - name: Checkpoint policy chain
+        run: npm run check:checkpoint-policy-chain
+  realtime-event-batching:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+      - name: Install dependencies
+        run: npm ci
+      - name: Realtime event batching
+        run: npm run check:realtime-event-batching
   test-js:
     runs-on: ubuntu-latest
     steps:

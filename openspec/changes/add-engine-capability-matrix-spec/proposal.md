@@ -129,7 +129,7 @@ npm run check:large-files:gate
 
 ```bash
 npm run typecheck
-npm run test
+npm exec vitest run src/features/engine/engineCapabilityMatrix.test.ts
 npm run check:engine-capability-matrix   # 新增
 cargo test --manifest-path src-tauri/Cargo.toml engine::capability_matrix
 openspec validate add-engine-capability-matrix-spec --strict --no-interactive
@@ -141,6 +141,8 @@ When-touched:
 npm run check:heavy-test-noise
 npm run check:large-files:gate
 ```
+
+Release-candidate validation MAY add full `npm run test`, but the non-UI core evidence for this slice MUST NOT claim full-suite completion unless it was actually run.
 
 Required CI parity:
 

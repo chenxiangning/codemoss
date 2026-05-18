@@ -1,0 +1,106 @@
+{
+  "schemaVersion": "engine-capability-matrix/v1",
+  "stateValues": ["supported", "compat-input", "unsupported", "unknown"],
+  "engines": ["claude", "codex", "gemini", "opencode"],
+  "domains": [
+    "streaming",
+    "tool",
+    "reasoning",
+    "collaboration",
+    "session",
+    "image"
+  ],
+  "capabilities": [
+    {
+      "key": "streaming.text",
+      "description": "Realtime assistant text delta can be represented as a normalized thread event.",
+      "sources": ["NormalizedThreadEvent", "realtimeAdapters.test.ts"]
+    },
+    {
+      "key": "streaming.reasoning",
+      "description": "Realtime reasoning delta can be represented as a normalized reasoning event.",
+      "sources": ["NormalizedThreadEvent", "realtimeHistoryParity.test.ts"]
+    },
+    {
+      "key": "streaming.tool-output",
+      "description": "Realtime tool output delta can be represented as a normalized tool event.",
+      "sources": ["NormalizedThreadEvent", "realtimeAdapters.test.ts"]
+    },
+    {
+      "key": "tool.use",
+      "description": "Engine supports tool execution/control in the current runtime surface.",
+      "sources": ["EngineFeatures.toolUse", "EngineFeatures.tools_control"]
+    },
+    {
+      "key": "tool.mcp",
+      "description": "Engine supports MCP integration in the current runtime surface.",
+      "sources": ["EngineFeatures.mcp"]
+    },
+    {
+      "key": "reasoning.effort",
+      "description": "Engine supports explicit reasoning effort level selection.",
+      "sources": ["EngineFeatures.reasoning_effort"]
+    },
+    {
+      "key": "collaboration.mode",
+      "description": "Engine supports structured collaboration mode payloads.",
+      "sources": ["EngineFeatures.collaboration_mode"]
+    },
+    {
+      "key": "session.continuation",
+      "description": "Engine supports session continuation or resume.",
+      "sources": ["EngineFeatures.sessionContinuation", "EngineFeatures.session_resume"]
+    },
+    {
+      "key": "image.input",
+      "description": "Engine supports image input.",
+      "sources": ["EngineFeatures.imageInput", "EngineFeatures.image_input"]
+    }
+  ],
+  "matrix": {
+    "claude": {
+      "streaming.text": "supported",
+      "streaming.reasoning": "supported",
+      "streaming.tool-output": "supported",
+      "tool.use": "supported",
+      "tool.mcp": "supported",
+      "reasoning.effort": "unsupported",
+      "collaboration.mode": "unsupported",
+      "session.continuation": "supported",
+      "image.input": "supported"
+    },
+    "codex": {
+      "streaming.text": "supported",
+      "streaming.reasoning": "supported",
+      "streaming.tool-output": "supported",
+      "tool.use": "supported",
+      "tool.mcp": "supported",
+      "reasoning.effort": "supported",
+      "collaboration.mode": "supported",
+      "session.continuation": "supported",
+      "image.input": "supported"
+    },
+    "gemini": {
+      "streaming.text": "supported",
+      "streaming.reasoning": "supported",
+      "streaming.tool-output": "supported",
+      "tool.use": "supported",
+      "tool.mcp": "supported",
+      "reasoning.effort": "unsupported",
+      "collaboration.mode": "unsupported",
+      "session.continuation": "supported",
+      "image.input": "supported"
+    },
+    "opencode": {
+      "streaming.text": "supported",
+      "streaming.reasoning": "supported",
+      "streaming.tool-output": "supported",
+      "tool.use": "supported",
+      "tool.mcp": "unsupported",
+      "reasoning.effort": "unsupported",
+      "collaboration.mode": "unsupported",
+      "session.continuation": "supported",
+      "image.input": "unsupported"
+    }
+  }
+}

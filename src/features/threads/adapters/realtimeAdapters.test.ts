@@ -3,8 +3,127 @@ import { claudeRealtimeAdapter } from "./claudeRealtimeAdapter";
 import { codexRealtimeAdapter } from "./codexRealtimeAdapter";
 import { geminiRealtimeAdapter } from "./geminiRealtimeAdapter";
 import { opencodeRealtimeAdapter } from "./opencodeRealtimeAdapter";
+import type {
+  ConversationEngine,
+  NormalizedThreadEvent,
+  RealtimeAdapter,
+} from "../contracts/conversationCurtainContracts";
+
+type RealtimeParityCase = {
+  label: string;
+  method: string;
+  params: Record<string, unknown>;
+  operation: NormalizedThreadEvent["operation"];
+  itemKind: NormalizedThreadEvent["itemKind"];
+};
+
+const adapterByEngine: Record<ConversationEngine, RealtimeAdapter> = {
+  claude: claudeRealtimeAdapter,
+  codex: codexRealtimeAdapter,
+  gemini: geminiRealtimeAdapter,
+  opencode: opencodeRealtimeAdapter,
+};
+
+const threadIdByEngine: Record<ConversationEngine, string> = {
+  claude: "claude:contract-thread",
+  codex: "codex:contract-thread",
+  gemini: "gemini:contract-thread",
+  opencode: "opencode:contract-thread",
+};
+
+const realtimeParityCases: readonly RealtimeParityCase[] = [
+  {
+    label: "assistant message delta",
+    method: "item/agentMessage/delta",
+    params: {
+      itemId: "assistant-parity-1",
+      delta: "streaming assistant text",
+    },
+    operation: "appendAgentMessageDelta",
+    itemKind: "message",
+  },
+  {
+    label: "assistant message completion",
+    method: "item/completed",
+    params: {
+      item: {
+        id: "assistant-parity-1",
+        type: "agentMessage",
+        text: "final assistant text",
+      },
+    },
+    operation: "completeAgentMessage",
+    itemKind: "message",
+  },
+  {
+    label: "reasoning content delta",
+    method: "item/reasoning/textDelta",
+    params: {
+      itemId: "reasoning-parity-1",
+      delta: "reasoning text",
+    },
+    operation: "appendReasoningContentDelta",
+    itemKind: "reasoning",
+  },
+  {
+    label: "tool output delta",
+    method: "item/commandExecution/outputDelta",
+    params: {
+      itemId: "tool-parity-1",
+      delta: "tool output",
+    },
+    operation: "appendToolOutputDelta",
+    itemKind: "tool",
+  },
+];
 
 describe("realtime adapters", () => {
+  it("keeps canonical realtime parity symmetric across all engines", () => {
+    for (const [engine, adapter] of Object.entries(adapterByEngine) as Array<
+      [ConversationEngine, RealtimeAdapter]
+    >) {
+      for (const entry of realtimeParityCases) {
+        const event = adapter.mapEvent({
+          workspaceId: `ws-${engine}`,
+          message: {
+            method: entry.method,
+            params: {
+              ...entry.params,
+              threadId: threadIdByEngine[engine],
+              turnId: "turn-parity-1",
+            },
+          },
+        });
+
+        expect(event, `${engine} ${entry.label}`).toBeTruthy();
+        expect(event?.engine).toBe(engine);
+        expect(event?.sourceMethod).toBe(entry.method);
+        expect(event?.operation).toBe(entry.operation);
+        expect(event?.itemKind).toBe(entry.itemKind);
+      }
+    }
+  });
+
+  it("drops unknown realtime events without mutating normalized conversation state", () => {
+    for (const [engine, adapter] of Object.entries(adapterByEngine) as Array<
+      [ConversationEngine, RealtimeAdapter]
+    >) {
+      const event = adapter.mapEvent({
+        workspaceId: `ws-${engine}`,
+        message: {
+          method: "engine/private-unknown-event",
+          params: {
+            threadId: threadIdByEngine[engine],
+            itemId: "unknown-1",
+            delta: "should not be normalized",
+          },
+        },
+      });
+
+      expect(event, engine).toBeNull();
+    }
+  });
+
   it("maps codex item/started tool payload to normalized tool event", () => {
     const event = codexRealtimeAdapter.mapEvent({
       workspaceId: "ws-1",

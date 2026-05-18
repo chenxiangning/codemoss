@@ -1,7 +1,7 @@
 # Project Context
 
 - Type: OpenSpec Workspace
-- Updated At: 2026-05-17T15:20:00+08:00
+- Updated At: 2026-05-18T00:00:00+08:00
 - Scope: governance snapshot for the current `mossx` repository workspace
 
 ## Domain
@@ -62,6 +62,8 @@ OpenSpec workflow and governance for `mossx`, covering change lifecycle, main sp
 - `add-codex-structured-launch-profile`
 
 > Harness governance set status: proposal/design/tasks/spec deltas are present and should be treated as the current design baseline. Implementation remains unstarted (`0/x tasks`) and should begin with the contract/legal layer before feature integration. All governance changes MUST preserve `.github/workflows/heavy-test-noise-sentry.yml`, `.github/workflows/large-file-governance.yml`, and ubuntu/macos/windows cross-platform parity.
+>
+> UI dependency/import refactor coordination: while frontend UI reference/dependency unification is in progress and its patch is not visible, governance implementation MUST stay in non-UI core scope first: runtime contract tests, capability matrix core, domain event schema, pricing/cost/policy pure logic. Defer StatusPanel, CheckpointPanel, Composer, MessagesRows, style, i18n surface, and bundle chunking changes until the UI refactor lands.
 
 > Current status should be read from each change directory itself. `project.md` tracks workspace inventory and governance boundaries, not task-by-task execution detail.
 
@@ -107,6 +109,7 @@ OpenSpec workflow and governance for `mossx`, covering change lifecycle, main sp
 
 ## Update History
 
+- 2026-05-18: Replanned harness governance execution for a concurrent UI dependency/import refactor window; marked runtime contract, capability matrix core, domain event schema, and pure cost/policy core as safe to start, while deferring StatusPanel/CheckpointPanel/MessagesRows/bundle/UI-heavy work until the UI refactor stabilizes.
 - 2026-05-17: Hardened harness governance implementation constraints to v1.6 by making heavy-test-noise sentry, large-file governance sentry, and Win/macOS/Linux compatibility explicit requirements across the governance change set; corrected `formalize-engine-runtime-contract` task wording so runtime contract legislation is not confused with capability matrix work.
 - 2026-05-17: Added and calibrated the harness governance design set (`formalize-engine-runtime-contract`, `add-engine-capability-matrix-spec`, `evolve-context-ledger-to-cost-budget`, `evolve-checkpoint-to-policy-chain`, `add-agent-domain-event-schema`) plus substrate blockers (`refactor-mega-hub-split`, `optimize-realtime-event-batching`, `optimize-long-list-virtualization`, `optimize-bundle-chunking`); refreshed workspace inventory after the v1.5 governance design closure (specs=258, archive=303, active=11).
 - 2026-05-15: Archived eight verified changes (`fix-claude-repeat-turn-first-token-latency`, `harden-claude-stream-json-liveness`, `fix-claude-pending-transcript-reconciliation`, `repair-project-memory-reference-retrieval-integrity`, `harden-codex-silent-turn-liveness`, `harden-session-start-and-claude-list-window`, `fix-claude-sidebar-native-session-continuity`, `improve-progressive-file-tree-loading`) after syncing their delta specs into main specs; resolved the overlapping `claude-session-sidebar-state-parity` updates by preserving both sidebar continuity and configured display-window requirements; refreshed workspace inventory (specs=257, archive=302, active=1).
