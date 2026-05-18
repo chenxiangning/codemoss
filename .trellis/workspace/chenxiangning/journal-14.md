@@ -191,3 +191,55 @@ PR #564 与 base 分支 `chore/bump-version-0.5` 发生冲突，按合并防回�
 ### Next Steps
 
 - None - task complete
+
+
+## Session 481: 完善引擎运行时契约验证
+
+**Date**: 2026-05-18
+**Task**: 完善引擎运行时契约验证
+**Branch**: `feature/v0.5`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+## Summary
+
+完成一次本地提交，提交范围为当前工作区全部内容。
+
+## Commit
+
+- a9b9dee0dc126f90342dc9f948b564b31bb23644 feat(runtime): 完善引擎运行时契约验证
+
+## Changes
+
+- 新增 engine capability matrix、agent domain event schema、context ledger cost budget、checkpoint policy chain、realtime event batching 校验脚本。
+- 将上述 contract checks 接入 package scripts 与 CI 独立 job，并纳入 runtime contract gate。
+- 补齐多个 OpenSpec change 的 implementation evidence、tasks/proposal 状态与项目说明。
+- 增加 engine、threads domain events、realtime batching、context-ledger cost/budget/pricing、status policy registry 等实现和测试。
+
+## Validation
+
+- git commit 成功。
+- post-commit record 前 `python3 ./.trellis/scripts/get_context.py --mode record` 显示工作区干净。
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `a9b9dee0dc126f90342dc9f948b564b31bb23644` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
