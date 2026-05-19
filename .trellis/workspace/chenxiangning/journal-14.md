@@ -575,3 +575,36 @@ Notes:
 ### Next Steps
 
 - None - task complete
+
+
+## Session 489: 合并 v0.5.0-md 功能分支
+
+**Date**: 2026-05-19
+**Task**: 合并 v0.5.0-md 功能分支
+**Branch**: `feature/v0.5`
+
+### Summary
+
+完成 feature/v0.5.0-md 到 feature/v0.5 的语义合并，解决 Trellis workspace session 编号冲突，保留双方 Session 481-488 记录，并通过 diff、large-file、OpenSpec、lint、typecheck 门禁。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `93fdb554` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

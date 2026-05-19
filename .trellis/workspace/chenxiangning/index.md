@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-14.md`
-- **Total Sessions**: 488
+- **Total Sessions**: 489
 - **Last Active**: 2026-05-19
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-14.md` | ~560 | Active |
+| `journal-14.md` | ~610 | Active |
 | `journal-13.md` | ~1947 | Archived |
 | `journal-12.md` | ~1971 | Archived |
 | `journal-11.md` | ~1985 | Archived |
@@ -42,6 +42,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 489 | 2026-05-19 | 合并 v0.5.0-md 功能分支 | `93fdb554` | `feature/v0.5` |
 | 488 | 2026-05-18 | 完善引擎运行时契约验证 | `a9b9dee0dc126f90342dc9f948b564b31bb23644` | `feature/v0.5` |
 | 487 | 2026-05-19 | 提交消息工具调用卡片与会话投影修复 | `cb261490`, `d3327f0f`, `4f40920b` | `feature/v0.5.0-md` |
 | 486 | 2026-05-19 | 统一多引擎列表超时兜底 | `10346e3d` | `feature/v0.5.0-md` |
