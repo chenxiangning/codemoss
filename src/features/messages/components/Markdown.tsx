@@ -1,4 +1,4 @@
-import { lazy, memo, startTransition, Suspense, useCallback, useEffect, useMemo, useRef, useState, isValidElement, type ReactNode, type MouseEvent } from "react";
+import { Fragment, lazy, memo, startTransition, Suspense, useCallback, useEffect, useMemo, useRef, useState, isValidElement, type ReactNode, type MouseEvent } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import { useTranslation } from "react-i18next";
 import remarkBreaks from "remark-breaks";
@@ -19,53 +19,18 @@ import {
   resolveProgressiveRevealValue,
   type LightweightMarkdownLinkRenderer,
 } from "./LiveMarkdown";
-
-type KatexModule = typeof import("katex")["default"];
-type RehypeKatexPlugin = typeof import("rehype-katex")["default"];
-
-let cachedKatex: KatexModule | null = null;
-let cachedRehypeKatex: RehypeKatexPlugin | null = null;
-let katexCssLoaded = false;
-let katexLoadingPromise: Promise<void> | null = null;
-
-function loadKatexAssets(): Promise<void> {
-  if (cachedKatex && cachedRehypeKatex && katexCssLoaded) {
-    return Promise.resolve();
-  }
-  if (katexLoadingPromise) {
-    return katexLoadingPromise;
-  }
-  katexLoadingPromise = Promise.all([
-    import("katex").then((m) => {
-      cachedKatex = m.default;
-    }),
-    import("rehype-katex").then((m) => {
-      cachedRehypeKatex = m.default;
-    }),
-    import("katex/dist/katex.min.css").then(() => {
-      katexCssLoaded = true;
-    }),
-  ]).then(() => undefined);
-  return katexLoadingPromise;
-}
-
-export function prewarmKatexAssets(): Promise<void> {
-  return loadKatexAssets();
-}
-
-const INLINE_DOLLAR_MATH = /(^|[^\\$])\$[^\n$]+?\$/;
-const BLOCK_DOLLAR_MATH = /\$\$[\s\S]+?\$\$/;
-const LATEX_PAREN_MATH = /\\\(|\\\[/;
-const LATEX_CODE_FENCE = /```\s*(?:latex|tex|math)\b/i;
-
-function detectMathContent(value: string | undefined | null): boolean {
-  if (!value) return false;
-  if (LATEX_CODE_FENCE.test(value)) return true;
-  if (BLOCK_DOLLAR_MATH.test(value)) return true;
-  if (INLINE_DOLLAR_MATH.test(value)) return true;
-  if (LATEX_PAREN_MATH.test(value)) return true;
-  return false;
-}
+import { ToolCallBlock } from "./ToolCallBlock";
+import {
+  areKatexAssetsReady,
+  buildLatexRenderEntries,
+  detectMathContent,
+  getCachedRehypeKatex,
+  isKatexRenderReady,
+  loadKatexAssets,
+  normalizeMarkdownMathForMessage,
+  renderLatexFormula,
+} from "../../markdown/markdownMath";
+export { prewarmKatexAssets } from "../../markdown/markdownMath";
 
 const MermaidBlock = lazy(() => import("./MermaidBlock"));
 import {
@@ -78,6 +43,7 @@ import {
 import { normalizeOutsideMarkdownCode } from "../../../utils/markdownCodeRegions";
 import { highlightLine } from "../../../utils/syntax";
 import { detectCodexLeadMarker, type CodexLeadMarkerConfig } from "../constants/codexLeadMarkers";
+import { parseToolCallBlocks, type Block } from "../utils/toolCallBlocks";
 
 type MarkdownProps = {
   value: string;
@@ -130,10 +96,6 @@ type LinkBlockProps = {
   urls: string[];
 };
 
-type LatexRenderEntry =
-  | { kind: "label"; text: string }
-  | { kind: "formula"; source: string };
-
 const SUPPORTS_REGEX_LOOKBEHIND = (() => {
   try {
     void new RegExp("(?<=a)b");
@@ -151,6 +113,18 @@ const MARKDOWN_ALERT_TONE_SET = new Set([
   "warning",
   "caution",
 ]);
+
+function stableToolCallHash(value: string) {
+  let hash = 5381;
+  for (let index = 0; index < value.length; index += 1) {
+    hash = ((hash << 5) + hash) ^ value.charCodeAt(index);
+  }
+  return (hash >>> 0).toString(36);
+}
+
+function buildToolCallBlockKey(block: Extract<Block, { kind: "tool-call" }>) {
+  return `tcb-${block.startOffset}-${block.tagName}-${stableToolCallHash(block.keySignature)}`;
+}
 
 function areMarkdownPropsEqual(prev: MarkdownProps, next: MarkdownProps) {
   return (
@@ -183,6 +157,11 @@ function extractLanguageTag(className?: string) {
     return null;
   }
   return match[1] ?? null;
+}
+
+function isLatexLanguage(languageTag: string | null) {
+  const normalized = languageTag?.toLowerCase();
+  return normalized === "latex" || normalized === "tex";
 }
 
 function isMarkdownLanguage(languageTag: string | null) {
@@ -354,18 +333,6 @@ function hasParagraphBreak(value: string) {
   return PARAGRAPH_BREAK_SPLIT_REGEX.test(value);
 }
 
-function startsWithMarkdownBlockSyntax(value: string) {
-  const trimmed = value.trimStart();
-  return (
-    /^[-*+]\s/.test(trimmed) ||
-    /^\d+\.(?:\s|$|(?!\d)\S)/.test(trimmed) ||
-    /^>\s?/.test(trimmed) ||
-    /^#{1,6}\s/.test(trimmed) ||
-    /^```/.test(trimmed) ||
-    /^\|/.test(trimmed)
-  );
-}
-
 function normalizeInlineOrderedListBreaks(value: string) {
   return value.replace(
     /([：:。！？!?；;])\s*(\d+)\.(?!\d)(\S)/g,
@@ -428,373 +395,16 @@ function normalizeGithubBlockquoteAlerts(value: string) {
   return changed ? normalized.join("\n") : value;
 }
 
-function looksLikeInlineLatexExpression(value: string) {
-  const trimmed = value.trim();
-  if (!trimmed) {
-    return false;
-  }
+function startsWithMarkdownBlockSyntax(value: string) {
+  const trimmed = value.trimStart();
   return (
-    /\\[A-Za-z]+/.test(trimmed) ||
-    /[_^]/.test(trimmed)
+    /^[-*+]\s/.test(trimmed) ||
+    /^\d+\.(?:\s|$|(?!\d)\S)/.test(trimmed) ||
+    /^>\s?/.test(trimmed) ||
+    /^#{1,6}\s/.test(trimmed) ||
+    /^```/.test(trimmed) ||
+    /^\|/.test(trimmed)
   );
-}
-
-function isCjkCharacter(value: string) {
-  return /[\u3400-\u9fff]/u.test(value);
-}
-
-function hasSafeInlineLatexWrapperBoundary(source: string, startIndex: number) {
-  if (startIndex <= 0) {
-    return true;
-  }
-  const previousChar = source[startIndex - 1] ?? "";
-  return (
-    /\s/.test(previousChar) ||
-    /[([{"'“‘`<、，。！？；：,:;!?]/u.test(previousChar) ||
-    isCjkCharacter(previousChar)
-  );
-}
-
-function hasSafeDisplayLatexWrapperBoundary(source: string, endIndex: number) {
-  if (endIndex >= source.length - 1) {
-    return true;
-  }
-  const nextChar = source[endIndex + 1] ?? "";
-  return (
-    /\s/.test(nextChar) ||
-    /[)\]}>"'”’`>、，。！？；：,:;!?]/u.test(nextChar) ||
-    isCjkCharacter(nextChar)
-  );
-}
-
-function stripLeadingMarkdownLinePrefix(value: string) {
-  return value.replace(/^((?:[-*+]|>\s*|\d+\.)\s*)+/, "").trim();
-}
-
-function isInlineMathWrapperInProseContext(source: string, startIndex: number, endIndex: number) {
-  const lineStart = source.lastIndexOf("\n", startIndex - 1) + 1;
-  const lineEndCandidate = source.indexOf("\n", endIndex + 1);
-  const lineEnd = lineEndCandidate >= 0 ? lineEndCandidate : source.length;
-  const before = source.slice(lineStart, startIndex);
-  const after = source.slice(endIndex + 1, lineEnd);
-  const hasMeaningfulBefore = stripLeadingMarkdownLinePrefix(before).length > 0;
-  const hasMeaningfulAfter = after.trim().length > 0;
-  return hasMeaningfulBefore || hasMeaningfulAfter;
-}
-
-function looksLikeStandaloneLatexFormulaLine(value: string) {
-  const trimmed = value.trim();
-  if (!trimmed || startsWithMarkdownBlockSyntax(trimmed)) {
-    return false;
-  }
-  if (/[\u3400-\u9fff]/u.test(trimmed)) {
-    return false;
-  }
-  const hasLatexCommand = /\\[A-Za-z]+/.test(trimmed);
-  const hasEquationOperator = /[=<>]/.test(trimmed);
-  const hasMathStructure = /[_^{}()+\-*/]/.test(trimmed);
-  if (!(hasLatexCommand || hasEquationOperator) || !hasMathStructure) {
-    return false;
-  }
-  const plainWordTokens = trimmed
-    .replace(/\\[A-Za-z]+/g, " ")
-    .replace(/[{}_^=<>+\-*/()[\],.;:]/g, " ")
-    .match(/[A-Za-z]{3,}/g);
-  return (plainWordTokens?.length ?? 0) === 0;
-}
-
-const INLINE_MATH_TRAILING_PUNCTUATION = new Set([
-  "，",
-  "。",
-  "！",
-  "？",
-  "；",
-  "：",
-  ",",
-  ".",
-  ";",
-  ":",
-  "!",
-  "?",
-]);
-
-function isUnescapedCharacter(value: string, index: number) {
-  let backslashCount = 0;
-  for (let cursor = index - 1; cursor >= 0 && value[cursor] === "\\"; cursor -= 1) {
-    backslashCount += 1;
-  }
-  return backslashCount % 2 === 0;
-}
-
-function extractSingleDollarInlineMath(
-  value: string,
-  options?: { allowTrailingPunctuation?: boolean },
-) {
-  if (!value.startsWith("$") || value.startsWith("$$")) {
-    return null;
-  }
-  let candidate = value;
-  if (options?.allowTrailingPunctuation) {
-    const trailingChar = candidate[candidate.length - 1] ?? "";
-    if (INLINE_MATH_TRAILING_PUNCTUATION.has(trailingChar)) {
-      candidate = candidate.slice(0, -1);
-    }
-  }
-  if (!candidate.endsWith("$") || candidate.length < 2) {
-    return null;
-  }
-  const closingIndex = candidate.length - 1;
-  if (!isUnescapedCharacter(candidate, closingIndex)) {
-    return null;
-  }
-  return candidate.slice(1, closingIndex);
-}
-
-function extractSingleLineDisplayMathExpression(value: string) {
-  if (!value.startsWith("$$") || !value.endsWith("$$") || value.length < 4) {
-    return null;
-  }
-  const closingStart = value.length - 2;
-  if (!isUnescapedCharacter(value, closingStart)) {
-    return null;
-  }
-  const expression = value.slice(2, closingStart).trim();
-  return expression || null;
-}
-
-function hasUnescapedDollar(value: string) {
-  for (let index = 0; index < value.length; index += 1) {
-    if (value[index] !== "$") {
-      continue;
-    }
-    if (isUnescapedCharacter(value, index)) {
-      return true;
-    }
-  }
-  return false;
-}
-
-function normalizeMalformedDisplayMathSegments(value: string) {
-  if (!value.includes("$$")) {
-    return value;
-  }
-  let changed = false;
-  const normalized = value.replace(/\$\$([\s\S]*?)\$\$/g, (match, inner: string) => {
-    const expression = inner.trim();
-    if (!expression) {
-      return match;
-    }
-    // 容错：一些模型会把中文叙述和 $...$ 行内公式错误包进 $$...$$，会触发整段 katex-error。
-    // 这类段落降级为普通文本，保留内部 $...$ 让 remark-math 继续解析。
-    if (!/[\u3400-\u9fff]/u.test(expression) || !hasUnescapedDollar(expression)) {
-      return match;
-    }
-    changed = true;
-    return expression;
-  });
-  return changed ? normalized : value;
-}
-
-function normalizeInlineDisplayMathSegments(value: string) {
-  if (!value.includes("$$")) {
-    return value;
-  }
-  let changed = false;
-  const normalized = value.replace(
-    /\$\$([\s\S]*?)\$\$/g,
-    (match, inner: string, offset: number, source: string) => {
-      const expression = inner.trim();
-      if (!expression || /[\r\n]/.test(inner)) {
-        return match;
-      }
-      const endIndex = offset + match.length - 1;
-      if (!isInlineMathWrapperInProseContext(source, offset, endIndex)) {
-        return match;
-      }
-      changed = true;
-      return `$${expression}$`;
-    },
-  );
-  return changed ? normalized : value;
-}
-
-function normalizeLeadingLatexBeforeCjkProse(value: string) {
-  const lines = value.split(/\r?\n/);
-  let inDisplayMathBlock = false;
-  let changed = false;
-  const normalized = lines.flatMap((line) => {
-    const trimmed = line.trim();
-    const leadingWhitespace = line.match(/^\s*/)?.[0] ?? "";
-    if (trimmed === "$$") {
-      inDisplayMathBlock = !inDisplayMathBlock;
-      return [line];
-    }
-    if (!trimmed || inDisplayMathBlock) {
-      return [line];
-    }
-    if (startsWithMarkdownBlockSyntax(trimmed)) {
-      return [line];
-    }
-    if (!/\\[A-Za-z]/.test(trimmed)) {
-      return [line];
-    }
-    const cjkMatch = trimmed.match(/[\u3400-\u9fff]/u);
-    const cjkIndex = cjkMatch?.index ?? -1;
-    if (cjkIndex <= 0) {
-      return [line];
-    }
-    const mathCandidateRaw = trimmed.slice(0, cjkIndex).trimEnd();
-    const mathCandidate = mathCandidateRaw
-      .replace(/[，,；;：:.!?！？。]+$/u, "")
-      .trimEnd();
-    const proseRemainder = trimmed.slice(mathCandidateRaw.length).trimStart();
-    if (!mathCandidate || !proseRemainder) {
-      return [line];
-    }
-    if (
-      !looksLikeStandaloneLatexFormulaLine(mathCandidate) &&
-      !looksLikeInlineLatexExpression(mathCandidate) &&
-      !/[=<>]/.test(mathCandidate)
-    ) {
-      return [line];
-    }
-    changed = true;
-    return [
-      `${leadingWhitespace}$$`,
-      `${leadingWhitespace}${mathCandidate}`,
-      `${leadingWhitespace}$$`,
-      `${leadingWhitespace}${proseRemainder}`,
-    ];
-  });
-  return changed ? normalized.join("\n") : value;
-}
-
-function looksLikeExplicitInlineMathLine(value: string) {
-  const trimmed = value.trim();
-  if (!trimmed) {
-    return false;
-  }
-  return (
-    extractSingleDollarInlineMath(trimmed, { allowTrailingPunctuation: true }) !== null ||
-    /^\\+\([\s\S]*?\\+\)[，。！？；：,.;:!?]?$/.test(trimmed)
-  );
-}
-
-function normalizeStandaloneMathDisplayLines(value: string) {
-  if (!value.includes("\n")) {
-    return value;
-  }
-  const lines = value.split(/\r?\n/);
-  let inDisplayMathBlock = false;
-  let changed = false;
-  const normalized = lines.flatMap((line) => {
-    const trimmed = line.trim();
-    const leadingWhitespace = line.match(/^\s*/)?.[0] ?? "";
-    if (trimmed === "$$") {
-      inDisplayMathBlock = !inDisplayMathBlock;
-      return [line];
-    }
-    if (!trimmed) {
-      return [line];
-    }
-    if (inDisplayMathBlock) {
-      return [line];
-    }
-
-    const expression = extractSingleLineDisplayMathExpression(trimmed);
-    if (expression) {
-      changed = true;
-      return [
-        `${leadingWhitespace}$$`,
-        `${leadingWhitespace}${expression}`,
-        `${leadingWhitespace}$$`,
-      ];
-    }
-
-    if (looksLikeExplicitInlineMathLine(trimmed)) {
-      return [line];
-    }
-
-    if (!looksLikeStandaloneLatexFormulaLine(trimmed)) {
-      return [line];
-    }
-    changed = true;
-    return [
-      `${leadingWhitespace}$$`,
-      `${leadingWhitespace}${trimmed}`,
-      `${leadingWhitespace}$$`,
-    ];
-  });
-  return changed ? normalized.join("\n") : value;
-}
-
-function normalizeCommonMathDelimiters(value: string) {
-  let changed = false;
-  let normalized = value.replace(
-    /(\\+)\(\s*([^\n]*?)\s*(\\+)\)/g,
-    (
-      match,
-      _openSlashes: string,
-      inner: string,
-      _closeSlashes: string,
-      offset: number,
-      source: string,
-    ) => {
-      if (!looksLikeInlineLatexExpression(inner)) {
-        return match;
-      }
-      if (!hasSafeInlineLatexWrapperBoundary(source, offset)) {
-        return match;
-      }
-      changed = true;
-      return `$${inner.trim()}$`;
-    },
-  );
-
-  normalized = normalized.replace(
-    /(\\+)\[\s*([\s\S]*?)\s*(\\+)\]/g,
-    (
-      match,
-      _openSlashes: string,
-      inner: string,
-      _closeSlashes: string,
-      offset: number,
-      source: string,
-    ) => {
-      const expression = inner.trim();
-      if (!looksLikeInlineLatexExpression(expression)) {
-        return match;
-      }
-      if (!hasSafeInlineLatexWrapperBoundary(source, offset)) {
-        return match;
-      }
-      const endIndex = offset + match.length - 1;
-      if (!hasSafeDisplayLatexWrapperBoundary(source, endIndex)) {
-        return match;
-      }
-      changed = true;
-      if (isInlineMathWrapperInProseContext(source, offset, endIndex)) {
-        return `$${expression}$`;
-      }
-      return `$$\n${expression}\n$$`;
-    },
-  );
-
-  normalized = normalized.replace(
-    /[（(]\s*(\\[A-Za-z][^()\n（）]*?)\s*[）)]/g,
-    (match, inner: string, offset: number, source: string) => {
-      if (!looksLikeInlineLatexExpression(inner)) {
-        return match;
-      }
-      if (!hasSafeInlineLatexWrapperBoundary(source, offset)) {
-        return match;
-      }
-      changed = true;
-      return `$${inner.trim()}$`;
-    },
-  );
-
-  return changed ? normalized : value;
 }
 
 function endsWithSentencePunctuation(value: string) {
@@ -1364,11 +974,6 @@ function LinkBlock({ urls }: LinkBlockProps) {
   );
 }
 
-function isLatexLanguage(languageTag: string | null) {
-  const normalized = languageTag?.toLowerCase();
-  return normalized === "latex" || normalized === "tex";
-}
-
 function extractLatexContent(languageTag: string | null, value: string): string | null {
   if (isLatexLanguage(languageTag) && value.trim()) {
     return value;
@@ -1379,96 +984,6 @@ function extractLatexContent(languageTag: string | null, value: string): string 
   }
   const inner = (fencedMatch[1] ?? "").trim();
   return inner || null;
-}
-
-function buildLatexRenderEntries(value: string): LatexRenderEntry[] {
-  const lines = value.split(/\r?\n/);
-  const entries: LatexRenderEntry[] = [];
-  let formulaBuffer: string[] = [];
-
-  const flushFormula = () => {
-    const source = formulaBuffer.join("\n").trim();
-    formulaBuffer = [];
-    if (!source) {
-      return;
-    }
-    entries.push({ kind: "formula", source });
-  };
-
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (!trimmed) {
-      flushFormula();
-      continue;
-    }
-    if (trimmed.startsWith("%")) {
-      flushFormula();
-      const label = trimmed.replace(/^%\s*/, "").trim();
-      if (label) {
-        entries.push({ kind: "label", text: label });
-      }
-      continue;
-    }
-    formulaBuffer.push(line);
-  }
-  flushFormula();
-
-  if (entries.length > 0) {
-    return entries;
-  }
-  const fallbackSource = value.trim();
-  return fallbackSource ? [{ kind: "formula", source: fallbackSource }] : [];
-}
-
-function unwrapLatexDelimiters(source: string) {
-  const trimmed = source.trim();
-  if (!trimmed) {
-    return trimmed;
-  }
-  const displayBlockMatch = trimmed.match(/^\$\$\s*([\s\S]*?)\s*\$\$$/);
-  if (displayBlockMatch) {
-    const inner = (displayBlockMatch[1] ?? "").trim();
-    if (inner) {
-      return inner;
-    }
-  }
-  const displayParenMatch = trimmed.match(/^\\\[\s*([\s\S]*?)\s*\\\]$/);
-  if (displayParenMatch) {
-    const inner = (displayParenMatch[1] ?? "").trim();
-    if (inner) {
-      return inner;
-    }
-  }
-  const inlineDollarWrapped = extractSingleDollarInlineMath(trimmed);
-  if (inlineDollarWrapped) {
-    const inner = inlineDollarWrapped.trim();
-    if (inner) {
-      return inner;
-    }
-  }
-  const inlineParenMatch = trimmed.match(/^\\\(\s*([\s\S]*?)\s*\\\)$/);
-  if (inlineParenMatch) {
-    const inner = (inlineParenMatch[1] ?? "").trim();
-    if (inner) {
-      return inner;
-    }
-  }
-  return trimmed;
-}
-
-function renderLatexFormula(source: string) {
-  if (!cachedKatex) return null;
-  try {
-    const renderedHtml = cachedKatex.renderToString(unwrapLatexDelimiters(source), {
-      displayMode: true,
-      throwOnError: false,
-      strict: "ignore",
-      trust: false,
-    });
-    return renderedHtml.includes("katex-error") ? null : renderedHtml;
-  } catch {
-    return null;
-  }
 }
 
 function renderHighlightedCodeLines(value: string, languageTag: string | null) {
@@ -1671,7 +1186,7 @@ function LatexBlock({ className, value, copyUseModifier }: CodeBlockProps) {
     [value],
   );
   const [katexReady, setKatexReady] = useState(
-    () => cachedKatex !== null && katexCssLoaded,
+    () => isKatexRenderReady(),
   );
   useEffect(() => {
     if (katexReady) return;
@@ -2160,20 +1675,12 @@ export const Markdown = memo(function Markdown({
     }
     const normalizeDisplayText = (text: string) =>
       normalizeImageTags(
-        normalizeStandaloneMathDisplayLines(
-          normalizeLeadingLatexBeforeCjkProse(
-            normalizeMalformedDisplayMathSegments(
-              normalizeInlineDisplayMathSegments(
-                normalizeCommonMathDelimiters(
-                  normalizeFragmentedResourceReferences(
-                    normalizeListIndentation(
-                      normalizeInlineOrderedListBreaks(
-                        normalizeGithubBlockquoteAlerts(
-                          normalizeFragmentedLineBreaks(normalizeFragmentedParagraphBreaks(text)),
-                        ),
-                      ),
-                    ),
-                  ),
+        normalizeMarkdownMathForMessage(
+          normalizeFragmentedResourceReferences(
+            normalizeListIndentation(
+              normalizeInlineOrderedListBreaks(
+                normalizeGithubBlockquoteAlerts(
+                  normalizeFragmentedLineBreaks(normalizeFragmentedParagraphBreaks(text)),
                 ),
               ),
             ),
@@ -2182,6 +1689,10 @@ export const Markdown = memo(function Markdown({
       );
     return normalizeOutsideMarkdownCode(renderValue, normalizeDisplayText);
   }, [renderValue, codeBlock, liveRenderMode, preserveFormatting]);
+  const toolCallBlocks = useMemo(() => parseToolCallBlocks(content), [content]);
+  const shouldRenderToolCallSegments = !(
+    toolCallBlocks.length === 1 && toolCallBlocks[0]?.kind === "md"
+  );
   const sourceMarkdownRef = useRef(content);
   sourceMarkdownRef.current = content;
 
@@ -2367,7 +1878,7 @@ export const Markdown = memo(function Markdown({
   );
   const hasMathContent = useMemo(() => detectMathContent(value), [value]);
   const [katexReady, setKatexReady] = useState(
-    () => cachedKatex !== null && cachedRehypeKatex !== null && katexCssLoaded,
+    () => areKatexAssetsReady(),
   );
   useEffect(() => {
     if (!hasMathContent || katexReady) return;
@@ -2398,6 +1909,7 @@ export const Markdown = memo(function Markdown({
           },
         }],
       ];
+      const cachedRehypeKatex = getCachedRehypeKatex();
       if (katexReady && cachedRehypeKatex) {
         plugins.push(cachedRehypeKatex);
       }
@@ -2479,20 +1991,57 @@ export const Markdown = memo(function Markdown({
     [handleFileLinkClick, handleFileLinkContextMenu, urlTransform],
   );
 
+  const renderMarkdownContent = useCallback((nextContent: string) => {
+    if (liveRenderMode === "lightweight") {
+      return (
+        <LightweightMarkdown
+          value={nextContent}
+          renderLink={renderLightweightLink}
+        />
+      );
+    }
+    return (
+      <ReactMarkdown
+        remarkPlugins={remarkPluginsMemo}
+        rehypePlugins={rehypePluginsMemo}
+        urlTransform={urlTransform}
+        components={components}
+      >
+        {nextContent}
+      </ReactMarkdown>
+    );
+  }, [
+    components,
+    liveRenderMode,
+    rehypePluginsMemo,
+    remarkPluginsMemo,
+    renderLightweightLink,
+    urlTransform,
+  ]);
+
   return (
     <div className={className}>
-      {liveRenderMode === "lightweight" ? (
-        <LightweightMarkdown value={content} renderLink={renderLightweightLink} />
-      ) : (
-        <ReactMarkdown
-          remarkPlugins={remarkPluginsMemo}
-          rehypePlugins={rehypePluginsMemo}
-          urlTransform={urlTransform}
-          components={components}
-        >
-          {content}
-        </ReactMarkdown>
-      )}
+      {shouldRenderToolCallSegments
+        ? toolCallBlocks.map((block, index) => {
+          if (block.kind === "md") {
+            return (
+              <Fragment key={`md-${index}`}>
+                {renderMarkdownContent(block.content)}
+              </Fragment>
+            );
+          }
+          return (
+            <ToolCallBlock
+              key={buildToolCallBlockKey(block)}
+              raw={block.raw}
+              tool={block.tool}
+              params={block.params}
+              complete={block.complete}
+              isLive={!block.complete}
+            />
+          );
+        })
+        : renderMarkdownContent(content)}
     </div>
   );
 }, areMarkdownPropsEqual);

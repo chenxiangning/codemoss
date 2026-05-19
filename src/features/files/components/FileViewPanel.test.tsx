@@ -15,6 +15,7 @@ import {
 } from "../../../services/tauri";
 import { subscribeDetachedExternalFileChanges } from "../../../services/events";
 import { pushErrorToast } from "../../../services/toasts";
+import { loadKatexAssets } from "../../markdown/markdownMath";
 import { useFilePreviewPayload } from "../hooks/useFilePreviewPayload";
 
 const mockCodeMirrorDispatch = vi.fn();
@@ -1058,6 +1059,48 @@ describe("FileViewPanel markdown modes", () => {
     expect(writeExternalSpecFile).not.toHaveBeenCalled();
   });
 
+  it("keeps markdown annotation source lines stable after math normalization", async () => {
+    vi.mocked(readWorkspaceFile).mockResolvedValue({
+      content: [
+        "# Math",
+        "",
+        "$$\\sum_{i=1}^{n} i = \\frac{n(n+1)}{2}$$",
+        "",
+        "target paragraph",
+      ].join("\n"),
+      truncated: false,
+    });
+    const onCreateCodeAnnotation = vi.fn();
+
+    render(
+      <FileViewPanel
+        workspaceId="ws-md-annotation-math-lines"
+        workspacePath="/repo"
+        filePath="docs/math.md"
+        openTargets={[]}
+        openAppIconById={{}}
+        selectedOpenAppId=""
+        onSelectOpenAppId={vi.fn()}
+        onClose={vi.fn()}
+        onCreateCodeAnnotation={onCreateCodeAnnotation}
+      />,
+    );
+
+    await screen.findByTestId("file-markdown-preview");
+    fireEvent.click(screen.getByRole("button", { name: /files\.annotateForAi L5/i }));
+    fireEvent.change(screen.getByPlaceholderText(/files\.annotationPlaceholder/i), {
+      target: { value: "check target" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /files\.annotationSubmit/i }));
+
+    expect(onCreateCodeAnnotation).toHaveBeenCalledWith({
+      path: "docs/math.md",
+      lineRange: { startLine: 5, endLine: 5 },
+      body: "check target",
+      source: "file-preview-mode",
+    });
+  });
+
   it("keeps markdown annotation typing local until submit to avoid sticky repeated input", async () => {
     vi.mocked(readWorkspaceFile).mockResolvedValue({
       content: ["# Title", "", "body", "tail"].join("\n"),
@@ -1574,6 +1617,93 @@ describe("FileViewPanel markdown modes", () => {
       expect(screen.getByTestId("file-markdown-mermaid-preview")).toBeTruthy();
       expect(mermaidRender).toHaveBeenCalledTimes(1);
     });
+  });
+
+  it("renders markdown math formulas while keeping mermaid blocks lazy", async () => {
+    await loadKatexAssets();
+    vi.mocked(readWorkspaceFile).mockResolvedValue({
+      content: [
+        "行内公式：$E=mc^2$。",
+        "",
+        "块级公式：",
+        "",
+        "$$\\sum_{i=1}^{n} i = \\frac{n(n+1)}{2}$$",
+        "",
+        "```mermaid",
+        "graph TD",
+        "A-->B",
+        "```",
+      ].join("\n"),
+      truncated: false,
+    });
+    mermaidInitialize.mockClear();
+    mermaidRender.mockClear();
+
+    const { container } = render(
+      <FileViewPanel
+        workspaceId="ws-md-math"
+        workspacePath="/repo"
+        filePath="docs/math.md"
+        openTargets={[]}
+        openAppIconById={{}}
+        selectedOpenAppId=""
+        onSelectOpenAppId={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    await screen.findByTestId("file-markdown-preview");
+    await waitFor(() => {
+      expect(container.querySelector(".fvp-file-markdown .katex")).toBeTruthy();
+      expect(container.querySelector(".fvp-file-markdown .katex-display")).toBeTruthy();
+      expect(container.querySelector(".fvp-file-markdown .katex-error")).toBeFalsy();
+    });
+    expect(mermaidRender).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("tab", { name: "Render" }));
+    await screen.findByTestId("file-markdown-mermaid-preview");
+    expect(mermaidRender).toHaveBeenCalledTimes(1);
+  });
+
+  it("renders fenced math blocks as katex display formulas", async () => {
+    vi.mocked(readWorkspaceFile).mockResolvedValue({
+      content: [
+        "## 块级公式",
+        "",
+        "```math",
+        "\\int_{-\\infty}^{+\\infty} e^{-x^2} dx = \\sqrt{\\pi}",
+        "```",
+        "",
+        "```latex",
+        "A = \\begin{bmatrix}",
+        "1 & 2 & 3 \\\\",
+        "4 & 5 & 6 \\\\",
+        "7 & 8 & 9",
+        "\\end{bmatrix}",
+        "```",
+      ].join("\n"),
+      truncated: false,
+    });
+
+    const { container } = render(
+      <FileViewPanel
+        workspaceId="ws-md-fenced-math"
+        workspacePath="/repo"
+        filePath="docs/math.md"
+        openTargets={[]}
+        openAppIconById={{}}
+        selectedOpenAppId=""
+        onSelectOpenAppId={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    await screen.findByTestId("file-markdown-preview");
+    await waitFor(() => {
+      expect(container.querySelectorAll(".fvp-file-markdown .katex-display").length).toBe(2);
+    });
+    expect(screen.queryByText("math")).toBeNull();
+    expect(screen.queryByText("latex")).toBeNull();
   });
 
   it("resets markdown renderer state when switching to another markdown file", async () => {

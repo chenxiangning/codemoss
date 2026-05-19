@@ -1348,6 +1348,19 @@
   opacity: 1;
 }
 
+.fvp-markdown-annotatable-block:has(.fvp-file-markdown-codeblock) {
+  padding-right: 0;
+}
+
+.fvp-markdown-annotatable-block:has(.fvp-file-markdown-codeblock)::after {
+  width: 0;
+}
+
+.fvp-markdown-annotatable-block:has(.fvp-file-markdown-codeblock) > .fvp-markdown-annotation-button {
+  top: -22px;
+  right: 8px;
+}
+
 .fvp-markdown-annotation-inline {
   margin: 8px 0 12px;
 }
@@ -1399,6 +1412,35 @@
 
 .fvp-file-markdown :where(p, ul, ol, pre, blockquote, table) {
   margin: 0 0 16px;
+}
+
+.fvp-file-markdown .katex {
+  color: var(--fvp-reader-text);
+  font-size: 1.03em;
+}
+
+.fvp-file-markdown .katex-display {
+  margin: 18px 0;
+  padding: 8px 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.fvp-file-markdown .katex-display > .katex {
+  display: inline-block;
+  min-width: max-content;
+}
+
+.fvp-file-markdown-math-block {
+  margin: 16px 0 22px;
+  padding: 4px 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  text-align: center;
+}
+
+.fvp-file-markdown-math-block .katex-display {
+  margin: 0;
 }
 
 .fvp-file-markdown-frontmatter {

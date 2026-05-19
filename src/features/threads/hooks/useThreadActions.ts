@@ -84,6 +84,8 @@ import {
   normalizeThreadListPartialSource,
   resolveThreadSourceMeta,
   restoreThreadParentLinksFromSnapshot,
+  seedLastGoodClaudeIntoMerged,
+  seedLastGoodOpenCodeIntoMerged,
   listReplacementThreadCandidates,
   selectRecoveredNewThreadSummary,
   selectReplacementThreadByMessageHistory,
@@ -350,6 +352,10 @@ export function useThreadActions({
       const currentThreads = latestThreadsByWorkspaceRef.current[workspaceId];
       if (hasHealthyThreadSummaries(currentThreads)) {
         return currentThreads;
+      }
+      const previousThreads = previousThreadsByWorkspaceRef.current[workspaceId];
+      if (hasHealthyThreadSummaries(previousThreads)) {
+        return previousThreads;
       }
       const stateThreads = threadsByWorkspace[workspaceId];
       if (hasHealthyThreadSummaries(stateThreads)) {
@@ -1857,6 +1863,14 @@ export function useThreadActions({
                 timeoutMs: NATIVE_SESSION_LIST_FETCH_TIMEOUT_MS,
               },
             });
+            // 在 partial-source merge 之前先 seed last-good Claude 条目，
+            // 避免下游 catalog merge / archive merge 因看到空 Claude 子源而形成残缺基底。
+            // 即便下游 partial-source 路径被绕过或将来重构，最终列表也不会丢失 Claude 历史。
+            seedLastGoodClaudeIntoMerged(
+              mergedById,
+              lastGoodThreadSummaries,
+              hiddenSharedBindingIds,
+            );
           }
           const claudeSessions = Array.isArray(claudeResult.value)
             ? claudeResult.value
@@ -1909,6 +1923,12 @@ export function useThreadActions({
               error: String(claudeResult.reason ?? "unknown error"),
             },
           });
+          // 同 timeout 路径：reject 时也 seed last-good Claude，确保兜底前置。
+          seedLastGoodClaudeIntoMerged(
+            mergedById,
+            lastGoodThreadSummaries,
+            hiddenSharedBindingIds,
+          );
         }
         if (opencodeResult.status === "fulfilled") {
           if (opencodeResult.value === null) {
@@ -1923,6 +1943,13 @@ export function useThreadActions({
                 timeoutMs: NATIVE_SESSION_LIST_FETCH_TIMEOUT_MS,
               },
             });
+            // 与 Claude timeout 分支对称：seed last-good OpenCode 条目，
+            // 防止下游 catalog merge / archive merge 因看到空 OpenCode 子源而形成残缺基底。
+            seedLastGoodOpenCodeIntoMerged(
+              mergedById,
+              lastGoodThreadSummaries,
+              hiddenSharedBindingIds,
+            );
           }
           const opencodeSessions = Array.isArray(opencodeResult.value)
             ? opencodeResult.value
@@ -1961,6 +1988,25 @@ export function useThreadActions({
               mergedById.set(id, next);
             }
           });
+        } else {
+          // 与 Claude rejected 分支对称：补全此前缺失的 else，
+          // 确保 OpenCode 子源抛错时仍发出可观测诊断并 seed last-good，避免静默吞错。
+          rememberPartialSource("opencode-session-error");
+          onDebug?.({
+            id: `${Date.now()}-client-opencode-session-error`,
+            timestamp: Date.now(),
+            source: "client",
+            label: "thread/list opencode error",
+            payload: {
+              workspaceId: workspace.id,
+              error: String(opencodeResult.reason ?? "unknown error"),
+            },
+          });
+          seedLastGoodOpenCodeIntoMerged(
+            mergedById,
+            lastGoodThreadSummaries,
+            hiddenSharedBindingIds,
+          );
         }
         const projectCatalogValue =
           projectCatalogResult.status === "fulfilled" ? projectCatalogResult.value : null;
@@ -2146,10 +2192,12 @@ export function useThreadActions({
           workspaceId: workspace.id,
           threads: visibleSummaries,
         });
-        latestThreadsByWorkspaceRef.current = {
-          ...latestThreadsByWorkspaceRef.current,
-          [workspace.id]: visibleSummaries,
-        };
+        if (hasHealthyThreadSummaries(visibleSummaries)) {
+          latestThreadsByWorkspaceRef.current = {
+            ...latestThreadsByWorkspaceRef.current,
+            [workspace.id]: visibleSummaries,
+          };
+        }
         dispatch({
           type: "setThreadListCursor",
           workspaceId: workspace.id,
@@ -2263,10 +2311,6 @@ export function useThreadActions({
             workspaceId: workspace.id,
             threads: degradedThreads,
           });
-          latestThreadsByWorkspaceRef.current = {
-            ...latestThreadsByWorkspaceRef.current,
-            [workspace.id]: degradedThreads,
-          };
           const diagnostic = buildPartialHistoryDiagnostic(
             `thread list error fallback: ${fallbackMessage}`,
           );

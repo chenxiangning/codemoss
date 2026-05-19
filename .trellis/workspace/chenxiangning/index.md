@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-14.md`
-- **Total Sessions**: 481
-- **Last Active**: 2026-05-18
+- **Total Sessions**: 488
+- **Last Active**: 2026-05-19
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-14.md` | ~245 | Active |
+| `journal-14.md` | ~560 | Active |
 | `journal-13.md` | ~1947 | Archived |
 | `journal-12.md` | ~1971 | Archived |
 | `journal-11.md` | ~1985 | Archived |
@@ -42,7 +42,14 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
-| 481 | 2026-05-18 | 完善引擎运行时契约验证 | `a9b9dee0dc126f90342dc9f948b564b31bb23644` | `feature/v0.5` |
+| 488 | 2026-05-18 | 完善引擎运行时契约验证 | `a9b9dee0dc126f90342dc9f948b564b31bb23644` | `feature/v0.5` |
+| 487 | 2026-05-19 | 提交消息工具调用卡片与会话投影修复 | `cb261490`, `d3327f0f`, `4f40920b` | `feature/v0.5.0-md` |
+| 486 | 2026-05-19 | 统一多引擎列表超时兜底 | `10346e3d` | `feature/v0.5.0-md` |
+| 485 | 2026-05-19 | 稳定 CI flaky 测试 | `bed69513` | `feature/v0.5.0-md` |
+| 484 | 2026-05-19 | 归一化用户提问卡片交互 | `d142510b` | `feature/v0.5.0-md` |
+| 483 | 2026-05-18 | 加固 Claude 列表超时兜底 | `1f2f87f1` | `feature/v0.5.0-md` |
+| 482 | 2026-05-18 | 修复 Markdown 收口回归 | `59acb6be` | `feature/v0.5.0-md` |
+| 481 | 2026-05-18 | 支持 Markdown 文件预览公式和图表渲染 | `7fdc8e5e` | `feature/v0.5.0-md` |
 | 480 | 2026-05-17 | 收口 harness 治理层设计提案 | `783c5ab8` | `feature/v0.5` |
 | 479 | 2026-05-16 | PR #564 与 chore/bump-version-0.5 语义融合 | `5fa60b2b` | `feature/v0.5` |
 | 478 | 2026-05-16 | 修复 Composer.rewind-confirm.test 在 CI 上的 waitFor 超时 | `1500a69a` | `feature/v0.5` |

@@ -193,7 +193,339 @@ PR #564 与 base 分支 `chore/bump-version-0.5` 发生冲突，按合并防回�
 - None - task complete
 
 
-## Session 481: 完善引擎运行时契约验证
+## Session 481: 支持 Markdown 文件预览公式和图表渲染
+
+**Date**: 2026-05-18
+**Task**: 支持 Markdown 文件预览公式和图表渲染
+**Branch**: `feature/v0.5.0-md`
+
+### Summary
+
+为 Markdown 文件预览接入 KaTeX 与 Mermaid 体验补齐，抽取共享数学渲染工具，修正 fenced math 渲染、annotation 行号映射和 Mermaid tab 重叠。
+
+### Main Changes
+
+## 完成内容
+
+- 创建 OpenSpec change `add-file-markdown-math-preview`，补充 proposal/design/tasks/spec delta。
+- 文件预览接入 `remark-math` / `rehype-katex`，并支持 fenced `math` / `latex` / `tex` 作为 KaTeX display 公式渲染。
+- 抽取 `src/features/markdown/markdownMath.ts`，复用 KaTeX lazy asset loading、math detection、delimiter normalization、LaTeX render helpers。
+- 保留 message Markdown renderer 行为，并通过共享模块降低重复实现。
+- 文件预览 normalization 增加 source line map，避免 annotation 行号漂移。
+- Mermaid card 文案接入 i18n，并调整 codeblock annotation button 位置避免覆盖 Source/Render tabs。
+
+## 验证
+
+- `npm run lint`
+- `npm run typecheck`
+- `npx vitest run src/features/files/components/FileViewPanel.test.tsx src/features/messages/components/Markdown.math-rendering.test.tsx`
+- `npm run check:large-files`
+- `openspec validate add-file-markdown-math-preview --strict --no-interactive`
+- `git diff --check`
+
+## 关键结论
+
+- KaTeX render 继续使用 `trust: false`、`throwOnError: false`，无新增依赖。
+- Mermaid 仍保持 lazy render，不因 math 支持在初始 Source tab 强制渲染。
+- fenced code 内部已避开 math normalization，防止 fenced math 被二次包 `$$` 或误改源码。
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `7fdc8e5e` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 482: 修复 Markdown 收口回归
+
+**Date**: 2026-05-18
+**Task**: 修复 Markdown 收口回归
+**Branch**: `feature/v0.5.0-md`
+
+### Summary
+
+修复 shared math 重构后 message Markdown code 区域被 image normalization 误转换的问题，并稳定文件预览 math lazy KaTeX 测试等待。
+
+### Main Changes
+
+## 完成内容
+
+- 恢复 message Markdown normalization 的 `normalizeOutsideMarkdownCode(renderValue, normalizeDisplayText)` 外层保护，避免 `<image>...</image>` 在 code fence / inline code 中被转换为 `<img>`。
+- 修正 `FileViewPanel.test.tsx` 中 math + Mermaid 用例的同步假设，显式等待 lazy KaTeX 完成后再断言和点击 Mermaid Render。
+
+## 验证
+
+- `npx vitest run src/features/messages/components/Markdown.file-links.test.tsx`
+- `npx vitest run src/features/messages/components/Markdown.math-rendering.test.tsx`
+- `npx vitest run src/features/files/components/FileViewPanel.test.tsx src/features/files/detachedFileExplorer.test.ts src/features/files/components/FileTreeRootActions.test.tsx src/features/files/externalChangeStateMachine.test.ts`
+- `npm run lint`
+- `npm run typecheck`
+- `npm run check:large-files`
+- `openspec validate add-file-markdown-math-preview --strict --no-interactive`
+- `git diff --check`
+
+## 复盘
+
+- 上一轮只跑了目标组合，漏掉了 CI 中 message file-links 独立回归。
+- shared helper 重构时必须保留调用点的外层 code-region contract，不能只看 helper 内部是否保护 math normalization。
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `59acb6be` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 483: 加固 Claude 列表超时兜底
+
+**Date**: 2026-05-18
+**Task**: 加固 Claude 列表超时兜底
+**Branch**: `feature/v0.5.0-md`
+
+### Summary
+
+实现 Claude native listing timeout/reject 时保留 last-good 会话；收紧 last-good 健康判定，避免 degraded 列表自污染；补充 timeout fallback 与连续超时回归测试。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `1f2f87f1` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 484: 归一化用户提问卡片交互
+
+**Date**: 2026-05-19
+**Task**: 归一化用户提问卡片交互
+**Branch**: `feature/v0.5.0-md`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+| Area | Summary |
+|------|---------|
+| User input cards | Unified AskUserQuestionDialog and RequestUserInputMessage live-card rendering through UserInputQuestionCard. |
+| Interaction fixes | Added visible close/dismiss affordance, timeline anchoring, multi-question tabs, Next-before-final Submit behavior, duplicate option label isolation, and single-select deselect. |
+| Governance | Archived OpenSpec change normalize-user-input-question-card and synced the main elicitation spec plus frontend component guidelines. |
+| Verification | Human tested successfully. Automated checks passed: lint, typecheck, targeted Vitest, chat canvas smoke tests, large-file governance, heavy-test-noise gate, git diff check, and OpenSpec strict validate. |
+
+**Code commit**: `d142510b fix(chat): 归一化用户提问卡片交互`
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `d142510b` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 485: 稳定 CI flaky 测试
+
+**Date**: 2026-05-19
+**Task**: 稳定 CI flaky 测试
+**Branch**: `feature/v0.5.0-md`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+| Area | Summary |
+|------|---------|
+| Rust runtime recovery tests | Stabilized repeated waiter timeout quarantine coverage so CI scheduler drift around stale takeover does not fail the quarantine assertion path. |
+| File markdown tests | Prewarmed KaTeX assets for the markdown math + lazy mermaid test to avoid dynamic import timing out under batched Vitest load. |
+| Verification | Targeted Rust test passed, runtime recovery test group passed, targeted FileViewPanel math test passed, FileViewPanel full test file passed, lint/typecheck/git diff check passed. |
+
+**Follow-up commit**: `bed69513 test(ci): 稳定运行时恢复和 Markdown 数学测试`
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `bed69513` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 486: 统一多引擎列表超时兜底
+
+**Date**: 2026-05-19
+**Task**: 统一多引擎列表超时兜底
+**Branch**: `feature/v0.5.0-md`
+
+### Summary
+
+修复 OpenCode/Claude sidebar listing timeout fallback，补齐 large-file governance 跨平台路径归一化，并归档 OpenSpec change。
+
+### Main Changes
+
+| Area | Summary |
+|------|---------|
+| Sidebar fallback | Added engine-aware last-good seed for Claude/OpenCode listing timeout and rejection paths; OpenCode rejects now emit diagnostics and preserve retainable last-good entries. |
+| Boundary handling | Pending/archived/shared entries are rejected by retainable filters; added OpenCode pending fallback regression coverage. |
+| CI governance | Normalized large-file governance repo paths so Windows-style backslashes match policy and baseline entries consistently. |
+| OpenSpec | Synced `sidebar-list-timeout-fallback` into main specs and archived `unify-sidebar-list-timeout-fallback-across-engines`. |
+
+Validation:
+- `node --test scripts/check-large-files.test.mjs scripts/check-heavy-test-noise.test.mjs scripts/test-batched.test.mjs`
+- `npx vitest run src/features/threads/hooks/useThreadActions.helpers.test.ts src/features/threads/hooks/useThreadActions.opencode-timeout-fallback.test.tsx src/features/threads/hooks/useThreadActions.timeout-fallback.test.tsx`
+- `npm run check:large-files:near-threshold`
+- `npm run check:large-files:gate`
+- `npm run check:heavy-test-noise`
+- `npm run typecheck`
+- `npm run lint`
+- `openspec validate --all --strict --no-interactive`
+
+Notes:
+- Manual UI QA items in the archived OpenSpec change remain unchecked because no live app manual verification was performed in this session.
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `10346e3d` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 487: 提交消息工具调用卡片与会话投影修复
+
+**Date**: 2026-05-19
+**Task**: 提交消息工具调用卡片与会话投影修复
+**Branch**: `feature/v0.5.0-md`
+
+### Summary
+
+按功能批次提交三组变更：消息区残留 tool call XML fallback 卡片、Claude 会话侧栏稳定投影、Tauri subagent 泛化 Agent 标题过滤。
+
+### Main Changes
+
+本次会话完成本地分批提交，保持中文 Conventional Commits：
+
+1. cb261490 feat(messages): 渲染残留工具调用 XML 为可交互卡片
+- 新增 tool call XML parser，支持 function_calls、invoke 与 antml 前缀变体。
+- 新增 ToolCallBlock、样式、Markdown 分段集成与 zh/en i18n。
+- 归档 add-message-tool-call-card-fallback，并同步 message-assistant-tool-call-card-fallback spec。
+
+2. d3327f0f fix(threads): 稳定 Claude 会话侧栏展示投影
+- 新增 sessionDisplayProjection，统一弱标题判断与 stable projection merge。
+- 避免 Agent N 或 Claude Session 覆盖有意义标题。
+- 调整 Claude pending finalize 解析，减少 ambiguous finalize 产生重复弱标题行。
+- 归档 refactor-session-display-projection，并更新 claude-session-sidebar-state-parity spec。
+
+3. 4f40920b fix(tauri): 过滤 Claude subagent 泛化 Agent 标题
+- Rust 侧过滤 subagent metadata 中 Agent N 这类泛化标题。
+- 当 agentName/description 只有泛化标题时，保留 transcript 首条用户消息作为 first_message。
+- 新增 focused Rust tests 覆盖 agentName 与 description 污染场景。
+
+验证情况：
+- 本次提交过程中未重新运行测试。
+- 相关 OpenSpec tasks 文件显示作者此前已完成 focused Vitest、Rust tests、typecheck 与 openspec validate。
+- commit 后工作区已确认 clean。
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `cb261490` | (see git log) |
+| `d3327f0f` | (see git log) |
+| `4f40920b` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 488: 完善引擎运行时契约验证
 
 **Date**: 2026-05-18
 **Task**: 完善引擎运行时契约验证

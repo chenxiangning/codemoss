@@ -14,8 +14,18 @@ import ReactMarkdown, { type Components } from "react-markdown";
 import rehypeRaw from "rehype-raw";
 import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
 import remarkGfm from "remark-gfm";
+import remarkMath from "remark-math";
+import { useTranslation } from "react-i18next";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import type { Element } from "hast";
+import {
+  areKatexAssetsReady,
+  detectMathContent,
+  getCachedRehypeKatex,
+  loadKatexAssets,
+  normalizeMarkdownMathForFilePreview,
+  renderLatexFormula,
+} from "../../markdown/markdownMath";
 import { highlightLine } from "../../../utils/syntax";
 import {
   isThemeMutationAttribute,
@@ -88,7 +98,6 @@ const ANNOTATABLE_MARKDOWN_NODE_TAGS = new Set<string>([
   "table",
   "ul",
 ]);
-
 function extractLanguageTag(className?: string) {
   if (!className) {
     return null;
@@ -393,6 +402,33 @@ function FileMarkdownCodeBlock({
   );
 }
 
+function isMathCodeLanguage(languageTag: string | null) {
+  return languageTag === "math" || languageTag === "latex" || languageTag === "tex";
+}
+
+function FileMarkdownMathBlock({
+  className,
+  value,
+}: {
+  className?: string;
+  value: string;
+}) {
+  const languageTag = extractLanguageTag(className);
+  const renderedHtml = renderLatexFormula(value);
+
+  if (!renderedHtml) {
+    return <FileMarkdownCodeBlock className={className} value={value} />;
+  }
+
+  return (
+    <div
+      className="fvp-file-markdown-math-block"
+      data-language={languageTag ?? "math"}
+      dangerouslySetInnerHTML={{ __html: renderedHtml }}
+    />
+  );
+}
+
 function FileMarkdownMermaidBlock({
   className,
   value,
@@ -400,6 +436,7 @@ function FileMarkdownMermaidBlock({
   className?: string;
   value: string;
 }) {
+  const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState<"source" | "render">("source");
   const [renderState, setRenderState] = useState<MermaidRenderState>({
     status: "idle",
@@ -463,7 +500,11 @@ function FileMarkdownMermaidBlock({
     <div className="fvp-file-markdown-codeblock fvp-file-markdown-mermaid">
       <div className="fvp-file-markdown-codeblock-label">
         <span>Mermaid</span>
-        <div className="fvp-file-markdown-mermaid-tabs" role="tablist" aria-label="Mermaid block view">
+        <div
+          className="fvp-file-markdown-mermaid-tabs"
+          role="tablist"
+          aria-label={t("files.markdownMermaidTabList")}
+        >
           <button
             type="button"
             role="tab"
@@ -471,7 +512,7 @@ function FileMarkdownMermaidBlock({
             className={`fvp-file-markdown-mermaid-tab${activeTab === "source" ? " is-active" : ""}`}
             onClick={() => setActiveTab("source")}
           >
-            Source
+            {t("files.markdownMermaidSource")}
           </button>
           <button
             type="button"
@@ -480,7 +521,7 @@ function FileMarkdownMermaidBlock({
             className={`fvp-file-markdown-mermaid-tab${activeTab === "render" ? " is-active" : ""}`}
             onClick={() => setActiveTab("render")}
           >
-            Render
+            {t("files.markdownMermaidRender")}
           </button>
         </div>
       </div>
@@ -500,11 +541,11 @@ function FileMarkdownMermaidBlock({
         />
       ) : renderState.status === "error" ? (
         <div className="fvp-file-markdown-mermaid-status fvp-file-markdown-mermaid-error">
-          Render failed: {renderState.message}
+          {t("files.markdownMermaidRenderFailed", { message: renderState.message })}
         </div>
       ) : (
         <div className="fvp-file-markdown-mermaid-status">
-          Rendering diagram...
+          {t("files.markdownMermaidRendering")}
         </div>
       )}
     </div>
@@ -521,33 +562,67 @@ export function FileMarkdownPreview({
   renderAnnotationMarker,
   annotationActionLabel = "Annotate",
 }: FileMarkdownPreviewProps) {
+  const { t } = useTranslation();
   const frontmatter = useMemo(() => extractFrontmatter(value), [value]);
+  const normalizedMarkdown = useMemo(
+    () => normalizeMarkdownMathForFilePreview(frontmatter.body),
+    [frontmatter.body],
+  );
+  const markdownBody = normalizedMarkdown.value;
+  const markdownLineMap = normalizedMarkdown.lineMap;
+  const hasMathContent = useMemo(
+    () => detectMathContent(frontmatter.body) || detectMathContent(markdownBody),
+    [frontmatter.body, markdownBody],
+  );
+  const [katexReady, setKatexReady] = useState(() => areKatexAssetsReady());
+  useEffect(() => {
+    if (!hasMathContent || katexReady) {
+      return;
+    }
+    let cancelled = false;
+    loadKatexAssets().then(() => {
+      if (cancelled) {
+        return;
+      }
+      setKatexReady(true);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [hasMathContent, katexReady]);
   const rehypePlugins = useMemo(
-    () => [
-      rehypeRaw,
-      [rehypeSanitize, {
-        ...defaultSchema,
-        tagNames: [
-          ...(defaultSchema.tagNames ?? []),
-          "details",
-          "summary",
-          "abbr",
-          "mark",
-          "ins",
-          "del",
-          "sub",
-          "sup",
-          "kbd",
-          "var",
-          "samp",
-        ],
-        attributes: {
-          ...defaultSchema.attributes,
-          "*": [...(defaultSchema.attributes?.["*"] ?? []), "className", "class"],
-        },
-      }],
-    ] as Parameters<typeof ReactMarkdown>[0]["rehypePlugins"],
-    [],
+    () => {
+      const plugins: unknown[] = [
+        rehypeRaw,
+        [rehypeSanitize, {
+          ...defaultSchema,
+          tagNames: [
+            ...(defaultSchema.tagNames ?? []),
+            "details",
+            "summary",
+            "abbr",
+            "mark",
+            "ins",
+            "del",
+            "sub",
+            "sup",
+            "kbd",
+            "var",
+            "samp",
+          ],
+          attributes: {
+            ...defaultSchema.attributes,
+            "*": [...(defaultSchema.attributes?.["*"] ?? []), "className", "class"],
+          },
+        }],
+      ];
+      const cachedRehypeKatex = getCachedRehypeKatex();
+      if (katexReady && cachedRehypeKatex) {
+        plugins.push(cachedRehypeKatex);
+      }
+      return plugins as Parameters<typeof ReactMarkdown>[0]["rehypePlugins"];
+    },
+    [katexReady],
   );
 
   const handleAnchorClick = useCallback((event: MouseEvent, href?: string) => {
@@ -572,7 +647,13 @@ export function FileMarkdownPreview({
     children: ReactNode,
     props?: Record<string, unknown>,
   ) => {
-    const lineRange = resolveMarkdownNodeLineRange(node, frontmatter.bodyStartLine);
+    const normalizedLineRange = resolveMarkdownNodeLineRange(node, 1);
+    const lineRange = normalizedLineRange
+      ? {
+          startLine: (markdownLineMap[normalizedLineRange.startLine - 1] ?? normalizedLineRange.startLine) + frontmatter.bodyStartLine - 1,
+          endLine: (markdownLineMap[normalizedLineRange.endLine - 1] ?? normalizedLineRange.endLine) + frontmatter.bodyStartLine - 1,
+        }
+      : null;
     const content = createElement(tagName, props, children);
     if (!lineRange) {
       return content;
@@ -581,7 +662,7 @@ export function FileMarkdownPreview({
       <MarkdownAnnotatableBlock
         lineRange={lineRange}
         node={node}
-        bodyStartLine={frontmatter.bodyStartLine}
+        bodyStartLine={1}
         onAnnotationStart={onAnnotationStart}
         annotationDraft={annotationDraft}
         annotations={annotations}
@@ -597,6 +678,7 @@ export function FileMarkdownPreview({
     annotationDraft,
     annotations,
     frontmatter.bodyStartLine,
+    markdownLineMap,
     onAnnotationStart,
     renderAnnotationDraft,
     renderAnnotationMarker,
@@ -631,11 +713,22 @@ export function FileMarkdownPreview({
       if (!codeClassName && !codeValue) {
         return renderAnnotatableBlock("div", node, <pre>{children}</pre>);
       }
-      if (extractLanguageTag(codeClassName) === "mermaid") {
+      const languageTag = extractLanguageTag(codeClassName);
+      if (languageTag === "mermaid") {
         return renderAnnotatableBlock(
           "div",
           node,
           <FileMarkdownMermaidBlock
+            className={codeClassName}
+            value={codeValue}
+          />,
+        );
+      }
+      if (isMathCodeLanguage(languageTag)) {
+        return renderAnnotatableBlock(
+          "div",
+          node,
+          <FileMarkdownMathBlock
             className={codeClassName}
             value={codeValue}
           />,
@@ -656,7 +749,9 @@ export function FileMarkdownPreview({
     <div className={className} data-testid="file-markdown-preview">
       {frontmatter.fields.length > 0 ? (
         <section className="fvp-file-markdown-frontmatter" data-testid="file-markdown-frontmatter">
-          <div className="fvp-file-markdown-frontmatter-label">Metadata</div>
+          <div className="fvp-file-markdown-frontmatter-label">
+            {t("files.markdownFrontmatterLabel")}
+          </div>
           <dl className="fvp-file-markdown-frontmatter-grid">
             {frontmatter.fields.map((field) => (
               <div key={field.key} className="fvp-file-markdown-frontmatter-row">
@@ -668,11 +763,11 @@ export function FileMarkdownPreview({
         </section>
       ) : null}
       <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
+        remarkPlugins={[remarkGfm, remarkMath]}
         rehypePlugins={rehypePlugins}
         components={components}
       >
-        {frontmatter.body}
+        {markdownBody}
       </ReactMarkdown>
     </div>
   );
