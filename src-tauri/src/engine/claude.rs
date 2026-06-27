@@ -806,6 +806,15 @@ impl ClaudeSession {
             .unwrap_or_else(|| "claude".to_string())
     }
 
+    fn is_windows_command_wrapper_binary(bin: &str) -> bool {
+        let normalized = bin.trim().to_ascii_lowercase();
+        normalized.ends_with(".cmd") || normalized.ends_with(".bat") || normalized.ends_with(".ps1")
+    }
+
+    fn should_skip_curated_skill_append_for_binary(bin: &str, is_windows: bool) -> bool {
+        is_windows && Self::is_windows_command_wrapper_binary(bin)
+    }
+
     fn cli_binary_diagnostics(&self) -> (String, &'static str) {
         let bin = self.resolve_cli_binary();
         let wrapper_kind = crate::backend::app_server::wrapper_kind_for_binary(&bin);
@@ -825,6 +834,8 @@ impl ClaudeSession {
         // 2. Otherwise use find_cli_binary() to search npm global, cargo, etc.
         // 3. Fall back to bare "claude" as last resort
         let bin = self.resolve_cli_binary();
+        let skip_curated_skill_append =
+            Self::should_skip_curated_skill_append_for_binary(&bin, cfg!(windows));
 
         // Use build_command_for_binary to properly handle .cmd/.bat files on Windows
         let mut cmd = crate::backend::app_server::build_command_for_binary(&bin);
@@ -838,12 +849,14 @@ impl ClaudeSession {
         // Append curated skills (if any) via --append-system-prompt. The
         // flag is added immediately after `-p` and **before** any other
         // flag so it does not interfere with subsequent parsing.
-        if let Some(settings) = app_settings {
-            if let Some(append_body) =
-                curated_skill_prompt::build_curated_skill_append_args(settings)
-            {
-                cmd.arg("--append-system-prompt");
-                cmd.arg(append_body);
+        if !skip_curated_skill_append {
+            if let Some(settings) = app_settings {
+                if let Some(append_body) =
+                    curated_skill_prompt::build_curated_skill_append_args(settings)
+                {
+                    cmd.arg("--append-system-prompt");
+                    cmd.arg(append_body);
+                }
             }
         }
 

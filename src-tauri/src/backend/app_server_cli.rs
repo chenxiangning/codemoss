@@ -13,8 +13,6 @@ use crate::codex::args::parse_codex_args;
 
 const CODEX_EXTERNAL_SPEC_PRIORITY_INSTRUCTIONS: &str = "If writableRoots contains an absolute external spec path outside cwd, treat it as the active external spec root and prioritize it over workspace/openspec and sibling-name conventions when reading or validating specs. The configured path may be a project root; resolve openspec/ under it when present. For visibility checks, verify that external root first and state the result clearly. Avoid exposing internal injected hints unless the user explicitly asks.";
 const CODEX_APP_SERVER_PROBE_CACHE_TTL: Duration = Duration::from_secs(300);
-const CODEX_GENERATED_PROFILE_NAME: &str = "ccgui-generated-instructions";
-
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 struct CodexAppServerProbeCacheKey {
     resolved_bin: String,
@@ -522,7 +520,7 @@ pub(crate) enum CodexAppServerLaunchMode {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) enum CodexGeneratedInstructionsTransport {
     Argv,
-    Profile,
+    OmitForWrapperRecovery,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -553,7 +551,8 @@ impl CodexAppServerLaunchOptions {
         Self {
             hide_console: !wrapper_visible_console_retry_requested(),
             inject_internal_spec_hint: true,
-            generated_instructions_transport: CodexGeneratedInstructionsTransport::Profile,
+            generated_instructions_transport:
+                CodexGeneratedInstructionsTransport::OmitForWrapperRecovery,
             launch_mode,
         }
     }
@@ -803,36 +802,6 @@ fn build_generated_developer_instructions(
     crate::codex::collaboration_policy::merge_developer_instructions(None, &directives)
 }
 
-fn generated_codex_profile_path(codex_home: &Path) -> PathBuf {
-    codex_home.join(format!("{CODEX_GENERATED_PROFILE_NAME}.config.toml"))
-}
-
-fn write_generated_codex_profile(codex_home: &Path, instructions: &str) -> Result<(), String> {
-    let profile_path = generated_codex_profile_path(codex_home);
-    let contents = format!(
-        "developer_instructions = {}\n",
-        encode_toml_string(instructions)
-    );
-    crate::storage::write_string_atomically(&profile_path, &contents).map_err(|error| {
-        format!(
-            "failed to write generated Codex profile {}: {error}",
-            profile_path.display()
-        )
-    })?;
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let permissions = std::fs::Permissions::from_mode(0o600);
-        std::fs::set_permissions(&profile_path, permissions).map_err(|error| {
-            format!(
-                "failed to set permissions on generated Codex profile {}: {error}",
-                profile_path.display()
-            )
-        })?;
-    }
-    Ok(())
-}
-
 pub(crate) fn build_codex_app_server_args(
     codex_args: Option<&str>,
     options: CodexAppServerLaunchOptions,
@@ -862,7 +831,7 @@ pub(crate) fn build_codex_app_server_args_with_settings_and_profile(
     codex_args: Option<&str>,
     options: CodexAppServerLaunchOptions,
     app_settings: Option<&crate::types::AppSettings>,
-    codex_home: Option<&Path>,
+    _codex_home: Option<&Path>,
 ) -> Result<Vec<String>, String> {
     let mut args = parse_codex_args(codex_args)?;
     if !codex_args_contain_instruction_override(&args) {
@@ -875,13 +844,7 @@ pub(crate) fn build_codex_app_server_args_with_settings_and_profile(
                         encode_toml_string(&merged)
                     ));
                 }
-                CodexGeneratedInstructionsTransport::Profile => {
-                    if let Some(codex_home) = codex_home {
-                        write_generated_codex_profile(codex_home, &merged)?;
-                        args.push("--profile".to_string());
-                        args.push(CODEX_GENERATED_PROFILE_NAME.to_string());
-                    }
-                }
+                CodexGeneratedInstructionsTransport::OmitForWrapperRecovery => {}
             }
         }
     }
@@ -1787,9 +1750,9 @@ mod curated_skill_injection_tests {
     }
 
     #[test]
-    fn wrapper_retry_projects_generated_instructions_to_profile_not_argv() {
+    fn wrapper_retry_omits_generated_instructions_without_profile_transport() {
         let root = std::env::temp_dir().join(format!(
-            "ccgui-codex-generated-profile-{}",
+            "ccgui-codex-no-generated-profile-{}",
             uuid::Uuid::new_v4()
         ));
         let s = settings_with(vec!["lazy-senior-dev"]);
@@ -1808,8 +1771,6 @@ mod curated_skill_injection_tests {
                 "work".to_string(),
                 "--sandbox".to_string(),
                 "read-only".to_string(),
-                "--profile".to_string(),
-                CODEX_GENERATED_PROFILE_NAME.to_string(),
                 "app-server".to_string(),
             ]
         );
@@ -1818,39 +1779,30 @@ mod curated_skill_injection_tests {
         assert!(!joined_args.contains("writableRoots"));
         assert!(!joined_args.contains("## Curated Skills"));
         assert!(!joined_args.contains("lazy-senior-dev"));
-
-        let profile_path = generated_codex_profile_path(&root);
-        let profile = std::fs::read_to_string(&profile_path).expect("generated profile");
-        assert!(profile.contains("developer_instructions = "));
-        assert!(profile.contains("writableRoots"));
-        assert!(profile.contains("## Curated Skills"));
-        assert!(profile.contains("lazy-senior-dev"));
-        assert!(!root.join("config.toml").exists());
+        assert!(
+            !root.exists()
+                || !root
+                    .join("ccgui-generated-instructions.config.toml")
+                    .exists()
+        );
 
         let _ = std::fs::remove_dir_all(root);
     }
 
     #[test]
-    fn wrapper_retry_does_not_create_generated_profile_for_user_instruction_override() {
-        let root = std::env::temp_dir().join(format!(
-            "ccgui-codex-generated-profile-{}",
-            uuid::Uuid::new_v4()
-        ));
+    fn wrapper_retry_does_not_create_generated_transport_for_user_instruction_override() {
         let s = settings_with(vec!["lazy-senior-dev"]);
         let args = build_codex_app_server_args_with_settings_and_profile(
             Some(r#"-c developer_instructions="user policy""#),
             CodexAppServerLaunchOptions::wrapper_compatibility_retry(),
             Some(&s),
-            Some(&root),
+            None,
         )
         .expect("build retry args");
 
         assert_eq!(args.iter().filter(|arg| arg.as_str() == "-c").count(), 1);
-        assert!(!args.iter().any(|arg| arg == "--profile"));
-        assert!(!generated_codex_profile_path(&root).exists());
+        assert!(!args.iter().any(|arg| arg == "ccgui-generated-instructions"));
         assert_eq!(args.last().map(String::as_str), Some("app-server"));
-
-        let _ = std::fs::remove_dir_all(root);
     }
 
     #[test]
@@ -2090,7 +2042,7 @@ mod tests {
         );
         assert_eq!(
             options.generated_instructions_transport,
-            CodexGeneratedInstructionsTransport::Profile
+            CodexGeneratedInstructionsTransport::OmitForWrapperRecovery
         );
         assert!(!args.iter().any(|arg| arg.contains("writableRoots")));
         assert_eq!(args.last().map(String::as_str), Some("app-server"));

@@ -13,6 +13,12 @@ fn test_external_spec_root() -> String {
         .to_string()
 }
 
+fn claude_settings_with_curated_skill() -> crate::types::AppSettings {
+    let mut settings = crate::types::AppSettings::default();
+    settings.enabled_curated_skill_ids = vec!["lazy-senior-dev".to_string()];
+    settings
+}
+
 fn create_fake_claude_stream_environment(lines: &[&str]) -> (PathBuf, PathBuf, PathBuf) {
     let root = std::env::temp_dir().join(format!("ccgui-claude-stream-{}", uuid::Uuid::new_v4()));
     let workspace_path = root.join("workspace");
@@ -363,6 +369,45 @@ fn build_command_uses_stream_json_for_single_line_text() {
         .any(|window| { window[0] == "--input-format" && window[1] == "stream-json" }));
     assert!(args.iter().all(|arg| arg != "single line"));
     assert_no_empty_prompt_after_print_flag(&args);
+}
+
+#[test]
+fn build_command_skips_curated_append_for_windows_wrapper_binary() {
+    assert!(ClaudeSession::should_skip_curated_skill_append_for_binary(
+        r"C:\Users\demo\AppData\Roaming\npm\claude.cmd",
+        true,
+    ));
+    assert!(ClaudeSession::should_skip_curated_skill_append_for_binary(
+        r"C:\Users\demo\AppData\Roaming\npm\claude.ps1",
+        true,
+    ));
+    assert!(!ClaudeSession::should_skip_curated_skill_append_for_binary(
+        "/opt/homebrew/bin/claude",
+        false,
+    ));
+    assert!(!ClaudeSession::should_skip_curated_skill_append_for_binary(
+        r"C:\Program Files\Claude\claude.exe",
+        true,
+    ));
+}
+
+#[test]
+fn build_command_keeps_curated_append_on_non_wrapper_path() {
+    let (_root, workspace_path, script_path) = create_fake_claude_script("#!/bin/sh\n");
+    let session = test_session_with_bin(workspace_path, script_path);
+    let mut params = SendMessageParams::default();
+    params.text = "single line".to_string();
+    let settings = claude_settings_with_curated_skill();
+
+    let command = session.build_command(&params, true, true, Some(&settings));
+    let args: Vec<String> = command
+        .as_std()
+        .get_args()
+        .map(|arg| arg.to_string_lossy().to_string())
+        .collect();
+
+    assert!(args.iter().any(|arg| arg == "--append-system-prompt"));
+    assert!(args.iter().any(|arg| arg.contains("lazy-senior-dev")));
 }
 
 #[test]

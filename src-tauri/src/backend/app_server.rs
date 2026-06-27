@@ -1094,7 +1094,7 @@ async fn spawn_workspace_session_with_wrapper_fallback<E: EventSink>(
         Err(primary_error) => {
             primary_sink.discard();
             log::warn!(
-                "[codex-wrapper-fallback] retrying workspace={} bin={} wrapper={} without internal spec hint after primary failure: {}",
+                "[codex-wrapper-fallback] retrying workspace={} bin={} wrapper={} without ccgui-generated instructions argv after primary failure: {}",
                 entry.id,
                 launch_context.resolved_bin,
                 launch_context.wrapper_kind,
