@@ -372,7 +372,7 @@ fn build_command_uses_stream_json_for_single_line_text() {
 }
 
 #[test]
-fn build_command_skips_curated_append_for_windows_wrapper_binary() {
+fn build_command_skips_curated_append_on_windows() {
     assert!(ClaudeSession::should_skip_curated_skill_append_for_binary(
         r"C:\Users\demo\AppData\Roaming\npm\claude.cmd",
         true,
@@ -385,13 +385,17 @@ fn build_command_skips_curated_append_for_windows_wrapper_binary() {
         "/opt/homebrew/bin/claude",
         false,
     ));
-    assert!(!ClaudeSession::should_skip_curated_skill_append_for_binary(
+    assert!(ClaudeSession::should_skip_curated_skill_append_for_binary(
         r"C:\Program Files\Claude\claude.exe",
         true,
+    ));
+    assert!(ClaudeSession::should_skip_curated_skill_append_for_binary(
+        "claude", true,
     ));
 }
 
 #[test]
+#[cfg(not(windows))]
 fn build_command_keeps_curated_append_on_non_wrapper_path() {
     let (_root, workspace_path, script_path) = create_fake_claude_script("#!/bin/sh\n");
     let session = test_session_with_bin(workspace_path, script_path);
@@ -408,6 +412,25 @@ fn build_command_keeps_curated_append_on_non_wrapper_path() {
 
     assert!(args.iter().any(|arg| arg == "--append-system-prompt"));
     assert!(args.iter().any(|arg| arg.contains("lazy-senior-dev")));
+}
+
+#[test]
+#[cfg(windows)]
+fn build_command_omits_curated_append_on_windows() {
+    let session = ClaudeSession::new("test-workspace".to_string(), test_workspace_path(), None);
+    let mut params = SendMessageParams::default();
+    params.text = "single line".to_string();
+    let settings = claude_settings_with_curated_skill();
+
+    let command = session.build_command(&params, true, true, Some(&settings));
+    let args: Vec<String> = command
+        .as_std()
+        .get_args()
+        .map(|arg| arg.to_string_lossy().to_string())
+        .collect();
+
+    assert!(!args.iter().any(|arg| arg == "--append-system-prompt"));
+    assert!(!args.iter().any(|arg| arg.contains("lazy-senior-dev")));
 }
 
 #[test]

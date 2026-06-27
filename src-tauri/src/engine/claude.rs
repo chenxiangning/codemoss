@@ -806,13 +806,9 @@ impl ClaudeSession {
             .unwrap_or_else(|| "claude".to_string())
     }
 
-    fn is_windows_command_wrapper_binary(bin: &str) -> bool {
-        let normalized = bin.trim().to_ascii_lowercase();
-        normalized.ends_with(".cmd") || normalized.ends_with(".bat") || normalized.ends_with(".ps1")
-    }
-
     fn should_skip_curated_skill_append_for_binary(bin: &str, is_windows: bool) -> bool {
-        is_windows && Self::is_windows_command_wrapper_binary(bin)
+        let _ = bin;
+        is_windows
     }
 
     fn cli_binary_diagnostics(&self) -> (String, &'static str) {

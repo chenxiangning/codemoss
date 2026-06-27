@@ -533,10 +533,18 @@ pub(crate) struct CodexAppServerLaunchOptions {
 
 impl CodexAppServerLaunchOptions {
     pub(crate) fn primary() -> Self {
+        Self::primary_for_platform(cfg!(windows))
+    }
+
+    pub(crate) fn primary_for_platform(is_windows: bool) -> Self {
         Self {
             hide_console: true,
             inject_internal_spec_hint: true,
-            generated_instructions_transport: CodexGeneratedInstructionsTransport::Argv,
+            generated_instructions_transport: if is_windows {
+                CodexGeneratedInstructionsTransport::OmitForWrapperRecovery
+            } else {
+                CodexGeneratedInstructionsTransport::Argv
+            },
             launch_mode: CodexAppServerLaunchMode::Normal,
         }
     }
@@ -558,10 +566,18 @@ impl CodexAppServerLaunchOptions {
     }
 
     pub(crate) fn session_hooks_disabled() -> Self {
+        Self::session_hooks_disabled_for_platform(cfg!(windows))
+    }
+
+    pub(crate) fn session_hooks_disabled_for_platform(is_windows: bool) -> Self {
         Self {
             hide_console: true,
             inject_internal_spec_hint: true,
-            generated_instructions_transport: CodexGeneratedInstructionsTransport::Argv,
+            generated_instructions_transport: if is_windows {
+                CodexGeneratedInstructionsTransport::OmitForWrapperRecovery
+            } else {
+                CodexGeneratedInstructionsTransport::Argv
+            },
             launch_mode: CodexAppServerLaunchMode::SessionHooksDisabled,
         }
     }
@@ -800,6 +816,16 @@ fn build_generated_developer_instructions(
         }
     }
     crate::codex::collaboration_policy::merge_developer_instructions(None, &directives)
+}
+
+#[cfg_attr(not(windows), allow(dead_code))]
+pub(crate) fn codex_generated_developer_instructions_for_turn(
+    app_settings: &crate::types::AppSettings,
+) -> Option<String> {
+    build_generated_developer_instructions(
+        CodexAppServerLaunchOptions::primary_for_platform(false),
+        Some(app_settings),
+    )
 }
 
 pub(crate) fn build_codex_app_server_args(
@@ -1731,7 +1757,7 @@ mod curated_skill_injection_tests {
         let s = settings_with(vec!["lazy-senior-dev"]);
         let args = build_codex_app_server_args_with_settings(
             Some("--profile work"),
-            CodexAppServerLaunchOptions::primary(),
+            CodexAppServerLaunchOptions::primary_for_platform(false),
             Some(&s),
         )
         .unwrap();
@@ -1747,6 +1773,50 @@ mod curated_skill_injection_tests {
         assert!(unquoted.contains("## Curated Skills"), "got: {}", unquoted);
         assert!(unquoted.contains("lazy-senior-dev"), "got: {}", unquoted);
         assert_eq!(args.last().map(String::as_str), Some("app-server"));
+    }
+
+    #[test]
+    fn build_codex_app_server_windows_primary_omits_generated_instructions_argv() {
+        let s = settings_with(vec!["lazy-senior-dev"]);
+        let args = build_codex_app_server_args_with_settings(
+            Some("--profile work"),
+            CodexAppServerLaunchOptions::primary_for_platform(true),
+            Some(&s),
+        )
+        .unwrap();
+        let joined_args = args.join(" ");
+
+        assert_eq!(
+            args,
+            vec![
+                "--profile".to_string(),
+                "work".to_string(),
+                "app-server".to_string(),
+            ]
+        );
+        assert!(!joined_args.contains("developer_instructions="));
+        assert!(!joined_args.contains("writableRoots"));
+        assert!(!joined_args.contains("lazy-senior-dev"));
+    }
+
+    #[test]
+    fn codex_generated_developer_instructions_for_turn_includes_hint_and_curated_skill() {
+        let s = settings_with(vec!["lazy-senior-dev"]);
+        let instructions =
+            codex_generated_developer_instructions_for_turn(&s).expect("turn instructions");
+
+        assert!(
+            instructions.contains("writableRoots"),
+            "got: {instructions}"
+        );
+        assert!(
+            instructions.contains("## Curated Skills"),
+            "got: {instructions}"
+        );
+        assert!(
+            instructions.contains("lazy-senior-dev"),
+            "got: {instructions}"
+        );
     }
 
     #[test]
@@ -1965,7 +2035,7 @@ mod tests {
     fn app_server_primary_args_append_internal_spec_hint() {
         let args = build_codex_app_server_args(
             Some("--profile work"),
-            CodexAppServerLaunchOptions::primary(),
+            CodexAppServerLaunchOptions::primary_for_platform(false),
         )
         .expect("build args");
 
@@ -1982,7 +2052,7 @@ mod tests {
     fn app_server_primary_args_respect_user_instruction_override() {
         let args = build_codex_app_server_args(
             Some(r#"-c developer_instructions="follow workspace policy""#),
-            CodexAppServerLaunchOptions::primary(),
+            CodexAppServerLaunchOptions::primary_for_platform(false),
         )
         .expect("build args");
 
@@ -2013,7 +2083,7 @@ mod tests {
 
     #[test]
     fn app_server_session_hooks_disabled_args_keep_primary_shape() {
-        let options = CodexAppServerLaunchOptions::session_hooks_disabled();
+        let options = CodexAppServerLaunchOptions::session_hooks_disabled_for_platform(false);
         let args =
             build_codex_app_server_args(Some("--profile work"), options).expect("build args");
 
@@ -2025,6 +2095,24 @@ mod tests {
         assert!(args.iter().any(|arg| {
             arg.starts_with("developer_instructions=\"") && arg.contains("writableRoots")
         }));
+        assert_eq!(args.last().map(String::as_str), Some("app-server"));
+    }
+
+    #[test]
+    fn app_server_windows_session_hooks_disabled_omits_generated_instructions_argv() {
+        let options = CodexAppServerLaunchOptions::session_hooks_disabled_for_platform(true);
+        let args =
+            build_codex_app_server_args(Some("--profile work"), options).expect("build args");
+
+        assert_eq!(
+            options.launch_mode,
+            CodexAppServerLaunchMode::SessionHooksDisabled
+        );
+        assert_eq!(
+            options.generated_instructions_transport,
+            CodexGeneratedInstructionsTransport::OmitForWrapperRecovery
+        );
+        assert!(!args.iter().any(|arg| arg.contains("writableRoots")));
         assert_eq!(args.last().map(String::as_str), Some("app-server"));
     }
 

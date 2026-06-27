@@ -4,6 +4,12 @@
 
 When Windows `.cmd/.bat` wrapper launch fails before Codex app-server initialization completes, the system MUST attempt a bounded compatibility retry that avoids known fragile wrapper argument combinations. Compatibility retry MUST use argument forms supported by `codex app-server`; it MUST NOT rely on `--profile <name> app-server`.
 
+#### Scenario: Windows primary avoids generated developer instructions argv
+- **WHEN** the app starts a Codex app-server process on Windows
+- **AND** ccgui-generated instructions contain the external spec priority hint or enabled curated skill bodies
+- **THEN** primary launch argv MUST NOT include generated `developer_instructions` quoted TOML config arguments
+- **AND** the launch argv MUST still preserve user-provided Codex args unless they are invalid
+
 #### Scenario: wrapper primary fails before initialize
 - **WHEN** the resolved Codex binary is a `.cmd` or `.bat` wrapper on Windows
 - **AND** the primary app-server launch exits, closes stdout, or fails initialize before the session becomes connected
@@ -22,12 +28,11 @@ When Windows `.cmd/.bat` wrapper launch fails before Codex app-server initializa
 - **THEN** retry argv MUST NOT include `--profile ccgui-generated-instructions app-server`
 - **AND** retry MUST NOT create a ccgui-generated profile file as the app-server curated skill transport
 
-#### Scenario: retry success creates usable degraded session
+#### Scenario: retry success creates usable session
 - **WHEN** primary Windows wrapper launch fails before initialize
 - **AND** compatibility retry completes initialize handshake successfully after omitting ccgui-generated instructions
 - **THEN** the system MUST create a usable Codex workspace session
 - **AND** runtime diagnostics SHOULD indicate that fallback was retried
-- **AND** runtime diagnostics MUST indicate that built-in curated skill injection was skipped for startup recovery
 
 #### Scenario: retry success suppresses primary pre-connect failure events
 - **WHEN** primary Windows wrapper launch emits startup failure events before initialize completes
@@ -55,3 +60,8 @@ The system MUST include targeted backend tests that lock the wrapper fallback co
 - **THEN** they MUST verify that retry argv avoids the fragile internally generated `developer_instructions` config argument
 - **AND** they MUST verify that retry argv does not use `--profile ccgui-generated-instructions`
 - **AND** they MUST verify that retry preserves user-provided Codex args
+
+#### Scenario: Windows primary omission is covered
+- **WHEN** backend tests exercise platform-specific Codex app-server launch options
+- **THEN** they MUST verify that Windows primary launch omits ccgui-generated `developer_instructions` argv
+- **AND** they MUST verify that macOS/Linux primary launch behavior can still include generated `developer_instructions` argv.
