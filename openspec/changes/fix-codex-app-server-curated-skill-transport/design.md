@@ -6,12 +6,17 @@ The previous Codex wrapper fallback tried to move generated instructions into a 
 
 Claude has an analogous risk: curated skills are appended through `--append-system-prompt <large body>`. On Windows, that large argv payload sits next to the stream-json stdin protocol and can trigger the same class of boundary failure.
 
+Follow-up Windows testing confirmed this split:
+- Codex works when generated instructions move to `turn/start.collaborationMode.settings.developer_instructions`.
+- Claude works when large `--append-system-prompt` argv is removed, but the curated skill is not recognized because it is not present in Claude's native skills inventory.
+
 ## Goals / Non-Goals
 
 **Goals:**
 - Preserve enabled built-in skills on macOS/Linux launch paths and Windows Codex turns.
 - Make Windows Codex session creation usable when curated skill argv transport blocks startup.
 - Keep Windows Codex built-in skills usable through `turn/start.collaborationMode.settings.developer_instructions`.
+- Keep Windows Claude built-in skills usable through Claude native skill discovery without large argv.
 - Remove the invalid Codex `--profile ... app-server` fallback.
 - Keep old Claude polluted history filtering as compatibility cleanup, not as the primary fix.
 
@@ -43,12 +48,36 @@ macOS/Linux Codex launch still injects generated instructions through supported 
 
 Claude macOS/Linux paths keep `--append-system-prompt`. Windows skips that generated argv body and continues to send user prompt content through stream-json stdin. This avoids touching macOS, which is already correct.
 
-### Decision 5: History filtering remains a compatibility layer
+### Decision 5: Claude Windows mirrors curated skills into effective Claude home
+
+Before a Windows Claude send, ccgui syncs enabled curated skills into `<effective Claude home>/skills/<skill-id>/SKILL.md`.
+
+Effective Claude home is resolved dynamically:
+1. configured Claude engine `home_dir`
+2. `CLAUDE_HOME`
+3. platform default Claude home
+
+The mirror is ccgui-managed:
+- write only directories containing a ccgui sentinel
+- skip existing user-owned skill directories without overwriting them
+- remove disabled curated skill mirrors only when the sentinel proves ccgui ownership
+
+This keeps the skill usable via Claude's native skill discovery while avoiding the argv boundary that produced stream-json pollution on Windows.
+
+### Decision 6: History filtering remains a compatibility layer
 
 Leaked stream-json envelope filtering is still useful for already polluted transcripts. It should not add frontend retry state-machine behavior. Source transport fixes must prevent new pollution.
+
+### Decision 7: Curated settings UI uses the SettingsView state source
+
+The curated skill switch in Settings must not create its own `useAppSettings()` slot. `SettingsView` already owns the active `appSettings` snapshot and save path, so `CuratedSection` reads `enabledCuratedSkillIds` from that caller-owned snapshot and sends backend-returned `AppSettings` through `onUpdateAppSettings`.
+
+This keeps the UI aligned with the authoritative backend result after `set_curated_skill_enabled` succeeds. It also avoids optimistic false positives: when the write fails, the previous visible switch state stays in place and the error is surfaced.
 
 ## Risks / Trade-offs
 
 - [Risk] Windows Codex first-turn settings payload may be unsupported by older app-server builds. → Mitigation: use the existing `collaborationMode.settings.developer_instructions` path already used for execution policy and keep the existing capability fallback behavior.
-- [Risk] Claude Windows users lose curated skill injection on that launch path. → Mitigation: scope only to Windows; macOS/Linux behavior remains unchanged and Windows sessions remain usable instead of showing raw JSON user bubbles.
+- [Risk] Claude Windows native skill mirror collides with a user-owned skill id. → Mitigation: sentinel ownership check; user-owned directories are skipped and never overwritten.
+- [Risk] Different machines use different Claude homes. → Mitigation: resolve configured home, `CLAUDE_HOME`, and platform default at runtime instead of hard-coding a path.
 - [Risk] Historical polluted sessions remain on disk. → Mitigation: keep high-confidence history filtering for stream-json envelope rows and adjacent polluted assistant echoes.
+- [Risk] Settings UI appears stale even though backend toggle persisted. → Mitigation: remove the duplicate `useAppSettings()` state slot from `CuratedSection` and drive the switch from `SettingsView`'s active settings snapshot.

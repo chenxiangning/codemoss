@@ -8,6 +8,8 @@ Curated skill id changes MUST participate in Codex restart detection because Cod
 
 Windows launch paths MUST avoid injecting ccgui-generated curated skill bodies through process argv when preserving them through argv would block startup. This MUST NOT mutate `enabledCuratedSkillIds`; the skill remains enabled and MUST be made available to Codex turns through JSON-RPC settings.
 
+Windows Claude launch paths MUST avoid injecting ccgui-generated curated skill bodies through process argv and MUST make enabled curated skills available through Claude native skill discovery. The native mirror path MUST be resolved from the effective Claude home rather than a hard-coded OS path.
+
 #### Scenario: missing field defaults empty
 - **WHEN** an existing config file does not contain `enabledCuratedSkillIds`
 - **THEN** restore MUST succeed
@@ -17,6 +19,18 @@ Windows launch paths MUST avoid injecting ccgui-generated curated skill bodies t
 - **WHEN** the user enables `lazy-senior-dev`
 - **THEN** `enabledCuratedSkillIds` MUST include `lazy-senior-dev`
 - **AND** the value MUST be restored after app restart.
+
+#### Scenario: Settings toggle reflects authoritative result immediately
+- **WHEN** the user toggles `lazy-senior-dev` in Settings `MCP / Skills`
+- **AND** `set_curated_skill_enabled` returns an updated `AppSettings`
+- **THEN** the visible switch MUST update from that returned `enabledCuratedSkillIds` in the current Settings view
+- **AND** the user MUST NOT need to switch to another module and back to see the new state.
+
+#### Scenario: Settings toggle failure preserves previous visible state
+- **WHEN** the user toggles `lazy-senior-dev` in Settings `MCP / Skills`
+- **AND** `set_curated_skill_enabled` fails
+- **THEN** the visible switch MUST remain on the previous `enabledCuratedSkillIds` state
+- **AND** Settings MUST surface the error instead of displaying a false successful toggle.
 
 #### Scenario: curated toggle requires Codex restart
 - **WHEN** `enabledCuratedSkillIds` changes
@@ -62,3 +76,22 @@ Enabled curated skill bodies MUST be available to supported engine launches when
 - **THEN** Claude launch args MUST NOT include `--append-system-prompt` with the generated curated skill body
 - **AND** the user message MUST still be sent through the existing stream-json stdin path
 - **AND** macOS and Linux Claude launches MUST keep the existing curated skill append behavior.
+
+#### Scenario: Claude Windows mirrors enabled curated skills into effective Claude home
+- **WHEN** `enabledCuratedSkillIds` contains `lazy-senior-dev`
+- **AND** Claude Code launch runs on Windows
+- **THEN** ccgui MUST write the bundled skill body to `<effective Claude home>/skills/lazy-senior-dev/SKILL.md`
+- **AND** effective Claude home MUST resolve from configured Claude home, then `CLAUDE_HOME`, then the platform default Claude home
+- **AND** this mirror MUST happen without adding the skill body to process argv.
+
+#### Scenario: Claude Windows mirror protects user-owned skills
+- **WHEN** `<effective Claude home>/skills/lazy-senior-dev` already exists
+- **AND** it is not marked as ccgui-managed
+- **THEN** ccgui MUST NOT overwrite or delete the existing user-owned skill directory
+- **AND** Claude launch MUST still avoid `--append-system-prompt` argv.
+
+#### Scenario: Claude Windows mirror removes disabled managed skills
+- **WHEN** `lazy-senior-dev` was previously mirrored by ccgui
+- **AND** `enabledCuratedSkillIds` no longer contains `lazy-senior-dev`
+- **THEN** ccgui MUST remove only the ccgui-managed mirror directory
+- **AND** user-owned directories without the ccgui marker MUST remain untouched.

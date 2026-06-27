@@ -42,6 +42,8 @@ mod event_conversion;
 mod lifecycle;
 #[path = "claude/manager.rs"]
 mod manager;
+#[path = "claude/native_skill_mirror.rs"]
+mod native_skill_mirror;
 #[path = "claude_stream_helpers.rs"]
 mod stream_helpers;
 mod user_input;
@@ -999,9 +1001,9 @@ impl ClaudeSession {
     }
 
     /// Variant of `send_message` that takes a snapshot of `AppSettings` so
-    /// the curated-skill injection step (see `curated_skill_prompt::build_curated_skill_append_args`)
-    /// can read the latest `enabled_curated_skill_ids`. Production callers
-    /// use this; the wrapper `send_message` exists for legacy callers.
+    /// curated-skill transport can read the latest `enabled_curated_skill_ids`.
+    /// Production callers use this; the wrapper `send_message` exists for
+    /// legacy callers.
     pub async fn send_message_with_app_settings(
         &self,
         params: SendMessageParams,
@@ -1064,6 +1066,22 @@ impl ClaudeSession {
         }
 
         let use_stream_json_input = Self::should_use_stream_json_input(&params);
+        if let Err(error_msg) = native_skill_mirror::sync_windows_curated_skill_mirror(
+            self.home_dir.as_deref(),
+            app_settings,
+            cfg!(windows),
+        ) {
+            self.emit_turn_event(
+                turn_id,
+                EngineEvent::TurnError {
+                    workspace_id: self.workspace_id.clone(),
+                    error: error_msg.clone(),
+                    code: Some("claude_curated_skill_mirror_failed".to_string()),
+                },
+            );
+            self.clear_turn_ephemeral_state(turn_id);
+            return Err(error_msg);
+        }
 
         let mut cmd = self.build_command(
             &params,

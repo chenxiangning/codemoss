@@ -34,3 +34,21 @@
 - [x] 6.3 Disable Claude curated skill `--append-system-prompt` argv transport on Windows while preserving macOS/Linux behavior.
 - [x] 6.4 Add focused regression tests for Windows Codex argv omission, Codex turn payload injection, and Windows Claude argv omission.
 - [x] 6.5 Re-run focused Rust tests, release check, and strict OpenSpec validation.
+
+## 7. Claude Windows native skill injection
+
+- [x] 7.1 Record the validated Codex turn-level injection point and the Claude Windows native skill mirror point in proposal/design/specs.
+- [x] 7.2 Mirror enabled curated skills into the effective Claude native skills directory before Windows Claude sends.
+- [x] 7.3 Protect user-owned Claude skill directories from overwrite/delete with a ccgui ownership marker.
+- [x] 7.4 Keep macOS/Linux Claude `--append-system-prompt` behavior unchanged.
+- [x] 7.5 Add focused regression tests for Windows mirror creation, disabled cleanup, user-owned collision, and non-Windows no-op.
+- [x] 7.6 Re-run focused Rust tests, release check, diff check, and strict OpenSpec validation.
+- [x] 7.7 Make Claude Windows mirror sync content-aware so unchanged managed skill files are not rewritten on every send.
+
+## 8. Settings curated toggle UI convergence
+
+- [x] 8.1 Make `CuratedSection` read `enabledCuratedSkillIds` from the caller-owned `SettingsView` `appSettings` snapshot instead of opening a duplicate `useAppSettings()` state slot.
+- [x] 8.2 Route successful `set_curated_skill_enabled` results through `onUpdateAppSettings` so the current Settings UI updates immediately.
+- [x] 8.3 Keep failed toggle writes non-optimistic: preserve the previous visible switch state and show the error.
+- [x] 8.4 Add focused frontend regression tests for immediate switch convergence and failed-toggle rollback.
+- [x] 8.5 Run focused frontend tests, TypeScript typecheck, and targeted ESLint for the touched frontend files.
