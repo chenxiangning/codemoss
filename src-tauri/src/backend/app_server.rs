@@ -1142,7 +1142,7 @@ async fn spawn_workspace_session_once<E: EventSink>(
     WorkspaceSession::configure_spawn_command(&mut command);
     let effective_codex_home = codex_home
         .clone()
-        .or_else(crate::codex::resolve_default_codex_home);
+        .or_else(crate::codex::home::resolve_default_codex_home);
     apply_codex_app_server_args_with_settings(
         &mut command,
         codex_args.as_deref(),
