@@ -1473,3 +1473,46 @@ Windows Codex app-server wrapper fallback 改为通过 provider/default CODEX_HO
 ### Next Steps
 
 - None - task complete
+
+
+## Session 957: 改造 Release 为 Windows 无签名打包
+
+**Date**: 2026-06-27
+**Task**: 改造 Release 为 Windows 无签名打包
+**Branch**: `feature/v0.6.1-win`
+
+### Summary
+
+将 feature/v0.6.1-win 测试分支上的 Release workflow 改为仅构建 Windows x64 unsigned NSIS 安装包，并上传可下载 artifact。
+
+### Main Changes
+
+- 将 `.github/workflows/release.yml` 从全平台 release pipeline 简化为单一 `build_windows_unsigned` job。
+- 移除 macOS/Linux build、GitHub Release 创建、version bump PR、release environment 和 signing secrets。
+- 新增 `workflow_dispatch.inputs.ref`，默认构建 `feature/v0.6.1-win`。
+- 在 Windows runner 上生成临时 Tauri config，把 `bundle.createUpdaterArtifacts` 强制设为 `false`，避免 updater signature artifact。
+- 上传 `windows-x64-unsigned-nsis` artifact，仅包含 NSIS `.exe`。
+
+Validation:
+- `ruby -e 'require "yaml"; YAML.load_file(".github/workflows/release.yml"); puts "yaml ok"'`
+- `rg -n "TAURI_SIGNING|APPLE_|notary|release create|bump version|createUpdaterArtifacts|windows-x64-unsigned-nsis|build_windows_unsigned" .github/workflows/release.yml`
+- `git diff --check .github/workflows/release.yml`
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `42f233cd` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
