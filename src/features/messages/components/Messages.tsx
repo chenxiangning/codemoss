@@ -459,6 +459,10 @@ export const Messages = memo(function Messages({
   const [collapseLiveMiddleStepsEnabled, setCollapseLiveMiddleStepsEnabled] = useState(() =>
     readLocalBooleanFlag(MESSAGES_LIVE_COLLAPSE_MIDDLE_STEPS_FLAG_KEY, false),
   );
+  const liveAutoFollowEnabledRef = useRef(liveAutoFollowEnabled);
+  liveAutoFollowEnabledRef.current = liveAutoFollowEnabled;
+  const collapseLiveMiddleStepsEnabledRef = useRef(collapseLiveMiddleStepsEnabled);
+  collapseLiveMiddleStepsEnabledRef.current = collapseLiveMiddleStepsEnabled;
   const legacyClaudeReasoningDockEnabled =
     activeEngine === "claude" &&
     typeof claudeThinkingVisible !== "boolean" &&
@@ -746,13 +750,22 @@ export const Messages = memo(function Messages({
         return;
       }
       if (typeof detail.liveAutoFollowEnabled === "boolean") {
-        setLiveAutoFollowEnabled(detail.liveAutoFollowEnabled);
-        if (detail.liveAutoFollowEnabled && isWorking) {
+        const nextLiveAutoFollowEnabled = detail.liveAutoFollowEnabled;
+        const wasLiveAutoFollowEnabled = liveAutoFollowEnabledRef.current;
+        if (wasLiveAutoFollowEnabled !== nextLiveAutoFollowEnabled) {
+          liveAutoFollowEnabledRef.current = nextLiveAutoFollowEnabled;
+          setLiveAutoFollowEnabled(nextLiveAutoFollowEnabled);
+        }
+        if (!wasLiveAutoFollowEnabled && nextLiveAutoFollowEnabled && isWorking) {
           rearmAutoFollowToBottom();
         }
       }
       if (typeof detail.collapseLiveMiddleStepsEnabled === "boolean") {
-        setCollapseLiveMiddleStepsEnabled(detail.collapseLiveMiddleStepsEnabled);
+        const nextCollapseLiveMiddleStepsEnabled = detail.collapseLiveMiddleStepsEnabled;
+        if (collapseLiveMiddleStepsEnabledRef.current !== nextCollapseLiveMiddleStepsEnabled) {
+          collapseLiveMiddleStepsEnabledRef.current = nextCollapseLiveMiddleStepsEnabled;
+          setCollapseLiveMiddleStepsEnabled(nextCollapseLiveMiddleStepsEnabled);
+        }
       }
     };
     const handleStorage = (event: StorageEvent) => {
@@ -760,13 +773,25 @@ export const Messages = memo(function Messages({
         return;
       }
       if (event.key === MESSAGES_LIVE_AUTO_FOLLOW_FLAG_KEY) {
-        setLiveAutoFollowEnabled(readLocalBooleanFlag(MESSAGES_LIVE_AUTO_FOLLOW_FLAG_KEY, true));
+        const nextLiveAutoFollowEnabled = readLocalBooleanFlag(
+          MESSAGES_LIVE_AUTO_FOLLOW_FLAG_KEY,
+          true,
+        );
+        if (liveAutoFollowEnabledRef.current !== nextLiveAutoFollowEnabled) {
+          liveAutoFollowEnabledRef.current = nextLiveAutoFollowEnabled;
+          setLiveAutoFollowEnabled(nextLiveAutoFollowEnabled);
+        }
         return;
       }
       if (event.key === MESSAGES_LIVE_COLLAPSE_MIDDLE_STEPS_FLAG_KEY) {
-        setCollapseLiveMiddleStepsEnabled(
-          readLocalBooleanFlag(MESSAGES_LIVE_COLLAPSE_MIDDLE_STEPS_FLAG_KEY, false),
+        const nextCollapseLiveMiddleStepsEnabled = readLocalBooleanFlag(
+          MESSAGES_LIVE_COLLAPSE_MIDDLE_STEPS_FLAG_KEY,
+          false,
         );
+        if (collapseLiveMiddleStepsEnabledRef.current !== nextCollapseLiveMiddleStepsEnabled) {
+          collapseLiveMiddleStepsEnabledRef.current = nextCollapseLiveMiddleStepsEnabled;
+          setCollapseLiveMiddleStepsEnabled(nextCollapseLiveMiddleStepsEnabled);
+        }
       }
     };
     window.addEventListener(
@@ -1493,7 +1518,7 @@ export const Messages = memo(function Messages({
     presentationRenderSnapshot,
   );
   const deferredPresentationRenderedItems =
-    deferredPresentationRenderSnapshot.scopeKey === renderScopeKey
+    deferredPresentationRenderSnapshot.scopeKey === presentationScopeKey
       ? deferredPresentationRenderSnapshot.items
       : presentationRenderedItems;
   const shouldStabilizePresentationItems =
@@ -2024,7 +2049,7 @@ export const Messages = memo(function Messages({
   // content is actually rendered; live auto-follow and anchor jumps own all
   // subsequent scrolling.
   useLayoutEffect(() => {
-    const scope = `${workspaceId ?? ""} ${threadId}`;
+    const scope = `${workspaceId ?? ""}\u0000${threadId}`;
     if (initialBottomPinScopeRef.current === scope) {
       return undefined;
     }

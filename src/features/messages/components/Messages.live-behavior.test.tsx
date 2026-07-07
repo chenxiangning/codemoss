@@ -930,6 +930,47 @@ describe("Messages live behavior", () => {
     scrollSpy.mockRestore();
   });
 
+  it("ignores duplicate live auto-follow enabled events", async () => {
+    window.localStorage.setItem("ccgui.messages.live.autoFollow", "1");
+    const scrollSpy = vi
+      .spyOn(HTMLElement.prototype, "scrollIntoView")
+      .mockImplementation(() => {});
+    const { container } = render(
+      <Messages
+        items={[
+          {
+            id: "assistant-live-duplicate-follow",
+            kind: "message",
+            role: "assistant",
+            text: "streaming chunk",
+          },
+        ]}
+        threadId="thread-live-follow-duplicate-event"
+        workspaceId="ws-1"
+        isThinking
+        processingStartedAt={Date.now() - 1_000}
+        openTargets={[]}
+        selectedOpenAppId=""
+      />,
+    );
+
+    const scroller = getMessagesScroller(container);
+    setScrollerMetrics(scroller, 400, 2000);
+    fireEvent.scroll(scroller);
+    scrollSpy.mockClear();
+
+    await act(async () => {
+      window.dispatchEvent(
+        new CustomEvent(MESSAGES_LIVE_CONTROLS_UPDATED_EVENT, {
+          detail: { liveAutoFollowEnabled: true },
+        }),
+      );
+    });
+
+    expect(scrollSpy).not.toHaveBeenCalled();
+    scrollSpy.mockRestore();
+  });
+
   it("does not auto-follow static history item changes", () => {
     window.localStorage.setItem("ccgui.messages.live.autoFollow", "1");
     const scrollSpy = vi

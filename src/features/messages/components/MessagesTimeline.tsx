@@ -124,6 +124,18 @@ type TimelineScrollDiagnosticSnapshot = {
   scrollTop: number;
 };
 
+type TimelineScrollDiagnosticContext = {
+  activeLiveRowCount: number;
+  isThinking: boolean;
+  isWorking: boolean;
+  renderWeight: number;
+  rowCount: number;
+  shouldVirtualizeTimeline: boolean;
+  threadId: string | null;
+  virtualItemCount: number;
+  workspaceId: string | null;
+};
+
 function collectTimelineScrollDiagnosticSnapshot(
   element: HTMLElement,
 ): TimelineScrollDiagnosticSnapshot {
@@ -614,6 +626,28 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     () => virtualTimelineRows.map((row) => row.key),
     [virtualTimelineRows],
   );
+  const timelineScrollDiagnosticContextRef = useRef<TimelineScrollDiagnosticContext>({
+    activeLiveRowCount: activeLiveTimelineRowKeys.length,
+    isThinking,
+    isWorking,
+    renderWeight: timelineRenderWeightSummary.renderWeight,
+    rowCount: timelineProjectionRows.length,
+    shouldVirtualizeTimeline,
+    threadId,
+    virtualItemCount: virtualTimelineRowKeys.length,
+    workspaceId: workspaceId ?? null,
+  });
+  timelineScrollDiagnosticContextRef.current = {
+    activeLiveRowCount: activeLiveTimelineRowKeys.length,
+    isThinking,
+    isWorking,
+    renderWeight: timelineRenderWeightSummary.renderWeight,
+    rowCount: timelineProjectionRows.length,
+    shouldVirtualizeTimeline,
+    threadId,
+    virtualItemCount: virtualTimelineRowKeys.length,
+    workspaceId: workspaceId ?? null,
+  };
 
   useEffect(() => {
     const scrollElement = scrollElementRef.current;
@@ -647,18 +681,19 @@ export const MessagesTimeline = memo(function MessagesTimeline({
         return;
       }
       lastTimelineScrollDiagnosticRef.current = { at: now, eventKind, snapshot };
+      const diagnosticContext = timelineScrollDiagnosticContextRef.current;
       appendRendererDiagnostic("messages/timeline-scroll-behavior", {
         component: "MessagesTimeline",
         eventKind,
-        threadId,
-        workspaceId: workspaceId ?? null,
-        isThinking,
-        isWorking,
-        shouldVirtualizeTimeline,
-        rowCount: timelineProjectionRows.length,
-        renderWeight: timelineRenderWeightSummary.renderWeight,
-        virtualItemCount: virtualTimelineRowKeys.length,
-        activeLiveRowCount: activeLiveTimelineRowKeys.length,
+        threadId: diagnosticContext.threadId,
+        workspaceId: diagnosticContext.workspaceId,
+        isThinking: diagnosticContext.isThinking,
+        isWorking: diagnosticContext.isWorking,
+        shouldVirtualizeTimeline: diagnosticContext.shouldVirtualizeTimeline,
+        rowCount: diagnosticContext.rowCount,
+        renderWeight: diagnosticContext.renderWeight,
+        virtualItemCount: diagnosticContext.virtualItemCount,
+        activeLiveRowCount: diagnosticContext.activeLiveRowCount,
         scrollTopDelta: Math.round(scrollTopDelta),
         distanceFromBottomDelta: Math.round(distanceFromBottomDelta),
         ...snapshot,
@@ -685,18 +720,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       scrollElement.removeEventListener("wheel", handleWheel);
       scrollElement.removeEventListener("scrollend", handleScrollEnd);
     };
-  }, [
-    activeLiveTimelineRowKeys.length,
-    isThinking,
-    isWorking,
-    scrollElementRef,
-    shouldVirtualizeTimeline,
-    threadId,
-    timelineProjectionRows.length,
-    timelineRenderWeightSummary.renderWeight,
-    virtualTimelineRowKeys.length,
-    workspaceId,
-  ]);
+  }, [scrollElementRef]);
 
   const visibleTimelineRowKeySet = useMemo(
     () => new Set(virtualTimelineRowKeys.map(String)),
@@ -732,7 +756,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       presentationProfile?.preferCommandSummary,
     ],
   );
-  const retainedHydratedTimelineRowScopeKey = `${virtualizedTimelineScopeKey} ${timelineRendererOptionsKey}`;
+  const retainedHydratedTimelineRowScopeKey = `${virtualizedTimelineScopeKey}\u0000${timelineRendererOptionsKey}`;
   const retainedHydratedTimelineRowKeys = useMemo(() => {
     const retained = retainedHydratedTimelineRowKeysRef.current;
     if (retained.scopeKey !== retainedHydratedTimelineRowScopeKey) {
