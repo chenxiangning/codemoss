@@ -1751,3 +1751,55 @@ Review:
 ### Next Steps
 
 - None - task complete
+
+
+## Session 964: 修复消息流式滚动更新回环
+
+**Date**: 2026-07-07
+**Task**: 修复消息流式滚动更新回环
+**Branch**: `ui-refactoring`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+## Summary
+
+修复消息流式渲染期间可能触发 React maximum update depth 的反馈环。
+
+## Details
+
+- 修正 `Messages.tsx` 中 deferred presentation snapshot 的 scope 比较，恢复 stable presentation snapshot 与 live row override 的分层契约。
+- 将 `MessagesTimeline.tsx` 的 scroll diagnostic listener 改为稳定订阅，通过 ref 读取最新 diagnostic context，避免 streaming row/renderWeight 变化反复重挂 listener。
+- 对 live controls 的 auto-follow/collapse 状态同步增加 no-op guard，重复相同事件不再写 state 或重复强制滚底。
+- 将源码里的真实 NUL 字节替换为等价 `\u0000` 文本，恢复 `rg`/diff 工具对文件的正常处理。
+- 新增回归测试覆盖重复 live auto-follow enabled event 不重复滚底。
+
+## Validation
+
+- `git diff --check`
+- `npm run lint`：0 errors，保留既有 `MessagesRows.tsx` warning
+- `npm run typecheck`
+- `npm exec vitest run src/features/messages/components/Messages.live-behavior.test.tsx src/features/messages/components/Messages.streaming-presentation.test.tsx src/features/messages/components/messagesLiveWindow.test.ts src/features/messages/components/Messages.test.tsx`
+- `npm run test` 已尝试，停在未触碰的 `src/features/app/components/Sidebar.test.tsx` 既有 DOM 顺序断言失败
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `5b672863` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

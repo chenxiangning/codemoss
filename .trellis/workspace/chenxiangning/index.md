@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-24.md`
-- **Total Sessions**: 963
+- **Total Sessions**: 964
 - **Last Active**: 2026-07-07
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-24.md` | ~1753 | Active |
+| `journal-24.md` | ~1805 | Active |
 | `journal-23.md` | ~1965 | Archived |
 | `journal-22.md` | ~1969 | Archived |
 | `journal-21.md` | ~1970 | Archived |
@@ -52,6 +52,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 964 | 2026-07-07 | 修复消息流式滚动更新回环 | `5b672863` | `ui-refactoring` |
 | 963 | 2026-07-07 | 修复焦点跟随重新开启滚底 | `8ad0eff7` | `ui-refactoring` |
 | 962 | 2026-07-07 | 添加消息锚点直达底部按钮 | `6ede6933` | `ui-refactoring` |
 | 961 | 2026-07-07 | 新增工作区文件对比工具 | `cb2fd0ea` | `ui-refactoring` |
