@@ -84,3 +84,36 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 972: 合并上游 0.7.0 版本分支
+
+**Date**: 2026-07-10
+**Task**: 合并上游 0.7.0 版本分支
+**Branch**: `feature/v-0.7.0`
+
+### Summary
+
+将 upstream/chore/bump-version-0.7.0 本地合并到 feature/v-0.7.0；语义融合 GitDiffPanel 测试 cleanup，保留可编辑 diff 保存保护与上游 AI commit message 最近配置能力，并通过 351 个 focused tests、typecheck、lint 与 cargo check。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `f8435a5d` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
