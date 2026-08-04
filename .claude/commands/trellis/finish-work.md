@@ -65,6 +65,16 @@ If this change touches infra or cross-layer contracts, this is a blocking checkl
 In pipeline mode, the finish agent will automatically detect and execute spec updates when gaps are found.
 If running this checklist manually, ensure spec sync is complete before committing — run `/trellis:update-spec` if needed.
 
+### 2.6. ADR Calibration Writeback (Multi-CLI Foundation)
+
+Canonical rule: `AGENTS.md` 全局 Gate「ADR 校准回写 Gate」。
+
+- [ ] 本次变更是否命中基石文档更新触发器（engine registry / Shared 支持集合 / provider binding / canonical fact schema / context compiler / terminal·ACK contract / recovery exit·abandon）？
+- [ ] 若命中 → `docs/research/mossx-multi-cli-provider-session-foundation-design.md` 的「最近校准」标注与「零、当前实现校准」表已同步刷新？
+- [ ] 新增校准行带 repo-relative 文件路径或 OpenSpec change id（不只写概念）？
+
+**Block Rule**: 命中触发器但未回写的 OpenSpec change 不得收口 / 归档。
+
 ### 3. API Changes
 
 If you modified API endpoints:

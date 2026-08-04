@@ -31,6 +31,7 @@
 
 - 行为变更必须先进入 `openspec/changes/<change-id>/`
 - 完成实现后执行 verify，再按需要 sync / archive
+- 收口 / archive 前若命中基石 ADR 更新触发器，须先回写 `docs/research/mossx-multi-cli-provider-session-foundation-design.md` 校准段（gate 定义见 `AGENTS.md` 全局 Gate「ADR 校准回写 Gate」）
 - 新增 capability 优先沿用现有命名空间策略，避免引入无必要的平行前缀
 
 ## 常用命令

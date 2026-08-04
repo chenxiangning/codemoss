@@ -100,6 +100,12 @@ Keep this managed block so 'trellis update' can refresh the instructions.
 - 实施必须按核对矩阵 §0 逐层勾选；⚠ 标记的静默失败点全部人工核对，🔵 按需在 PR 描述写决策记录。
 - PR 描述须附矩阵完成度说明、渲染层目视验收结果与受影响 CI gate 运行结果。
 
+### ADR 校准回写 Gate
+
+- OpenSpec change 收口 / archive 前，若变更命中基石文档「更新触发器」（engine registry、Shared 支持集合、provider binding、canonical fact schema、context compiler、terminal/ACK contract、recovery exit / abandon），必须同步刷新 `docs/research/mossx-multi-cli-provider-session-foundation-design.md` 的「最近校准」标注与「零、当前实现校准」表。
+- 校准行必须带可核对的代码事实源（repo-relative 文件路径或 OpenSpec change id），禁止只写概念。
+- 未回写的 change 不得标记收口 / 归档；本 gate 由 `$finish-work` 与 archive 流程共同把关。
+
 ### Merge Guardrails
 
 - 高风险文件冲突时，禁止整文件 `--ours` / `--theirs` 覆盖。
