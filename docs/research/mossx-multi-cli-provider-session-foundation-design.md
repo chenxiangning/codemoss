@@ -12,7 +12,7 @@ status: implemented
 > 内容类型：Architecture Decision Record
 > 生命周期：accepted / implemented in slices；原始 A–D 路线已归档，后续修复与收口 change 独立演进
 > 初始日期：2026-07-27
-> 最近校准：2026-08-04 · Shared recovery exit 设计补丁（§14.5.7）；实现见 OpenSpec `fix-shared-session-recovery-exit-closure`（pending user review / 未 commit）
+> 最近校准：2026-08-05 · §14.5.7 Recovery Exit Closure 已实现并收口；校准表补录 context resume integrity / atomic model↔reasoning 联动 / user image projection 三项 2026-08-04 修复
 > 适用范围：Native Session、Shared Session、Provider Runtime、Session Catalog、Sidebar Projection、未来 Plugin / Orchestration
 > 核心决策：Native Session 保持原生身份；Shared Session 承担跨 CLI、跨 Provider 的逐 Turn 切换
 
@@ -20,7 +20,7 @@ status: implemented
 
 ## 零、当前实现校准
 
-本文继续作为多 CLI 会话的 ADR。原始 Change A1–A3、B、C、D 已归档；截至 2026-08-03，Native/Shared 的后续修复、兼容和流程收口以 [OpenSpec main specs](../../openspec/specs/README.md) 与对应 archived changes 为准，不应回写成「原路线未实现」。
+本文继续作为多 CLI 会话的 ADR。原始 Change A1–A3、B、C、D 已归档；截至 2026-08-05，Native/Shared 的后续修复、兼容和流程收口以 [OpenSpec main specs](../../openspec/specs/README.md) 与对应 archived changes 为准，不应回写成「原路线未实现」。
 
 | 契约面 | 当前代码事实 | 事实源 |
 |--------|--------------|--------|
@@ -30,7 +30,11 @@ status: implemented
 | Gemini runtime | registry 中存在，但 runtime policy 默认 disabled | `src-tauri/src/engine_policy.rs` |
 | Provider selection | Native 原子选择；Shared 逐 Turn target | `close-native-session-provider-create-binding` 与 Shared target contracts |
 | Shared send UI 状态机 | 九态 + Recovery Exit Ladder（Probe/Stop/停止并重建/放弃本轮） | `sendStateMachine.ts`、`SharedSendStatusBar.tsx`、`shared_session_v2.rs` |
-| Recovery Exit Closure | **设计见 §14.5.7**；实现见 OpenSpec `fix-shared-session-recovery-exit-closure` + plan | abandon durable + stop-before-rebuild + fuse disabled reasons |
+| Recovery Exit Closure | **设计见 §14.5.7**；已实现并收口（OpenSpec `fix-shared-session-recovery-exit-closure`） | abandon durable + stop-before-rebuild + fuse disabled reasons |
+| Shared 上下文续接 integrity | native 不可信时禁止假设 history 已在 native 内；zero-transfer 不等于可 rematerialize；`empty-context-handoff` 为一等 recovery 错误类别 | OpenSpec `fix-shared-context-resume-integrity`、`shared_context/compiler.rs`、`recoveryErrorMap.ts` |
+| Atomic 模型↔思考强度联动 | reasoning options / effort 由 **target 模型 capability** 驱动，禁止用全局 `activeEngine` 档位冒充；Shared 初始化禁止回落 Native 思考档位 | `atomicModelReasoning.ts`、`initialTarget.ts`、OpenSpec `fix-shared-atomic-model-reasoning-linkage` |
+| 用户附图 canonical 投影 | 用户附图单气泡投影，Shared 历史不丢图 | `shared_projection/projector.rs`、OpenSpec `fix-shared-user-image-bubble-projection` |
+| create-session 默认目标 | create-session Atomic picker 为全部 Atomic 引擎（含 Grok/Kimi/OpenCode）seed 默认 ExecutionTarget，不仅 claude/codex | `resolveDefaultCreationExecutionTarget.ts` |
 
 本文中的 `RuntimeDeliveryAdapter`、`Canonical Fact`、`ContextPackage` 等名称既包含实现合同，也包含 ADR 概念层语言。读者需要复制代码或接新 CLI 时，必须同时使用 [Engine Onboarding Guide](./mossx-new-cli-onboarding-guide.md) 的「当前注册面」清单，不能只按概念接口猜文件名。
 
