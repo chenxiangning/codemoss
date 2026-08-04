@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-31.md`
-- **Total Sessions**: 1334
-- **Last Active**: 2026-08-04
+- **Total Sessions**: 1335
+- **Last Active**: 2026-08-05
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-31.md` | ~1360 | Active |
+| `journal-31.md` | ~1394 | Active |
 | `journal-30.md` | ~1985 | Archived |
 | `journal-29.md` | ~1970 | Archived |
 | `journal-28.md` | ~1984 | Archived |
@@ -59,6 +59,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 1335 | 2026-08-05 | 校准多 CLI 基石文档并落地 ADR 回写 Gate | `0fb3cdd10`, `aa0e398d6` | `CXN-version-0.7.16` |
 | 1334 | 2026-08-04 | 修复 PR 创建弹窗下拉被遮罩挡住 | `1a6ffab1f` | `CXN-version-0.7.16` |
 | 1333 | 2026-08-04 | 阻断 Shared 初始化回落 Native 思考档位 | `385d20e3a` | `CXN-version-0.7.16` |
 | 1332 | 2026-08-04 | 修复 Shared Atomic 模型与思考强度联动 | `cf7abdbf3` | `CXN-version-0.7.16` |

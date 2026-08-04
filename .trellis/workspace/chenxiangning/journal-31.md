@@ -1358,3 +1358,37 @@ Shared Grok 初始化禁止借用 Native Codex 的 reasoning options/effort；in
 ### Next Steps
 
 - None - task complete
+
+
+## Session 1335: 校准多 CLI 基石文档并落地 ADR 回写 Gate
+
+**Date**: 2026-08-05
+**Task**: 校准多 CLI 基石文档并落地 ADR 回写 Gate
+**Branch**: `CXN-version-0.7.16`
+
+### Summary
+
+核对 48h shared/native CLI 变更 vs 基石 ADR：核心契约未过期、实现向文档收敛；刷新文档最近校准与校准表（+4 行事实源）；新增 AGENTS.md 全局 Gate「ADR 校准回写」，finish-work 双入口与 openspec README 同步加把关。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `0fb3cdd10` | (see git log) |
+| `aa0e398d6` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
