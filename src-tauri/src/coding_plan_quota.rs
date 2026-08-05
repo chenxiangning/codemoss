@@ -1,13 +1,15 @@
-//! Coding Plan / Token Plan 额度查询（对齐 CC Switch coding_plan 服务）。
+//! Coding Plan / Token Plan / Provider Balance 额度查询。
 //!
-//! 按供应商 base_url 识别套餐域，用对应 API Key 查询 5h / 周窗口用量。
-//! 当前内建：Kimi For Coding、MiniMax、智谱 GLM。
+//! 按供应商 base_url 识别套餐域：
+//! - 百分比窗口：Kimi For Coding、MiniMax、智谱 GLM
+//! - 货币余额：DeepSeek（官方 GET /user/balance）
 
 use serde::Serialize;
 use serde_json::Value;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 const HTTP_TIMEOUT: Duration = Duration::from_secs(15);
+const DEEPSEEK_BALANCE_URL: &str = "https://api.deepseek.com/user/balance";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum CodingPlanProvider {
@@ -16,6 +18,7 @@ enum CodingPlanProvider {
     ZhipuEn,
     MiniMaxCn,
     MiniMaxEn,
+    DeepSeek,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -28,10 +31,29 @@ pub(crate) struct CodingPlanQuotaWindow {
     pub(crate) resets_at: Option<String>,
 }
 
+/// 余额型供应商（DeepSeek 等）单币种条目。
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct CodingPlanBalanceItem {
+    pub(crate) currency: String,
+    pub(crate) total_balance: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) granted_balance: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) topped_up_balance: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct CodingPlanBalanceSnapshot {
+    pub(crate) is_available: bool,
+    pub(crate) items: Vec<CodingPlanBalanceItem>,
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct CodingPlanQuotaSnapshot {
-    /// kimi | minimax | zhipu | official_cli | unsupported | empty_credentials | error | none
+    /// kimi | minimax | zhipu | deepseek | official_cli | unsupported | empty_credentials | error | none
     pub(crate) source: String,
     /// api | cli | official_runtime — 便于 UI/调试看走了哪条路径
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -42,6 +64,9 @@ pub(crate) struct CodingPlanQuotaSnapshot {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) plan_label: Option<String>,
     pub(crate) windows: Vec<CodingPlanQuotaWindow>,
+    /// 余额型额度（DeepSeek 等）；百分比供应商为 None
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) balance: Option<CodingPlanBalanceSnapshot>,
     pub(crate) queried_at: i64,
 }
 
@@ -125,6 +150,8 @@ fn detect_provider(base_url: &str) -> Option<CodingPlanProvider> {
         Some(CodingPlanProvider::MiniMaxCn)
     } else if url.contains("api.minimax.io") {
         Some(CodingPlanProvider::MiniMaxEn)
+    } else if url.contains("api.deepseek.com") || url.contains("deepseek.com") {
+        Some(CodingPlanProvider::DeepSeek)
     } else {
         None
     }
@@ -135,6 +162,7 @@ fn source_name(provider: CodingPlanProvider) -> &'static str {
         CodingPlanProvider::Kimi => "kimi",
         CodingPlanProvider::ZhipuCn | CodingPlanProvider::ZhipuEn => "zhipu",
         CodingPlanProvider::MiniMaxCn | CodingPlanProvider::MiniMaxEn => "minimax",
+        CodingPlanProvider::DeepSeek => "deepseek",
     }
 }
 
@@ -146,6 +174,7 @@ fn empty_snapshot(source: &str, error: Option<String>) -> CodingPlanQuotaSnapsho
         error,
         plan_label: None,
         windows: vec![],
+        balance: None,
         queried_at: now_millis(),
     }
 }
@@ -163,8 +192,135 @@ fn success_snapshot(
         error: None,
         plan_label,
         windows,
+        balance: None,
         queried_at: now_millis(),
     }
+}
+
+fn success_balance_snapshot(
+    source: &str,
+    via: &str,
+    balance: CodingPlanBalanceSnapshot,
+    plan_label: Option<String>,
+) -> CodingPlanQuotaSnapshot {
+    CodingPlanQuotaSnapshot {
+        source: source.to_string(),
+        via: Some(via.to_string()),
+        success: true,
+        error: None,
+        plan_label,
+        windows: vec![],
+        balance: Some(balance),
+        queried_at: now_millis(),
+    }
+}
+
+fn optional_balance_string(value: Option<&Value>) -> Option<String> {
+    value
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
+}
+
+/// 解析 DeepSeek GET /user/balance 响应 body。
+fn parse_deepseek_balance(body: &Value) -> CodingPlanBalanceSnapshot {
+    let is_available = body
+        .get("is_available")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    let mut items = Vec::new();
+    if let Some(infos) = body.get("balance_infos").and_then(|v| v.as_array()) {
+        for info in infos {
+            let currency = info
+                .get("currency")
+                .and_then(|v| v.as_str())
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .unwrap_or("UNKNOWN")
+                .to_string();
+            let total_balance = info
+                .get("total_balance")
+                .and_then(|v| v.as_str())
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .unwrap_or("0")
+                .to_string();
+            items.push(CodingPlanBalanceItem {
+                currency,
+                total_balance,
+                granted_balance: optional_balance_string(info.get("granted_balance")),
+                topped_up_balance: optional_balance_string(info.get("topped_up_balance")),
+            });
+        }
+    }
+    CodingPlanBalanceSnapshot {
+        is_available,
+        items,
+    }
+}
+
+async fn query_deepseek(api_key: &str) -> CodingPlanQuotaSnapshot {
+    let client = match http_client() {
+        Ok(c) => c,
+        Err(error) => return empty_snapshot("deepseek", Some(error)),
+    };
+    let resp = match client
+        .get(DEEPSEEK_BALANCE_URL)
+        .header("Authorization", format!("Bearer {api_key}"))
+        .header("Accept", "application/json")
+        .send()
+        .await
+    {
+        Ok(r) => r,
+        Err(error) => {
+            return empty_snapshot("deepseek", Some(format!("Network error: {error}")));
+        }
+    };
+    let status = resp.status();
+    if status == reqwest::StatusCode::UNAUTHORIZED || status == reqwest::StatusCode::FORBIDDEN {
+        return empty_snapshot(
+            "deepseek",
+            Some(format!("Authentication failed (HTTP {status})")),
+        );
+    }
+    if !status.is_success() {
+        let body = resp.text().await.unwrap_or_default();
+        let truncated = if body.len() > 240 {
+            format!("{}…", &body[..240])
+        } else {
+            body
+        };
+        return empty_snapshot(
+            "deepseek",
+            Some(format!("API error (HTTP {status}): {truncated}")),
+        );
+    }
+    let raw = match resp.bytes().await {
+        Ok(b) => b,
+        Err(error) => {
+            return empty_snapshot(
+                "deepseek",
+                Some(format!("Failed to read response: {error}")),
+            );
+        }
+    };
+    let body: Value = match serde_json::from_slice(&raw) {
+        Ok(v) => v,
+        Err(error) => {
+            return empty_snapshot(
+                "deepseek",
+                Some(format!("Failed to parse response: {error}")),
+            );
+        }
+    };
+    let balance = parse_deepseek_balance(&body);
+    let plan_label = if balance.is_available {
+        Some("available".to_string())
+    } else {
+        Some("unavailable".to_string())
+    };
+    success_balance_snapshot("deepseek", "api", balance, plan_label)
 }
 
 fn is_official_anthropic_base(base_url: &str) -> bool {
@@ -499,6 +655,7 @@ async fn query_by_base_url_and_key(base_url: &str, api_key: &str) -> CodingPlanQ
         CodingPlanProvider::ZhipuCn | CodingPlanProvider::ZhipuEn => {
             query_zhipu(base_url, api_key).await
         }
+        CodingPlanProvider::DeepSeek => query_deepseek(api_key).await,
     }
 }
 
@@ -843,6 +1000,7 @@ pub(crate) async fn get_coding_plan_quota_for_session(
             error: None,
             plan_label: None,
             windows: vec![],
+            balance: None,
             queried_at: now_millis(),
         },
         QuotaRoute::CodingPlanApi { base_url, api_key } => {
@@ -867,6 +1025,7 @@ pub(crate) async fn get_coding_plan_quota_for_session(
                     error: None,
                     plan_label: None,
                     windows: vec![],
+                    balance: None,
                     queried_at: now_millis(),
                 };
             }
@@ -925,7 +1084,76 @@ mod tests {
             detect_provider("https://api.minimax.io/v1"),
             Some(CodingPlanProvider::MiniMaxEn)
         ));
-        assert!(detect_provider("https://api.deepseek.com").is_none());
+        assert!(matches!(
+            detect_provider("https://api.deepseek.com"),
+            Some(CodingPlanProvider::DeepSeek)
+        ));
+        assert!(matches!(
+            detect_provider("https://api.deepseek.com/anthropic"),
+            Some(CodingPlanProvider::DeepSeek)
+        ));
+        assert!(matches!(
+            detect_provider("https://api.deepseek.com/v1"),
+            Some(CodingPlanProvider::DeepSeek)
+        ));
+        assert!(detect_provider("https://api.openai.com/v1").is_none());
+    }
+
+    #[test]
+    fn parse_deepseek_balance_single_currency() {
+        let body = json!({
+            "is_available": true,
+            "balance_infos": [{
+                "currency": "CNY",
+                "total_balance": "110.00",
+                "granted_balance": "10.00",
+                "topped_up_balance": "100.00"
+            }]
+        });
+        let balance = parse_deepseek_balance(&body);
+        assert!(balance.is_available);
+        assert_eq!(balance.items.len(), 1);
+        assert_eq!(balance.items[0].currency, "CNY");
+        assert_eq!(balance.items[0].total_balance, "110.00");
+        assert_eq!(
+            balance.items[0].granted_balance.as_deref(),
+            Some("10.00")
+        );
+        assert_eq!(
+            balance.items[0].topped_up_balance.as_deref(),
+            Some("100.00")
+        );
+    }
+
+    #[test]
+    fn parse_deepseek_balance_multi_currency_and_empty() {
+        let multi = json!({
+            "is_available": true,
+            "balance_infos": [
+                {
+                    "currency": "CNY",
+                    "total_balance": "10.00",
+                    "granted_balance": "0",
+                    "topped_up_balance": "10.00"
+                },
+                {
+                    "currency": "USD",
+                    "total_balance": "1.50",
+                    "granted_balance": "0.50",
+                    "topped_up_balance": "1.00"
+                }
+            ]
+        });
+        let balance = parse_deepseek_balance(&multi);
+        assert_eq!(balance.items.len(), 2);
+        assert_eq!(balance.items[0].currency, "CNY");
+        assert_eq!(balance.items[1].currency, "USD");
+        assert_eq!(balance.items[1].total_balance, "1.50");
+
+        let empty = json!({ "is_available": false, "balance_infos": [] });
+        let empty_balance = parse_deepseek_balance(&empty);
+        assert!(!empty_balance.is_available);
+        assert!(empty_balance.items.is_empty());
     }
 
     #[test]

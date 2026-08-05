@@ -156,6 +156,66 @@ describe("buildSessionOverviewQuota", () => {
     expect(quota.source).toBe("none");
     expect(quota.windows).toEqual([]);
   });
+
+  it("maps deepseek balance without windows and does not use codex rateLimits", () => {
+    const quota = buildSessionOverviewQuota(
+      "codex",
+      {
+        primary: { usedPercent: 90, windowDurationMins: 300, resetsAt: null },
+        secondary: null,
+        credits: { hasCredits: true, unlimited: false, balance: "999" },
+        planType: "plus",
+      },
+      true,
+      {
+        source: "deepseek",
+        success: true,
+        planLabel: "available",
+        windows: [],
+        balance: {
+          isAvailable: true,
+          items: [
+            {
+              currency: "CNY",
+              totalBalance: "110.00",
+              grantedBalance: "10.00",
+              toppedUpBalance: "100.00",
+            },
+            {
+              currency: "USD",
+              totalBalance: "1.50",
+            },
+          ],
+        },
+      },
+    );
+
+    expect(quota.source).toBe("coding_plan");
+    expect(quota.providerLabel).toBe("deepseek");
+    expect(quota.windows).toEqual([]);
+    expect(quota.hasCredits).toBe(true);
+    expect(quota.creditsBalance).toBe("CNY 110.00 · USD 1.50");
+    expect(quota.planType).toBe("available");
+    // 不得用 Codex 官方 90% 窗口冒充
+    expect(quota.windows).toHaveLength(0);
+  });
+
+  it("maps deepseek auth failure to error without unsupported host", () => {
+    const quota = buildSessionOverviewQuota(
+      "codex",
+      null,
+      false,
+      {
+        source: "deepseek",
+        success: false,
+        error: "Authentication failed (HTTP 401 Unauthorized)",
+        windows: [],
+      },
+    );
+    expect(quota.source).toBe("error");
+    expect(quota.error).toMatch(/Authentication failed/);
+    expect(quota.hasCredits).toBe(false);
+  });
 });
 
 describe("buildSessionOverview multi quota entries", () => {
@@ -215,6 +275,73 @@ describe("buildSessionOverview multi quota entries", () => {
     expect(overview.quotaEntries).toHaveLength(1);
     expect(overview.quotaEntries[0]?.title).toBe("Claude · Minimax-m3");
     expect(overview.quotaEntries[0]?.quota.windows).toHaveLength(2);
+  });
+
+  it("keeps deepseek balance card separate from minimax windows in shared multi-entry", () => {
+    const overview = buildSessionOverview({
+      sessionId: "shared:2",
+      engine: "codex",
+      model: "deepseek-v4-flash",
+      workspaceName: "demo",
+      workspacePath: "/tmp/demo",
+      sessionDiskPath: null,
+      isProcessing: false,
+      threadStatus: null,
+      items: [],
+      tokenUsage: null,
+      rateLimits: null,
+      usageShowRemaining: true,
+      nowMs: 0,
+      quotaEntries: [
+        {
+          key: "codex::deepseek",
+          title: "Codex · DeepSeek",
+          subtitle: "deepseek-v4-flash",
+          engine: "codex",
+          providerProfileId: "deepseek",
+          codingPlanQuota: {
+            source: "deepseek",
+            success: true,
+            windows: [],
+            balance: {
+              isAvailable: true,
+              items: [{ currency: "CNY", totalBalance: "42.00" }],
+            },
+          },
+        },
+        {
+          key: "claude::minimax",
+          title: "Claude · Minimax-m3",
+          subtitle: "MiniMax-M3",
+          engine: "claude",
+          providerProfileId: "minimax",
+          codingPlanQuota: {
+            source: "minimax",
+            success: true,
+            windows: [
+              {
+                id: "five_hour",
+                usedPercent: 1,
+                remainingPercent: 99,
+              },
+            ],
+          },
+        },
+      ],
+    });
+
+    expect(overview.quotaEntries).toHaveLength(2);
+    const deepseek = overview.quotaEntries.find((e) =>
+      e.key.includes("deepseek"),
+    );
+    const minimax = overview.quotaEntries.find((e) => e.key.includes("minimax"));
+    expect(deepseek?.quota.source).toBe("coding_plan");
+    expect(deepseek?.quota.providerLabel).toBe("deepseek");
+    expect(deepseek?.quota.hasCredits).toBe(true);
+    expect(deepseek?.quota.creditsBalance).toBe("CNY 42.00");
+    expect(deepseek?.quota.windows).toEqual([]);
+    expect(minimax?.quota.windows).toHaveLength(1);
+    expect(minimax?.quota.hasCredits).toBe(false);
   });
 });
 

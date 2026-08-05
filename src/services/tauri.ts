@@ -33,6 +33,8 @@ export {
   runCodexLogin,
 } from "./tauri/modelCatalog";
 export type {
+  CodingPlanBalanceItem,
+  CodingPlanBalanceSnapshot,
   CodingPlanQuotaSnapshot,
   CodingPlanQuotaWindow,
 } from "./tauri/modelCatalog";

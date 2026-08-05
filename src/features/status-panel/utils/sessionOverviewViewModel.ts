@@ -54,6 +54,16 @@ export type SessionOverviewQuotaView = {
   loading: boolean;
 };
 
+export type CodingPlanBalanceInput = {
+  isAvailable: boolean;
+  items: Array<{
+    currency: string;
+    totalBalance: string;
+    grantedBalance?: string | null;
+    toppedUpBalance?: string | null;
+  }>;
+};
+
 export type CodingPlanQuotaInput = {
   source: string;
   success: boolean;
@@ -65,6 +75,8 @@ export type CodingPlanQuotaInput = {
     remainingPercent: number;
     resetsAt?: string | null;
   }>;
+  /** 余额型（DeepSeek 等）；与 windows 二选一或并存 */
+  balance?: CodingPlanBalanceInput | null;
 } | null;
 
 /** 共享会话多供应商：每条目独立查额度。 */
@@ -258,6 +270,58 @@ function buildCodingPlanWindows(
   });
 }
 
+function formatBalanceCredits(
+  balance: CodingPlanBalanceInput | null | undefined,
+): { hasCredits: boolean; creditsBalance: string | null } {
+  const items = balance?.items ?? [];
+  if (items.length === 0) {
+    return { hasCredits: false, creditsBalance: null };
+  }
+  const parts = items
+    .map((item) => {
+      const currency = normalizeOptionalText(item.currency) ?? "UNKNOWN";
+      const total = normalizeOptionalText(item.totalBalance) ?? "0";
+      return `${currency} ${total}`;
+    })
+    .filter(Boolean);
+  if (parts.length === 0) {
+    return { hasCredits: false, creditsBalance: null };
+  }
+  return {
+    hasCredits: true,
+    creditsBalance: parts.join(" · "),
+  };
+}
+
+/** 供应商额度成功：有百分比窗口或有余额条目 */
+function hasProviderQuotaPayload(
+  codingPlan: NonNullable<CodingPlanQuotaInput>,
+): boolean {
+  return (
+    codingPlan.windows.length > 0 ||
+    (codingPlan.balance?.items?.length ?? 0) > 0
+  );
+}
+
+function buildProviderCodingPlanQuota(
+  codingPlan: NonNullable<CodingPlanQuotaInput>,
+  usageShowRemaining: boolean,
+): SessionOverviewQuotaView {
+  const credits = formatBalanceCredits(codingPlan.balance ?? null);
+  return {
+    source: "coding_plan",
+    providerLabel: codingPlan.source,
+    showRemaining: usageShowRemaining,
+    planType: normalizeOptionalText(codingPlan.planLabel ?? null),
+    windows: buildCodingPlanWindows(codingPlan, usageShowRemaining),
+    creditsBalance: credits.creditsBalance,
+    creditsUnlimited: false,
+    hasCredits: credits.hasCredits,
+    error: null,
+    loading: false,
+  };
+}
+
 function buildOfficialCliQuota(
   rateLimits: RateLimitSnapshot | null,
   usageShowRemaining: boolean,
@@ -302,7 +366,7 @@ function buildOfficialCliQuota(
 
 /**
  * 路由合并（对齐规则）：
- * - coding_plan 成功且有窗口 → 用供应商 API
+ * - coding_plan 成功且有 windows 或 balance → 用供应商 API / 余额
  * - official_cli / source=codex → account rateLimits
  * - none → 隐藏
  * - 其余 → empty / unsupported / error
@@ -344,27 +408,16 @@ export function buildSessionOverviewQuota(
     };
   }
 
-  // 供应商 Coding Plan 优先（含 Codex/Claude 配了 MiniMax/Kimi 的情况）
+  // 供应商额度优先（百分比 windows 或余额 balance；含 Codex/Claude 配 DeepSeek/MiniMax）
   if (
     codingPlanQuota &&
     codingPlanQuota.success &&
-    codingPlanQuota.windows.length > 0 &&
+    hasProviderQuotaPayload(codingPlanQuota) &&
     codingPlanQuota.source !== "codex" &&
     codingPlanQuota.source !== "official_cli" &&
     codingPlanQuota.source !== "none"
   ) {
-    return {
-      source: "coding_plan",
-      providerLabel: codingPlanQuota.source,
-      showRemaining: usageShowRemaining,
-      planType: normalizeOptionalText(codingPlanQuota.planLabel ?? null),
-      windows: buildCodingPlanWindows(codingPlanQuota, usageShowRemaining),
-      creditsBalance: null,
-      creditsUnlimited: false,
-      hasCredits: false,
-      error: null,
-      loading: false,
-    };
+    return buildProviderCodingPlanQuota(codingPlanQuota, usageShowRemaining);
   }
 
   // 官方 runtime：Codex account/rateLimits
@@ -461,18 +514,8 @@ export function buildSessionOverviewQuota(
     return buildOfficialCliQuota(rateLimits, usageShowRemaining, "codex");
   }
 
-  return {
-    source: "coding_plan",
-    providerLabel: codingPlanQuota.source,
-    showRemaining: usageShowRemaining,
-    planType: normalizeOptionalText(codingPlanQuota.planLabel ?? null),
-    windows: buildCodingPlanWindows(codingPlanQuota, usageShowRemaining),
-    creditsBalance: null,
-    creditsUnlimited: false,
-    hasCredits: false,
-    error: null,
-    loading: false,
-  };
+  // success 且无 payload：如 deepseek 空 balance_infos — 仍按 coding_plan 展示，不冒充 official
+  return buildProviderCodingPlanQuota(codingPlanQuota, usageShowRemaining);
 }
 
 export function buildSessionOverview(

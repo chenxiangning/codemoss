@@ -204,4 +204,121 @@ describe("SessionOverviewSection", () => {
     expect(screen.getByText("1% used")).toBeTruthy();
     expect(screen.getByText("11% used")).toBeTruthy();
   });
+
+  it("renders deepseek balance credits without coding-plan empty placeholder", () => {
+    const overview = buildSessionOverview({
+      sessionId: "thread-ds",
+      engine: "codex",
+      model: "deepseek-v4-flash",
+      workspaceName: "demo",
+      workspacePath: "/tmp/demo",
+      sessionDiskPath: null,
+      isProcessing: false,
+      threadStatus: null,
+      items: [],
+      tokenUsage: null,
+      rateLimits: {
+        primary: { usedPercent: 50, windowDurationMins: 300, resetsAt: null },
+        secondary: null,
+        credits: null,
+        planType: "plus",
+      },
+      usageShowRemaining: false,
+      nowMs: NOW,
+      codingPlanQuota: {
+        source: "deepseek",
+        success: true,
+        planLabel: "available",
+        windows: [],
+        balance: {
+          isAvailable: true,
+          items: [{ currency: "CNY", totalBalance: "110.00" }],
+        },
+      },
+    });
+
+    render(<SessionOverviewSection overview={overview} />);
+
+    // 余额型两行：标题 +「额度 / 金额」，去掉 available 与套餐副标题
+    expect(screen.getByText("deepseek plan limits")).toBeTruthy();
+    expect(screen.getByText("Credits")).toBeTruthy();
+    expect(screen.getByText("CNY 110.00")).toBeTruthy();
+    expect(screen.queryByText("available")).toBeNull();
+    // 无 windows 时不得渲染 coding plan empty
+    expect(
+      screen.queryByText(
+        "Coding-plan provider recognized, but no limit windows were returned.",
+      ),
+    ).toBeNull();
+    // 不得展示 Codex 官方百分比窗口
+    expect(screen.queryByText("5h limit")).toBeNull();
+    expect(screen.queryByText(/50%/)).toBeNull();
+  });
+
+  it("renders multi-entry deepseek balance as two rows without plan subhead", () => {
+    const overview = buildSessionOverview({
+      sessionId: "shared:ds",
+      engine: "codex",
+      model: "deepseek-v4-flash",
+      workspaceName: "demo",
+      workspacePath: "/tmp/demo",
+      sessionDiskPath: null,
+      isProcessing: false,
+      threadStatus: null,
+      items: [],
+      tokenUsage: null,
+      rateLimits: null,
+      usageShowRemaining: false,
+      nowMs: NOW,
+      quotaEntries: [
+        {
+          key: "codex::deepseek",
+          title: "Codex · DeepSeek-codex",
+          subtitle: "deepseek-v4-flash",
+          engine: "codex",
+          providerProfileId: "deepseek",
+          codingPlanQuota: {
+            source: "deepseek",
+            success: true,
+            planLabel: "available",
+            windows: [],
+            balance: {
+              isAvailable: true,
+              items: [{ currency: "CNY", totalBalance: "17.26" }],
+            },
+          },
+        },
+        {
+          key: "claude::minimax",
+          title: "Claude · Minimax",
+          subtitle: "MiniMax-M3",
+          engine: "claude",
+          providerProfileId: "minimax",
+          codingPlanQuota: {
+            source: "minimax",
+            success: true,
+            windows: [
+              { id: "five_hour", usedPercent: 1, remainingPercent: 99 },
+            ],
+          },
+        },
+      ],
+    });
+
+    const { container } = render(<SessionOverviewSection overview={overview} />);
+
+    expect(
+      screen.getByText("Codex · DeepSeek-codex · deepseek-v4-flash"),
+    ).toBeTruthy();
+    expect(screen.getByText("Credits")).toBeTruthy();
+    expect(screen.getByText("CNY 17.26")).toBeTruthy();
+    // 不出现「deepseek 套餐额度」副标题 / available
+    expect(screen.queryByText("deepseek plan limits")).toBeNull();
+    expect(screen.queryByText("available")).toBeNull();
+    // MiniMax 百分比卡仍正常
+    expect(screen.getByText("1% used")).toBeTruthy();
+    expect(
+      container.querySelector(".sp-session-overview-quota.is-balance-only"),
+    ).toBeTruthy();
+  });
 });

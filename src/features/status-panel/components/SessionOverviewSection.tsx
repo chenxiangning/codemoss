@@ -311,6 +311,35 @@ export const SessionOverviewSection = memo(function SessionOverviewSection({
               return null;
             }
 
+            // 余额型（DeepSeek 等）：两行——标题 + 额度金额；去掉套餐副标题 / available
+            const isBalanceOnly =
+              !quota.loading &&
+              quota.windows.length === 0 &&
+              quota.hasCredits;
+            if (isBalanceOnly) {
+              const balanceText = quota.creditsUnlimited
+                ? t("usage.unlimited")
+                : (quota.creditsBalance ?? "—");
+              return (
+                <div
+                  key={entry.key}
+                  className="sp-session-overview-quota is-balance-only"
+                >
+                  <div className="sp-session-overview-quota-header">
+                    <span className="sp-session-overview-quota-title">
+                      {cardTitle}
+                    </span>
+                  </div>
+                  <div className="sp-session-overview-quota-credits">
+                    <span>{t("usage.credits")}</span>
+                    <span className="sp-session-overview-quota-balance">
+                      {balanceText}
+                    </span>
+                  </div>
+                </div>
+              );
+            }
+
             return (
               <div key={entry.key} className="sp-session-overview-quota">
                 <div className="sp-session-overview-quota-header">

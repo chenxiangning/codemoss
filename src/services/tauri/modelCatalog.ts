@@ -76,6 +76,19 @@ export type CodingPlanQuotaWindow = {
   resetsAt?: string | null;
 };
 
+/** 余额型供应商条目（DeepSeek GET /user/balance） */
+export type CodingPlanBalanceItem = {
+  currency: string;
+  totalBalance: string;
+  grantedBalance?: string | null;
+  toppedUpBalance?: string | null;
+};
+
+export type CodingPlanBalanceSnapshot = {
+  isAvailable: boolean;
+  items: CodingPlanBalanceItem[];
+};
+
 export type CodingPlanQuotaSnapshot = {
   source: string;
   /** api | cli | official_runtime */
@@ -84,6 +97,8 @@ export type CodingPlanQuotaSnapshot = {
   error?: string | null;
   planLabel?: string | null;
   windows: CodingPlanQuotaWindow[];
+  /** 余额型额度；百分比供应商为 null/省略 */
+  balance?: CodingPlanBalanceSnapshot | null;
   queriedAt: number;
 };
 

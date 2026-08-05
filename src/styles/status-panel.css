@@ -2388,6 +2388,11 @@ button.sp-subagent-main:focus-visible,
   min-width: 0;
 }
 
+/* 余额型两行卡：标题 + 额度，去掉 available / 套餐副标题 */
+.sp-session-overview-quota.is-balance-only {
+  gap: 6px;
+}
+
 .sp-session-overview-quota-header {
   display: flex;
   align-items: baseline;
@@ -2397,6 +2402,24 @@ button.sp-subagent-main:focus-visible,
   font-size: 11px;
   font-weight: 650;
   color: var(--text-faint);
+}
+
+.sp-session-overview-quota-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sp-session-overview-quota-balance {
+  flex-shrink: 0;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+}
+
+.sp-session-overview-quota.is-balance-only .sp-session-overview-quota-credits {
+  min-height: 18px;
 }
 
 .sp-session-overview-quota-subhead {
