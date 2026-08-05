@@ -1,0 +1,394 @@
+.multi-agent-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  border: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
+  background: transparent;
+  color: var(--muted-foreground, #9ca3af);
+  border-radius: 999px;
+  padding: 0.3rem 0.65rem;
+  font-size: 0.78rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.multi-agent-toggle.is-armed {
+  border-color: color-mix(in srgb, #2563eb 55%, var(--border));
+  color: #93c5fd;
+  background: color-mix(in srgb, #2563eb 14%, transparent);
+}
+
+.multi-agent-toggle:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.multi-agent-surface {
+  width: min(100%, 48rem);
+  margin: 0 auto 0.75rem;
+  padding: 0 1rem;
+}
+
+.multi-agent-card {
+  border: 1px solid color-mix(in srgb, var(--border) 85%, transparent);
+  border-radius: 0.9rem;
+  background: color-mix(in srgb, var(--card, #111827) 92%, transparent);
+  padding: 0.85rem 1rem;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.multi-agent-card-heading {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 0.65rem;
+  align-items: start;
+}
+
+.multi-agent-card-icon {
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 0.55rem;
+  display: grid;
+  place-items: center;
+  background: color-mix(in srgb, #2563eb 18%, transparent);
+  color: #93c5fd;
+}
+
+.multi-agent-card-title {
+  min-width: 0;
+  display: grid;
+  gap: 0.2rem;
+}
+
+.multi-agent-card-title strong {
+  font-size: 0.92rem;
+}
+
+.multi-agent-card-title span {
+  color: var(--muted-foreground, #9ca3af);
+  font-size: 0.8rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.multi-agent-status {
+  border-radius: 999px;
+  padding: 0.15rem 0.5rem;
+  font-size: 0.72rem;
+  border: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
+}
+
+.multi-agent-status.is-failed,
+.multi-agent-status.is-cancelled {
+  color: #fca5a5;
+  border-color: color-mix(in srgb, #ef4444 45%, transparent);
+}
+
+.multi-agent-status.is-succeeded {
+  color: #86efac;
+  border-color: color-mix(in srgb, #22c55e 45%, transparent);
+}
+
+.multi-agent-status.is-awaiting-approval,
+.multi-agent-status.is-planning,
+.multi-agent-status.is-executing {
+  color: #93c5fd;
+  border-color: color-mix(in srgb, #2563eb 45%, transparent);
+}
+
+.multi-agent-hint,
+.multi-agent-plan-summary,
+.multi-agent-final {
+  margin: 0;
+  font-size: 0.84rem;
+  color: var(--muted-foreground, #d1d5db);
+  white-space: pre-wrap;
+}
+
+.multi-agent-plan-markdown {
+  margin: 0.5rem 0 0;
+  max-height: 14rem;
+  overflow: auto;
+  white-space: pre-wrap;
+  font-family: inherit;
+  font-size: 0.8rem;
+  line-height: 1.45;
+  color: var(--foreground, #e5e7eb);
+  background: color-mix(in srgb, #000 18%, transparent);
+  border-radius: 0.6rem;
+  padding: 0.65rem 0.75rem;
+}
+
+.multi-agent-plan-steps {
+  margin: 0.55rem 0 0;
+  padding-left: 1.15rem;
+  font-size: 0.8rem;
+}
+
+.multi-agent-diagnostics {
+  border-radius: 0.55rem;
+  border: 1px solid color-mix(in srgb, #ef4444 40%, transparent);
+  background: color-mix(in srgb, #ef4444 10%, transparent);
+  color: #fecaca;
+  padding: 0.55rem 0.7rem;
+  font-size: 0.8rem;
+}
+
+.multi-agent-diagnostics p {
+  margin: 0;
+}
+
+.multi-agent-diagnostics p + p {
+  margin-top: 0.35rem;
+}
+
+.multi-agent-actions {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+.multi-agent-primary,
+.multi-agent-secondary,
+.multi-agent-stop {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  border-radius: 0.55rem;
+  border: 1px solid transparent;
+  padding: 0.4rem 0.75rem;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.multi-agent-primary {
+  background: #2563eb;
+  color: white;
+}
+
+.multi-agent-secondary {
+  border-color: color-mix(in srgb, var(--border) 80%, transparent);
+  color: var(--muted-foreground, #d1d5db);
+  background: transparent;
+}
+
+.multi-agent-stop {
+  border-color: color-mix(in srgb, #ef4444 50%, transparent);
+  color: #fca5a5;
+  background: transparent;
+}
+
+.multi-agent-primary:disabled,
+.multi-agent-stop:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.multi-agent-hint.is-muted {
+  opacity: 0.72;
+  font-size: 0.78rem;
+}
+
+.multi-agent-stage-list {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.multi-agent-stage-card {
+  display: grid;
+  grid-template-columns: auto auto 1fr;
+  gap: 0.55rem;
+  align-items: start;
+  text-align: left;
+  border: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
+  border-radius: 0.7rem;
+  background: color-mix(in srgb, #000 12%, transparent);
+  color: inherit;
+  padding: 0.55rem 0.65rem;
+  cursor: pointer;
+}
+
+.multi-agent-stage-card:hover {
+  border-color: color-mix(in srgb, #2563eb 40%, var(--border));
+}
+
+.multi-agent-stage-card.is-running {
+  border-color: color-mix(in srgb, #2563eb 50%, transparent);
+  background: color-mix(in srgb, #2563eb 10%, transparent);
+}
+
+.multi-agent-stage-card.is-succeeded {
+  border-color: color-mix(in srgb, #22c55e 35%, transparent);
+}
+
+.multi-agent-stage-card.is-failed {
+  border-color: color-mix(in srgb, #ef4444 40%, transparent);
+}
+
+.multi-agent-stage-index {
+  width: 1.25rem;
+  height: 1.25rem;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  font-size: 0.7rem;
+  color: var(--muted-foreground, #9ca3af);
+  border: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+}
+
+.multi-agent-stage-icon {
+  margin-top: 0.1rem;
+  color: var(--muted-foreground, #9ca3af);
+}
+
+.multi-agent-stage-card.is-running .multi-agent-stage-icon {
+  color: #93c5fd;
+}
+
+.multi-agent-stage-card.is-succeeded .multi-agent-stage-icon {
+  color: #86efac;
+}
+
+.multi-agent-stage-body {
+  display: grid;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.multi-agent-stage-body strong {
+  font-size: 0.84rem;
+}
+
+.multi-agent-stage-badge {
+  font-size: 0.72rem;
+  color: #93c5fd;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.multi-agent-stage-outcome {
+  font-style: normal;
+  font-size: 0.75rem;
+  color: var(--muted-foreground, #d1d5db);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.multi-agent-stage-outcome.is-muted {
+  opacity: 0.7;
+}
+
+.multi-agent-final-box {
+  border-radius: 0.6rem;
+  border: 1px solid color-mix(in srgb, #22c55e 35%, transparent);
+  background: color-mix(in srgb, #22c55e 8%, transparent);
+  padding: 0.55rem 0.7rem;
+  display: grid;
+  gap: 0.3rem;
+}
+
+.multi-agent-final-box strong {
+  font-size: 0.78rem;
+  color: #86efac;
+}
+
+.multi-agent-phase-chip.is-selected {
+  color: #fff;
+  background: color-mix(in srgb, #2563eb 35%, transparent);
+}
+
+.multi-agent-spin {
+  animation: multi-agent-spin 0.9s linear infinite;
+}
+
+@keyframes multi-agent-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.multi-agent-inspector {
+  height: 100%;
+  min-width: 0;
+  display: grid;
+  grid-template-rows: auto auto auto 1fr;
+  gap: 0.65rem;
+  padding: 0.85rem 0.9rem;
+  background: color-mix(in srgb, var(--card, #0f172a) 96%, transparent);
+  border-left: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
+}
+
+.multi-agent-inspector-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.multi-agent-inspector-title-row {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+}
+
+.multi-agent-inspector-sub {
+  margin-top: 0.25rem;
+  font-size: 0.75rem;
+  color: var(--muted-foreground, #9ca3af);
+}
+
+.multi-agent-inspector-close {
+  border: 0;
+  background: transparent;
+  color: var(--muted-foreground, #9ca3af);
+  cursor: pointer;
+  padding: 0.2rem;
+}
+
+.multi-agent-inspector-phases {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.multi-agent-phase-chip {
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
+  padding: 0.15rem 0.5rem;
+  font-size: 0.72rem;
+  color: var(--muted-foreground, #9ca3af);
+}
+
+.multi-agent-phase-chip.is-active {
+  color: #93c5fd;
+  border-color: color-mix(in srgb, #2563eb 50%, transparent);
+  background: color-mix(in srgb, #2563eb 12%, transparent);
+}
+
+.multi-agent-phase-chip.is-done {
+  color: #86efac;
+  border-color: color-mix(in srgb, #22c55e 45%, transparent);
+}
+
+.multi-agent-inspector-stream {
+  min-height: 0;
+  overflow: auto;
+  border-radius: 0.65rem;
+  background: color-mix(in srgb, #000 22%, transparent);
+  padding: 0.7rem 0.8rem;
+}
+
+.multi-agent-inspector-stream pre {
+  margin: 0;
+  white-space: pre-wrap;
+  font-family: inherit;
+  font-size: 0.8rem;
+  line-height: 1.5;
+  color: var(--foreground, #e5e7eb);
+}

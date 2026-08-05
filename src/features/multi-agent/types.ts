@@ -1,0 +1,144 @@
+import type { EngineType } from "../../types";
+
+export type AgentRunStatus =
+  | "planning"
+  | "awaiting-approval"
+  | "implementing"
+  | "executing" // legacy alias
+  | "reviewing"
+  | "succeeded"
+  | "failed"
+  | "cancelled";
+
+export type AgentStageId = "plan" | "implement" | "review";
+
+export type AgentStageStatus =
+  | "pending"
+  | "running"
+  | "succeeded"
+  | "failed"
+  | "skipped";
+
+export type AgentExecutionTarget = {
+  engine: EngineType;
+  providerProfileId?: string | null;
+  modelCatalogEntryId?: string | null;
+  model?: string | null;
+  reasoningEffort?: string | null;
+  providerProfileNameSnapshot?: string | null;
+  providerProfileSource?: string | null;
+  runtimeCapabilityFingerprint?: string | null;
+};
+
+export type AgentStageBinding = {
+  id: AgentStageId | string;
+  target: AgentExecutionTarget;
+};
+
+export type AgentPlanDraft = {
+  schemaVersion: number;
+  summary: string;
+  markdown: string;
+  steps?: string[];
+};
+
+export type AgentStageProjection = {
+  id: string;
+  title: string;
+  role: string;
+  target: AgentExecutionTarget;
+  status: AgentStageStatus;
+  accessMode: string;
+  attemptId?: string | null;
+  bindingKey?: string | null;
+  startedAt?: number | null;
+  settledAt?: number | null;
+  shortOutcome?: string | null;
+  error?: string | null;
+};
+
+export type AgentPreparedAttempt = {
+  runId: string;
+  stageId: string;
+  attemptId: string;
+  logicalTurnId: string;
+  bindingKey: string;
+  target: AgentExecutionTarget;
+  accessMode: string;
+  /** legacy */
+  phase?: string;
+};
+
+export type AgentProjectionV1 = {
+  schemaVersion: number;
+  runId: string;
+  workspaceId: string;
+  workspaceRoot: string;
+  sessionId: string;
+  requestText: string;
+  target: AgentExecutionTarget;
+  status: AgentRunStatus;
+  planRevision: number;
+  plan: AgentPlanDraft | null;
+  stages?: AgentStageProjection[];
+  activeAttemptIds?: string[];
+  diagnostics?: string[];
+  requestedAt: number;
+  approvedAt?: number | null;
+  updatedAt: number;
+  finalSummary?: string | null;
+};
+
+export function isTerminalAgentStatus(status: AgentRunStatus): boolean {
+  return (
+    status === "succeeded" || status === "failed" || status === "cancelled"
+  );
+}
+
+export function targetBadge(target: AgentExecutionTarget | null | undefined): string {
+  if (!target?.engine) return "—";
+  const model = target.model?.trim() || target.providerProfileNameSnapshot?.trim();
+  return model ? `${target.engine} · ${model}` : target.engine;
+}
+
+export function normalizeAgentProjection(
+  projection: AgentProjectionV1 | null | undefined,
+): AgentProjectionV1 | null {
+  if (!projection) return null;
+  const plan = projection.plan
+    ? {
+        ...projection.plan,
+        steps: projection.plan.steps ?? [],
+        summary: projection.plan.summary ?? "",
+        markdown: projection.plan.markdown ?? "",
+        schemaVersion: projection.plan.schemaVersion ?? 1,
+      }
+    : null;
+  const stages = (projection.stages ?? []).map((stage) => ({
+    ...stage,
+    status: stage.status ?? "pending",
+    accessMode: stage.accessMode ?? "read-only",
+  }));
+  // map legacy executing
+  const status =
+    projection.status === "executing" ? "implementing" : projection.status;
+  return {
+    ...projection,
+    status,
+    plan,
+    stages,
+    activeAttemptIds: projection.activeAttemptIds ?? [],
+    diagnostics: projection.diagnostics ?? [],
+    planRevision: projection.planRevision ?? 0,
+  };
+}
+
+export function defaultStageBindings(
+  target: AgentExecutionTarget,
+): AgentStageBinding[] {
+  return [
+    { id: "plan", target },
+    { id: "implement", target },
+    { id: "review", target },
+  ];
+}

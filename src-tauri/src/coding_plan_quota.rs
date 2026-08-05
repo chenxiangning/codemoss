@@ -1115,10 +1115,7 @@ mod tests {
         assert_eq!(balance.items.len(), 1);
         assert_eq!(balance.items[0].currency, "CNY");
         assert_eq!(balance.items[0].total_balance, "110.00");
-        assert_eq!(
-            balance.items[0].granted_balance.as_deref(),
-            Some("10.00")
-        );
+        assert_eq!(balance.items[0].granted_balance.as_deref(), Some("10.00"));
         assert_eq!(
             balance.items[0].topped_up_balance.as_deref(),
             Some("100.00")

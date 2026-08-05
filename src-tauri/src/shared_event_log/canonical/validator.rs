@@ -201,14 +201,33 @@ fn validate_squad_plan_value(
     plan: &serde_json::Value,
     ctx: &str,
 ) -> Result<(), FactValidationError> {
-    let plan =
-        serde_json::from_value::<crate::squad_orchestration::SquadPlanProposalV1>(plan.clone())
-            .map_err(|error| {
-                FactValidationError::new(ctx, format!("invalid plan payload: {error}"))
-            })?;
-    crate::squad_orchestration::validator::validate_plan(&plan).map_err(|diagnostics| {
-        FactValidationError::new(ctx, format!("invalid plan: {}", diagnostics.join("; ")))
-    })
+    // Multi-Agent V1：plan 以 markdown/summary 为主；兼容历史 DAG plan object。
+    if !plan.is_object() {
+        return Err(FactValidationError::new(ctx, "plan must be an object"));
+    }
+    let summary = plan
+        .get("summary")
+        .and_then(|value| value.as_str())
+        .map(str::trim)
+        .unwrap_or("");
+    if summary.is_empty() {
+        return Err(FactValidationError::new(ctx, "plan.summary must be non-empty"));
+    }
+    let has_markdown = plan
+        .get("markdown")
+        .and_then(|value| value.as_str())
+        .is_some_and(|value| !value.trim().is_empty());
+    let has_nodes = plan
+        .get("nodes")
+        .and_then(|value| value.as_array())
+        .is_some_and(|nodes| !nodes.is_empty());
+    if !has_markdown && !has_nodes {
+        return Err(FactValidationError::new(
+            ctx,
+            "plan must include markdown or nodes",
+        ));
+    }
+    Ok(())
 }
 
 fn validate_squad_run_requested(f: &SquadRunRequestedFact) -> Result<(), FactValidationError> {
@@ -289,10 +308,21 @@ fn validate_squad_outcome_recorded(
     validate_squad_identity(&f.fact_id, &f.run_id, ctx)?;
     require_non_empty(&f.node_id, "nodeId", ctx)?;
     require_non_empty(&f.attempt_id, "attemptId", ctx)?;
-    serde_json::from_value::<crate::squad_orchestration::SquadTypedOutcomeEnvelopeV1>(
-        f.outcome.clone(),
-    )
-    .map_err(|error| FactValidationError::new(ctx, format!("invalid outcome: {error}")))?;
+    if !f.outcome.is_object() {
+        return Err(FactValidationError::new(ctx, "outcome must be an object"));
+    }
+    let summary = f
+        .outcome
+        .get("summary")
+        .and_then(|value| value.as_str())
+        .map(str::trim)
+        .unwrap_or("");
+    if summary.is_empty() {
+        return Err(FactValidationError::new(
+            ctx,
+            "outcome.summary must be non-empty",
+        ));
+    }
     validate_timestamp(f.recorded_at, "recordedAt", ctx)
 }
 
@@ -303,10 +333,12 @@ fn validate_squad_verification_recorded(
     validate_squad_identity(&f.fact_id, &f.run_id, ctx)?;
     require_non_empty(&f.node_id, "nodeId", ctx)?;
     require_non_empty(&f.attempt_id, "attemptId", ctx)?;
-    serde_json::from_value::<crate::squad_orchestration::SquadVerificationV1>(
-        f.verification.clone(),
-    )
-    .map_err(|error| FactValidationError::new(ctx, format!("invalid verification: {error}")))?;
+    if !f.verification.is_object() {
+        return Err(FactValidationError::new(
+            ctx,
+            "verification must be an object",
+        ));
+    }
     validate_timestamp(f.recorded_at, "recordedAt", ctx)
 }
 
