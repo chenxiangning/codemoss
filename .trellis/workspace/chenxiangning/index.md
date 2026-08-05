@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-31.md`
-- **Total Sessions**: 1338
+- **Total Sessions**: 1339
 - **Last Active**: 2026-08-05
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-31.md` | ~1493 | Active |
+| `journal-31.md` | ~1536 | Active |
 | `journal-30.md` | ~1985 | Archived |
 | `journal-29.md` | ~1970 | Archived |
 | `journal-28.md` | ~1984 | Archived |
@@ -59,6 +59,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 1339 | 2026-08-05 | 修复 $ skill 选中后无 chip 反馈 | `69dcd5768` | `CXN-version-0.7.16` |
 | 1338 | 2026-08-05 | 对接 DeepSeek 余额查询并适配会话概览 | `dabb1a13a` | `CXN-version-0.7.16` |
 | 1337 | 2026-08-05 | 隔离非 Squad 会话副作用 | `979814ccb` | `CXN-version-0.7.16` |
 | 1336 | 2026-08-05 | 实现 Phase 5 Agent Squad 基础编排 | `38db8cae7` | `CXN-version-0.7.16` |

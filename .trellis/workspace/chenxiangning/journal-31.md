@@ -1491,3 +1491,46 @@ Shared Grok 初始化禁止借用 Native Codex 的 reasoning options/effort；in
 ### Next Steps
 
 - None - task complete
+
+
+## Session 1339: 修复 $ skill 选中后无 chip 反馈
+
+**Date**: 2026-08-05
+**Task**: 修复 $ skill 选中后无 chip 反馈
+**Branch**: `CXN-version-0.7.16`
+
+### Summary
+
+恢复 ContextBar skill/commons chips，修复 $ 选择后不可见/不可撤销回归
+
+### Main Changes
+
+## 背景
+v0.7.15 起 8bfdc1c58 拆除 skill chips，导致 $ 选中后无可见反馈。
+
+## 改动
+- 恢复 Composer → Adapter → ChatInputBox → ContextBar chip 透传
+- 恢复 chip 渲染与移除；仅 skill 时也展示 external toolbar
+- 提交 69dcd5768，未污染 squad/quota 等其它 WIP
+
+## 验证
+ContextBar + Adapter 测试 73 通过
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `69dcd5768` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
