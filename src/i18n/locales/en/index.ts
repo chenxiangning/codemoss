@@ -46,7 +46,7 @@ import sidebar from "./sidebar";
 import specHub from "./specHub";
 import statusPanel from "./statusPanel";
 import subagentUi from "./subagentUi";
-import squadOrchestration from "./squadOrchestration";
+import multiAgent from "./multiAgent";
 import tabbar from "./tabbar";
 import taskCenter from "./taskCenter";
 import terminal from "./terminal";
@@ -107,7 +107,7 @@ const en = {
   ...specHub,
   ...statusPanel,
   ...subagentUi,
-  ...squadOrchestration,
+  ...multiAgent,
   ...tabbar,
   ...taskCenter,
   ...terminal,

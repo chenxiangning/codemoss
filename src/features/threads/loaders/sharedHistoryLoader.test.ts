@@ -6,7 +6,7 @@ import {
   resetSharedTargetStoreForTests,
   selectNextTarget,
 } from "../../shared-session/target/targetStore";
-import { getSquadEvidenceRunId } from "../../squad-orchestration/store/squadStore";
+import { getAgentEvidenceRunId } from "../../multi-agent/store/agentStore";
 import { createSharedHistoryLoader } from "./sharedHistoryLoader";
 
 afterEach(() => {
@@ -537,7 +537,7 @@ describe("sharedHistoryLoader", () => {
     await loader.load("shared:squad-evidence");
 
     expect(
-      getSquadEvidenceRunId("ws-squad-evidence", "shared:squad-evidence"),
+      getAgentEvidenceRunId("ws-squad-evidence", "shared:squad-evidence"),
     ).toBe("run-evidence");
   });
 
@@ -572,7 +572,7 @@ describe("sharedHistoryLoader", () => {
     await loader.load("shared:ordinary-evidence");
 
     expect(
-      getSquadEvidenceRunId(
+      getAgentEvidenceRunId(
         "ws-ordinary-evidence",
         "shared:ordinary-evidence",
       ),
