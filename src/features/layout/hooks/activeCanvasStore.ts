@@ -71,6 +71,16 @@ export const EMPTY_ACTIVE_CANVAS_TASK_RUNS: NonNullable<
   MessagesProps["taskRuns"]
 > = [];
 
+/** 空数组必须是模块级单例：layout 每帧 `?? []` / `filter→[]` 会击穿 setSnapshot 顶层 shallowEqual。 */
+export const EMPTY_ACTIVE_CANVAS_USER_INPUT_REQUESTS: NonNullable<
+  MessagesProps["userInputRequests"]
+> = [];
+export const EMPTY_ACTIVE_CANVAS_APPROVALS: NonNullable<
+  MessagesProps["approvals"]
+> = [];
+export const EMPTY_ACTIVE_CANVAS_CHILD_SUBAGENT_THREADS: ThreadSummary[] = [];
+export const EMPTY_ACTIVE_CANVAS_NATIVE_THREAD_IDS: string[] = [];
+
 export const EMPTY_ACTIVE_CANVAS_SNAPSHOT: ActiveCanvasSnapshot = {
   activeWorkspaceId: null,
   activeTurnId: null,
@@ -78,8 +88,8 @@ export const EMPTY_ACTIVE_CANVAS_SNAPSHOT: ActiveCanvasSnapshot = {
   threadId: null,
   workspaceId: null,
   workspacePath: null,
-  userInputRequests: [],
-  approvals: [],
+  userInputRequests: EMPTY_ACTIVE_CANVAS_USER_INPUT_REQUESTS,
+  approvals: EMPTY_ACTIVE_CANVAS_APPROVALS,
   conversationState: null,
   plan: null,
   isThinking: false,
@@ -97,9 +107,30 @@ export const EMPTY_ACTIVE_CANVAS_SNAPSHOT: ActiveCanvasSnapshot = {
   activeThreadStatus: null,
   activeTokenUsage: null,
   activeRateLimits: null,
-  childSubagentThreads: [],
-  activeNativeThreadIds: [],
+  childSubagentThreads: EMPTY_ACTIVE_CANVAS_CHILD_SUBAGENT_THREADS,
+  activeNativeThreadIds: EMPTY_ACTIVE_CANVAS_NATIVE_THREAD_IDS,
 };
+
+/**
+ * 列表成员 Object.is 全等时保留 previous 引用。
+ * 供 layout 写 snapshot 时切断「filter/map 出新数组、内容未变」的 store notify。
+ */
+export function stabilizeListByMemberIdentity<T>(
+  previous: readonly T[],
+  next: readonly T[],
+  empty: T[],
+): T[] {
+  if (next.length === 0) {
+    return empty;
+  }
+  if (
+    previous.length === next.length &&
+    previous.every((item, index) => Object.is(item, next[index]))
+  ) {
+    return previous as T[];
+  }
+  return next as T[];
+}
 
 export function shallowEqual<T extends Record<string, unknown>>(
   left: T,

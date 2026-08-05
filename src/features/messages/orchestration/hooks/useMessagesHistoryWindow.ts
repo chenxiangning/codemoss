@@ -26,9 +26,14 @@ export function useMessagesHistoryWindow({ firstItemId }: UseMessagesHistoryWind
 
   useEffect(() => {
     if (firstItemId !== firstItemIdRef.current) {
-      setShowAllHistoryItems(false);
-      setHistoryExpansionMode(null);
-      setPendingJumpMessageId(null);
+      // pre-dispatch：默认态不得换新引用 / 虚写（#185 防御）
+      setShowAllHistoryItems((previous) => (previous ? false : previous));
+      setHistoryExpansionMode((previous) =>
+        previous === null ? previous : null,
+      );
+      setPendingJumpMessageId((previous) =>
+        previous === null ? previous : null,
+      );
       pendingHistoryExpansionModeRef.current = null;
     }
     firstItemIdRef.current = firstItemId;
@@ -54,9 +59,9 @@ export function useMessagesHistoryWindow({ firstItemId }: UseMessagesHistoryWind
     setPendingJumpMessageId(null);
   }, []);
   const resetHistoryScope = useCallback(() => {
-    setShowAllHistoryItems(false);
-    setHistoryExpansionMode(null);
-    setPendingJumpMessageId(null);
+    setShowAllHistoryItems((previous) => (previous ? false : previous));
+    setHistoryExpansionMode((previous) => (previous === null ? previous : null));
+    setPendingJumpMessageId((previous) => (previous === null ? previous : null));
     pendingHistoryExpansionModeRef.current = null;
   }, []);
 

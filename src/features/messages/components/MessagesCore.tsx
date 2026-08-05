@@ -637,7 +637,8 @@ export const MessagesCore = memo(function MessagesCore({
         agentTaskNodeByTaskIdRef.current.size + agentTaskNodeByToolUseIdRef.current.size,
     };
     resetInteractionScope();
-    setIsSelectionFrozen(false);
+    // pre-dispatch guard：值未变不得进 dispatch（#185 / Messages scope reset）
+    setIsSelectionFrozen((previous) => (previous ? false : previous));
     frozenItemsRef.current = null;
     resetHistoryScope();
     activeAnchorIdRef.current = null;
@@ -667,7 +668,7 @@ export const MessagesCore = memo(function MessagesCore({
       });
     }
     resourceCleanupThreadIdRef.current = threadId;
-    setActiveAnchorId(null);
+    setActiveAnchorId((previous) => (previous === null ? previous : null));
   }, [
     getPendingInteractionResourceCount,
     getPendingScrollResourceCount,
@@ -1058,7 +1059,10 @@ export const MessagesCore = memo(function MessagesCore({
     });
   }, []);
   useEffect(() => {
-    setExpandedProcessPhaseKeys(new Set());
+    // 禁止无条件 `new Set()`：空集合换引用也会触发 re-render（#185 防御）
+    setExpandedProcessPhaseKeys((previous) =>
+      previous.size === 0 ? previous : new Set(),
+    );
   }, [threadId]);
   const latestReasoningVisibleInTimeline = useMemo(() => {
     if (!latestReasoningId) {

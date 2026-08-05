@@ -43,6 +43,36 @@ function buildRuntimeInput(
 }
 
 describe("useMessagesRuntimeState", () => {
+  it("does not re-enter finalizing state when isThinking stays true under thrash", () => {
+    let renderCount = 0;
+    const { result, rerender } = renderHook(
+      (props: { isThinking: boolean; candidateSeed: number }) => {
+        renderCount += 1;
+        return useMessagesRuntimeState(
+          buildRuntimeInput({
+            isThinking: props.isThinking,
+            // deferred/render source 引用抖动不得叠 finalizing setState 环
+            deferredRenderSourceItems: [assistantItem],
+            renderSourceItems: [assistantItem],
+            items: [assistantItem],
+          }),
+        );
+      },
+      {
+        initialProps: { isThinking: true, candidateSeed: 0 },
+      },
+    );
+
+    const baseline = renderCount;
+    for (let i = 0; i < 30; i += 1) {
+      rerender({ isThinking: true, candidateSeed: i });
+    }
+
+    expect(result.current.isAssistantFinalizing).toBe(false);
+    // StrictMode 可能双渲染，但 30 次 thrash 不得爆炸成 update-depth
+    expect(renderCount).toBeLessThan(baseline + 80);
+  });
+
   it("does not select a Native recovery diagnostic when the thread disables that capability", () => {
     const reconnectDiagnostic: ConversationItem = {
       id: "shared-runtime-diagnostic",

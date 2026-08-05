@@ -315,6 +315,48 @@ status: active
 - passive effect 做 local UI reset 时，semantic equality 必须在 React setter dispatch **之前**判断；functional updater 返回 `prev` 只能作为最后一道幂等保护，不能替代 pre-dispatch guard。
 - effect 只依赖业务语义。callback 是否存在应投影为 primitive capability；callback 最新实现经 stable event callback/ref 读取。
 
+### C-20260805-01 — 0.7.16 Messages canvas snapshot 空集合 thrash #185（App-BG-8EZ_F）
+
+| 字段 | 内容 |
+|------|------|
+| **状态** | fixed（exact release asset mapping + snapshot/list stabilize + Messages pre-dispatch guard；待修后构建手测） |
+| **现象** | `appVersion: 0.7.16`；全局 ErrorBoundary；`errorClass: react-maximum-update-depth`；React minified error `#185` |
+| **Bundle / 栈** | **官方 release** `App-BG-8EZ_F.js` + `bootstrapApp-wra2Pnau.js`（`ccgui-web-assets_0.7.16.zip` 1:1）；componentStack：`KOt`=`ActiveCanvasMessages`、`Ege`/`pRt`=`MessagesCore`、`oRt`=`useMessagesInteractions`、`eRt`=note-capture menu、`qzt`=App 主布局、`yKt`/`kKt`=AppShell/路由；error stack 邻域含 `scrollAuthorityMachine` `forced-bottom` settle（`KIt`）与 Messages selection/anchor 热路径 |
+| **Owner** | 主：`useLayoutNodes` → `setActiveCanvasSnapshot` 空集合 / filter 新数组击穿顶层 shallowEqual；辅：Messages scope reset / process-phase / finalizing / note-capture 无条件 setState |
+| **触发条件** | 主画布 Messages 热路径（thread 切换、layout 高频 recompute、空 childSubagent / nativeThreadIds / taskRuns thrash）；前案 Composer extract/rewind **已在 0.7.16 包内仍可炸** |
+| **根因（AP-02 主 / AP-04 辅）** | ① layout 写 snapshot 时 `?? []` / `filter→[]` / 每帧新空数组，顶层 `shallowEqual` 用 `Object.is` 字段比较失败 → store 每帧 notify → `ActiveCanvasMessages` 整树重渲；② Messages cleanup / finalizing / process-phase / note-capture 在语义已默认时仍 dispatch setState，pending lanes 下放大嵌套更新 |
+| **与 C-20260804-01..03 关系** | **同 #185 家族、不同 owner**。01–03 修 canvas getSnapshot / Composer extract / rewind；本 case 是 **Messages 侧 snapshot 写入源 + local UI reset 残留** |
+| **修复** | 见下 |
+| **回归** | `activeCanvasStore.test.tsx`：`stabilizeListByMemberIdentity` + 空集合 thrash 40× 不 notify；`useMessagesRuntimeState.test.tsx`：isThinking thrash 无 finalizing 环 |
+| **Review 要点** | 不把 empty-array thrash 伪装成业务变更；不扩 scope 到 scroll machine 语义重写；Composer 路径保持不动 |
+
+**修复要点（C-20260805-01）**
+
+| 机制 | 实现 |
+|------|------|
+| 空集合模块单例 | `EMPTY_ACTIVE_CANVAS_CHILD_SUBAGENT_THREADS` / `NATIVE_THREAD_IDS` / `USER_INPUT` / `APPROVALS` / `TASK_RUNS` |
+| 列表引用稳定 | `stabilizeListByMemberIdentity`：成员 Object.is 全等保留 previous；空 → EMPTY 单例 |
+| layout 写入前收敛 | `useLayoutNodes` 对 childSubagent / nativeThreadIds / 空 approvals·userInput·taskRuns 走 stabilize |
+| Messages pre-dispatch | process-phase / selection frozen / activeAnchor / history reset / interaction reset / note-capture / finalizing 等价值短路；finalizing 不再把 state 自身放进 effect deps |
+
+**代码入口（C-20260805-01）**
+
+| 路径 | 角色 |
+|------|------|
+| `src/features/layout/hooks/activeCanvasStore.ts` | EMPTY 单例 + stabilize helper |
+| `src/features/layout/hooks/useLayoutNodes.tsx` | snapshot 写入前列表收敛 |
+| `src/features/messages/components/MessagesCore.tsx` | scope reset / process-phase guard |
+| `src/features/messages/orchestration/hooks/useMessagesHistoryWindow.ts` | history reset 等价值 |
+| `src/features/messages/orchestration/hooks/useMessagesInteractions.ts` | interaction reset 等价值 |
+| `src/features/messages/orchestration/hooks/useMessagesRuntimeState.ts` | finalizing deps 去自环 |
+| `src/features/messages/hooks/useConversationNoteCaptureMenu.ts` | thread 切换 menu 等价值 |
+| 本文 §5 C-20260805-01 | 诊断与 review 留痕 |
+
+**Guardrail（C-20260805-01）**
+
+- external store snapshot 的**空数组字段**必须是模块级单例或 stabilize 后的 previous；禁止 layout/render 路径 `?? []` / 临时 `[]` 直写 store。
+- 列表字段若语义是「成员集合」，在 setSnapshot 前用成员 Object.is 稳定引用；不能只靠 store 侧 shallowEqual 事后挡（它挡不住新数组壳）。
+
 ---
 
 ## 6. 新 Case 追加模板
@@ -351,6 +393,7 @@ status: active
 - [x] **B8** useModels 跨 epoch storm 熔断（C-20260804-01）
 - [x] **B9** Composer extract effect 去自订阅 + setComposerText 稳定 + target 等价 hydrate（C-20260804-02）
 - [x] **B10** Composer rewind reset pre-dispatch guard + semantic capability deps（C-20260804-03）
+- [x] **B11** Messages canvas snapshot 空集合 / list stabilize + scope reset pre-dispatch（C-20260805-01 / App-BG-8EZ_F）
 ---
 
 ## 8. 历史相关入口（索引，非完整列表）
@@ -369,6 +412,7 @@ OpenSpec / 代码中已出现的 #185 类修复（便于对照，**不等于本 
 - NoticeDock placement：`src/features/notifications/components/GlobalRuntimeNoticeDock.tsx`
 - Composer extract / draft：`src/features/composer/components/Composer.tsx` + `Composer.file-reference-token.test.tsx`（C-20260804-02 / AP-04）
 - Composer rewind reset：`src/features/composer/components/Composer.tsx` + `Composer.rewind-confirm.test.tsx`（C-20260804-03 / AP-04）
+- Messages canvas snapshot：`src/features/layout/hooks/activeCanvasStore.ts` + `useLayoutNodes.tsx` + Messages scope reset（C-20260805-01 / AP-02）
 - Shared target store：`src/features/shared-session/target/targetStore.ts`（C-20260804-02 / AP-02）
 
 ### 8.1 开发自检（改 selection / canvas / layout setState 时勾选）
@@ -380,6 +424,7 @@ OpenSpec / 代码中已出现的 #185 类修复（便于对照，**不等于本 
 - [ ] 成对 state（model/effort 等）是否 single plan + single apply + 幂等 commit？
 - [ ] **extract / repair effect 是否订阅了自身写入的 state**（应 ref 读，deps 只留真正的外部 source）？
 - [ ] **external store hydrate 是否语义相等就跳过**（禁止每次 `{...prev}` 换壳 notify）？
+- [ ] **snapshot 空数组是否模块单例 / stabilize**（禁止 `?? []` 直写 activeCanvasStore）？
 - [ ] 是否补了可执行 regression（Vitest），而不是只靠冷启手测？
 - [ ] passive effect reset 是否在调用 setter **之前**判断 semantic equality，而非只靠 updater 返回 `prev`？
 
@@ -397,5 +442,6 @@ OpenSpec / 代码中已出现的 #185 类修复（便于对照，**不等于本 
 | 2026-08-03 | C-20260803-01：`App-BCnXFvD4` 冷启 useModels layout apply——onDebugRef、原子 selection、epoch 熔断 |
 | 2026-08-04 | C-20260804-01：`App-hx3PTjEz` 持续性 #185——canvas store/selector、storm、session reload、appVersion |
 | 2026-08-04 | 对抗式 review 二次收口：AP-07；getSnapshot 内 cache（禁 render 期写 ref）；§8.1 自检清单 |
+| 2026-08-05 | C-20260805-01：`App-BG-8EZ_F` 0.7.16 Messages canvas 空集合 thrash + scope reset pre-dispatch |
 | 2026-08-04 | C-20260804-02：`App-DjQ3UnSh` 0.7.16 手测仍炸——Composer extract deps 断环 + target 等价 hydrate + phase 等价值 |
 | 2026-08-04 | C-20260804-03：`App-C2u7zJPh` rewind reset passive effect——pre-dispatch guard + semantic capability deps |

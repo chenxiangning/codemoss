@@ -116,9 +116,14 @@ import { resolveRuntimeLifecycleForComposer } from "./runtimeLifecycle";
 import { focusUserInputRequestCard } from "./userInputRequestFocus";
 import { dispatchMessageJumpEvent } from "./messageJumpEvent";
 import {
+  EMPTY_ACTIVE_CANVAS_APPROVALS,
+  EMPTY_ACTIVE_CANVAS_CHILD_SUBAGENT_THREADS,
   EMPTY_ACTIVE_CANVAS_ITEMS,
+  EMPTY_ACTIVE_CANVAS_NATIVE_THREAD_IDS,
   EMPTY_ACTIVE_CANVAS_TASK_RUNS,
+  EMPTY_ACTIVE_CANVAS_USER_INPUT_REQUESTS,
   setActiveCanvasSnapshot,
+  stabilizeListByMemberIdentity,
   type ActiveCanvasSnapshot,
 } from "./activeCanvasStore";
 import { ActiveCanvasComposer } from "./activeCanvasComposerNode";
@@ -1008,6 +1013,70 @@ export function useLayoutNodes(input: LayoutNodesOptions): LayoutNodesResult {
 
   const taskRunStore = useTaskRunStore();
 
+  // childSubagent / nativeThreadIds：禁止每帧 `[]` 或 filter 新数组击穿 canvas shallowEqual（#185 / App-BG-8EZ_F）
+  // stabilize 放在 useMemo 内：仅 deps 变化时比较；避免每帧 render 写 ref（Concurrent 更干净）。
+  const childSubagentThreadsStableRef = useRef(
+    EMPTY_ACTIVE_CANVAS_CHILD_SUBAGENT_THREADS,
+  );
+  const childSubagentThreads = useMemo(() => {
+    const activeId = options.activeThreadId;
+    const workspaceId = options.activeWorkspaceId;
+    let next = EMPTY_ACTIVE_CANVAS_CHILD_SUBAGENT_THREADS;
+    if (activeId && workspaceId) {
+      const threads = options.threadsByWorkspace[workspaceId] ?? [];
+      const filtered = threads.filter((thread) => {
+        const parent =
+          thread.parentThreadId ?? options.threadParentById[thread.id] ?? null;
+        return parent === activeId;
+      });
+      next =
+        filtered.length === 0
+          ? EMPTY_ACTIVE_CANVAS_CHILD_SUBAGENT_THREADS
+          : filtered;
+    }
+    const stable = stabilizeListByMemberIdentity(
+      childSubagentThreadsStableRef.current,
+      next,
+      EMPTY_ACTIVE_CANVAS_CHILD_SUBAGENT_THREADS,
+    );
+    childSubagentThreadsStableRef.current = stable;
+    return stable;
+  }, [
+    options.activeThreadId,
+    options.activeWorkspaceId,
+    options.threadParentById,
+    options.threadsByWorkspace,
+  ]);
+
+  const activeNativeThreadIdsStableRef = useRef(
+    EMPTY_ACTIVE_CANVAS_NATIVE_THREAD_IDS,
+  );
+  const activeNativeThreadIds = useMemo(() => {
+    const next =
+      activeThreadSummary?.nativeThreadIds ??
+      EMPTY_ACTIVE_CANVAS_NATIVE_THREAD_IDS;
+    const stable = stabilizeListByMemberIdentity(
+      activeNativeThreadIdsStableRef.current,
+      next,
+      EMPTY_ACTIVE_CANVAS_NATIVE_THREAD_IDS,
+    );
+    activeNativeThreadIdsStableRef.current = stable;
+    return stable;
+  }, [activeThreadSummary?.nativeThreadIds]);
+
+  const canvasUserInputRequests =
+    options.userInputRequests.length === 0
+      ? EMPTY_ACTIVE_CANVAS_USER_INPUT_REQUESTS
+      : options.userInputRequests;
+  const canvasApprovals =
+    options.approvals.length === 0
+      ? EMPTY_ACTIVE_CANVAS_APPROVALS
+      : options.approvals;
+  const canvasTaskRuns =
+    taskRunStore.runs.length === 0
+      ? EMPTY_ACTIVE_CANVAS_TASK_RUNS
+      : taskRunStore.runs;
+
   const activeCanvasSnapshot = useMemo<ActiveCanvasSnapshot>(
     () => ({
       activeWorkspaceId: options.activeWorkspaceId,
@@ -1016,8 +1085,8 @@ export function useLayoutNodes(input: LayoutNodesOptions): LayoutNodesResult {
       threadId: options.activeThreadId ?? null,
       workspaceId: options.activeWorkspace?.id ?? null,
       workspacePath: options.activeWorkspace?.path ?? null,
-      userInputRequests: options.userInputRequests,
-      approvals: options.approvals,
+      userInputRequests: canvasUserInputRequests,
+      approvals: canvasApprovals,
       conversationState,
       plan: options.plan,
       isThinking: isThreadThinking,
@@ -1030,26 +1099,14 @@ export function useLayoutNodes(input: LayoutNodesOptions): LayoutNodesResult {
       heartbeatPulse: heartbeatPulseRef.current ?? 0,
       codexSilentSuspectedAt:
         activeThreadStatus?.codexSilentSuspectedAt ?? null,
-      taskRuns: taskRunStore.runs,
+      taskRuns: canvasTaskRuns,
       threadItemsByThread: options.threadItemsByThread,
       threadStatusById: sidebarThreadStatusById,
       activeThreadStatus,
       activeTokenUsage: options.activeTokenUsage,
       activeRateLimits: options.activeRateLimits,
-      childSubagentThreads: (() => {
-        const activeId = options.activeThreadId;
-        const workspaceId = options.activeWorkspaceId;
-        if (!activeId || !workspaceId) {
-          return [];
-        }
-        const threads = options.threadsByWorkspace[workspaceId] ?? [];
-        return threads.filter((thread) => {
-          const parent =
-            thread.parentThreadId ?? options.threadParentById[thread.id] ?? null;
-          return parent === activeId;
-        });
-      })(),
-      activeNativeThreadIds: activeThreadSummary?.nativeThreadIds ?? [],
+      childSubagentThreads,
+      activeNativeThreadIds,
     }),
     [
       options.activeWorkspaceId,
@@ -1058,8 +1115,8 @@ export function useLayoutNodes(input: LayoutNodesOptions): LayoutNodesResult {
       options.activeThreadId,
       options.activeWorkspace?.id,
       options.activeWorkspace?.path,
-      options.userInputRequests,
-      options.approvals,
+      canvasUserInputRequests,
+      canvasApprovals,
       conversationState,
       options.plan,
       isThreadThinking,
@@ -1067,14 +1124,13 @@ export function useLayoutNodes(input: LayoutNodesOptions): LayoutNodesResult {
       activeThreadHistoryLoadingProgress,
       activeThreadHistoryRecoveryFailureReason,
       activeThreadStatus,
-      taskRunStore.runs,
+      canvasTaskRuns,
       options.threadItemsByThread,
       sidebarThreadStatusById,
       options.activeTokenUsage,
       options.activeRateLimits,
-      options.threadsByWorkspace,
-      options.threadParentById,
-      activeThreadSummary?.nativeThreadIds,
+      childSubagentThreads,
+      activeNativeThreadIds,
     ],
   );
 

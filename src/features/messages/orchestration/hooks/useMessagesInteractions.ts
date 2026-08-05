@@ -190,7 +190,7 @@ export function useMessagesInteractions({
       window.clearTimeout(copyTimeoutRef.current);
       copyTimeoutRef.current = null;
     }
-    setCopiedMessageId(null);
+    setCopiedMessageId((previous) => (previous === null ? previous : null));
     setExpandedItems((previous) => (previous.size === 0 ? previous : new Set()));
   }, []);
   const getPendingInteractionResourceCount = useCallback(

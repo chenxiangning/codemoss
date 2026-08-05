@@ -4,11 +4,15 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { useState } from "react";
 
 import {
+  EMPTY_ACTIVE_CANVAS_CHILD_SUBAGENT_THREADS,
+  EMPTY_ACTIVE_CANVAS_NATIVE_THREAD_IDS,
   EMPTY_ACTIVE_CANVAS_SNAPSHOT,
+  EMPTY_ACTIVE_CANVAS_TASK_RUNS,
   activeCanvasStore,
   createActiveCanvasStore,
   setActiveCanvasSnapshot,
   shallowEqual,
+  stabilizeListByMemberIdentity,
   useActiveCanvasSelector,
   type ActiveCanvasSnapshot,
 } from "./activeCanvasStore";
@@ -140,6 +144,80 @@ describe("activeCanvasStore", () => {
     expect(renderCount).toBeLessThan(baseline + 40);
     expect(view.getByRole("button").textContent).toBe("thread-stable");
     expect(activeCanvasStore.getSnapshot().threadId).toBe("thread-stable");
+  });
+
+  it("stabilizeListByMemberIdentity keeps empty and member-equal lists referentially stable", () => {
+    const emptyA = stabilizeListByMemberIdentity(
+      EMPTY_ACTIVE_CANVAS_CHILD_SUBAGENT_THREADS,
+      [],
+      EMPTY_ACTIVE_CANVAS_CHILD_SUBAGENT_THREADS,
+    );
+    const emptyB = stabilizeListByMemberIdentity(
+      emptyA,
+      [],
+      EMPTY_ACTIVE_CANVAS_CHILD_SUBAGENT_THREADS,
+    );
+    expect(emptyA).toBe(EMPTY_ACTIVE_CANVAS_CHILD_SUBAGENT_THREADS);
+    expect(emptyB).toBe(EMPTY_ACTIVE_CANVAS_CHILD_SUBAGENT_THREADS);
+
+    const threadA = { id: "child-1" } as ActiveCanvasSnapshot["childSubagentThreads"][number];
+    const first = stabilizeListByMemberIdentity(
+      EMPTY_ACTIVE_CANVAS_CHILD_SUBAGENT_THREADS,
+      [threadA],
+      EMPTY_ACTIVE_CANVAS_CHILD_SUBAGENT_THREADS,
+    );
+    const second = stabilizeListByMemberIdentity(
+      first,
+      [threadA],
+      EMPTY_ACTIVE_CANVAS_CHILD_SUBAGENT_THREADS,
+    );
+    expect(second).toBe(first);
+
+    const native = stabilizeListByMemberIdentity(
+      EMPTY_ACTIVE_CANVAS_NATIVE_THREAD_IDS,
+      ["claude:owner"],
+      EMPTY_ACTIVE_CANVAS_NATIVE_THREAD_IDS,
+    );
+    const nativeAgain = stabilizeListByMemberIdentity(
+      native,
+      ["claude:owner"],
+      EMPTY_ACTIVE_CANVAS_NATIVE_THREAD_IDS,
+    );
+    // 字符串原始值相同但数组是新的 → 按成员 Object.is 可保留 previous
+    expect(nativeAgain).toBe(native);
+  });
+
+  it("does not notify when only empty-collection shells thrash across snapshots", () => {
+    const base = snapshotOf({
+      threadId: "thread-1",
+      childSubagentThreads: EMPTY_ACTIVE_CANVAS_CHILD_SUBAGENT_THREADS,
+      activeNativeThreadIds: EMPTY_ACTIVE_CANVAS_NATIVE_THREAD_IDS,
+      taskRuns: EMPTY_ACTIVE_CANVAS_TASK_RUNS,
+    });
+    const store = createActiveCanvasStore(base);
+    const listener = vi.fn();
+    store.subscribe(listener);
+
+    // 写入前已收敛到 EMPTY_* 单例：40 次壳抖动不得 notify（#185 / App-BG-8EZ_F）
+    for (let i = 0; i < 40; i += 1) {
+      const stabilizedChildren = stabilizeListByMemberIdentity(
+        store.getSnapshot().childSubagentThreads,
+        [],
+        EMPTY_ACTIVE_CANVAS_CHILD_SUBAGENT_THREADS,
+      );
+      const stabilizedNative = stabilizeListByMemberIdentity(
+        store.getSnapshot().activeNativeThreadIds,
+        [],
+        EMPTY_ACTIVE_CANVAS_NATIVE_THREAD_IDS,
+      );
+      store.setSnapshot({
+        ...base,
+        childSubagentThreads: stabilizedChildren,
+        activeNativeThreadIds: stabilizedNative,
+        taskRuns: EMPTY_ACTIVE_CANVAS_TASK_RUNS,
+      });
+    }
+    expect(listener).not.toHaveBeenCalled();
   });
 
   it("useActiveCanvasSelector keeps object slice identity when only unrelated store fields change", () => {

@@ -51,11 +51,12 @@ export function useConversationNoteCaptureMenu({
   const [menu, setMenu] = useState<RendererContextMenuState | null>(null);
 
   const closeMenu = useCallback(() => {
-    setMenu(null);
+    setMenu((previous) => (previous === null ? previous : null));
   }, []);
 
   useEffect(() => {
-    setMenu(null);
+    // pre-dispatch：已关闭时不得虚写 null（#185 / Messages note-capture）
+    setMenu((previous) => (previous === null ? previous : null));
   }, [threadId]);
 
   const openMenu = useCallback(

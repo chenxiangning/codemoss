@@ -257,7 +257,9 @@ export function useMessagesRuntimeState({
       visibleTextLength: 0,
       reportedAt: 0,
     };
-    setFinalizingAssistantMessageId(null);
+    setFinalizingAssistantMessageId((current) =>
+      current === null ? current : null,
+    );
     previousAssistantThinkingRef.current = false;
     previousAssistantScopeKeyRef.current = renderScopeKey;
   }, [renderScopeKey]);
@@ -272,16 +274,19 @@ export function useMessagesRuntimeState({
         assistantFinalizingTimerRef.current = null;
       }
       assistantFinalizingCompleteRenderedIdRef.current = null;
-      if (finalizingAssistantMessageId !== null) {
-        setFinalizingAssistantMessageId(null);
-      }
+      // 不把 finalizingAssistantMessageId 放进 deps：避免 set→re-run 自环；只走 functional bailout
+      setFinalizingAssistantMessageId((current) =>
+        current === null ? current : null,
+      );
       return;
     }
     if (!previouslyThinking || !assistantFinalizingCandidateId) {
       return;
     }
     setFinalizingAssistantMessageId((current) =>
-      current === assistantFinalizingCandidateId ? current : assistantFinalizingCandidateId,
+      current === assistantFinalizingCandidateId
+        ? current
+        : assistantFinalizingCandidateId,
     );
     if (assistantFinalizingTimerRef.current !== null) {
       window.clearTimeout(assistantFinalizingTimerRef.current);
@@ -301,7 +306,6 @@ export function useMessagesRuntimeState({
   }, [
     activeEngine,
     assistantFinalizingCandidateId,
-    finalizingAssistantMessageId,
     isThinking,
     renderScopeKey,
     supportsAssistantFinalizingWindow,
