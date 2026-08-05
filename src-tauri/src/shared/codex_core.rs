@@ -93,6 +93,11 @@ fn resolve_execution_policy(
     let mut sandbox_policy = match access_mode {
         "full-access" => json!({ "type": "dangerFullAccess" }),
         "read-only" => json!({ "type": "readOnly" }),
+        "squad-current-workspace" => json!({
+            "type": "workspaceWrite",
+            "writableRoots": [workspace_path],
+            "networkAccess": false
+        }),
         _ => {
             let writable_roots = build_writable_roots(workspace_path, custom_spec_root);
             json!({
@@ -103,7 +108,7 @@ fn resolve_execution_policy(
         }
     };
 
-    let mut approval_policy = if access_mode == "full-access" {
+    let mut approval_policy = if matches!(access_mode, "full-access" | "squad-current-workspace") {
         "never"
     } else {
         "on-request"

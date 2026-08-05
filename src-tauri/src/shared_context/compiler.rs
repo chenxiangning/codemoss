@@ -101,6 +101,19 @@ fn event_payload(event: &StoredEvent) -> Result<Value, String> {
         .map_err(|error| format!("parse {} payload: {error}", event.fact_type))
 }
 
+fn squad_context_scope(events: &[StoredEvent], attempt_id: Option<&str>) -> Option<Value> {
+    let attempt_id = attempt_id?;
+    events
+        .iter()
+        .find(|event| {
+            event.fact_type == "conversation.turnRequested"
+                && event.attempt_id.as_deref() == Some(attempt_id)
+        })
+        .and_then(|event| event_payload(event).ok())
+        .and_then(|payload| payload.get("squadContextIdentity").cloned())
+        .filter(|scope| !scope.is_null())
+}
+
 fn destination_owned_attempts(events: &[StoredEvent], binding_key: &str) -> HashSet<String> {
     events
         .iter()
@@ -660,6 +673,18 @@ pub fn compile_context(
         .filter(|event| event.fidelity == Fidelity::Canonical)
         .filter_map(|event| event.logical_turn_id.as_deref())
         .collect::<HashSet<_>>();
+    let squad_attempt_ids = events
+        .iter()
+        .filter(|event| event.fact_type == "conversation.turnRequested")
+        .filter_map(|event| {
+            let payload = serde_json::from_str::<Value>(&event.payload_json).ok()?;
+            payload
+                .get("squadWorkerBindingKey")
+                .and_then(Value::as_str)
+                .filter(|value| !value.trim().is_empty())?;
+            event.attempt_id.clone()
+        })
+        .collect::<HashSet<_>>();
     let source = events
         .iter()
         .filter(|event| {
@@ -672,6 +697,10 @@ pub fn compile_context(
                 && event.sequence > lower
                 && event.sequence <= upper
                 && event.attempt_id.as_deref() != request.exclude_attempt_id.as_deref()
+                && event
+                    .attempt_id
+                    .as_ref()
+                    .is_none_or(|attempt| !squad_attempt_ids.contains(attempt))
         })
         .cloned()
         .collect::<Vec<_>>();
@@ -689,6 +718,7 @@ pub fn compile_context(
     let source_bytes =
         deterministic_json_bytes(&json!(source_value)).map_err(|error| error.to_string())?;
     let source_checksum = sha256(&source_bytes);
+    let context_scope = squad_context_scope(events, request.exclude_attempt_id.as_deref());
     let budget = request
         .budget_estimated_tokens
         .unwrap_or(DEFAULT_TRANSCRIPT_BUDGET);
@@ -755,6 +785,7 @@ pub fn compile_context(
         from_sequence_exclusive: request.from_sequence_exclusive,
         through_sequence_inclusive: upper,
         source_checksum: source_checksum.clone(),
+        scope: context_scope.clone(),
     };
     let identity = json!({
         "compilerVersion": COMPILER_VERSION,
@@ -767,6 +798,7 @@ pub fn compile_context(
         "fromSequenceExclusive": request.from_sequence_exclusive,
         "throughSequenceInclusive": upper,
         "sourceChecksum": source_checksum,
+        "scope": context_scope,
     });
     let package_id =
         sha256(&deterministic_json_bytes(&identity).map_err(|error| error.to_string())?);
@@ -912,6 +944,7 @@ pub fn compile_native_context(
         from_sequence_exclusive: None,
         through_sequence_inclusive: source_entry_count as i64,
         source_checksum: source_checksum.clone(),
+        scope: None,
     };
     let identity = json!({
         "compilerVersion": COMPILER_VERSION,
@@ -1056,7 +1089,12 @@ mod tests {
         ];
         // 预算约等于首轮+最近轮，逼出中间轮删除。
         let tight_budget = estimated_tokens(&transcript(
-            &[entries[0].clone(), entries[1].clone(), entries[4].clone(), entries[5].clone()],
+            &[
+                entries[0].clone(),
+                entries[1].clone(),
+                entries[4].clone(),
+                entries[5].clone(),
+            ],
             true,
         ));
         let mut omissions = Vec::new();

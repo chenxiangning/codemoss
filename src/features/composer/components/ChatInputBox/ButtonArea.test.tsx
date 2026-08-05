@@ -449,4 +449,22 @@ describe("ButtonArea custom model storage refresh", () => {
     );
   });
 
+  it("places the Squad control immediately before the send action", () => {
+    const { container } = render(
+      <ButtonArea
+        currentProvider="codex"
+        hasInputContent
+        onSubmit={vi.fn()}
+        squadSurface={<button data-testid="squad-surface">Squad</button>}
+      />,
+    );
+
+    const actionRow = container.querySelector(".button-area-right");
+    expect(actionRow?.firstElementChild).toBe(
+      screen.getByTestId("squad-surface"),
+    );
+    expect(actionRow?.lastElementChild).not.toBe(
+      screen.getByTestId("squad-surface"),
+    );
+  });
 });

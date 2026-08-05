@@ -9,6 +9,7 @@
 //! - 三条幂等路径命中返回 `AppendOutcome::Duplicate { existing_sequence }`，不报错；
 //! - payload checksum 由 writer 内部计算落盘，调用方不提供（防伪造）。
 
+use std::collections::HashMap;
 use std::path::Path;
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
@@ -24,6 +25,41 @@ use super::checksum::payload_checksum;
 use super::error::StoreError;
 use super::ledger::{self, LedgerOutcome, ProviderUsageRecord, StoredLedgerRow};
 use super::schema;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MutationLeaseAction {
+    Acquire,
+    Release,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MutationLeaseRequest {
+    pub session_id: String,
+    pub workspace_id: String,
+    pub run_id: String,
+    pub node_id: String,
+    pub attempt_id: String,
+    pub action: MutationLeaseAction,
+    pub occurred_at: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum MutationLeaseOutcome {
+    Acquired {
+        epoch: u64,
+        duplicate: bool,
+    },
+    Released {
+        epoch: u64,
+        duplicate: bool,
+    },
+    Busy {
+        holder_run_id: String,
+        holder_node_id: String,
+        holder_attempt_id: String,
+        epoch: u64,
+    },
+}
 
 /// Turn Usage 例外 fact type：该类型不参与 attempt+fact 唯一约束，只走 dedupe_key。
 pub const USAGE_FACT_TYPE: &str = "conversation.usageRecorded";
@@ -269,10 +305,124 @@ impl SharedEventStore {
         schema::harden_db_file_permissions(path)?;
         schema::apply_runtime_pragmas(&conn)?;
         schema::migrate(&mut conn)?;
-        Ok(Self {
+        let mut store = Self {
             conn,
             boundary_hook: None,
-        })
+        };
+        store.rebuild_mutation_lease_index()?;
+        Ok(store)
+    }
+
+    /// `squad_workspace_mutation_lease` is an operational index. Rebuild it from canonical
+    /// lease facts on every open so deleting/corrupting derived rows never invents authority.
+    fn rebuild_mutation_lease_index(&mut self) -> Result<(), StoreError> {
+        #[derive(Clone)]
+        struct RebuiltLease {
+            session_id: String,
+            run_id: String,
+            node_id: String,
+            attempt_id: String,
+            epoch: u64,
+            state: &'static str,
+            acquired_at: i64,
+            updated_at: i64,
+        }
+
+        let mut statement = self
+            .conn
+            .prepare(
+                "SELECT session_id, payload_json FROM shared_event_log
+                 WHERE fact_type = 'squad.mutationLeaseChanged'
+                 ORDER BY committed_at ASC, session_id ASC, sequence ASC",
+            )
+            .map_err(|source| StoreError::sqlite("prepare mutation lease rebuild", source))?;
+        let rows = statement
+            .query_map([], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            })
+            .map_err(|source| StoreError::sqlite("query mutation lease rebuild", source))?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|source| StoreError::sqlite("read mutation lease rebuild", source))?;
+        drop(statement);
+
+        let mut rebuilt = HashMap::<String, RebuiltLease>::new();
+        for (session_id, payload_json) in rows {
+            let fact = serde_json::from_str::<CanonicalFact>(&payload_json)
+                .map_err(|source| StoreError::json("decode mutation lease rebuild fact", source))?;
+            let CanonicalFact::SquadMutationLeaseChanged(fact) = fact else {
+                continue;
+            };
+            if fact.change == "blocked" {
+                continue;
+            }
+            let existing = rebuilt.get(&fact.workspace_id).cloned();
+            if existing
+                .as_ref()
+                .is_some_and(|lease| lease.epoch > fact.lease_epoch)
+            {
+                continue;
+            }
+            let state = if fact.change == "acquired" {
+                "held"
+            } else if fact.change == "released" {
+                "released"
+            } else {
+                return Err(StoreError::validation_failed(
+                    "squad mutation lease rebuild",
+                    format!("unsupported lease change '{}'", fact.change),
+                ));
+            };
+            let acquired_at = existing
+                .as_ref()
+                .filter(|lease| lease.epoch == fact.lease_epoch)
+                .map(|lease| lease.acquired_at)
+                .unwrap_or(fact.changed_at);
+            rebuilt.insert(
+                fact.workspace_id,
+                RebuiltLease {
+                    session_id,
+                    run_id: fact.run_id,
+                    node_id: fact.node_id,
+                    attempt_id: fact.attempt_id,
+                    epoch: fact.lease_epoch,
+                    state,
+                    acquired_at,
+                    updated_at: fact.changed_at,
+                },
+            );
+        }
+
+        let transaction = self
+            .conn
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(|source| StoreError::sqlite("begin mutation lease rebuild", source))?;
+        transaction
+            .execute("DELETE FROM squad_workspace_mutation_lease", [])
+            .map_err(|source| StoreError::sqlite("clear mutation lease index", source))?;
+        for (workspace_id, lease) in rebuilt {
+            transaction
+                .execute(
+                    "INSERT INTO squad_workspace_mutation_lease (
+                        workspace_id, session_id, run_id, node_id, attempt_id, epoch,
+                        state, acquired_at, updated_at
+                     ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+                    rusqlite::params![
+                        workspace_id,
+                        lease.session_id,
+                        lease.run_id,
+                        lease.node_id,
+                        lease.attempt_id,
+                        lease.epoch as i64,
+                        lease.state,
+                        lease.acquired_at,
+                        lease.updated_at,
+                    ],
+                )
+                .map_err(|source| StoreError::sqlite("insert rebuilt mutation lease", source))?;
+        }
+        transaction
+            .commit()
+            .map_err(|source| StoreError::sqlite("commit mutation lease rebuild", source))
     }
 
     /// 安装事务边界观测钩子（仅崩溃测试台使用）。
@@ -311,6 +461,162 @@ impl SharedEventStore {
         self.append_event_inner(event, Some(binding), true)
     }
 
+    pub(crate) fn change_mutation_lease(
+        &mut self,
+        request: &MutationLeaseRequest,
+    ) -> Result<MutationLeaseOutcome, StoreError> {
+        validate_mutation_lease_request(request)?;
+        let tx = self
+            .conn
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(|source| StoreError::sqlite("begin mutation lease transaction", source))?;
+        let existing = tx
+            .query_row(
+                "SELECT run_id, node_id, attempt_id, epoch, state
+                 FROM squad_workspace_mutation_lease WHERE workspace_id = ?1",
+                [&request.workspace_id],
+                |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, String>(2)?,
+                        row.get::<_, i64>(3)?,
+                        row.get::<_, String>(4)?,
+                    ))
+                },
+            )
+            .optional()
+            .map_err(|source| StoreError::sqlite("read mutation lease", source))?;
+        let same_holder = existing.as_ref().is_some_and(|(run, node, attempt, _, _)| {
+            run == &request.run_id && node == &request.node_id && attempt == &request.attempt_id
+        });
+
+        let (change, epoch, outcome) = match request.action {
+            MutationLeaseAction::Acquire => match existing.as_ref() {
+                Some((_, _, _, epoch, state)) if same_holder && state == "held" => {
+                    return Ok(MutationLeaseOutcome::Acquired {
+                        epoch: *epoch as u64,
+                        duplicate: true,
+                    });
+                }
+                Some((holder_run, holder_node, holder_attempt, epoch, state))
+                    if state == "held" =>
+                {
+                    let epoch = *epoch as u64;
+                    let fact = mutation_lease_fact(request, epoch, "blocked");
+                    append_canonical_fact_in_transaction(
+                        &tx,
+                        &request.session_id,
+                        &fact,
+                        request.occurred_at,
+                    )?;
+                    tx.commit().map_err(|source| {
+                        StoreError::sqlite("commit blocked mutation lease audit", source)
+                    })?;
+                    return Ok(MutationLeaseOutcome::Busy {
+                        holder_run_id: holder_run.clone(),
+                        holder_node_id: holder_node.clone(),
+                        holder_attempt_id: holder_attempt.clone(),
+                        epoch,
+                    });
+                }
+                Some((_, _, _, epoch, _)) => {
+                    let epoch = (*epoch + 1) as u64;
+                    (
+                        "acquired",
+                        epoch,
+                        MutationLeaseOutcome::Acquired {
+                            epoch,
+                            duplicate: false,
+                        },
+                    )
+                }
+                None => (
+                    "acquired",
+                    1,
+                    MutationLeaseOutcome::Acquired {
+                        epoch: 1,
+                        duplicate: false,
+                    },
+                ),
+            },
+            MutationLeaseAction::Release => match existing.as_ref() {
+                None => {
+                    return Ok(MutationLeaseOutcome::Released {
+                        epoch: 0,
+                        duplicate: true,
+                    });
+                }
+                Some((holder_run, holder_node, holder_attempt, epoch, state))
+                    if !same_holder && state == "held" =>
+                {
+                    return Ok(MutationLeaseOutcome::Busy {
+                        holder_run_id: holder_run.clone(),
+                        holder_node_id: holder_node.clone(),
+                        holder_attempt_id: holder_attempt.clone(),
+                        epoch: *epoch as u64,
+                    });
+                }
+                Some((_, _, _, epoch, state)) if state == "released" => {
+                    return Ok(MutationLeaseOutcome::Released {
+                        epoch: *epoch as u64,
+                        duplicate: true,
+                    });
+                }
+                Some((_, _, _, epoch, _)) => {
+                    let epoch = *epoch as u64;
+                    (
+                        "released",
+                        epoch,
+                        MutationLeaseOutcome::Released {
+                            epoch,
+                            duplicate: false,
+                        },
+                    )
+                }
+            },
+        };
+
+        tx.execute(
+            "INSERT INTO squad_workspace_mutation_lease (
+                workspace_id, session_id, run_id, node_id, attempt_id, epoch,
+                state, acquired_at, updated_at
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?8)
+             ON CONFLICT(workspace_id) DO UPDATE SET
+                session_id = excluded.session_id,
+                run_id = excluded.run_id,
+                node_id = excluded.node_id,
+                attempt_id = excluded.attempt_id,
+                epoch = excluded.epoch,
+                state = excluded.state,
+                acquired_at = CASE
+                    WHEN excluded.state = 'held' THEN excluded.acquired_at
+                    ELSE squad_workspace_mutation_lease.acquired_at
+                END,
+                updated_at = excluded.updated_at",
+            rusqlite::params![
+                request.workspace_id,
+                request.session_id,
+                request.run_id,
+                request.node_id,
+                request.attempt_id,
+                epoch as i64,
+                if change == "acquired" {
+                    "held"
+                } else {
+                    "released"
+                },
+                request.occurred_at,
+            ],
+        )
+        .map_err(|source| map_write_error("change mutation lease", source))?;
+        let fact = mutation_lease_fact(request, epoch, change);
+        append_canonical_fact_in_transaction(&tx, &request.session_id, &fact, request.occurred_at)?;
+        tx.commit()
+            .map_err(|source| StoreError::sqlite("commit mutation lease transaction", source))?;
+        Ok(outcome)
+    }
+
     fn append_event_inner(
         &mut self,
         event: &NewCanonicalEvent,
@@ -339,6 +645,7 @@ impl SharedEventStore {
                      WHERE requested.session_id = ?1
                        AND requested.fact_type = 'conversation.turnRequested'
                        AND requested.attempt_id IS NOT NULL
+                       AND json_extract(requested.payload_json, '$.squadWorkerBindingKey') IS NULL
                        AND NOT EXISTS (
                          SELECT 1 FROM shared_event_log committed
                          WHERE committed.session_id = requested.session_id
@@ -580,6 +887,33 @@ impl SharedEventStore {
             events.push(row.map_err(|source| StoreError::sqlite("map event row", source))?);
         }
         Ok(events)
+    }
+
+    /// 返回 durable TurnRequested 标记过的 Squad Worker attempt ids。
+    /// 增量 Projection 用它跨 checkpoint 隐藏 Worker terminal/usage，避免只看 delta 泄漏。
+    pub(crate) fn squad_attempt_ids_for_session(
+        &self,
+        session_id: &str,
+    ) -> Result<Vec<String>, StoreError> {
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT DISTINCT attempt_id FROM shared_event_log
+                 WHERE session_id = ?1
+                   AND fact_type = 'conversation.turnRequested'
+                   AND attempt_id IS NOT NULL
+                   AND NULLIF(TRIM(json_extract(payload_json, '$.squadWorkerBindingKey')), '') IS NOT NULL",
+            )
+            .map_err(|source| StoreError::sqlite("prepare squad attempt ids query", source))?;
+        let rows = stmt
+            .query_map([session_id], |row| row.get(0))
+            .map_err(|source| StoreError::sqlite("query squad attempt ids", source))?;
+        let mut attempts = Vec::new();
+        for row in rows {
+            attempts
+                .push(row.map_err(|source| StoreError::sqlite("map squad attempt id", source))?);
+        }
+        Ok(attempts)
     }
 
     /// 统计事件数；`session_id` 为 `None` 时统计全表。
@@ -864,6 +1198,18 @@ fn canonical_event_id(fact: &CanonicalFact, occurred_at: i64) -> String {
             f.control_kind,
             occurred_at
         ),
+        SquadRunRequested(f) => f.fact_id.clone(),
+        SquadPlanProposed(f) => f.fact_id.clone(),
+        SquadPlanApproved(f) => f.fact_id.clone(),
+        SquadPlanRevised(f) => f.fact_id.clone(),
+        SquadNodeDispatchPrepared(f) => f.fact_id.clone(),
+        SquadNodeAttemptLinked(f) => f.fact_id.clone(),
+        SquadNodeOutcomeRecorded(f) => f.fact_id.clone(),
+        SquadVerificationRecorded(f) => f.fact_id.clone(),
+        SquadMutationLeaseChanged(f) => f.fact_id.clone(),
+        SquadBranchBlocked(f) => f.fact_id.clone(),
+        SquadCancelRequested(f) => f.fact_id.clone(),
+        SquadRunSettled(f) => f.fact_id.clone(),
     }
 }
 
@@ -879,6 +1225,18 @@ fn canonical_fact_occurred_at(fact: &CanonicalFact) -> Result<i64, StoreError> {
         TurnAccepted(f) => Ok(f.accepted_at),
         TurnCommitted(f) => Ok(f.committed_at),
         UsageRecorded(f) => Ok(f.observed_at),
+        SquadRunRequested(f) => Ok(f.requested_at),
+        SquadPlanProposed(f) => Ok(f.proposed_at),
+        SquadPlanApproved(f) => Ok(f.approved_at),
+        SquadPlanRevised(f) => Ok(f.revised_at),
+        SquadNodeDispatchPrepared(f) => Ok(f.prepared_at),
+        SquadNodeAttemptLinked(f) => Ok(f.linked_at),
+        SquadNodeOutcomeRecorded(f) => Ok(f.recorded_at),
+        SquadVerificationRecorded(f) => Ok(f.recorded_at),
+        SquadMutationLeaseChanged(f) => Ok(f.changed_at),
+        SquadBranchBlocked(f) => Ok(f.blocked_at),
+        SquadCancelRequested(f) => Ok(f.requested_at),
+        SquadRunSettled(f) => Ok(f.settled_at),
     }
 }
 
@@ -1028,6 +1386,116 @@ fn upsert_binding_state_tx(
     Ok(())
 }
 
+fn validate_mutation_lease_request(request: &MutationLeaseRequest) -> Result<(), StoreError> {
+    for (name, value) in [
+        ("sessionId", request.session_id.as_str()),
+        ("workspaceId", request.workspace_id.as_str()),
+        ("runId", request.run_id.as_str()),
+        ("nodeId", request.node_id.as_str()),
+        ("attemptId", request.attempt_id.as_str()),
+    ] {
+        if value.trim().is_empty() {
+            return Err(StoreError::validation_failed(
+                "squad mutation lease",
+                format!("{name} must be non-empty"),
+            ));
+        }
+    }
+    if request.occurred_at < 0 {
+        return Err(StoreError::validation_failed(
+            "squad mutation lease",
+            "occurredAt must be non-negative",
+        ));
+    }
+    if !Path::new(&request.workspace_id).is_absolute() {
+        return Err(StoreError::validation_failed(
+            "squad mutation lease",
+            "workspaceId must be a canonical absolute workspace root",
+        ));
+    }
+    Ok(())
+}
+
+fn mutation_lease_fact(request: &MutationLeaseRequest, epoch: u64, change: &str) -> CanonicalFact {
+    use super::canonical::types::SquadMutationLeaseChangedFact;
+
+    CanonicalFact::SquadMutationLeaseChanged(SquadMutationLeaseChangedFact {
+        fact_id: format!(
+            "squad:{}:lease:{}:{}:{}:{}",
+            request.run_id, change, request.node_id, request.attempt_id, epoch
+        ),
+        run_id: request.run_id.clone(),
+        workspace_id: request.workspace_id.clone(),
+        node_id: request.node_id.clone(),
+        attempt_id: request.attempt_id.clone(),
+        lease_epoch: epoch,
+        change: change.to_string(),
+        changed_at: request.occurred_at,
+        extra: Value::Object(Default::default()),
+    })
+}
+
+fn append_canonical_fact_in_transaction(
+    tx: &rusqlite::Transaction<'_>,
+    session_id: &str,
+    fact: &CanonicalFact,
+    occurred_at: i64,
+) -> Result<AppendOutcome, StoreError> {
+    validate_fact(fact)
+        .map_err(|error| StoreError::validation_failed(fact.fact_type(), error.to_string()))?;
+    let event = canonical_fact_to_event(
+        session_id.to_string(),
+        fact,
+        Fidelity::Canonical,
+        occurred_at,
+    )?;
+    append_prepared_event_in_transaction(tx, &event)
+}
+
+fn append_prepared_event_in_transaction(
+    tx: &rusqlite::Transaction<'_>,
+    event: &NewCanonicalEvent,
+) -> Result<AppendOutcome, StoreError> {
+    let payload: Value = serde_json::from_str(&event.payload_json)
+        .map_err(|source| StoreError::json("parse event payload_json", source))?;
+    let checksum = payload_checksum(event.schema_version, &event.fact_type, &payload)?;
+    if let Some(existing_sequence) = find_existing_sequence(tx, event, &checksum)? {
+        return Ok(AppendOutcome::Duplicate { existing_sequence });
+    }
+    ensure_session_row(tx, event)?;
+    let sequence = read_next_sequence(tx, &event.session_id)?;
+    tx.execute(
+        "UPDATE shared_sessions_v2 SET next_sequence = next_sequence + 1, updated_at = ?2
+         WHERE session_id = ?1",
+        rusqlite::params![event.session_id, event.committed_at],
+    )
+    .map_err(|source| StoreError::sqlite("bump session next_sequence", source))?;
+    tx.execute(
+        "INSERT INTO shared_event_log (
+            session_id, sequence, event_id, fact_type, logical_turn_id, attempt_id,
+            dedupe_key, payload_json, payload_checksum, fidelity, committed_at
+         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+        rusqlite::params![
+            event.session_id,
+            sequence,
+            event.event_id,
+            event.fact_type,
+            event.logical_turn_id,
+            event.attempt_id,
+            event.dedupe_key,
+            event.payload_json,
+            checksum,
+            event.fidelity.as_str(),
+            event.committed_at,
+        ],
+    )
+    .map_err(|source| map_write_error("insert mutation lease fact", source))?;
+    Ok(AppendOutcome::Inserted {
+        sequence,
+        payload_checksum: checksum,
+    })
+}
+
 enum WriterCommand {
     AppendEvent {
         event: NewCanonicalEvent,
@@ -1067,6 +1535,10 @@ enum WriterCommand {
         update: SessionTargetUpdate,
         respond: mpsc::Sender<Result<(), StoreError>>,
     },
+    ChangeMutationLease {
+        request: MutationLeaseRequest,
+        respond: mpsc::Sender<Result<MutationLeaseOutcome, StoreError>>,
+    },
     SessionTarget {
         session_id: String,
         respond: mpsc::Sender<Result<Option<StoredSessionTarget>, StoreError>>,
@@ -1083,6 +1555,10 @@ enum WriterCommand {
         session_id: String,
         through_sequence: i64,
         respond: mpsc::Sender<Result<Vec<StoredEvent>, StoreError>>,
+    },
+    SquadAttemptIdsForSession {
+        session_id: String,
+        respond: mpsc::Sender<Result<Vec<String>, StoreError>>,
     },
     CountEvents {
         session_id: Option<String>,
@@ -1247,6 +1723,9 @@ impl SharedEventWriter {
                         WriterCommand::UpsertSessionTarget { update, respond } => {
                             let _ = respond.send(store.upsert_session_target(&update));
                         }
+                        WriterCommand::ChangeMutationLease { request, respond } => {
+                            let _ = respond.send(store.change_mutation_lease(&request));
+                        }
                         WriterCommand::SessionTarget {
                             session_id,
                             respond,
@@ -1270,6 +1749,13 @@ impl SharedEventWriter {
                             let _ = respond.send(
                                 store.events_for_session_after(&session_id, through_sequence),
                             );
+                        }
+                        WriterCommand::SquadAttemptIdsForSession {
+                            session_id,
+                            respond,
+                        } => {
+                            let _ =
+                                respond.send(store.squad_attempt_ids_for_session(&session_id));
                         }
                         WriterCommand::CountEvents {
                             session_id,
@@ -1485,6 +1971,16 @@ impl SharedEventWriter {
         })
     }
 
+    pub fn change_mutation_lease(
+        &self,
+        request: &MutationLeaseRequest,
+    ) -> Result<MutationLeaseOutcome, StoreError> {
+        self.send_command(|respond| WriterCommand::ChangeMutationLease {
+            request: request.clone(),
+            respond,
+        })
+    }
+
     pub fn session_target(
         &self,
         session_id: &str,
@@ -1522,6 +2018,16 @@ impl SharedEventWriter {
         self.send_command(|respond| WriterCommand::EventsForSessionAfter {
             session_id: session_id.to_string(),
             through_sequence,
+            respond,
+        })
+    }
+
+    pub fn squad_attempt_ids_for_session(
+        &self,
+        session_id: &str,
+    ) -> Result<Vec<String>, StoreError> {
+        self.send_command(|respond| WriterCommand::SquadAttemptIdsForSession {
+            session_id: session_id.to_string(),
             respond,
         })
     }

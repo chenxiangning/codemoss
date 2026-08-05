@@ -557,18 +557,12 @@ mod background_task_settlement_tests {
             "type": "user",
             "toolUseResult": { "backgroundTaskId": "bg-1" }
         });
-        assert_eq!(
-            extract_background_task_id(&camel).as_deref(),
-            Some("bg-1")
-        );
+        assert_eq!(extract_background_task_id(&camel).as_deref(), Some("bg-1"));
 
         let snake = json!({
             "tool_use_result": { "background_task_id": "  bg-2  " }
         });
-        assert_eq!(
-            extract_background_task_id(&snake).as_deref(),
-            Some("bg-2")
-        );
+        assert_eq!(extract_background_task_id(&snake).as_deref(), Some("bg-2"));
     }
 
     #[test]
@@ -617,17 +611,23 @@ mod background_task_settlement_tests {
     fn release_requires_matching_terminal_status() {
         let mut active = HashSet::from(["bg-1".to_string()]);
         assert!(!try_release_background_task_id(
-            &mut active, "bg-1", "running"
+            &mut active,
+            "bg-1",
+            "running"
         ));
         assert!(active.contains("bg-1"));
 
         assert!(!try_release_background_task_id(
-            &mut active, "bg-other", "completed"
+            &mut active,
+            "bg-other",
+            "completed"
         ));
         assert!(active.contains("bg-1"));
 
         assert!(try_release_background_task_id(
-            &mut active, "bg-1", "Completed"
+            &mut active,
+            "bg-1",
+            "Completed"
         ));
         assert!(active.is_empty());
     }

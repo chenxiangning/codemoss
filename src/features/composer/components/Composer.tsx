@@ -155,6 +155,13 @@ import {
 import { IntentCanvasAttachmentCard } from "../../intent-canvas/components/IntentCanvasAttachmentCard";
 import type { IntentCanvasDocument } from "../../intent-canvas/types";
 import { resolveBrowserNavigationUrl } from "../utils/browserNavigation";
+import { isSquadOrchestrationEnabled } from "../../squad-orchestration/runtime/squadFeatureFlag";
+import { useSquadProjection } from "../../squad-orchestration/store/squadStore";
+import { isTerminalSquadStatus } from "../../squad-orchestration/types";
+import {
+  isSquadTargetEngineSupported,
+  SquadComposerToggle,
+} from "../../squad-orchestration/components/SquadComposerToggle";
 
 type RewindExecutionOptions = {
   mode?: RewindMode;
@@ -842,6 +849,23 @@ function ComposerImpl({
     : createSessionTargetPicker
       ? effectiveCreationTarget
       : nativeSessionTarget;
+  const [squadArmed, setSquadArmed] = useState(false);
+  const squadProjection = useSquadProjection(activeWorkspaceId, activeThreadId);
+  const squadFeatureEnabled = isSquadOrchestrationEnabled();
+  const squadTargetSupported = isSquadTargetEngineSupported(
+    selectedAtomicTarget?.engine,
+  );
+  const hasActiveSquad = Boolean(
+    squadProjection && !isTerminalSquadStatus(squadProjection.status),
+  );
+  useEffect(() => {
+    setSquadArmed(false);
+  }, [activeThreadId, activeWorkspaceId]);
+  useEffect(() => {
+    if (!squadTargetSupported) {
+      setSquadArmed(false);
+    }
+  }, [squadTargetSupported]);
   /**
    * Shared / create-session Atomic：思考档位 options + effort 只信 target 的
    * engine+model。Native Codex 残留的 activeEngine / selectedEffort /
@@ -2046,6 +2070,39 @@ function ComposerImpl({
       ) {
         return;
       }
+      const isSquadSubmission = squadArmed;
+      if (isSquadSubmission) {
+        if (
+          !squadFeatureEnabled ||
+          !isSharedSessionResolved ||
+          !isResolvedExecutionTarget(selectedAtomicTarget)
+        ) {
+          pushErrorToast({
+            title: t("squadOrchestration.errors.unavailableTitle"),
+            message: t("squadOrchestration.errors.incompleteTarget"),
+          });
+          return;
+        }
+        if (!isSquadTargetEngineSupported(selectedAtomicTarget.engine)) {
+          setSquadArmed(false);
+          pushErrorToast({
+            title: t("squadOrchestration.errors.unavailableTitle"),
+            message: t("squadOrchestration.errors.targetUnavailable"),
+          });
+          return;
+        }
+        if (
+          mergedImages.length > 0 ||
+          hasIntentCanvasAttachments ||
+          Boolean(browserContext.attachment)
+        ) {
+          pushErrorToast({
+            title: t("squadOrchestration.errors.attachmentsTitle"),
+            message: t("squadOrchestration.errors.attachments"),
+          });
+          return;
+        }
+      }
       // Composer-side capability gate: keep draft when engine cannot accept images.
       // Current engines are all image-capable; retained for future unsupported engines.
       if (
@@ -2150,7 +2207,8 @@ function ComposerImpl({
         selectedNoteCardIds.length > 0 ||
         shouldReferenceMemory ||
         hasBrowserContextAttachment ||
-        createSessionTarget !== null
+        createSessionTarget !== null ||
+        isSquadSubmission
           ? {
               ...(skillInvocations.length > 0 ? { skillInvocations } : {}),
               ...(shouldReferenceMemory ? { memoryReferenceEnabled: true } : {}),
@@ -2160,6 +2218,27 @@ function ComposerImpl({
               ...(selectedNoteCardIds.length > 0 ? { selectedNoteCardIds } : {}),
               ...(browserContextAttachment ? { browserContextAttachment } : {}),
               ...(createSessionTarget ? { createSessionTarget } : {}),
+              ...(isSquadSubmission &&
+              isResolvedExecutionTarget(selectedAtomicTarget)
+                ? {
+                    squadRequest: true as const,
+                    sharedExecutionTarget: {
+                      engine: selectedAtomicTarget.engine,
+                      providerProfileId:
+                        selectedAtomicTarget.providerProfileId?.trim() || null,
+                      modelCatalogEntryId:
+                        selectedAtomicTarget.modelCatalogEntryId,
+                      model: selectedAtomicTarget.model,
+                      reasoning: selectedAtomicTarget.reasoning
+                        ? { ...selectedAtomicTarget.reasoning }
+                        : null,
+                      providerProfileNameSnapshot:
+                        selectedAtomicTarget.providerProfileNameSnapshot,
+                      providerProfileSource:
+                        selectedAtomicTarget.providerProfileSource,
+                    },
+                  }
+                : {}),
             }
           : undefined;
       const sendResult = onSend(
@@ -2167,6 +2246,9 @@ function ComposerImpl({
         mergedImages,
         sendOptions,
       );
+      if (isSquadSubmission) {
+        setSquadArmed(false);
+      }
       if (browserContextAttachment) {
         browserContext.remove();
       }
@@ -2194,7 +2276,45 @@ function ComposerImpl({
       );
       setSelectedSkillNames([]);
       setSelectedCommonsNames([]);
-      void Promise.resolve(sendResult).finally(() => {
+      void Promise.resolve(sendResult)
+        .catch((error: unknown) => {
+          if (!isSquadSubmission) {
+            throw error;
+          }
+          setComposerText(submittedText ?? text);
+          setSquadArmed(true);
+          const diagnostic =
+            error instanceof Error ? error.message : String(error);
+          let message = t("squadOrchestration.errors.startFailedDiagnostic", {
+            diagnostic,
+          });
+          if (diagnostic.startsWith("squad-request-busy:")) {
+            message = t("squadOrchestration.errors.busy");
+          } else if (diagnostic.startsWith("squad-run-conflict:")) {
+            message = t("squadOrchestration.entry.activeRun");
+          } else if (
+            diagnostic.startsWith("squad-request-images-unsupported:")
+          ) {
+            message = t("squadOrchestration.errors.attachments");
+          } else if (
+            diagnostic.includes("target-capability-unavailable") ||
+            diagnostic.startsWith("squad-request-target-unavailable:")
+          ) {
+            message = t("squadOrchestration.errors.targetUnavailable");
+          } else if (
+            diagnostic.startsWith("squad-request-target-incomplete:") ||
+            diagnostic.startsWith("squad-request-unavailable:") ||
+            diagnostic.startsWith("squad-disabled:")
+          ) {
+            message = t("squadOrchestration.errors.incompleteTarget");
+          }
+          pushErrorToast({
+            title: t("squadOrchestration.errors.startFailed"),
+            message,
+            durationMs: 5_000,
+          });
+        })
+        .finally(() => {
         setSelectedManualMemories(retainedManualMemories);
         setSelectedNoteCards(retainedNoteCards);
         setSelectedInlineFileReferences([]);
@@ -2212,7 +2332,7 @@ function ComposerImpl({
         setMemoryReferenceMode((currentMode) =>
           currentMode === "single" ? "off" : currentMode,
         );
-      });
+        });
       setComposerText("");
     },
     [
@@ -2245,6 +2365,10 @@ function ComposerImpl({
       setSelectedManualMemories,
       t,
       text,
+      squadArmed,
+      squadFeatureEnabled,
+      isSharedSessionResolved,
+      selectedAtomicTarget,
       carryOverContextChipKeys,
       carryOverManualMemoryIds,
       carryOverNoteCardIds,
@@ -2921,6 +3045,21 @@ function ComposerImpl({
               streamActivityPhase={resolvedComposerStreamActivityPhase}
               canStop={canStop}
               onSend={handleSend}
+              squadSurface={
+                squadFeatureEnabled && isSharedSessionResolved ? (
+                  <SquadComposerToggle
+                    engine={selectedAtomicTarget?.engine}
+                    armed={squadArmed}
+                    disabled={
+                      disabled ||
+                      effectiveSubmitDisabled ||
+                      !isResolvedExecutionTarget(selectedAtomicTarget)
+                    }
+                    hasActiveSquad={hasActiveSquad}
+                    onToggle={() => setSquadArmed((armed) => !armed)}
+                  />
+                ) : undefined
+              }
               onStop={onStop}
               onTextChange={handleTextChangeWithHistory}
               selectedModelId={resolveComposerAtomicSelectedModelId({

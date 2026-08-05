@@ -81,4 +81,5 @@ export { SubagentRingCard } from "./components/SubagentRingCard";
 export { SubagentSquadGrid } from "./components/SubagentSquadGrid";
 export { SubagentInspectorDrawer } from "./components/SubagentInspectorDrawer";
 export { SubagentChatSplit } from "./components/SubagentChatSplit";
+export { ConversationInspectorSplit } from "./components/ConversationInspectorSplit";
 export { SubagentProgressBar } from "./components/SubagentProgressBar";

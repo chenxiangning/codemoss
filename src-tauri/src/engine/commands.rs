@@ -3244,14 +3244,13 @@ pub async fn engine_send_message_sync(
             };
 
             let effective_provider_profile_id = {
-                let from_session =
-                    crate::session_management::resolve_engine_provider_profile_id(
-                        state.storage_path.as_path(),
-                        &workspace_id,
-                        session_id.as_deref(),
-                        "opencode",
-                        None,
-                    )?;
+                let from_session = crate::session_management::resolve_engine_provider_profile_id(
+                    state.storage_path.as_path(),
+                    &workspace_id,
+                    session_id.as_deref(),
+                    "opencode",
+                    None,
+                )?;
                 if from_session.is_some() {
                     from_session
                 } else {
@@ -3260,10 +3259,11 @@ pub async fn engine_send_message_sync(
                         .and_then(|config| config.opencode.current)
                 }
             };
-            let provider_launch_profile = crate::engine::opencode_provider_profile::resolve_opencode_provider_launch_profile(
-                &workspace_id,
-                effective_provider_profile_id.as_deref(),
-            )?;
+            let provider_launch_profile =
+                crate::engine::opencode_provider_profile::resolve_opencode_provider_launch_profile(
+                    &workspace_id,
+                    effective_provider_profile_id.as_deref(),
+                )?;
             let session = manager
                 .get_or_create_opencode_session_for_runtime(
                     &workspace_id,
@@ -3321,9 +3321,7 @@ pub async fn engine_send_message_sync(
             .await
             .map_err(|_| "OpenCode response timed out".to_string())??;
             if let Some(binding) = provider_launch_profile.binding.as_ref() {
-                let binding_session_id = response_session_id
-                    .as_deref()
-                    .unwrap_or(turn_id.as_str());
+                let binding_session_id = response_session_id.as_deref().unwrap_or(turn_id.as_str());
                 crate::session_management::record_engine_provider_binding_core(
                     &state.workspaces,
                     state.storage_path.as_path(),
@@ -3451,14 +3449,13 @@ pub async fn engine_send_message_sync(
             // 与 async send 对齐：无 session 绑定时回落到 vendors.kimi.current，
             // 让 commit-message 等 helper 也能吃到 managed provider 的 API key。
             let effective_provider_profile_id = {
-                let from_session =
-                    crate::session_management::resolve_engine_provider_profile_id(
-                        state.storage_path.as_path(),
-                        &workspace_id,
-                        session_id.as_deref(),
-                        "kimi",
-                        None,
-                    )?;
+                let from_session = crate::session_management::resolve_engine_provider_profile_id(
+                    state.storage_path.as_path(),
+                    &workspace_id,
+                    session_id.as_deref(),
+                    "kimi",
+                    None,
+                )?;
                 if from_session.is_some() {
                     from_session
                 } else {
@@ -3516,9 +3513,7 @@ pub async fn engine_send_message_sync(
             .map_err(|_| "Kimi response timed out".to_string())??;
             let response_session_id = session.get_session_id().await;
             if let Some(binding) = provider_launch_profile.binding.as_ref() {
-                let binding_session_id = response_session_id
-                    .as_deref()
-                    .unwrap_or(turn_id.as_str());
+                let binding_session_id = response_session_id.as_deref().unwrap_or(turn_id.as_str());
                 crate::session_management::record_engine_provider_binding_core(
                     &state.workspaces,
                     state.storage_path.as_path(),
@@ -3556,14 +3551,13 @@ pub async fn engine_send_message_sync(
             // 根因：旧 sync 路径走 bare get_or_create_grok_session（无 provider home），
             // 导致 managed Grok API key 不会被注入，commit-message 出现 401 Unauthorized。
             let effective_provider_profile_id = {
-                let from_session =
-                    crate::session_management::resolve_engine_provider_profile_id(
-                        state.storage_path.as_path(),
-                        &workspace_id,
-                        session_id.as_deref(),
-                        "grok",
-                        None,
-                    )?;
+                let from_session = crate::session_management::resolve_engine_provider_profile_id(
+                    state.storage_path.as_path(),
+                    &workspace_id,
+                    session_id.as_deref(),
+                    "grok",
+                    None,
+                )?;
                 if from_session.is_some() {
                     from_session
                 } else {
@@ -3633,9 +3627,7 @@ pub async fn engine_send_message_sync(
             .map_err(|_| "Grok response timed out".to_string())??;
             let response_session_id = session.get_session_id().await;
             if let Some(binding) = provider_launch_profile.binding.as_ref() {
-                let binding_session_id = response_session_id
-                    .as_deref()
-                    .unwrap_or(turn_id.as_str());
+                let binding_session_id = response_session_id.as_deref().unwrap_or(turn_id.as_str());
                 crate::session_management::record_engine_provider_binding_core(
                     &state.workspaces,
                     state.storage_path.as_path(),

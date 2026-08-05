@@ -499,8 +499,7 @@ mod tests {
                 }]
             }
         });
-        fs::write(&json_path, serde_json::to_string(&legacy).unwrap())
-            .expect("write legacy json");
+        fs::write(&json_path, serde_json::to_string(&legacy).unwrap()).expect("write legacy json");
 
         let result = list_from_file(&json_path, "codex");
         assert!(result.available);

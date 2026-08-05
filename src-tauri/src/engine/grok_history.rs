@@ -778,12 +778,10 @@ fn resolve_tool_call_name(call: &Value) -> String {
 /// Resolve tool arguments from flat `arguments` or nested `function.arguments`.
 /// JSON strings are parsed into objects when possible.
 fn resolve_tool_call_arguments(call: &Value) -> Option<Value> {
-    let arguments = call
-        .get("arguments")
-        .or_else(|| {
-            call.get("function")
-                .and_then(|function| function.get("arguments"))
-        })?;
+    let arguments = call.get("arguments").or_else(|| {
+        call.get("function")
+            .and_then(|function| function.get("arguments"))
+    })?;
     if let Some(raw) = arguments.as_str() {
         return serde_json::from_str::<Value>(raw)
             .ok()
@@ -1211,9 +1209,7 @@ pub async fn list_grok_sessions(
         let mut sessions = Vec::new();
         for (session_id, session_dir) in session_dirs {
             let parent = parent_map.get(&session_id).cloned();
-            sessions.push(
-                build_summary_from_session_dir(&session_id, &session_dir, parent).await,
-            );
+            sessions.push(build_summary_from_session_dir(&session_id, &session_dir, parent).await);
         }
         sessions.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
         sessions.truncate(limit.unwrap_or(200));
@@ -1289,9 +1285,9 @@ pub async fn delete_grok_session(
 mod tests {
     use super::{
         file_mtime_millis, first_user_prompt_text, is_grok_runtime_context_user_text,
-        matches_workspace_path, parse_grok_user_prompt_for_display, parse_messages_from_chat_history,
-        parse_timestamp_millis, resolve_session_activity_millis, strip_user_query_wrapper,
-        url_decode_dir_name,
+        matches_workspace_path, parse_grok_user_prompt_for_display,
+        parse_messages_from_chat_history, parse_timestamp_millis, resolve_session_activity_millis,
+        strip_user_query_wrapper, url_decode_dir_name,
     };
     use std::path::Path;
 
@@ -1421,7 +1417,9 @@ mod tests {
 
     #[test]
     fn tool_history_tail_skips_baseline_then_reads_incrementally() {
-        use super::{poll_chat_history_tool_signals, GrokHistoryToolSignal, GrokToolHistoryTailState};
+        use super::{
+            poll_chat_history_tool_signals, GrokHistoryToolSignal, GrokToolHistoryTailState,
+        };
         use std::io::Write;
 
         let dir = std::env::temp_dir().join(format!(
@@ -1447,7 +1445,10 @@ mod tests {
 
         let mut state = GrokToolHistoryTailState::for_turn(true);
         let baseline = poll_chat_history_tool_signals(&path, &mut state).expect("baseline");
-        assert!(baseline.is_empty(), "resume baseline must skip existing tools");
+        assert!(
+            baseline.is_empty(),
+            "resume baseline must skip existing tools"
+        );
         assert!(state.baseline_set);
         assert_eq!(state.byte_offset, std::fs::metadata(&path).unwrap().len());
 
@@ -1775,8 +1776,8 @@ mod tests {
         assert_eq!(listed[0].message_count, 2);
         assert_eq!(listed[0].engine.as_deref(), Some("grok"));
         // Activity time follows chat_history mtime, not a stale/bulk summary stamp.
-        let chat_mtime = file_mtime_millis(&session_dir.join("chat_history.jsonl"))
-            .expect("chat history mtime");
+        let chat_mtime =
+            file_mtime_millis(&session_dir.join("chat_history.jsonl")).expect("chat history mtime");
         assert_eq!(listed[0].updated_at, chat_mtime);
 
         let loaded = super::load_grok_session(

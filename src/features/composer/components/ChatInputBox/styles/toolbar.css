@@ -102,6 +102,52 @@
   flex-shrink: 0;
 }
 
+.squad-composer-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 30px;
+  padding: 0 9px;
+  border: 1px solid var(--border-subtle, rgba(148, 163, 184, 0.24));
+  border-radius: 9px;
+  color: var(--text-secondary);
+  background: transparent;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 120ms ease, background 120ms ease, color 120ms ease;
+}
+
+.squad-composer-toggle:hover:not(:disabled) {
+  color: var(--text-primary);
+  border-color: color-mix(in srgb, #2563eb 48%, transparent);
+  background: color-mix(in srgb, #2563eb 8%, transparent);
+}
+
+.squad-composer-toggle.is-armed {
+  color: #2563eb;
+  border-color: color-mix(in srgb, #2563eb 64%, transparent);
+  background: color-mix(in srgb, #2563eb 13%, transparent);
+}
+
+.squad-composer-toggle:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+@media (max-width: 620px) {
+  .squad-composer-toggle span {
+    display: none;
+  }
+
+  .squad-composer-toggle {
+    width: 30px;
+    padding: 0;
+    justify-content: center;
+  }
+}
+
 .button-area-inline-tools {
   display: flex;
   align-items: center;

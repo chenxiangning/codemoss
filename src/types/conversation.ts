@@ -510,6 +510,8 @@ export type MessageSendOptions = {
   createSessionTarget?: ComposerCreateSessionTarget;
   /** Queue/Fusion 专用：发送边界必须优先使用该冻结目标，禁止重读 Picker。 */
   sharedExecutionTarget?: SharedQueuedExecutionTarget;
+  /** Shared Session one-shot Agent Squad request；target 仍由 sharedExecutionTarget 冻结。 */
+  squadRequest?: true;
 };
 
 export type SelectedAgentOption = {

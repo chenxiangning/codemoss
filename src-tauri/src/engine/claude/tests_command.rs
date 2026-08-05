@@ -144,10 +144,7 @@ fn build_command_clears_parent_routing_env_before_provider_apply() {
             "ANTHROPIC_BASE_URL".to_string(),
             "https://api.deepseek.com/anthropic".to_string(),
         ),
-        (
-            "ANTHROPIC_MODEL".to_string(),
-            "deepseek-v4-pro".to_string(),
-        ),
+        ("ANTHROPIC_MODEL".to_string(), "deepseek-v4-pro".to_string()),
     ]);
 
     let command = session.build_command_with_provider_env(

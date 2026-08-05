@@ -59,7 +59,15 @@ import {
   getSharedTargetState,
   selectNextTarget,
 } from "../../shared-session/target/targetStore";
-import { isResolvedExecutionTarget } from "../../shared-session/target/types";
+import {
+  freezeTurnSnapshot,
+  isResolvedExecutionTarget,
+} from "../../shared-session/target/types";
+import { requestSquadPlan } from "../../squad-orchestration/runtime/squadExecutor";
+import { isSquadOrchestrationEnabled } from "../../squad-orchestration/runtime/squadFeatureFlag";
+import {
+  subscribeSquadConversationItems,
+} from "../../squad-orchestration/runtime/squadConversationBridge";
 import { reconcileAtomicReasoningEffort } from "../../models/atomicModelReasoning";
 import { projectMemoryFacade } from "../../project-memory/services/projectMemoryFacade";
 import {
@@ -176,6 +184,7 @@ type SendMessageOptions = {
   codexInvalidThreadRetryAttempted?: boolean;
   autoSession?: AutoSessionMetadata | null;
   sharedExecutionTarget?: SharedQueuedExecutionTarget;
+  squadRequest?: true;
 };
 
 export type ThreadMessageDispatchResult =
@@ -432,6 +441,21 @@ export function useThreadMessaging({
     ],
   );
 
+  useEffect(
+    () =>
+      subscribeSquadConversationItems(({ workspaceId, threadId, item }) => {
+        dispatch({
+          type: "upsertItem",
+          workspaceId,
+          threadId,
+          item,
+          hasCustomName: Boolean(getCustomName(workspaceId, threadId)),
+        });
+        safeMessageActivity();
+      }),
+    [dispatch, getCustomName, safeMessageActivity],
+  );
+
   const sendMessageToThread = useCallback(
     async (
       workspace: WorkspaceInfo,
@@ -535,6 +559,11 @@ export function useThreadMessaging({
             state: sharedSendState.state,
           },
         });
+        if (options?.squadRequest) {
+          throw new Error(
+            `squad-request-busy: Shared Session state=${sharedSendState.state}`,
+          );
+        }
         return {
           status: "blocked",
           state: sharedSendState.state,
@@ -542,6 +571,11 @@ export function useThreadMessaging({
         };
       }
       if (storedSharedTarget && !supportedStoredSharedTarget) {
+        if (options?.squadRequest) {
+          throw new Error(
+            "squad-request-target-unavailable: stored Shared Session target is unsupported",
+          );
+        }
         pushThreadErrorMessage(
           workspace.id,
           threadId,
@@ -557,6 +591,11 @@ export function useThreadMessaging({
         sharedV2SendEnabled &&
         !isResolvedExecutionTarget(supportedStoredSharedTarget)
       ) {
+        if (options?.squadRequest) {
+          throw new Error(
+            "squad-request-target-incomplete: Shared Session target is incomplete",
+          );
+        }
         pushThreadErrorMessage(
           workspace.id,
           threadId,
@@ -567,6 +606,40 @@ export function useThreadMessaging({
           status: "target-unavailable",
           reason: "shared-target-incomplete",
         };
+      }
+      if (options?.squadRequest) {
+        if (
+          threadKind !== "shared" ||
+          !sharedV2SendEnabled ||
+          !isSquadOrchestrationEnabled() ||
+          !isResolvedExecutionTarget(supportedStoredSharedTarget)
+        ) {
+          throw new Error(
+            "squad-request-unavailable: Agent Squad requires enabled Shared Session V2 and a complete target",
+          );
+        }
+        if (images.length > 0) {
+          throw new Error(
+            "squad-request-images-unsupported: Agent Squad V1 does not accept image attachments",
+          );
+        }
+        const snapshot = freezeTurnSnapshot(supportedStoredSharedTarget);
+        await requestSquadPlan({
+          workspaceId: workspace.id,
+          threadId,
+          text: messageText,
+          target: {
+            engine: snapshot.engine,
+            providerProfileId: snapshot.providerProfileId,
+            modelCatalogEntryId: snapshot.modelCatalogEntryId,
+            model: snapshot.model,
+            reasoningEffort: snapshot.reasoning?.effort ?? null,
+            providerProfileNameSnapshot: snapshot.providerProfileNameSnapshot,
+            providerProfileSource: snapshot.providerProfileSource,
+            runtimeCapabilityFingerprint: snapshot.runtimeCapabilityFingerprint,
+          },
+        });
+        return;
       }
       const resolvedEngine =
         threadKind === "shared"

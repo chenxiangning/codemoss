@@ -276,6 +276,7 @@ export function ChatInputBoxFooter({
   toolSurface,
   panelToggleSurface,
   curatedSkillSurface,
+  squadSurface,
   tooltip,
   promptEnhancer,
   t,
@@ -340,6 +341,7 @@ export function ChatInputBoxFooter({
   toolSurface?: React.ReactNode;
   panelToggleSurface?: React.ReactNode;
   curatedSkillSurface?: React.ReactNode;
+  squadSurface?: React.ReactNode;
   tooltip: TooltipState | null;
   promptEnhancer: {
     isOpen: boolean;
@@ -569,6 +571,7 @@ export function ChatInputBoxFooter({
         toolSurface={toolSurface}
         panelToggleSurface={panelToggleSurface}
         curatedSkillSurface={curatedSkillSurface}
+        squadSurface={squadSurface}
       />
 
       {/* @ file reference dropdown menu */}
