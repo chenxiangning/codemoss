@@ -1458,3 +1458,36 @@ Shared Grok 初始化禁止借用 Native Codex 的 reasoning options/effort；in
 ### Next Steps
 
 - None - task complete
+
+
+## Session 1338: 对接 DeepSeek 余额查询并适配会话概览
+
+**Date**: 2026-08-05
+**Task**: 对接 DeepSeek 余额查询并适配会话概览
+**Branch**: `CXN-version-0.7.16`
+
+### Summary
+
+修复 DeepSeek 额度查询失败：扩展 CodingPlanQuotaSnapshot.balance，对接官方 /user/balance，Native/Shared 双路径展示，余额卡两行 UI。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `dabb1a13a` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
