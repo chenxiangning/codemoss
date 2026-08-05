@@ -1581,3 +1581,36 @@ ContextBar + Adapter 测试 73 通过
 ### Next Steps
 
 - None - task complete
+
+
+## Session 1341: 重做多引擎协作编排并替换旧 Squad
+
+**Date**: 2026-08-05
+**Task**: 重做多引擎协作编排并替换旧 Squad
+**Branch**: `CXN-version-0.7.16`
+
+### Summary
+
+删除单 target Agent Squad，落地 plan/implement/review 多 CLI 分环节编排、主幕时间线、节点直播与短汇总，并补充架构设计文档。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `4e9ea980c` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
