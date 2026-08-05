@@ -577,6 +577,15 @@ describe('ChatInputBoxAdapter toggle bridge', () => {
       onStop: () => {},
       onTextChange: () => {},
       selectedEngine: 'codex',
+      selectedContextChips: [
+        {
+          type: 'skill',
+          name: 'perf-audit',
+          description: 'Performance audit',
+          path: '/skills/perf-audit',
+          source: 'workspace',
+        },
+      ],
       queuedMessages: [
         {
           id: 'queued-1',
@@ -613,6 +622,15 @@ describe('ChatInputBoxAdapter toggle bridge', () => {
     view.rerender(
       <ChatInputBoxAdapter
         {...stableProps}
+        selectedContextChips={[
+          {
+            type: 'skill',
+            name: 'perf-audit',
+            description: 'Performance audit',
+            path: '/skills/perf-audit',
+            source: 'workspace',
+          },
+        ]}
         queuedMessages={[
           {
             id: 'queued-1',

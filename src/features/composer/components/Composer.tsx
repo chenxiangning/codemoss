@@ -84,6 +84,7 @@ import { TokenIndicator } from "./ChatInputBox/TokenIndicator";
 import type {
   ClaudeContextUsageViewModel,
   CodexCompactionSource,
+  ContextSelectionChip,
   MemoryReferenceMode,
   PermissionMode,
   SelectedAgent as ChatInputSelectedAgent,
@@ -448,6 +449,10 @@ const COMPOSER_CANVAS_ONLY_PROPS = new Set<keyof ComposerProps>([
   "contextUsage",
   "accountRateLimits",
 ]);
+
+function toContextChipCarryOverKey(chip: ContextSelectionChip) {
+  return `${chip.type}:${chip.name}`;
+}
 
 function resolveSelectedNamedItems<T extends { name: string }>(
   selectedNames: string[],
@@ -1447,6 +1452,26 @@ function ComposerImpl({
     openCodeProviderToneReady &&
     openCodeProviderTone === "is-fail";
 
+  const contextSelectionChips = useMemo<ContextSelectionChip[]>(
+    () => [
+      ...selectedSkills.map((skill) => ({
+        type: "skill" as const,
+        name: skill.name,
+        description: skill.description,
+        path: skill.path,
+        source: skill.source,
+      })),
+      ...selectedCommons.map((item) => ({
+        type: "commons" as const,
+        name: item.name,
+        description: item.description,
+        path: item.path,
+        source: item.source,
+      })),
+    ],
+    [selectedCommons, selectedSkills],
+  );
+
   useEffect(() => {
     onClearCodeAnnotationsRef.current = onClearCodeAnnotations;
   }, [onClearCodeAnnotations]);
@@ -1653,6 +1678,25 @@ function ComposerImpl({
       }
       return mergeUniqueNames(prev, [normalized]);
     });
+  }, []);
+
+  const handleRemoveContextChip = useCallback((chip: ContextSelectionChip) => {
+    const carryOverKey = toContextChipCarryOverKey(chip);
+    setCarryOverContextChipKeys((prev) =>
+      prev.filter((entry) => entry !== carryOverKey),
+    );
+    setRetainedContextChipKeys((prev) =>
+      prev.filter((entry) => entry !== carryOverKey),
+    );
+    if (chip.type === "skill") {
+      setSelectedSkillNames((prev) =>
+        prev.filter((name) => name !== chip.name),
+      );
+      return;
+    }
+    setSelectedCommonsNames((prev) =>
+      prev.filter((name) => name !== chip.name),
+    );
   }, []);
 
   const {
@@ -3129,8 +3173,10 @@ function ComposerImpl({
                 hasActiveFileReference ? handleClearContext : undefined
               }
               selectedAgent={selectedChatInputAgent}
+              selectedContextChips={contextSelectionChips}
               selectedManualMemoryIds={selectedManualMemoryIds}
               selectedNoteCardIds={selectedNoteCardIds}
+              onRemoveContextChip={handleRemoveContextChip}
               onAgentSelect={handleAgentSelect}
               onOpenAgentSettings={onOpenAgentSettings}
               onOpenPromptSettings={onOpenPromptSettings}

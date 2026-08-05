@@ -21,6 +21,7 @@ import type {
   Attachment,
   CodexSpeedMode,
   ClaudeContextUsageViewModel,
+  ContextSelectionChip,
   MemoryReferenceMode,
   ModelInfo,
   PermissionMode,
@@ -180,6 +181,32 @@ function areStringArraysEqual(
   }
   for (let index = 0; index < left.length; index += 1) {
     if (left[index] !== right[index]) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function areContextSelectionChipsEqual(
+  left: readonly ContextSelectionChip[] | undefined,
+  right: readonly ContextSelectionChip[] | undefined,
+): boolean {
+  if (left === right) {
+    return true;
+  }
+  if (!left || !right || left.length !== right.length) {
+    return false;
+  }
+  for (let index = 0; index < left.length; index += 1) {
+    const leftChip = left[index];
+    const rightChip = right[index];
+    if (
+      leftChip?.type !== rightChip?.type ||
+      leftChip?.name !== rightChip?.name ||
+      leftChip?.description !== rightChip?.description ||
+      leftChip?.path !== rightChip?.path ||
+      leftChip?.source !== rightChip?.source
+    ) {
       return false;
     }
   }
@@ -404,6 +431,12 @@ function areChatInputBoxAdapterPropsEqual(
       }
       continue;
     }
+    if (propKey === 'selectedContextChips') {
+      if (!areContextSelectionChipsEqual(previousProps.selectedContextChips, nextProps.selectedContextChips)) {
+        return false;
+      }
+      continue;
+    }
     if (!Object.is(previousProps[propKey], nextProps[propKey])) {
       return false;
     }
@@ -515,8 +548,10 @@ export interface ChatInputBoxAdapterProps {
   selectedLines?: string;
   onClearContext?: () => void;
   selectedAgent?: SelectedAgent | null;
+  selectedContextChips?: ContextSelectionChip[];
   selectedManualMemoryIds?: string[];
   selectedNoteCardIds?: string[];
+  onRemoveContextChip?: (chip: ContextSelectionChip) => void;
   onAgentSelect?: (agent: SelectedAgent | null) => void;
   onOpenAgentSettings?: () => void;
   onOpenPromptSettings?: () => void;
@@ -1048,8 +1083,10 @@ export const ChatInputBoxAdapter = memo(forwardRef<ChatInputBoxHandle, ChatInput
       selectedLines,
       onClearContext,
       selectedAgent,
+      selectedContextChips,
       selectedManualMemoryIds,
       selectedNoteCardIds,
+      onRemoveContextChip,
       onAgentSelect,
       onOpenAgentSettings,
       onOpenPromptSettings,
@@ -2097,8 +2134,10 @@ export const ChatInputBoxAdapter = memo(forwardRef<ChatInputBoxHandle, ChatInput
         streamingEnabled={resolvedStreamingEnabled}
         onStreamingEnabledChange={handleStreamingToggle}
         selectedAgent={selectedAgent}
+        selectedContextChips={selectedContextChips}
         selectedManualMemoryIds={selectedManualMemoryIds}
         selectedNoteCardIds={selectedNoteCardIds}
+        onRemoveContextChip={onRemoveContextChip}
         onAgentSelect={onAgentSelect}
         onClearAgent={onAgentSelect ? () => onAgentSelect?.(null) : undefined}
         onOpenAgentSettings={onOpenAgentSettings}

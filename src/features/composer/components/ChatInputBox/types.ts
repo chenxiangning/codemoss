@@ -661,10 +661,14 @@ export interface ChatInputBoxProps {
 
   /** Currently selected agent */
   selectedAgent?: SelectedAgent | null;
+  /** Selected S+/M+ skill and commons chips */
+  selectedContextChips?: ContextSelectionChip[];
   /** Selected manual memory IDs for @@ one-shot injection */
   selectedManualMemoryIds?: string[];
   /** Selected note card IDs for @# one-shot injection */
   selectedNoteCardIds?: string[];
+  /** Remove selected S+/M+ chip callback */
+  onRemoveContextChip?: (chip: ContextSelectionChip) => void;
   /** Select agent callback */
   onAgentSelect?: (agent: SelectedAgent | null) => void;
   /** Clear agent callback */

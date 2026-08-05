@@ -40,11 +40,12 @@ describe("ContextBar live canvas controls visibility", () => {
     expect(container.querySelector(".context-live-canvas-controls")).toBeNull();
   });
 
-  it("external surface keeps file context outside while moving action tools away", () => {
+  it("external surface keeps context chips outside while moving action tools away", () => {
     const { container } = render(
       <ContextBar
         surface="external"
         activeFile="/workspace/src/App.tsx"
+        selectedContextChips={[{ type: "skill", name: "ui-design" }]}
         isLoading={false}
         hasMessages
         currentProvider="codex"
@@ -56,7 +57,7 @@ describe("ContextBar live canvas controls visibility", () => {
       />,
     );
 
-    // Skill/commons chips are no longer rendered on the external surface.
+    expect(screen.getByText("ui-design")).toBeTruthy();
     expect(screen.getByText("App.tsx")).toBeTruthy();
     expect(screen.queryByText("statusPanel.label")).toBeNull();
     expect(container.querySelector(".context-tool-btn .codicon-attach")).toBeNull();
