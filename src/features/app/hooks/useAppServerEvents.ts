@@ -47,7 +47,14 @@ import {
 } from "./codexEventOwnership";
 import { migrateThreadAgentEventTracking } from "./appServerEventAgentTracking";
 import { useAppServerEventBatchDispatch } from "./useAppServerEventBatchDispatch";
-import { isSquadAttempt } from "../../squad-orchestration/store/squadStore";
+import {
+  isAgentAttempt,
+  resolveAgentAttemptOwner,
+} from "../../multi-agent/store/agentStore";
+import {
+  appendAgentLivePhaseText,
+  extractRealtimeTextDelta,
+} from "../../multi-agent/runtime/livePhaseChannel";
 
 export {
   getAppServerEventBackpressureForTests,
@@ -1577,12 +1584,26 @@ export function dispatchAppServerEvent(
     (realtimeThreadId
       ? resolveSharedSessionBindingByNativeThread(workspace_id, realtimeThreadId)
       : null);
-  // Squad Worker realtime stays inside the nested Inspector. Canonical terminal facts remain
-  // authoritative; suppressing raw deltas prevents hidden Worker prose from flashing in Messages.
+  // Multi-Agent worker realtime：不进主 Messages，只写入右侧协作直播。
   if (
-    isSquadAttempt(sharedBridge?.attemptId) ||
+    isAgentAttempt(sharedBridge?.attemptId) ||
     sharedBridge?.bindingKey?.startsWith("squad:")
   ) {
+    const owner = resolveAgentAttemptOwner({
+      attemptId: sharedBridge?.attemptId,
+      bindingKey: sharedBridge?.bindingKey,
+    });
+    if (owner) {
+      const chunk = extractRealtimeTextDelta(method, params);
+      if (chunk) {
+        appendAgentLivePhaseText(
+          owner.workspaceId,
+          owner.threadId,
+          owner.attemptId,
+          chunk,
+        );
+      }
+    }
     return;
   }
   const requestIdValue = message.id ?? params.requestId ?? params.request_id;

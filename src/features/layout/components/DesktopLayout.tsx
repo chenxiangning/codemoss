@@ -16,10 +16,8 @@ import { WorkspaceNoteCardsLayoutProvider, useWorkspaceNoteCardsLayoutController
 import {
   useSubagentInspectorSelection,
 } from "../../subagent-ui";
-import {
-  SquadConversationInspectorHost,
-  useSquadInspectorSelection,
-} from "../../squad-orchestration";
+import { MultiAgentConversationHost } from "../../multi-agent";
+import { useAgentInspectorSelection } from "../../multi-agent/store/inspectorStore";
 
 const NOTE_CARDS_SPLIT_RATIO_KEY = "noteCardsSplitRatio";
 const DEFAULT_NOTE_CARDS_SPLIT_RATIO = 66.667;
@@ -179,13 +177,13 @@ export function DesktopLayout({
   const isBrowserDockSplitVisible = centerMode === "chat" && Boolean(browserDockNode);
   // 对话内 Inspector 打开时，composer 必须进左列，形成「左上下 | 右」。
   const subagentInspectorOpen = Boolean(useSubagentInspectorSelection());
-  const squadInspectorOpen = Boolean(useSquadInspectorSelection());
+  const agentInspectorOpen = Boolean(useAgentInspectorSelection());
   const shouldPlaceComposerInChatColumn =
     isEditorSplitChatVisible ||
     isBrowserDockSplitVisible ||
     isNoteCardsSplitMode ||
     subagentInspectorOpen ||
-    squadInspectorOpen;
+    agentInspectorOpen;
   const hasBottomPanel = Boolean(planPanelNode);
   const shouldShowComposerBelowContent =
     centerMode !== "projectMap" &&
@@ -772,7 +770,7 @@ export function DesktopLayout({
                     }
                     ref={chatLayerRef}
                   >
-                    <SquadConversationInspectorHost
+                    <MultiAgentConversationHost
                       messagesNode={messagesNode}
                       composerNode={
                         shouldPlaceComposerInChatColumn ? composerNode : null

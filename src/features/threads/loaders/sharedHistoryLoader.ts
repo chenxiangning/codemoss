@@ -8,9 +8,9 @@ import {
 } from "../../messages/presentation/sharedProjection/dataSource";
 import type { SharedProjectionItem } from "../../messages/presentation/sharedProjection/types";
 import {
-  findCanonicalSquadRunId,
-  registerSquadConversationEvidence,
-} from "../../squad-orchestration/store/squadStore";
+  findCanonicalAgentRunId,
+  registerAgentConversationEvidence,
+} from "../../multi-agent/store/agentStore";
 import {
   hydrateSharedTargetState,
   getSharedTargetState,
@@ -124,12 +124,12 @@ export function createSharedHistoryLoader({
             workspaceId,
             threadId,
           );
-          const squadRunId = findCanonicalSquadRunId(sharedProjection);
-          if (squadRunId) {
-            registerSquadConversationEvidence(
+          const agentRunId = findCanonicalAgentRunId(sharedProjection);
+          if (agentRunId) {
+            registerAgentConversationEvidence(
               workspaceId,
               threadId,
-              squadRunId,
+              agentRunId,
             );
           }
           const projectedItems =
