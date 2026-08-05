@@ -208,6 +208,7 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
       onCodexSpeedModeChange,
       onCodexReviewQuickStart,
       onForkQuickStart,
+      squadSurface,
       memoryReferenceMode = 'off',
       onSetMemoryReferenceMode,
       attachments: externalAttachments,
@@ -1896,6 +1897,7 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
               readinessSurface={readinessSurface}
               panelToggleSurface={panelToggleSurface}
               curatedSkillSurface={curatedSkillIndicator}
+              squadSurface={squadSurface}
               toolSurface={(
                 <ContextBar
                   surface="tool-popover"

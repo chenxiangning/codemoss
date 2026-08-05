@@ -35,6 +35,73 @@
 - **回归测试**:单测 + 集成测试,断言"有界"或"已释放"或"已重置"。
 - **Cross-platform**:Windows / macOS / Linux 三平台的行为差异(`taskkill` vs `killpg`、`URL.createObjectURL` 在 WebView2 行为)必须有对应测试或注释。
 
+## Passive Feature Hydration Isolation
+
+### Scope / Trigger
+
+- Trigger：在 Conversation/AppShell 全局挂载的 feature surface 新增 session hydration、recovery、permission probe 或后台 command。
+- 目标：optional feature 的被动恢复只作用于有 durable canonical evidence 的 exact owner，不把普通会话浏览变成 backend discovery scan。
+
+### Signatures
+
+- History evidence boundary：`findCanonicalSquadRunId(items: unknown): string | null`。
+- Evidence store：`registerSquadConversationEvidence(workspaceId, threadId, runId)`、`claimSquadHydration(workspaceId, threadId, runId)`。
+- Passive runtime：`hydrateSquadProjection(workspaceId, threadId, expectedRunId)`；当前 backend command 是 `shared_squad_get`。
+- Source paths：`src/features/threads/loaders/sharedHistoryLoader.ts`、`src/features/squad-orchestration/store/squadStore.ts`、`src/features/squad-orchestration/components/SquadConversationSurface.tsx`、`src/features/squad-orchestration/runtime/squadExecutor.ts`。
+
+### Contracts
+
+- Shared/Native thread identity 只证明 conversation 类型，不能证明某个 optional feature 已拥有该会话；禁止把 `shared:*`、visible inspector 或 transcript prose 当成 capability evidence。
+- Passive feature command MUST 先取得已经加载的 canonical evidence，并核对 exact `workspaceId + threadId + domainId`；`presentation-only` item、自由文本和跨 workspace cache 必须 fail closed。
+- Evidence discovery MUST 复用当前 history/projection load，不得为每次 session selection 新增 discovery IPC、actor scan 或 recovery side effect。
+- 同一 evidence revision 的 passive hydration MUST one-shot；并发调用 MUST single-flight。返回的 domain id 与 expected evidence 不一致时，必须在 publish/recovery 前拒绝。
+- 失败只能写 exact scope diagnostic，禁止全局 Toast 污染其他会话。缓存与 evidence registry 必须 bounded，ordinary null probe 不得占位或驱逐真实 projection。
+
+### Validation / Error Matrix
+
+| 场景 | 必须行为 | 禁止行为 |
+|---|---|---|
+| Native Session | optional command = 0 | 用 global surface mount 触发 probe |
+| ordinary Shared，无 evidence | `shared_squad_get` / recovery / Toast = 0 | 先 query 再用 null 猜 ordinary |
+| canonical item identity/`turnId`/`squadRunId` 一致 | 注册 exact scope，最多 hydration 一次 | 从 message text 推断 |
+| `presentation-only` 或 malformed item | fail closed | 注册 evidence |
+| feature flag off | hydration command = 0 | 后台恢复 disabled feature |
+| concurrent same evidence | 共享一个 in-flight request | 重复 actor scan / recovery |
+| backend runId 与 evidence 不同 | publish 前 reject + scoped diagnostic | 把另一 run 投影到当前会话 |
+| A → B 后 A request 失败 | 只记录 A scope diagnostic，无 Toast | 改写 B store/UI |
+
+### Good / Base / Bad
+
+- Good：history canonical projection 建 evidence，external store one-shot claim，runtime single-flight + runId compare。
+- Base：显式 feature action 可直接使用 command response 发布 projection，不额外 discovery。
+- Bad：每次 Shared selection 都调用 `shared_squad_get`，失败后只隐藏 Toast；backend actor scan 与 recovery side effect 仍会累积并卡住客户端。
+
+### Tests Required
+
+- `SquadConversationSurface.test.tsx`：100 个 ordinary Shared switches 断言 hydration/Toast 为 0；feature-off、stale scoped diagnostic。
+- `sharedHistoryLoader.test.ts` + `squadStore.test.ts`：canonical evidence 正例；prose、presentation-only、identity mismatch 反例；one-shot claim 与 bounded cache。
+- `squadExecutor.test.ts`：Native zero-call、same-scope single-flight、evidence run mismatch 在 recovery 前拒绝。
+- `SquadConversationInspectorHost.test.tsx`：workspace/thread atomic owner pairing，旧 SubAgent/Native host boundary 不回退。
+
+### Wrong vs Correct
+
+#### Wrong
+
+```ts
+if (isSharedSessionThreadId(threadId)) {
+  void hydrateOptionalFeature(workspaceId, threadId);
+}
+```
+
+#### Correct
+
+```ts
+const domainId = getCanonicalFeatureEvidence(workspaceId, threadId);
+if (domainId && claimFeatureHydration(workspaceId, threadId, domainId)) {
+  void hydrateOptionalFeature(workspaceId, threadId, domainId);
+}
+```
+
 ## When Adding New Real-Time Source
 
 新增任何"实时事件源"(新的 backend event / 新的 Tauri command / 新的 WS / 新的 IPC)时:

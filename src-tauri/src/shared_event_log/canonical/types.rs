@@ -24,6 +24,30 @@ pub enum CanonicalFact {
     UsageRecorded(UsageRecordedFact),
     #[serde(rename = "conversation.controlFact")]
     Control(ControlFact),
+    #[serde(rename = "squad.runRequested")]
+    SquadRunRequested(SquadRunRequestedFact),
+    #[serde(rename = "squad.planProposed")]
+    SquadPlanProposed(SquadPlanProposedFact),
+    #[serde(rename = "squad.planApproved")]
+    SquadPlanApproved(SquadPlanApprovedFact),
+    #[serde(rename = "squad.planRevised")]
+    SquadPlanRevised(SquadPlanRevisedFact),
+    #[serde(rename = "squad.nodeDispatchPrepared")]
+    SquadNodeDispatchPrepared(SquadNodeDispatchPreparedFact),
+    #[serde(rename = "squad.nodeAttemptLinked")]
+    SquadNodeAttemptLinked(SquadNodeAttemptLinkedFact),
+    #[serde(rename = "squad.nodeOutcomeRecorded")]
+    SquadNodeOutcomeRecorded(SquadNodeOutcomeRecordedFact),
+    #[serde(rename = "squad.verificationRecorded")]
+    SquadVerificationRecorded(SquadVerificationRecordedFact),
+    #[serde(rename = "squad.mutationLeaseChanged")]
+    SquadMutationLeaseChanged(SquadMutationLeaseChangedFact),
+    #[serde(rename = "squad.branchBlocked")]
+    SquadBranchBlocked(SquadBranchBlockedFact),
+    #[serde(rename = "squad.cancelRequested")]
+    SquadCancelRequested(SquadCancelRequestedFact),
+    #[serde(rename = "squad.runSettled")]
+    SquadRunSettled(SquadRunSettledFact),
 }
 
 impl CanonicalFact {
@@ -37,6 +61,18 @@ impl CanonicalFact {
             Self::TurnCommitted(_) => "conversation.turnCommitted",
             Self::UsageRecorded(_) => "conversation.usageRecorded",
             Self::Control(_) => "conversation.controlFact",
+            Self::SquadRunRequested(_) => "squad.runRequested",
+            Self::SquadPlanProposed(_) => "squad.planProposed",
+            Self::SquadPlanApproved(_) => "squad.planApproved",
+            Self::SquadPlanRevised(_) => "squad.planRevised",
+            Self::SquadNodeDispatchPrepared(_) => "squad.nodeDispatchPrepared",
+            Self::SquadNodeAttemptLinked(_) => "squad.nodeAttemptLinked",
+            Self::SquadNodeOutcomeRecorded(_) => "squad.nodeOutcomeRecorded",
+            Self::SquadVerificationRecorded(_) => "squad.verificationRecorded",
+            Self::SquadMutationLeaseChanged(_) => "squad.mutationLeaseChanged",
+            Self::SquadBranchBlocked(_) => "squad.branchBlocked",
+            Self::SquadCancelRequested(_) => "squad.cancelRequested",
+            Self::SquadRunSettled(_) => "squad.runSettled",
         }
     }
 
@@ -50,6 +86,18 @@ impl CanonicalFact {
             Self::TurnCommitted(f) => Some(&f.attempt_id),
             Self::UsageRecorded(f) => Some(&f.attempt_id),
             Self::Control(f) => f.attempt_id.as_deref(),
+            Self::SquadNodeDispatchPrepared(f) => Some(&f.attempt_id),
+            Self::SquadNodeAttemptLinked(f) => Some(&f.attempt_id),
+            Self::SquadNodeOutcomeRecorded(f) => Some(&f.attempt_id),
+            Self::SquadVerificationRecorded(f) => Some(&f.attempt_id),
+            Self::SquadRunRequested(_)
+            | Self::SquadPlanProposed(_)
+            | Self::SquadPlanApproved(_)
+            | Self::SquadPlanRevised(_)
+            | Self::SquadMutationLeaseChanged(_)
+            | Self::SquadBranchBlocked(_)
+            | Self::SquadCancelRequested(_)
+            | Self::SquadRunSettled(_) => None,
         }
     }
 
@@ -57,6 +105,18 @@ impl CanonicalFact {
     pub fn dedupe_key(&self) -> Option<&str> {
         match self {
             Self::UsageRecorded(f) => Some(&f.usage_record_id),
+            Self::SquadRunRequested(f) => Some(&f.fact_id),
+            Self::SquadPlanProposed(f) => Some(&f.fact_id),
+            Self::SquadPlanApproved(f) => Some(&f.fact_id),
+            Self::SquadPlanRevised(f) => Some(&f.fact_id),
+            Self::SquadNodeDispatchPrepared(f) => Some(&f.fact_id),
+            Self::SquadNodeAttemptLinked(f) => Some(&f.fact_id),
+            Self::SquadNodeOutcomeRecorded(f) => Some(&f.fact_id),
+            Self::SquadVerificationRecorded(f) => Some(&f.fact_id),
+            Self::SquadMutationLeaseChanged(f) => Some(&f.fact_id),
+            Self::SquadBranchBlocked(f) => Some(&f.fact_id),
+            Self::SquadCancelRequested(f) => Some(&f.fact_id),
+            Self::SquadRunSettled(f) => Some(&f.fact_id),
             _ => None,
         }
     }
@@ -71,6 +131,18 @@ impl CanonicalFact {
             Self::TurnCommitted(f) => Some(&f.logical_turn_id),
             Self::UsageRecorded(f) => Some(&f.logical_turn_id),
             Self::Control(f) => f.logical_turn_id.as_deref(),
+            Self::SquadRunRequested(_)
+            | Self::SquadPlanProposed(_)
+            | Self::SquadPlanApproved(_)
+            | Self::SquadPlanRevised(_)
+            | Self::SquadNodeDispatchPrepared(_)
+            | Self::SquadNodeAttemptLinked(_)
+            | Self::SquadNodeOutcomeRecorded(_)
+            | Self::SquadVerificationRecorded(_)
+            | Self::SquadMutationLeaseChanged(_)
+            | Self::SquadBranchBlocked(_)
+            | Self::SquadCancelRequested(_)
+            | Self::SquadRunSettled(_) => None,
         }
     }
 }
@@ -197,6 +269,164 @@ pub struct ControlFact {
     pub reason: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub details: Option<Value>,
+    #[serde(flatten)]
+    pub extra: Value,
+}
+
+/// Shared Session Agent Squad facts. `factId` is the stable idempotency key.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SquadRunRequestedFact {
+    pub fact_id: String,
+    pub run_id: String,
+    pub workspace_id: String,
+    pub request_text: String,
+    pub lead_target: TurnExecutionSnapshot,
+    pub requested_at: i64,
+    #[serde(flatten)]
+    pub extra: Value,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SquadPlanProposedFact {
+    pub fact_id: String,
+    pub run_id: String,
+    pub revision: u32,
+    pub plan: Value,
+    pub proposed_at: i64,
+    #[serde(flatten)]
+    pub extra: Value,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SquadPlanApprovedFact {
+    pub fact_id: String,
+    pub run_id: String,
+    pub revision: u32,
+    pub approved_at: i64,
+    #[serde(flatten)]
+    pub extra: Value,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SquadPlanRevisedFact {
+    pub fact_id: String,
+    pub run_id: String,
+    pub revision: u32,
+    pub plan: Value,
+    pub revised_at: i64,
+    #[serde(flatten)]
+    pub extra: Value,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SquadNodeDispatchPreparedFact {
+    pub fact_id: String,
+    pub run_id: String,
+    pub node_id: String,
+    pub attempt_id: String,
+    pub worker_binding_key: String,
+    pub target: TurnExecutionSnapshot,
+    pub permission_class: String,
+    pub prepared_at: i64,
+    #[serde(flatten)]
+    pub extra: Value,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SquadNodeAttemptLinkedFact {
+    pub fact_id: String,
+    pub run_id: String,
+    pub node_id: String,
+    pub attempt_id: String,
+    pub logical_turn_id: String,
+    pub worker_binding_key: String,
+    pub linked_at: i64,
+    #[serde(flatten)]
+    pub extra: Value,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SquadNodeOutcomeRecordedFact {
+    pub fact_id: String,
+    pub run_id: String,
+    pub node_id: String,
+    pub attempt_id: String,
+    pub outcome: Value,
+    pub recorded_at: i64,
+    #[serde(flatten)]
+    pub extra: Value,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SquadVerificationRecordedFact {
+    pub fact_id: String,
+    pub run_id: String,
+    pub node_id: String,
+    pub attempt_id: String,
+    pub verification: Value,
+    pub recorded_at: i64,
+    #[serde(flatten)]
+    pub extra: Value,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SquadMutationLeaseChangedFact {
+    pub fact_id: String,
+    pub run_id: String,
+    pub workspace_id: String,
+    pub node_id: String,
+    pub attempt_id: String,
+    pub lease_epoch: u64,
+    pub change: String,
+    pub changed_at: i64,
+    #[serde(flatten)]
+    pub extra: Value,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SquadBranchBlockedFact {
+    pub fact_id: String,
+    pub run_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub node_id: Option<String>,
+    pub reason: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub details: Option<Value>,
+    pub blocked_at: i64,
+    #[serde(flatten)]
+    pub extra: Value,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SquadCancelRequestedFact {
+    pub fact_id: String,
+    pub run_id: String,
+    pub reason: String,
+    pub requested_at: i64,
+    #[serde(flatten)]
+    pub extra: Value,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SquadRunSettledFact {
+    pub fact_id: String,
+    pub run_id: String,
+    pub status: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub summary: Option<String>,
+    pub settled_at: i64,
     #[serde(flatten)]
     pub extra: Value,
 }

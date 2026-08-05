@@ -9,7 +9,8 @@ use cc_gui_lib::shared_event_log::canonical::shadow_v0::{
 };
 use cc_gui_lib::shared_event_log::canonical::types::{
     ArtifactRef, AtomicToolExchange, CanonicalAssistantBlocks, CanonicalBlock, CanonicalFact,
-    CanonicalUserInput, ControlFact, Outcome, OutcomeStatus, ToolCall, ToolResult, ToolResultStatus,
+    CanonicalUserInput, ControlFact, Outcome, OutcomeStatus, SquadNodeOutcomeRecordedFact,
+    SquadRunRequestedFact, SquadRunSettledFact, ToolCall, ToolResult, ToolResultStatus,
     TurnCommittedFact, TurnExecutionSnapshot, TurnRequestedFact, UsageRecordedFact, UsageShape,
     UsageSource, UsageVerification,
 };
@@ -83,6 +84,69 @@ fn make_turn_committed(attempt_id: &str) -> CanonicalFact {
         },
         committed_at: 1_700_000_000_001,
         extra: serde_json::Value::Object(Default::default()),
+    })
+}
+
+fn make_squad_turn_requested(attempt_id: &str) -> CanonicalFact {
+    let CanonicalFact::TurnRequested(mut fact) = make_turn_requested(attempt_id) else {
+        unreachable!("fixture is turnRequested");
+    };
+    fact.extra = serde_json::json!({
+        "squadWorkerBindingKey": format!("squad:run-1:final:{attempt_id}"),
+        "squadExposeFinal": true,
+    });
+    CanonicalFact::TurnRequested(fact)
+}
+
+fn make_squad_outcome(attempt_id: &str) -> CanonicalFact {
+    CanonicalFact::SquadNodeOutcomeRecorded(SquadNodeOutcomeRecordedFact {
+        fact_id: format!("outcome-{attempt_id}"),
+        run_id: "run-1".to_string(),
+        node_id: "final".to_string(),
+        attempt_id: attempt_id.to_string(),
+        outcome: serde_json::json!({
+            "schemaVersion": 1,
+            "status": "succeeded",
+            "summary": "hello back",
+            "evidence": [],
+            "artifacts": [],
+            "changedPaths": [],
+            "verification": {
+                "status": "not-run",
+                "checks": [],
+                "failures": []
+            },
+            "proposedRepairs": [],
+            "extra": {}
+        }),
+        recorded_at: 1_700_000_000_002,
+        extra: serde_json::Value::Object(Default::default()),
+    })
+}
+
+fn make_squad_run_requested() -> CanonicalFact {
+    CanonicalFact::SquadRunRequested(SquadRunRequestedFact {
+        fact_id: "squad:run-1:requested".to_string(),
+        run_id: "run-1".to_string(),
+        workspace_id: "workspace-1".to_string(),
+        request_text: "run the squad task".to_string(),
+        lead_target: snapshot(),
+        requested_at: 1_700_000_000_000,
+        extra: serde_json::json!({"workspaceRoot": "/workspace"}),
+    })
+}
+
+fn make_squad_run_settled(attempt_id: &str) -> CanonicalFact {
+    CanonicalFact::SquadRunSettled(SquadRunSettledFact {
+        fact_id: "squad:run-1:settled".to_string(),
+        run_id: "run-1".to_string(),
+        status: "succeeded".to_string(),
+        summary: Some("hello back".to_string()),
+        settled_at: 1_700_000_000_003,
+        extra: serde_json::json!({
+            "finalAttemptId": attempt_id,
+            "target": snapshot(),
+        }),
     })
 }
 
@@ -350,6 +414,61 @@ fn open_writer(temp: &TempStoreDir) -> cc_gui_lib::shared_event_log::SharedEvent
         OpenOutcome::Ready(writer) => writer,
         OpenOutcome::ReadOnlyRecovery { .. } => panic!("fresh db must be ready"),
     }
+}
+
+/// Squad worker prose stays private; settled success is incrementally projected once.
+#[test]
+fn squad_final_is_exposed_only_after_successful_settlement() {
+    let temp = TempStoreDir::new("squad-final-visibility");
+    let writer = open_writer(&temp);
+    writer
+        .append_canonical_fact(SESSION, make_squad_run_requested())
+        .expect("request squad run");
+    writer
+        .append_canonical_fact(SESSION, make_squad_turn_requested("attempt-final"))
+        .expect("request squad final");
+    let projector = SharedProjector::new();
+    let requested_only = projector
+        .project(&writer, SESSION, "squad-final", 1)
+        .expect("checkpoint squad request before Worker terminal");
+    assert!(requested_only.iter().all(|item| {
+        item.content.get("text").and_then(|value| value.as_str()) != Some("hello back")
+    }));
+
+    writer
+        .append_canonical_fact(SESSION, make_turn_committed("attempt-final"))
+        .expect("commit squad final");
+    let committed_delta = projector
+        .project(&writer, SESSION, "squad-final", 1)
+        .expect("incrementally project hidden Worker terminal");
+    assert!(committed_delta.iter().all(|item| {
+        item.content.get("text").and_then(|value| value.as_str()) != Some("hello back")
+    }));
+
+    writer
+        .append_canonical_fact(SESSION, make_squad_outcome("attempt-final"))
+        .expect("record successful squad outcome");
+    let outcome_only = projector
+        .project(&writer, SESSION, "squad-final", 1)
+        .expect("checkpoint successful outcome");
+    assert!(outcome_only.iter().all(|item| {
+        item.content.get("text").and_then(|value| value.as_str()) != Some("hello back")
+    }));
+    assert!(outcome_only.iter().any(|item| {
+        item.content.get("text").and_then(|value| value.as_str()) == Some("run the squad task")
+    }));
+
+    writer
+        .append_canonical_fact(SESSION, make_squad_run_settled("attempt-final"))
+        .expect("settle successful squad run");
+    let succeeded = projector
+        .project(&writer, SESSION, "squad-final", 1)
+        .expect("incrementally project successful settlement");
+    assert!(succeeded.iter().any(|item| {
+        item.kind == ProjectionItemKind::Message
+            && item.content.get("text").and_then(|value| value.as_str()) == Some("hello back")
+    }));
+    writer.shutdown().unwrap();
 }
 
 /// Scenario: canonical facts project to correct ConversationItem kinds。
@@ -1083,9 +1202,7 @@ fn turn_committed_promotes_command_execution_apply_patch_to_file_change() {
         },
         result: ToolResult {
             status: ToolResultStatus::Completed,
-            output_summary: Some(
-                "Success. Updated the following files:\nM docs/a.md".to_string(),
-            ),
+            output_summary: Some("Success. Updated the following files:\nM docs/a.md".to_string()),
             output_artifact_ref: None,
             error_message: None,
             extra: serde_json::Value::Object(Default::default()),
@@ -1134,7 +1251,9 @@ fn turn_committed_projects_apply_patch_input_as_file_change() {
         },
         result: ToolResult {
             status: ToolResultStatus::Completed,
-            output_summary: Some("Success. Updated the following files:\nM src/keep.ts".to_string()),
+            output_summary: Some(
+                "Success. Updated the following files:\nM src/keep.ts".to_string(),
+            ),
             output_artifact_ref: None,
             error_message: None,
             extra: serde_json::Value::Object(Default::default()),
@@ -1251,8 +1370,7 @@ fn late_usage_stamps_tokens_onto_already_projected_assistant() {
     assert!(assistant_before.content.get("finalInputTokens").is_none());
     assert!(assistant_before.content.get("finalOutputTokens").is_none());
     assert_eq!(
-        assistant_before.content["finalDurationMs"],
-        1,
+        assistant_before.content["finalDurationMs"], 1,
         "duration comes from request/commit even without usage"
     );
 

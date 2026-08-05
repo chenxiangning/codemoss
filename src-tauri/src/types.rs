@@ -2352,8 +2352,7 @@ mod tests {
         let payload = serde_json::json!({
             "disabledCliEngines": ["opencode", "kimi"],
         });
-        let settings: AppSettings =
-            serde_json::from_value(payload).expect("settings deserialize");
+        let settings: AppSettings = serde_json::from_value(payload).expect("settings deserialize");
         assert_eq!(
             settings.disabled_cli_engines,
             vec!["opencode".to_string(), "kimi".to_string()]

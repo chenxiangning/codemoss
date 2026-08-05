@@ -89,6 +89,7 @@ export const ButtonArea = ({
   toolSurface,
   panelToggleSurface,
   curatedSkillSurface,
+  squadSurface,
 }: ButtonAreaProps) => {
   const { t } = useTranslation();
   const supportsStreamActivityPhaseFx =
@@ -364,6 +365,7 @@ export const ButtonArea = ({
         </div>
 
         <div className="button-area-right">
+          {squadSurface}
           {isLoading ? (
             <Button
               type="button"

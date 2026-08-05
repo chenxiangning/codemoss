@@ -47,8 +47,7 @@ pub struct TypedArtifactStoreRecord {
 
 fn safe_segment(value: &str, field: &str) -> Result<(), String> {
     let has_unsafe_char = value.chars().any(|ch| {
-        matches!(ch, '/' | '\\' | '<' | '>' | ':' | '"' | '|' | '?' | '*')
-            || ch.is_control()
+        matches!(ch, '/' | '\\' | '<' | '>' | ':' | '"' | '|' | '?' | '*') || ch.is_control()
     });
     if value.is_empty()
         || value == "."
@@ -70,9 +69,9 @@ fn is_windows_reserved_name(value: &str) -> bool {
         return true;
     }
     let is_reserved_port = |prefix: &str| {
-        upper.strip_prefix(prefix).is_some_and(|suffix| {
-            suffix.len() == 1 && matches!(suffix.as_bytes()[0], b'1'..=b'9')
-        })
+        upper
+            .strip_prefix(prefix)
+            .is_some_and(|suffix| suffix.len() == 1 && matches!(suffix.as_bytes()[0], b'1'..=b'9'))
     };
     is_reserved_port("COM") || is_reserved_port("LPT")
 }
@@ -137,8 +136,8 @@ fn artifact_path_with_legacy_fallback(
         && session_id != "."
         && session_id != "..";
     if legacy_eligible {
-        let legacy = legacy_artifact_dir(root, workspace_id, session_id)
-            .join(format!("{artifact_id}.json"));
+        let legacy =
+            legacy_artifact_dir(root, workspace_id, session_id).join(format!("{artifact_id}.json"));
         if legacy.exists() {
             return Ok(legacy);
         }

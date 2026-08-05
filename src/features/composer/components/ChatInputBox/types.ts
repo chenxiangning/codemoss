@@ -593,6 +593,8 @@ export interface ChatInputBoxProps {
   onCodexReviewQuickStart?: () => void;
   /** Trigger fork quick action (codex/claude only) */
   onForkQuickStart?: () => void;
+  /** Shared Session Agent Squad one-shot control beside Send. */
+  squadSurface?: ReactNode;
   /** Current explicit project memory reference mode */
   memoryReferenceMode?: MemoryReferenceMode;
   /** Set explicit project memory reference mode */
@@ -856,6 +858,8 @@ export interface ButtonAreaProps {
   panelToggleSurface?: ReactNode;
   /** Curated-skill indicator relocated into the tool popover surface row */
   curatedSkillSurface?: ReactNode;
+  /** Shared Session Agent Squad one-shot control rendered immediately before Send. */
+  squadSurface?: ReactNode;
 }
 
 export interface ShortcutAction {

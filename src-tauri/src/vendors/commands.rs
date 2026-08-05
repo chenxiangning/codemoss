@@ -1172,9 +1172,7 @@ pub(crate) async fn vendor_switch_codex_provider(id: String) -> Result<(), Strin
 }
 
 #[tauri::command]
-pub(crate) async fn vendor_reorder_codex_providers(
-    ordered_ids: Vec<String>,
-) -> Result<(), String> {
+pub(crate) async fn vendor_reorder_codex_providers(ordered_ids: Vec<String>) -> Result<(), String> {
     let mut config = read_config()?;
     apply_codex_provider_sort_order(&mut config, &ordered_ids);
     write_config(&config)

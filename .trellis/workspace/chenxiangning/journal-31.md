@@ -1392,3 +1392,69 @@ Shared Grok 初始化禁止借用 Native Codex 的 reasoning options/effort；in
 ### Next Steps
 
 - None - task complete
+
+
+## Session 1336: 实现 Phase 5 Agent Squad 基础编排
+
+**Date**: 2026-08-05
+**Task**: 实现 Phase 5 Agent Squad 基础编排
+**Branch**: `CXN-version-0.7.16`
+
+### Summary
+
+完成 Shared Session 会话内 Agent Squad V1：Dynamic DAG、Parallel Analyze + Single Writer、durable mutation lease、Change Fence、exact-owner Stop/recovery、一次确认自动执行、conversation card 与右侧 Inspector；补齐四个 OpenSpec change、ADR/manual test 文档及 focused tests。自动门禁通过；真实 Desktop/CLI、dirty workspace、reload 与 Stop smoke 保持 pending，未 archive。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `38db8cae7` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 1337: 隔离非 Squad 会话副作用
+
+**Date**: 2026-08-05
+**Task**: 隔离非 Squad 会话副作用
+**Branch**: `CXN-version-0.7.16`
+
+### Summary
+
+修复 Squad passive hydration 对 Native、普通 Shared 与旧会话的越界探测，保持 workspace/thread 原子 scope，并在不支持的 engine 上禁用 Squad 入口；新增 44 项回归测试与规范。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `979814ccb` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

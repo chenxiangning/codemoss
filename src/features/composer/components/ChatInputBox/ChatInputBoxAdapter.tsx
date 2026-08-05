@@ -526,6 +526,7 @@ export interface ChatInputBoxAdapterProps {
   onRefreshModelConfig?: (providerId?: string) => Promise<void> | void;
   isModelConfigRefreshing?: boolean;
   onForkQuickStart?: () => void;
+  squadSurface?: React.ReactNode;
   hasMessages?: boolean;
   onRewind?: () => void;
   showRewindEntry?: boolean;
@@ -1058,6 +1059,7 @@ export const ChatInputBoxAdapter = memo(forwardRef<ChatInputBoxHandle, ChatInput
       onRefreshModelConfig,
       isModelConfigRefreshing,
       onForkQuickStart,
+      squadSurface,
       hasMessages,
       onRewind,
       showRewindEntry,
@@ -2107,6 +2109,7 @@ export const ChatInputBoxAdapter = memo(forwardRef<ChatInputBoxHandle, ChatInput
         onRefreshModelConfig={onRefreshModelConfig}
         isModelConfigRefreshing={isModelConfigRefreshing}
         onForkQuickStart={onForkQuickStart}
+        squadSurface={squadSurface}
         hasMessages={hasMessages}
         onRewind={onRewind}
         showRewindEntry={showRewindEntry}

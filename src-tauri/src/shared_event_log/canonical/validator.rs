@@ -8,7 +8,11 @@ use std::fmt;
 use super::types::{
     ArtifactRef, AtomicToolExchange, CanonicalAssistantBlocks, CanonicalBlock, CanonicalFact,
     CanonicalOmission, CanonicalUserInput, ControlFact, DeliveryAcceptedFact, DeliveryPreparedFact,
-    Outcome, OutcomeStatus, ProviderPrivateRef, ToolResult, TurnAcceptedFact, TurnCommittedFact,
+    Outcome, OutcomeStatus, ProviderPrivateRef, SquadBranchBlockedFact, SquadCancelRequestedFact,
+    SquadMutationLeaseChangedFact, SquadNodeAttemptLinkedFact, SquadNodeDispatchPreparedFact,
+    SquadNodeOutcomeRecordedFact, SquadPlanApprovedFact, SquadPlanProposedFact,
+    SquadPlanRevisedFact, SquadRunRequestedFact, SquadRunSettledFact,
+    SquadVerificationRecordedFact, ToolResult, TurnAcceptedFact, TurnCommittedFact,
     TurnExecutionSnapshot, TurnRequestedFact, UsageRecordedFact,
 };
 
@@ -46,6 +50,18 @@ pub fn validate_fact(fact: &CanonicalFact) -> Result<(), FactValidationError> {
         CanonicalFact::TurnCommitted(f) => validate_turn_committed(f),
         CanonicalFact::UsageRecorded(f) => validate_usage_recorded(f),
         CanonicalFact::Control(f) => validate_control(f),
+        CanonicalFact::SquadRunRequested(f) => validate_squad_run_requested(f),
+        CanonicalFact::SquadPlanProposed(f) => validate_squad_plan_proposed(f),
+        CanonicalFact::SquadPlanApproved(f) => validate_squad_plan_approved(f),
+        CanonicalFact::SquadPlanRevised(f) => validate_squad_plan_revised(f),
+        CanonicalFact::SquadNodeDispatchPrepared(f) => validate_squad_dispatch_prepared(f),
+        CanonicalFact::SquadNodeAttemptLinked(f) => validate_squad_attempt_linked(f),
+        CanonicalFact::SquadNodeOutcomeRecorded(f) => validate_squad_outcome_recorded(f),
+        CanonicalFact::SquadVerificationRecorded(f) => validate_squad_verification_recorded(f),
+        CanonicalFact::SquadMutationLeaseChanged(f) => validate_squad_lease_changed(f),
+        CanonicalFact::SquadBranchBlocked(f) => validate_squad_branch_blocked(f),
+        CanonicalFact::SquadCancelRequested(f) => validate_squad_cancel_requested(f),
+        CanonicalFact::SquadRunSettled(f) => validate_squad_run_settled(f),
     }
 }
 
@@ -170,6 +186,187 @@ fn validate_control(f: &ControlFact) -> Result<(), FactValidationError> {
         }
     }
     Ok(())
+}
+
+fn validate_squad_identity(
+    fact_id: &str,
+    run_id: &str,
+    ctx: &str,
+) -> Result<(), FactValidationError> {
+    require_non_empty(fact_id, "factId", ctx)?;
+    require_non_empty(run_id, "runId", ctx)
+}
+
+fn validate_squad_plan_value(
+    plan: &serde_json::Value,
+    ctx: &str,
+) -> Result<(), FactValidationError> {
+    let plan =
+        serde_json::from_value::<crate::squad_orchestration::SquadPlanProposalV1>(plan.clone())
+            .map_err(|error| {
+                FactValidationError::new(ctx, format!("invalid plan payload: {error}"))
+            })?;
+    crate::squad_orchestration::validator::validate_plan(&plan).map_err(|diagnostics| {
+        FactValidationError::new(ctx, format!("invalid plan: {}", diagnostics.join("; ")))
+    })
+}
+
+fn validate_squad_run_requested(f: &SquadRunRequestedFact) -> Result<(), FactValidationError> {
+    let ctx = "squad.runRequested";
+    validate_squad_identity(&f.fact_id, &f.run_id, ctx)?;
+    require_non_empty(&f.workspace_id, "workspaceId", ctx)?;
+    require_non_empty(&f.request_text, "requestText", ctx)?;
+    validate_turn_execution_snapshot(&f.lead_target, ctx)?;
+    validate_timestamp(f.requested_at, "requestedAt", ctx)
+}
+
+fn validate_squad_plan_proposed(f: &SquadPlanProposedFact) -> Result<(), FactValidationError> {
+    let ctx = "squad.planProposed";
+    validate_squad_identity(&f.fact_id, &f.run_id, ctx)?;
+    if f.revision != 1 {
+        return Err(FactValidationError::new(ctx, "revision must be 1"));
+    }
+    validate_squad_plan_value(&f.plan, ctx)?;
+    validate_timestamp(f.proposed_at, "proposedAt", ctx)
+}
+
+fn validate_squad_plan_approved(f: &SquadPlanApprovedFact) -> Result<(), FactValidationError> {
+    let ctx = "squad.planApproved";
+    validate_squad_identity(&f.fact_id, &f.run_id, ctx)?;
+    if f.revision == 0 {
+        return Err(FactValidationError::new(ctx, "revision must be >= 1"));
+    }
+    validate_timestamp(f.approved_at, "approvedAt", ctx)
+}
+
+fn validate_squad_plan_revised(f: &SquadPlanRevisedFact) -> Result<(), FactValidationError> {
+    let ctx = "squad.planRevised";
+    validate_squad_identity(&f.fact_id, &f.run_id, ctx)?;
+    if f.revision < 2 {
+        return Err(FactValidationError::new(ctx, "revision must be >= 2"));
+    }
+    validate_squad_plan_value(&f.plan, ctx)?;
+    validate_timestamp(f.revised_at, "revisedAt", ctx)
+}
+
+fn validate_squad_dispatch_prepared(
+    f: &SquadNodeDispatchPreparedFact,
+) -> Result<(), FactValidationError> {
+    let ctx = "squad.nodeDispatchPrepared";
+    validate_squad_identity(&f.fact_id, &f.run_id, ctx)?;
+    require_non_empty(&f.node_id, "nodeId", ctx)?;
+    require_non_empty(&f.attempt_id, "attemptId", ctx)?;
+    require_non_empty(&f.worker_binding_key, "workerBindingKey", ctx)?;
+    if !matches!(
+        f.permission_class.as_str(),
+        "read-only" | "current-workspace"
+    ) {
+        return Err(FactValidationError::new(
+            ctx,
+            "permissionClass must be read-only or current-workspace",
+        ));
+    }
+    validate_turn_execution_snapshot(&f.target, ctx)?;
+    validate_timestamp(f.prepared_at, "preparedAt", ctx)
+}
+
+fn validate_squad_attempt_linked(
+    f: &SquadNodeAttemptLinkedFact,
+) -> Result<(), FactValidationError> {
+    let ctx = "squad.nodeAttemptLinked";
+    validate_squad_identity(&f.fact_id, &f.run_id, ctx)?;
+    require_non_empty(&f.node_id, "nodeId", ctx)?;
+    require_non_empty(&f.attempt_id, "attemptId", ctx)?;
+    require_non_empty(&f.logical_turn_id, "logicalTurnId", ctx)?;
+    require_non_empty(&f.worker_binding_key, "workerBindingKey", ctx)?;
+    validate_timestamp(f.linked_at, "linkedAt", ctx)
+}
+
+fn validate_squad_outcome_recorded(
+    f: &SquadNodeOutcomeRecordedFact,
+) -> Result<(), FactValidationError> {
+    let ctx = "squad.nodeOutcomeRecorded";
+    validate_squad_identity(&f.fact_id, &f.run_id, ctx)?;
+    require_non_empty(&f.node_id, "nodeId", ctx)?;
+    require_non_empty(&f.attempt_id, "attemptId", ctx)?;
+    serde_json::from_value::<crate::squad_orchestration::SquadTypedOutcomeEnvelopeV1>(
+        f.outcome.clone(),
+    )
+    .map_err(|error| FactValidationError::new(ctx, format!("invalid outcome: {error}")))?;
+    validate_timestamp(f.recorded_at, "recordedAt", ctx)
+}
+
+fn validate_squad_verification_recorded(
+    f: &SquadVerificationRecordedFact,
+) -> Result<(), FactValidationError> {
+    let ctx = "squad.verificationRecorded";
+    validate_squad_identity(&f.fact_id, &f.run_id, ctx)?;
+    require_non_empty(&f.node_id, "nodeId", ctx)?;
+    require_non_empty(&f.attempt_id, "attemptId", ctx)?;
+    serde_json::from_value::<crate::squad_orchestration::SquadVerificationV1>(
+        f.verification.clone(),
+    )
+    .map_err(|error| FactValidationError::new(ctx, format!("invalid verification: {error}")))?;
+    validate_timestamp(f.recorded_at, "recordedAt", ctx)
+}
+
+fn validate_squad_lease_changed(
+    f: &SquadMutationLeaseChangedFact,
+) -> Result<(), FactValidationError> {
+    let ctx = "squad.mutationLeaseChanged";
+    validate_squad_identity(&f.fact_id, &f.run_id, ctx)?;
+    require_non_empty(&f.workspace_id, "workspaceId", ctx)?;
+    require_non_empty(&f.node_id, "nodeId", ctx)?;
+    require_non_empty(&f.attempt_id, "attemptId", ctx)?;
+    if f.lease_epoch == 0 {
+        return Err(FactValidationError::new(ctx, "leaseEpoch must be >= 1"));
+    }
+    if !matches!(f.change.as_str(), "acquired" | "released" | "blocked") {
+        return Err(FactValidationError::new(
+            ctx,
+            "change must be acquired, released, or blocked",
+        ));
+    }
+    validate_timestamp(f.changed_at, "changedAt", ctx)
+}
+
+fn validate_squad_branch_blocked(f: &SquadBranchBlockedFact) -> Result<(), FactValidationError> {
+    let ctx = "squad.branchBlocked";
+    validate_squad_identity(&f.fact_id, &f.run_id, ctx)?;
+    validate_optional_non_empty(&f.node_id, "nodeId", ctx)?;
+    require_non_empty(&f.reason, "reason", ctx)?;
+    if f.details
+        .as_ref()
+        .is_some_and(|details| !details.is_object())
+    {
+        return Err(FactValidationError::new(ctx, "details must be an object"));
+    }
+    validate_timestamp(f.blocked_at, "blockedAt", ctx)
+}
+
+fn validate_squad_cancel_requested(
+    f: &SquadCancelRequestedFact,
+) -> Result<(), FactValidationError> {
+    let ctx = "squad.cancelRequested";
+    validate_squad_identity(&f.fact_id, &f.run_id, ctx)?;
+    require_non_empty(&f.reason, "reason", ctx)?;
+    validate_timestamp(f.requested_at, "requestedAt", ctx)
+}
+
+fn validate_squad_run_settled(f: &SquadRunSettledFact) -> Result<(), FactValidationError> {
+    let ctx = "squad.runSettled";
+    validate_squad_identity(&f.fact_id, &f.run_id, ctx)?;
+    if !matches!(
+        f.status.as_str(),
+        "succeeded" | "failed" | "blocked" | "cancelled"
+    ) {
+        return Err(FactValidationError::new(
+            ctx,
+            "status must be a terminal Squad status",
+        ));
+    }
+    validate_optional_non_empty(&f.summary, "summary", ctx)?;
+    validate_timestamp(f.settled_at, "settledAt", ctx)
 }
 
 fn validate_user_input(input: &CanonicalUserInput, ctx: &str) -> Result<(), FactValidationError> {

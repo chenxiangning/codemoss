@@ -59,9 +59,6 @@ fn write_codex_session_index(codex_home: &Path, lines: &[String]) {
     }
 }
 
-
-
-
 #[test]
 fn scan_file_does_not_double_count_last_and_total_usage() {
     let day_key = "2026-01-19";
@@ -2137,8 +2134,6 @@ fn parse_codex_session_summary_counts_modified_lines_from_object_output() {
         .expect("summary exists");
     assert_eq!(summary.modified_lines, 2);
 }
-
-
 
 #[test]
 fn read_i64_accepts_numeric_string_values() {

@@ -1760,11 +1760,9 @@ impl ClaudeSession {
                         if !active_background_task_ids.is_empty() {
                             lines.next_line().await
                         } else {
-                            let deadline = post_result_grace_deadline.get_or_insert_with(|| {
-                                Instant::now() + CLAUDE_POST_RESULT_GRACE
-                            });
-                            let remaining = deadline
-                                .saturating_duration_since(Instant::now());
+                            let deadline = post_result_grace_deadline
+                                .get_or_insert_with(|| Instant::now() + CLAUDE_POST_RESULT_GRACE);
+                            let remaining = deadline.saturating_duration_since(Instant::now());
                             match tokio::time::timeout(remaining, lines.next_line()).await {
                                 Ok(result) => result,
                                 Err(_) => {
@@ -1813,9 +1811,7 @@ impl ClaudeSession {
                     wait_duration.min(remaining_startup)
                 };
                 // Share grace policy with the empty-buffer branch (Windows coalesce).
-                if result_seen_at.is_some()
-                    && active_background_task_ids.is_empty()
-                {
+                if result_seen_at.is_some() && active_background_task_ids.is_empty() {
                     let deadline = post_result_grace_deadline
                         .get_or_insert_with(|| Instant::now() + CLAUDE_POST_RESULT_GRACE);
                     wait_duration =
@@ -1826,8 +1822,7 @@ impl ClaudeSession {
                     Err(_) => {
                         if result_seen_at.is_some()
                             && active_background_task_ids.is_empty()
-                            && post_result_grace_deadline
-                                .is_some_and(|d| Instant::now() >= d)
+                            && post_result_grace_deadline.is_some_and(|d| Instant::now() >= d)
                             && can_force_kill_for_grace(true, true, true)
                         {
                             self.flush_buffered_text_delta(turn_id, &mut pending_text_delta);
@@ -1880,10 +1875,8 @@ impl ClaudeSession {
                     // Structured background-task settlement blockers (issue #983).
                     if let Some(bg_id) = extract_background_task_id(&event) {
                         let before_len = active_background_task_ids.len();
-                        if try_register_background_task_id(
-                            &mut active_background_task_ids,
-                            &bg_id,
-                        ) {
+                        if try_register_background_task_id(&mut active_background_task_ids, &bg_id)
+                        {
                             if before_len != active_background_task_ids.len() {
                                 log::info!(
                                     "[claude] registered backgroundTaskId blocker turn={} id={} active={}",
