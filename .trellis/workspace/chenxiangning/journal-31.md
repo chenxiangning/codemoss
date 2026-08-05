@@ -1534,3 +1534,50 @@ ContextBar + Adapter 测试 73 通过
 ### Next Steps
 
 - None - task complete
+
+
+## Session 1340: 修复 0.7.16 Messages canvas React #185
+
+**Date**: 2026-08-05
+**Task**: 修复 0.7.16 Messages canvas React #185
+**Branch**: `CXN-version-0.7.16`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+| 项 | 内容 |
+|----|------|
+| 问题 | 生产包 App-BG-8EZ_F 全局 ErrorBoundary，errorClass react-maximum-update-depth |
+| 映射 | KOt=ActiveCanvasMessages，Ege/pRt=MessagesCore；与 Composer 前案不同 owner |
+| 修复 | activeCanvasSnapshot 空列表/成员 stabilize；Messages scope/finalizing/note-capture pre-dispatch 等价值 |
+| 文档 | playbook C-20260805-01 |
+| 验证 | activeCanvasStore 8 tests 通过；tsc --noEmit 通过 |
+
+**Updated Files**:
+- src/features/layout/hooks/activeCanvasStore.ts
+- src/features/layout/hooks/useLayoutNodes.tsx
+- src/features/messages/components/MessagesCore.tsx
+- src/features/messages/orchestration/hooks/useMessagesRuntimeState.ts
+- docs/analysis/react-185-maximum-update-depth-playbook.md
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `c909dadb3` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
