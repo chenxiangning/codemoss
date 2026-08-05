@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-31.md`
-- **Total Sessions**: 1335
+- **Total Sessions**: 1337
 - **Last Active**: 2026-08-05
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-31.md` | ~1407 | Active |
+| `journal-31.md` | ~1460 | Active |
 | `journal-30.md` | ~1985 | Archived |
 | `journal-29.md` | ~1970 | Archived |
 | `journal-28.md` | ~1984 | Archived |
@@ -59,6 +59,8 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 1337 | 2026-08-05 | 隔离非 Squad 会话副作用 | `979814ccb` | `CXN-version-0.7.16` |
+| 1336 | 2026-08-05 | 实现 Phase 5 Agent Squad 基础编排 | `38db8cae7` | `CXN-version-0.7.16` |
 | 1335 | 2026-08-05 | fix Windows uiScale WebView2 假死并恢复右侧 chrome | `b62e241fe` | `cxn-version-0.8` |
 | 1334 | 2026-08-04 | 修复 PR 创建弹窗下拉被遮罩挡住 | `1a6ffab1f` | `CXN-version-0.7.16` |
 | 1333 | 2026-08-04 | 阻断 Shared 初始化回落 Native 思考档位 | `385d20e3a` | `CXN-version-0.7.16` |

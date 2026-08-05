@@ -1,0 +1,584 @@
+/* Shared Session Agent Squad: conversation card + nested inspector. */
+
+.squad-conversation-surface {
+  flex: 0 0 auto;
+  padding: 0 16px 10px;
+}
+
+.squad-conversation-card {
+  width: min(100%, 760px);
+  margin: 0 auto;
+  padding: 12px;
+  border: 1px solid color-mix(in srgb, #2563eb 22%, var(--border));
+  border-radius: 12px;
+  background:
+    linear-gradient(
+      135deg,
+      color-mix(in srgb, #2563eb 7%, transparent),
+      transparent 52%
+    ),
+    var(--surface-elevated, var(--surface));
+  box-shadow: 0 8px 28px color-mix(in srgb, #0f172a 8%, transparent);
+}
+
+.squad-card-heading,
+.squad-card-actions,
+.squad-progress-row,
+.squad-inspector-command-bar,
+.squad-inspector-name-row {
+  display: flex;
+  align-items: center;
+}
+
+.squad-card-heading {
+  gap: 9px;
+}
+
+.squad-card-icon {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  flex: 0 0 auto;
+  border-radius: 9px;
+  color: #2563eb;
+  background: color-mix(in srgb, #2563eb 12%, transparent);
+}
+
+.squad-card-title-wrap {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.squad-card-title-wrap strong {
+  font-size: 13px;
+}
+
+.squad-card-title-wrap span {
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.squad-status-pill {
+  flex: 0 0 auto;
+  padding: 3px 7px;
+  border-radius: 999px;
+  color: #2563eb;
+  background: color-mix(in srgb, #2563eb 11%, transparent);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.squad-status-pill.is-succeeded {
+  color: var(--status-success, #16a34a);
+  background: color-mix(
+    in srgb,
+    var(--status-success, #16a34a) 12%,
+    transparent
+  );
+}
+
+.squad-status-pill:is(.is-failed, .is-blocked, .is-cancelled) {
+  color: var(--status-error, #dc2626);
+  background: color-mix(in srgb, var(--status-error, #dc2626) 11%, transparent);
+}
+
+.squad-plan-summary {
+  margin: 11px 0 9px;
+  color: var(--text-secondary, var(--text));
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.squad-plan-node-strip {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+
+.squad-plan-node-strip button {
+  display: flex;
+  min-width: 130px;
+  flex-direction: column;
+  gap: 3px;
+  padding: 7px 9px;
+  border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
+  border-radius: 9px;
+  color: var(--text);
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
+  text-align: left;
+  cursor: pointer;
+}
+
+.squad-plan-node-strip button:hover {
+  border-color: color-mix(in srgb, #2563eb 46%, var(--border));
+}
+
+.squad-plan-node-strip button span {
+  color: #2563eb;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.squad-plan-node-strip button small {
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: 9px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.squad-plan-budget {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-bottom: 8px;
+}
+
+.squad-plan-budget span {
+  padding: 3px 6px;
+  border-radius: 6px;
+  color: var(--text-muted);
+  background: color-mix(in srgb, var(--border) 35%, transparent);
+  font-size: 9px;
+}
+
+.squad-plan-editor {
+  margin-top: 10px;
+  padding: 10px;
+  border: 1px solid color-mix(in srgb, #2563eb 28%, var(--border));
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
+}
+
+.squad-plan-editor-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.squad-plan-editor label,
+.squad-plan-editor-nodes label {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+  color: var(--text-muted);
+  font-size: 9px;
+}
+
+.squad-plan-editor input {
+  min-width: 0;
+  width: 100%;
+  height: 28px;
+  padding: 0 7px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  color: var(--text);
+  background: var(--surface-elevated, var(--surface));
+  font: inherit;
+  font-size: 11px;
+}
+
+.squad-plan-editor input:focus-visible {
+  outline: 2px solid color-mix(in srgb, #2563eb 55%, transparent);
+  outline-offset: 1px;
+}
+
+.squad-plan-editor-nodes {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+  margin-top: 9px;
+}
+
+.squad-plan-editor-nodes label {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 54px;
+  align-items: center;
+  padding: 6px 7px;
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--border) 25%, transparent);
+}
+
+.squad-plan-editor-nodes label > span {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  color: var(--text);
+  font-size: 10px;
+}
+
+.squad-plan-editor-nodes small {
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: 8px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.squad-plan-editor-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 7px;
+  margin-top: 9px;
+}
+
+.squad-plan-editor-actions button {
+  min-height: 28px;
+  padding: 0 9px;
+  border-radius: 8px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.squad-plan-editor-error {
+  margin: 8px 0 0;
+  color: var(--status-error, #dc2626);
+  font-size: 10px;
+}
+
+.squad-progress-row {
+  gap: 9px;
+  margin-top: 11px;
+  color: var(--text-muted);
+  font-size: 10px;
+}
+
+.squad-progress-track {
+  height: 4px;
+  flex: 1 1 auto;
+  overflow: hidden;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--border) 65%, transparent);
+}
+
+.squad-progress-track span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: #2563eb;
+  transition: width 180ms ease;
+}
+
+.squad-card-actions {
+  justify-content: flex-end;
+  gap: 7px;
+  margin-top: 10px;
+}
+
+.squad-card-actions button,
+.squad-inspector-command-bar button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-height: 28px;
+  padding: 0 9px;
+  border-radius: 8px;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.squad-secondary-action {
+  border: 1px solid var(--border);
+  color: var(--text-secondary, var(--text));
+  background: transparent;
+}
+
+.squad-primary-action {
+  border: 1px solid #2563eb;
+  color: white;
+  background: #2563eb;
+}
+
+.squad-stop-action,
+.squad-inspector-command-bar button {
+  border: 1px solid
+    color-mix(in srgb, var(--status-error, #dc2626) 35%, var(--border));
+  color: var(--status-error, #dc2626);
+  background: transparent;
+}
+
+.squad-card-actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.squad-inspector-drawer {
+  min-width: 360px;
+}
+
+.squad-inspector-command-bar {
+  flex: 0 0 auto;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 12px;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 78%, transparent);
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.squad-inspector-command-bar span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.squad-inspector-command-bar button {
+  flex: 0 0 auto;
+  min-height: 25px;
+}
+
+.squad-inspector-layout {
+  display: grid;
+  grid-template-columns: minmax(150px, 38%) minmax(0, 1fr);
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.squad-dag-list {
+  min-width: 0;
+  overflow: auto;
+  padding: 8px;
+  border-right: 1px solid color-mix(in srgb, var(--border) 78%, transparent);
+}
+
+.squad-dag-list button {
+  display: flex;
+  width: 100%;
+  align-items: flex-start;
+  gap: 7px;
+  padding: 8px;
+  border: 0;
+  border-radius: 8px;
+  color: var(--text);
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.squad-dag-list button:hover,
+.squad-dag-list button.is-selected {
+  background: color-mix(in srgb, #2563eb 9%, transparent);
+}
+
+.squad-node-state {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+  margin-top: 1px;
+  border-radius: 50%;
+  color: var(--text-muted);
+  background: color-mix(in srgb, var(--border) 52%, transparent);
+}
+
+.squad-node-state.is-succeeded {
+  color: white;
+  background: var(--status-success, #16a34a);
+}
+
+.squad-node-state:is(.is-running, .is-prepared) {
+  color: white;
+  background: #2563eb;
+}
+
+.squad-node-state:is(.is-failed, .is-blocked, .is-cancelled) {
+  color: white;
+  background: var(--status-error, #dc2626);
+}
+
+.squad-node-copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.squad-node-copy strong {
+  overflow: hidden;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.squad-node-copy small,
+.squad-node-detail small {
+  color: var(--text-muted);
+  font-size: 9px;
+  line-height: 1.35;
+}
+
+.squad-node-detail {
+  min-width: 0;
+  overflow: auto;
+  padding: 12px;
+}
+
+.squad-node-detail section + section {
+  margin-top: 16px;
+}
+
+.squad-node-detail h3 {
+  margin: 4px 0 6px;
+  font-size: 15px;
+}
+
+.squad-node-detail p,
+.squad-node-detail ul {
+  margin: 5px 0 0;
+  color: var(--text-secondary, var(--text));
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.squad-node-detail ul {
+  padding-left: 17px;
+}
+
+.squad-detail-label {
+  display: block;
+  color: var(--text-muted);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.squad-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.squad-detail-grid > div,
+.squad-evidence-list article {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+  padding: 8px;
+  border: 1px solid color-mix(in srgb, var(--border) 78%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--surface) 86%, transparent);
+}
+
+.squad-evidence-list,
+.squad-path-list,
+.squad-attempt-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.squad-attempt-list article,
+.squad-context-package {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+  padding: 7px 8px;
+  border: 1px solid color-mix(in srgb, var(--border) 78%, transparent);
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--surface) 86%, transparent);
+}
+
+.squad-attempt-list code,
+.squad-context-package code,
+.squad-context-package small {
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: 8px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.squad-context-package pre {
+  max-height: 180px;
+  margin: 4px 0 0;
+  overflow: auto;
+  padding: 7px;
+  border-radius: 6px;
+  color: var(--text-secondary, var(--text));
+  background: color-mix(in srgb, #0f172a 7%, transparent);
+  font-size: 8px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.squad-stop-confirm {
+  border-color: var(--status-error, #dc2626) !important;
+  background: var(--status-error, #dc2626) !important;
+}
+
+.squad-evidence-list code,
+.squad-path-list code {
+  overflow-wrap: anywhere;
+  color: #2563eb;
+  font-size: 9px;
+}
+
+.squad-diagnostics p {
+  padding: 7px 8px;
+  border-radius: 7px;
+  color: var(--status-error, #dc2626);
+  background: color-mix(in srgb, var(--status-error, #dc2626) 8%, transparent);
+}
+
+.squad-empty-detail {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+@media (max-width: 920px) {
+  .squad-inspector-layout {
+    grid-template-columns: 132px minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 720px) {
+  .squad-conversation-surface {
+    padding-inline: 9px;
+  }
+
+  .squad-inspector-drawer {
+    min-width: 0;
+  }
+
+  .squad-inspector-layout {
+    grid-template-columns: 118px minmax(0, 1fr);
+  }
+
+  .squad-detail-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .squad-plan-editor-grid,
+  .squad-plan-editor-nodes {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .squad-progress-track span {
+    transition: none;
+  }
+}

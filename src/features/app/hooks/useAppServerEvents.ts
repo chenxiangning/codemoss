@@ -47,6 +47,7 @@ import {
 } from "./codexEventOwnership";
 import { migrateThreadAgentEventTracking } from "./appServerEventAgentTracking";
 import { useAppServerEventBatchDispatch } from "./useAppServerEventBatchDispatch";
+import { isSquadAttempt } from "../../squad-orchestration/store/squadStore";
 
 export {
   getAppServerEventBackpressureForTests,
@@ -1576,6 +1577,14 @@ export function dispatchAppServerEvent(
     (realtimeThreadId
       ? resolveSharedSessionBindingByNativeThread(workspace_id, realtimeThreadId)
       : null);
+  // Squad Worker realtime stays inside the nested Inspector. Canonical terminal facts remain
+  // authoritative; suppressing raw deltas prevents hidden Worker prose from flashing in Messages.
+  if (
+    isSquadAttempt(sharedBridge?.attemptId) ||
+    sharedBridge?.bindingKey?.startsWith("squad:")
+  ) {
+    return;
+  }
   const requestIdValue = message.id ?? params.requestId ?? params.request_id;
   const requestId =
     typeof requestIdValue === "number" || typeof requestIdValue === "string"

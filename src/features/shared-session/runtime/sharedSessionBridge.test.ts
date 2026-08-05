@@ -74,6 +74,23 @@ describe("sharedSessionBridge", () => {
     });
   });
 
+  it("preserves durable Squad binding identity before frontend hydration", () => {
+    expect(
+      resolveSharedSessionBindingFromRuntimeOwner("ws-squad", {
+        sharedOwner: {
+          sharedThreadId: "shared:squad",
+          nativeThreadId: "codex:native-squad",
+          engine: "codex",
+          attemptId: "attempt-squad",
+          bindingKey: "squad:run-1:analyze-1:codex:default",
+        },
+      }),
+    ).toMatchObject({
+      attemptId: "attempt-squad",
+      bindingKey: "squad:run-1:analyze-1:codex:default",
+    });
+  });
+
   it("rejects a runtime owner whose embedded snapshot has a different engine", () => {
     const binding = resolveSharedSessionBindingFromRuntimeOwner("ws-owner", {
       threadId: "shared:thread-owner",

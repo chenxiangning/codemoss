@@ -31,7 +31,8 @@ pub use recovery::{open, OpenOutcome, ReadOnlyEventReader, RecoveryReason};
 #[doc(hidden)]
 pub use writer::{open_crash_test_writer, TxBoundary};
 pub use writer::{
-    AppendOutcome, BindingStateUpdate, Fidelity, LegacyImportRow, NewCanonicalEvent,
-    ProjectionCheckpointRow, SessionTargetUpdate, SharedEventWriter, StoredBindingState,
-    StoredEvent, StoredSessionTarget, USAGE_FACT_TYPE,
+    AppendOutcome, BindingStateUpdate, Fidelity, LegacyImportRow, MutationLeaseAction,
+    MutationLeaseOutcome, MutationLeaseRequest, NewCanonicalEvent, ProjectionCheckpointRow,
+    SessionTargetUpdate, SharedEventWriter, StoredBindingState, StoredEvent, StoredSessionTarget,
+    USAGE_FACT_TYPE,
 };

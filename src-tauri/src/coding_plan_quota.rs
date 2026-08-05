@@ -124,7 +124,11 @@ fn clamp_percent(value: f64) -> f64 {
     value.clamp(0.0, 100.0)
 }
 
-fn window_from_used(id: &str, used_percent: f64, resets_at: Option<String>) -> CodingPlanQuotaWindow {
+fn window_from_used(
+    id: &str,
+    used_percent: f64,
+    resets_at: Option<String>,
+) -> CodingPlanQuotaWindow {
     let used = clamp_percent(used_percent);
     CodingPlanQuotaWindow {
         id: id.to_string(),
@@ -321,9 +325,7 @@ async fn query_deepseek(api_key: &str) -> CodingPlanQuotaSnapshot {
 
 fn is_official_anthropic_base(base_url: &str) -> bool {
     let url = base_url.trim().to_ascii_lowercase();
-    url.is_empty()
-        || url.contains("api.anthropic.com")
-        || url.contains("anthropic.com/claude")
+    url.is_empty() || url.contains("api.anthropic.com") || url.contains("anthropic.com/claude")
 }
 
 fn is_official_openai_base(base_url: &str) -> bool {
@@ -438,11 +440,7 @@ fn parse_minimax_windows(body: &Value) -> Vec<CodingPlanQuotaWindow> {
             .get("end_time")
             .and_then(|v| v.as_i64())
             .and_then(millis_to_iso8601);
-        windows.push(window_from_used(
-            "five_hour",
-            100.0 - remain_pct,
-            resets_at,
-        ));
+        windows.push(window_from_used("five_hour", 100.0 - remain_pct, resets_at));
     }
 
     if item.get("current_weekly_status").and_then(|v| v.as_i64()) == Some(1) {
@@ -504,10 +502,7 @@ async fn query_minimax(api_key: &str, is_cn: bool) -> CodingPlanQuotaSnapshot {
     let raw = match resp.bytes().await {
         Ok(b) => b,
         Err(error) => {
-            return empty_snapshot(
-                "minimax",
-                Some(format!("Failed to read response: {error}")),
-            );
+            return empty_snapshot("minimax", Some(format!("Failed to read response: {error}")));
         }
     };
     let body: Value = match serde_json::from_slice(&raw) {
@@ -862,9 +857,8 @@ fn resolve_engine_base_url_and_key(
             Ok(resolve_claude_settings_env())
         }
         "codex" => {
-            let profile_id = profile_id.unwrap_or(
-                crate::codex::provider_profile::CODEX_DISK_PROVIDER_PROFILE_ID,
-            );
+            let profile_id = profile_id
+                .unwrap_or(crate::codex::provider_profile::CODEX_DISK_PROVIDER_PROFILE_ID);
             if profile_id == crate::codex::provider_profile::CODEX_DISK_PROVIDER_PROFILE_ID {
                 // 官方 disk / ChatGPT：无第三方 base_url
                 return Ok((String::new(), String::new()));
@@ -877,13 +871,10 @@ fn resolve_engine_base_url_and_key(
                     config_toml,
                     auth_json,
                     ..
-                }) => extract_codex_base_url_and_key(
-                    &config_toml,
-                    auth_json.as_deref(),
-                )
-                .ok_or_else(|| {
-                    "Codex provider has no model_providers.base_url / auth key".into()
-                }),
+                }) => extract_codex_base_url_and_key(&config_toml, auth_json.as_deref())
+                    .ok_or_else(|| {
+                        "Codex provider has no model_providers.base_url / auth key".into()
+                    }),
                 Err(error) => Err(error),
             }
         }
@@ -1016,8 +1007,7 @@ pub(crate) async fn get_coding_plan_quota_for_session(
             let mut snapshot = query_by_base_url_and_key(&base_url, &api_key).await;
             // Kimi CLI oauth 路径标记 via=cli
             if snapshot.source == "kimi"
-                && resolve_kimi_cli_oauth_token()
-                    .is_some_and(|(_, token)| token == api_key)
+                && resolve_kimi_cli_oauth_token().is_some_and(|(_, token)| token == api_key)
             {
                 snapshot.via = Some("cli".to_string());
             } else if snapshot.via.is_none() && snapshot.success {
@@ -1206,7 +1196,9 @@ mod tests {
     fn official_base_detection() {
         assert!(is_official_anthropic_base(""));
         assert!(is_official_anthropic_base("https://api.anthropic.com/v1"));
-        assert!(!is_official_anthropic_base("https://api.minimaxi.com/anthropic"));
+        assert!(!is_official_anthropic_base(
+            "https://api.minimaxi.com/anthropic"
+        ));
         assert!(is_official_openai_base(""));
         assert!(is_official_openai_base("https://api.openai.com/v1"));
         assert!(!is_official_openai_base("https://api.kimi.com/coding/v1"));

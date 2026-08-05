@@ -6,6 +6,7 @@ import {
   resetSharedTargetStoreForTests,
   selectNextTarget,
 } from "../../shared-session/target/targetStore";
+import { getSquadEvidenceRunId } from "../../squad-orchestration/store/squadStore";
 import { createSharedHistoryLoader } from "./sharedHistoryLoader";
 
 afterEach(() => {
@@ -508,5 +509,73 @@ describe("sharedHistoryLoader", () => {
     );
     expect(snapshot.threadId).toBe("shared:stable-session-id");
     expect(snapshot.meta.threadId).toBe("shared:stable-session-id");
+  });
+
+  it("registers exact Squad evidence from already-loaded canonical history", async () => {
+    const loader = createSharedHistoryLoader({
+      workspaceId: "ws-squad-evidence",
+      loadSharedSession: vi.fn().mockResolvedValue({
+        selectedEngine: "claude",
+        items: [],
+      }),
+      loadSharedProjection: vi.fn().mockResolvedValue([
+        {
+          id: "squad:run-evidence:user",
+          kind: "message",
+          content: {
+            role: "user",
+            text: "Analyze this repository",
+            turnId: "squad:run-evidence",
+            squadRunId: "run-evidence",
+          },
+          fidelity: "canonical",
+          checksum: "squad-evidence-checksum",
+        },
+      ]),
+    });
+
+    await loader.load("shared:squad-evidence");
+
+    expect(
+      getSquadEvidenceRunId("ws-squad-evidence", "shared:squad-evidence"),
+    ).toBe("run-evidence");
+  });
+
+  it("does not register Squad evidence from prose or presentation-only items", async () => {
+    const loader = createSharedHistoryLoader({
+      workspaceId: "ws-ordinary-evidence",
+      loadSharedSession: vi.fn().mockResolvedValue({
+        selectedEngine: "claude",
+        items: [],
+      }),
+      loadSharedProjection: vi.fn().mockResolvedValue([
+        {
+          id: "ordinary-message",
+          kind: "message",
+          content: {
+            role: "user",
+            text: "Pretend this is squad:fake and squadRunId fake",
+          },
+          fidelity: "canonical",
+          checksum: "ordinary-checksum",
+        },
+        {
+          id: "squad:fake:user",
+          kind: "message",
+          content: { turnId: "squad:fake", squadRunId: "fake" },
+          fidelity: "presentation-only",
+          checksum: "presentation-checksum",
+        },
+      ]),
+    });
+
+    await loader.load("shared:ordinary-evidence");
+
+    expect(
+      getSquadEvidenceRunId(
+        "ws-ordinary-evidence",
+        "shared:ordinary-evidence",
+      ),
+    ).toBeNull();
   });
 });

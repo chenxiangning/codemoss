@@ -171,8 +171,12 @@ pub(crate) fn write_grok_prompt_file(
     std::fs::create_dir_all(&dir)
         .map_err(|error| format!("Failed to create Grok prompt staging dir: {error}"))?;
     let path = dir.join(format!("grok-prompt-{}.json", uuid::Uuid::new_v4()));
-    std::fs::write(&path, prompt_json.as_bytes())
-        .map_err(|error| format!("Failed to write Grok prompt-file {}: {error}", path.display()))?;
+    std::fs::write(&path, prompt_json.as_bytes()).map_err(|error| {
+        format!(
+            "Failed to write Grok prompt-file {}: {error}",
+            path.display()
+        )
+    })?;
     Ok(path)
 }
 
@@ -676,56 +680,55 @@ impl GrokSession {
                         event,
                     });
                 };
-                let emit_signals = |signals: Vec<GrokHistoryToolSignal>,
-                                   tail: &mut GrokToolHistoryTailState| {
-                    for signal in signals {
-                        match signal {
-                            GrokHistoryToolSignal::Started {
-                                tool_id,
-                                tool_name,
-                                input,
-                            } => {
-                                tail.started_names
-                                    .insert(tool_id.clone(), tool_name.clone());
-                                if let Some(input_value) = input.clone() {
-                                    tail.started_inputs
-                                        .insert(tool_id.clone(), input_value);
-                                }
-                                emit(EngineEvent::ToolStarted {
-                                    workspace_id: workspace_id.clone(),
+                let emit_signals =
+                    |signals: Vec<GrokHistoryToolSignal>, tail: &mut GrokToolHistoryTailState| {
+                        for signal in signals {
+                            match signal {
+                                GrokHistoryToolSignal::Started {
                                     tool_id,
                                     tool_name,
                                     input,
-                                });
-                            }
-                            GrokHistoryToolSignal::Completed { tool_id, output } => {
-                                let tool_name = tail.started_names.get(&tool_id).cloned();
-                                // Preserve start-time args so completed fileChange can still
-                                // resolve path for EditToolBlock / fileEdit scene polish.
-                                let wrapped_output = match (
-                                    tail.started_inputs.get(&tool_id).cloned(),
-                                    output,
-                                ) {
-                                    (Some(input_value), Some(out)) => Some(json!({
-                                        "_input": input_value,
-                                        "_output": out,
-                                    })),
-                                    (Some(input_value), None) => Some(json!({
-                                        "_input": input_value,
-                                    })),
-                                    (None, other) => other,
-                                };
-                                emit(EngineEvent::ToolCompleted {
-                                    workspace_id: workspace_id.clone(),
-                                    tool_id,
-                                    tool_name,
-                                    output: wrapped_output,
-                                    error: None,
-                                });
+                                } => {
+                                    tail.started_names
+                                        .insert(tool_id.clone(), tool_name.clone());
+                                    if let Some(input_value) = input.clone() {
+                                        tail.started_inputs.insert(tool_id.clone(), input_value);
+                                    }
+                                    emit(EngineEvent::ToolStarted {
+                                        workspace_id: workspace_id.clone(),
+                                        tool_id,
+                                        tool_name,
+                                        input,
+                                    });
+                                }
+                                GrokHistoryToolSignal::Completed { tool_id, output } => {
+                                    let tool_name = tail.started_names.get(&tool_id).cloned();
+                                    // Preserve start-time args so completed fileChange can still
+                                    // resolve path for EditToolBlock / fileEdit scene polish.
+                                    let wrapped_output = match (
+                                        tail.started_inputs.get(&tool_id).cloned(),
+                                        output,
+                                    ) {
+                                        (Some(input_value), Some(out)) => Some(json!({
+                                            "_input": input_value,
+                                            "_output": out,
+                                        })),
+                                        (Some(input_value), None) => Some(json!({
+                                            "_input": input_value,
+                                        })),
+                                        (None, other) => other,
+                                    };
+                                    emit(EngineEvent::ToolCompleted {
+                                        workspace_id: workspace_id.clone(),
+                                        tool_id,
+                                        tool_name,
+                                        output: wrapped_output,
+                                        error: None,
+                                    });
+                                }
                             }
                         }
-                    }
-                };
+                    };
                 loop {
                     if cached_path.is_none() {
                         cached_path = resolve_chat_history_path(
@@ -1187,9 +1190,8 @@ mod tests {
             None,
             Some("session-tracked".to_string()),
         );
-        assert!(generated_ignoring_tracked.is_some_and(|value| {
-            !value.is_empty() && value != "session-tracked"
-        }));
+        assert!(generated_ignoring_tracked
+            .is_some_and(|value| { !value.is_empty() && value != "session-tracked" }));
         let generated = resolve_grok_session_id_for_engine_send(false, None, None);
         assert!(generated.is_some_and(|value| !value.is_empty()));
     }
@@ -1487,8 +1489,14 @@ mod tests {
             }),
         );
 
-        for effort in [None, Some(""), Some("   "), Some("xhigh"), Some("ultra"), Some("--danger")]
-        {
+        for effort in [
+            None,
+            Some(""),
+            Some("   "),
+            Some("xhigh"),
+            Some("ultra"),
+            Some("--danger"),
+        ] {
             let params = SendMessageParams {
                 text: "hello".to_string(),
                 effort: effort.map(str::to_string),

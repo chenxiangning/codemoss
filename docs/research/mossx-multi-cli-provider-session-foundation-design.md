@@ -12,7 +12,7 @@ status: implemented
 > 内容类型：Architecture Decision Record
 > 生命周期：accepted / implemented in slices；原始 A–D 路线已归档，后续修复与收口 change 独立演进
 > 初始日期：2026-07-27
-> 最近校准：2026-08-05 · §14.5.7 Recovery Exit Closure 已实现并收口；校准表补录 context resume integrity / atomic model↔reasoning 联动 / user image projection 三项 2026-08-04 修复
+> 最近校准：2026-08-05 · Phase 5 Agent Squad V1 已完成本地实现与 automated contract tests，四个 OpenSpec change 保持 active，等待真实 Desktop/CLI smoke 后收口
 > 适用范围：Native Session、Shared Session、Provider Runtime、Session Catalog、Sidebar Projection、未来 Plugin / Orchestration
 > 核心决策：Native Session 保持原生身份；Shared Session 承担跨 CLI、跨 Provider 的逐 Turn 切换
 
@@ -20,7 +20,7 @@ status: implemented
 
 ## 零、当前实现校准
 
-本文继续作为多 CLI 会话的 ADR。原始 Change A1–A3、B、C、D 已归档；截至 2026-08-05，Native/Shared 的后续修复、兼容和流程收口以 [OpenSpec main specs](../../openspec/specs/README.md) 与对应 archived changes 为准，不应回写成「原路线未实现」。
+本文继续作为多 CLI 会话的 ADR。原始 Change A1–A3、B、C、D 已归档；截至 2026-08-05，Native/Shared 的后续修复、兼容和 Phase 5 active changes 以 [OpenSpec main specs](../../openspec/specs/README.md)、对应 change 与代码为准，不应回写成「原路线未实现」。
 
 | 契约面 | 当前代码事实 | 事实源 |
 |--------|--------------|--------|
@@ -35,10 +35,15 @@ status: implemented
 | Atomic 模型↔思考强度联动 | reasoning options / effort 由 **target 模型 capability** 驱动，禁止用全局 `activeEngine` 档位冒充；Shared 初始化禁止回落 Native 思考档位 | `atomicModelReasoning.ts`、`initialTarget.ts`、OpenSpec `fix-shared-atomic-model-reasoning-linkage` |
 | 用户附图 canonical 投影 | 用户附图单气泡投影，Shared 历史不丢图 | `shared_projection/projector.rs`、OpenSpec `fix-shared-user-image-bubble-projection` |
 | create-session 默认目标 | create-session Atomic picker 为全部 Atomic 引擎（含 Grok/Kimi/OpenCode）seed 默认 ExecutionTarget，不仅 claude/codex | `resolveDefaultCreationExecutionTarget.ts` |
+| Agent Squad V1 入口与形态 | 仅 Shared Session 显示 send 左侧 one-shot `Squad` button；plan/run card 留在 conversation，详情复用 SubAgent 右侧 full-height inspector host | `src/features/composer/components/Composer.tsx`、`src/features/squad-orchestration/**`、`ConversationInspectorSplit.tsx` |
+| Squad control authority | Lead 只提出 structured Dynamic DAG；mossx validator、Canonical Fact、durable projection 与 command boundary 决定可否执行；同一 Shared Session 最多一个 active run | `src-tauri/src/squad_orchestration/{types,validator,projection,commands,plan_commands}.rs`、OpenSpec `add-shared-squad-control-plane` |
+| Squad execution boundary | V1 为 Parallel Analyze + Single Writer；全部 Worker seal 到 Composer 当前 exact target。Codex 可执行完整 DAG；Claude 仅 pure read-only DAG；Kimi/Grok/OpenCode 因缺少可验证 hard read-only mode 在 Lead side effect 前 fail closed | `src-tauri/src/squad_orchestration/{scheduler,support}.rs`、`shared_session_v2.rs`、OpenSpec `add-shared-squad-worker-execution` |
+| Squad mutation/recovery | workspace UUID + canonical root 双重归一；durable lease 无 time-based expiry；Git dirty baseline + Change Fence；Stop 先写 cancel intent，再 best-effort interrupt exact owner；禁止自动 rollback/reset/stash | `src-tauri/src/squad_orchestration/{scope,stop_commands}.rs`、`shared_event_log/writer.rs`、OpenSpec `harden-shared-squad-recovery` |
+| Squad conversation projection | 所有 Worker turn（含 Synthesize）保持 nested-only；只有 successful `SquadRunSettled` 投影一次 top-level final；checkpoint incremental replay 不泄漏 Worker message | `src-tauri/src/shared_projection/projector.rs`、`src/features/squad-orchestration/runtime/squadConversationBridge.ts` |
 
 本文中的 `RuntimeDeliveryAdapter`、`Canonical Fact`、`ContextPackage` 等名称既包含实现合同，也包含 ADR 概念层语言。读者需要复制代码或接新 CLI 时，必须同时使用 [Engine Onboarding Guide](./mossx-new-cli-onboarding-guide.md) 的「当前注册面」清单，不能只按概念接口猜文件名。
 
-> **更新触发器**：engine registry、Shared 支持集合、provider binding、canonical fact schema、context compiler、terminal/ACK contract、**recovery exit / abandon** 变化。
+> **更新触发器**：engine registry、Shared 支持集合、provider binding、canonical fact schema、context compiler、terminal/ACK contract、**recovery exit / abandon**、Squad exact-owner / mutation lease / settlement projection 变化。
 
 ## 一、Executive Summary
 
@@ -3169,29 +3174,45 @@ Claude/Official
 
 ### Phase 5：Orchestration Foundation
 
+2026-08-05 校准：V1 已按 conversation-native Agent Squad 落地本地实现；automated contract tests 已覆盖核心状态机，真实 Desktop/CLI smoke 尚未完成，因此四个 OpenSpec change 保持 active、不得 archive。
+
 交付：
 
-- 复用现有幂等 `run.settled`
-- 消费 A2 已提交 Canonical Fact 的 Orchestrator Projection
-- `steer/followUp/nextTurn`
-- Runtime Capability Matrix
+- Shared Composer send 左侧 one-shot `Squad` button；不使用显式命令或自动意图识别。
+- Lead 产生 structured plan；用户一次确认后，mossx 校验并封存 exact target、budget、permission envelope 与 Dynamic DAG。
+- Canonical Fact + deterministic `SquadProjectionV1` 是唯一 durable authority，不创建第二条 authoritative event sink。
+- ordinary CLI Worker Binding、node-scoped Context Package、typed outcome、attempt-boundary event-driven scheduler。
+- Parallel Analyze + Single Writer；durable workspace mutation lease、dirty-preserving Change Fence、bounded forward repair。
+- conversation plan/run card + SubAgent 同形右侧 inspector；Worker turns nested-only，successful settlement 只投影一次 final answer。
+- Emergency Stop 先持久化 cancel intent，只 interrupt exact active owner；不自动 rollback。
+- `VITE_CCGUI_SQUAD_ORCHESTRATION_V1` / `CCGUI_SQUAD_ORCHESTRATION_V1` kill switch 默认开启；关闭后禁止新 run/approval/dispatch，但历史读取、exact-owner Stop 与既有 attempt terminal settlement 仍可用。
+
+V1 capability ceiling：
+
+- Codex 具备 hard read-only / current-workspace sandbox，可承载完整 DAG。
+- Claude 仅在 `permission-mode=plan` 下承载 pure read-only DAG；含 Mutate 的 plan fail closed。
+- Kimi/Grok/OpenCode 当前 headless adapter 缺少可验证 hard read-only mode，Lead side effect 前拒绝。
+- 不实现 Worktree Executor、multi-writer merge、mid-turn steer、public Plugin/Pipeline API；控制只发生在 attempt boundary。
+- Mutate 要求 Git workspace。Change Fence覆盖 tracked 与 non-ignored untracked delta；ignored path 与任意 credential read 不能由 Git diff 完整证明，因此 request/declared path/observed candidate 命中敏感边界即拒绝，V1 不把 prompt policy 宣称为 OS-level read isolation。
 
 验收：
 
-- Orchestrator 只消费 A2 Canonical Fact/Projection，不建立第二条 authoritative Event Sink。
-- Frontend Contract 不回退。
-- Shared 调度不依赖轮询。
-- Provider-scoped 并行不会串 Owner。
+- Orchestrator 只消费/追加统一 Canonical Fact，Frontend store 仅作 projection cache。
+- 同一 Shared Session 只允许一个 active Squad；同一 workspace 只允许一个 Mutate lease，不同 workspace 可并行。
+- exact Worker owner、attempt、binding、target、context package 全链路可审计，禁止 fallback 到相似 owner。
+- Scheduler 不秒级轮询；Worker raw realtime event 不进入 root conversation reducer。
+- reload/Stop/crash ambiguity 均 fail closed；无 terminal + unchanged-fence proof 时不得按时间回收 lease。
+- Desktop/CLI smoke 完成前，Phase 5 只记为 implemented locally / manual gate pending。
 
 ### Phase 6：Plugin / Pipeline
 
-在前五阶段稳定后再开放：
+在 Phase 5 V1 稳定后再开放 public extension surface。Phase 5 内部已有受控 Dynamic DAG，不等于已经提供 public Pipeline/DAG API：
 
 - Agent Event Hooks；
 - Provider/Engine Registration；
 - Handoff Summarizer Extension；
 - Pipeline single/parallel/chain；
-- 后续 DAG；
+- public Pipeline/DAG contract；
 - 外部 RPC/SDK。
 
 禁止 Plugin Market 反向定义 Execution Core。

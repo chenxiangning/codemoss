@@ -8,6 +8,10 @@ import {
 } from "../../messages/presentation/sharedProjection/dataSource";
 import type { SharedProjectionItem } from "../../messages/presentation/sharedProjection/types";
 import {
+  findCanonicalSquadRunId,
+  registerSquadConversationEvidence,
+} from "../../squad-orchestration/store/squadStore";
+import {
   hydrateSharedTargetState,
   getSharedTargetState,
   getPersistGeneration,
@@ -116,10 +120,20 @@ export function createSharedHistoryLoader({
       if (isSharedProjectionDataSourceEnabled()) {
         report(buildSharedHistoryProjectionProgress("start"));
         try {
+          const sharedProjection = await loadSharedProjection(
+            workspaceId,
+            threadId,
+          );
+          const squadRunId = findCanonicalSquadRunId(sharedProjection);
+          if (squadRunId) {
+            registerSquadConversationEvidence(
+              workspaceId,
+              threadId,
+              squadRunId,
+            );
+          }
           const projectedItems =
-            resolveSharedConversationItems(
-              await loadSharedProjection(workspaceId, threadId),
-            ) ?? [];
+            resolveSharedConversationItems(sharedProjection) ?? [];
           report(
             buildSharedHistoryProjectionProgress("done", projectedItems.length),
           );

@@ -13,6 +13,8 @@ export type SharedSessionNativeBinding = {
   engine: SharedSessionSupportedEngine;
   /** Runtime-owned durable attempt identity；仅用于同-attempt fallback。 */
   attemptId?: string;
+  /** Durable worker Binding identity；用于 reload 前 fail-closed routing。 */
+  bindingKey?: string;
   /** `conversation.turnRequested.target` 的 immutable runtime projection。 */
   executionTargetSnapshot?: TurnExecutionSnapshot;
   /** Wave 4 / B.5：Binding 归属的 Provider Profile；缺省/null 表示 default Provider 语义。 */
@@ -131,6 +133,7 @@ export function resolveSharedSessionBindingFromRuntimeOwner(
     return null;
   }
   const attemptId = String(rawOwner.attemptId ?? "").trim();
+  const bindingKey = String(rawOwner.bindingKey ?? "").trim();
   const hasEmbeddedExecutionTarget =
     rawOwner.executionTargetSnapshot !== undefined &&
     rawOwner.executionTargetSnapshot !== null;
@@ -160,6 +163,7 @@ export function resolveSharedSessionBindingFromRuntimeOwner(
     nativeThreadId,
     engine,
     ...(attemptId ? { attemptId } : {}),
+    ...(bindingKey ? { bindingKey } : {}),
     ...(executionTargetSnapshot ? { executionTargetSnapshot } : {}),
     ...(providerProfileId ? { providerProfileId } : {}),
   };
