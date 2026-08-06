@@ -19,6 +19,7 @@ import { BUILTIN_ENGINE_TYPES } from "../../../engine/engineRegistry";
 import type { SharedProjectionItem } from "./types";
 import { LOCAL_PROVIDER_LABEL } from "../../../../utils/turnBadge";
 import { buildConversationItem } from "../../../../utils/threadItems";
+import { isMultiAgentSettledSummaryItemId } from "../../../multi-agent/utils/canvasItems";
 
 export const SHARED_PROJECTION_STORAGE_KEY = "mossx.sharedProjection";
 
@@ -423,6 +424,10 @@ function toConversationItem(item: SharedProjectionItem): ConversationItem | null
   switch (kind) {
     case "message": {
       const role = content.role === "user" ? "user" : "assistant";
+      // Multi-Agent durable settle 摘要：不进独立气泡，由 HistoryFold 卡下汇总展示
+      if (role === "assistant" && isMultiAgentSettledSummaryItemId(id)) {
+        return null;
+      }
       const executionTargetSnapshot = readExecutionTargetSnapshot(
         content,
         item.fidelity,

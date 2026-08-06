@@ -9,7 +9,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::shared_session_v2::ExecutionTargetInput;
+use crate::shared_session_v2::{EngineType, ExecutionTargetInput};
 
 pub const AGENT_SCHEMA_VERSION: u32 = 1;
 
@@ -136,12 +136,22 @@ impl AgentStageStatus {
     }
 }
 
-/// 请求时每段的绑定（前端可配）。
+/// 请求时每段的绑定（前端可配；有序列表即完整 N 段定义）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AgentStageBindingInput {
     pub id: String,
     pub target: ExecutionTargetInput,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    /// 步骤级提示词 / 约束，拼入 worker prompt
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub role_prompt: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub access_mode: Option<String>,
+    /// 本段成功后是否进入批准门闩
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub requires_approval: Option<bool>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -150,10 +160,14 @@ pub struct AgentStageProjectionV1 {
     pub id: String,
     pub title: String,
     pub role: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub role_prompt: Option<String>,
     pub target: ExecutionTargetInput,
     pub status: AgentStageStatus,
     /// read-only | current
     pub access_mode: String,
+    #[serde(default)]
+    pub requires_approval: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub attempt_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -162,9 +176,12 @@ pub struct AgentStageProjectionV1 {
     pub started_at: Option<i64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub settled_at: Option<i64>,
-    /// 主时间线用一行结果，禁止塞全文
+    /// 主时间线 / 阶段 chip 用一行结果，禁止塞全文
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub short_outcome: Option<String>,
+    /// 右栏节点全文（与 SubAgent 幕布同源：完整阶段输出，供 Messages 渲染）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub full_outcome: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
 }
@@ -216,7 +233,7 @@ pub struct AgentProjectionV1 {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub approved_at: Option<i64>,
     pub updated_at: i64,
-    /// 主幕布短汇总（审查段产出，截断）
+    /// 主幕布调度汇总：综括本轮各节点结果（非末段原文重复）
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub final_summary: Option<String>,
 }
@@ -238,58 +255,205 @@ pub fn default_stage_specs(default_target: &ExecutionTargetInput) -> Vec<AgentSt
             id: AgentStageId::Plan.as_str().into(),
             title: AgentStageId::Plan.title().into(),
             role: "planner".into(),
+            role_prompt: None,
             target: default_target.clone(),
             status: AgentStageStatus::Pending,
             access_mode: "read-only".into(),
+            requires_approval: true,
             attempt_id: None,
             binding_key: None,
             started_at: None,
             settled_at: None,
             short_outcome: None,
+            full_outcome: None,
             error: None,
         },
         AgentStageProjectionV1 {
             id: AgentStageId::Implement.as_str().into(),
             title: AgentStageId::Implement.title().into(),
             role: "implementer".into(),
+            role_prompt: None,
             target: default_target.clone(),
             status: AgentStageStatus::Pending,
             access_mode: "current".into(),
+            requires_approval: false,
             attempt_id: None,
             binding_key: None,
             started_at: None,
             settled_at: None,
             short_outcome: None,
+            full_outcome: None,
             error: None,
         },
         AgentStageProjectionV1 {
             id: AgentStageId::Review.as_str().into(),
             title: AgentStageId::Review.title().into(),
             role: "reviewer".into(),
+            role_prompt: None,
             target: default_target.clone(),
             status: AgentStageStatus::Pending,
             access_mode: "read-only".into(),
+            requires_approval: false,
             attempt_id: None,
             binding_key: None,
             started_at: None,
             settled_at: None,
             short_outcome: None,
+            full_outcome: None,
             error: None,
         },
     ]
 }
 
-pub fn apply_stage_bindings(
-    mut stages: Vec<AgentStageProjectionV1>,
+fn default_requires_approval(stage_id: &str, index: usize) -> bool {
+    if let Some(parsed) = AgentStageId::parse(stage_id) {
+        return matches!(parsed, AgentStageId::Plan);
+    }
+    index == 0
+}
+
+fn default_access_mode_for(stage_id: &str, target: &ExecutionTargetInput, index: usize, total: usize) -> String {
+    if let Some(mode) = match AgentStageId::parse(stage_id) {
+        Some(AgentStageId::Implement) => Some("current"),
+        Some(AgentStageId::Plan) | Some(AgentStageId::Review) => match target.engine {
+            EngineType::Codex | EngineType::Claude => Some("read-only"),
+            _ => Some("current"),
+        },
+        None => None,
+    } {
+        return mode.into();
+    }
+    // 自定义段：首段/末段偏只读，中间段允许写
+    if index == 0 || index + 1 == total {
+        match target.engine {
+            EngineType::Codex | EngineType::Claude => "read-only".into(),
+            _ => "current".into(),
+        }
+    } else {
+        "current".into()
+    }
+}
+
+/// 有序 bindings 即完整 N 段；空 bindings 回退默认三段。
+pub fn stages_from_bindings(
+    default_target: &ExecutionTargetInput,
     bindings: &[AgentStageBindingInput],
 ) -> Vec<AgentStageProjectionV1> {
+    if bindings.is_empty() {
+        return default_stage_specs(default_target);
+    }
+    let total = bindings.len();
+    bindings
+        .iter()
+        .enumerate()
+        .map(|(index, binding)| {
+            let id = binding.id.trim();
+            let id = if id.is_empty() {
+                format!("stage-{}", index + 1)
+            } else {
+                id.to_string()
+            };
+            let title = binding
+                .title
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(str::to_string)
+                .or_else(|| AgentStageId::parse(&id).map(|s| s.title().to_string()))
+                .unwrap_or_else(|| format!("环节 {}", index + 1));
+            let role_prompt = binding
+                .role_prompt
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(str::to_string);
+            let requires_approval = binding
+                .requires_approval
+                .unwrap_or_else(|| default_requires_approval(&id, index));
+            let access_mode = binding
+                .access_mode
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| *value == "read-only" || *value == "current")
+                .map(str::to_string)
+                .unwrap_or_else(|| {
+                    default_access_mode_for(&id, &binding.target, index, total)
+                });
+            AgentStageProjectionV1 {
+                id: id.clone(),
+                title,
+                role: role_prompt
+                    .clone()
+                    .unwrap_or_else(|| format!("stage:{id}")),
+                role_prompt,
+                target: binding.target.clone(),
+                status: AgentStageStatus::Pending,
+                access_mode,
+                requires_approval,
+                attempt_id: None,
+                binding_key: None,
+                started_at: None,
+                settled_at: None,
+                short_outcome: None,
+                full_outcome: None,
+                error: None,
+            }
+        })
+        .collect()
+}
+
+/// 兼容：仅覆盖同 id target；若 bindings 含 title/role 等扩展字段则按有序列表重建。
+pub fn apply_stage_bindings(
+    stages: Vec<AgentStageProjectionV1>,
+    bindings: &[AgentStageBindingInput],
+) -> Vec<AgentStageProjectionV1> {
+    if bindings.is_empty() {
+        return stages;
+    }
+    let rich = bindings.iter().any(|binding| {
+        binding.title.is_some()
+            || binding.role_prompt.is_some()
+            || binding.requires_approval.is_some()
+            || binding.access_mode.is_some()
+            || bindings.len() != stages.len()
+    });
+    if rich || bindings.len() != 3 {
+        let default_target = bindings
+            .first()
+            .map(|binding| binding.target.clone())
+            .unwrap_or_else(|| stages[0].target.clone());
+        return stages_from_bindings(&default_target, bindings);
+    }
+    let mut next = stages;
     for binding in bindings {
         let id = binding.id.trim();
-        if let Some(stage) = stages.iter_mut().find(|s| s.id == id) {
+        if let Some(stage) = next.iter_mut().find(|s| s.id == id) {
             stage.target = binding.target.clone();
+            if let Some(title) = binding.title.as_ref() {
+                if !title.trim().is_empty() {
+                    stage.title = title.trim().to_string();
+                }
+            }
+            if let Some(role_prompt) = binding.role_prompt.as_ref() {
+                let trimmed = role_prompt.trim();
+                stage.role_prompt = if trimmed.is_empty() {
+                    None
+                } else {
+                    Some(trimmed.to_string())
+                };
+            }
+            if let Some(requires) = binding.requires_approval {
+                stage.requires_approval = requires;
+            }
+            if let Some(mode) = binding.access_mode.as_ref() {
+                let mode = mode.trim();
+                if mode == "read-only" || mode == "current" {
+                    stage.access_mode = mode.to_string();
+                }
+            }
         }
     }
-    stages
+    next
 }
 
 pub fn short_text(raw: &str, max_chars: usize) -> String {
@@ -300,4 +464,23 @@ pub fn short_text(raw: &str, max_chars: usize) -> String {
     let mut out: String = trimmed.chars().take(max_chars.saturating_sub(1)).collect();
     out.push('…');
     out
+}
+
+/// 阶段行短摘要（chip / shortOutcome）
+pub const STAGE_SHORT_OUTCOME_CHARS: usize = 160;
+/// 末段/汇总用正文：保留完整阶段输出，仅作极端安全阀
+pub const STAGE_OUTCOME_BODY_CHARS: usize = 12_000;
+/// finalSummary 安全阀（不加省略号，避免汇总框出现 …）
+pub const FINAL_SUMMARY_CHARS: usize = 12_000;
+
+/// 硬截断：超长时裁切但**不加** `…`（汇总展示用，避免误导性省略）
+pub fn cap_text(raw: &str, max_chars: usize) -> String {
+    let trimmed = raw.trim();
+    if max_chars == 0 {
+        return String::new();
+    }
+    if trimmed.chars().count() <= max_chars {
+        return trimmed.to_string();
+    }
+    trimmed.chars().take(max_chars).collect()
 }

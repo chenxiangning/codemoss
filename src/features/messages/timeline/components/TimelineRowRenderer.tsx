@@ -54,6 +54,11 @@ import {
 } from "../../components/MessagesRows";
 import { ConversationRowErrorBoundary } from "../../components/conversation/ConversationRowErrorBoundary";
 import { TurnFilesChangedCard } from "../../components/conversation/TurnFilesChangedCard";
+import { MultiAgentHistoryFoldTimelineRow } from "../../../multi-agent/components/HistoryFoldCard";
+import {
+  isHistoryFoldItemId,
+} from "../../../multi-agent/store/historyFoldRegistry";
+import { isMultiAgentSettledSummaryItemId } from "../../../multi-agent/utils/canvasItems";
 import { MiddleStepsCollapsedChip } from "./MiddleStepsCollapsedChip";
 import type {
   TimelineRowRendererProps,
@@ -180,6 +185,26 @@ export const TimelineRowRenderer = memo(function TimelineRowRenderer({
     const renderKind = renderItem.kind;
     if (renderKind === "message" && renderItem.kind === "message") {
       const itemRenderKey = `message:${renderItem.id}`;
+      // 协作终态 HistoryFold：插在时间线消息位置，随主幕布滚动
+      if (isHistoryFoldItemId(renderItem.id)) {
+        return (
+          <div
+            key={itemRenderKey}
+            className="ma-hist-timeline-row"
+            data-message-anchor-id={renderItem.id}
+          >
+            <MultiAgentHistoryFoldTimelineRow
+              itemId={renderItem.id}
+              workspaceId={workspaceId}
+              threadId={threadId}
+            />
+          </div>
+        );
+      }
+      // durable settle 摘要：不进气泡（由 HistoryFold 卡下汇总承载）
+      if (isMultiAgentSettledSummaryItemId(renderItem.id)) {
+        return null;
+      }
       const isCopied = copiedMessageId === renderItem.id;
       const agentTaskNotification = parseAgentTaskNotification(renderItem.text);
       // SubAgent 型 task-notification：幕布行整段退役（事实迁 S10）；仅保留 0 高锚点供 scroll

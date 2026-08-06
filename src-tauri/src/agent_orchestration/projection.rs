@@ -5,7 +5,8 @@ use crate::shared_event_log::StoredEvent;
 use crate::shared_session_v2::target_input_from_snapshot;
 
 use super::types::{
-    apply_stage_bindings, default_stage_specs, short_text, AgentPlanDraftV1, AgentProjectionV1,
+    apply_stage_bindings, cap_text, default_stage_specs, short_text, AgentPlanDraftV1,
+    AgentProjectionV1, FINAL_SUMMARY_CHARS, STAGE_SHORT_OUTCOME_CHARS,
     AgentRunStatus, AgentStageBindingInput, AgentStageId, AgentStageStatus, AGENT_SCHEMA_VERSION,
 };
 
@@ -72,6 +73,37 @@ fn stage_mut<'a>(
     run.stages.iter_mut().find(|stage| stage.id == stage_id)
 }
 
+fn apply_plan_gate(
+    runs: &mut [AgentProjectionV1],
+    plan_attempt_by_run: &mut HashMap<String, String>,
+    run_id: &str,
+    revision: u32,
+    plan_value: &serde_json::Value,
+    at: i64,
+    stage_id: Option<&str>,
+) {
+    let Some(run) = run_mut(runs, run_id) else {
+        return;
+    };
+    let Some(plan) = parse_plan(plan_value) else {
+        return;
+    };
+    let short = short_text(&plan.summary, 120);
+    run.plan = Some(plan);
+    run.plan_revision = revision.max(1);
+    run.status = AgentRunStatus::AwaitingApproval;
+    run.updated_at = at;
+    let gate_stage_id = stage_id.unwrap_or(AgentStageId::Plan.as_str());
+    if let Some(stage) = stage_mut(run, gate_stage_id) {
+        stage.status = AgentStageStatus::Succeeded;
+        stage.settled_at = Some(at);
+        stage.short_outcome = Some(short);
+    }
+    if let Some(attempt_id) = plan_attempt_by_run.remove(run_id) {
+        run.active_attempt_ids.retain(|id| id != &attempt_id);
+    }
+}
+
 pub fn project_agent_runs(
     session_id: &str,
     events: &[StoredEvent],
@@ -129,23 +161,26 @@ pub fn project_agent_runs(
                 });
             }
             CanonicalFact::SquadPlanProposed(fact) => {
-                if let Some(run) = run_mut(&mut runs, &fact.run_id) {
-                    if let Some(plan) = parse_plan(&fact.plan) {
-                        let short = short_text(&plan.summary, 120);
-                        run.plan = Some(plan);
-                        run.plan_revision = fact.revision.max(1);
-                        run.status = AgentRunStatus::AwaitingApproval;
-                        run.updated_at = fact.proposed_at;
-                        if let Some(stage) = stage_mut(run, AgentStageId::Plan.as_str()) {
-                            stage.status = AgentStageStatus::Succeeded;
-                            stage.settled_at = Some(fact.proposed_at);
-                            stage.short_outcome = Some(short);
-                        }
-                        if let Some(attempt_id) = plan_attempt_by_run.remove(&fact.run_id) {
-                            run.active_attempt_ids.retain(|id| id != &attempt_id);
-                        }
-                    }
-                }
+                apply_plan_gate(
+                    &mut runs,
+                    &mut plan_attempt_by_run,
+                    &fact.run_id,
+                    fact.revision,
+                    &fact.plan,
+                    fact.proposed_at,
+                    fact.extra.get("stageId").and_then(|value| value.as_str()),
+                );
+            }
+            CanonicalFact::SquadPlanRevised(fact) => {
+                apply_plan_gate(
+                    &mut runs,
+                    &mut plan_attempt_by_run,
+                    &fact.run_id,
+                    fact.revision,
+                    &fact.plan,
+                    fact.revised_at,
+                    fact.extra.get("stageId").and_then(|value| value.as_str()),
+                );
             }
             CanonicalFact::SquadPlanApproved(fact) => {
                 if let Some(run) = run_mut(&mut runs, &fact.run_id) {
@@ -202,7 +237,19 @@ pub fn project_agent_runs(
                                 run.status = AgentRunStatus::Implementing
                             }
                             Some(AgentStageId::Review) => run.status = AgentRunStatus::Reviewing,
-                            None => {}
+                            None => {
+                                // 自定义 N 段：首段视作 planning，其余 implementing
+                                let is_first = run
+                                    .stages
+                                    .first()
+                                    .map(|stage| stage.id == stage_id)
+                                    .unwrap_or(false);
+                                run.status = if is_first {
+                                    AgentRunStatus::Planning
+                                } else {
+                                    AgentRunStatus::Implementing
+                                };
+                            }
                         }
                         run.updated_at = fact.requested_at;
                     }
@@ -226,26 +273,31 @@ pub fn project_agent_runs(
                         .and_then(|value| value.as_str())
                         .unwrap_or("")
                         .trim();
-                    let short = short_text(summary, 160);
+                    // short=阶段 chip；full=右栏 Messages 全文
+                    let short = short_text(summary, STAGE_SHORT_OUTCOME_CHARS);
+                    let full = cap_text(summary, FINAL_SUMMARY_CHARS);
                     if let Some(stage) = stage_mut(run, &stage_id) {
                         stage.settled_at = Some(fact.recorded_at);
                         if status == "succeeded" {
                             stage.status = AgentStageStatus::Succeeded;
                             stage.short_outcome = Some(short.clone());
+                            if !full.is_empty() {
+                                stage.full_outcome = Some(full);
+                            }
                             stage.error = None;
                         } else {
                             stage.status = AgentStageStatus::Failed;
                             stage.error = Some(short.clone());
                             stage.short_outcome = Some(short.clone());
+                            if !full.is_empty() {
+                                stage.full_outcome = Some(full);
+                            }
                         }
                     }
                     run.active_attempt_ids
                         .retain(|attempt| attempt != &fact.attempt_id);
                     run.updated_at = fact.recorded_at;
-                    if stage_id == AgentStageId::Review.as_str() && status == "succeeded" {
-                        // 审查产出作为候选短汇总（settled 可覆盖）
-                        run.final_summary = Some(short_text(summary, 480));
-                    }
+                    // finalSummary 在 settle 时由「全节点调度总结」写入，此处不塞末段原文
                 }
             }
             CanonicalFact::SquadBranchBlocked(fact) => {
@@ -283,7 +335,11 @@ pub fn project_agent_runs(
                         run.status = AgentRunStatus::Failed;
                     }
                     if let Some(summary) = fact.summary {
-                        run.final_summary = Some(short_text(&summary, 480));
+                        let next = cap_text(&summary, FINAL_SUMMARY_CHARS);
+                        if !next.is_empty() {
+                            // settle 写入的是全节点调度总结
+                            run.final_summary = Some(next);
+                        }
                     }
                     for stage in &mut run.stages {
                         if matches!(

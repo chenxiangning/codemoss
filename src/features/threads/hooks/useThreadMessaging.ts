@@ -64,7 +64,8 @@ import {
   isResolvedExecutionTarget,
 } from "../../shared-session/target/types";
 import { requestAgentPlan } from "../../multi-agent/runtime/executor";
-import { isMultiAgentEnabled } from "../../multi-agent/runtime/featureFlag";
+import { getSelectedTemplate } from "../../multi-agent/templates/templateStore";
+import { templateToStageBindings } from "../../multi-agent/templates/types";
 import { multiAgentContextBlockReason } from "../../multi-agent/runtime/contextGate";
 import { subscribeMultiAgentConversationItems } from "../../multi-agent/runtime/conversationBridge";
 import { reconcileAtomicReasoningEffort } from "../../models/atomicModelReasoning";
@@ -615,14 +616,15 @@ export function useThreadMessaging({
         };
       }
       if (options?.squadRequest) {
+        // Shared 内已走协作发送：不再二次判断 feature flag；
+        // 仍强制 shared + V2 + 完整 target，避免 native / 半开 target 越界。
         if (
           threadKind !== "shared" ||
           !sharedV2SendEnabled ||
-          !isMultiAgentEnabled() ||
           !isResolvedExecutionTarget(supportedStoredSharedTarget)
         ) {
           throw new Error(
-            "agent-request-unavailable: Multi-Agent requires enabled Shared Session V2 and a complete target",
+            "agent-request-unavailable: Multi-Agent requires Shared Session V2 and a complete target",
           );
         }
         if (images.length > 0) {
@@ -654,18 +656,17 @@ export function useThreadMessaging({
           providerProfileSource: snapshot.providerProfileSource,
           runtimeCapabilityFingerprint: snapshot.runtimeCapabilityFingerprint,
         };
-        // V1：默认三段共用当前 Shared target；编排壳已支持每段独立 binding，
-        // 后续可在 Composer 展开段配置而不改发送契约。
+        // 按当前选中模板生成每段独立 stageBindings（CLI·模型·思考强度）。
+        const stageBindings = templateToStageBindings(
+          getSelectedTemplate(),
+          collabTarget,
+        );
         await requestAgentPlan({
           workspaceId: workspace.id,
           threadId,
           text: messageText,
           target: collabTarget,
-          stageBindings: [
-            { id: "plan", target: collabTarget },
-            { id: "implement", target: collabTarget },
-            { id: "review", target: collabTarget },
-          ],
+          stageBindings,
         });
         return;
       }

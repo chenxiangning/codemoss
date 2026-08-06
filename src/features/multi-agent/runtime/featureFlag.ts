@@ -22,6 +22,9 @@ export function isMultiAgentEnabled(): boolean {
       // ignore storage failures
     }
   }
+  // 默认开启（与 Rust kill switch 一致：opt-out）。
+  // 关闭：env VITE_CCGUI_AGENT_ORCHESTRATION_V1=0 或 localStorage `ccgui.agentOrchestrationV1`="0"。
+  // Shared 协作入口可见性/发送不再依赖此 flag；仅保留给遗留调用方与紧急关闭。
   return (
     parseFlag(import.meta.env.VITE_CCGUI_AGENT_ORCHESTRATION_V1) ??
     parseFlag(import.meta.env.VITE_CCGUI_SQUAD_ORCHESTRATION_V1) ??

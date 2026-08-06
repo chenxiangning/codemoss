@@ -1,34 +1,47 @@
-import { useEffect, useState } from "react";
-import Check from "lucide-react/dist/esm/icons/check";
-import Circle from "lucide-react/dist/esm/icons/circle";
-import LoaderCircle from "lucide-react/dist/esm/icons/loader-circle";
-import Octagon from "lucide-react/dist/esm/icons/octagon";
-import UsersRound from "lucide-react/dist/esm/icons/users-round";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { pushErrorToast } from "../../../services/toasts";
 import { isSharedSessionThreadId } from "../../shared-session/utils/sharedSessionIdentity";
 import {
   approveAndExecuteAgent,
+  forceStopAndUnlock,
   hydrateAgentProjection,
+  rejectAndReplanAgent,
+  retryAgentStage,
+  retryCollabRun,
   stopAgent,
 } from "../runtime/executor";
-import { isMultiAgentEnabled } from "../runtime/featureFlag";
+import { getAgentLivePhase } from "../runtime/livePhaseChannel";
 import {
   claimAgentHydration,
   useAgentEvidenceRunId,
   useAgentProjection,
+  useAgentRoundList,
 } from "../store/agentStore";
 import {
+  useCollabUiState,
+  type CollabUiState,
+} from "../store/collabUiStore";
+import {
   openAgentInspector,
+  selectAgentRound,
   selectAgentStage,
 } from "../store/inspectorStore";
+import { getSelectedTemplate } from "../templates/templateStore";
+import { templateFlowLabel } from "../templates/types";
 import {
   isTerminalAgentStatus,
-  targetBadge,
+  type AgentProjectionV1,
+  type AgentStageBinding,
   type AgentStageProjection,
-  type AgentStageStatus,
 } from "../types";
+import {
+  runProgressRatio,
+  runStatusHeadline,
+  stageStatusText,
+  stageTargetLabel,
+} from "../utils/format";
 
 type ConversationSurfaceProps = {
   workspaceId: string | null | undefined;
@@ -39,28 +52,537 @@ function diagnostic(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-function StageIcon({ status }: { status: AgentStageStatus }) {
-  if (status === "succeeded") return <Check size={13} aria-hidden="true" />;
-  if (status === "running")
-    return (
-      <LoaderCircle size={13} className="multi-agent-spin" aria-hidden="true" />
-    );
-  if (status === "failed") return <Octagon size={12} aria-hidden="true" />;
-  return <Circle size={11} aria-hidden="true" />;
+function stageBindingsFromProjection(
+  projection: AgentProjectionV1,
+): AgentStageBinding[] {
+  return (projection.stages ?? []).map((stage) => ({
+    id: stage.id,
+    title: stage.title,
+    rolePrompt: stage.rolePrompt ?? null,
+    accessMode: stage.accessMode,
+    requiresApproval: stage.requiresApproval ?? false,
+    target: stage.target,
+  }));
 }
 
+function userFacingDiagnostics(projection: AgentProjectionV1): string[] {
+  return (projection.diagnostics ?? []).filter((item) => {
+    const lower = item.toLowerCase();
+    if (lower.startsWith("cancel requested")) return false;
+    if (lower.includes("reject replan") || item.includes("打回重规划")) {
+      return false;
+    }
+    return true;
+  });
+}
+
+/** 节点无 live 更新超过此时长 → 展示卡死恢复条（不自动杀进程） */
+const STAGE_HANG_HINT_MS = 90_000;
+
+function OrchCard({
+  projection,
+  roundIndex,
+  totalRounds,
+  active,
+  workspaceId,
+  threadId,
+  onOpenStage,
+  onApprove,
+  onRejectReplan,
+  onStop,
+  onForceUnlock,
+  onRetryRun,
+  onRetryStage,
+  busy,
+  onJumpRound,
+  featureEnabled,
+}: {
+  projection: AgentProjectionV1;
+  roundIndex: number;
+  totalRounds: number;
+  active: boolean;
+  workspaceId: string;
+  threadId: string;
+  onOpenStage: (stage: AgentStageProjection) => void;
+  onApprove: () => void;
+  /** note 为空则按原任务重规划；有内容则追加到原任务后 */
+  onRejectReplan: (note?: string) => void;
+  onStop: () => void;
+  onForceUnlock: () => void;
+  onRetryRun: (stuckStageId?: string) => void;
+  onRetryStage: (stage: AgentStageProjection) => void;
+  busy: "approve" | "stop" | "replan" | "retry" | null;
+  onJumpRound: (roundIndex: number) => void;
+  featureEnabled: boolean;
+}) {
+  const { t } = useTranslation();
+  const [replanOpen, setReplanOpen] = useState(false);
+  const [replanNote, setReplanNote] = useState("");
+  const [hangHint, setHangHint] = useState(false);
+  // 进行中默认折叠阶段列表；loading 进度条始终露出
+  const [stagesOpen, setStagesOpen] = useState(false);
+  const stages = projection.stages ?? [];
+  const progress = Math.round(runProgressRatio(projection) * 100);
+  const headline = runStatusHeadline(projection);
+  const flow =
+    stages.map((stage) => stage.title || stage.id).join(" → ") ||
+    templateFlowLabel(getSelectedTemplate());
+  const terminal = isTerminalAgentStatus(projection.status);
+  const anyStageLive = stages.some((stage) => stage.status === "running");
+  const runningStage = stages.find((stage) => stage.status === "running");
+  // 进度条「只升不降」：一旦进入 live 就不回退到确定态，避免阶段切换时动画闪烁。
+  const wasEverLive = useRef(false);
+  if (anyStageLive || (active && !terminal)) {
+    wasEverLive.current = true;
+  } else if (terminal) {
+    wasEverLive.current = false;
+  }
+  const indeterminate = anyStageLive || (wasEverLive.current && !terminal);
+  const diags = userFacingDiagnostics(projection);
+
+  // 卡死探测：running 且 live 通道长时间无更新 → 提示恢复操作
+  useEffect(() => {
+    if (terminal || !runningStage) {
+      setHangHint(false);
+      return;
+    }
+    const tick = () => {
+      const live = getAgentLivePhase(workspaceId, threadId);
+      const anchor =
+        live?.updatedAt && live.phase === runningStage.id
+          ? live.updatedAt
+          : runningStage.startedAt ?? projection.updatedAt;
+      const age = Date.now() - (anchor || 0);
+      setHangHint(age >= STAGE_HANG_HINT_MS);
+    };
+    tick();
+    const id = window.setInterval(tick, 5_000);
+    return () => window.clearInterval(id);
+  }, [
+    terminal,
+    runningStage?.id,
+    runningStage?.startedAt,
+    workspaceId,
+    threadId,
+    projection.updatedAt,
+  ]);
+  const statusLabel =
+    headline.kind === "done"
+      ? t("multiAgent.status.succeeded")
+      : headline.kind === "failed"
+        ? t(`multiAgent.status.${projection.status}`)
+        : headline.stageTitle
+          ? t("multiAgent.card.runningStage", { stage: headline.stageTitle })
+          : t(`multiAgent.status.${projection.status}`);
+
+  // 离开待批准态时收起打回面板
+  useEffect(() => {
+    if (projection.status !== "awaiting-approval") {
+      setReplanOpen(false);
+      setReplanNote("");
+    }
+  }, [projection.status]);
+
+  return (
+    <div
+      className={`ma-orch${active && !terminal ? " is-live" : ""}${stagesOpen ? "" : " is-stages-collapsed"}`}
+    >
+      <button
+        type="button"
+        className="ma-orch-head ma-orch-head--toggle"
+        aria-expanded={stagesOpen}
+        onClick={() => setStagesOpen((open) => !open)}
+      >
+        <span className={`ma-orch-chev${stagesOpen ? " is-open" : ""}`} aria-hidden>
+          ›
+        </span>
+        <span className="ma-orch-t">
+          {t("multiAgent.card.roundTitle", { n: roundIndex + 1 })}
+        </span>
+        <span className="ma-orch-tpl">{flow}</span>
+        <span
+          className={`ma-orch-st is-${headline.kind === "done" ? "done" : headline.kind === "failed" ? "fail" : "run"}`}
+        >
+          {statusLabel}
+        </span>
+      </button>
+      {/* 进度条只升不降：live 期间保持不确定动画，终端后才显示比例；折叠时仍露出 */}
+      <div
+        className={`ma-prog${indeterminate ? " is-indeterminate" : ""}`}
+        aria-hidden
+      >
+        <i
+          style={
+            indeterminate
+              ? undefined
+              : {
+                  width: `${progress}%`,
+                  background:
+                    projection.status === "succeeded"
+                      ? "var(--ma-green, #4ade80)"
+                      : undefined,
+                }
+          }
+        />
+      </div>
+      {stagesOpen
+        ? stages.map((stage) => {
+        const live = stage.status === "running";
+        const canRetryStage =
+          !terminal &&
+          (stage.status === "running" || stage.status === "failed");
+        const approved =
+          (stage.requiresApproval || stage.id === "plan") &&
+          (projection.status === "implementing" ||
+            projection.status === "reviewing" ||
+            projection.status === "succeeded" ||
+            Boolean(projection.approvedAt));
+        return (
+          <div
+            key={stage.id}
+            className={`ma-stage-row-wrap${live ? " is-running" : ""}`}
+          >
+            <button
+              type="button"
+              className={`ma-stage-row${live ? " is-running" : ""}`}
+              onClick={() => onOpenStage(stage)}
+            >
+              <i
+                className={`ma-dot${stage.status === "succeeded" ? " is-done" : ""}${live ? " is-live" : ""}`}
+              />
+              <span className="ma-stage-nm">{stage.title || stage.id}</span>
+              <span className="ma-stage-tg">{stageTargetLabel(stage)}</span>
+              <span className={`ma-stage-st${live ? " is-live" : ""}`}>
+                {stageStatusText(stage, { approved, live })}
+              </span>
+            </button>
+            {canRetryStage ? (
+              <button
+                type="button"
+                className="ma-stage-retry"
+                disabled={busy !== null}
+                title={t("multiAgent.actions.retryStageHint", {
+                  defaultValue: "只重跑这一节点，保留已完成节点",
+                })}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onRetryStage(stage);
+                }}
+              >
+                {busy === "retry"
+                  ? t("multiAgent.actions.retrying", {
+                      defaultValue: "…",
+                    })
+                  : t("multiAgent.actions.retryStageShort", {
+                      defaultValue: "重试节点",
+                    })}
+              </button>
+            ) : null}
+          </div>
+        );
+      })
+        : null}
+
+      {projection.status === "awaiting-approval" ? (
+        <div className="ma-approve-bar">
+          {!featureEnabled ? (
+            <p className="ma-approve-summary ma--feature-off-hint">
+              {t("multiAgent.errors.featureDisabled")}
+            </p>
+          ) : null}
+          <button
+            type="button"
+            className="ma-primary"
+            disabled={busy !== null || !featureEnabled}
+            onClick={onApprove}
+          >
+            {busy === "approve"
+              ? t("multiAgent.actions.approving")
+              : t("multiAgent.actions.confirmExecute")}
+          </button>
+          <button
+            type="button"
+            className={`ma-ghost${replanOpen ? " is-on" : ""}`}
+            disabled={busy !== null || !featureEnabled}
+            aria-expanded={replanOpen}
+            onClick={() => setReplanOpen((v) => !v)}
+          >
+            {busy === "replan"
+              ? t("multiAgent.actions.replanning")
+              : t("multiAgent.actions.rejectReplan")}
+          </button>
+          {projection.plan?.summary ? (
+            <p className="ma-approve-summary">{projection.plan.summary}</p>
+          ) : null}
+          {replanOpen ? (
+            <div className="ma-replan-panel" role="region" aria-label={t("multiAgent.actions.replanNoteLabel")}>
+              <label className="ma-replan-label" htmlFor={`ma-replan-note-${projection.runId}`}>
+                {t("multiAgent.actions.replanNoteLabel")}
+              </label>
+              <textarea
+                id={`ma-replan-note-${projection.runId}`}
+                className="ma-replan-textarea"
+                rows={3}
+                value={replanNote}
+                disabled={busy !== null || !featureEnabled}
+                placeholder={t("multiAgent.actions.replanNotePlaceholder")}
+                onChange={(e) => setReplanNote(e.target.value)}
+              />
+              <div className="ma-replan-actions">
+                <button
+                  type="button"
+                  className="ma-ghost"
+                  disabled={busy !== null || !featureEnabled}
+                  onClick={() => {
+                    setReplanOpen(false);
+                    setReplanNote("");
+                  }}
+                >
+                  {t("multiAgent.actions.replanCancel")}
+                </button>
+                <button
+                  type="button"
+                  className="ma-primary"
+                  disabled={busy !== null || !featureEnabled}
+                  onClick={() => {
+                    onRejectReplan(replanNote.trim() || undefined);
+                  }}
+                >
+                  {busy === "replan"
+                    ? t("multiAgent.actions.replanning")
+                    : t("multiAgent.actions.replanConfirm")}
+                </button>
+              </div>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+
+      {diags.length > 0 ? (
+        <div className="ma-diagnostics" role="alert">
+          {diags.map((item) => (
+            <p key={item}>{item}</p>
+          ))}
+        </div>
+      ) : null}
+
+      {projection.status === "succeeded" && projection.finalSummary ? (
+        <div className="ma-summary-card">
+          <div className="ma-summary-t">
+            {t("multiAgent.card.finalTitleRound", { n: roundIndex + 1 })}
+          </div>
+          <p>{projection.finalSummary}</p>
+        </div>
+      ) : null}
+
+      {hangHint && !terminal && runningStage ? (
+        <div className="ma-hang-bar" role="status">
+          <p className="ma-hang-text">
+            {t("multiAgent.actions.hangHint", {
+              stage: runningStage.title || runningStage.id,
+              defaultValue:
+                "「{{stage}}」长时间无新输出（网络/引擎卡住均可能）。可只重试该节点，或强制停止/整轮重试。",
+            })}
+          </p>
+          <div className="ma-hang-actions">
+            <button
+              type="button"
+              className="ma-primary"
+              disabled={busy !== null}
+              onClick={() => onRetryStage(runningStage)}
+            >
+              {busy === "retry"
+                ? t("multiAgent.actions.retrying", {
+                    defaultValue: "正在重试…",
+                  })
+                : t("multiAgent.actions.retryStage", {
+                    defaultValue: "重试当前节点",
+                  })}
+            </button>
+            <button
+              type="button"
+              className="ma-stop"
+              disabled={busy !== null}
+              onClick={onForceUnlock}
+            >
+              {busy === "stop"
+                ? t("multiAgent.actions.stopping")
+                : t("multiAgent.actions.forceUnlock", {
+                    defaultValue: "强制停止并解锁",
+                  })}
+            </button>
+            <button
+              type="button"
+              className="ma-ghost"
+              disabled={busy !== null}
+              onClick={() => onRetryRun(runningStage.id)}
+            >
+              {t("multiAgent.actions.retryRun", {
+                defaultValue: "整轮重试协作",
+              })}
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      {!terminal ? (
+        <div
+          className={`ma-orch-actions${stagesOpen ? "" : " is-compact"}`}
+        >
+          <button
+            type="button"
+            className="ma-stop"
+            disabled={busy !== null || !featureEnabled}
+            onClick={onStop}
+          >
+            {busy === "stop"
+              ? t("multiAgent.actions.stopping")
+              : t("multiAgent.actions.stop")}
+          </button>
+          {anyStageLive ? (
+            <button
+              type="button"
+              className="ma-ghost"
+              disabled={busy !== null}
+              onClick={onForceUnlock}
+              title={t("multiAgent.actions.forceUnlockHint", {
+                defaultValue: "后端无响应时仍可解锁主输入",
+              })}
+            >
+              {t("multiAgent.actions.forceUnlock", {
+                defaultValue: "强制停止并解锁",
+              })}
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+
+      {/* 折叠态不放长 hint，避免大块空白；展开或有多轮时再露出 */}
+      {stagesOpen && totalRounds > 1 ? (
+        <div className="ma-orch-links">
+          <button
+            type="button"
+            className="ma-lk"
+            onClick={() => onJumpRound(roundIndex)}
+          >
+            {t("multiAgent.card.viewInPanel", { n: roundIndex + 1 })}
+          </button>
+        </div>
+      ) : stagesOpen ? (
+        <p className="ma-orch-hint">{t("multiAgent.card.orchestrationHint")}</p>
+      ) : null}
+    </div>
+  );
+}
+
+function useSharedRoundActions(
+  workspaceId: string | null | undefined,
+  threadId: string | null | undefined,
+) {
+  const openStage = (
+    run: AgentProjectionV1,
+    stage: AgentStageProjection,
+    roundIndex: number,
+  ) => {
+    if (!workspaceId || !threadId) return;
+    openAgentInspector({
+      workspaceId,
+      threadId,
+      runId: run.runId,
+      stageId: stage.id,
+      roundIndex,
+    });
+    selectAgentStage(stage.id);
+  };
+
+  const jumpRound = (
+    rounds: AgentProjectionV1[],
+    index: number,
+  ) => {
+    if (!workspaceId || !threadId) return;
+    const run = rounds[index];
+    if (!run) return;
+    const stage =
+      run.stages?.find((item) => item.status === "running") ??
+      run.stages?.[0] ??
+      null;
+    openAgentInspector({
+      workspaceId,
+      threadId,
+      runId: run.runId,
+      stageId: stage?.id ?? null,
+      roundIndex: index,
+    });
+    selectAgentRound({
+      runId: run.runId,
+      roundIndex: index,
+      stageId: stage?.id ?? null,
+    });
+  };
+
+  return { openStage, jumpRound };
+}
+
+/**
+ * 相位卡：projection 尚未创建（调度对话/启动节点）或已终态（生成汇总）时，
+ * sticky 窗保持可见并给出 loading，消除「误以为中断」的空窗期。
+ */
+function CollabPhaseCard({
+  state,
+  roundIndex,
+}: {
+  state: CollabUiState;
+  roundIndex: number;
+}) {
+  const { t } = useTranslation();
+  return (
+    <div className="ma-orch is-live">
+      <div className="ma-orch-head">
+        <span className="ma-orch-t">
+          {t("multiAgent.card.roundTitle", { n: roundIndex + 1 })}
+        </span>
+        <span className="ma-orch-tpl">{state.flowLabel}</span>
+        <span className="ma-orch-st is-run">{state.headline}</span>
+      </div>
+      <div className="ma-prog is-indeterminate" aria-hidden>
+        <i />
+      </div>
+      <div className="ma-orch-pending">
+        <span className="ma-orch-pending-dots" aria-hidden>
+          <i />
+          <i />
+          <i />
+        </span>
+        <p className="ma-orch-pending-detail">{state.detail}</p>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * sticky 完整编排卡（对话框上方）。
+ * 进行中由 projection 驱动；projection 空窗期（调度对话/启动/汇总）由 collabUi 相位驱动。
+ * 终态 HistoryFold 作为时间线消息项（agent:runId:hist-fold）插入主幕布历史。
+ */
 export function MultiAgentConversationSurface({
   workspaceId,
   threadId,
 }: ConversationSurfaceProps) {
   const { t } = useTranslation();
   const projection = useAgentProjection(workspaceId, threadId);
+  const rounds = useAgentRoundList(workspaceId, threadId);
+  const collabUi = useCollabUiState(workspaceId, threadId);
   const evidenceRunId = useAgentEvidenceRunId(workspaceId, threadId);
-  const [busy, setBusy] = useState<"approve" | "stop" | null>(null);
+  const [busy, setBusy] = useState<
+    "approve" | "stop" | "replan" | "retry" | null
+  >(null);
+  const { openStage, jumpRound } = useSharedRoundActions(workspaceId, threadId);
+
+  // Shared 内已进入协作 surface：不再用 feature flag 禁用批准/停止等操作。
+  const featureEnabled = true;
 
   useEffect(() => {
     if (
-      !isMultiAgentEnabled() ||
       !workspaceId ||
       !threadId ||
       !isSharedSessionThreadId(threadId) ||
@@ -77,19 +599,32 @@ export function MultiAgentConversationSurface({
     );
   }, [evidenceRunId, projection?.runId, threadId, workspaceId]);
 
-  if (!workspaceId || !threadId || !projection) return null;
+  if (!workspaceId || !threadId) return null;
 
-  const stages = projection.stages ?? [];
+  const roundIndex = projection
+    ? Math.max(
+        0,
+        rounds.findIndex((r) => r.runId === projection.runId),
+      )
+    : rounds.length;
 
-  const openStage = (stage: AgentStageProjection) => {
-    openAgentInspector({
-      workspaceId,
-      threadId,
-      runId: projection.runId,
-      stageId: stage.id,
-    });
-    selectAgentStage(stage.id);
-  };
+  // projection 空窗期（调度对话/启动节点/生成汇总）：相位卡保持 sticky 窗可见
+  if (!projection || isTerminalAgentStatus(projection.status)) {
+    if (collabUi && collabUi.phase !== "idle" && collabUi.phase !== "done") {
+      return (
+        <section className="ma-surface ma-surface--sticky" aria-live="polite">
+          <div className="ma-msg">
+            <div className="ma-who">{t("multiAgent.card.who")}</div>
+            <div className="ma-meta-line">
+              collab · shared · round {roundIndex + 1}
+            </div>
+            <CollabPhaseCard state={collabUi} roundIndex={roundIndex} />
+          </div>
+        </section>
+      );
+    }
+    return null;
+  }
 
   const approve = async () => {
     if (busy) return;
@@ -106,6 +641,32 @@ export function MultiAgentConversationSurface({
         title: t("multiAgent.errors.startFailed"),
         message: t("multiAgent.errors.approvalFailed", {
           diagnostic: diagnostic(error),
+        }),
+      });
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const rejectReplan = async (note?: string) => {
+    if (busy) return;
+    setBusy("replan");
+    try {
+      await rejectAndReplanAgent({
+        workspaceId,
+        threadId,
+        runId: projection.runId,
+        requestText: projection.requestText,
+        replanNote: note,
+        target: projection.target,
+        stageBindings: stageBindingsFromProjection(projection),
+      });
+    } catch (error) {
+      pushErrorToast({
+        title: t("multiAgent.errors.startFailed"),
+        message: t("multiAgent.errors.replanFailed", {
+          diagnostic: diagnostic(error),
+          defaultValue: `打回重规划失败：${diagnostic(error)}`,
         }),
       });
     } finally {
@@ -130,121 +691,121 @@ export function MultiAgentConversationSurface({
     }
   };
 
+  const forceUnlock = async () => {
+    if (busy) return;
+    setBusy("stop");
+    try {
+      await forceStopAndUnlock(workspaceId, threadId, projection.runId);
+      pushErrorToast({
+        variant: "success",
+        title: t("multiAgent.actions.forceUnlockDoneTitle", {
+          defaultValue: "已解锁",
+        }),
+        message: t("multiAgent.actions.forceUnlockDone", {
+          defaultValue: "协作已强制停止，可继续普通对话或重新开启协作。",
+        }),
+      });
+    } catch (error) {
+      pushErrorToast({
+        title: t("multiAgent.errors.stopFailedTitle"),
+        message: t("multiAgent.errors.stopFailed", {
+          diagnostic: diagnostic(error),
+        }),
+      });
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const retryRun = async (stuckStageId?: string) => {
+    if (busy) return;
+    setBusy("retry");
+    try {
+      await retryCollabRun({
+        workspaceId,
+        threadId,
+        runId: projection.runId,
+        requestText: projection.requestText,
+        target: projection.target,
+        stageBindings: stageBindingsFromProjection(projection),
+        stuckStageId,
+      });
+    } catch (error) {
+      pushErrorToast({
+        title: t("multiAgent.errors.startFailed"),
+        message: t("multiAgent.errors.retryFailed", {
+          diagnostic: diagnostic(error),
+          defaultValue: `重试失败：${diagnostic(error)}`,
+        }),
+      });
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const retryStage = async (stage: AgentStageProjection) => {
+    if (busy) return;
+    setBusy("retry");
+    try {
+      await retryAgentStage({
+        workspaceId,
+        threadId,
+        runId: projection.runId,
+        stageId: stage.id,
+        oldAttemptId: stage.attemptId,
+      });
+    } catch (error) {
+      const msg = diagnostic(error);
+      // 终态 run 无法单节点重试 → 引导整轮
+      if (msg.includes("agent-retry-stage-terminal")) {
+        pushErrorToast({
+          variant: "info",
+          title: t("multiAgent.actions.retryStage", {
+            defaultValue: "重试当前节点",
+          }),
+          message: t("multiAgent.errors.retryStageTerminal", {
+            defaultValue: "本轮已结束，无法单节点重试。请用「整轮重试协作」。",
+          }),
+        });
+      } else {
+        pushErrorToast({
+          title: t("multiAgent.errors.startFailed"),
+          message: t("multiAgent.errors.retryFailed", {
+            diagnostic: msg,
+            defaultValue: `节点重试失败：${msg}`,
+          }),
+        });
+      }
+    } finally {
+      setBusy(null);
+    }
+  };
+
   return (
-    <section className="multi-agent-surface" aria-live="polite">
-      <div className="multi-agent-card">
-        <div className="multi-agent-card-heading">
-          <div className="multi-agent-card-icon" aria-hidden="true">
-            <UsersRound size={16} />
-          </div>
-          <div className="multi-agent-card-title">
-            <strong>{t("multiAgent.card.runTitle")}</strong>
-            <span>{projection.requestText}</span>
-          </div>
-          <span className={`multi-agent-status is-${projection.status}`}>
-            {t(`multiAgent.status.${projection.status}`, {
-              defaultValue: projection.status,
-            })}
-          </span>
+    <section className="ma-surface ma-surface--sticky" aria-live="polite">
+      <div className="ma-msg">
+        <div className="ma-who">{t("multiAgent.card.who")}</div>
+        <div className="ma-meta-line">
+          collab · shared · round {roundIndex + 1}
         </div>
-
-        <p className="multi-agent-hint">{t("multiAgent.card.orchestrationHint")}</p>
-
-        {/* 主幕布：编排组合 + 环节状态（点开分屏看该节点直播） */}
-        <div
-          className="multi-agent-stage-list"
-          aria-label={t("multiAgent.lifecycle.aria")}
-        >
-          {stages.map((stage, index) => (
-            <button
-              type="button"
-              key={stage.id}
-              className={`multi-agent-stage-card is-${stage.status}`}
-              onClick={() => openStage(stage)}
-            >
-              <span className="multi-agent-stage-index">{index + 1}</span>
-              <span className="multi-agent-stage-icon">
-                <StageIcon status={stage.status} />
-              </span>
-              <span className="multi-agent-stage-body">
-                <strong>{stage.title || stage.id}</strong>
-                <small className="multi-agent-stage-badge">
-                  {targetBadge(stage.target)}
-                </small>
-                {stage.shortOutcome ? (
-                  <em className="multi-agent-stage-outcome">
-                    {stage.shortOutcome}
-                  </em>
-                ) : (
-                  <em className="multi-agent-stage-outcome is-muted">
-                    {t(`multiAgent.stageStatus.${stage.status}`, {
-                      defaultValue: stage.status,
-                    })}
-                  </em>
-                )}
-              </span>
-            </button>
-          ))}
-        </div>
-
-        {(projection.diagnostics ?? []).length > 0 ? (
-          <div className="multi-agent-diagnostics" role="alert">
-            {(projection.diagnostics ?? []).map((item) => (
-              <p key={item}>{item}</p>
-            ))}
-          </div>
-        ) : null}
-
-        {projection.status === "awaiting-approval" && projection.plan ? (
-          <div className="multi-agent-plan">
-            <p className="multi-agent-plan-summary">{projection.plan.summary}</p>
-            {(projection.plan.steps ?? []).length > 0 ? (
-              <ol className="multi-agent-plan-steps">
-                {(projection.plan.steps ?? []).map((step) => (
-                  <li key={step}>{step}</li>
-                ))}
-              </ol>
-            ) : null}
-            <p className="multi-agent-hint is-muted">
-              {t("multiAgent.card.confirmHint")}
-            </p>
-          </div>
-        ) : null}
-
-        {projection.status === "succeeded" && projection.finalSummary ? (
-          <div className="multi-agent-final-box">
-            <strong>{t("multiAgent.card.finalTitle")}</strong>
-            <p className="multi-agent-final">{projection.finalSummary}</p>
-          </div>
-        ) : null}
-
-        <div className="multi-agent-actions">
-          {projection.status === "awaiting-approval" ? (
-            <button
-              type="button"
-              className="multi-agent-primary"
-              disabled={busy !== null}
-              onClick={() => void approve()}
-            >
-              {busy === "approve"
-                ? t("multiAgent.actions.approving")
-                : t("multiAgent.actions.confirmExecute")}
-            </button>
-          ) : null}
-          {!isTerminalAgentStatus(projection.status) ? (
-            <button
-              type="button"
-              className="multi-agent-stop"
-              disabled={busy !== null}
-              onClick={() => void stop()}
-            >
-              <Octagon size={13} aria-hidden="true" />
-              {busy === "stop"
-                ? t("multiAgent.actions.stopping")
-                : t("multiAgent.actions.stop")}
-            </button>
-          ) : null}
-        </div>
+        <OrchCard
+          projection={projection}
+          roundIndex={roundIndex}
+          totalRounds={Math.max(rounds.length, 1)}
+          active
+          workspaceId={workspaceId}
+          threadId={threadId}
+          busy={busy}
+          featureEnabled={featureEnabled}
+          onApprove={() => void approve()}
+          onRejectReplan={(note) => void rejectReplan(note)}
+          onStop={() => void stop()}
+          onForceUnlock={() => void forceUnlock()}
+          onRetryRun={(stageId) => void retryRun(stageId)}
+          onRetryStage={(stage) => void retryStage(stage)}
+          onOpenStage={(stage) => openStage(projection, stage, roundIndex)}
+          onJumpRound={(index) => jumpRound(rounds, index)}
+        />
       </div>
     </section>
   );

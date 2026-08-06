@@ -237,6 +237,7 @@ export const MessagesCore = memo(function MessagesCore({
     presentationProfile = null,
     agentTaskScrollRequest = null,
     timelineLeadingNode = null,
+    timelineTrailingNode = null,
     isProviderContinuation = false,
   } = presentation;
   const { t } = useTranslation();
@@ -1910,6 +1911,7 @@ export const MessagesCore = memo(function MessagesCore({
         />
         {timelineLeadingNode}
         <MessagesTimeline {...timelineModels} />
+        {timelineTrailingNode}
       </div>
       <ScrollControl
         containerRef={containerRef}

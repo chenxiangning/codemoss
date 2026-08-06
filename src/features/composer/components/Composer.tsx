@@ -156,8 +156,8 @@ import {
 import { IntentCanvasAttachmentCard } from "../../intent-canvas/components/IntentCanvasAttachmentCard";
 import type { IntentCanvasDocument } from "../../intent-canvas/types";
 import { resolveBrowserNavigationUrl } from "../utils/browserNavigation";
-import { isMultiAgentEnabled } from "../../multi-agent/runtime/featureFlag";
 import { useAgentProjection } from "../../multi-agent/store/agentStore";
+import { useCollabUiState } from "../../multi-agent/store/collabUiStore";
 import { isTerminalAgentStatus } from "../../multi-agent/types";
 import {
   isMultiAgentTargetSupported,
@@ -863,13 +863,24 @@ function ComposerImpl({
       : nativeSessionTarget;
   const [agentArmed, setAgentArmed] = useState(false);
   const agentProjection = useAgentProjection(activeWorkspaceId, activeThreadId);
-  const agentFeatureEnabled = isMultiAgentEnabled();
   const agentTargetSupported = isMultiAgentTargetSupported(
     selectedAtomicTarget?.engine,
   );
   const hasActiveAgentRun = Boolean(
     agentProjection && !isTerminalAgentStatus(agentProjection.status),
   );
+  const collabUi = useCollabUiState(activeWorkspaceId, activeThreadId);
+  // 协作运行中（含启动/汇总空窗）pill 显示进行中，避免「未开启」误导
+  const collabRunActive =
+    hasActiveAgentRun ||
+    Boolean(
+      collabUi &&
+        collabUi.phase !== "idle" &&
+        collabUi.phase !== "done",
+    );
+  // 编排执行中锁定主输入区；终态后 collabRunActive 变 false 自动恢复
+  const collabLocksComposer = collabRunActive;
+  const composerInteractionDisabled = disabled || collabLocksComposer;
   useEffect(() => {
     setAgentArmed(false);
   }, [activeThreadId, activeWorkspaceId]);
@@ -2005,7 +2016,7 @@ function ComposerImpl({
 
   const handleCodexQuickCommand = useCallback(
     (command: string) => {
-      if (disabled || effectiveSubmitDisabled) {
+      if (disabled || effectiveSubmitDisabled || collabLocksComposer) {
         return;
       }
       const normalized = command.trim().toLowerCase();
@@ -2023,6 +2034,7 @@ function ComposerImpl({
       void onSend(command, []);
     },
     [
+      collabLocksComposer,
       disabled,
       effectiveSubmitDisabled,
       isReviewQuickActionEngine,
@@ -2032,7 +2044,7 @@ function ComposerImpl({
   );
 
   const handleForkQuickStart = useCallback(() => {
-    if (disabled || effectiveSubmitDisabled) {
+    if (disabled || effectiveSubmitDisabled || collabLocksComposer) {
       return;
     }
     if (onForkQuickStart) {
@@ -2044,6 +2056,7 @@ function ComposerImpl({
     }
     void onSend("/fork", []);
   }, [
+    collabLocksComposer,
     disabled,
     effectiveSubmitDisabled,
     onForkQuickStart,
@@ -2053,7 +2066,7 @@ function ComposerImpl({
 
   const handleSend = useCallback(
     (submittedText?: string, submittedImages?: string[]) => {
-      if (disabled || effectiveSubmitDisabled) {
+      if (disabled || effectiveSubmitDisabled || collabLocksComposer) {
         return;
       }
       if (opencodeDisconnected) {
@@ -2081,8 +2094,9 @@ function ComposerImpl({
       }
       const isAgentSubmission = agentArmed;
       if (isAgentSubmission) {
+        // Shared 内用户已启用协作：不再用 feature flag 拦截；
+        // 边界只看 shared 身份 + 完整 target（native 永不会走到 arm）。
         if (
-          !agentFeatureEnabled ||
           !isSharedSessionResolved ||
           !isResolvedExecutionTarget(selectedAtomicTarget)
         ) {
@@ -2343,10 +2357,14 @@ function ComposerImpl({
             diagnostic.startsWith("agent-request-target-unavailable:")
           ) {
             message = t("multiAgent.errors.targetUnavailable");
+          } else if (diagnostic.startsWith("agent-disabled:")) {
+            // 勿再映射成 incompleteTarget，避免「配置正确却报 CLI 不完整」
+            message = t("multiAgent.errors.featureDisabled");
           } else if (
             diagnostic.startsWith("agent-request-target-incomplete:") ||
             diagnostic.startsWith("agent-request-unavailable:") ||
-            diagnostic.startsWith("agent-disabled:")
+            diagnostic.startsWith("invalid-target:") ||
+            diagnostic.includes("shared-v2-target-incomplete")
           ) {
             message = t("multiAgent.errors.incompleteTarget");
           }
@@ -2383,6 +2401,7 @@ function ComposerImpl({
       browserContext,
       createSessionTargetPicker,
       effectiveCreationTarget,
+      collabLocksComposer,
       disabled,
       effectiveSubmitDisabled,
       imageAttachEngine,
@@ -2408,7 +2427,6 @@ function ComposerImpl({
       t,
       text,
       agentArmed,
-      agentFeatureEnabled,
       isSharedSessionResolved,
       selectedAtomicTarget,
       carryOverContextChipKeys,
@@ -2779,7 +2797,9 @@ function ComposerImpl({
     shouldRenderReviewInlinePrompt;
 
   return (
-    <footer className={`composer${disabled ? " is-disabled" : ""}`}>
+    <footer
+      className={`composer${composerInteractionDisabled ? " is-disabled" : ""}`}
+    >
       <div
         className={`composer-shell${isComposerCollapsed ? " is-collapsed" : ""}`}
       >
@@ -3124,24 +3144,31 @@ function ComposerImpl({
             <ChatInputBoxAdapter
               ref={chatInputRef}
               text={text}
-              disabled={disabled}
-              submitDisabled={effectiveSubmitDisabled}
+              disabled={composerInteractionDisabled}
+              submitDisabled={
+                effectiveSubmitDisabled || collabLocksComposer
+              }
               isProcessing={isProcessing}
               streamActivityPhase={resolvedComposerStreamActivityPhase}
               canStop={canStop}
               onSend={handleSend}
               squadSurface={
-                agentFeatureEnabled && isSharedSessionResolved ? (
+                isSharedSessionResolved ? (
                   <MultiAgentComposerToggle
                     engine={selectedAtomicTarget?.engine}
-                    armed={agentArmed}
+                    armed={agentArmed || collabRunActive}
                     disabled={
                       disabled ||
                       effectiveSubmitDisabled ||
-                      !isResolvedExecutionTarget(selectedAtomicTarget)
+                      !isResolvedExecutionTarget(selectedAtomicTarget) ||
+                      collabRunActive
                     }
-                    hasActiveRun={hasActiveAgentRun}
-                    onToggle={() => setAgentArmed((armed) => !armed)}
+                    hasActiveRun={collabRunActive}
+                    onToggle={() => {
+                      if (collabRunActive) return;
+                      setAgentArmed((armed) => !armed);
+                    }}
+                    onArm={() => setAgentArmed(true)}
                   />
                 ) : undefined
               }
@@ -3240,9 +3267,11 @@ function ComposerImpl({
               onSelectSkill={handleSelectSkill}
               sendShortcut={sendShortcut}
               placeholder={
-                sendShortcut === "cmdEnter"
-                  ? t("chat.inputPlaceholderCmdEnter")
-                  : t("chat.inputPlaceholderEnter")
+                collabLocksComposer
+                  ? t("multiAgent.entry.collabRunningLock")
+                  : sendShortcut === "cmdEnter"
+                    ? t("chat.inputPlaceholderCmdEnter")
+                    : t("chat.inputPlaceholderEnter")
               }
               activeFile={
                 hasActiveFileReference

@@ -3,8 +3,9 @@
 | 字段 | 值 |
 |------|-----|
 | 状态 | design / active |
-| 日期 | 2026-08-05 |
-| 修订 | 2026-08-05：v4 双栏预览稿定稿 —— 右编排面板终局样式 = 07 节点卡片轮播（见 §8） |
+| 日期 | 2026-08-06 |
+| 修订 | 2026-08-06：Code Review 修复 —— featureFlag 默认关闭、三层防御文档化、mergeLiveText 去重、进度条动画去闪烁、CSS GPU 加速、防污染约定落文（§17 新增） |
+|      | 2026-08-05：v4 双栏预览稿定稿 —— 右编排面板终局样式 = 07 节点卡片轮播（见 §8） |
 | 范围 | Shared Session 内的多 CLI · Provider · Model · 思考强度分环节协作 |
 | 产品入口 | Composer「协作」/ Multi-Agent Collab |
 | 预览稿 | `docs/previews/multi-agent-canvas-drawer-v4/`（双栏四态全链路可点击 HTML：06 日志控制台 / 07 卡片轮播，hash `#s1`~`#s4` 直达） |
@@ -354,7 +355,8 @@ stageBindings: [
 
 - 不写 runtime 侧车状态
 - 重启后可恢复 stages 状态与 shortOutcome
-- `finalSummary` 仅短文本（实现层截断，如 480 字）
+- `finalSummary` 为**调度者综括本轮各节点**（表格 + 分段要点，非末段原文复读）；`fullOutcome` 供右栏 Messages 全文；`shortOutcome` 仍为 chip 短截（160）
+- 协作启动：主幕布先做调度对话（Shared V2 主路径），结束后再启动规划节点 worker
 
 ---
 
@@ -647,7 +649,58 @@ AppServer realtime
 
 ---
 
-## 17. 术语表
+## 17. 边界安全与隔离（Boundary & Safety）
+
+### 17.1 三层防御
+
+协作功能不得影响普通 CLI 对话，通过三层 gate 严格隔离：
+
+| 层级 | Gate | 文件 | 行为 |
+|------|------|------|------|
+| **L1 入口 UI** | `agentArmed` + `isSharedSessionResolved` + `isMultiAgentTargetSupported` | `Composer.tsx:3154` | 非 Shared Session 不渲染协作 pill |
+| **L2 发送管道** | `squadRequest` + `isMultiAgentEnabled()` | `useThreadMessaging.ts:619-628` | `threadKind !== "shared"` 直接拒绝 |
+| **L3 Rust 端** | `require_agent_enabled()` | `support.rs:29-43` | 未设置 env 则拒绝所有 agent command |
+
+L1 与 L2 确保：非 Shared Session 线程完全不受影响，普通 CLI 对话走原有路径。
+
+### 17.2 Feature Flag 设计
+
+```text
+VITE_CCGUI_AGENT_ORCHESTRATION_V1=1   → 启用（env）
+localStorage "ccgui.agentOrchestrationV1" = "1"  → 启用（运行时）
+```
+
+**默认关闭**。两层存储按优先级：localStorage > env > default(false)。
+
+前端 `isMultiAgentEnabled()` 与 Rust `require_agent_enabled()` 独立判定，互为纵深防御。
+
+### 17.3 Canvas 消息防污染
+
+协作 briefing/summary 消息通过 `sendSharedSessionTurnV2` 发送，会写入 canonical fact log（持久化）。Canvas 层通过以下机制剥离：
+
+1. `filterMultiAgentCanvasItems` → `stripCollabInternalPrompt` 对 `[[mossx.collab.summary]]` marker 返回空字符串 → 整条 user 消息丢弃。
+2. `isCollabInternalPromptText` + `[[mossx.collab.summary` 的 assistant 消息整段隐藏。
+3. `COLLAB_BRIEFING_MARKER` / `COLLAB_SUMMARY_MARKER` 作为调度边界标记。
+
+**修改 collabPrompt.ts 时必须同步更新 `SUMMARY_HIDE_HINTS` / `STRIP_FROM_HINTS`**，否则内部指令泄漏到用户可见时间线。
+
+### 17.4 协作结束后的会话恢复
+
+`buildCollabSummarySendText` 包含指令：
+
+> 重要：此后用户消息均为普通编程对话，勿再以「协作调度者」身份接管会话。
+
+配合 `collabRunActive` 在终态后自动变 `false` → `collabLocksComposer` 解除 → 用户可以正常发送普通 Shared Session 消息。
+
+### 17.5 Composer 锁定
+
+运行中 `collabLocksComposer = collabRunActive` 完全锁定主输入区。终态自动恢复。
+
+流式直播期间进度条使用 `useRef` 记录 `wasEverLive`，只升不降，避免阶段切换时 indeterminate ↔ determinate 动画闪烁。
+
+---
+
+## 18. 术语表
 
 | 术语 | 含义 |
 |------|------|
@@ -660,15 +713,8 @@ AppServer realtime
 | finalSummary | 给用户的短汇总 |
 | Scoped Binding | 按 run+stage+target 隔离的 continuation owner |
 | 原生子代理 | 引擎内部 Task/SubAgent，非 collab stage |
-
----
-
-## 18. 相关文档
-
-- Shared / multi-CLI 基石：`docs/research/mossx-multi-cli-provider-session-foundation-design.md`
-- 新 CLI 接入：`docs/research/mossx-new-cli-onboarding-guide.md`
-- 渲染性能：`docs/perf/render-jank-knife-experiments-2026-07-08.md`
-- 规则入口：`AGENTS.md`、`openspec/`
+| Collab Pill | Composer 下方的协作开关按钮（仅 Shared Session 可见） |
+| [[mossx.collab.*]] | Canvas 层隐藏的调度标记；模型正常接收，幕布不渲染 |
 
 ---
 
@@ -676,8 +722,18 @@ AppServer realtime
 
 | 日期 | 说明 |
 |------|------|
+| 2026-08-06 | Code Review 修复合集：featureFlag 默认 false（前端+Rust 双层）、mergeLiveText 防重复、进度条 wasEverLive 去闪烁、CSS GPU 加速、§17 边界安全新增 |
 | 2026-08-05 | 首版：对齐「多引擎分环节编排」产品真相，纠正单 target 流水线与完成页 dump 误区 |
 | 2026-08-05 | v4 预览稿定稿：右编排面板终局样式 = 07 节点卡片轮播（06 留作诊断向备选）；P2 修订为「右栏流式精读」；新增 P8 轮次规则；§8 全节按 v4 重写（双栏拖拽、composer 弹层入口、页内模板模态、四态旅程） |
+
+---
+
+## 20. 相关文档
+
+- Shared / multi-CLI 基石：`docs/research/mossx-multi-cli-provider-session-foundation-design.md`
+- 新 CLI 接入：`docs/research/mossx-new-cli-onboarding-guide.md`
+- 渲染性能：`docs/perf/render-jank-knife-experiments-2026-07-08.md`
+- 规则入口：`AGENTS.md`、`openspec/`
 
 ---
 

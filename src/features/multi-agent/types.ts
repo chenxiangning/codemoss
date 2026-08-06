@@ -33,6 +33,10 @@ export type AgentExecutionTarget = {
 export type AgentStageBinding = {
   id: AgentStageId | string;
   target: AgentExecutionTarget;
+  title?: string | null;
+  rolePrompt?: string | null;
+  accessMode?: string | null;
+  requiresApproval?: boolean | null;
 };
 
 export type AgentPlanDraft = {
@@ -46,14 +50,18 @@ export type AgentStageProjection = {
   id: string;
   title: string;
   role: string;
+  rolePrompt?: string | null;
   target: AgentExecutionTarget;
   status: AgentStageStatus;
   accessMode: string;
+  requiresApproval?: boolean;
   attemptId?: string | null;
   bindingKey?: string | null;
   startedAt?: number | null;
   settledAt?: number | null;
   shortOutcome?: string | null;
+  /** 右栏节点全文（Messages 渲染，与 SubAgent 幕布同源） */
+  fullOutcome?: string | null;
   error?: string | null;
 };
 
@@ -137,8 +145,26 @@ export function defaultStageBindings(
   target: AgentExecutionTarget,
 ): AgentStageBinding[] {
   return [
-    { id: "plan", target },
-    { id: "implement", target },
-    { id: "review", target },
+    {
+      id: "plan",
+      target,
+      title: "规划",
+      requiresApproval: true,
+      accessMode: "read-only",
+    },
+    {
+      id: "implement",
+      target,
+      title: "实现",
+      requiresApproval: false,
+      accessMode: "current",
+    },
+    {
+      id: "review",
+      target,
+      title: "审查",
+      requiresApproval: false,
+      accessMode: "read-only",
+    },
   ];
 }

@@ -7,6 +7,8 @@ mod commands;
 mod projection;
 mod support;
 mod types;
+#[cfg(test)]
+mod types_test;
 
 pub use commands::*;
 pub use projection::project_agent_runs;

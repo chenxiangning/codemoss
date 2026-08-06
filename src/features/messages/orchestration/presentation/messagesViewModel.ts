@@ -15,6 +15,7 @@ import {
   isExplicitReasoningSegmentId,
   parseReasoning,
 } from "../../presentation/messagesReasoning";
+import { filterMultiAgentCanvasItems } from "../../../multi-agent/utils/canvasItems";
 export type MessageActionTargets = {
   targetByAssistantId: Map<string, string>;
   copyTextByAssistantId: Map<string, string>;
@@ -310,7 +311,9 @@ export function resolveVisibleMessageItems(options: {
     presentationProfile,
     reasoningMetaById,
   } = options;
-  const filtered = items.filter((item) => {
+  // Multi-Agent：吞 durable settle 摘要气泡 + 同一 run 双轨 user 去重
+  const canvasSourceItems = filterMultiAgentCanvasItems(items);
+  const filtered = canvasSourceItems.filter((item) => {
     if (
       (activeEngine === "codex" || activeEngine === "claude") &&
       item.kind === "explore" &&

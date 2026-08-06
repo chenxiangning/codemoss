@@ -24,15 +24,19 @@ use super::types::{
 
 static TRANSITION_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 
+/// Kill switch（opt-out）：默认开启，仅显式关闭时拒绝。
+/// 关闭：`CCGUI_AGENT_ORCHESTRATION_V1=0|false|off|no`（兼容 `CCGUI_SQUAD_ORCHESTRATION_V1`）。
+/// Shared Session 内启用协作后走真实 target 校验，不再依赖「显式开启」env。
 pub fn require_agent_enabled() -> Result<(), String> {
     let raw = std::env::var("CCGUI_AGENT_ORCHESTRATION_V1")
         .or_else(|_| std::env::var("CCGUI_SQUAD_ORCHESTRATION_V1"))
         .ok();
-    if let Some(value) = raw {
+    let disabled = raw.as_deref().is_some_and(|value| {
         let normalized = value.trim().to_ascii_lowercase();
-        if matches!(normalized.as_str(), "0" | "false" | "off" | "no") {
-            return Err("agent-disabled: Multi-Agent is disabled".to_string());
-        }
+        matches!(normalized.as_str(), "0" | "false" | "off" | "no")
+    });
+    if disabled {
+        return Err("agent-disabled: Multi-Agent is disabled".to_string());
     }
     Ok(())
 }
@@ -78,6 +82,14 @@ pub(super) fn load_latest(
     Ok(project_agent_runs(session_id, &events)?
         .into_iter()
         .next_back())
+}
+
+pub(super) fn load_all_runs(
+    writer: &SharedEventWriter,
+    session_id: &str,
+) -> Result<Vec<AgentProjectionV1>, String> {
+    let events = load_events(writer, session_id)?;
+    project_agent_runs(session_id, &events)
 }
 
 pub(super) fn require_run(
@@ -200,6 +212,67 @@ pub(super) fn review_prompt(request_text: &str, plan: &AgentPlanDraftV1, impleme
         summary = plan.summary,
         implement_note = implement_note,
     )
+}
+
+/// 将模板 rolePrompt 叠到环节基座 prompt 上。
+pub(super) fn with_role_prompt(role_prompt: Option<&str>, base: String) -> String {
+    let role = role_prompt.map(str::trim).filter(|value| !value.is_empty());
+    match role {
+        Some(role) => format!(
+            "【本环节自定义指令】\n{role}\n\n---\n\n{base}"
+        ),
+        None => base,
+    }
+}
+
+/// 按环节位置拼 worker prompt（支持自定义 N 段 + rolePrompt）。
+pub(super) fn build_stage_prompt(
+    stage_id: &str,
+    stage_index: usize,
+    stage_count: usize,
+    requires_approval: bool,
+    role_prompt: Option<&str>,
+    request_text: &str,
+    plan: Option<&AgentPlanDraftV1>,
+    upstream_notes: &str,
+) -> String {
+    let base = if stage_index == 0 && (requires_approval || AgentStageId::parse(stage_id) == Some(AgentStageId::Plan)) {
+        plan_prompt(request_text)
+    } else if stage_index + 1 >= stage_count
+        || AgentStageId::parse(stage_id) == Some(AgentStageId::Review)
+    {
+        let plan_ref = plan.cloned().unwrap_or(AgentPlanDraftV1 {
+            schema_version: AGENT_SCHEMA_VERSION,
+            summary: "（无规划摘要）".into(),
+            markdown: request_text.to_string(),
+            steps: vec![],
+        });
+        review_prompt(request_text, &plan_ref, upstream_notes)
+    } else if let Some(plan) = plan {
+        implement_prompt(request_text, plan)
+    } else {
+        format!(
+            r#"你是多 Agent 协作管线中的【{title}】环节。
+
+用户任务：
+{request_text}
+
+上游环节产出：
+{upstream}
+
+要求：
+- 完成该环节职责
+- 禁止 commit / push / deploy
+- 结束时用简短 Markdown 说明结果（控制在 20 行内）"#,
+            title = stage_id,
+            upstream = if upstream_notes.trim().is_empty() {
+                "（无）"
+            } else {
+                upstream_notes
+            },
+        )
+    };
+    with_role_prompt(role_prompt, base)
 }
 
 pub(super) fn parse_plan_from_assistant(raw: &str) -> Result<AgentPlanDraftV1, String> {
@@ -430,4 +503,27 @@ pub(super) fn require_writer_state(state: &AppState) -> Result<&SharedEventWrite
 
 pub(super) fn outcome_completed(fact: &TurnCommittedFact) -> bool {
     fact.outcome.status == OutcomeStatus::Completed
+}
+
+#[cfg(test)]
+mod kill_switch_tests {
+    use super::require_agent_enabled;
+
+    /// 默认开启：无 env 时不应拒绝（与 Shared 协作默认可用对齐）。
+    #[test]
+    fn require_agent_enabled_defaults_open() {
+        // 测试环境通常不设 CCGUI_AGENT_ORCHESTRATION_V1；若 CI 显式关闭则跳过。
+        let raw = std::env::var("CCGUI_AGENT_ORCHESTRATION_V1")
+            .or_else(|_| std::env::var("CCGUI_SQUAD_ORCHESTRATION_V1"))
+            .ok();
+        if raw.as_deref().is_some_and(|v| {
+            matches!(
+                v.trim().to_ascii_lowercase().as_str(),
+                "0" | "false" | "off" | "no"
+            )
+        }) {
+            return;
+        }
+        assert!(require_agent_enabled().is_ok());
+    }
 }

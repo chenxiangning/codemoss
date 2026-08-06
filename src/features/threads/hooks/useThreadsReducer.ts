@@ -10,6 +10,7 @@ import {
   upsertItem,
 } from "../../../utils/threadItems";
 import { settlePlanInProgressSteps } from "../utils/threadNormalize";
+import { isMultiAgentHistFoldItemId } from "../../multi-agent/utils/canvasItems";
 import {
   isIncrementalDerivationEnabled,
   isReducerNoopGuardEnabled,
@@ -1875,10 +1876,23 @@ export function threadReducer(state: ThreadState, action: ThreadAction): ThreadS
             "idle",
         },
       );
+      // Multi-Agent fold 卡是 bridge-only 项（后端投影不产出），历史重建时随本地保留，
+      // 否则「对话结束后协作卡丢失」。位置纠偏由幕布 filter 的 relocate 承担。
+      const incomingIds = new Set(mergedItems.map((item) => item.id));
+      const preservedFoldItems = localItems.filter(
+        (item) =>
+          item.kind === "message" &&
+          isMultiAgentHistFoldItemId(item.id) &&
+          !incomingIds.has(item.id),
+      );
+      const mergedWithFolds =
+        preservedFoldItems.length > 0
+          ? [...mergedItems, ...preservedFoldItems]
+          : mergedItems;
       // Cold reload / history path: fill missing final footer meta from local sidecar.
       const itemsWithSidecarMeta = mergeTurnFinalMetaIntoItems(
         action.threadId,
-        mergedItems,
+        mergedWithFolds,
       );
       const preserveMessageTextIds = new Set<string>();
       for (const item of itemsWithSidecarMeta) {

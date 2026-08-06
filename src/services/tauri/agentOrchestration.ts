@@ -34,12 +34,26 @@ export async function sharedAgentGet(
   return invoke("shared_agent_get", { workspaceId, threadId });
 }
 
+/** 获取该 Shared 会话中所有协作轮次（历史 + 当前），用于页面刷新后重放折叠卡 */
+export async function sharedAgentListAll(
+  workspaceId: string,
+  threadId: string,
+): Promise<AgentProjectionV1[]> {
+  return invoke("shared_agent_list_all", { workspaceId, threadId });
+}
+
 export async function sharedAgentRecordPlan(
   workspaceId: string,
   threadId: string,
   runId: string,
   attemptId: string,
-): Promise<AgentProjectionV1> {
+): Promise<
+  | AgentProjectionV1
+  | {
+      projection: AgentProjectionV1;
+      stageAttempt?: AgentPreparedAttempt | null;
+    }
+> {
   return invoke("shared_agent_record_plan", {
     workspaceId,
     threadId,
@@ -108,6 +122,24 @@ export async function sharedAgentCancel(
     threadId,
     runId,
     reason,
+  });
+}
+
+/** 单节点重试：关闭卡死/失败 attempt，同 stage 新开 worker turn */
+export async function sharedAgentRetryStage(
+  workspaceId: string,
+  threadId: string,
+  runId: string,
+  stageId: string,
+): Promise<{
+  projection: AgentProjectionV1;
+  stageAttempt?: AgentPreparedAttempt | null;
+}> {
+  return invoke("shared_agent_retry_stage", {
+    workspaceId,
+    threadId,
+    runId,
+    stageId,
   });
 }
 
