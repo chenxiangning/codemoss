@@ -470,16 +470,22 @@ impl ClaudeSession {
         provider_settings_path: Option<&Path>,
     ) -> Result<Option<tokio::io::Lines<BufReader<tokio::process::ChildStdout>>>, String> {
         let notify = self.get_or_create_user_input_notify(turn_id);
-        log::info!("AskUserQuestion detected, waiting for user (up to 30 min)…");
+        log::info!(
+            "AskUserQuestion detected, waiting for user (up to {} min)…",
+            ASK_USER_QUESTION_TIMEOUT_SECS / 60
+        );
         let user_answered = tokio::select! {
             _ = notify.notified() => true,
             _ = tokio::time::sleep(
-                std::time::Duration::from_secs(1800)
+                std::time::Duration::from_secs(ASK_USER_QUESTION_TIMEOUT_SECS)
             ) => false,
         };
 
         if !user_answered {
-            log::info!("AskUserQuestion timed out (30 min), resuming original");
+            log::info!(
+                "AskUserQuestion timed out ({} min), resuming original",
+                ASK_USER_QUESTION_TIMEOUT_SECS / 60
+            );
             self.clear_pending_user_inputs_for_turn(turn_id);
             return Ok(None);
         }
@@ -923,9 +929,14 @@ impl ClaudeSession {
         // Emit to the live turn's subscriber → existing React dialog.
         self.emit_turn_event(turn_id, event);
 
-        // Block until the answer arrives (or the native 5-min bound elapses).
-        // Keep in lockstep with USER_INPUT_TIMEOUT_SECONDS (30 min) on the FE card.
-        let answer = match tokio::time::timeout(std::time::Duration::from_secs(1800), rx).await {
+        // Block until the answer arrives, or ASK_USER_QUESTION_TIMEOUT_SECS
+        // elapses (kept in lockstep with USER_INPUT_TIMEOUT_SECONDS on the FE card).
+        let answer = match tokio::time::timeout(
+            std::time::Duration::from_secs(ASK_USER_QUESTION_TIMEOUT_SECS),
+            rx,
+        )
+        .await
+        {
             Ok(Ok(text)) => text,
             Ok(Err(_)) => {
                 // Sender dropped without answering.
@@ -949,7 +960,10 @@ impl ClaudeSession {
                         completed: true,
                     },
                 );
-                return Err("AskUserQuestion timed out after 30 minutes".to_string());
+                return Err(format!(
+                    "AskUserQuestion timed out after {} minutes",
+                    ASK_USER_QUESTION_TIMEOUT_SECS / 60
+                ));
             }
         };
 
