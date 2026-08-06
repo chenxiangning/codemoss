@@ -6,6 +6,10 @@ import {
   workspaceScopedSet,
 } from "./workspaceScopedMap";
 import {
+  appendLiveAssistantText,
+  resetLiveAssistantTextChannelForTests,
+} from "../utils/liveAssistantTextChannel";
+import {
   CODEX_EXECUTION_ACTIVE_NO_PROGRESS_STALL_MS,
   CODEX_TURN_NO_PROGRESS_STALL_MS,
   useThreadEventHandlers,
@@ -551,6 +555,47 @@ describe("useThreadEventHandlers diagnostics", () => {
       }),
       hasCustomName: false,
     });
+  });
+
+  it("drains the live-text tail before settling an AskUserQuestion gate", () => {
+    resetLiveAssistantTextChannelForTests();
+    const options = makeOptions();
+    const { result } = renderHook(() => useThreadEventHandlers(options));
+
+    act(() => {
+      result.current.onTurnStarted("ws-1", "thread-1", "turn-1");
+    });
+
+    // Pre-gate streamed text: the shell delta already reached the reducer via
+    // its own dispatch (not asserted here), the second delta only landed in
+    // the live-text channel while isStreaming was still true.
+    appendLiveAssistantText("thread-1", "item-1", "Let me check that first.");
+    appendLiveAssistantText("thread-1", "item-1", " One more thing before I ask:");
+
+    options.dispatch.mockClear();
+
+    act(() => {
+      result.current.onRequestUserInput({
+        workspace_id: "ws-1",
+        request_id: "ask-1",
+        params: {
+          thread_id: "thread-1",
+          turn_id: "turn-1",
+          item_id: "ask-item-1",
+          questions: [{ id: "q-1", header: "", question: "Proceed?" }],
+        },
+      });
+    });
+
+    expect(options.dispatch).toHaveBeenCalledWith({
+      type: "appendAgentDelta",
+      workspaceId: "ws-1",
+      threadId: "thread-1",
+      itemId: "item-1",
+      delta: " One more thing before I ask:",
+      hasCustomName: true,
+    });
+    expect(options.markProcessing).toHaveBeenCalledWith("thread-1", false);
   });
 
   it("marks codex foreground turns as suspected after the bounded no-progress window", () => {

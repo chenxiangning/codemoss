@@ -9,6 +9,7 @@ import {
   workspaceScopedDelete,
   workspaceScopedHas,
 } from "./workspaceScopedMap";
+import { drainLiveAssistantTextTail } from "../utils/liveAssistantTextChannel";
 import type {
   AppServerEvent,
   CollaborationModeBlockedRequest,
@@ -1129,9 +1130,26 @@ export function useThreadEventHandlers({
     resolveClaudeContinuationThreadId,
   });
   const settleThreadWaitingForUserChoice = useCallback(
-    (threadId: string) => {
+    (threadId: string, workspaceId?: string | null) => {
       if (!threadId) {
         return;
+      }
+      // A4 live-text 外部化：gate 结算前把尚未落入 reducer 的尾段回灌到同一
+      // assistant item。否则 isStreaming 关闭后只能读到建壳首段，gate 前的
+      // 正文永久丢失（AskUserQuestion 属于完成态转换，需遵守与 terminal
+      // settlement / incrementAgentSegment 相同的 drain-before-boundary 约定）。
+      if (workspaceId) {
+        const liveTextTail = drainLiveAssistantTextTail(threadId);
+        if (liveTextTail) {
+          dispatch({
+            type: "appendAgentDelta",
+            workspaceId,
+            threadId,
+            itemId: liveTextTail.itemId,
+            delta: liveTextTail.tailDelta,
+            hasCustomName: true,
+          });
+        }
       }
       // User-choice gates are no longer normal foreground processing.
       markProcessingTracked(threadId, false);
@@ -1158,7 +1176,7 @@ export function useThreadEventHandlers({
       if (!threadId) {
         return;
       }
-      settleThreadWaitingForUserChoice(threadId);
+      settleThreadWaitingForUserChoice(threadId, request.workspace_id);
     },
     [
       enqueueUserInputRequest,
@@ -1189,7 +1207,7 @@ export function useThreadEventHandlers({
         });
       }
       if (requestUserInputBlocked) {
-        settleThreadWaitingForUserChoice(threadId);
+        settleThreadWaitingForUserChoice(threadId, event.workspace_id);
       }
       const reason =
         event.params.reason.trim() ||
