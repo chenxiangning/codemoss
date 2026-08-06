@@ -19,6 +19,7 @@ import type {
 } from "../templates/types";
 import { templateApprovalCount, templateFlowLabel } from "../templates/types";
 import { isCompleteAgentTargetForUi } from "../templates/targetCompleteness";
+import { StageAgentPicker } from "./StageAgentPicker";
 import { StageTargetPicker } from "./StageTargetPicker";
 
 type TemplateManagerModalProps = {
@@ -386,6 +387,38 @@ export function TemplateManagerModal({
                     />
                     {t("multiAgent.template.requiresApproval")}
                   </label>
+                  <StageAgentPicker
+                    value={
+                      stage.personaAgentId && stage.personaAgentName
+                        ? {
+                            id: stage.personaAgentId,
+                            name: stage.personaAgentName,
+                            icon: stage.personaAgentIcon ?? null,
+                          }
+                        : null
+                    }
+                    onChange={(persona) => {
+                      if (!persona) {
+                        updateStage(index, {
+                          personaAgentId: null,
+                          personaAgentName: null,
+                          personaAgentIcon: null,
+                        });
+                        return;
+                      }
+                      // 选用智能体：写入 persona；提示词为空时注入智能体 prompt
+                      const nextPrompt =
+                        stage.rolePrompt.trim().length > 0
+                          ? stage.rolePrompt
+                          : persona.prompt?.trim() || stage.rolePrompt;
+                      updateStage(index, {
+                        personaAgentId: persona.id,
+                        personaAgentName: persona.name,
+                        personaAgentIcon: persona.icon ?? null,
+                        rolePrompt: nextPrompt,
+                      });
+                    }}
+                  />
                   <button
                     type="button"
                     className="ma-step-del"

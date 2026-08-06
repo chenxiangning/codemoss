@@ -28,6 +28,14 @@ export function stageTargetLabel(stage: AgentStageProjection): string {
   return parts.join(" · ");
 }
 
+/** Inspector 副标题：引擎/模型/强度 · 智能体名（若有） */
+export function stageInspectorTypeLine(stage: AgentStageProjection): string {
+  const target = stageTargetLabel(stage);
+  const agent = stage.personaAgentName?.trim() || "";
+  if (!agent) return target;
+  return `${target} · 智能体 ${agent}`;
+}
+
 export function runProgressRatio(projection: AgentProjectionV1): number {
   const stages = projection.stages ?? [];
   if (stages.length === 0) return 0;

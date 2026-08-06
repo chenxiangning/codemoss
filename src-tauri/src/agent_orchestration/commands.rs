@@ -48,6 +48,16 @@ fn access_mode_for(stage: &AgentStageProjectionV1) -> String {
     }
 }
 
+/// 协作 stage 结算 outcome：summary 给 chip，body 给 Runtime Context / 右栏全文。
+fn stage_outcome_value(status: &str, summary: &str, body: &str) -> Value {
+    json!({
+        "schemaVersion": AGENT_SCHEMA_VERSION,
+        "status": status,
+        "summary": short_text(summary, STAGE_SHORT_OUTCOME_CHARS),
+        "body": cap_text(body, STAGE_OUTCOME_BODY_CHARS),
+    })
+}
+
 fn start_stage_attempt(
     writer: &crate::shared_event_log::SharedEventWriter,
     session_id: &str,
@@ -149,6 +159,9 @@ pub(crate) async fn shared_agent_request_run(
                     "rolePrompt": stage.role_prompt,
                     "accessMode": stage.access_mode,
                     "requiresApproval": stage.requires_approval,
+                    "personaAgentId": stage.persona_agent_id,
+                    "personaAgentName": stage.persona_agent_name,
+                    "personaAgentIcon": stage.persona_agent_icon,
                     "target": stage.target,
                 })
             })
@@ -424,11 +437,12 @@ async fn record_stage_and_maybe_advance(
         let raw = assistant_text(&committed);
         let ok = outcome_completed(&committed);
         if !ok {
-            let note = if raw.trim().is_empty() {
+            let body = if raw.trim().is_empty() {
                 format!("{} 失败。", stage.title)
             } else {
-                short_text(&raw, 160)
+                stage_outcome_body(&raw, &stage.title, false)
             };
+            let note = short_text(&body, STAGE_SHORT_OUTCOME_CHARS);
             append_fact(
                 writer,
                 &session_id,
@@ -437,11 +451,7 @@ async fn record_stage_and_maybe_advance(
                     run_id: run_id.clone(),
                     node_id: stage.id.clone(),
                     attempt_id: attempt_id.clone(),
-                    outcome: json!({
-                        "schemaVersion": AGENT_SCHEMA_VERSION,
-                        "status": "failed",
-                        "summary": note,
-                    }),
+                    outcome: stage_outcome_value("failed", &note, &body),
                     recorded_at: committed.committed_at,
                     extra: empty_extra(),
                 }),
@@ -466,7 +476,14 @@ async fn record_stage_and_maybe_advance(
         let summary_text = if wants_plan_text {
             match parse_plan_from_assistant(&raw) {
                 Ok(plan) => {
-                    let short = short_text(&plan.summary, 160);
+                    let short = short_text(&plan.summary, STAGE_SHORT_OUTCOME_CHARS);
+                    let body = if !plan.markdown.trim().is_empty() {
+                        cap_text(&plan.markdown, STAGE_OUTCOME_BODY_CHARS)
+                    } else if !raw.trim().is_empty() {
+                        stage_outcome_body(&raw, &stage.title, true)
+                    } else {
+                        short.clone()
+                    };
                     append_fact(
                         writer,
                         &session_id,
@@ -475,11 +492,7 @@ async fn record_stage_and_maybe_advance(
                             run_id: run_id.clone(),
                             node_id: stage.id.clone(),
                             attempt_id: attempt_id.clone(),
-                            outcome: json!({
-                                "schemaVersion": AGENT_SCHEMA_VERSION,
-                                "status": "succeeded",
-                                "summary": short,
-                            }),
+                            outcome: stage_outcome_value("succeeded", &short, &body),
                             recorded_at: committed.committed_at,
                             extra: empty_extra(),
                         }),
@@ -505,7 +518,12 @@ async fn record_stage_and_maybe_advance(
                 Err(_) if stage.requires_approval => {
                     // 批准门闩：解析失败时用原文软降级，不整 run 失败
                     let plan = soft_plan_from_raw(&raw, &stage.title);
-                    let short = short_text(&plan.summary, 160);
+                    let short = short_text(&plan.summary, STAGE_SHORT_OUTCOME_CHARS);
+                    let body = if !plan.markdown.trim().is_empty() {
+                        cap_text(&plan.markdown, STAGE_OUTCOME_BODY_CHARS)
+                    } else {
+                        stage_outcome_body(&raw, &stage.title, true)
+                    };
                     append_fact(
                         writer,
                         &session_id,
@@ -514,11 +532,7 @@ async fn record_stage_and_maybe_advance(
                             run_id: run_id.clone(),
                             node_id: stage.id.clone(),
                             attempt_id: attempt_id.clone(),
-                            outcome: json!({
-                                "schemaVersion": AGENT_SCHEMA_VERSION,
-                                "status": "succeeded",
-                                "summary": short,
-                            }),
+                            outcome: stage_outcome_value("succeeded", &short, &body),
                             recorded_at: committed.committed_at,
                             extra: empty_extra(),
                         }),
@@ -539,14 +553,14 @@ async fn record_stage_and_maybe_advance(
                     }));
                 }
                 Err(_) => {
-                    // 中间段可短；末段保留全文供 finalSummary（阶段行仍由 projector 压成 shortOutcome）
                     let is_last = run
                         .stages
                         .last()
                         .map(|s| s.id == stage.id)
                         .unwrap_or(false)
                         || stage.id == AgentStageId::Review.as_str();
-                    let note = stage_outcome_body(&raw, &stage.title, is_last);
+                    let body = stage_outcome_body(&raw, &stage.title, is_last);
+                    let note = short_text(&body, STAGE_SHORT_OUTCOME_CHARS);
                     append_fact(
                         writer,
                         &session_id,
@@ -555,11 +569,7 @@ async fn record_stage_and_maybe_advance(
                             run_id: run_id.clone(),
                             node_id: stage.id.clone(),
                             attempt_id: attempt_id.clone(),
-                            outcome: json!({
-                                "schemaVersion": AGENT_SCHEMA_VERSION,
-                                "status": "succeeded",
-                                "summary": note,
-                            }),
+                            outcome: stage_outcome_value("succeeded", &note, &body),
                             recorded_at: committed.committed_at,
                             extra: empty_extra(),
                         }),
@@ -574,7 +584,8 @@ async fn record_stage_and_maybe_advance(
                 .map(|s| s.id == stage.id)
                 .unwrap_or(false)
                 || stage.id == AgentStageId::Review.as_str();
-            let note = stage_outcome_body(&raw, &stage.title, is_last);
+            let body = stage_outcome_body(&raw, &stage.title, is_last);
+            let note = short_text(&body, STAGE_SHORT_OUTCOME_CHARS);
             append_fact(
                 writer,
                 &session_id,
@@ -583,11 +594,7 @@ async fn record_stage_and_maybe_advance(
                     run_id: run_id.clone(),
                     node_id: stage.id.clone(),
                     attempt_id: attempt_id.clone(),
-                    outcome: json!({
-                        "schemaVersion": AGENT_SCHEMA_VERSION,
-                        "status": "succeeded",
-                        "summary": note,
-                    }),
+                    outcome: stage_outcome_value("succeeded", &note, &body),
                     recorded_at: committed.committed_at,
                     extra: empty_extra(),
                 }),
@@ -926,11 +933,11 @@ pub(crate) async fn shared_agent_retry_stage(
                 run_id: run_id.clone(),
                 node_id: stage_id.to_string(),
                 attempt_id: old_attempt.clone(),
-                outcome: json!({
-                    "schemaVersion": AGENT_SCHEMA_VERSION,
-                    "status": "failed",
-                    "summary": "节点重试：关闭上一轮卡死/失败 attempt",
-                }),
+                outcome: stage_outcome_value(
+                    "failed",
+                    "节点重试：关闭上一轮卡死/失败 attempt",
+                    "节点重试：关闭上一轮卡死/失败 attempt",
+                ),
                 recorded_at: now,
                 extra: json!({ "retryClose": true }),
             }),

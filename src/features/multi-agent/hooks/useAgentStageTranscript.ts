@@ -1,19 +1,25 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 
 import type { ConversationItem } from "../../../types";
-import { loadSharedProjection } from "../../shared-session/services/sharedSessions";
 import {
-  resolveSharedConversationItems,
-} from "../../messages/presentation/sharedProjection/dataSource";
-import type { SharedProjectionItem } from "../../messages/presentation/sharedProjection/types";
+  EMPTY_ACTIVE_CANVAS_ITEMS,
+  useActiveCanvasSelector,
+} from "../../layout/hooks/activeCanvasStore";
+import { freezeTurnSnapshot } from "../../shared-session/target/types";
+import type { TurnExecutionSnapshot } from "../../shared-session/target/types";
+import { buildAgentCanvasThreadId } from "../runtime/agentCanvasThread";
 import { pickLongestStageBody } from "../utils/stageBodyText";
-import type { AgentProjectionV1, AgentStageProjection } from "../types";
+import type {
+  AgentExecutionTarget,
+  AgentProjectionV1,
+  AgentStageProjection,
+} from "../types";
 
 /** 在 projection 原始项上按 attemptId 切片（ConversationItem 可能丢 attempt 字段）。 */
 export function filterProjectionItemsForAttempt(
-  items: SharedProjectionItem[],
+  items: Array<{ content?: Record<string, unknown> | null }>,
   attemptId: string,
-): SharedProjectionItem[] {
+): typeof items {
   const id = attemptId.trim();
   if (!id) return [];
   return items.filter((item) => {
@@ -25,7 +31,7 @@ export function filterProjectionItemsForAttempt(
   });
 }
 
-/** 状态词/占位正文，不可作为最终渲染结果（渲染失败时降级合成正文） */
+/** 状态词/占位正文，不可作为最终渲染结果 */
 export function isWeakStatusText(text: string): boolean {
   const t = text.trim().toLowerCase();
   if (!t) return true;
@@ -37,62 +43,112 @@ export function isWeakStatusText(text: string): boolean {
   return false;
 }
 
-function assistantBodyLength(items: ConversationItem[]): number {
-  return items
-    .filter(
-      (item): item is Extract<ConversationItem, { kind: "message" }> =>
-        item.kind === "message" && item.role === "assistant",
-    )
-    .reduce((sum, item) => sum + (item.text?.trim().length ?? 0), 0);
+/** stage.target → TurnExecutionSnapshot（徽章与头对齐） */
+export function stageTargetToSnapshot(
+  target: AgentExecutionTarget | null | undefined,
+): TurnExecutionSnapshot | null {
+  if (!target?.engine) return null;
+  // ExecutionTarget 选择域只有 disk|managed；local 按本地 provider 处理
+  const selectionSource =
+    target.providerProfileSource === "managed"
+      ? ("managed" as const)
+      : target.providerProfileSource === "disk" ||
+          target.providerProfileSource === "local" ||
+          !target.providerProfileId?.trim()
+        ? ("disk" as const)
+        : null;
+  return freezeTurnSnapshot(
+    {
+      engine: target.engine,
+      providerProfileId: target.providerProfileId ?? null,
+      modelCatalogEntryId: target.modelCatalogEntryId ?? null,
+      model: target.model ?? null,
+      reasoning: target.reasoningEffort
+        ? { effort: target.reasoningEffort }
+        : null,
+      providerProfileNameSnapshot: target.providerProfileNameSnapshot ?? null,
+      providerProfileSource: selectionSource,
+    },
+    {
+      providerProfileNameSnapshot: target.providerProfileNameSnapshot ?? null,
+      providerProfileSource: selectionSource,
+    },
+  );
 }
 
-function buildSyntheticFallback(input: {
+/**
+ * 幕布 items 徽章强制对齐当前 stage.target。
+ * 防止跨 attempt 脏 snapshot 在 Inspector 里「骗人」。
+ */
+export function alignItemsToStageTarget(
+  items: readonly ConversationItem[],
+  stage: AgentStageProjection,
+): ConversationItem[] {
+  const snapshot = stageTargetToSnapshot(stage.target);
+  if (!snapshot || items.length === 0) {
+    return items as ConversationItem[];
+  }
+  let changed = false;
+  const next = items.map((item) => {
+    if (item.kind !== "message" || item.role !== "assistant") return item;
+    const prev = item.executionTargetSnapshot;
+    if (
+      prev &&
+      prev.engine === snapshot.engine &&
+      (prev.model ?? null) === (snapshot.model ?? null) &&
+      (prev.providerProfileNameSnapshot ?? null) ===
+        (snapshot.providerProfileNameSnapshot ?? null)
+    ) {
+      return item;
+    }
+    changed = true;
+    return { ...item, executionTargetSnapshot: snapshot };
+  });
+  return changed ? next : (items as ConversationItem[]);
+}
+
+/**
+ * settle / 无 live 时：仅用本 stage 的 fullOutcome（plan 可用 plan.markdown）。
+ * 禁止用共享 projection 整会话回填（worker 不进主 canvas，易空→串台）。
+ */
+export function buildStageOwnedFallback(input: {
   stage: AgentStageProjection;
   projection: AgentProjectionV1;
   liveText: string;
   isLive: boolean;
 }): ConversationItem[] {
+  // plan 可用 plan.markdown；其它 stage **禁止**用 plan.markdown（串台根因之一）
+  const planBody =
+    input.stage.id === "plan"
+      ? input.projection.plan?.markdown ?? ""
+      : "";
   const body = pickLongestStageBody(
     input.liveText,
     input.stage.fullOutcome,
-    input.stage.id === "plan" || input.stage.requiresApproval
-      ? input.projection.plan?.markdown
-      : "",
+    planBody,
     input.stage.shortOutcome,
   );
   if (!body || isWeakStatusText(body)) return [];
-  const baseId = `agent-stage-canvas:${input.projection.runId}:${input.stage.id}`;
-  const roleHint =
-    input.stage.rolePrompt?.trim() ||
-    (input.stage.id === "plan"
-      ? "规划节点"
-      : input.stage.id === "implement"
-        ? "实现节点"
-        : input.stage.id === "review"
-          ? "审查节点"
-          : input.stage.title || input.stage.id);
-  const items: ConversationItem[] = [];
-  if (roleHint) {
-    items.push({
-      id: `${baseId}:user`,
+  const baseId = `agent-stage-canvas:${input.projection.runId}:${input.stage.id}:${input.stage.attemptId ?? "na"}`;
+  const snapshot = stageTargetToSnapshot(input.stage.target);
+  const items: ConversationItem[] = [
+    {
+      id: `${baseId}:assistant`,
       kind: "message",
-      role: "user",
-      text: roleHint,
-    });
-  }
-  items.push({
-    id: `${baseId}:assistant`,
-    kind: "message",
-    role: "assistant",
-    text: body,
-    isFinal: !input.isLive,
-  });
+      role: "assistant",
+      text: body,
+      isFinal: !input.isLive,
+      ...(snapshot ? { executionTargetSnapshot: snapshot } : {}),
+    },
+  ];
   return items;
 }
 
 /**
- * 右栏节点幕布：优先 Shared projection 真 items（工具/MD/改文件与主 session 同源），
- * 无切片时回退 live/fullOutcome 文本合成。
+ * 右栏节点幕布（严格 attempt 隔离）：
+ * 1) live：仅 agent-canvas:{shared}:{attemptId} 的 realtime items
+ * 2) settle / 空 canvas：仅本 stage fullOutcome（徽章=stage.target）
+ * 3) 不用 shared projection 整会话切片（防串台）
  */
 export function useAgentStageTranscript(input: {
   workspaceId: string | null | undefined;
@@ -103,60 +159,28 @@ export function useAgentStageTranscript(input: {
   liveText: string;
 }): {
   items: ConversationItem[];
-  source: "projection" | "synthetic";
+  source: "canvas" | "synthetic";
+  canvasThreadId: string;
   processingStartedAt: number | null;
 } {
-  const { workspaceId, threadId, projection, stage, isLive, liveText } = input;
-  const [projected, setProjected] = useState<ConversationItem[]>([]);
+  const { threadId, projection, stage, isLive, liveText } = input;
   const attemptId = stage?.attemptId?.trim() || "";
+  const canvasThreadId =
+    threadId && attemptId
+      ? buildAgentCanvasThreadId(threadId, attemptId)
+      : "";
 
-  useEffect(() => {
-    let cancelled = false;
-    if (!workspaceId || !threadId || !attemptId) {
-      setProjected([]);
-      return;
-    }
-    void (async () => {
-      try {
-        const raw = (await loadSharedProjection(
-          workspaceId,
-          threadId,
-        )) as SharedProjectionItem[];
-        if (cancelled) return;
-        const slicedRaw = filterProjectionItemsForAttempt(raw ?? [], attemptId);
-        const items = resolveSharedConversationItems(slicedRaw) ?? [];
-        setProjected(items);
-      } catch {
-        if (!cancelled) setProjected([]);
-      }
-    })();
-    // 运行中每 2.5s 轻量刷新，便于工具/文本落入 projection 后右栏对齐主 session
-    const poll =
-      stage?.status === "running"
-        ? window.setInterval(() => {
-            void loadSharedProjection(workspaceId, threadId)
-              .then((raw) => {
-                if (cancelled) return;
-                const slicedRaw = filterProjectionItemsForAttempt(
-                  (raw ?? []) as SharedProjectionItem[],
-                  attemptId,
-                );
-                setProjected(
-                  resolveSharedConversationItems(slicedRaw) ?? [],
-                );
-              })
-              .catch(() => undefined);
-          }, 2500)
-        : undefined;
-    return () => {
-      cancelled = true;
-      if (poll !== undefined) window.clearInterval(poll);
-    };
-  }, [workspaceId, threadId, attemptId, stage?.status, stage?.settledAt]);
+  // 无 attemptId 时绝不读其它 canvas key
+  const liveCanvasItems = useActiveCanvasSelector((state) => {
+    if (!canvasThreadId) return EMPTY_ACTIVE_CANVAS_ITEMS;
+    return (
+      state.threadItemsByThread[canvasThreadId] ?? EMPTY_ACTIVE_CANVAS_ITEMS
+    );
+  });
 
   const synthetic = useMemo(() => {
     if (!projection || !stage) return [] as ConversationItem[];
-    return buildSyntheticFallback({
+    return buildStageOwnedFallback({
       stage,
       projection,
       liveText,
@@ -164,81 +188,42 @@ export function useAgentStageTranscript(input: {
     });
   }, [projection, stage, liveText, isLive]);
 
-  const projectedBodyLen = useMemo(
-    () => assistantBodyLength(projected),
-    [projected],
-  );
-  const syntheticBodyLen = useMemo(
-    () => assistantBodyLength(synthetic),
-    [synthetic],
-  );
+  const canvasBodyLen = useMemo(() => {
+    return liveCanvasItems
+      .filter(
+        (item): item is Extract<ConversationItem, { kind: "message" }> =>
+          item.kind === "message" && item.role === "assistant",
+      )
+      .reduce((sum, item) => sum + (item.text?.trim().length ?? 0), 0);
+  }, [liveCanvasItems]);
 
-  // 有工具/reasoning 时优先 projection；纯文本时若弱于 fullOutcome/plan 则降级合成
-  const useProjection =
-    projected.length > 0 &&
-    (projected.some((i) => i.kind === "tool" || i.kind === "reasoning") ||
-      (projectedBodyLen >= 48 &&
-        projectedBodyLen + 32 >= syntheticBodyLen &&
-        !isWeakStatusText(
-          projected
-            .filter(
-              (i): i is Extract<ConversationItem, { kind: "message" }> =>
-                i.kind === "message" && i.role === "assistant",
-            )
-            .map((i) => i.text || "")
-            .join("\n"),
-        )));
+  // live：有 canvas 即用；settle：有实质正文或工具轨迹才用 canvas，否则 fullOutcome
+  const useCanvas =
+    Boolean(canvasThreadId) &&
+    liveCanvasItems.length > 0 &&
+    (isLive ||
+      liveCanvasItems.some((i) => i.kind === "tool" || i.kind === "reasoning") ||
+      canvasBodyLen >= 24);
 
   const items = useMemo(() => {
-    if (useProjection) {
-      // 进行中：projection 切片 + 尾部 live 文本（若更长）
-      if (isLive && liveText.trim()) {
-        const lastAssistant = [...projected]
-          .reverse()
-          .find((i) => i.kind === "message" && i.role === "assistant");
-        const lastText =
-          lastAssistant && lastAssistant.kind === "message"
-            ? lastAssistant.text?.trim() || ""
-            : "";
-        if (liveText.trim().length > lastText.length) {
-          const baseId = `agent-stage-live:${projection?.runId}:${stage?.id}`;
-          return [
-            ...projected.filter((i) => i.id !== lastAssistant?.id),
-            {
-              id: `${baseId}:assistant`,
-              kind: "message" as const,
-              role: "assistant" as const,
-              text: liveText.trim(),
-              isFinal: false,
-            },
-          ];
-        }
-      }
-      return projected;
-    }
-    return synthetic;
-  }, [
-    useProjection,
-    projected,
-    synthetic,
-    isLive,
-    liveText,
-    projection?.runId,
-    stage?.id,
-  ]);
+    if (!stage) return [] as ConversationItem[];
+    const raw = useCanvas
+      ? (liveCanvasItems as ConversationItem[])
+      : synthetic;
+    return alignItemsToStageTarget(raw, stage);
+  }, [stage, useCanvas, liveCanvasItems, synthetic]);
 
-  // startedAt 稳定：优先 projection；无则在进入 live 时钉住一次
   const stableStartedAt = useMemo(() => {
     if (!isLive || !stage) return null;
     if (stage.startedAt && stage.startedAt > 0) return stage.startedAt;
     return Date.now();
-    // 仅在进入 live / 换 stage 时重算
     // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional
   }, [isLive, stage?.id, stage?.attemptId, stage?.startedAt]);
 
   return {
     items,
-    source: useProjection ? "projection" : "synthetic",
+    source: useCanvas ? "canvas" : "synthetic",
+    canvasThreadId,
     processingStartedAt: stableStartedAt,
   };
 }

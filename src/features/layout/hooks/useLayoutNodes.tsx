@@ -1575,11 +1575,10 @@ export function useLayoutNodes(input: LayoutNodesOptions): LayoutNodesResult {
   ) =>
     options.showComposer ? (
       <Profiler id="composer" onRender={handleRuntimeProfileRender}>
-        <SharedSendStatusBar
-          workspaceId={options.activeWorkspaceId ?? null}
-          threadId={options.activeThreadId ?? null}
-          isSharedSession={isSharedSession && !createSessionTargetPicker}
-        />
+        {/*
+          SharedSendStatusBar 与无协作 Shared 一致：贴在 Composer 输入区底部集群。
+          放在 ActiveCanvasComposer 之后，避免协作 sticky 卡把状态条夹在中间。
+        */}
         <ActiveCanvasComposer
           items={EMPTY_ACTIVE_CANVAS_ITEMS}
           activeThreadId={null}
@@ -1786,6 +1785,11 @@ export function useLayoutNodes(input: LayoutNodesOptions): LayoutNodesResult {
             options.onReviewPromptUpdateCustomInstructions
           }
           onReviewPromptConfirmCustom={options.onReviewPromptConfirmCustom}
+        />
+        <SharedSendStatusBar
+          workspaceId={options.activeWorkspaceId ?? null}
+          threadId={options.activeThreadId ?? null}
+          isSharedSession={isSharedSession && !createSessionTargetPicker}
         />
       </Profiler>
     ) : null;

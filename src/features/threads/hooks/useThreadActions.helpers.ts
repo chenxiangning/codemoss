@@ -1180,19 +1180,40 @@ export function normalizeGrokSessionSummaries(
 }
 
 /**
+ * Shared control-plane / context package 标题污染行（如 MOSSX_CONTEXT_PACKAGE:…）。
+ * 仅用于 native 行防御性剔除；shared: 会话保留。
+ */
+export function isSharedControlPlaneSpawnTitle(
+  value: string | null | undefined,
+): boolean {
+  const normalized = typeof value === "string" ? value.trim() : "";
+  if (!normalized) return false;
+  return classifyContextProtocolText(normalized) !== null;
+}
+
+/**
  * 从侧栏快照剔除 Shared Hidden Native Binding。
  * hide set 由 expandHiddenSharedBindingIds 构建（含 raw / engine:raw / pending 变体）。
+ * 额外：剔除 context-protocol 标题的 native 行（orphan 下崽兜底）。
  */
 export function stripHiddenSharedBindingSummaries(
   summaries: ThreadSummary[],
   hiddenSharedBindingIds: ReadonlySet<string>,
 ): ThreadSummary[] {
-  if (hiddenSharedBindingIds.size === 0 || summaries.length === 0) {
+  if (summaries.length === 0) {
     return summaries;
   }
   let changed = false;
   const next = summaries.filter((summary) => {
     if (hiddenSharedBindingIds.has(summary.id)) {
+      changed = true;
+      return false;
+    }
+    // Shared 顶层会话永不因 control-plane 标题被误杀
+    if (summary.id.startsWith("shared:") || summary.threadKind === "shared") {
+      return true;
+    }
+    if (isSharedControlPlaneSpawnTitle(summary.name)) {
       changed = true;
       return false;
     }

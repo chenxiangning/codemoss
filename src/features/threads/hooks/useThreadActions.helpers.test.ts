@@ -822,8 +822,40 @@ describe("useThreadActions.helpers", () => {
       "shared:s1",
       "grok:visible-1",
     ]);
-    // 空 hide set 应返回原引用
+    // 空 hide set 且无 control-plane 标题时应返回原引用
     expect(stripHiddenSharedBindingSummaries(input, new Set())).toBe(input);
+  });
+
+  it("stripHiddenSharedBindingSummaries drops MOSSX_CONTEXT native spawn titles", () => {
+    const packageTitle =
+      `MOSSX_CONTEXT_PACKAGE:sha256:${"a".repeat(64)}:` +
+      `sha256:${"b".repeat(64)}`;
+    const input: ThreadSummary[] = [
+      {
+        id: "shared:s1",
+        name: "Shared collab",
+        updatedAt: 3,
+        threadKind: "shared",
+        engineSource: "claude",
+      },
+      {
+        id: "claude:spawn-1",
+        name: packageTitle,
+        updatedAt: 2,
+        engineSource: "claude",
+      },
+      {
+        id: "claude:user-1",
+        name: "正常用户会话",
+        updatedAt: 1,
+        engineSource: "claude",
+      },
+    ];
+    const stripped = stripHiddenSharedBindingSummaries(input, new Set());
+    expect(stripped.map((row) => row.id)).toEqual([
+      "shared:s1",
+      "claude:user-1",
+    ]);
   });
 
   it("mergeGrok clears leaked baseline even when sessions filter empties", () => {

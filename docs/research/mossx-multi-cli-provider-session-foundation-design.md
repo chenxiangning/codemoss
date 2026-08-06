@@ -12,7 +12,7 @@ status: implemented
 > 内容类型：Architecture Decision Record
 > 生命周期：accepted / implemented in slices；原始 A–D 路线已归档，后续修复与收口 change 独立演进
 > 初始日期：2026-07-27
-> 最近校准：2026-08-05 · Phase 5 Agent Squad V1 已完成本地实现与 automated contract tests，四个 OpenSpec change 保持 active，等待真实 Desktop/CLI smoke 后收口
+> 最近校准：2026-08-06 · multi-agent 协作后 UI 收口：Runtime Context 吃 stage body、Inspector **按 attempt 隔离幕布**、徽章对齐 stage.target；本地 event log 核对 **执行按模板引擎**（plan/implement/review 分 binding），展示串台属 UI 问题已修
 > 适用范围：Native Session、Shared Session、Provider Runtime、Session Catalog、Sidebar Projection、未来 Plugin / Orchestration
 > 核心决策：Native Session 保持原生身份；Shared Session 承担跨 CLI、跨 Provider 的逐 Turn 切换
 
@@ -20,7 +20,7 @@ status: implemented
 
 ## 零、当前实现校准
 
-本文继续作为多 CLI 会话的 ADR。原始 Change A1–A3、B、C、D 已归档；截至 2026-08-05，Native/Shared 的后续修复、兼容和 Phase 5 active changes 以 [OpenSpec main specs](../../openspec/specs/README.md)、对应 change 与代码为准，不应回写成「原路线未实现」。
+本文继续作为多 CLI 会话的 ADR。原始 Change A1–A3、B、C、D 已归档；截至 2026-08-06，Native/Shared 的后续修复、兼容、Phase 5 Squad 与 multi-agent collab 以 [OpenSpec main specs](../../openspec/specs/README.md)、对应 change 与代码为准，不应回写成「原路线未实现」。
 
 | 契约面 | 当前代码事实 | 事实源 |
 |--------|--------------|--------|
@@ -40,10 +40,15 @@ status: implemented
 | Squad execution boundary | V1 为 Parallel Analyze + Single Writer；全部 Worker seal 到 Composer 当前 exact target。Codex 可执行完整 DAG；Claude 仅 pure read-only DAG；Kimi/Grok/OpenCode 因缺少可验证 hard read-only mode 在 Lead side effect 前 fail closed | `src-tauri/src/squad_orchestration/{scheduler,support}.rs`、`shared_session_v2.rs`、OpenSpec `add-shared-squad-worker-execution` |
 | Squad mutation/recovery | workspace UUID + canonical root 双重归一；durable lease 无 time-based expiry；Git dirty baseline + Change Fence；Stop 先写 cancel intent，再 best-effort interrupt exact owner；禁止自动 rollback/reset/stash | `src-tauri/src/squad_orchestration/{scope,stop_commands}.rs`、`shared_event_log/writer.rs`、OpenSpec `harden-shared-squad-recovery` |
 | Squad conversation projection | 所有 Worker turn（含 Synthesize）保持 nested-only；只有 successful `SquadRunSettled` 投影一次 top-level final；checkpoint incremental replay 不泄漏 Worker message | `src-tauri/src/shared_projection/projector.rs`、`src/features/squad-orchestration/runtime/squadConversationBridge.ts` |
+| Multi-agent collab Runtime Context | **仅协作存在时**：`squad.nodeOutcomeRecorded.outcome.body`（capped）经 Context Compiler 投影为 portable assistant 条目；**禁止** destination-owned / squad-worker attempt 剔除吞掉 stage digest；collab control briefing user turn 可 omission | `agent_orchestration/commands.rs`、`shared_context/compiler.rs`、OpenSpec `fix-shared-collab-context-and-sidebar-spawn` |
+| Multi-agent stage 执行 target | 每 stage `begin_stage_turn(&stage.target)` + squad worker bindingKey；本地 event log 核对 plan/claude、implement/codex、review/grok 分 binding **真实执行** | `agent_orchestration/{commands,support}.rs`、`shared_session_v2.begin_squad_worker_turn_core`、`shared-event-log-v2.sqlite3` |
+| Multi-agent Inspector 流式与隔离 | 右栏 **禁止** `extractRealtimeTextDelta` 旁路；`agent-canvas:{shared}:{attemptId}` + 主幕同源 adapter / liveAssistantTextChannel；**幕布仅当前 attempt**；settle 只信本 stage `fullOutcome`；徽章 **强制对齐 stage.target**；activeTurn 查询用 **shared:** key 非 agent-canvas key | `useAppServerEvents.ts`、`agentCanvasThread.ts`、`useAgentStageTranscript.ts` |
+| Multi-agent 模板智能体 | 环节可选客户端智能体（`agentProvider` 同源）；persona 字段进 stageBindings；Inspector 头展示「· 智能体 {name}」；注入目前为 rolePrompt 前缀（非 Composer 全量 AGENT_PROMPT 协议） | `StageAgentPicker.tsx`、`templates/types.ts`、`AgentInspectorDrawer` |
+| Shared Sidebar hidden binding | Shared 内部 native binding **永不**作为用户顶层会话展示；hide set（fresh∪outer）+ control-plane 标题闸（`MOSSX_CONTEXT_*`）双闸 | `list_shared_sessions.nativeThreadIds`、`expandHiddenSharedBindingIds`、`stripHiddenSharedBindingSummaries`、OpenSpec `fix-shared-collab-context-and-sidebar-spawn` |
 
 本文中的 `RuntimeDeliveryAdapter`、`Canonical Fact`、`ContextPackage` 等名称既包含实现合同，也包含 ADR 概念层语言。读者需要复制代码或接新 CLI 时，必须同时使用 [Engine Onboarding Guide](./mossx-new-cli-onboarding-guide.md) 的「当前注册面」清单，不能只按概念接口猜文件名。
 
-> **更新触发器**：engine registry、Shared 支持集合、provider binding、canonical fact schema、context compiler、terminal/ACK contract、**recovery exit / abandon**、Squad exact-owner / mutation lease / settlement projection 变化。
+> **更新触发器**：engine registry、Shared 支持集合、provider binding、canonical fact schema、context compiler、terminal/ACK contract、**recovery exit / abandon**、Squad exact-owner / mutation lease / settlement projection、**collab stage digest → Runtime Context**、**Shared sidebar hide / spawn 闸**、**multi-agent Inspector attempt 隔离 / 徽章权威** 变化。
 
 ## 一、Executive Summary
 

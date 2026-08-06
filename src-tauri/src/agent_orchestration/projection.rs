@@ -273,9 +273,17 @@ pub fn project_agent_runs(
                         .and_then(|value| value.as_str())
                         .unwrap_or("")
                         .trim();
+                    // body 优先（Runtime Context / 右栏全文）；旧事件无 body 时 fallback summary
+                    let body = fact
+                        .outcome
+                        .get("body")
+                        .and_then(|value| value.as_str())
+                        .map(str::trim)
+                        .filter(|value| !value.is_empty())
+                        .unwrap_or(summary);
                     // short=阶段 chip；full=右栏 Messages 全文
                     let short = short_text(summary, STAGE_SHORT_OUTCOME_CHARS);
-                    let full = cap_text(summary, FINAL_SUMMARY_CHARS);
+                    let full = cap_text(body, FINAL_SUMMARY_CHARS);
                     if let Some(stage) = stage_mut(run, &stage_id) {
                         stage.settled_at = Some(fact.recorded_at);
                         if status == "succeeded" {

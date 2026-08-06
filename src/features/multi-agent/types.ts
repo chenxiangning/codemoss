@@ -37,6 +37,10 @@ export type AgentStageBinding = {
   rolePrompt?: string | null;
   accessMode?: string | null;
   requiresApproval?: boolean | null;
+  /** 模板绑定的客户端智能体（展示用，可选） */
+  personaAgentId?: string | null;
+  personaAgentName?: string | null;
+  personaAgentIcon?: string | null;
 };
 
 export type AgentPlanDraft = {
@@ -63,6 +67,10 @@ export type AgentStageProjection = {
   /** 右栏节点全文（Messages 渲染，与 SubAgent 幕布同源） */
   fullOutcome?: string | null;
   error?: string | null;
+  /** 本环节绑定的智能体（Inspector 标题行展示） */
+  personaAgentId?: string | null;
+  personaAgentName?: string | null;
+  personaAgentIcon?: string | null;
 };
 
 export type AgentPreparedAttempt = {

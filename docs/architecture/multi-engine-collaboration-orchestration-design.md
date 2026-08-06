@@ -692,6 +692,47 @@ localStorage "ccgui.agentOrchestrationV1" = "1"  → 启用（运行时）
 
 配合 `collabRunActive` 在终态后自动变 `false` → `collabLocksComposer` 解除 → 用户可以正常发送普通 Shared Session 消息。
 
+### 17.4.1 Runtime Context：AI 必须吃到子节点产出（2026-08-06）
+
+**问题（非人眼 UI）**：人在右栏 Inspector 可看 stage 全文；但主幕 subsequent ordinary turn 若 Context Package 不含 stage 产出，模型会像「新会话」只剩 residual。
+
+**合同（仅协作存在时生效；无协作 Shared 零变更）**：
+
+1. stage 结算写 `squad.nodeOutcomeRecorded.outcome.body`（capped）+ short `summary`。
+2. Context Compiler 将 nodeOutcome 投影为 portable assistant 文本（`[协作环节 {id} · {status}]`）。
+3. **禁止** destination-owned / squad-worker attempt 过滤吞掉 nodeOutcome。
+4. collab control briefing/summary user turn 可 omission，避免调度指令占 budget。
+5. 取消 run 的已成功 stage partial body 仍进入后续 ordinary turn。
+
+事实源：OpenSpec `fix-shared-collab-context-and-sidebar-spawn`；实现 `agent_orchestration/commands.rs`、`shared_context/compiler.rs`。
+
+**实机验收（2026-08-06）**：协作成功后 ordinary turn 可正确复述 3 个 stage 职责与产物 → G1 成立。
+
+### 17.4.2 协作右栏流式（P0 · 与主幕布同源）
+
+**禁止** agent attempt 旁路只抠 `extractRealtimeTextDelta` → 纯文本 livePhase → 2.5s 轮询 projection。  
+**必须**复用主幕布链路：
+
+1. 各 CLI `RealtimeAdapter.mapEvent` + `routeNormalizedRealtimeEvent` / `onAgentMessageDelta`
+2. `liveAssistantTextChannel` + `MessageRow` 流式正文
+3. attempt 作用域 canvas thread id：`agent-canvas:{sharedThreadId}:{attemptId}`，**不进**主幕 `shared:` 时间线
+4. Inspector `Messages` 的 `threadId` = canvas id，items 来自同一套 item 装配
+
+事实源：`useAppServerEvents.dispatchAppServerEvent`、`threads/adapters/*`、`liveAssistantTextChannel.ts`。
+
+### 17.4.3 Inspector 展示权威（防「头与幕布两套故事」）
+
+**执行真相**（event log）：每 stage `begin_stage_turn(&stage.target)` + squad worker binding；本地核对 plan/claude、implement/codex、review/grok 分 binding **真实执行**。
+
+**展示契约**（仅 UI）：
+
+1. **头** = `stage.target` + 可选 `personaAgentName`（编排投影）。
+2. **幕布正文** = 仅当前 `stage.attemptId` 的 live canvas，或 settle 时本 stage `fullOutcome`（**禁止**用 shared projection 整会话回填；**禁止**非 plan stage 使用 `plan.markdown`）。
+3. **气泡徽章** = 强制对齐 `stage.target` 快照（`alignItemsToStageTarget`）；agent-canvas 查 activeTurn 时用 **shared:** key。
+4. 头与徽章不一致视为展示 bug，不是「执行写错」的充分证据——对账以 `turnCommitted.target` / bindingKey 为准。
+
+事实源：`useAgentStageTranscript.ts`、`useAppServerEvents.ts`（activeTurn thread key）、`shared-event-log-v2.sqlite3`。
+
 ### 17.5 Composer 锁定
 
 运行中 `collabLocksComposer = collabRunActive` 完全锁定主输入区。终态自动恢复。

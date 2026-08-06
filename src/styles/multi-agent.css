@@ -1092,11 +1092,51 @@ button.ma-hist-toggle:hover .ma-hist-title {
 .ma-pager {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   margin-left: auto;
 }
 
-.ma-pager > button {
+/* 节点轮播 prev/next：与主题 token 对齐，避免实心黑块 / 字形裁切 */
+.ma-pager > button.ma-pager-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border-radius: 8px;
+  border: 1px solid var(--ma-border);
+  background: var(--ma-control, var(--ma-card));
+  color: var(--ma-txt);
+  cursor: pointer;
+  line-height: 0;
+  flex-shrink: 0;
+}
+
+.ma-pager > button.ma-pager-btn svg {
+  display: block;
+  flex-shrink: 0;
+  color: inherit;
+  opacity: 0.9;
+}
+
+.ma-pager > button.ma-pager-btn:hover:not(:disabled) {
+  color: var(--ma-txt);
+  background: var(--ma-control-hover, var(--ma-surface-hover));
+  border-color: var(--ma-border2);
+}
+
+.ma-pager > button.ma-pager-btn:hover:not(:disabled) svg {
+  opacity: 1;
+}
+
+.ma-pager > button.ma-pager-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+/* 兼容旧选择器（若仍有裸 button） */
+.ma-pager > button:not(.ma-pager-btn) {
   width: 28px;
   height: 28px;
   border-radius: 6px;
@@ -1106,12 +1146,12 @@ button.ma-hist-toggle:hover .ma-hist-title {
   cursor: pointer;
 }
 
-.ma-pager > button:hover:not(:disabled) {
+.ma-pager > button:not(.ma-pager-btn):hover:not(:disabled) {
   color: var(--ma-txt);
   background: var(--ma-control-hover);
 }
 
-.ma-pager > button:disabled {
+.ma-pager > button:not(.ma-pager-btn):disabled {
   opacity: 0.4;
   cursor: not-allowed;
 }
@@ -1150,8 +1190,9 @@ button.ma-hist-toggle:hover .ma-hist-title {
 }
 
 .ma-tpl-modal {
-  width: min(960px, 94vw);
-  height: min(620px, 86vh);
+  /* 略放大：阶段多时右侧编辑区更宽敞 */
+  width: min(1120px, 96vw);
+  height: min(760px, 90vh);
   background: var(--ma-popover);
   border: 1px solid var(--ma-border2);
   border-radius: 12px;
@@ -1492,6 +1533,168 @@ button.ma-hist-toggle:hover .ma-hist-title {
   font-size: 10px;
   color: var(--ma-muted);
   cursor: pointer;
+}
+
+/* 环节智能体选择（Composer # 同源 agentProvider） */
+.ma-stage-agent {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: 1 1 140px;
+  min-width: 120px;
+  max-width: 220px;
+}
+
+.ma-stage-agent-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 28px;
+  padding: 0 8px;
+  border-radius: 6px;
+  border: 1px solid var(--ma-border);
+  background: var(--ma-bg);
+  color: var(--ma-muted);
+  font-size: 11px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.ma-stage-agent-btn.is-set {
+  color: var(--ma-txt);
+  border-color: var(--ma-border2);
+}
+
+.ma-stage-agent-btn.is-open,
+.ma-stage-agent-btn:hover {
+  border-color: var(--ma-border2);
+  background: var(--ma-control, var(--ma-card));
+  color: var(--ma-txt);
+}
+
+.ma-stage-agent-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ma-stage-agent-caret {
+  flex: 0 0 auto;
+  opacity: 0.6;
+  font-size: 10px;
+}
+
+.ma-stage-agent-icon-fallback {
+  flex: 0 0 auto;
+  opacity: 0.55;
+  font-size: 11px;
+}
+
+.ma-stage-agent-clear {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--ma-muted2);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+}
+
+.ma-stage-agent-clear:hover {
+  color: var(--ma-txt);
+  background: var(--ma-surface-hover);
+}
+
+.ma-stage-agent-menu {
+  position: fixed;
+  z-index: 120;
+  max-height: min(320px, 50vh);
+  overflow: auto;
+  padding: 6px;
+  border-radius: 10px;
+  border: 1px solid var(--ma-border2);
+  background: var(--ma-popover);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
+}
+
+.ma-stage-agent-section {
+  padding: 6px 8px 4px;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--ma-muted2);
+  letter-spacing: 0.02em;
+}
+
+.ma-stage-agent-item {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
+  width: 100%;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ma-txt);
+  padding: 7px 8px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.ma-stage-agent-item:hover,
+.ma-stage-agent-item.is-on {
+  background: var(--ma-control, var(--ma-card));
+}
+
+.ma-stage-agent-item.is-create {
+  color: var(--ma-blue);
+  margin-top: 2px;
+  border-top: 1px solid var(--ma-border);
+  border-radius: 0 0 6px 6px;
+}
+
+.ma-stage-agent-item-main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.ma-stage-agent-item-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+}
+
+.ma-stage-agent-item-desc {
+  margin-left: 22px;
+  font-size: 10px;
+  color: var(--ma-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ma-stage-agent-item-dot {
+  width: 14px;
+  text-align: center;
+  opacity: 0.7;
+  font-size: 12px;
+}
+
+.ma-stage-agent-empty {
+  padding: 12px 10px;
+  font-size: 12px;
+  color: var(--ma-muted);
 }
 
 .ma-step-del {

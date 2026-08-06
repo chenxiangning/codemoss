@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  composeStageRolePrompt,
   mergeTarget,
   normalizeAgentTargetSource,
   templateToStageBindings,
@@ -130,5 +131,46 @@ describe("templateToStageBindings", () => {
     // incomplete cross-engine → 回退会话 target 且 source 归一 local
     expect(bindings[0]?.target.engine).toBe("codex");
     expect(bindings[0]?.target.providerProfileSource).toBe("local");
+  });
+
+  it("prefixes persona agent into rolePrompt on bind", () => {
+    const tpl: CollaborationTemplate = {
+      id: "with-agent",
+      name: "带智能体",
+      description: "",
+      builtin: false,
+      version: 1,
+      updatedAt: 0,
+      stages: [
+        {
+          id: "plan",
+          title: "规划",
+          rolePrompt: "只做计划",
+          accessMode: "read-only",
+          requiresApproval: true,
+          personaAgentId: "agent-xz",
+          personaAgentName: "小张",
+          personaAgentIcon: "codicon-robot",
+          target: completeClaude,
+        },
+      ],
+    };
+    const bindings = templateToStageBindings(tpl, sessionCodex);
+    expect(bindings[0]?.rolePrompt).toBe("【智能体：小张】\n只做计划");
+  });
+});
+
+describe("composeStageRolePrompt", () => {
+  it("returns null when empty", () => {
+    expect(
+      composeStageRolePrompt({
+        id: "a",
+        title: "t",
+        rolePrompt: "",
+        accessMode: "current",
+        requiresApproval: false,
+        target: { engine: "claude" } as AgentExecutionTarget,
+      }),
+    ).toBeNull();
   });
 });

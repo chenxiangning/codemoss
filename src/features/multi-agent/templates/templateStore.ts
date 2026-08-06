@@ -57,6 +57,12 @@ function migrateStage(raw: unknown): CollaborationTemplateStage | null {
       rolePrompt: typeof row.rolePrompt === "string" ? row.rolePrompt : "",
       accessMode: row.accessMode === "read-only" ? "read-only" : "current",
       requiresApproval: row.requiresApproval === true,
+      personaAgentId:
+        typeof row.personaAgentId === "string" ? row.personaAgentId : null,
+      personaAgentName:
+        typeof row.personaAgentName === "string" ? row.personaAgentName : null,
+      personaAgentIcon:
+        typeof row.personaAgentIcon === "string" ? row.personaAgentIcon : null,
       target: {
         engine: (typeof target.engine === "string"
           ? target.engine
@@ -99,6 +105,12 @@ function migrateStage(raw: unknown): CollaborationTemplateStage | null {
     rolePrompt: typeof row.rolePrompt === "string" ? row.rolePrompt : "",
     accessMode: row.accessMode === "read-only" ? "read-only" : "current",
     requiresApproval: row.requiresApproval === true,
+    personaAgentId:
+      typeof row.personaAgentId === "string" ? row.personaAgentId : null,
+    personaAgentName:
+      typeof row.personaAgentName === "string" ? row.personaAgentName : null,
+    personaAgentIcon:
+      typeof row.personaAgentIcon === "string" ? row.personaAgentIcon : null,
     target: {
       ...emptyTarget(engine),
       engine,
@@ -278,6 +290,9 @@ export function cloneStage(
     accessMode: partial?.accessMode ?? "current",
     requiresApproval: partial?.requiresApproval ?? false,
     rolePrompt: partial?.rolePrompt ?? "",
+    personaAgentId: partial?.personaAgentId ?? null,
+    personaAgentName: partial?.personaAgentName ?? null,
+    personaAgentIcon: partial?.personaAgentIcon ?? null,
   };
 }
 

@@ -152,6 +152,13 @@ pub struct AgentStageBindingInput {
     /// 本段成功后是否进入批准门闩
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub requires_approval: Option<bool>,
+    /// 客户端智能体（展示 + 绑定元数据，可选）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub persona_agent_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub persona_agent_name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub persona_agent_icon: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -184,6 +191,12 @@ pub struct AgentStageProjectionV1 {
     pub full_outcome: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub persona_agent_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub persona_agent_name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub persona_agent_icon: Option<String>,
 }
 
 /// 规划产物：给确认 UI 用，不是最终用户答案。
@@ -267,6 +280,9 @@ pub fn default_stage_specs(default_target: &ExecutionTargetInput) -> Vec<AgentSt
             short_outcome: None,
             full_outcome: None,
             error: None,
+            persona_agent_id: None,
+            persona_agent_name: None,
+            persona_agent_icon: None,
         },
         AgentStageProjectionV1 {
             id: AgentStageId::Implement.as_str().into(),
@@ -284,6 +300,9 @@ pub fn default_stage_specs(default_target: &ExecutionTargetInput) -> Vec<AgentSt
             short_outcome: None,
             full_outcome: None,
             error: None,
+            persona_agent_id: None,
+            persona_agent_name: None,
+            persona_agent_icon: None,
         },
         AgentStageProjectionV1 {
             id: AgentStageId::Review.as_str().into(),
@@ -301,6 +320,9 @@ pub fn default_stage_specs(default_target: &ExecutionTargetInput) -> Vec<AgentSt
             short_outcome: None,
             full_outcome: None,
             error: None,
+            persona_agent_id: None,
+            persona_agent_name: None,
+            persona_agent_icon: None,
         },
     ]
 }
@@ -379,6 +401,24 @@ pub fn stages_from_bindings(
                 .unwrap_or_else(|| {
                     default_access_mode_for(&id, &binding.target, index, total)
                 });
+            let persona_agent_id = binding
+                .persona_agent_id
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(str::to_string);
+            let persona_agent_name = binding
+                .persona_agent_name
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(str::to_string);
+            let persona_agent_icon = binding
+                .persona_agent_icon
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(str::to_string);
             AgentStageProjectionV1 {
                 id: id.clone(),
                 title,
@@ -397,6 +437,9 @@ pub fn stages_from_bindings(
                 short_outcome: None,
                 full_outcome: None,
                 error: None,
+                persona_agent_id,
+                persona_agent_name,
+                persona_agent_icon,
             }
         })
         .collect()
@@ -415,6 +458,9 @@ pub fn apply_stage_bindings(
             || binding.role_prompt.is_some()
             || binding.requires_approval.is_some()
             || binding.access_mode.is_some()
+            || binding.persona_agent_id.is_some()
+            || binding.persona_agent_name.is_some()
+            || binding.persona_agent_icon.is_some()
             || bindings.len() != stages.len()
     });
     if rich || bindings.len() != 3 {
@@ -450,6 +496,30 @@ pub fn apply_stage_bindings(
                 if mode == "read-only" || mode == "current" {
                     stage.access_mode = mode.to_string();
                 }
+            }
+            if let Some(name) = binding.persona_agent_name.as_ref() {
+                let trimmed = name.trim();
+                stage.persona_agent_name = if trimmed.is_empty() {
+                    None
+                } else {
+                    Some(trimmed.to_string())
+                };
+            }
+            if let Some(pid) = binding.persona_agent_id.as_ref() {
+                let trimmed = pid.trim();
+                stage.persona_agent_id = if trimmed.is_empty() {
+                    None
+                } else {
+                    Some(trimmed.to_string())
+                };
+            }
+            if let Some(icon) = binding.persona_agent_icon.as_ref() {
+                let trimmed = icon.trim();
+                stage.persona_agent_icon = if trimmed.is_empty() {
+                    None
+                } else {
+                    Some(trimmed.to_string())
+                };
             }
         }
     }

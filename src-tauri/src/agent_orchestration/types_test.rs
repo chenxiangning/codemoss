@@ -30,6 +30,9 @@ fn stages_from_bindings_preserves_n_stages_and_role_prompt() {
             role_prompt: Some("only plan".into()),
             access_mode: Some("read-only".into()),
             requires_approval: Some(true),
+            persona_agent_id: Some("a1".into()),
+            persona_agent_name: Some("小张".into()),
+            persona_agent_icon: None,
         },
         AgentStageBindingInput {
             id: "implement".into(),
@@ -38,6 +41,9 @@ fn stages_from_bindings_preserves_n_stages_and_role_prompt() {
             role_prompt: None,
             access_mode: Some("current".into()),
             requires_approval: Some(false),
+            persona_agent_id: None,
+            persona_agent_name: None,
+            persona_agent_icon: None,
         },
         AgentStageBindingInput {
             id: "test-harden".into(),
@@ -46,6 +52,9 @@ fn stages_from_bindings_preserves_n_stages_and_role_prompt() {
             role_prompt: Some("add tests".into()),
             access_mode: Some("current".into()),
             requires_approval: Some(false),
+            persona_agent_id: None,
+            persona_agent_name: None,
+            persona_agent_icon: None,
         },
         AgentStageBindingInput {
             id: "review".into(),
@@ -54,12 +63,16 @@ fn stages_from_bindings_preserves_n_stages_and_role_prompt() {
             role_prompt: None,
             access_mode: Some("read-only".into()),
             requires_approval: Some(false),
+            persona_agent_id: None,
+            persona_agent_name: None,
+            persona_agent_icon: None,
         },
     ];
     let stages = stages_from_bindings(&default, &bindings);
     assert_eq!(stages.len(), 4);
     assert_eq!(stages[0].id, "plan");
     assert_eq!(stages[0].role_prompt.as_deref(), Some("only plan"));
+    assert_eq!(stages[0].persona_agent_name.as_deref(), Some("小张"));
     assert!(stages[0].requires_approval);
     assert_eq!(stages[2].id, "test-harden");
     assert_eq!(stages[2].title, "测试加固");
@@ -79,6 +92,9 @@ fn apply_stage_bindings_rebuilds_when_rich_metadata_present() {
             role_prompt: Some("ra".into()),
             access_mode: None,
             requires_approval: Some(false),
+            persona_agent_id: None,
+            persona_agent_name: None,
+            persona_agent_icon: None,
         },
         AgentStageBindingInput {
             id: "b".into(),
@@ -87,6 +103,9 @@ fn apply_stage_bindings_rebuilds_when_rich_metadata_present() {
             role_prompt: None,
             access_mode: None,
             requires_approval: Some(false),
+            persona_agent_id: None,
+            persona_agent_name: None,
+            persona_agent_icon: None,
         },
     ];
     let stages = apply_stage_bindings(base, &bindings);

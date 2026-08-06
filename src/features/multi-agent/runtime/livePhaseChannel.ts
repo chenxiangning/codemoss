@@ -78,30 +78,6 @@ function schedulePublish(): void {
   publishTimer = setTimeout(flushPublish, Math.max(0, PUBLISH_MS - elapsed));
 }
 
-export function mergeLiveText(previous: string, incoming: string): string {
-  if (!incoming) return previous;
-  if (!previous) return incoming;
-  if (incoming === previous) return previous;
-  // 全量替换：incoming 包含 previous 全部文本（流式常见模式）
-  if (incoming.startsWith(previous)) return incoming;
-  // 保持 previous：previous 已包含 incoming 全部文本
-  if (previous.startsWith(incoming)) return previous;
-  // incoming 是 previous 的尾缀（去重后的尾部增量）
-  if (previous.endsWith(incoming)) return previous;
-  // 重叠检测：incoming 包含 previous 的尾段（流式断线重连常见）
-  if (
-    incoming.length > previous.length &&
-    previous.length > 24 &&
-    incoming.includes(previous.slice(-Math.min(80, previous.length)))
-  ) {
-    return incoming;
-  }
-  // 兜底：优先选更长文本。流式协议通常发送全量文本而非增量 delta，
-  // 避免 `previous + incoming` 产生重复拼接。
-  // 当 incoming 更短时保留 previous（可能是 true partial delta）。
-  return incoming.length >= previous.length ? incoming : previous;
-}
-
 export function beginAgentLivePhase(
   workspaceId: string,
   threadId: string,
@@ -122,63 +98,6 @@ export function beginAgentLivePhase(
     version: 0,
     updatedAt: Date.now(),
   });
-  schedulePublish();
-}
-
-export function appendAgentLivePhaseText(
-  workspaceId: string,
-  threadId: string,
-  attemptId: string,
-  delta: string,
-): void {
-  if (!delta) return;
-  const key = scopeKey(workspaceId, threadId);
-  const current = entriesByScope.get(key);
-  if (!current || current.attemptId !== attemptId) {
-    const next = {
-      attemptId,
-      phase: current?.phase ?? "plan",
-      runId: current?.runId,
-      text: delta,
-      version: (current?.version ?? 0) + 1,
-      updatedAt: Date.now(),
-    };
-    entriesByScope.set(key, next);
-    rememberArchive(key, next.runId, next.phase, next.text);
-  } else {
-    const merged = mergeLiveText(current.text, delta);
-    entriesByScope.set(key, {
-      ...current,
-      text: merged,
-      version: current.version + 1,
-      updatedAt: Date.now(),
-    });
-    rememberArchive(key, current.runId, current.phase, merged);
-  }
-  schedulePublish();
-}
-
-export function setAgentLivePhaseText(
-  workspaceId: string,
-  threadId: string,
-  attemptId: string,
-  text: string,
-  phase?: string,
-  runId?: string,
-): void {
-  const key = scopeKey(workspaceId, threadId);
-  const current = entriesByScope.get(key);
-  const nextPhase = phase ?? current?.phase ?? "plan";
-  const nextRunId = runId?.trim() || current?.runId;
-  entriesByScope.set(key, {
-    attemptId,
-    phase: nextPhase,
-    runId: nextRunId,
-    text,
-    version: (current?.version ?? 0) + 1,
-    updatedAt: Date.now(),
-  });
-  rememberArchive(key, nextRunId, nextPhase, text);
   schedulePublish();
 }
 
@@ -280,67 +199,4 @@ export function seedAgentStageArchive(
 export function subscribeAgentLivePhase(listener: () => void): () => void {
   listeners.add(listener);
   return () => listeners.delete(listener);
-}
-
-export function extractRealtimeTextDelta(
-  method: string,
-  params: Record<string, unknown> | null | undefined,
-): string {
-  if (!params) return "";
-  const m = method.toLowerCase();
-  const looksTextish =
-    m.includes("agentmessage") ||
-    m.includes("text") ||
-    m.includes("content") ||
-    m.includes("message") ||
-    m.includes("delta") ||
-    m.includes("assistant") ||
-    m.includes("stream");
-  if (!looksTextish) return "";
-
-  const fromValue = (value: unknown): string => {
-    if (typeof value === "string") return value;
-    if (!value || typeof value !== "object") return "";
-    const obj = value as Record<string, unknown>;
-    if (typeof obj.text === "string") return obj.text;
-    if (typeof obj.delta === "string") return obj.delta;
-    if (typeof obj.partial === "string") return obj.partial;
-    if (typeof obj.content === "string") return obj.content;
-    if (Array.isArray(obj.content)) {
-      return obj.content
-        .map((part) => {
-          if (typeof part === "string") return part;
-          if (part && typeof part === "object") {
-            const p = part as Record<string, unknown>;
-            if (typeof p.text === "string") return p.text;
-            if (typeof p.content === "string") return p.content;
-          }
-          return "";
-        })
-        .join("");
-    }
-    return "";
-  };
-
-  const candidates = [
-    params.delta,
-    params.text,
-    params.content,
-    params.partial,
-    params.output,
-    (params.item as Record<string, unknown> | undefined)?.text,
-    (params.item as Record<string, unknown> | undefined)?.content,
-    (params.item as Record<string, unknown> | undefined)?.delta,
-    (params.message as Record<string, unknown> | undefined)?.content,
-    (params.message as Record<string, unknown> | undefined)?.text,
-    (params.event as Record<string, unknown> | undefined)?.delta,
-    (params.event as Record<string, unknown> | undefined)?.text,
-    (params.data as Record<string, unknown> | undefined)?.text,
-    (params.data as Record<string, unknown> | undefined)?.delta,
-  ];
-  for (const value of candidates) {
-    const text = fromValue(value);
-    if (text) return text;
-  }
-  return "";
 }

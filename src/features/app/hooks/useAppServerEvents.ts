@@ -52,9 +52,10 @@ import {
   resolveAgentAttemptOwner,
 } from "../../multi-agent/store/agentStore";
 import {
-  appendAgentLivePhaseText,
-  extractRealtimeTextDelta,
-} from "../../multi-agent/runtime/livePhaseChannel";
+  buildAgentCanvasThreadId,
+  isAgentCanvasThreadId,
+  parseAgentCanvasThreadId,
+} from "../../multi-agent/runtime/agentCanvasThread";
 
 export {
   getAppServerEventBackpressureForTests,
@@ -1162,7 +1163,10 @@ function routeNormalizedRealtimeEvent({
   const turnId = event.turnId ?? null;
   const shouldRouteDirectly =
     Boolean(handlers.onNormalizedRealtimeEvent) &&
-    (event.engine === "codex" || event.threadId.startsWith("shared:"));
+    (event.engine === "codex" ||
+      event.threadId.startsWith("shared:") ||
+      // 协作节点 Inspector 幕布：与 shared 同源 normalized 路由
+      event.threadId.startsWith("agent-canvas:"));
   switch (event.operation) {
     case "itemStarted":
       if (
@@ -1485,12 +1489,17 @@ function tryRouteNormalizedRealtimeEvent({
   }
   const isSharedOwnerProjection = effectiveThreadId.startsWith("shared:");
   if (shouldInjectThreadId || isSharedOwnerProjection) {
+    // agent-canvas: 事件写到隔离 thread，但 activeTurn 挂在 shared: 上
+    const activeTurnThreadId = isAgentCanvasThreadId(effectiveThreadId)
+      ? parseAgentCanvasThreadId(effectiveThreadId)?.sharedThreadId ??
+        effectiveThreadId
+      : effectiveThreadId;
     const executionTargetSnapshot =
       sharedBinding?.executionTargetSnapshot ??
       (sharedBinding?.attemptId
         ? getActiveTurnTargetForAttempt(
             workspaceId,
-            effectiveThreadId,
+            activeTurnThreadId,
             sharedBinding.attemptId,
           )
         : null);
@@ -1584,7 +1593,8 @@ export function dispatchAppServerEvent(
     (realtimeThreadId
       ? resolveSharedSessionBindingByNativeThread(workspace_id, realtimeThreadId)
       : null);
-  // Multi-Agent worker realtime：不进主 Messages，只写入右侧协作直播。
+  // Multi-Agent worker realtime：不进主幕 shared: 时间线，但必须复用主幕同源
+  // adapter + liveAssistantTextChannel（agent-canvas: 作用域）。禁止旁路抠字。
   if (
     isAgentAttempt(sharedBridge?.attemptId) ||
     sharedBridge?.bindingKey?.startsWith("squad:")
@@ -1593,17 +1603,56 @@ export function dispatchAppServerEvent(
       attemptId: sharedBridge?.attemptId,
       bindingKey: sharedBridge?.bindingKey,
     });
-    if (owner) {
-      const chunk = extractRealtimeTextDelta(method, params);
-      if (chunk) {
-        appendAgentLivePhaseText(
-          owner.workspaceId,
-          owner.threadId,
-          owner.attemptId,
-          chunk,
-        );
-      }
+    if (!owner) {
+      return;
     }
+    const canvasThreadId = buildAgentCanvasThreadId(
+      owner.threadId,
+      owner.attemptId,
+    );
+    if (!canvasThreadId) {
+      return;
+    }
+    const engineOverride =
+      sharedBridge?.engine ??
+      (rawMethodEngine as
+        | "claude"
+        | "codex"
+        | "gemini"
+        | "grok"
+        | "kimi"
+        | "opencode"
+        | undefined);
+    if (
+      tryRouteNormalizedRealtimeEvent({
+        handlers,
+        workspaceId: workspace_id,
+        message,
+        sharedBinding: sharedBridge,
+        ...(engineOverride ? { engineOverride } : {}),
+        threadIdOverride: canvasThreadId,
+        threadAgentDeltaSeenRef,
+        threadAgentCompletedSeenRef,
+        threadAgentSnapshotSeenRef,
+      })
+    ) {
+      return;
+    }
+    const agentDeltaPayload = extractAgentMessageDeltaPayload(method, params);
+    if (agentDeltaPayload) {
+      threadAgentDeltaSeenRef.current[canvasThreadId] = true;
+      handlers.onAgentMessageDelta?.({
+        workspaceId: workspace_id,
+        threadId: canvasThreadId,
+        itemId: agentDeltaPayload.itemId,
+        delta: agentDeltaPayload.delta,
+        ...(agentDeltaPayload.turnId
+          ? { turnId: agentDeltaPayload.turnId }
+          : {}),
+      });
+      return;
+    }
+    // 未识别的 worker 事件不落入主幕 shared 时间线
     return;
   }
   const requestIdValue = message.id ?? params.requestId ?? params.request_id;

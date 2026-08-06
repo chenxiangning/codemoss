@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { useTranslation } from "react-i18next";
+import ChevronLeft from "lucide-react/dist/esm/icons/chevron-left";
+import ChevronRight from "lucide-react/dist/esm/icons/chevron-right";
 import X from "lucide-react/dist/esm/icons/x";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -29,8 +31,8 @@ import {
 } from "../types";
 import {
   formatDurationMs,
+  stageInspectorTypeLine,
   stageStatusText,
-  stageTargetLabel,
 } from "../utils/format";
 
 function useLivePhase(
@@ -155,6 +157,7 @@ export function AgentInspectorDrawer() {
 
   const {
     items: canvasItems,
+    canvasThreadId,
     processingStartedAt,
   } = useAgentStageTranscript({
     workspaceId: selection?.workspaceId,
@@ -238,7 +241,7 @@ export function AgentInspectorDrawer() {
             </div>
             <div className="subagent-inspector-type">
               {stage
-                ? stageTargetLabel(stage)
+                ? stageInspectorTypeLine(stage)
                 : t("multiAgent.inspector.phaseIdle")}
             </div>
           </div>
@@ -280,11 +283,12 @@ export function AgentInspectorDrawer() {
         <div className="ma-pager">
           <button
             type="button"
+            className="ma-pager-btn"
             aria-label={t("multiAgent.inspector.prevCard")}
             onClick={() => showCard(safeIndex - 1)}
             disabled={stages.length <= 1}
           >
-            ‹
+            <ChevronLeft size={16} strokeWidth={2} aria-hidden />
           </button>
           <span className="ma-dots">
             {stages.map((item, index) => (
@@ -299,11 +303,12 @@ export function AgentInspectorDrawer() {
           </span>
           <button
             type="button"
+            className="ma-pager-btn"
             aria-label={t("multiAgent.inspector.nextCard")}
             onClick={() => showCard(safeIndex + 1)}
             disabled={stages.length <= 1}
           >
-            ›
+            <ChevronRight size={16} strokeWidth={2} aria-hidden />
           </button>
         </div>
       </div>
@@ -316,7 +321,8 @@ export function AgentInspectorDrawer() {
           >
             <Messages
               items={canvasItems}
-              threadId={selection.threadId}
+              // agent-canvas: 作用域：与主幕同源 liveAssistantTextChannel / MessageRow 流式
+              threadId={canvasThreadId || selection.threadId}
               workspaceId={selection.workspaceId}
               isThinking={Boolean(isLive)}
               processingStartedAt={processingStartedAt}

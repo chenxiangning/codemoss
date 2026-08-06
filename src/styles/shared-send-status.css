@@ -1,10 +1,12 @@
-/* Shared Send 状态条（Wave 4 / B.6，§14.5.3） */
+/* Shared Send 状态条（Wave 4 / B.6，§14.5.3）
+ * 挂在 Composer 下方时：上间距贴输入区，下间距留底边。
+ */
 .shared-send-status {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  margin: 0 0 8px;
+  margin: 8px 0 0;
   padding: 8px 12px;
   border-radius: 8px;
   border: 1px solid var(--border-muted, rgba(128, 128, 128, 0.25));

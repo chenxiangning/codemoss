@@ -3,7 +3,7 @@ import type { AgentExecutionTarget, AgentStageBinding } from "../types";
 
 export type ReasoningEffortLevel = string;
 
-/** 模板内单个环节：完整 ExecutionTarget + 提示词 + 批准点。 */
+/** 模板内单个环节：完整 ExecutionTarget + 提示词 + 批准点 + 可选智能体。 */
 export type CollaborationTemplateStage = {
   id: string;
   title: string;
@@ -11,6 +11,10 @@ export type CollaborationTemplateStage = {
   target: AgentExecutionTarget;
   accessMode: "read-only" | "current";
   requiresApproval: boolean;
+  /** 客户端智能体（与 Composer # 菜单同源），可选 */
+  personaAgentId?: string | null;
+  personaAgentName?: string | null;
+  personaAgentIcon?: string | null;
 };
 
 export type CollaborationTemplate = {
@@ -101,6 +105,18 @@ export function mergeTarget(
   };
 }
 
+/** 发送前把智能体身份叠进 rolePrompt（不改模板原文，仅绑定层合成）。 */
+export function composeStageRolePrompt(
+  stage: CollaborationTemplateStage,
+): string | null {
+  const body = stage.rolePrompt?.trim() || "";
+  const name = stage.personaAgentName?.trim() || "";
+  if (!name && !body) return null;
+  if (!name) return body;
+  const header = `【智能体：${name}】`;
+  return body ? `${header}\n${body}` : header;
+}
+
 /** 模板 → 后端 stageBindings（完整 N 段，不压成 3 段）。 */
 export function templateToStageBindings(
   template: CollaborationTemplate,
@@ -110,10 +126,13 @@ export function templateToStageBindings(
   return template.stages.map((stage) => ({
     id: stage.id,
     title: stage.title,
-    rolePrompt: stage.rolePrompt || null,
+    rolePrompt: composeStageRolePrompt(stage),
     accessMode: stage.accessMode,
     requiresApproval: stage.requiresApproval,
     target: normalizeAgentTargetSource(mergeTarget(stage.target, base)),
+    personaAgentId: stage.personaAgentId ?? null,
+    personaAgentName: stage.personaAgentName ?? null,
+    personaAgentIcon: stage.personaAgentIcon ?? null,
   }));
 }
 
