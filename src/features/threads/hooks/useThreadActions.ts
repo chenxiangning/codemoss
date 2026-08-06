@@ -68,6 +68,7 @@ import {
   shouldIncludeWorkspaceThreadEntry,
   shouldApplyCodexSidebarContinuity,
   shouldApplyClaudeSidebarContinuity,
+  isSharedCollabWorkerSpawnTitle,
   stripHiddenSharedBindingSummaries,
   threadIdMatchesHiddenAutomaticSessionSet,
   withTimeout,
@@ -1060,11 +1061,30 @@ export function useThreadActions({
           rememberPartialSource(projectCatalogValue?.partialSource);
           const projectCatalogSessions = (
             projectCatalogValue?.sessions ?? []
-          ).filter(
-            (entry) =>
-              !hiddenSharedBindingIds.has(entry.sessionId) &&
-              !deletedThreadIdSet.has(entry.sessionId),
-          );
+          ).filter((entry) => {
+            if (deletedThreadIdSet.has(entry.sessionId)) return false;
+            // id 命中 Shared hidden binding（含 codex:uuid / raw uuid）
+            if (
+              hiddenSharedBindingIds.has(entry.sessionId) ||
+              (() => {
+                const colon = entry.sessionId.indexOf(":");
+                if (colon <= 0) return false;
+                const bare = entry.sessionId.slice(colon + 1).trim();
+                return Boolean(bare && hiddenSharedBindingIds.has(bare));
+              })()
+            ) {
+              return false;
+            }
+            // 协作 worker multi-line MOSSX+squad（改名成 Agent N 之前）
+            // 不用任意 MOSSX 单行，避免 Provider Continuation 被误杀
+            if (
+              isSharedCollabWorkerSpawnTitle(entry.title) ||
+              isSharedCollabWorkerSpawnTitle(entry.nativeTitle)
+            ) {
+              return false;
+            }
+            return true;
+          });
           if (claudeSuccessfulEmpty && projectCatalogValue?.partialSource) {
             onDebug?.({
               id: `${Date.now()}-client-claude-successful-empty-degraded`,
@@ -1092,6 +1112,7 @@ export function useThreadActions({
             workspace.id,
             mappedTitles,
             getCustomName,
+            hiddenSharedBindingIds,
           );
           mergedById.clear();
           allSummaries.forEach((entry) => mergedById.set(entry.id, entry));

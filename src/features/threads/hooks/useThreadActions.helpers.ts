@@ -1180,21 +1180,63 @@ export function normalizeGrokSessionSummaries(
 }
 
 /**
- * Shared control-plane / context package 标题污染行（如 MOSSX_CONTEXT_PACKAGE:…）。
- * 仅用于 native 行防御性剔除；shared: 会话保留。
+ * 协作 multi-agent worker 的 Codex 首包标题（整段 multi-line context）。
+ * 特征：MOSSX 包 + `binding:squad:`（Provider Continuation 单行 package 不含 squad）。
+ * 安全：不单凭 `Agent N` / 普通 MOSSX 单行 package 误杀用户会话或续接会话。
+ */
+export function isSharedCollabWorkerSpawnTitle(
+  value: string | null | undefined,
+): boolean {
+  const normalized = typeof value === "string" ? value.trim() : "";
+  if (!normalized) return false;
+  // 协作 worker context 必含 squad binding key
+  if (
+    /binding\s*:\s*squad:/i.test(normalized) &&
+    (normalized.includes("MOSSX_CONTEXT_PACKAGE:") ||
+      normalized.includes("MOSSX_SHARED_CONTEXT_V1"))
+  ) {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Shared control-plane 标题：完整 protocol 分类 **或** 协作 worker multi-line 包。
+ * 不单凭 `Agent N` 删行。
  */
 export function isSharedControlPlaneSpawnTitle(
   value: string | null | undefined,
 ): boolean {
   const normalized = typeof value === "string" ? value.trim() : "";
   if (!normalized) return false;
-  return classifyContextProtocolText(normalized) !== null;
+  // 完整 protocol（含单行 package marker，用于 strip 已污染显示名）
+  if (classifyContextProtocolText(normalized) !== null) {
+    return true;
+  }
+  // 协作 worker multi-line 包
+  return isSharedCollabWorkerSpawnTitle(normalized);
+}
+
+/** hide set 命中：id 本体 + 去 engine 前缀后的 raw uuid */
+export function threadIdInHiddenSharedBindingSet(
+  threadId: string,
+  hiddenSharedBindingIds: ReadonlySet<string>,
+): boolean {
+  const id = threadId.trim();
+  if (!id) return false;
+  if (hiddenSharedBindingIds.has(id)) return true;
+  const colon = id.indexOf(":");
+  if (colon > 0) {
+    const bare = id.slice(colon + 1).trim();
+    if (bare && hiddenSharedBindingIds.has(bare)) return true;
+  }
+  return false;
 }
 
 /**
  * 从侧栏快照剔除 Shared Hidden Native Binding。
  * hide set 由 expandHiddenSharedBindingIds 构建（含 raw / engine:raw / pending 变体）。
- * 额外：剔除 context-protocol 标题的 native 行（orphan 下崽兜底）。
+ * 额外：剔除 control-plane 标题的 native 行（MOSSX 包 / 协作 context）。
  */
 export function stripHiddenSharedBindingSummaries(
   summaries: ThreadSummary[],
@@ -1205,7 +1247,7 @@ export function stripHiddenSharedBindingSummaries(
   }
   let changed = false;
   const next = summaries.filter((summary) => {
-    if (hiddenSharedBindingIds.has(summary.id)) {
+    if (threadIdInHiddenSharedBindingSet(summary.id, hiddenSharedBindingIds)) {
       changed = true;
       return false;
     }
@@ -1434,17 +1476,41 @@ export function mergeCodexCatalogSessionSummaries(
   workspaceId: string,
   mappedTitles: Record<string, string>,
   getCustomName: (workspaceId: string, threadId: string) => string | undefined,
+  /** Shared-owned native ids；merge 前剔除，避免改名成 Agent N 后漏网 */
+  hiddenSharedBindingIds: ReadonlySet<string> = new Set(),
 ): ThreadSummary[] {
+  // 先清 baseline 泄漏
+  const safeBase = stripHiddenSharedBindingSummaries(
+    baseSummaries,
+    hiddenSharedBindingIds,
+  );
   if (codexSessions.length === 0) {
-    return baseSummaries;
+    return safeBase;
   }
   const mergedById = new Map<string, ThreadSummary>();
-  baseSummaries.forEach((entry) => mergedById.set(entry.id, entry));
+  safeBase.forEach((entry) => mergedById.set(entry.id, entry));
   codexSessions.forEach((session) => {
     const title = normalizeSessionDisplayTitle(session.title);
     const nativeTitle = normalizeSessionDisplayTitle(session.nativeTitle);
     const engineSource = normalizeCatalogEngine(session.engine);
     if (!title && !nativeTitle) {
+      return;
+    }
+    // id hide（含 raw / engine: 变体）
+    if (
+      threadIdInHiddenSharedBindingSet(
+        session.sessionId,
+        hiddenSharedBindingIds,
+      )
+    ) {
+      return;
+    }
+    // 在改写显示名之前拦截协作 worker 首包（含 multi-line MOSSX+squad）
+    // 注意：不要用「任意 MOSSX 单行 package」——Provider Continuation 需改写成「继续：…」
+    if (
+      isSharedCollabWorkerSpawnTitle(title) ||
+      isSharedCollabWorkerSpawnTitle(nativeTitle)
+    ) {
       return;
     }
     if (

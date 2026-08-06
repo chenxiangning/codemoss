@@ -1,10 +1,13 @@
 import { describe, expect, it } from "vitest";
 
 import type { ConversationItem, ThreadSummary } from "../../../types";
+import { expandHiddenSharedBindingIds } from "../../shared-session/runtime/sharedSessionSummaries";
 import {
   buildHiddenAutomaticSessionIdSet,
   filterHiddenAutomaticThreadSummaries,
   isRetainableEngineContinuitySummary,
+  isSharedCollabWorkerSpawnTitle,
+  isSharedControlPlaneSpawnTitle,
   mergeCodexCatalogSessionSummaries,
   mergeDegradedClaudeContinuitySummaries,
   mergeDegradedCodexContinuitySummaries,
@@ -856,6 +859,96 @@ describe("useThreadActions.helpers", () => {
       "shared:s1",
       "claude:user-1",
     ]);
+  });
+
+  it("isSharedCollabWorkerSpawnTitle catches multi-line collab worker titles", () => {
+    const multiLine =
+      `MOSSX_CONTEXT_PACKAGE:sha256:${"a".repeat(64)}:` +
+      `sha256:${"b".repeat(64)}\n` +
+      "MOSSX_SHARED_CONTEXT_V1\n" +
+      "session:abc\n" +
+      "binding:squad:agent-1:implement:codex:prof\n" +
+      "hello";
+    expect(isSharedCollabWorkerSpawnTitle(multiLine)).toBe(true);
+    expect(isSharedControlPlaneSpawnTitle(multiLine)).toBe(true);
+    // 单行 package（Provider Continuation）不算 collab worker
+    const singlePackage =
+      `MOSSX_CONTEXT_PACKAGE:sha256:${"a".repeat(64)}:` +
+      `sha256:${"b".repeat(64)}`;
+    expect(isSharedCollabWorkerSpawnTitle(singlePackage)).toBe(false);
+    // 用户真会话：仅 Agent N 不杀
+    expect(isSharedControlPlaneSpawnTitle("Agent 81")).toBe(false);
+    expect(isSharedControlPlaneSpawnTitle("正常功能讨论")).toBe(false);
+  });
+
+  it("mergeCodexCatalogSessionSummaries drops collab MOSSX worker before Agent N rename", () => {
+    const multiLine =
+      `MOSSX_CONTEXT_PACKAGE:sha256:${"a".repeat(64)}:` +
+      `sha256:${"b".repeat(64)}\n` +
+      "MOSSX_SHARED_CONTEXT_V1\n" +
+      "session:s1\n" +
+      "binding:squad:run:implement:codex:p\n" +
+      "body";
+    const merged = mergeCodexCatalogSessionSummaries(
+      [
+        {
+          id: "codex:user-1",
+          name: "用户自己的 Codex 会话",
+          updatedAt: 10,
+          engineSource: "codex",
+        },
+      ],
+      [
+        {
+          sessionId: "codex:019fd727-worker",
+          title: multiLine,
+          updatedAt: 20,
+          engine: "codex",
+        },
+        {
+          sessionId: "codex:user-keep",
+          title: "正常 codex 任务",
+          updatedAt: 15,
+          engine: "codex",
+        },
+      ],
+      "ws-1",
+      {},
+      () => undefined,
+    );
+    expect(merged.map((r) => r.id).sort()).toEqual([
+      "codex:user-1",
+      "codex:user-keep",
+    ]);
+  });
+
+  it("mergeCodexCatalogSessionSummaries respects hide set by bare uuid", () => {
+    const hidden = expandHiddenSharedBindingIds([
+      "019fd727-2a93-7f51-802e-ca817573d8e8",
+    ]);
+    const merged = mergeCodexCatalogSessionSummaries(
+      [],
+      [
+        {
+          sessionId: "codex:019fd727-2a93-7f51-802e-ca817573d8e8",
+          title: "Agent 81",
+          updatedAt: 20,
+          engine: "codex",
+        },
+        {
+          sessionId: "codex:visible-user",
+          title: "Agent 12",
+          updatedAt: 15,
+          engine: "codex",
+        },
+      ],
+      "ws-1",
+      {},
+      () => undefined,
+      hidden,
+    );
+    // Agent 12 用户会话保留；hide 命中的 worker 即使显示 Agent 81 也剔除
+    expect(merged.map((r) => r.id)).toEqual(["codex:visible-user"]);
   });
 
   it("mergeGrok clears leaked baseline even when sessions filter empties", () => {
