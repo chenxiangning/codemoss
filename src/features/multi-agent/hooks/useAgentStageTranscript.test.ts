@@ -103,7 +103,7 @@ describe("alignItemsToStageTarget", () => {
 });
 
 describe("buildStageOwnedFallback", () => {
-  it("uses implement fullOutcome not plan markdown", () => {
+  it("contract 2: implement stage must not use plan.markdown", () => {
     const items = buildStageOwnedFallback({
       stage: implementStage,
       projection: {
@@ -139,7 +139,57 @@ describe("buildStageOwnedFallback", () => {
     }
   });
 
-  it("plan stage may use plan.markdown", () => {
+  it("contract 2: review stage must not use plan.markdown", () => {
+    const reviewStage: AgentStageProjection = {
+      ...implementStage,
+      id: "review",
+      title: "审查",
+      role: "reviewer",
+      fullOutcome: "审查通过：主链路齐备。",
+      shortOutcome: "审查通过",
+      target: {
+        engine: "grok",
+        model: "grok",
+        providerProfileNameSnapshot: "xAI",
+        providerProfileSource: "managed",
+        reasoningEffort: "high",
+      },
+    };
+    const items = buildStageOwnedFallback({
+      stage: reviewStage,
+      projection: {
+        schemaVersion: 1,
+        runId: "run-1",
+        workspaceId: "ws",
+        workspaceRoot: "/tmp",
+        sessionId: "sess",
+        requestText: "hello",
+        target: reviewStage.target,
+        status: "reviewing",
+        planRevision: 1,
+        plan: {
+          schemaVersion: 1,
+          summary: "plan summary",
+          markdown: "SUMMARY: PLAN_MARKDOWN_LEAK_MARKER",
+        },
+        stages: [implementStage, reviewStage],
+        activeAttemptIds: [],
+        diagnostics: [],
+        requestedAt: 1,
+        updatedAt: 1,
+      },
+      liveText: "",
+      isLive: false,
+    });
+    expect(items).toHaveLength(1);
+    if (items[0]?.kind === "message") {
+      expect(items[0].text).toContain("审查通过");
+      expect(items[0].text).not.toContain("PLAN_MARKDOWN_LEAK_MARKER");
+      expect(items[0].executionTargetSnapshot?.engine).toBe("grok");
+    }
+  });
+
+  it("contract 2: plan stage may use plan.markdown", () => {
     const planStage: AgentStageProjection = {
       ...implementStage,
       id: "plan",

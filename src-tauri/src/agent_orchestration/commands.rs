@@ -65,19 +65,34 @@ fn start_stage_attempt(
     stage: &AgentStageProjectionV1,
 ) -> Result<AgentPreparedAttemptV1, String> {
     let stage_idx = stage_index(run, &stage.id).unwrap_or(0);
+    // 首段吃完整 model text（含注入）；后续段只吃可见原文 + plan/上游短说明
+    let task_text = if stage_idx == 0 {
+        run.request_text.as_str()
+    } else if !run.user_visible_text.trim().is_empty() {
+        run.user_visible_text.as_str()
+    } else {
+        run.request_text.as_str()
+    };
     let prompt = build_stage_prompt(
         &stage.id,
         stage_idx,
         run.stages.len(),
         stage.requires_approval,
         stage.role_prompt.as_deref(),
-        &run.request_text,
+        stage.persona_prompt.as_deref(),
+        task_text,
         run.plan.as_ref(),
         &last_succeeded_notes(run),
     );
     let attempt_id = Uuid::new_v4().to_string();
     let logical_turn_id = Uuid::new_v4().to_string();
     let access_mode = access_mode_for(stage);
+    // Context Fan-in：仅首段重试带图
+    let images = if stage_idx == 0 && !run.first_stage_images.is_empty() {
+        Some(run.first_stage_images.clone())
+    } else {
+        None
+    };
     let begin = begin_stage_turn(
         writer,
         session_id,
@@ -88,6 +103,7 @@ fn start_stage_attempt(
         access_mode.as_str(),
         attempt_id.clone(),
         logical_turn_id.clone(),
+        images,
     )?;
     prepared_from_begin(
         run.run_id.clone(),
@@ -108,6 +124,10 @@ pub(crate) async fn shared_agent_request_run(
     target: ExecutionTargetInput,
     // 有序列表：完整 N 段定义（target + title + rolePrompt + requiresApproval）
     stage_bindings: Option<Vec<AgentStageBindingInput>>,
+    // 首段附图（Context Fan-in）；后续段不传
+    images: Option<Vec<String>>,
+    // 主幕可见原文（无注入块）；缺省回退 text
+    visible_text: Option<String>,
     state: State<'_, AppState>,
 ) -> Result<Value, String> {
     require_agent_enabled()?;
@@ -115,10 +135,33 @@ pub(crate) async fn shared_agent_request_run(
     require_shared_session_workspace_owner(&workspace_id, &session_id)?;
     crate::shared_session_v2::validate_resolved_execution_target(&target)?;
     validate_agent_target(&target)?;
-    let request_text = text.trim();
-    if request_text.is_empty() {
-        return Err("agent-request-invalid: text must be non-empty".to_string());
-    }
+    let first_stage_images: Vec<String> = images
+        .clone()
+        .unwrap_or_default()
+        .into_iter()
+        .map(|p| p.trim().to_string())
+        .filter(|p| !p.is_empty())
+        .collect();
+    // 纯图：允许空正文，用占位任务文案喂首段（下游只吃文字归纳）
+    let request_text = {
+        let trimmed = text.trim();
+        if trimmed.is_empty() {
+            if first_stage_images.is_empty() {
+                return Err(
+                    "agent-request-invalid: text or images must be non-empty".to_string(),
+                );
+            }
+            "（请根据附图回答）"
+        } else {
+            trimmed
+        }
+    };
+    let user_visible_text = visible_text
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or(request_text)
+        .to_string();
 
     let bindings = stage_bindings.unwrap_or_default();
     for binding in &bindings {
@@ -162,6 +205,7 @@ pub(crate) async fn shared_agent_request_run(
                     "personaAgentId": stage.persona_agent_id,
                     "personaAgentName": stage.persona_agent_name,
                     "personaAgentIcon": stage.persona_agent_icon,
+                    "personaPrompt": stage.persona_prompt,
                     "target": stage.target,
                 })
             })
@@ -187,6 +231,8 @@ pub(crate) async fn shared_agent_request_run(
                 "workspaceRoot": workspace_root,
                 "orchestration": "multi-cli-collab-v1",
                 "stageBindings": bindings_json,
+                "firstStageImages": first_stage_images,
+                "userVisibleText": user_visible_text,
             }),
         }),
     )?;
@@ -197,10 +243,16 @@ pub(crate) async fn shared_agent_request_run(
         stages.len(),
         first.requires_approval,
         first.role_prompt.as_deref(),
+        first.persona_prompt.as_deref(),
         request_text,
         None,
         "",
     );
+    let first_images = if first_stage_images.is_empty() {
+        None
+    } else {
+        Some(first_stage_images.clone())
+    };
     let begin = begin_stage_turn(
         writer,
         &session_id,
@@ -211,6 +263,7 @@ pub(crate) async fn shared_agent_request_run(
         access_mode.as_str(),
         attempt_id.clone(),
         logical_turn_id.clone(),
+        first_images,
     )?;
     if begin.status != crate::shared_session_v2::BeginTurnStatus::Creating {
         let run = require_run(writer, &session_id, &run_id)?;
@@ -656,8 +709,8 @@ async fn record_stage_and_maybe_advance(
     let prepared = match start_stage_attempt(writer, &session_id, &run, &next) {
         Ok(prepared) => prepared,
         Err(error) => {
-            // 非首段启动失败：实现已成功则降级 settle
-            if idx > 0 {
+            // 非首段启动失败：实现已成功则降级 settle（§11 / contracts.md §3）
+            if should_degrade_settle_on_next_start_failure(idx) {
                 let mut settled_run = run.clone();
                 // 标记后续未跑段为 skipped，便于汇总表
                 for stage in settled_run.stages.iter_mut().skip(idx + 1) {
@@ -781,8 +834,14 @@ fn stage_outcome_body(raw: &str, stage_title: &str, _is_last_or_review: bool) ->
     cap_text(text, STAGE_OUTCOME_BODY_CHARS)
 }
 
+/// 非首段已成功结算后，下一段启动失败时可降级 settle 为 succeeded（§11）。
+/// `completed_stage_index` 为刚完成段在 `run.stages` 中的下标。
+pub(super) fn should_degrade_settle_on_next_start_failure(completed_stage_index: usize) -> bool {
+    completed_stage_index > 0
+}
+
 /// 主幕布调度汇总：综括本轮所有节点，而非复读末段全文
-fn compose_orchestration_summary(run: &AgentProjectionV1) -> String {
+pub(super) fn compose_orchestration_summary(run: &AgentProjectionV1) -> String {
     let task = run.request_text.trim();
     let mut md = String::from("## 本轮协作总结\n\n");
     if !task.is_empty() {
@@ -1026,4 +1085,128 @@ pub(crate) async fn shared_agent_finalize_cancel(
         }),
     )?;
     require_run(writer, &session_id, &run_id)
+}
+
+#[cfg(test)]
+mod degrade_settle_tests {
+    use super::{
+        compose_orchestration_summary, should_degrade_settle_on_next_start_failure,
+    };
+    use crate::agent_orchestration::types::{
+        AgentPlanDraftV1, AgentProjectionV1, AgentRunStatus, AgentStageProjectionV1,
+        AgentStageStatus, AGENT_SCHEMA_VERSION,
+    };
+    use crate::shared_event_log::canonical::types::CanonicalProviderProfileSource;
+    use crate::shared_session_v2::{EngineType, ExecutionTargetInput};
+
+    fn target() -> ExecutionTargetInput {
+        ExecutionTargetInput {
+            engine: EngineType::Codex,
+            provider_profile_id: None,
+            model_catalog_entry_id: Some("m1".into()),
+            model: Some("m1".into()),
+            reasoning_effort: Some("medium".into()),
+            provider_profile_name_snapshot: Some("local".into()),
+            provider_profile_source: Some(CanonicalProviderProfileSource::Local),
+            runtime_capability_fingerprint: None,
+        }
+    }
+
+    fn stage(
+        id: &str,
+        title: &str,
+        status: AgentStageStatus,
+        short: Option<&str>,
+    ) -> AgentStageProjectionV1 {
+        AgentStageProjectionV1 {
+            id: id.into(),
+            title: title.into(),
+            role: id.into(),
+            role_prompt: None,
+            target: target(),
+            status,
+            access_mode: "current".into(),
+            requires_approval: false,
+            attempt_id: None,
+            binding_key: None,
+            started_at: None,
+            settled_at: None,
+            short_outcome: short.map(str::to_string),
+            full_outcome: None,
+            error: None,
+            persona_agent_id: None,
+            persona_agent_name: None,
+            persona_agent_icon: None,
+            persona_prompt: None,
+        }
+    }
+
+    #[test]
+    fn should_degrade_only_after_first_stage() {
+        assert!(!should_degrade_settle_on_next_start_failure(0));
+        assert!(should_degrade_settle_on_next_start_failure(1));
+        assert!(should_degrade_settle_on_next_start_failure(2));
+    }
+
+    /// §11：implement succeeded + review 未跑 → finalSummary 含 implement 短说明，不含假 review 正文
+    #[test]
+    fn compose_summary_prefers_implement_when_review_skipped() {
+        let run = AgentProjectionV1 {
+            schema_version: AGENT_SCHEMA_VERSION,
+            run_id: "run-1".into(),
+            workspace_id: "ws".into(),
+            workspace_root: "/tmp".into(),
+            session_id: "sess".into(),
+            request_text: "收口契约常量".into(),
+            user_visible_text: "收口契约常量".into(),
+            first_stage_images: vec![],
+            target: target(),
+            status: AgentRunStatus::Succeeded,
+            plan_revision: 1,
+            plan: Some(AgentPlanDraftV1 {
+                schema_version: AGENT_SCHEMA_VERSION,
+                summary: "补测与 spec".into(),
+                markdown: "SHOULD_NOT_BE_REVIEW_BODY".into(),
+                steps: vec![],
+            }),
+            stages: vec![
+                stage(
+                    "plan",
+                    "规划",
+                    AgentStageStatus::Succeeded,
+                    Some("计划已确认"),
+                ),
+                stage(
+                    "implement",
+                    "实现",
+                    AgentStageStatus::Succeeded,
+                    Some("已写入 contracts 与回归测"),
+                ),
+                stage("review", "审查", AgentStageStatus::Skipped, None),
+            ],
+            active_attempt_ids: vec![],
+            diagnostics: vec![],
+            requested_at: 1,
+            approved_at: Some(2),
+            updated_at: 3,
+            final_summary: None,
+        };
+        let summary = compose_orchestration_summary(&run);
+        assert!(
+            summary.contains("已写入 contracts 与回归测"),
+            "finalSummary 应保留 implement 短说明: {summary}"
+        );
+        assert!(
+            summary.contains("实现") && summary.contains('✓'),
+            "汇总表应标记实现成功: {summary}"
+        );
+        assert!(
+            summary.contains("审查") && summary.contains('—'),
+            "review skipped 应在表中为 —: {summary}"
+        );
+        assert!(
+            !summary.contains("SHOULD_NOT_BE_REVIEW_BODY"),
+            "不得用 plan.markdown 冒充 review/汇总正文: {summary}"
+        );
+    }
 }

@@ -153,15 +153,16 @@ pub(super) fn plan_prompt(request_text: &str) -> String {
     format!(
         r#"你是多 Agent 协作管线中的【规划】环节。只产出计划，不执行。
 
-硬性禁止：调用工具、读仓库、改文件、开子代理、AskUserQuestion。
-信息不足时写「假设 / 待确认」，不要去查。
+硬性禁止：写盘工具、改文件、开子代理、AskUserQuestion、commit/push/deploy。
+若用户消息含图片或引用上下文（记忆/便签/skill）：先消化其事实，再写计划；关键信息必须写进 SUMMARY 与 Markdown（下游节点看不到原图/原附件）。
+信息不足时写「假设 / 待确认」。
 
 用户任务：
 {request_text}
 
 输出格式：
 1. 第一行：SUMMARY: <一句话>
-2. Markdown：目标、步骤、风险、验收
+2. Markdown：目标、步骤、风险、验收（含从附件/引用归纳的要点）
 3. 可选 STEPS: 列表
 
 不要 JSON，不要全文代码围栏。"#
@@ -214,24 +215,43 @@ pub(super) fn review_prompt(request_text: &str, plan: &AgentPlanDraftV1, impleme
     )
 }
 
-/// 将模板 rolePrompt 叠到环节基座 prompt 上。
-pub(super) fn with_role_prompt(role_prompt: Option<&str>, base: String) -> String {
+/// 将智能体正文 + 本步 rolePrompt 叠到环节基座 prompt 上（均可选）。
+/// 顺序：persona → 本步指令 → 基座。幕布不展示正文，仅 CLI 消费。
+pub(super) fn with_persona_and_role_prompt(
+    persona_prompt: Option<&str>,
+    role_prompt: Option<&str>,
+    base: String,
+) -> String {
+    let persona = persona_prompt
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
     let role = role_prompt.map(str::trim).filter(|value| !value.is_empty());
-    match role {
-        Some(role) => format!(
-            "【本环节自定义指令】\n{role}\n\n---\n\n{base}"
-        ),
-        None => base,
+    let mut prefix = String::new();
+    if let Some(persona) = persona {
+        prefix.push_str("【智能体角色指令】\n");
+        prefix.push_str(persona);
+        prefix.push_str("\n\n");
+    }
+    if let Some(role) = role {
+        prefix.push_str("【本环节自定义指令】\n");
+        prefix.push_str(role);
+        prefix.push_str("\n\n");
+    }
+    if prefix.is_empty() {
+        base
+    } else {
+        format!("{prefix}---\n\n{base}")
     }
 }
 
-/// 按环节位置拼 worker prompt（支持自定义 N 段 + rolePrompt）。
+/// 按环节位置拼 worker prompt（支持自定义 N 段 + persona + rolePrompt）。
 pub(super) fn build_stage_prompt(
     stage_id: &str,
     stage_index: usize,
     stage_count: usize,
     requires_approval: bool,
     role_prompt: Option<&str>,
+    persona_prompt: Option<&str>,
     request_text: &str,
     plan: Option<&AgentPlanDraftV1>,
     upstream_notes: &str,
@@ -262,6 +282,7 @@ pub(super) fn build_stage_prompt(
 
 要求：
 - 完成该环节职责
+- 若本段为管线首段且含图片/引用上下文：先消化事实并写入结果，供后续节点使用
 - 禁止 commit / push / deploy
 - 结束时用简短 Markdown 说明结果（控制在 20 行内）"#,
             title = stage_id,
@@ -272,7 +293,7 @@ pub(super) fn build_stage_prompt(
             },
         )
     };
-    with_role_prompt(role_prompt, base)
+    with_persona_and_role_prompt(persona_prompt, role_prompt, base)
 }
 
 pub(super) fn parse_plan_from_assistant(raw: &str) -> Result<AgentPlanDraftV1, String> {
@@ -396,6 +417,8 @@ pub(super) fn begin_stage_turn(
     access_mode: &str,
     attempt_id: String,
     logical_turn_id: String,
+    // 仅首段传图；后续段 None
+    images: Option<Vec<String>>,
 ) -> Result<BeginTurnOutcome, String> {
     let permission_class = if access_mode == "current" {
         "current-workspace"
@@ -414,6 +437,7 @@ pub(super) fn begin_stage_turn(
         session_id,
         target,
         prompt,
+        images,
         run_id,
         stage_id,
         stage_id,

@@ -17,7 +17,13 @@ import type {
   CollaborationTemplate,
   CollaborationTemplateStage,
 } from "../templates/types";
-import { templateApprovalCount, templateFlowLabel } from "../templates/types";
+import {
+  displayStageTitle,
+  displayTemplateDescription,
+  displayTemplateName,
+  templateApprovalCount,
+  templateFlowLabel,
+} from "../templates/types";
 import { isCompleteAgentTargetForUi } from "../templates/targetCompleteness";
 import { StageAgentPicker } from "./StageAgentPicker";
 import { StageTargetPicker } from "./StageTargetPicker";
@@ -29,10 +35,16 @@ type TemplateManagerModalProps = {
 };
 
 function emptyEditor(template: CollaborationTemplate): CollaborationTemplate {
+  // 内置模板展示/编辑用当前 UI 语言，保存后变「我的模板」时保留该语言文案
+  const name = displayTemplateName(template);
+  const description = displayTemplateDescription(template);
   return {
     ...template,
+    name,
+    description,
     stages: template.stages.map((stage) => ({
       ...stage,
+      title: displayStageTitle(template, stage),
       target: { ...stage.target },
     })),
   };
@@ -66,11 +78,16 @@ export function TemplateManagerModal({
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return catalog.templates;
-    return catalog.templates.filter(
-      (item) =>
+    return catalog.templates.filter((item) => {
+      const name = displayTemplateName(item).toLowerCase();
+      const description = displayTemplateDescription(item).toLowerCase();
+      return (
+        name.includes(q) ||
+        description.includes(q) ||
         item.name.toLowerCase().includes(q) ||
-        item.description.toLowerCase().includes(q),
-    );
+        item.description.toLowerCase().includes(q)
+      );
+    });
   }, [catalog.templates, query]);
 
   const builtins = filtered.filter((item) => item.builtin);
@@ -140,18 +157,14 @@ export function TemplateManagerModal({
     if (!draft.name.trim()) {
       pushErrorToast({
         title: t("multiAgent.template.savedTitle"),
-        message: t("multiAgent.template.nameRequired", {
-          defaultValue: "请填写模板名称",
-        }),
+        message: t("multiAgent.template.nameRequired"),
       });
       return;
     }
     if (draft.stages.length === 0) {
       pushErrorToast({
         title: t("multiAgent.template.savedTitle"),
-        message: t("multiAgent.template.stageRequired", {
-          defaultValue: "至少保留一个环节",
-        }),
+        message: t("multiAgent.template.stageRequired"),
       });
       return;
     }
@@ -176,21 +189,24 @@ export function TemplateManagerModal({
           ? t("multiAgent.template.savedWithIncomplete", {
               name: saved.name,
               count: incomplete.length,
-              defaultValue: `已保存「${saved.name}」· ${incomplete.length} 个环节未配齐模型，发送时将使用当前会话配置`,
             })
           : t("multiAgent.template.saved", { name: saved.name }),
     });
   };
 
   const remove = () => {
-    // 内置原始不可删；已覆盖为 custom 的可删
-    if (isBuiltinOrigin && !catalog.templates.some((item) => item.id === draft.id && !item.builtin)) {
+    // 工厂本体无本地副本时：无法从磁盘删除，提示可改后保存覆盖
+    const hasLocalCopy = catalog.templates.some(
+      (item) => item.id === draft.id && !item.builtin,
+    );
+    if (isBuiltinOrigin && !hasLocalCopy) {
       pushErrorToast({
         title: t("multiAgent.template.delete"),
-        message: t("multiAgent.template.builtinReadonly"),
+        message: t("multiAgent.template.builtinResetHint"),
       });
       return;
     }
+    // 删除本地覆盖 → 若命中工厂 id 则恢复内置默认（允许）
     deleteCustomTemplate(draft.id);
     pushErrorToast({
       variant: "success",
@@ -257,7 +273,7 @@ export function TemplateManagerModal({
                     onClick={() => pick(item.id)}
                   >
                     <div className="ma-tpl-item-nm">
-                      {item.name}
+                      {displayTemplateName(item)}
                       {item.id === catalog.defaultId ? (
                         <span className="ma-tpl-def">
                           {t("multiAgent.template.defaultBadge")}
@@ -282,7 +298,9 @@ export function TemplateManagerModal({
                 className={`ma-tpl-item${activeId === item.id ? " is-on" : ""}`}
                 onClick={() => pick(item.id)}
               >
-                <div className="ma-tpl-item-nm">{item.name}</div>
+                <div className="ma-tpl-item-nm">
+                  {displayTemplateName(item)}
+                </div>
                 <div className="ma-tpl-item-meta">
                   {templateFlowLabel(item)}
                 </div>
@@ -329,13 +347,17 @@ export function TemplateManagerModal({
             {draft.stages.map((stage, index) => (
               <div className="ma-step-ed" key={`${stage.id}-${index}`}>
                 <div className="ma-step-ed-top">
-                  <span className="ma-step-drag" aria-hidden title="排序">
+                  <span
+                    className="ma-step-drag"
+                    aria-hidden
+                    title={t("multiAgent.template.reorder")}
+                  >
                     <button
                       type="button"
                       className="ma-step-move"
                       disabled={index === 0}
                       onClick={() => moveStage(index, -1)}
-                      aria-label="上移"
+                      aria-label={t("multiAgent.template.moveUp")}
                     >
                       ↑
                     </button>
@@ -344,7 +366,7 @@ export function TemplateManagerModal({
                       className="ma-step-move"
                       disabled={index === draft.stages.length - 1}
                       onClick={() => moveStage(index, 1)}
-                      aria-label="下移"
+                      aria-label={t("multiAgent.template.moveDown")}
                     >
                       ↓
                     </button>
@@ -364,14 +386,9 @@ export function TemplateManagerModal({
                   {!isCompleteAgentTargetForUi(stage.target) ? (
                     <span
                       className="ma-stage-incomplete"
-                      title={t("multiAgent.template.incompleteTargetHint", {
-                        defaultValue:
-                          "未配齐 CLI/模型时，发送将使用当前 Shared 会话配置",
-                      })}
+                      title={t("multiAgent.template.incompleteTargetHint")}
                     >
-                      {t("multiAgent.template.incompleteTarget", {
-                        defaultValue: "待配齐",
-                      })}
+                      {t("multiAgent.template.incompleteTarget")}
                     </span>
                   ) : null}
                   <label className="ma-appr">
@@ -403,19 +420,16 @@ export function TemplateManagerModal({
                           personaAgentId: null,
                           personaAgentName: null,
                           personaAgentIcon: null,
+                          personaAgentPrompt: null,
                         });
                         return;
                       }
-                      // 选用智能体：写入 persona；提示词为空时注入智能体 prompt
-                      const nextPrompt =
-                        stage.rolePrompt.trim().length > 0
-                          ? stage.rolePrompt
-                          : persona.prompt?.trim() || stage.rolePrompt;
+                      // 智能体正文单独冻结；不改写本步 rolePrompt（流程指令）
                       updateStage(index, {
                         personaAgentId: persona.id,
                         personaAgentName: persona.name,
                         personaAgentIcon: persona.icon ?? null,
-                        rolePrompt: nextPrompt,
+                        personaAgentPrompt: persona.prompt?.trim() || null,
                       });
                     }}
                   />

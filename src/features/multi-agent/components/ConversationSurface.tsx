@@ -10,38 +10,32 @@ import {
   rejectAndReplanAgent,
   retryAgentStage,
   retryCollabRun,
-  stopAgent,
-} from "../runtime/executor";
+  stopAgent } from "../runtime/executor";
 import { getAgentLivePhase } from "../runtime/livePhaseChannel";
 import {
   claimAgentHydration,
   useAgentEvidenceRunId,
   useAgentProjection,
-  useAgentRoundList,
-} from "../store/agentStore";
+  useAgentRoundList } from "../store/agentStore";
 import {
   useCollabUiState,
-  type CollabUiState,
-} from "../store/collabUiStore";
+  type CollabUiState } from "../store/collabUiStore";
 import {
   openAgentInspector,
   selectAgentRound,
-  selectAgentStage,
-} from "../store/inspectorStore";
+  selectAgentStage } from "../store/inspectorStore";
 import { getSelectedTemplate } from "../templates/templateStore";
 import { templateFlowLabel } from "../templates/types";
 import {
   isTerminalAgentStatus,
   type AgentProjectionV1,
   type AgentStageBinding,
-  type AgentStageProjection,
-} from "../types";
+  type AgentStageProjection } from "../types";
 import {
   runProgressRatio,
   runStatusHeadline,
   stageStatusText,
-  stageTargetLabel,
-} from "../utils/format";
+  stageTargetLabel } from "../utils/format";
 
 type ConversationSurfaceProps = {
   workspaceId: string | null | undefined;
@@ -62,6 +56,10 @@ function stageBindingsFromProjection(
     accessMode: stage.accessMode,
     requiresApproval: stage.requiresApproval ?? false,
     target: stage.target,
+    personaAgentId: stage.personaAgentId ?? null,
+    personaAgentName: stage.personaAgentName ?? null,
+    personaAgentIcon: stage.personaAgentIcon ?? null,
+    personaPrompt: stage.personaPrompt ?? null,
   }));
 }
 
@@ -95,8 +93,7 @@ function OrchCard({
   onRetryStage,
   busy,
   onJumpRound,
-  featureEnabled,
-}: {
+  featureEnabled }: {
   projection: AgentProjectionV1;
   roundIndex: number;
   totalRounds: number;
@@ -220,8 +217,7 @@ function OrchCard({
                   background:
                     projection.status === "succeeded"
                       ? "var(--ma-green, #4ade80)"
-                      : undefined,
-                }
+                      : undefined }
           }
         />
       </div>
@@ -261,21 +257,15 @@ function OrchCard({
                 type="button"
                 className="ma-stage-retry"
                 disabled={busy !== null}
-                title={t("multiAgent.actions.retryStageHint", {
-                  defaultValue: "只重跑这一节点，保留已完成节点",
-                })}
+                title={t("multiAgent.actions.retryStageHint")}
                 onClick={(e) => {
                   e.stopPropagation();
                   onRetryStage(stage);
                 }}
               >
                 {busy === "retry"
-                  ? t("multiAgent.actions.retrying", {
-                      defaultValue: "…",
-                    })
-                  : t("multiAgent.actions.retryStageShort", {
-                      defaultValue: "重试节点",
-                    })}
+                  ? t("multiAgent.actions.retrying")
+                  : t("multiAgent.actions.retryStageShort")}
               </button>
             ) : null}
           </div>
@@ -379,10 +369,7 @@ function OrchCard({
         <div className="ma-hang-bar" role="status">
           <p className="ma-hang-text">
             {t("multiAgent.actions.hangHint", {
-              stage: runningStage.title || runningStage.id,
-              defaultValue:
-                "「{{stage}}」长时间无新输出（网络/引擎卡住均可能）。可只重试该节点，或强制停止/整轮重试。",
-            })}
+              stage: runningStage.title || runningStage.id })}
           </p>
           <div className="ma-hang-actions">
             <button
@@ -392,12 +379,8 @@ function OrchCard({
               onClick={() => onRetryStage(runningStage)}
             >
               {busy === "retry"
-                ? t("multiAgent.actions.retrying", {
-                    defaultValue: "正在重试…",
-                  })
-                : t("multiAgent.actions.retryStage", {
-                    defaultValue: "重试当前节点",
-                  })}
+                ? t("multiAgent.actions.retrying")
+                : t("multiAgent.actions.retryStage")}
             </button>
             <button
               type="button"
@@ -407,9 +390,7 @@ function OrchCard({
             >
               {busy === "stop"
                 ? t("multiAgent.actions.stopping")
-                : t("multiAgent.actions.forceUnlock", {
-                    defaultValue: "强制停止并解锁",
-                  })}
+                : t("multiAgent.actions.forceUnlock")}
             </button>
             <button
               type="button"
@@ -417,9 +398,7 @@ function OrchCard({
               disabled={busy !== null}
               onClick={() => onRetryRun(runningStage.id)}
             >
-              {t("multiAgent.actions.retryRun", {
-                defaultValue: "整轮重试协作",
-              })}
+              {t("multiAgent.actions.retryRun")}
             </button>
           </div>
         </div>
@@ -439,19 +418,15 @@ function OrchCard({
               ? t("multiAgent.actions.stopping")
               : t("multiAgent.actions.stop")}
           </button>
-          {anyStageLive ? (
+          {anyStageLive && !(hangHint && runningStage) ? (
             <button
               type="button"
               className="ma-ghost"
               disabled={busy !== null}
               onClick={onForceUnlock}
-              title={t("multiAgent.actions.forceUnlockHint", {
-                defaultValue: "后端无响应时仍可解锁主输入",
-              })}
+              title={t("multiAgent.actions.forceUnlockHint")}
             >
-              {t("multiAgent.actions.forceUnlock", {
-                defaultValue: "强制停止并解锁",
-              })}
+              {t("multiAgent.actions.forceUnlock")}
             </button>
           ) : null}
         </div>
@@ -490,8 +465,7 @@ function useSharedRoundActions(
       threadId,
       runId: run.runId,
       stageId: stage.id,
-      roundIndex,
-    });
+      roundIndex });
     selectAgentStage(stage.id);
   };
 
@@ -511,13 +485,11 @@ function useSharedRoundActions(
       threadId,
       runId: run.runId,
       stageId: stage?.id ?? null,
-      roundIndex: index,
-    });
+      roundIndex: index });
     selectAgentRound({
       runId: run.runId,
       roundIndex: index,
-      stageId: stage?.id ?? null,
-    });
+      stageId: stage?.id ?? null });
   };
 
   return { openStage, jumpRound };
@@ -529,8 +501,7 @@ function useSharedRoundActions(
  */
 function CollabPhaseCard({
   state,
-  roundIndex,
-}: {
+  roundIndex }: {
   state: CollabUiState;
   roundIndex: number;
 }) {
@@ -566,8 +537,7 @@ function CollabPhaseCard({
  */
 export function MultiAgentConversationSurface({
   workspaceId,
-  threadId,
-}: ConversationSurfaceProps) {
+  threadId }: ConversationSurfaceProps) {
   const { t } = useTranslation();
   const projection = useAgentProjection(workspaceId, threadId);
   const rounds = useAgentRoundList(workspaceId, threadId);
@@ -640,9 +610,7 @@ export function MultiAgentConversationSurface({
       pushErrorToast({
         title: t("multiAgent.errors.startFailed"),
         message: t("multiAgent.errors.approvalFailed", {
-          diagnostic: diagnostic(error),
-        }),
-      });
+          diagnostic: diagnostic(error) }) });
     } finally {
       setBusy(null);
     }
@@ -659,16 +627,12 @@ export function MultiAgentConversationSurface({
         requestText: projection.requestText,
         replanNote: note,
         target: projection.target,
-        stageBindings: stageBindingsFromProjection(projection),
-      });
+        stageBindings: stageBindingsFromProjection(projection) });
     } catch (error) {
       pushErrorToast({
         title: t("multiAgent.errors.startFailed"),
         message: t("multiAgent.errors.replanFailed", {
-          diagnostic: diagnostic(error),
-          defaultValue: `打回重规划失败：${diagnostic(error)}`,
-        }),
-      });
+          diagnostic: diagnostic(error) }) });
     } finally {
       setBusy(null);
     }
@@ -683,9 +647,7 @@ export function MultiAgentConversationSurface({
       pushErrorToast({
         title: t("multiAgent.errors.stopFailedTitle"),
         message: t("multiAgent.errors.stopFailed", {
-          diagnostic: diagnostic(error),
-        }),
-      });
+          diagnostic: diagnostic(error) }) });
     } finally {
       setBusy(null);
     }
@@ -698,20 +660,13 @@ export function MultiAgentConversationSurface({
       await forceStopAndUnlock(workspaceId, threadId, projection.runId);
       pushErrorToast({
         variant: "success",
-        title: t("multiAgent.actions.forceUnlockDoneTitle", {
-          defaultValue: "已解锁",
-        }),
-        message: t("multiAgent.actions.forceUnlockDone", {
-          defaultValue: "协作已强制停止，可继续普通对话或重新开启协作。",
-        }),
-      });
+        title: t("multiAgent.actions.forceUnlockDoneTitle"),
+        message: t("multiAgent.actions.forceUnlockDone") });
     } catch (error) {
       pushErrorToast({
         title: t("multiAgent.errors.stopFailedTitle"),
         message: t("multiAgent.errors.stopFailed", {
-          diagnostic: diagnostic(error),
-        }),
-      });
+          diagnostic: diagnostic(error) }) });
     } finally {
       setBusy(null);
     }
@@ -728,16 +683,12 @@ export function MultiAgentConversationSurface({
         requestText: projection.requestText,
         target: projection.target,
         stageBindings: stageBindingsFromProjection(projection),
-        stuckStageId,
-      });
+        stuckStageId });
     } catch (error) {
       pushErrorToast({
         title: t("multiAgent.errors.startFailed"),
         message: t("multiAgent.errors.retryFailed", {
-          diagnostic: diagnostic(error),
-          defaultValue: `重试失败：${diagnostic(error)}`,
-        }),
-      });
+          diagnostic: diagnostic(error) }) });
     } finally {
       setBusy(null);
     }
@@ -752,29 +703,20 @@ export function MultiAgentConversationSurface({
         threadId,
         runId: projection.runId,
         stageId: stage.id,
-        oldAttemptId: stage.attemptId,
-      });
+        oldAttemptId: stage.attemptId });
     } catch (error) {
       const msg = diagnostic(error);
       // 终态 run 无法单节点重试 → 引导整轮
       if (msg.includes("agent-retry-stage-terminal")) {
         pushErrorToast({
           variant: "info",
-          title: t("multiAgent.actions.retryStage", {
-            defaultValue: "重试当前节点",
-          }),
-          message: t("multiAgent.errors.retryStageTerminal", {
-            defaultValue: "本轮已结束，无法单节点重试。请用「整轮重试协作」。",
-          }),
-        });
+          title: t("multiAgent.actions.retryStage"),
+          message: t("multiAgent.errors.retryStageTerminal") });
       } else {
         pushErrorToast({
           title: t("multiAgent.errors.startFailed"),
           message: t("multiAgent.errors.retryFailed", {
-            diagnostic: msg,
-            defaultValue: `节点重试失败：${msg}`,
-          }),
-        });
+            diagnostic: msg }) });
       }
     } finally {
       setBusy(null);
@@ -786,7 +728,7 @@ export function MultiAgentConversationSurface({
       <div className="ma-msg">
         <div className="ma-who">{t("multiAgent.card.who")}</div>
         <div className="ma-meta-line">
-          collab · shared · round {roundIndex + 1}
+          {t("multiAgent.card.metaLine", { n: roundIndex + 1 })}
         </div>
         <OrchCard
           projection={projection}

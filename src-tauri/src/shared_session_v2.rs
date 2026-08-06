@@ -1007,6 +1007,92 @@ fn recover_creating_binding(
     )
 }
 
+/// Dispatch 附图：调用方显式路径优先；否则从 durable TurnRequested.image_refs.locator 回填。
+/// 协作编排只在 begin 写入 image_refs，drive 侧不重传图，必须走此 SSOT。
+fn resolve_dispatch_images(
+    images: Option<Vec<String>>,
+    input: &crate::shared_event_log::canonical::types::CanonicalUserInput,
+) -> Option<Vec<String>> {
+    let from_param: Vec<String> = images
+        .unwrap_or_default()
+        .into_iter()
+        .map(|path| path.trim().to_string())
+        .filter(|path| !path.is_empty())
+        .collect();
+    if !from_param.is_empty() {
+        return Some(from_param);
+    }
+    let from_refs: Vec<String> = input
+        .image_refs
+        .as_ref()
+        .into_iter()
+        .flatten()
+        .map(|artifact| artifact.locator.trim().to_string())
+        .filter(|path| !path.is_empty())
+        .collect();
+    if from_refs.is_empty() {
+        None
+    } else {
+        Some(from_refs)
+    }
+}
+
+#[cfg(test)]
+mod resolve_dispatch_images_tests {
+    use super::resolve_dispatch_images;
+    use crate::shared_event_log::canonical::types::{ArtifactRef, CanonicalUserInput};
+    use serde_json::Value;
+
+    fn artifact(locator: &str) -> ArtifactRef {
+        ArtifactRef {
+            artifact_id: "img-1".into(),
+            media_type: "image/png".into(),
+            size_bytes: Some(12),
+            sha256: "a".repeat(64),
+            locator: locator.into(),
+            redaction: None,
+            extra: Value::Object(Default::default()),
+        }
+    }
+
+    #[test]
+    fn prefers_explicit_param_over_image_refs() {
+        let input = CanonicalUserInput {
+            text: Some("hi".into()),
+            image_refs: Some(vec![artifact("/from/ref.png")]),
+            attachment_refs: None,
+            extra: Value::Object(Default::default()),
+        };
+        let resolved = resolve_dispatch_images(Some(vec!["/from/param.png".into()]), &input);
+        assert_eq!(resolved, Some(vec!["/from/param.png".into()]));
+    }
+
+    #[test]
+    fn falls_back_to_durable_image_refs_when_param_empty() {
+        let input = CanonicalUserInput {
+            text: Some("这是什么".into()),
+            image_refs: Some(vec![artifact("/Users/me/shot.png")]),
+            attachment_refs: None,
+            extra: Value::Object(Default::default()),
+        };
+        let resolved = resolve_dispatch_images(None, &input);
+        assert_eq!(resolved, Some(vec!["/Users/me/shot.png".into()]));
+        let resolved_empty = resolve_dispatch_images(Some(vec![]), &input);
+        assert_eq!(resolved_empty, Some(vec!["/Users/me/shot.png".into()]));
+    }
+
+    #[test]
+    fn returns_none_when_no_images_anywhere() {
+        let input = CanonicalUserInput {
+            text: Some("no images".into()),
+            image_refs: None,
+            attachment_refs: None,
+            extra: Value::Object(Default::default()),
+        };
+        assert_eq!(resolve_dispatch_images(None, &input), None);
+    }
+}
+
 /// 用户本地附图路径 → 合法 ArtifactRef（UI projection 用 locator）。
 /// sha256 优先文件内容；不可读时用 path bytes，满足 validator 64 hex。
 fn user_image_paths_to_artifact_refs(paths: Option<Vec<String>>) -> Option<Vec<ArtifactRef>> {
@@ -1246,6 +1332,8 @@ pub(crate) fn begin_squad_worker_turn_core(
     session_id: &str,
     target: &ExecutionTargetInput,
     text: String,
+    // 仅首段协作节点可带图；后续段传 None
+    images: Option<Vec<String>>,
     run_id: &str,
     node_id: &str,
     worker_role: &str,
@@ -1322,7 +1410,7 @@ pub(crate) fn begin_squad_worker_turn_core(
         retry_of_attempt_id: None,
         input: CanonicalUserInput {
             text: Some(text),
-            image_refs: None,
+            image_refs: user_image_paths_to_artifact_refs(images),
             attachment_refs: None,
             extra: Value::Object(Default::default()),
         },
@@ -4099,6 +4187,10 @@ pub async fn shared_session_v2_dispatch_turn(
         }
     }
 
+    // 附图：调用方参数优先；缺省时从 durable TurnRequested.image_refs 回填。
+    // 协作 driveAttempt 只传 attemptId、不重复传图，必须走这条 SSOT。
+    let images = resolve_dispatch_images(images, &owner.requested.input);
+    let has_images = images.as_ref().is_some_and(|paths| !paths.is_empty());
     let user_text = owner
         .requested
         .input
@@ -4106,6 +4198,15 @@ pub async fn shared_session_v2_dispatch_turn(
         .as_deref()
         .map(str::trim)
         .filter(|value| !value.is_empty())
+        .map(str::to_string)
+        .or_else(|| {
+            if has_images {
+                // 纯图轮：引擎侧至少需要占位文案，避免 silent empty prompt
+                Some("（请根据附图回答）".to_string())
+            } else {
+                None
+            }
+        })
         .ok_or_else(|| {
             persist_ambiguous_dispatch(
                 writer,
@@ -4123,7 +4224,7 @@ pub async fn shared_session_v2_dispatch_turn(
             user_text
         )
     } else {
-        user_text.to_string()
+        user_text
     };
 
     let response = match owner.engine {

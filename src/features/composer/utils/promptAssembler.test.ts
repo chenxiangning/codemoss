@@ -59,6 +59,25 @@ describe("assembleSkillInvocations", () => {
     ]);
   });
 
+  it("preserves skill path for collab body injection", () => {
+    const invocations = assembleSkillInvocations({
+      skills: [
+        {
+          name: "code-review",
+          path: "/repo/.claude/skills/code-review/SKILL.md",
+        },
+      ],
+      commons: [{ name: "team", path: "/repo/.agents/skills/team" }],
+    });
+    expect(invocations).toEqual([
+      {
+        name: "code-review",
+        path: "/repo/.claude/skills/code-review/SKILL.md",
+      },
+      { name: "team", path: "/repo/.agents/skills/team" },
+    ]);
+  });
+
   it("drops empty names", () => {
     const invocations = assembleSkillInvocations({
       skills: [{ name: "   " }, { name: "/" }],

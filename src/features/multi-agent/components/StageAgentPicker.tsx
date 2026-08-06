@@ -93,12 +93,8 @@ export function StageAgentPicker({ value, onChange }: StageAgentPickerProps) {
     if (agent.id === EMPTY_STATE_ID) return;
     if (agent.id === CREATE_NEW_AGENT_ID) {
       pushErrorToast({
-        title: t("multiAgent.template.agentCreateTitle", {
-          defaultValue: "创建智能体",
-        }),
-        message: t("multiAgent.template.agentCreateHint", {
-          defaultValue: "请到 设置 → 智能体 中创建后，再回到此处选择。",
-        }),
+        title: t("multiAgent.template.agentCreateTitle"),
+        message: t("multiAgent.template.agentCreateHint"),
       });
       setOpen(false);
       return;
@@ -119,7 +115,7 @@ export function StageAgentPicker({ value, onChange }: StageAgentPickerProps) {
 
   const label = value?.name?.trim()
     ? value.name
-    : t("multiAgent.template.pickAgent", { defaultValue: "选择智能体" });
+    : t("multiAgent.template.pickAgent");
 
   return (
     <div className="ma-stage-agent" ref={rootRef}>
@@ -130,13 +126,8 @@ export function StageAgentPicker({ value, onChange }: StageAgentPickerProps) {
         onClick={() => setOpen((prev) => !prev)}
         title={
           value
-            ? t("multiAgent.template.agentSelected", {
-                defaultValue: "智能体：{{name}}",
-                name: value.name,
-              })
-            : t("multiAgent.template.pickAgentHint", {
-                defaultValue: "选用客户端已有智能体（与 # 菜单同源）",
-              })
+            ? t("multiAgent.template.agentSelected", { name: value.name })
+            : t("multiAgent.template.pickAgentHint")
         }
       >
         {value?.icon ? (
@@ -156,9 +147,7 @@ export function StageAgentPicker({ value, onChange }: StageAgentPickerProps) {
           type="button"
           className="ma-stage-agent-clear"
           onClick={clear}
-          aria-label={t("multiAgent.template.clearAgent", {
-            defaultValue: "清除智能体",
-          })}
+          aria-label={t("multiAgent.template.clearAgent")}
         >
           ×
         </button>

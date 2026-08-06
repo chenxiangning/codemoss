@@ -1,5 +1,6 @@
 import type { EngineType } from "../../../types";
 import type { AgentExecutionTarget, AgentStageBinding } from "../types";
+import { maT } from "../utils/i18n";
 
 export type ReasoningEffortLevel = string;
 
@@ -15,6 +16,11 @@ export type CollaborationTemplateStage = {
   personaAgentId?: string | null;
   personaAgentName?: string | null;
   personaAgentIcon?: string | null;
+  /**
+   * 智能体正文快照（选中时冻结）。
+   * 发送时单独注入 CLI，不进幕布；与 rolePrompt（本步补充指令）分层。
+   */
+  personaAgentPrompt?: string | null;
 };
 
 export type CollaborationTemplate = {
@@ -33,8 +39,39 @@ export type TemplateCatalog = {
   custom: CollaborationTemplate[];
 };
 
+/** 内置模板展示名（随 UI 语言）；自定义模板用存储名。 */
+export function displayTemplateName(template: CollaborationTemplate): string {
+  if (!template.builtin) return template.name;
+  return maT(`multiAgent.builtin.${template.id}.name`, {
+    defaultValue: template.name,
+  });
+}
+
+/** 内置模板描述（随 UI 语言）。 */
+export function displayTemplateDescription(
+  template: CollaborationTemplate,
+): string {
+  if (!template.builtin) return template.description;
+  return maT(`multiAgent.builtin.${template.id}.description`, {
+    defaultValue: template.description,
+  });
+}
+
+/** 内置环节标题（随 UI 语言）；自定义环节用存储 title。 */
+export function displayStageTitle(
+  template: CollaborationTemplate,
+  stage: Pick<CollaborationTemplateStage, "id" | "title">,
+): string {
+  if (!template.builtin) return stage.title;
+  return maT(`multiAgent.builtin.${template.id}.stages.${stage.id}`, {
+    defaultValue: stage.title,
+  });
+}
+
 export function templateFlowLabel(template: CollaborationTemplate): string {
-  return template.stages.map((stage) => stage.title).join(" → ");
+  return template.stages
+    .map((stage) => displayStageTitle(template, stage))
+    .join(" → ");
 }
 
 export function templateApprovalCount(template: CollaborationTemplate): number {
@@ -105,16 +142,23 @@ export function mergeTarget(
   };
 }
 
-/** 发送前把智能体身份叠进 rolePrompt（不改模板原文，仅绑定层合成）。 */
+/**
+ * 本步补充指令（rolePrompt only）。
+ * 智能体正文走 personaPrompt 字段，禁止再把名字/正文塞进 rolePrompt（避免幕布泄漏）。
+ */
 export function composeStageRolePrompt(
   stage: CollaborationTemplateStage,
 ): string | null {
   const body = stage.rolePrompt?.trim() || "";
-  const name = stage.personaAgentName?.trim() || "";
-  if (!name && !body) return null;
-  if (!name) return body;
-  const header = `【智能体：${name}】`;
-  return body ? `${header}\n${body}` : header;
+  return body.length > 0 ? body : null;
+}
+
+/** 智能体正文快照；空则 null。 */
+export function composeStagePersonaPrompt(
+  stage: CollaborationTemplateStage,
+): string | null {
+  const body = stage.personaAgentPrompt?.trim() || "";
+  return body.length > 0 ? body : null;
 }
 
 /** 模板 → 后端 stageBindings（完整 N 段，不压成 3 段）。 */
@@ -125,7 +169,8 @@ export function templateToStageBindings(
   const base = normalizeAgentTargetSource(fallback);
   return template.stages.map((stage) => ({
     id: stage.id,
-    title: stage.title,
+    // 内置环节 title 随 UI 语言写入 binding，投影/右栏与模板展示一致
+    title: displayStageTitle(template, stage),
     rolePrompt: composeStageRolePrompt(stage),
     accessMode: stage.accessMode,
     requiresApproval: stage.requiresApproval,
@@ -133,6 +178,7 @@ export function templateToStageBindings(
     personaAgentId: stage.personaAgentId ?? null,
     personaAgentName: stage.personaAgentName ?? null,
     personaAgentIcon: stage.personaAgentIcon ?? null,
+    personaPrompt: composeStagePersonaPrompt(stage),
   }));
 }
 

@@ -361,6 +361,7 @@
 - [messages-timeline-ownership](./messages-timeline-ownership/spec.md)
 - [model-provider-catalog-runtime](./model-provider-catalog-runtime/spec.md)
 - [model-structured-output-normalization](./model-structured-output-normalization/spec.md)
+- [multi-agent-orchestration](./multi-agent-orchestration/spec.md)
 - [multi-repository-file-tree-decorations](./multi-repository-file-tree-decorations/spec.md)
 - [multi-repository-git-command-center](./multi-repository-git-command-center/spec.md)
 - [multi-repository-git-commit-workspace](./multi-repository-git-commit-workspace/spec.md)

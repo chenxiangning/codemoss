@@ -133,7 +133,7 @@ describe("templateToStageBindings", () => {
     expect(bindings[0]?.target.providerProfileSource).toBe("local");
   });
 
-  it("prefixes persona agent into rolePrompt on bind", () => {
+  it("sends persona prompt separately from rolePrompt (not merged into role)", () => {
     const tpl: CollaborationTemplate = {
       id: "with-agent",
       name: "带智能体",
@@ -151,12 +151,17 @@ describe("templateToStageBindings", () => {
           personaAgentId: "agent-xz",
           personaAgentName: "小张",
           personaAgentIcon: "codicon-robot",
+          personaAgentPrompt: "你是资深工程师，偏可验证交付。",
           target: completeClaude,
         },
       ],
     };
     const bindings = templateToStageBindings(tpl, sessionCodex);
-    expect(bindings[0]?.rolePrompt).toBe("【智能体：小张】\n只做计划");
+    expect(bindings[0]?.rolePrompt).toBe("只做计划");
+    expect(bindings[0]?.personaPrompt).toBe("你是资深工程师，偏可验证交付。");
+    expect(bindings[0]?.personaAgentName).toBe("小张");
+    // 禁止把正文拼进 rolePrompt（幕布/投影泄漏）
+    expect(bindings[0]?.rolePrompt).not.toContain("你是资深工程师");
   });
 });
 
@@ -172,5 +177,20 @@ describe("composeStageRolePrompt", () => {
         target: { engine: "claude" } as AgentExecutionTarget,
       }),
     ).toBeNull();
+  });
+
+  it("returns stage body only without agent name header", () => {
+    expect(
+      composeStageRolePrompt({
+        id: "a",
+        title: "t",
+        rolePrompt: "本步约束",
+        accessMode: "current",
+        requiresApproval: false,
+        personaAgentName: "小张",
+        personaAgentPrompt: "人设正文",
+        target: { engine: "claude" } as AgentExecutionTarget,
+      }),
+    ).toBe("本步约束");
   });
 });

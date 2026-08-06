@@ -1,6 +1,7 @@
 import type { AgentProjectionV1 } from "../types";
 import { isTerminalAgentStatus } from "../types";
 import { formatDurationMs } from "../utils/format";
+import { maT } from "../utils/i18n";
 import { registerHistoryFold } from "../store/historyFoldRegistry";
 import { getAgentRoundList } from "../store/agentStore";
 import {
@@ -20,6 +21,8 @@ export type MultiAgentConversationItemDetail = {
     kind: "message";
     role: "user" | "assistant";
     text: string;
+    /** 用户气泡附图（协作 Context Fan-in） */
+    images?: string[];
   };
 };
 
@@ -49,6 +52,9 @@ function isDetail(value: unknown): value is MultiAgentConversationItemDetail {
   const item = detail.item as
     | Partial<MultiAgentConversationItemDetail["item"]>
     | undefined;
+  const hasImages =
+    Array.isArray(item?.images) &&
+    item.images.some((path) => typeof path === "string" && path.trim().length > 0);
   return (
     typeof detail.workspaceId === "string" &&
     detail.workspaceId.trim().length > 0 &&
@@ -59,7 +65,7 @@ function isDetail(value: unknown): value is MultiAgentConversationItemDetail {
     (item.id.startsWith("squad:") || item.id.startsWith("agent:")) &&
     (item.role === "user" || item.role === "assistant") &&
     typeof item.text === "string" &&
-    item.text.trim().length > 0
+    (item.text.trim().length > 0 || hasImages)
   );
 }
 
@@ -91,14 +97,14 @@ function emitItem(
   );
 }
 
-function statusLabelZh(status: string): string {
+function statusLabel(status: string): string {
   switch (status) {
     case "succeeded":
-      return "已完成";
+      return maT("multiAgent.status.succeeded", { defaultValue: "已完成" });
     case "cancelled":
-      return "已取消";
+      return maT("multiAgent.status.cancelled", { defaultValue: "已取消" });
     case "failed":
-      return "失败";
+      return maT("multiAgent.status.failed", { defaultValue: "失败" });
     default:
       return status;
   }
@@ -136,7 +142,9 @@ export function formatTerminalOrchMarkdown(
   const first = stages[0]?.startedAt;
   const last = stages[stages.length - 1]?.settledAt;
   const dur = formatDurationMs(first, last) ?? "—";
-  const title = projection.requestText.trim().slice(0, 42) || "协作编排";
+  const title =
+    projection.requestText.trim().slice(0, 42) ||
+    maT("multiAgent.card.fallbackTitle", { defaultValue: "协作编排" });
   const mark =
     projection.status === "succeeded"
       ? "✓"
@@ -144,10 +152,18 @@ export function formatTerminalOrchMarkdown(
         ? "✗"
         : "○";
   // 精确轮次 UI 由 HistoryFold 承担；主幕只留轻量锚点，避免长文倾倒
-  const lines = [
-    `${mark} **协作 · ${title}**`,
-    `${statusLabelZh(projection.status)} · ${done}/${stages.length || 0} 完成 · ${dur}`,
-  ];
+  const collabTitle = maT("multiAgent.collab.collabTitle", {
+    title,
+    defaultValue: `协作 · ${title}`,
+  });
+  const terminalLine = maT("multiAgent.collab.terminalLine", {
+    status: statusLabel(projection.status),
+    done,
+    total: stages.length || 0,
+    dur,
+    defaultValue: `${statusLabel(projection.status)} · ${done}/${stages.length || 0} 完成 · ${dur}`,
+  });
+  const lines = [`${mark} **${collabTitle}**`, terminalLine];
   const summary = projection.finalSummary?.trim();
   if (summary && projection.status === "succeeded") {
     const oneLine = summary.replace(/\s+/g, " ").slice(0, 100);
@@ -157,7 +173,7 @@ export function formatTerminalOrchMarkdown(
 }
 
 /**
- * 协作一点击发送就立刻上屏的干净用户气泡（仅用户原文，无调度指令）。
+ * 协作一点击发送就立刻上屏的干净用户气泡（仅用户原文 + 附图，无调度指令）。
  * run 尚未创建时用 pending id；后续 filter 会与正式 squad:run:user 按文案去重。
  */
 export function emitCollabVisibleUserMessage(
@@ -165,17 +181,22 @@ export function emitCollabVisibleUserMessage(
   threadId: string,
   text: string,
   nonce?: string,
+  images?: string[],
 ): void {
   if (typeof window === "undefined") return;
   const body = text.trim();
-  if (!body) return;
-  const key = `${workspaceId}\0${threadId}\0visible-user\0${body}`;
+  const imagePaths = (images ?? [])
+    .map((path) => path.trim())
+    .filter((path) => path.length > 0);
+  if (!body && imagePaths.length === 0) return;
+  const key = `${workspaceId}\0${threadId}\0visible-user\0${body}\0${imagePaths.join("|")}`;
   if (!rememberKey(emittedUserKeys, key)) return;
   emitItem(workspaceId, threadId, {
     id: multiAgentPendingUserItemId(nonce ?? String(Date.now())),
     kind: "message",
     role: "user",
     text: body,
+    ...(imagePaths.length > 0 ? { images: imagePaths } : {}),
   });
 }
 
@@ -206,14 +227,21 @@ export function emitMultiAgentConversationItems(
 ): void {
   if (typeof window === "undefined") return;
 
-  // ① 用户消息：干净原文；与 pending 气泡同文案时由 filter 去重
+  // ① 用户消息：干净原文 + 首段附图；与 pending 气泡同文案时由 filter 去重
   const userKey = `${workspaceId}\0${threadId}\0${projection.runId}\0user`;
-  if (rememberKey(emittedUserKeys, userKey) && projection.requestText.trim()) {
+  const visibleText =
+    (projection.userVisibleText ?? projection.requestText).trim() ||
+    projection.requestText.trim();
+  const firstImages = (projection.firstStageImages ?? [])
+    .map((path) => path.trim())
+    .filter((path) => path.length > 0);
+  if (rememberKey(emittedUserKeys, userKey) && (visibleText || firstImages.length > 0)) {
     emitItem(workspaceId, threadId, {
       id: multiAgentUserItemId(projection.runId),
       kind: "message",
       role: "user",
-      text: projection.requestText,
+      text: visibleText,
+      ...(firstImages.length > 0 ? { images: firstImages } : {}),
     });
   }
 
@@ -257,12 +285,14 @@ export function emitMultiAgentConversationItems(
       id: `agent:${projection.runId}:assistant-cancel`,
       kind: "message",
       role: "assistant",
-      text: "协作已停止。修改需求后，可再次开启协作继续。",
+      text: maT("multiAgent.collab.stopped", {
+        defaultValue: "协作已停止。修改需求后，可再次开启协作继续。",
+      }),
     });
   }
 }
 
-/** 打回重规划：主幕线性事件（中文、克制） */
+/** 打回重规划：主幕线性事件（i18n、克制） */
 export function emitReplanConversationItems(
   workspaceId: string,
   threadId: string,
@@ -272,18 +302,33 @@ export function emitReplanConversationItems(
 ): void {
   if (typeof window === "undefined") return;
   const note = replanNote?.trim() ?? "";
-  const excerpt = requestText.trim().slice(0, 160);
+  const excerptBase = requestText.trim().slice(0, 160);
+  const excerpt =
+    excerptBase + (requestText.trim().length > 160 ? "…" : "");
   emitItem(workspaceId, threadId, {
     id: `agent:${runId}:replan-user`,
     kind: "message",
     role: "user",
-    text: note ? `打回重规划\n\n补充：${note}` : "打回重规划",
+    text: note
+      ? maT("multiAgent.collab.replanUserWithNote", {
+          note,
+          defaultValue: `打回重规划\n\n补充：${note}`,
+        })
+      : maT("multiAgent.collab.replanUser", { defaultValue: "打回重规划" }),
   });
   const ackBody = note
-    ? `已打回。将按原任务 + 你的补充重新规划：\n\n> ${excerpt}${requestText.trim().length > 160 ? "…" : ""}`
-    : excerpt
-      ? `已打回。将按原任务重新规划：\n\n> ${excerpt}${requestText.trim().length > 160 ? "…" : ""}`
-      : "已打回。将按原任务重新规划。";
+    ? maT("multiAgent.collab.replanAckWithNote", {
+        excerpt,
+        defaultValue: `已打回。将按原任务 + 你的补充重新规划：\n\n> ${excerpt}`,
+      })
+    : excerptBase
+      ? maT("multiAgent.collab.replanAckWithExcerpt", {
+          excerpt,
+          defaultValue: `已打回。将按原任务重新规划：\n\n> ${excerpt}`,
+        })
+      : maT("multiAgent.collab.replanAckEmpty", {
+          defaultValue: "已打回。将按原任务重新规划。",
+        });
   emitItem(workspaceId, threadId, {
     id: `agent:${runId}:replan-ack`,
     kind: "message",

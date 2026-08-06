@@ -70,13 +70,7 @@ if (typeof Element !== "undefined" && !Element.prototype.scrollIntoView) {
 }
 
 // Mock react-i18next to return keys or fallback text during tests
-vi.mock("react-i18next", () => ({
-  initReactI18next: {
-    type: "3rdParty",
-    init: vi.fn(),
-  },
-  useTranslation: () => ({
-    t: (key: string, params?: Record<string, unknown>) => {
+const mockTranslate = (key: string, params?: Record<string, unknown>) => {
       // Map keys to Chinese text for tests (matching default language)
       const translations: Record<string, string> = {
         "update.title": "Update",
@@ -1121,19 +1115,35 @@ vi.mock("react-i18next", () => ({
         "workspace.homeBranchLabelMain": "主分支",
         "workspace.homeBranchLabelWorktree": "工作树",
       };
-      // Simple interpolation for test environment
-      let template = translations[key] ?? String(params?.defaultValue ?? key);
-      if (params && typeof template === "string") {
-        Object.entries(params).forEach(([paramKey, value]) => {
-          template = template.replace(new RegExp(`{{${paramKey}}}`, "g"), String(value));
-        });
-      }
-      return template;
-    },
+  // Simple interpolation for test environment
+  let template = translations[key] ?? String(params?.defaultValue ?? key);
+  if (params && typeof template === "string") {
+    Object.entries(params).forEach(([paramKey, value]) => {
+      template = template.replace(
+        new RegExp(`{{${paramKey}}}`, "g"),
+        String(value),
+      );
+    });
+  }
+  return template;
+};
+
+vi.mock("react-i18next", () => ({
+  initReactI18next: {
+    type: "3rdParty",
+    init: vi.fn(),
+  },
+  useTranslation: () => ({
+    t: mockTranslate,
     i18n: {
       language: "en",
       changeLanguage: vi.fn(),
     },
+  }),
+  getI18n: () => ({
+    t: mockTranslate,
+    language: "en",
+    changeLanguage: vi.fn(),
   }),
 }));
 

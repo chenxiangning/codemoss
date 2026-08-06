@@ -50,12 +50,19 @@ function cardBadge(
   stage: AgentStageProjection,
   projection: AgentProjectionV1,
   isLive: boolean,
+  t: (key: string, options?: Record<string, unknown>) => string,
 ): { text: string; tone: "live" | "ok" | "muted" | "fail" } {
   if (stage.status === "failed") {
-    return { text: "失败", tone: "fail" };
+    return {
+      text: t("multiAgent.stageStatus.failed"),
+      tone: "fail",
+    };
   }
   if (isLive || stage.status === "running") {
-    return { text: "● LIVE", tone: "live" };
+    return {
+      text: t("multiAgent.stageStatus.live"),
+      tone: "live",
+    };
   }
   if (stage.status === "succeeded") {
     const approved = stage.requiresApproval || stage.id === "plan"
@@ -64,11 +71,18 @@ function cardBadge(
     const dur = formatDurationMs(stage.startedAt, stage.settledAt);
     if (approved && (stage.requiresApproval || stage.id === "plan")) {
       return {
-        text: dur ? `✓ 已批准 ${dur}` : "✓ 已批准",
+        text: dur
+          ? t("multiAgent.stageStatus.approvedWithDur", { dur })
+          : t("multiAgent.stageStatus.approved"),
         tone: "ok",
       };
     }
-    return { text: dur ? `✓ ${dur}` : "✓", tone: "ok" };
+    return {
+      text: dur
+        ? t("multiAgent.stageStatus.doneWithDur", { dur })
+        : t("multiAgent.stageStatus.doneShort"),
+      tone: "ok",
+    };
   }
   return { text: stageStatusText(stage), tone: "muted" };
 }
@@ -173,7 +187,7 @@ export function AgentInspectorDrawer() {
   }
 
   const badge = stage
-    ? cardBadge(stage, projection, Boolean(isLive))
+    ? cardBadge(stage, projection, Boolean(isLive), t)
     : null;
 
   const showCard = (index: number) => {

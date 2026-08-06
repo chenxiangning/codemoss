@@ -64,10 +64,11 @@ import {
   isResolvedExecutionTarget,
 } from "../../shared-session/target/types";
 import { requestAgentPlan } from "../../multi-agent/runtime/executor";
+import { injectCollabSkillContext } from "../../multi-agent/runtime/skillContextInjection";
 import { getSelectedTemplate } from "../../multi-agent/templates/templateStore";
 import { templateToStageBindings } from "../../multi-agent/templates/types";
-import { multiAgentContextBlockReason } from "../../multi-agent/runtime/contextGate";
 import { subscribeMultiAgentConversationItems } from "../../multi-agent/runtime/conversationBridge";
+import { readExternalAbsoluteFile } from "../../../services/tauri/workspaceFiles";
 import { reconcileAtomicReasoningEffort } from "../../models/atomicModelReasoning";
 import { projectMemoryFacade } from "../../project-memory/services/projectMemoryFacade";
 import {
@@ -618,6 +619,7 @@ export function useThreadMessaging({
       if (options?.squadRequest) {
         // Shared 内已走协作发送：不再二次判断 feature flag；
         // 仍强制 shared + V2 + 完整 target，避免 native / 半开 target 越界。
+        // Context Fan-in（§8.6）：图/skill/记忆/便签对齐注入首段，不再整类拒绝。
         if (
           threadKind !== "shared" ||
           !sharedV2SendEnabled ||
@@ -625,24 +627,6 @@ export function useThreadMessaging({
         ) {
           throw new Error(
             "agent-request-unavailable: Multi-Agent requires Shared Session V2 and a complete target",
-          );
-        }
-        if (images.length > 0) {
-          throw new Error(
-            "agent-request-images-unsupported: Multi-Agent V1 does not accept image attachments",
-          );
-        }
-        const squadContextBlock = multiAgentContextBlockReason({
-          noteCardIds: options?.selectedNoteCardIds ?? [],
-          memoryIds: options?.selectedMemoryIds ?? [],
-          memoryReferenceEnabled: options?.memoryReferenceEnabled === true,
-          skillNames: (options?.skillInvocations ?? []).map(
-            (invocation) => invocation.name,
-          ),
-        });
-        if (squadContextBlock) {
-          throw new Error(
-            `agent-request-context-unsupported: ${squadContextBlock}`,
           );
         }
         const snapshot = freezeTurnSnapshot(supportedStoredSharedTarget);
@@ -656,6 +640,117 @@ export function useThreadMessaging({
           providerProfileSource: snapshot.providerProfileSource,
           runtimeCapabilityFingerprint: snapshot.runtimeCapabilityFingerprint,
         };
+        // 可见原文（主幕气泡）；model text 在此基础上叠 skill/记忆/便签
+        // 纯图：可见可空，model 侧在 executor 内补占位
+        // Context Fan-in 口径：
+        // - 记忆/便签：正文注入进 modelText（与图不同，不走独立 image_refs 通道）
+        // - skill：协作 prompt 包层后 slash 常失效 → 读 SKILL.md 正文注入首段
+        // - 图 / 便签附图：firstStageImages + dispatch durable 回填
+        const visibleUserText = messageText.trim();
+        let modelText = messageText.trim() || messageText;
+        const skillRefs = (options?.skillInvocations ?? [])
+          .map((entry) => ({
+            name: entry.name?.trim() ?? "",
+            path: entry.path?.trim() || null,
+          }))
+          .filter((entry) => entry.name.length > 0);
+        if (skillRefs.length > 0) {
+          const skillInjection = await injectCollabSkillContext({
+            workspaceId: workspace.id,
+            userText: modelText,
+            skills: skillRefs,
+            readFile: readExternalAbsoluteFile,
+          });
+          modelText = skillInjection.finalText;
+        }
+        const selectedMemoryIds = Array.from(
+          new Set(
+            (options?.selectedMemoryIds ?? [])
+              .map((entry) => entry.trim())
+              .filter((entry) => entry.length > 0),
+          ),
+        );
+        if (selectedMemoryIds.length > 0) {
+          const retrievalStart = Date.now();
+          const selectedMemoryInjectionMode =
+            options?.selectedMemoryInjectionMode === "summary"
+              ? "summary"
+              : "detail";
+          const selectedMemories = (
+            await Promise.all(
+              selectedMemoryIds.map((memoryId) =>
+                projectMemoryFacade
+                  .get(memoryId, workspace.id)
+                  .catch(() => null),
+              ),
+            )
+          ).filter(
+            (entry): entry is NonNullable<typeof entry> => entry !== null,
+          );
+          modelText = injectSelectedMemoriesContext({
+            userText: modelText,
+            memories: selectedMemories,
+            mode: selectedMemoryInjectionMode,
+            retrievalMs: Date.now() - retrievalStart,
+          }).finalText;
+        }
+        if (options?.memoryReferenceEnabled === true) {
+          const memoryBrief = await withMemoryScoutTimeout(
+            scoutProjectMemory({
+              workspaceId: workspace.id,
+              query: visibleUserText,
+              listFn: projectMemoryFacade.listSummary,
+            }),
+          );
+          modelText = injectMemoryScoutBriefContext({
+            userText: modelText,
+            brief: memoryBrief,
+            startIndex: 1,
+          }).finalText;
+        }
+        let finalImages = [...images];
+        const selectedNoteCardIds = Array.from(
+          new Set(
+            (options?.selectedNoteCardIds ?? [])
+              .map((entry) => entry.trim())
+              .filter((entry) => entry.length > 0),
+          ),
+        );
+        if (selectedNoteCardIds.length > 0) {
+          const selectedNotes = (
+            await Promise.all(
+              selectedNoteCardIds.map((noteId) =>
+                noteCardsFacade
+                  .get({
+                    noteId,
+                    workspaceId: workspace.id,
+                    workspaceName: workspace.name,
+                    workspacePath: workspace.path,
+                  })
+                  .catch(() => null),
+              ),
+            )
+          ).filter(
+            (entry): entry is NonNullable<typeof entry> => entry !== null,
+          );
+          const noteInjection = injectSelectedNoteCardsContext({
+            userText: modelText,
+            noteCards: selectedNotes,
+          });
+          modelText = noteInjection.finalText;
+          finalImages = Array.from(
+            new Set([...finalImages, ...noteInjection.imagePaths]),
+          );
+        }
+        finalImages = sanitizeImageAttachmentPaths(finalImages);
+        if (
+          finalImages.length > 0 &&
+          !engineSupportsImageInput(collabTarget.engine)
+        ) {
+          throw new Error(
+            `agent-request-images-unsupported: engine ${collabTarget.engine} does not support image input`,
+          );
+        }
         // 按当前选中模板生成每段独立 stageBindings（CLI·模型·思考强度）。
         const stageBindings = templateToStageBindings(
           getSelectedTemplate(),
@@ -664,7 +759,9 @@ export function useThreadMessaging({
         await requestAgentPlan({
           workspaceId: workspace.id,
           threadId,
-          text: messageText,
+          text: modelText,
+          visibleText: visibleUserText,
+          images: finalImages,
           target: collabTarget,
           stageBindings,
         });

@@ -41,6 +41,8 @@ export type AgentStageBinding = {
   personaAgentId?: string | null;
   personaAgentName?: string | null;
   personaAgentIcon?: string | null;
+  /** 智能体正文快照（仅 CLI 注入，幕布不展示） */
+  personaPrompt?: string | null;
 };
 
 export type AgentPlanDraft = {
@@ -67,10 +69,12 @@ export type AgentStageProjection = {
   /** 右栏节点全文（Messages 渲染，与 SubAgent 幕布同源） */
   fullOutcome?: string | null;
   error?: string | null;
-  /** 本环节绑定的智能体（Inspector 标题行展示） */
+  /** 本环节绑定的智能体（Inspector 标题行展示 icon/name；正文不展示） */
   personaAgentId?: string | null;
   personaAgentName?: string | null;
   personaAgentIcon?: string | null;
+  /** 智能体正文快照（执行叠层；UI 不渲染） */
+  personaPrompt?: string | null;
 };
 
 export type AgentPreparedAttempt = {
@@ -92,6 +96,10 @@ export type AgentProjectionV1 = {
   workspaceRoot: string;
   sessionId: string;
   requestText: string;
+  /** 主幕可见原文；后续段用户任务用此字段 */
+  userVisibleText?: string;
+  /** 首段附图路径；仅 stages[0] 消费 */
+  firstStageImages?: string[];
   target: AgentExecutionTarget;
   status: AgentRunStatus;
   planRevision: number;

@@ -159,6 +159,9 @@ pub struct AgentStageBindingInput {
     pub persona_agent_name: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub persona_agent_icon: Option<String>,
+    /// 智能体正文快照（发送时冻结；仅 CLI 注入，幕布不展示）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub persona_prompt: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -197,6 +200,9 @@ pub struct AgentStageProjectionV1 {
     pub persona_agent_name: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub persona_agent_icon: Option<String>,
+    /// 智能体正文快照（执行叠层用；UI 只展示 icon/name）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub persona_prompt: Option<String>,
 }
 
 /// 规划产物：给确认 UI 用，不是最终用户答案。
@@ -231,6 +237,12 @@ pub struct AgentProjectionV1 {
     pub workspace_root: String,
     pub session_id: String,
     pub request_text: String,
+    /// 主幕可见原文（无记忆/skill 注入块）；后续段「用户任务」用此字段
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub user_visible_text: String,
+    /// 首段 worker 附图路径（Context Fan-in）；后续段不消费
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub first_stage_images: Vec<String>,
     /// 入口默认 target（兼容旧字段）；编排以 stages[].target 为准
     pub target: ExecutionTargetInput,
     pub status: AgentRunStatus,
@@ -283,6 +295,7 @@ pub fn default_stage_specs(default_target: &ExecutionTargetInput) -> Vec<AgentSt
             persona_agent_id: None,
             persona_agent_name: None,
             persona_agent_icon: None,
+            persona_prompt: None,
         },
         AgentStageProjectionV1 {
             id: AgentStageId::Implement.as_str().into(),
@@ -303,6 +316,7 @@ pub fn default_stage_specs(default_target: &ExecutionTargetInput) -> Vec<AgentSt
             persona_agent_id: None,
             persona_agent_name: None,
             persona_agent_icon: None,
+            persona_prompt: None,
         },
         AgentStageProjectionV1 {
             id: AgentStageId::Review.as_str().into(),
@@ -323,6 +337,7 @@ pub fn default_stage_specs(default_target: &ExecutionTargetInput) -> Vec<AgentSt
             persona_agent_id: None,
             persona_agent_name: None,
             persona_agent_icon: None,
+            persona_prompt: None,
         },
     ]
 }
@@ -419,6 +434,12 @@ pub fn stages_from_bindings(
                 .map(str::trim)
                 .filter(|value| !value.is_empty())
                 .map(str::to_string);
+            let persona_prompt = binding
+                .persona_prompt
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(str::to_string);
             AgentStageProjectionV1 {
                 id: id.clone(),
                 title,
@@ -440,6 +461,7 @@ pub fn stages_from_bindings(
                 persona_agent_id,
                 persona_agent_name,
                 persona_agent_icon,
+                persona_prompt,
             }
         })
         .collect()
@@ -461,6 +483,7 @@ pub fn apply_stage_bindings(
             || binding.persona_agent_id.is_some()
             || binding.persona_agent_name.is_some()
             || binding.persona_agent_icon.is_some()
+            || binding.persona_prompt.is_some()
             || bindings.len() != stages.len()
     });
     if rich || bindings.len() != 3 {
@@ -536,6 +559,8 @@ pub fn short_text(raw: &str, max_chars: usize) -> String {
     out
 }
 
+// Cross-layer contract SSOT:
+// `.trellis/spec/multi-agent/contracts.md` + `openspec/specs/multi-agent-orchestration/spec.md`
 /// 阶段行短摘要（chip / shortOutcome）
 pub const STAGE_SHORT_OUTCOME_CHARS: usize = 160;
 /// 末段/汇总用正文：保留完整阶段输出，仅作极端安全阀

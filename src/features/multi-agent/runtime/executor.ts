@@ -1,5 +1,3 @@
-import { getI18n } from "react-i18next";
-
 import { isSharedSessionThreadId } from "../../shared-session/utils/sharedSessionIdentity";
 import {
   sharedSessionV2AwaitTurnTerminal,
@@ -59,6 +57,7 @@ import type {
 } from "../types";
 import { isTerminalAgentStatus } from "../types";
 import { buildCollabSummarySendText } from "../utils/collabPrompt";
+import { maT } from "../utils/i18n";
 
 const ATTEMPT_TIMEOUT_MS = 30 * 60 * 1_000;
 const running = new Map<string, Promise<AgentProjectionV1>>();
@@ -94,7 +93,10 @@ function collabFlowLabel(stageBindings?: AgentStageBinding[]): string {
     (stageBindings ?? [])
       .map((binding) => binding.title?.trim() || binding.id)
       .filter(Boolean)
-      .join(" → ") || "规划 → 实现 → 审查"
+      .join(" → ") ||
+    maT("multiAgent.collab.defaultFlow", {
+      defaultValue: "规划 → 实现 → 审查",
+    })
   );
 }
 
@@ -105,13 +107,12 @@ function patchCollabPhase(
   phase: "running_stages" | "summarizing",
   activeStageId?: string | null,
 ): void {
-  const i18n = getI18n();
   patchCollabUiState(workspaceId, threadId, {
     phase,
     ...(phase === "summarizing"
       ? {
-          headline: i18n.t("multiAgent.collab.summarizing"),
-          detail: i18n.t("multiAgent.collab.summarizingDetail"),
+          headline: maT("multiAgent.collab.summarizing"),
+          detail: maT("multiAgent.collab.summarizingDetail"),
           activeStageId: null,
         }
       : { activeStageId: activeStageId ?? null }),
@@ -421,14 +422,20 @@ function emitCollabBootstrapStatus(input: {
   const task = input.text.trim().slice(0, 80);
   const taskLabel = task
     ? task + (input.text.trim().length > 80 ? "…" : "")
-    : "（空任务）";
+    : maT("multiAgent.collab.emptyTask", { defaultValue: "（空任务）" });
   emitCollabStatusAssistantMessage(
     input.workspaceId,
     input.threadId,
     `bootstrap:${Date.now()}`,
     [
-      `已接收协作任务：**${taskLabel}**`,
-      `流程：**${input.flowLabel}** · 右侧查看各环节直播，主幕保持简洁进度。`,
+      maT("multiAgent.collab.bootstrapReceived", {
+        task: taskLabel,
+        defaultValue: `已接收协作任务：**${taskLabel}**`,
+      }),
+      maT("multiAgent.collab.bootstrapFlow", {
+        flow: input.flowLabel,
+        defaultValue: `流程：**${input.flowLabel}** · 右侧查看各环节直播，主幕保持简洁进度。`,
+      }),
     ].join("\n"),
   );
 }
@@ -494,33 +501,51 @@ async function runCollabSummaryWithPhase(input: {
 export async function requestAgentPlan(input: {
   workspaceId: string;
   threadId: string;
+  /** 注入后的 model text（可含 skill/记忆/便签块） */
   text: string;
+  /** 主幕用户气泡可见原文；缺省回退 text */
+  visibleText?: string;
+  /** 首段附图 */
+  images?: string[];
   target: AgentExecutionTarget;
   stageBindings?: AgentStageBinding[];
 }): Promise<AgentProjectionV1> {
   resetAgentLivePhaseArchive(input.workspaceId, input.threadId);
 
+  const images = (input.images ?? []).filter((path) => path.trim().length > 0);
+  // 纯图：模型侧用占位任务文案；主幕气泡可只挂图
+  const modelText =
+    input.text.trim() ||
+    (images.length > 0
+      ? maT("multiAgent.collab.imageOnlyTask", {
+          defaultValue: "（请根据附图回答）",
+        })
+      : "");
+  const visible =
+    (input.visibleText ?? input.text).trim() ||
+    (images.length > 0 ? "" : modelText);
   // ① 立刻上屏干净用户气泡 + sticky 窗（无 Shared 历史污染）
   const flowLabel = collabFlowLabel(input.stageBindings);
-  const i18n = getI18n();
   setCollabUiState({
     workspaceId: input.workspaceId,
     threadId: input.threadId,
     phase: "starting_stages",
-    headline: i18n.t("multiAgent.collab.starting"),
-    detail: i18n.t("multiAgent.collab.startingDetail", { flow: flowLabel }),
-    requestText: input.text,
+    headline: maT("multiAgent.collab.starting"),
+    detail: maT("multiAgent.collab.startingDetail", { flow: flowLabel }),
+    requestText: visible || modelText,
     flowLabel,
   });
   emitCollabVisibleUserMessage(
     input.workspaceId,
     input.threadId,
-    input.text,
+    visible,
+    undefined,
+    images,
   );
   emitCollabBootstrapStatus({
     workspaceId: input.workspaceId,
     threadId: input.threadId,
-    text: input.text,
+    text: visible || modelText,
     flowLabel,
   });
 
@@ -530,9 +555,11 @@ export async function requestAgentPlan(input: {
     requested = await sharedAgentRequestRun(
       input.workspaceId,
       input.threadId,
-      input.text,
+      modelText,
       input.target,
       input.stageBindings,
+      images.length > 0 ? images : null,
+      visible || null,
     );
   } catch (error) {
     clearCollabUiState(input.workspaceId, input.threadId);
@@ -695,7 +722,7 @@ export async function approveAndExecuteAgent(
     } catch (error) {
       clearCollabUiState(workspaceId, threadId);
       pushErrorToast({
-        title: getI18n().t("multiAgent.errors.executionInterrupted"),
+        title: maT("multiAgent.errors.executionInterrupted"),
         message: errorMessage(error),
         durationMs: 5_000,
       });
@@ -735,11 +762,12 @@ export async function rejectAndReplanAgent(input: {
       ? `${base}\n\n【打回补充】\n${note}`
       : note
     : base;
+  // 诊断码稳定英文；conversationBridge 仍兼容旧文案「打回重规划」
   const stopped = await stopAgent(
     input.workspaceId,
     input.threadId,
     input.runId,
-    "打回重规划",
+    "reject-replan",
   );
   // 双保险：未 terminal 则不再强开新 run
   if (!isTerminalAgentStatus(stopped.status)) {

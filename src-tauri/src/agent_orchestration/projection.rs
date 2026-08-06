@@ -135,6 +135,25 @@ pub fn project_agent_runs(
                 {
                     plan_attempt_by_run.insert(fact.run_id.clone(), attempt_id.to_string());
                 }
+                let first_stage_images = fact
+                    .extra
+                    .get("firstStageImages")
+                    .and_then(|value| value.as_array())
+                    .map(|arr| {
+                        arr.iter()
+                            .filter_map(|v| v.as_str().map(str::to_string))
+                            .filter(|s| !s.trim().is_empty())
+                            .collect::<Vec<_>>()
+                    })
+                    .unwrap_or_default();
+                let user_visible_text = fact
+                    .extra
+                    .get("userVisibleText")
+                    .and_then(|value| value.as_str())
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .unwrap_or(fact.request_text.as_str())
+                    .to_string();
                 runs.push(AgentProjectionV1 {
                     schema_version: AGENT_SCHEMA_VERSION,
                     run_id: fact.run_id,
@@ -147,6 +166,8 @@ pub fn project_agent_runs(
                     workspace_id: fact.workspace_id,
                     session_id: session_id.to_string(),
                     request_text: fact.request_text,
+                    user_visible_text,
+                    first_stage_images,
                     target: default_target,
                     status: AgentRunStatus::Planning,
                     plan_revision: 0,

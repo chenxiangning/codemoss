@@ -1,4 +1,5 @@
 import type { AgentProjectionV1, AgentStageProjection, AgentStageStatus } from "../types";
+import { maT } from "./i18n";
 
 export function formatDurationMs(
   startedAt?: number | null,
@@ -33,7 +34,11 @@ export function stageInspectorTypeLine(stage: AgentStageProjection): string {
   const target = stageTargetLabel(stage);
   const agent = stage.personaAgentName?.trim() || "";
   if (!agent) return target;
-  return `${target} · 智能体 ${agent}`;
+  const persona = maT("multiAgent.inspector.personaAgent", {
+    name: agent,
+    defaultValue: `智能体 ${agent}`,
+  });
+  return `${target} · ${persona}`;
 }
 
 export function runProgressRatio(projection: AgentProjectionV1): number {
@@ -63,7 +68,12 @@ export function runStatusHeadline(projection: AgentProjectionV1): {
   );
   if (running) return { kind: "active", stageTitle: running.title || running.id };
   if (projection.status === "awaiting-approval") {
-    return { kind: "active", stageTitle: "待批准" };
+    return {
+      kind: "active",
+      stageTitle: maT("multiAgent.status.awaitingApprovalShort", {
+        defaultValue: "待批准",
+      }),
+    };
   }
   return { kind: "idle" };
 }
@@ -72,13 +82,35 @@ export function stageStatusText(
   stage: AgentStageProjection,
   options?: { approved?: boolean; live?: boolean },
 ): string {
-  if (stage.status === "running" || options?.live) return "● 流式中…";
+  if (stage.status === "running" || options?.live) {
+    return maT("multiAgent.stageStatus.runningLive", {
+      defaultValue: "● 流式中…",
+    });
+  }
   if (stage.status === "succeeded") {
     const dur = formatDurationMs(stage.startedAt, stage.settledAt);
-    if (options?.approved) return dur ? `✓ 已批准 ${dur}` : "✓ 已批准";
-    return dur ? `✓ ${dur}` : "✓ 完成";
+    if (options?.approved) {
+      return dur
+        ? maT("multiAgent.stageStatus.approvedWithDur", {
+            dur,
+            defaultValue: `✓ 已批准 ${dur}`,
+          })
+        : maT("multiAgent.stageStatus.approved", {
+            defaultValue: "✓ 已批准",
+          });
+    }
+    return dur
+      ? maT("multiAgent.stageStatus.doneWithDur", {
+          dur,
+          defaultValue: `✓ ${dur}`,
+        })
+      : maT("multiAgent.stageStatus.done", { defaultValue: "✓ 完成" });
   }
-  if (stage.status === "failed") return "失败";
-  if (stage.status === "skipped") return "已跳过";
-  return "排队";
+  if (stage.status === "failed") {
+    return maT("multiAgent.stageStatus.failed", { defaultValue: "失败" });
+  }
+  if (stage.status === "skipped") {
+    return maT("multiAgent.stageStatus.skipped", { defaultValue: "已跳过" });
+  }
+  return maT("multiAgent.stageStatus.pending", { defaultValue: "排队" });
 }

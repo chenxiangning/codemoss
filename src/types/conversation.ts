@@ -469,6 +469,8 @@ export type BrowserContextSendAttachment = {
 export type SkillInvocation = {
   /** 归一化后的 skill/common 名（无 `/` 前缀，空白转 `-`）。 */
   name: string;
+  /** SKILL.md 或 skill 目录绝对路径；协作首段用于正文注入。 */
+  path?: string;
   /** 预留的结构化参数通道；当前恒为空，引擎侧解析属后续协议演进。 */
   args?: Record<string, string>;
 };

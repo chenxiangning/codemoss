@@ -4,7 +4,8 @@
 |------|-----|
 | 状态 | design / active |
 | 日期 | 2026-08-06 |
-| 修订 | 2026-08-06：Code Review 修复 —— featureFlag 默认关闭、三层防御文档化、mergeLiveText 去重、进度条动画去闪烁、CSS GPU 加速、防污染约定落文（§17 新增） |
+| 修订 | 2026-08-06：§9 Composer 上下文首段对齐 —— 图/skill/记忆/便签进 `stages[0]`，后续段只吃文字归纳（见 §9） |
+|      | 2026-08-06：Code Review 修复 —— featureFlag 默认关闭、三层防御文档化、mergeLiveText 去重、进度条动画去闪烁、CSS GPU 加速、防污染约定落文（§17 新增） |
 |      | 2026-08-05：v4 双栏预览稿定稿 —— 右编排面板终局样式 = 07 节点卡片轮播（见 §8） |
 | 范围 | Shared Session 内的多 CLI · Provider · Model · 思考强度分环节协作 |
 | 产品入口 | Composer「协作」/ Multi-Agent Collab |
@@ -429,7 +430,8 @@ AppServer realtime
 - Composer 工具栏 **「⚡ 协作 · {模板名}」pill**：点击开**弹层**选模板（内置模板 + 我的模板，当前项标「✓ 当前」，自定义项 violet 标签）。
 - 弹层内 **⚙ 管理模板 / ＋新建模板** → 打开**页内模板管理模态**（§8.4），不跳独立页面。
 - 发送即按所选模板 arm 并启动 run；活跃 run 时禁止重复 arm。
-- 仅 Shared Session + 完整 target + 无附件/不支持的上下文引用。
+- 仅 Shared Session + 完整 target。
+- **Composer 上下文**（图 / skill / 记忆 / 便签等）按 **§9 首段对齐** 进入管线，不再整类拒绝。
 
 ### 8.2 主幕布编排卡（v4 形态）
 
@@ -498,6 +500,66 @@ AppServer realtime
 
 禁止：把 README 分析长文塞满完成卡。
 
+### 8.6 Composer 上下文首段对齐（Context Fan-in · 2026-08-06）
+
+**产品模型（统一）：**
+
+> Composer 上用户选择的 **全部上下文**（可多条）只进入模板 **`stages[0]`（首段）**；  
+> 首段负责识图 / 消化 skill / 记忆 / 便签等；  
+> **后续段只接收首段归纳后的文字**（`plan` / `short_outcome` / `body` / `upstream_notes`），**不再**重传原图、原附件或重挂 skill/记忆/便签。
+
+```text
+用户任务正文
+  + 多图 images[]
+  + 多个 skill（/skill 拼进正文 + 可选 skillInvocations）
+  + 多条记忆（注入进 model text）
+  + 多张便签（文本注入 + 便签附图并入 images）
+  +（能并进同一发送面的其它引用，同规则）
+        │
+        ▼
+  【stages[0]】完整注入（对齐普通 Shared 发送能力面）
+        │  产出 plan / short_outcome / body（纯文字，已含图意与引用事实）
+        ▼
+  【stages[1..]】仅文本接力；images=[]；不重挂 context 原件
+```
+
+| 规则 | 说明 |
+|------|------|
+| **注入位点** | 仅 `stages[0]` 的 worker turn（`TurnRequested.input`） |
+| **文本** | 发送前：记忆/便签正文注入 model text；skill **读 SKILL.md 正文**注入（协作不靠 slash 解析）；→ `request_text` / 首段 prompt |
+| **图片** | `images[]`（含便签附图）仅写入 **首段** `image_refs`；dispatch 从 durable 回填；后续段不带图 |
+| **主幕气泡** | 只显示用户可见原文（及缩略图），**不**把记忆/便签私有注入块刷进用户气泡 |
+| **多个** | 与普通 Composer 同上限；下游吃的是 **一份文字归纳**，不是 N 份原件 |
+| **重试** | 重试首段：可再带 run 上冻结的 `firstStageImages` + 同一 `request_text`；重试中间段：不带图 |
+| **失败可见** | 首段引擎不识图 / 注入失败 → 明确错误，禁止静默丢附件 |
+| **刻意不做** | 每段重传原图；自由 DAG；跨 run 共享附件 blob 新存储（路径引用即可） |
+| **本波暂缓** | Browser Context / Intent Canvas 未并入首段注入链时仍拦截（避免静默丢） |
+
+**与旧 V1 门禁的关系：**
+
+- 删除「协作暂不接收附件 / 不支持 skill·记忆·便签」整类拦截。  
+- 工程不是「只删 toast」：必须 **首段真正接线**（text 注入 + images 进 begin turn）。
+
+**实现落点（契约）：**
+
+| 层 | 行为 |
+|----|------|
+| Composer | 协作提交时 **不再** `multiAgentContextBlockReason` 拦截 |
+| `useThreadMessaging` squad 分支 | 先做记忆/便签/图 sanitize（与普通发送同源），再 `requestAgentPlan({ text, images, visibleText })` |
+| `shared_agent_request_run` | 接受 `images?: string[]` + `visibleText?`；写入 run extra `firstStageImages` / `userVisibleText`；首段 `begin_stage_turn(..., images)` |
+| `begin_squad_worker_turn_core` | 支持 `image_refs`（对齐 `begin_turn_core`） |
+| `shared_session_v2_dispatch_turn` | 调用方未传图时，从 durable `TurnRequested.image_refs` 回填后交给 CLI（协作 drive 路径依赖此 SSOT） |
+| 后续段 | `start_stage_attempt` → `images = None`；「用户任务」用 `userVisibleText`；继续 `last_succeeded_notes` 文本接力 |
+| 首段 prompt | 要求：先消化附件与引用，关键事实写入 SUMMARY/计划/短说明，供下游使用 |
+| 纯图 | `text` 可空 + `images` 非空 → 占位「（请根据附图回答）」；禁止静默丢图 |
+
+**验收：**
+
+1. 协作 + 多图：首段模型能描述图；下游 implement/review 文案引用图中事实且无二次附图。  
+2. 协作 + skill：首段 prompt 含 skill 指令（至少 slash 正文）。  
+3. 协作 + 记忆/便签：首段 model text 含注入块；主幕用户气泡保持干净。  
+4. 无上下文时行为与改前一致。
+
 ---
 
 ## 9. API 契约（Tauri）
@@ -518,7 +580,8 @@ AppServer realtime
 {
   "workspaceId": "...",
   "threadId": "shared:...",
-  "text": "用户任务",
+  "text": "用户任务（可含 skill/记忆/便签注入后的 model text）",
+  "images": ["/abs/path/a.png"],
   "target": { "engine": "claude", "model": "...", "...": "..." },
   "stageBindings": [
     { "id": "plan", "target": { "engine": "claude", "...": "..." } },
@@ -527,6 +590,8 @@ AppServer realtime
   ]
 }
 ```
+
+- `images`：**仅首段** worker turn 消费；可空。路径列表写入 run extra `firstStageImages` 供首段重试。
 
 **Response 关键字段：**
 
@@ -541,21 +606,27 @@ AppServer realtime
 
 ## 10. Prompt 契约（Stage 输入）
 
-### 10.1 Plan
+### 10.0 首段上下文消化（所有 templates 的 stages[0]）
 
-- 只产出计划文本；**禁止**工具 / Task / 子代理 / 写盘
+- 输入可含：用户任务 + 注入的 skill/记忆/便签正文 + **多模态图片**（若有）
+- **必须**先消化附件与引用，把图中事实、引用要点写入输出（SUMMARY / 计划 / 短说明）
+- 下游段 **不会**再看到原图或原注入块，只靠本段文字
+
+### 10.1 Plan / 首段需批准
+
+- 只产出计划文本；**禁止**写盘工具 / Task / 子代理（读图属于用户消息多模态，不是工具）
 - 输出 `SUMMARY:` + Markdown + 可选 `STEPS:`
-- 信息不足 → 写假设，不查库
+- 信息不足 → 写假设；有图时先客观描述再规划
 
 ### 10.2 Implement
 
-- 输入：用户任务 + PlanDraft
+- 输入：用户任务 + PlanDraft（**无图**）
 - 允许工作区变更；禁止 commit/push/deploy
 - 结束说明控制在短 Markdown（实现层再截断 shortOutcome）
 
-### 10.3 Review
+### 10.3 Review / 末段
 
-- 输入：任务 + 计划摘要 + 实现短说明
+- 输入：任务 + 计划摘要 + 上游 short_outcome（**无图**）
 - **只输出短汇总**（完成了什么 / 关键改动 / 如何验证 / 风险）
 - 禁止长分析、禁止大段贴码、默认禁止写盘工具
 

@@ -13,6 +13,10 @@ export async function sharedAgentRequestRun(
   text: string,
   target: AgentExecutionTarget,
   stageBindings?: AgentStageBinding[],
+  /** 首段附图（Context Fan-in）；可空 */
+  images?: string[] | null,
+  /** 主幕可见原文（无注入块）；缺省回退 text */
+  visibleText?: string | null,
 ): Promise<{
   projection: AgentProjectionV1;
   stageAttempt?: AgentPreparedAttempt;
@@ -24,6 +28,8 @@ export async function sharedAgentRequestRun(
     text,
     target,
     stageBindings: stageBindings ?? null,
+    images: images?.length ? images : null,
+    visibleText: visibleText?.trim() ? visibleText.trim() : null,
   });
 }
 

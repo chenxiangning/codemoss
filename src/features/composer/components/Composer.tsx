@@ -163,7 +163,7 @@ import {
   isMultiAgentTargetSupported,
   MultiAgentComposerToggle,
 } from "../../multi-agent/components/ComposerToggle";
-import { multiAgentContextBlockReason } from "../../multi-agent/runtime/contextGate";
+
 
 type RewindExecutionOptions = {
   mode?: RewindMode;
@@ -2114,11 +2114,9 @@ function ComposerImpl({
           });
           return;
         }
-        if (
-          mergedImages.length > 0 ||
-          hasIntentCanvasAttachments ||
-          Boolean(browserContext.attachment)
-        ) {
+        // 图片：Context Fan-in 进首段，已放行。
+        // Browser Context / Intent Canvas 尚未并入协作首段注入链，暂仍拦截。
+        if (hasIntentCanvasAttachments || Boolean(browserContext.attachment)) {
           pushErrorToast({
             title: t("multiAgent.errors.attachmentsTitle"),
             message: t("multiAgent.errors.attachments"),
@@ -2190,7 +2188,10 @@ function ComposerImpl({
       const skillInvocations = shouldAssembleSelectedSkills
         ? assembleSkillInvocations({
             skills: selectedSkills,
-            commons: selectedCommons.map((item) => ({ name: item.name })),
+            commons: selectedCommons.map((item) => ({
+              name: item.name,
+              path: item.path,
+            })),
           })
         : [];
       // managed 目录命令引擎不可见，发送前在客户端展开为正文。
@@ -2212,25 +2213,7 @@ function ComposerImpl({
       const selectedNoteCardIds = selectedNoteCards.map((entry) => entry.id);
       const selectedMemoryInjectionMode = getManualMemoryInjectionMode();
       const shouldReferenceMemory = memoryReferenceMode !== "off";
-      const squadContextBlock = isAgentSubmission
-        ? multiAgentContextBlockReason({
-            noteCardIds: selectedNoteCardIds,
-            memoryIds: selectedMemoryIds,
-            memoryReferenceEnabled: shouldReferenceMemory,
-            skillNames: skillInvocations.map((invocation) => invocation.name),
-          })
-        : null;
-      if (squadContextBlock) {
-        pushErrorToast({
-          title: t("multiAgent.errors.contextUnsupportedTitle"),
-          message: t("multiAgent.errors.contextUnsupported", {
-            context: t(
-              `multiAgent.errors.contextKind.${squadContextBlock}`,
-            ),
-          }),
-        });
-        return;
-      }
+      // Context Fan-in（§8.6）：协作不再整类拦截 skill/记忆/便签；注入由发送链路首段消化。
       const browserContextAttachment = browserContext.attachment;
       const hasBrowserContextAttachment = Boolean(browserContextAttachment);
       const createSessionTarget =

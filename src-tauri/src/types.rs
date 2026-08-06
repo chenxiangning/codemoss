@@ -9,6 +9,9 @@ use crate::backend_budget::PayloadBudgetMetadata;
 #[serde(rename_all = "camelCase")]
 pub(crate) struct SkillInvocation {
     pub(crate) name: String,
+    /// SKILL.md / skill 目录路径；协作首段 client 侧注入用，引擎可忽略。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) path: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) args: Option<std::collections::HashMap<String, String>>,
 }

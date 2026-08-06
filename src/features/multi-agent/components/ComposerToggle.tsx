@@ -10,6 +10,7 @@ import {
   useTemplateCatalogSnapshot,
 } from "../templates/templateStore";
 import {
+  displayTemplateName,
   templateApprovalCount,
   templateFlowLabel,
   type CollaborationTemplate,
@@ -131,11 +132,13 @@ export function MultiAgentComposerToggle({
     }
   }, [popOpen, hasActiveRun, selected, catalog.templates]);
 
+  const selectedDisplayName = displayTemplateName(selected);
+
   // 运行中优先显示「进行中」，避免发送后 disarm 造成「未开启」误导
   const pillLabel = hasActiveRun
-    ? t("multiAgent.entry.pillRunning", { name: selected.name })
+    ? t("multiAgent.entry.pillRunning", { name: selectedDisplayName })
     : armed
-      ? t("multiAgent.entry.pill", { name: selected.name })
+      ? t("multiAgent.entry.pill", { name: selectedDisplayName })
       : t("multiAgent.entry.pillOff");
 
   /** 回退到第一个已配齐模板（若当前是未配齐误选中） */
@@ -166,7 +169,7 @@ export function MultiAgentComposerToggle({
     const template = catalog.templates.find((item) => item.id === id);
     if (!template) return;
     if (templateHasIncompleteTarget(template)) {
-      notifyIncompletePick(template.name);
+      notifyIncompletePick(displayTemplateName(template));
       fallbackToCompleteTemplate();
       return;
     }
@@ -223,7 +226,9 @@ export function MultiAgentComposerToggle({
                   onClick={() => pick(item.id)}
                 >
                   <div className="ma-cp-nm">
-                    <span className="ma-cp-name">{item.name}</span>
+                    <span className="ma-cp-name">
+                      {displayTemplateName(item)}
+                    </span>
                     <span
                       className={`ma-cp-tag${item.builtin ? "" : " is-mine"}`}
                     >
@@ -280,7 +285,7 @@ export function MultiAgentComposerToggle({
                 className="ma-cp-arm"
                 onClick={() => {
                   if (templateHasIncompleteTarget(selected)) {
-                    notifyIncompletePick(selected.name);
+                    notifyIncompletePick(displayTemplateName(selected));
                     fallbackToCompleteTemplate();
                     return;
                   }

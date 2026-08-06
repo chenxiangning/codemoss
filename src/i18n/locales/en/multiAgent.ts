@@ -39,6 +39,9 @@ export default {
       histMetaRunning: "{{done}}/{{total}} stages",
       expand: "Expand ▾",
       collapse: "Collapse ▴",
+      fallbackTitle: "Collab",
+      completedOf: "{{done}}/{{total}} done",
+      metaLine: "collab · shared · round {{n}}",
     },
     actions: {
       confirmExecute: "✓ Approve · auto-run next",
@@ -75,13 +78,35 @@ export default {
       startingDetail: "Launching in order: {{flow}}",
       summarizing: "Writing the delivery summary",
       summarizingDetail: "All stages finished. Summarizing this round for you…",
+      defaultFlow: "Plan → Implement → Review",
+      emptyTask: "(empty task)",
+      bootstrapReceived: "Collab task received: **{{task}}**",
+      bootstrapFlow:
+        "Flow: **{{flow}}** · Watch live stages on the right; keep the main canvas light.",
+      stopped: "Collab stopped. Edit the request and start collab again when ready.",
+      replanUser: "Reject & replan",
+      replanUserWithNote: "Reject & replan\n\nNotes: {{note}}",
+      replanAckWithNote:
+        "Rejected. Replanning with the original task plus your notes:\n\n> {{excerpt}}",
+      replanAckWithExcerpt:
+        "Rejected. Replanning with the original task:\n\n> {{excerpt}}",
+      replanAckEmpty: "Rejected. Replanning with the original task.",
+      terminalLine: "{{status}} · {{done}}/{{total}} done · {{dur}}",
+      collabTitle: "Collab · {{title}}",
     },
     stageStatus: {
       pending: "Queued",
       running: "Streaming…",
+      runningLive: "● Streaming…",
       succeeded: "Done",
       failed: "Failed",
       skipped: "Skipped",
+      approved: "✓ Approved",
+      approvedWithDur: "✓ Approved {{dur}}",
+      done: "✓ Done",
+      doneWithDur: "✓ {{dur}}",
+      doneShort: "✓",
+      live: "● LIVE",
     },
     phase: {
       plan: "Plan",
@@ -92,6 +117,7 @@ export default {
     status: {
       planning: "Planning",
       "awaiting-approval": "Awaiting approval",
+      awaitingApprovalShort: "Awaiting approval",
       implementing: "Implementing",
       executing: "Implementing",
       reviewing: "Reviewing",
@@ -112,6 +138,7 @@ export default {
       roundBlockedTitle: "Round not started",
       roundBlocked: "This round has not started yet.",
       nextRoundHint: "Send again after the current round finishes to start the next.",
+      personaAgent: "Agent {{name}}",
     },
     template: {
       modalTitle: "⚡ Collab templates",
@@ -129,21 +156,83 @@ export default {
       descPlaceholder: "When to use this template",
       modelPlaceholder: "Model",
       requiresApproval: "Needs approval",
-      promptPlaceholder: "Stage prompt / constraints…",
-      addStage: "+ Add stage",
+      promptPlaceholder:
+        "Stage instructions (workflow constraints; agent body is selected separately and not shown here)…",
+      builtinResetHint:
+        "Factory templates cannot be deleted. Edit and save your own version, or create a new template. Deleting your override restores the factory default.",
+      addStage: "＋ Add stage",
       deleteStage: "Delete stage",
       stageFallback: "Stage {{n}}",
       delete: "Delete template",
       cancel: "Cancel",
       save: "Save template",
       saveAs: "Save as…",
-      builtinReadonly: "Built-in templates are read-only; save a copy to edit",
+      builtinReadonly:
+        "Built-in templates are fully editable; save overrides locally, delete override restores factory",
       approvalCount: "{{count}} approval gate(s)",
       savedTitle: "Template saved",
       saved: "Saved “{{name}}” · composer popover updated",
       savedAsCopy: "Saved as a new template",
       deletedTitle: "Template deleted",
       deleted: "Deleted “{{name}}”",
+      nameRequired: "Enter a template name",
+      stageRequired: "Keep at least one stage",
+      savedWithIncomplete:
+        "Saved “{{name}}” · {{count}} stage(s) lack a model; send will use the current session target",
+      incompleteTarget: "Incomplete",
+      incompleteTargetHint:
+        "Without CLI/model, send falls back to the current Shared Session target",
+      pickAgent: "Pick agent",
+      pickAgentHint: "Use a client agent (same source as the # menu)",
+      agentSelected: "Agent: {{name}}",
+      clearAgent: "Clear agent",
+      agentCreateTitle: "Create agent",
+      agentCreateHint: "Create one under Settings → Agents, then pick it here.",
+      reorder: "Reorder",
+      moveUp: "Move up",
+      moveDown: "Move down",
+    },
+    builtin: {
+      "bug-fix": {
+        name: "Bug fix",
+        description:
+          "Diagnose → fix → harden → review. Everyday defect fixes.",
+        stages: {
+          diagnose: "Diagnose",
+          fix: "Fix",
+          harden: "Harden",
+          review: "Review",
+        },
+      },
+      feat: {
+        name: "Add feature",
+        description: "Plan with approval → implement → review. New capabilities.",
+        stages: {
+          plan: "Plan",
+          implement: "Implement",
+          review: "Review",
+        },
+      },
+      docs: {
+        name: "Write docs",
+        description:
+          "Outline with approval → draft → polish. README, design notes, copy.",
+        stages: {
+          outline: "Outline",
+          draft: "Draft",
+          polish: "Polish",
+        },
+      },
+      research: {
+        name: "Research",
+        description:
+          "Survey → deep dive → decision brief. Read-only capability research.",
+        stages: {
+          survey: "Survey",
+          "deep-dive": "Deep dive",
+          brief: "Brief",
+        },
+      },
     },
     errors: {
       unavailableTitle: "Collab unavailable",

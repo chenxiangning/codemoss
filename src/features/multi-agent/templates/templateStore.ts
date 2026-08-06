@@ -4,7 +4,11 @@ import {
   getClientStoreSync,
   writeClientStoreValue,
 } from "../../../services/clientStorage";
-import { BUILTIN_TEMPLATES, DEFAULT_TEMPLATE_ID } from "./builtin";
+import {
+  BUILTIN_TEMPLATES,
+  DEFAULT_TEMPLATE_ID,
+  LEGACY_BUILTIN_TEMPLATE_IDS,
+} from "./builtin";
 import type {
   CollaborationTemplate,
   CollaborationTemplateStage,
@@ -63,6 +67,12 @@ function migrateStage(raw: unknown): CollaborationTemplateStage | null {
         typeof row.personaAgentName === "string" ? row.personaAgentName : null,
       personaAgentIcon:
         typeof row.personaAgentIcon === "string" ? row.personaAgentIcon : null,
+      personaAgentPrompt:
+        typeof row.personaAgentPrompt === "string"
+          ? row.personaAgentPrompt
+          : typeof row.personaPrompt === "string"
+            ? row.personaPrompt
+            : null,
       target: {
         engine: (typeof target.engine === "string"
           ? target.engine
@@ -111,6 +121,12 @@ function migrateStage(raw: unknown): CollaborationTemplateStage | null {
       typeof row.personaAgentName === "string" ? row.personaAgentName : null,
     personaAgentIcon:
       typeof row.personaAgentIcon === "string" ? row.personaAgentIcon : null,
+    personaAgentPrompt:
+      typeof row.personaAgentPrompt === "string"
+        ? row.personaAgentPrompt
+        : typeof row.personaPrompt === "string"
+          ? row.personaPrompt
+          : null,
     target: {
       ...emptyTarget(engine),
       engine,
@@ -123,6 +139,12 @@ function migrateStage(raw: unknown): CollaborationTemplateStage | null {
         typeof row.reasoningEffort === "string" ? row.reasoningEffort : null,
     },
   };
+}
+
+function resolveTemplateId(id: string | undefined | null): string {
+  const raw = typeof id === "string" ? id.trim() : "";
+  if (!raw) return DEFAULT_TEMPLATE_ID;
+  return LEGACY_BUILTIN_TEMPLATE_IDS[raw] ?? raw;
 }
 
 function readPersisted(): TemplateCatalog {
@@ -139,22 +161,30 @@ function readPersisted(): TemplateCatalog {
                 .filter((s): s is CollaborationTemplateStage => Boolean(s))
             : [];
           if (stages.length === 0) return null;
+          // 历史覆盖的旧内置 id 迁移到新 id，避免与新工厂模板撞车后不可见
+          const migratedId = resolveTemplateId(String(item.id));
           return {
             ...item,
+            id: migratedId,
             stages,
           } as CollaborationTemplate;
         })
         .filter((item): item is CollaborationTemplate => Boolean(item))
     : [];
-  const defaultId =
-    typeof raw?.defaultId === "string" && raw.defaultId.trim()
-      ? raw.defaultId
-      : DEFAULT_TEMPLATE_ID;
-  const selectedId =
+  // 同 id 后写覆盖前写
+  const byId = new Map<string, CollaborationTemplate>();
+  for (const item of custom) byId.set(item.id, item);
+  const defaultId = resolveTemplateId(raw?.defaultId);
+  const selectedId = resolveTemplateId(
     typeof raw?.selectedId === "string" && raw.selectedId.trim()
       ? raw.selectedId
-      : defaultId;
-  return { selectedId, defaultId, custom };
+      : defaultId,
+  );
+  return {
+    selectedId,
+    defaultId,
+    custom: Array.from(byId.values()),
+  };
 }
 
 function persist(next: TemplateCatalog): void {
@@ -210,12 +240,18 @@ export function setDefaultTemplate(id: string): void {
   persist({ ...memory, defaultId: id, selectedId: id });
 }
 
+/**
+ * 保存用户模板。
+ * - 内置 id 也可保存：以同 id 覆盖工厂默认（builtin=false 的本地版），无只读限制。
+ * - 删覆盖后 listAllTemplates 会重新露出工厂模板。
+ */
 export function saveCustomTemplate(
   template: CollaborationTemplate,
 ): CollaborationTemplate {
   const now = Date.now();
   const nextTemplate: CollaborationTemplate = {
     ...template,
+    // 一律按用户副本持久化；是否覆盖内置由 id 是否命中工厂表决定
     builtin: false,
     version: (template.version ?? 0) + 1,
     updatedAt: now,
@@ -230,13 +266,31 @@ export function saveCustomTemplate(
   return nextTemplate;
 }
 
+/**
+ * 删除用户副本。
+ * - 若 id 命中工厂内置：删除覆盖后恢复工厂默认（允许）。
+ * - 纯自定义 id：删除条目。
+ * - 无本地副本时 no-op（工厂本体不可从磁盘删）。
+ */
 export function deleteCustomTemplate(id: string): void {
-  if (BUILTIN_TEMPLATES.some((item) => item.id === id)) return;
+  const hadOverride = memory.custom.some((item) => item.id === id);
+  if (!hadOverride) return;
   const custom = memory.custom.filter((item) => item.id !== id);
+  const stillExists =
+    custom.some((item) => item.id === id) ||
+    BUILTIN_TEMPLATES.some((item) => item.id === id);
   const selectedId =
-    memory.selectedId === id ? memory.defaultId : memory.selectedId;
+    memory.selectedId === id
+      ? stillExists
+        ? id
+        : memory.defaultId === id
+          ? DEFAULT_TEMPLATE_ID
+          : memory.defaultId
+      : memory.selectedId;
   const defaultId =
-    memory.defaultId === id ? DEFAULT_TEMPLATE_ID : memory.defaultId;
+    memory.defaultId === id && !stillExists
+      ? DEFAULT_TEMPLATE_ID
+      : memory.defaultId;
   persist({ selectedId, defaultId, custom });
 }
 
@@ -293,6 +347,7 @@ export function cloneStage(
     personaAgentId: partial?.personaAgentId ?? null,
     personaAgentName: partial?.personaAgentName ?? null,
     personaAgentIcon: partial?.personaAgentIcon ?? null,
+    personaAgentPrompt: partial?.personaAgentPrompt ?? null,
   };
 }
 

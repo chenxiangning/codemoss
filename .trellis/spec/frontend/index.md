@@ -37,6 +37,7 @@
 | [Type Safety](./type-safety.md) | strict TypeScript 与 boundary mapping 规则 | Active |
 | [Linux Native Baidu Analytics Transport](../backend/linux-native-baidu-analytics.md) | Linux native official `hm.js` Image bridge、Tauri IPC 与 Rust fixed transport contract | Active |
 | [Vendored Frontend（tokentracker-dashboard）](./tokentracker-dashboard-vendored.md) | 拓展-使用统计 vendored dashboard 的维护、数据通道、Tailwind v4 与性能边界约定 | Active |
+| [Multi-Agent Collaboration Contracts](../multi-agent/contracts.md) | 多 CLI 协作 outcome 字符上限、§17.4.3 展示契约、降级 settle | Active |
 
 ## Pre-Development Checklist（开始开发前必读）
 
