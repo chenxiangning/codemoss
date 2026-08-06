@@ -2152,12 +2152,12 @@ pub(crate) async fn respond_to_server_request(
     }
 
     // Native control request keeps the existing request-id routing contract.
-    for session in state
+    let claude_sessions_for_workspace = state
         .engine_manager
         .claude_manager
         .sessions_for_workspace(&workspace_id)
-        .await
-    {
+        .await;
+    for session in &claude_sessions_for_workspace {
         if session.has_pending_user_input(&request_id) {
             return session.respond_to_user_input(request_id, result).await;
         }
@@ -2165,6 +2165,22 @@ pub(crate) async fn respond_to_server_request(
             return session
                 .respond_to_approval_request(request_id, result)
                 .await;
+        }
+    }
+
+    // A late AskUserQuestion answer: the request already timed out or was
+    // otherwise resolved before this response arrived, so no Claude session
+    // in the workspace has it pending anymore. Falling through to the
+    // Codex-session lookup below is architecturally wrong for a Claude-only
+    // request id and only ever produces a generic "workspace not connected"
+    // error the frontend cannot distinguish from a real connectivity
+    // failure. Give a specific, recognizable error instead.
+    if !claude_sessions_for_workspace.is_empty() && is_user_input_response {
+        if let Some(ask_request_id) = request_id.as_str().filter(|value| value.starts_with("ask-"))
+        {
+            return Err(format!(
+                "AskUserQuestion request {ask_request_id} already expired or was answered"
+            ));
         }
     }
 
