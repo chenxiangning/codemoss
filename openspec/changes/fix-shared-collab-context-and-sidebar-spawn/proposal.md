@@ -90,3 +90,49 @@ Shared 多 CLI 协作阶段 1 已能跑通串行编排，但留下两个 Shared-
 
 > 结论：本 change 的 **Runtime Context（AI 吃 stage body）方向正确、已实机验证**。  
 > **不在本 change 范围**：协作右栏 **流式渲染 P0**（旁路 `extractRealtimeTextDelta`）→ 另开实施 `fix-shared-collab-inspector-streaming`（按主幕布 adapter + liveAssistantTextChannel 复刻）。
+
+---
+
+## Follow-up（2026-08-07）：侧栏 `MOSSX_*` 截断标题仍泄漏
+
+### Why（残留 P0）
+
+Wave-1 标题闸只认 `classifyContextProtocolText` **完整** marker（含双段 `sha256:{64}`）。  
+侧栏 name 经 `previewThreadName` 截到 **50 字** 后变成 `MOSSX_CONTEXT_PACKAGE:sha25…`，严格 classify 失败 → G4 仍漏。
+
+实机：Shared Session 下出现 native 行 `MOSSX_CONTEXT_PACKAGE:sha25…`（Grok CLI context 注入 orphan）。
+
+### 目标增量
+
+| ID | 目标 | 可测定义 |
+|----|------|----------|
+| G4b | 行首程序生成 `MOSSX_*` 内部 session 不进侧栏 | 完整 package、**截断** package、`MOSSX_CONTEXT_ACCEPTED` / `MOSSX_NATIVE_CONTEXT_V1` / `MOSSX_SHARED_CONTEXT_V1` 行首标题均被 strip |
+| G4c | 不误伤用户讨论句 | 正文「请解释 MOSSX_CONTEXT_PACKAGE…」作 title 时不杀 |
+| G4d | Provider Continuation 仍可改写 | `originKind === provider-continuation` 的 control title →「继续：…」，不被误丢 |
+| G4e | 幕布 filter 语义不变 | `filterContextProtocolConversationItems` 仍用严格 classifier；不改为 `includes("MOSSX")` |
+
+### What Changes（本 follow-up）
+
+- `isMossxProgramControlTitle`：trim 后 **行首** `startsWith("MOSSX_")`（侧栏 title 专用）。
+- `isSharedControlPlaneSpawnTitle`：行首闸 ∪ 严格 classify ∪ collab worker。
+- merge 入口（Grok/Kimi/Gemini/Claude/OpenCode）对 **raw** firstMessage/title 预过滤，避免 clip 后丢信号。
+- Codex catalog：非 continuation 的 `MOSSX_*` 直接丢；continuation 用行首闸触发「继续：…」改写。
+- `sessionDisplayProjection`：截断 `MOSSX_*` 视为 weak title，mapped 丢弃。
+
+### 全量程序 control token（会话 title 可出现）
+
+| Token | 来源 |
+|-------|------|
+| `MOSSX_CONTEXT_PACKAGE` | compiler / shared_session_v2 / runtime_coordinator / native_continuation |
+| `MOSSX_CONTEXT_ACCEPTED` | shared_session_v2 / native_continuation |
+| `MOSSX_NATIVE_CONTEXT_V1` | compiler / continuation prompt body |
+| `MOSSX_SHARED_CONTEXT_V1` | compiler shared runtime prompt |
+
+非会话（env/window/probe）不进本闸。协作 `[[mossx.collab.*]]` 另路径。
+
+### 验收（follow-up）
+
+1. focused vitest：`contextProtocol` + `useThreadActions.helpers` + `sessionDisplayProjection` 全绿（含截断 title）。
+2. 实机：Shared × 任 CLI context 注入后侧栏无 `MOSSX_*` 行首 native 行。
+3. `openspec validate fix-shared-collab-context-and-sidebar-spawn --strict` 通过。
+4. **不自动 commit**；作者 review 后由用户检查。

@@ -69,6 +69,7 @@ import {
   shouldApplyCodexSidebarContinuity,
   shouldApplyClaudeSidebarContinuity,
   isSharedCollabWorkerSpawnTitle,
+  isSharedControlPlaneSpawnTitle,
   stripHiddenSharedBindingSummaries,
   threadIdMatchesHiddenAutomaticSessionSet,
   withTimeout,
@@ -904,18 +905,35 @@ export function useThreadActions({
               ) {
                 return;
               }
+              // Shared/control-plane 内部 session：raw 首包或 nativeTitle 行首 MOSSX_*
+              if (
+                isSharedControlPlaneSpawnTitle(session.firstMessage) ||
+                isSharedControlPlaneSpawnTitle(session.nativeTitle)
+              ) {
+                return;
+              }
               const prev = mergedById.get(id);
               const updatedAt = session.updatedAt;
               const mappedTitle = mappedTitles[id];
               const customTitle = getCustomName(workspace.id, id);
               const nativeTitle = asString(session.nativeTitle).trim();
+              const previewName = previewThreadName(
+                session.firstMessage,
+                "Claude Session",
+              );
+              if (
+                isSharedControlPlaneSpawnTitle(mappedTitle) ||
+                isSharedControlPlaneSpawnTitle(previewName)
+              ) {
+                return;
+              }
               const next: ThreadSummary = {
                 id,
                 name:
                   customTitle ||
                   mappedTitle ||
                   nativeTitle ||
-                  previewThreadName(session.firstMessage, "Claude Session"),
+                  previewName,
                 updatedAt,
                 sizeBytes: extractThreadSizeBytes(
                   session as Record<string, unknown>,
@@ -992,6 +1010,12 @@ export function useThreadActions({
             ) {
               return;
             }
+            if (
+              isSharedControlPlaneSpawnTitle(session.title) ||
+              isSharedControlPlaneSpawnTitle(mappedTitles[id])
+            ) {
+              return;
+            }
             const prev = mergedById.get(id);
             const sessionUpdatedAt =
               typeof session.updatedAt === "number" &&
@@ -1007,12 +1031,19 @@ export function useThreadActions({
               nextActivityByThread[id] = updatedAt;
               didChangeActivity = true;
             }
+            const previewName = previewThreadName(
+              session.title,
+              "OpenCode Session",
+            );
+            if (isSharedControlPlaneSpawnTitle(previewName)) {
+              return;
+            }
             const next: ThreadSummary = {
               id,
               name:
                 mappedTitles[id] ||
                 getCustomName(workspace.id, id) ||
-                previewThreadName(session.title, "OpenCode Session"),
+                previewName,
               updatedAt,
               sizeBytes: extractThreadSizeBytes(
                 session as Record<string, unknown>,

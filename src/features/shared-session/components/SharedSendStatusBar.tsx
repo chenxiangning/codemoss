@@ -1,23 +1,36 @@
 /**
- * Shared Send 状态条（Wave 4 / B.6 + recovery exit closure）。
+ * Shared Send 状态条（Wave 4 / B.6 + recovery exit + simplified UX）。
  *
- * 按 `sendStateMachine` 九状态渲染 Composer 上方的提示条：
+ * 按 `sendStateMachine` 九状态渲染 Composer 底部提示条：
  * - `preparing-context` / `awaiting-acceptance` / `cancel-pending` / `settling`：只读提示；
  * - `degraded-context`：legacy transient state，不渲染阻塞确认；
- * - `recovery-required`：恢复卡片（Probe / Stop / 停止并重建 / 放弃本轮），锁定整个 Shared Session；
+ * - `recovery-required`：单行折叠（自动处理 / 跳过本轮）+ 详情弹窗 + 展开高级；
  * - `target-unavailable`：展示不可用原因，Picker 保持可更换。
  *
- * Cancel 能力（§14.5.2）：仅 `awaiting-acceptance` 且 Adapter 支持
- * `cancelPendingDelivery` 时可用；当前 V0 阻塞式发送链路不支持该 capability，
- * 因此禁用并说明原因（fail closed，不把 ambiguous 取消成未投递）。
- *
- * 纪律：本组件只做 UI 驱动；Probe / Stop / Rebuild / Abandon 均为显式用户动作，不自动重试。
- * Recovery Exit Ladder（§14.5.7）：fail-closed 锁定 + completable exit。
+ * 纪律：Probe / Stop / Rebuild / Abandon 能力保留；默认不把四动作平铺。
+ * 禁止 window.confirm（Tauri WebView 下不可靠 / 可卡死）。
  */
 
 import { useCallback, useState } from "react";
 import { useTranslation } from "react-i18next";
+import ArrowRightLeft from "lucide-react/dist/esm/icons/arrow-right-left";
+import ChevronDown from "lucide-react/dist/esm/icons/chevron-down";
+import HelpCircle from "lucide-react/dist/esm/icons/help-circle";
+import RefreshCw from "lucide-react/dist/esm/icons/refresh-cw";
+import Search from "lucide-react/dist/esm/icons/search";
+import SkipForward from "lucide-react/dist/esm/icons/skip-forward";
+import Sparkles from "lucide-react/dist/esm/icons/sparkles";
+import Unplug from "lucide-react/dist/esm/icons/unplug";
 
+import { ConfirmDialog } from "../../../components/ui/ConfirmDialog";
+import {
+  AlertDialog,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogPopup,
+  AlertDialogTitle,
+} from "../../../components/ui/alert-dialog";
 import { pushErrorToast } from "../../../services/toasts";
 import {
   sharedSessionV2AbandonUnresolvedAttempt,
@@ -39,7 +52,12 @@ import {
 import { reattachSharedSessionAttempt } from "../runtime/reattachSharedSessionAttempt";
 import { isSharedV2SendEnabled } from "../runtime/sharedV2SendFlag";
 import { isSharedRecoveryExitV2Enabled } from "../runtime/sharedRecoveryExitFlag";
-import { classifyRecoveryError } from "../runtime/recoveryErrorMap";
+import {
+  classifyRecoveryError,
+  extractDurableOwnerFromMismatch,
+  squadBaseBindingKey,
+  type RecoveryActionKind,
+} from "../runtime/recoveryErrorMap";
 
 type SharedSendStatusBarProps = {
   workspaceId: string | null;
@@ -55,29 +73,99 @@ type RecoveryOwner =
   | { kind: "clear" }
   | { kind: "ambiguous" };
 
+type RecoverOutcome = "cleared" | "held" | "active";
+
 function recoveryErrorMessage(error: unknown): string {
   return error instanceof Error && error.message ? error.message : String(error);
 }
 
+/**
+ * 按动作分流 toast：换连接失败不得复用「自动处理没法继续」口吻。
+ */
 function mapRecoveryErrorToast(
   t: (key: string, params?: Record<string, unknown>) => string,
-  actionLabel: string,
+  action: RecoveryActionKind,
   error: unknown,
 ): string {
-  const { kind, raw } = classifyRecoveryError(error);
+  const { kind } = classifyRecoveryError(error);
   switch (kind) {
     case "recovery-active":
-      return t("sharedSend.recoveryErrorActive");
+      // rebuild 撞 Runtime own：引导停止或跳过，避免只说「先停再换」互推
+      return action === "rebuild"
+        ? t("sharedSend.recoveryErrorActiveRebuild")
+        : t("sharedSend.recoveryErrorActive");
     case "recovery-active-requires-stop":
-      return t("sharedSend.recoveryErrorActiveRequiresStop");
+      // 跳过路径已 forceStop；若仍失败属后端异常，引导重试跳过
+      return action === "skip"
+        ? t("sharedSend.recoveryErrorActiveRequiresStopSkip")
+        : t("sharedSend.recoveryErrorActiveRequiresStop");
     case "recovery-owner-ambiguous":
       return t("sharedSend.recoveryErrorAmbiguous");
     case "recovery-owner-missing":
       return t("sharedSend.recoveryErrorOwnerMissing");
+    case "recovery-owner-mismatch":
+      return action === "rebuild"
+        ? t("sharedSend.recoveryErrorOwnerMismatchRebuild")
+        : t("sharedSend.recoveryErrorOwnerMismatch");
     case "empty-context-handoff":
       return t("sharedSend.recoveryErrorEmptyContextHandoff");
     default:
-      return `${actionLabel}: ${raw}`;
+      // 不把英文 raw stack 甩给用户；下一步按动作引导
+      if (action === "rebuild") {
+        return t("sharedSend.recoveryErrorGenericRebuild");
+      }
+      if (action === "stop") {
+        return t("sharedSend.recoveryErrorGenericStop");
+      }
+      if (action === "skip") {
+        return t("sharedSend.recoveryErrorGenericSkip");
+      }
+      return t("sharedSend.recoveryErrorGenericNext");
+  }
+}
+
+function recoveryErrorToastTitle(
+  t: (key: string, params?: Record<string, unknown>) => string,
+  action: RecoveryActionKind,
+): string {
+  if (action === "rebuild") {
+    return t("sharedSend.recoveryRebuildFailedTitle");
+  }
+  if (action === "auto") {
+    return t("sharedSend.recoveryAutoFailedTitle");
+  }
+  if (action === "stop") {
+    return t("sharedSend.recoveryStopFailedTitle");
+  }
+  if (action === "skip") {
+    return t("sharedSend.recoverySkipFailedTitle");
+  }
+  return t("sharedSend.recoveryTitle");
+}
+
+/**
+ * 显式 rebuild：先用解析出的 binding key；owner-mismatch 时用 durable key 重试一次。
+ * Squad key 在后端已支持直接 rebuild；仍保留 durable 回退作防御。
+ */
+async function rebuildBindingWithMismatchRetry(
+  workspaceId: string,
+  threadId: string,
+  bindingKey: string,
+): Promise<void> {
+  try {
+    await sharedSessionV2RebuildBinding(workspaceId, threadId, bindingKey);
+  } catch (error) {
+    const { kind } = classifyRecoveryError(error);
+    if (kind !== "recovery-owner-mismatch") {
+      throw error;
+    }
+    const fallbackKey =
+      extractDurableOwnerFromMismatch(error) ??
+      squadBaseBindingKey(bindingKey);
+    if (!fallbackKey || fallbackKey === bindingKey) {
+      throw error;
+    }
+    await sharedSessionV2RebuildBinding(workspaceId, threadId, fallbackKey);
   }
 }
 
@@ -97,6 +185,15 @@ export function SharedSendStatusBar({
   const [recoveryWork, setRecoveryWork] = useState<RecoveryWorkState>("idle");
   const [lastErrorDetail, setLastErrorDetail] = useState<string | null>(null);
   const [runtimeReleased, setRuntimeReleased] = useState(false);
+  const [stoppableAttemptId, setStoppableAttemptId] = useState<string | null>(
+    null,
+  );
+  const [expanded, setExpanded] = useState(false);
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const [skipConfirmOpen, setSkipConfirmOpen] = useState(false);
+  const [autoFailed, setAutoFailed] = useState(false);
+  /** 自动失败或再查仍锁时，高亮「跳过本轮」 */
+  const [recommendSkip, setRecommendSkip] = useState(false);
 
   const findRecoveryOwner = useCallback(async (): Promise<RecoveryOwner> => {
     if (!workspaceId || !threadId) {
@@ -105,16 +202,21 @@ export function SharedSendStatusBar({
     const turnState = await sharedSessionV2TurnState(workspaceId, threadId);
     const inFlight = turnState.inFlightAttempts ?? [];
     if (inFlight.length > 1) {
+      setStoppableAttemptId(null);
       return { kind: "ambiguous" };
     }
     const attempt = inFlight[0];
     if (attempt) {
       const attemptId = attempt.attemptId?.trim();
       const bindingKey = attempt.bindingKey?.trim();
-      return attemptId && bindingKey
-        ? { kind: "attempt", attemptId, bindingKey }
-        : { kind: "ambiguous" };
+      if (attemptId && bindingKey) {
+        setStoppableAttemptId(attemptId);
+        return { kind: "attempt", attemptId, bindingKey };
+      }
+      setStoppableAttemptId(null);
+      return { kind: "ambiguous" };
     }
+    setStoppableAttemptId(null);
     const recoveryBindings = (turnState.bindings ?? []).filter(
       (binding) => binding.provisioningState === "recovery-required",
     );
@@ -131,11 +233,13 @@ export function SharedSendStatusBar({
     if (!workspaceId || !threadId) {
       return;
     }
-    // 证据定性为「无可投递 Turn」：recovery → settling → idle。
     dispatchSharedSendEvent(workspaceId, threadId, { type: "probeNotAccepted" });
     dispatchSharedSendEvent(workspaceId, threadId, { type: "canonicalCommitted" });
     setRuntimeReleased(false);
     setLastErrorDetail(null);
+    setAutoFailed(false);
+    setRecommendSkip(false);
+    setStoppableAttemptId(null);
   }, [workspaceId, threadId]);
 
   const settleCancelled = useCallback(() => {
@@ -146,12 +250,15 @@ export function SharedSendStatusBar({
     dispatchSharedSendEvent(workspaceId, threadId, { type: "canonicalCommitted" });
     setRuntimeReleased(false);
     setLastErrorDetail(null);
+    setAutoFailed(false);
+    setRecommendSkip(false);
+    setStoppableAttemptId(null);
   }, [workspaceId, threadId]);
 
   const recoverAttemptOwner = useCallback(
-    async (attemptId: string) => {
+    async (attemptId: string): Promise<RecoverOutcome> => {
       if (!workspaceId || !threadId) {
-        return;
+        return "held";
       }
       const recovery = await sharedSessionV2RecoverAttempt(
         workspaceId,
@@ -174,21 +281,18 @@ export function SharedSendStatusBar({
             setRecoveryWork("held");
             setLastErrorDetail(recoveryErrorMessage(error));
             pushErrorToast({
-              title: t("sharedSend.recoveryTitle"),
-              message: mapRecoveryErrorToast(
-                t,
-                t("sharedSend.recoveryProbe"),
-                error,
-              ),
+              title: recoveryErrorToastTitle(t, "probe"),
+              message: mapRecoveryErrorToast(t, "probe", error),
               durationMs: 4800,
             });
           });
         setRecoveryWork("cleared");
-        return;
+        setAutoFailed(false);
+        return "active";
       }
       if (recovery.status === "unknown") {
         setRecoveryWork("held");
-        return;
+        return "held";
       }
       dispatchSharedSendEvent(workspaceId, threadId, {
         type:
@@ -200,9 +304,23 @@ export function SharedSendStatusBar({
         type: "canonicalCommitted",
       });
       setRecoveryWork("cleared");
+      setAutoFailed(false);
+      setStoppableAttemptId(null);
+      return "cleared";
     },
     [workspaceId, threadId, t],
   );
+
+  const notifyProbeHeld = useCallback(() => {
+    // 查完仍锁：必须有可见反馈，不能静默
+    setRecommendSkip(true);
+    pushErrorToast({
+      title: t("sharedSend.recoveryProbeTitle"),
+      message: t("sharedSend.recoveryProbeStillLocked"),
+      variant: "info",
+      durationMs: 5600,
+    });
+  }, [t]);
 
   const handleProbe = useCallback(async () => {
     if (!workspaceId || !threadId) {
@@ -210,20 +328,52 @@ export function SharedSendStatusBar({
     }
     setRecoveryWork("working");
     setLastErrorDetail(null);
+    // 再查一次后以本次结果为准，别被「自动失败」旧文案盖住
+    setAutoFailed(false);
+    setRecommendSkip(false);
     try {
       const owner = await findRecoveryOwner();
       if (owner.kind === "clear") {
         unlockSession();
         setRecoveryWork("cleared");
+        pushErrorToast({
+          title: t("sharedSend.recoveryProbeTitle"),
+          message: t("sharedSend.recoveryProbeCleared"),
+          variant: "success",
+          durationMs: 4200,
+        });
         return;
       }
       if (owner.kind === "ambiguous") {
         setRecoveryWork("held");
+        setRecommendSkip(true);
         setLastErrorDetail(t("sharedSend.recoveryErrorAmbiguous"));
+        pushErrorToast({
+          title: t("sharedSend.recoveryProbeTitle"),
+          message: t("sharedSend.recoveryErrorAmbiguous"),
+          durationMs: 5600,
+        });
         return;
       }
       if (owner.kind === "attempt") {
-        await recoverAttemptOwner(owner.attemptId);
+        const outcome = await recoverAttemptOwner(owner.attemptId);
+        if (outcome === "held") {
+          notifyProbeHeld();
+        } else if (outcome === "cleared") {
+          pushErrorToast({
+            title: t("sharedSend.recoveryProbeTitle"),
+            message: t("sharedSend.recoveryProbeCleared"),
+            variant: "success",
+            durationMs: 4200,
+          });
+        } else if (outcome === "active") {
+          pushErrorToast({
+            title: t("sharedSend.recoveryProbeTitle"),
+            message: t("sharedSend.recoveryProbeReattached"),
+            variant: "success",
+            durationMs: 4200,
+          });
+        }
         return;
       }
       const bindingProbe = await sharedSessionV2ProbeBinding(
@@ -233,21 +383,41 @@ export function SharedSendStatusBar({
       );
       if (bindingProbe.inFlightAttempts.length !== 1) {
         setRecoveryWork("held");
+        notifyProbeHeld();
         return;
       }
       const attemptId = bindingProbe.inFlightAttempts[0]?.attemptId?.trim();
       if (!attemptId) {
         setRecoveryWork("held");
+        notifyProbeHeld();
         return;
       }
-      await recoverAttemptOwner(attemptId);
+      setStoppableAttemptId(attemptId);
+      const outcome = await recoverAttemptOwner(attemptId);
+      if (outcome === "held") {
+        notifyProbeHeld();
+      } else if (outcome === "cleared") {
+        pushErrorToast({
+          title: t("sharedSend.recoveryProbeTitle"),
+          message: t("sharedSend.recoveryProbeCleared"),
+          variant: "success",
+          durationMs: 4200,
+        });
+      } else if (outcome === "active") {
+        pushErrorToast({
+          title: t("sharedSend.recoveryProbeTitle"),
+          message: t("sharedSend.recoveryProbeReattached"),
+          variant: "success",
+          durationMs: 4200,
+        });
+      }
     } catch (error) {
-      // Probe 失败保持锁定，并把真实失败暴露给用户。
       setRecoveryWork("held");
+      setRecommendSkip(true);
       setLastErrorDetail(recoveryErrorMessage(error));
       pushErrorToast({
-        title: t("sharedSend.recoveryTitle"),
-        message: mapRecoveryErrorToast(t, t("sharedSend.recoveryProbe"), error),
+        title: t("sharedSend.recoveryProbeTitle"),
+        message: mapRecoveryErrorToast(t, "probe", error),
         durationMs: 4800,
       });
     }
@@ -257,6 +427,7 @@ export function SharedSendStatusBar({
     findRecoveryOwner,
     recoverAttemptOwner,
     unlockSession,
+    notifyProbeHeld,
     t,
   ]);
 
@@ -273,11 +444,22 @@ export function SharedSendStatusBar({
         setRecoveryWork("cleared");
         return;
       }
+      if (owner.kind === "ambiguous") {
+        setRecoveryWork("held");
+        setLastErrorDetail(t("sharedSend.recoveryErrorAmbiguous"));
+        pushErrorToast({
+          title: recoveryErrorToastTitle(t, "stop"),
+          message: t("sharedSend.recoveryErrorAmbiguous"),
+          durationMs: 4800,
+        });
+        return;
+      }
+      // binding-only：没有可 interrupt 的 in-flight attempt
       if (owner.kind !== "attempt") {
         setRecoveryWork("held");
         setLastErrorDetail(t("sharedSend.recoveryStopNoAttempt"));
         pushErrorToast({
-          title: t("sharedSend.recoveryTitle"),
+          title: recoveryErrorToastTitle(t, "stop"),
           message: t("sharedSend.recoveryStopNoAttempt"),
           durationMs: 4200,
         });
@@ -296,17 +478,19 @@ export function SharedSendStatusBar({
           type: "canonicalCommitted",
         });
         setRecoveryWork("cleared");
+        setAutoFailed(false);
+        setStoppableAttemptId(null);
         return;
       }
-      // Stop 成功 ≠ idle：仅标记 runtime 可能已释放，仍停在 recovery-required。
+      // 停止已受理，会话仍锁定；底条走 recoveryHintAfterStop
       setRuntimeReleased(true);
       setRecoveryWork("held");
     } catch (error) {
       setRecoveryWork("held");
       setLastErrorDetail(recoveryErrorMessage(error));
       pushErrorToast({
-        title: t("sharedSend.recoveryTitle"),
-        message: mapRecoveryErrorToast(t, t("sharedSend.recoveryStop"), error),
+        title: recoveryErrorToastTitle(t, "stop"),
+        message: mapRecoveryErrorToast(t, "stop", error),
         durationMs: 4800,
       });
     }
@@ -327,7 +511,13 @@ export function SharedSendStatusBar({
       }
       if (owner.kind === "ambiguous") {
         setRecoveryWork("held");
+        setRecommendSkip(true);
         setLastErrorDetail(t("sharedSend.recoveryErrorAmbiguous"));
+        pushErrorToast({
+          title: recoveryErrorToastTitle(t, "rebuild"),
+          message: t("sharedSend.recoveryErrorAmbiguous"),
+          durationMs: 5200,
+        });
         return;
       }
       if (owner.kind === "attempt") {
@@ -345,30 +535,31 @@ export function SharedSendStatusBar({
               type: "canonicalCommitted",
             });
             setRecoveryWork("cleared");
+            setAutoFailed(false);
+            setStoppableAttemptId(null);
             return;
           }
           setRuntimeReleased(true);
         } catch {
-          // best-effort stop；rebuild 仍可能 recovery-active，交给下方错误映射。
+          // best-effort stop；rebuild 仍可能 recovery-active
         }
       }
-      await sharedSessionV2RebuildBinding(
+      await rebuildBindingWithMismatchRetry(
         workspaceId,
         threadId,
         owner.bindingKey,
       );
       settleCancelled();
       setRecoveryWork("cleared");
+      setRecommendSkip(false);
+      setAutoFailed(false);
     } catch (error) {
       setRecoveryWork("held");
+      setRecommendSkip(true);
       setLastErrorDetail(recoveryErrorMessage(error));
       pushErrorToast({
-        title: t("sharedSend.recoveryTitle"),
-        message: mapRecoveryErrorToast(
-          t,
-          t("sharedSend.recoveryStopAndRebuild"),
-          error,
-        ),
+        title: recoveryErrorToastTitle(t, "rebuild"),
+        message: mapRecoveryErrorToast(t, "rebuild", error),
         durationMs: 5200,
       });
     }
@@ -382,7 +573,6 @@ export function SharedSendStatusBar({
   ]);
 
   const handleRebuild = useCallback(async () => {
-    // 旧双按钮路径 / 或用户已 Stop 后的纯重建。
     if (exitLadderEnabled) {
       await handleStopAndRebuild();
       return;
@@ -400,25 +590,24 @@ export function SharedSendStatusBar({
       }
       if (owner.kind === "ambiguous") {
         setRecoveryWork("held");
+        setRecommendSkip(true);
         return;
       }
-      await sharedSessionV2RebuildBinding(
+      await rebuildBindingWithMismatchRetry(
         workspaceId,
         threadId,
         owner.bindingKey,
       );
       settleCancelled();
       setRecoveryWork("cleared");
+      setRecommendSkip(false);
     } catch (error) {
       setRecoveryWork("held");
+      setRecommendSkip(true);
       setLastErrorDetail(recoveryErrorMessage(error));
       pushErrorToast({
-        title: t("sharedSend.recoveryTitle"),
-        message: mapRecoveryErrorToast(
-          t,
-          t("sharedSend.recoveryRebuild"),
-          error,
-        ),
+        title: recoveryErrorToastTitle(t, "rebuild"),
+        message: mapRecoveryErrorToast(t, "rebuild", error),
         durationMs: 4800,
       });
     }
@@ -433,12 +622,9 @@ export function SharedSendStatusBar({
     t,
   ]);
 
-  const handleAbandon = useCallback(async () => {
+  /** 跳过本轮：确认后执行（无 window.confirm）。 */
+  const performAbandon = useCallback(async () => {
     if (!workspaceId || !threadId) {
-      return;
-    }
-    const confirmed = window.confirm(t("sharedSend.recoveryAbandonConfirm"));
-    if (!confirmed) {
       return;
     }
     setRecoveryWork("working");
@@ -461,13 +647,10 @@ export function SharedSendStatusBar({
         return;
       }
       if (owner.kind === "binding") {
-        // 无 in-flight attempt 时放弃本轮等价于 probe-not-accepted 解锁；
-        // binding 损坏请用重建。
         unlockSession();
         setRecoveryWork("cleared");
         return;
       }
-      // 用户已确认放弃：forceStop=true，尽量先 interrupt 再 durable cancel。
       const result = await sharedSessionV2AbandonUnresolvedAttempt(
         workspaceId,
         threadId,
@@ -484,14 +667,11 @@ export function SharedSendStatusBar({
       setRecoveryWork("cleared");
     } catch (error) {
       setRecoveryWork("held");
+      setRecommendSkip(true);
       setLastErrorDetail(recoveryErrorMessage(error));
       pushErrorToast({
-        title: t("sharedSend.recoveryTitle"),
-        message: mapRecoveryErrorToast(
-          t,
-          t("sharedSend.recoveryAbandon"),
-          error,
-        ),
+        title: recoveryErrorToastTitle(t, "skip"),
+        message: mapRecoveryErrorToast(t, "skip", error),
         durationMs: 5200,
       });
     }
@@ -499,6 +679,134 @@ export function SharedSendStatusBar({
     workspaceId,
     threadId,
     findRecoveryOwner,
+    unlockSession,
+    settleCancelled,
+    t,
+  ]);
+
+  /**
+   * 自动处理：串行 exit ladder，不自动 abandon。
+   * owner → recover → interrupt → rebuild。
+   */
+  const handleAuto = useCallback(async () => {
+    if (!workspaceId || !threadId) {
+      return;
+    }
+    setRecoveryWork("working");
+    setLastErrorDetail(null);
+    setAutoFailed(false);
+    try {
+      let owner = await findRecoveryOwner();
+      if (owner.kind === "clear") {
+        unlockSession();
+        setRecoveryWork("cleared");
+        return;
+      }
+      if (owner.kind === "ambiguous") {
+        setRecoveryWork("held");
+        setAutoFailed(true);
+        setLastErrorDetail(t("sharedSend.recoveryErrorAmbiguous"));
+        pushErrorToast({
+          title: t("sharedSend.recoveryTitle"),
+          message: t("sharedSend.recoveryErrorAmbiguous"),
+          durationMs: 4800,
+        });
+        return;
+      }
+
+      if (owner.kind === "attempt") {
+        const outcome = await recoverAttemptOwner(owner.attemptId);
+        if (outcome === "cleared" || outcome === "active") {
+          return;
+        }
+        try {
+          const interruptResult = await sharedSessionV2InterruptTurn(
+            workspaceId,
+            threadId,
+            owner.attemptId,
+          );
+          if (interruptResult.status === "terminal-committed") {
+            dispatchSharedSendEvent(workspaceId, threadId, {
+              type: "probeTerminalRun",
+            });
+            dispatchSharedSendEvent(workspaceId, threadId, {
+              type: "canonicalCommitted",
+            });
+            setRecoveryWork("cleared");
+            setAutoFailed(false);
+            setStoppableAttemptId(null);
+            return;
+          }
+          setRuntimeReleased(true);
+        } catch {
+          // best-effort；继续 rebuild
+        }
+      }
+
+      // rebuild 前再解析一次 owner（interrupt 后可能 clear）
+      owner = await findRecoveryOwner();
+      if (owner.kind === "clear") {
+        unlockSession();
+        setRecoveryWork("cleared");
+        return;
+      }
+      if (owner.kind === "ambiguous") {
+        setRecoveryWork("held");
+        setAutoFailed(true);
+        setLastErrorDetail(t("sharedSend.recoveryErrorAmbiguous"));
+        return;
+      }
+
+      if (owner.kind === "attempt") {
+        try {
+          const interruptResult = await sharedSessionV2InterruptTurn(
+            workspaceId,
+            threadId,
+            owner.attemptId,
+          );
+          if (interruptResult.status === "terminal-committed") {
+            dispatchSharedSendEvent(workspaceId, threadId, {
+              type: "probeTerminalRun",
+            });
+            dispatchSharedSendEvent(workspaceId, threadId, {
+              type: "canonicalCommitted",
+            });
+            setRecoveryWork("cleared");
+            setAutoFailed(false);
+            setStoppableAttemptId(null);
+            return;
+          }
+          setRuntimeReleased(true);
+        } catch {
+          // continue rebuild
+        }
+      }
+
+      await rebuildBindingWithMismatchRetry(
+        workspaceId,
+        threadId,
+        owner.bindingKey,
+      );
+      settleCancelled();
+      setRecoveryWork("cleared");
+      setAutoFailed(false);
+      setRecommendSkip(false);
+    } catch (error) {
+      setRecoveryWork("held");
+      setAutoFailed(true);
+      setRecommendSkip(true);
+      setLastErrorDetail(recoveryErrorMessage(error));
+      pushErrorToast({
+        title: recoveryErrorToastTitle(t, "auto"),
+        message: mapRecoveryErrorToast(t, "auto", error),
+        durationMs: 7200,
+      });
+    }
+  }, [
+    workspaceId,
+    threadId,
+    findRecoveryOwner,
+    recoverAttemptOwner,
     unlockSession,
     settleCancelled,
     t,
@@ -516,8 +824,6 @@ export function SharedSendStatusBar({
     state === "running" ||
     state === "degraded-context"
   ) {
-    // running 由既有 isProcessing UI 承担（§14.5.3 Active Target Badge 走 turnBadge）。
-    // degraded-context 仅兼容旧内存状态；新发送不会进入该阻塞态。
     return null;
   }
 
@@ -526,120 +832,243 @@ export function SharedSendStatusBar({
   };
 
   const recoveryHintText =
-    recoveryWork === "held"
-      ? runtimeReleased
-        ? t("sharedSend.recoveryHintAfterStop")
-        : t("sharedSend.recoveryProbeHeld")
-      : recoveryWork === "cleared"
-        ? t("sharedSend.recoveryProbeCleared")
-        : t("sharedSend.recoveryHint");
+    recoveryWork === "working"
+      ? t("sharedSend.recoveryProbing")
+      : autoFailed
+        ? t("sharedSend.recoveryAutoFailedHint")
+        : recoveryWork === "held"
+          ? runtimeReleased
+            ? t("sharedSend.recoveryHintAfterStop")
+            : t("sharedSend.recoveryProbeHeldNext")
+          : recoveryWork === "cleared"
+            ? t("sharedSend.recoveryProbeCleared")
+            : t("sharedSend.recoveryHintShort");
 
   const busy = recoveryWork === "working";
+  const canStop = Boolean(stoppableAttemptId) && !busy;
 
   return (
-    <div
-      className={`shared-send-status shared-send-status--${state}`}
-      role="status"
-      data-testid="shared-send-status"
-    >
-      {state === "preparing-context" && (
-        <span className="shared-send-status__text">
-          {t("sharedSend.preparingContext")}
-        </span>
-      )}
-
-      {state === "awaiting-acceptance" && (
-        <>
+    <>
+      <div
+        className={`shared-send-status shared-send-status--${state}${
+          expanded ? " shared-send-status--expanded" : ""
+        }`}
+        role="status"
+        data-testid="shared-send-status"
+      >
+        {state === "preparing-context" && (
           <span className="shared-send-status__text">
-            {t("sharedSend.awaitingAcceptance")}
+            {t("sharedSend.preparingContext")}
           </span>
-          <span className="shared-send-status__actions">
-            <button
-              type="button"
-              className="shared-send-status__button"
-              disabled={
-                !canCancel(state, adapterCapabilities.cancelPendingDelivery)
-              }
-              title={t("sharedSend.cancelUnsupported")}
-              onClick={() => dispatch({ type: "cancelRequested" })}
-            >
-              {t("sharedSend.cancel")}
-            </button>
-          </span>
-        </>
-      )}
+        )}
 
-      {state === "cancel-pending" && (
-        <span className="shared-send-status__text">
-          {t("sharedSend.cancelPending")}
-        </span>
-      )}
-
-      {state === "settling" && (
-        <span className="shared-send-status__text">
-          {t("sharedSend.settling")}
-        </span>
-      )}
-
-      {state === "recovery-required" && (
-        <>
-          <span className="shared-send-status__text">
-            <strong>{t("sharedSend.recoveryTitle")}</strong>
-            {" · "}
-            {recoveryHintText}
-            {lastErrorDetail ? (
-              <span
-                className="shared-send-status__details"
-                data-testid="shared-send-recovery-detail"
-                title={lastErrorDetail}
+        {state === "awaiting-acceptance" && (
+          <>
+            <span className="shared-send-status__text">
+              {t("sharedSend.awaitingAcceptance")}
+            </span>
+            <span className="shared-send-status__actions">
+              <button
+                type="button"
+                className="shared-send-status__button"
+                disabled={
+                  !canCancel(state, adapterCapabilities.cancelPendingDelivery)
+                }
+                title={t("sharedSend.cancelUnsupported")}
+                onClick={() => dispatch({ type: "cancelRequested" })}
               >
-                {" "}
-                ({t("sharedSend.recoveryTechDetail")})
-              </span>
-            ) : null}
+                {t("sharedSend.cancel")}
+              </button>
+            </span>
+          </>
+        )}
+
+        {state === "cancel-pending" && (
+          <span className="shared-send-status__text">
+            {t("sharedSend.cancelPending")}
           </span>
-          <span className="shared-send-status__actions">
-            <button
-              type="button"
-              className="shared-send-status__button"
-              disabled={busy}
-              onClick={() => void handleProbe()}
-            >
-              {busy
-                ? t("sharedSend.recoveryProbing")
-                : t("sharedSend.recoveryProbe")}
-            </button>
-            {exitLadderEnabled ? (
-              <>
+        )}
+
+        {state === "settling" && (
+          <span className="shared-send-status__text">
+            {t("sharedSend.settling")}
+          </span>
+        )}
+
+        {state === "recovery-required" && exitLadderEnabled && (
+          <div className="shared-send-status__recovery">
+            <div className="shared-send-status__row">
+              <span className="shared-send-status__label">
+                {t("sharedSend.recoveryTitleShort")}
+              </span>
+              <span className="shared-send-status__sep" aria-hidden>
+                ·
+              </span>
+              <span
+                className="shared-send-status__msg"
+                title={recoveryHintText}
+              >
+                {recoveryHintText}
+              </span>
+
+              <button
+                type="button"
+                className="shared-send-status__icon-btn"
+                title={t("sharedSend.recoveryDetails")}
+                aria-label={t("sharedSend.recoveryDetails")}
+                data-testid="shared-send-recovery-info"
+                onClick={() => setDetailsOpen(true)}
+              >
+                <HelpCircle size={13} aria-hidden />
+              </button>
+
+              <span className="shared-send-status__actions">
                 <button
                   type="button"
-                  className="shared-send-status__button"
+                  className="shared-send-status__button shared-send-status__button--primary"
                   disabled={busy}
-                  onClick={() => void handleStop()}
-                  title={t("sharedSend.recoveryStopHint")}
+                  data-testid="shared-send-recovery-auto"
+                  onClick={() => void handleAuto()}
                 >
-                  {t("sharedSend.recoveryStop")}
+                  {busy
+                    ? t("sharedSend.recoveryAutoWorking")
+                    : autoFailed
+                      ? t("sharedSend.recoveryAutoRetry")
+                      : t("sharedSend.recoveryAuto")}
                 </button>
                 <button
                   type="button"
-                  className="shared-send-status__button"
+                  className={`shared-send-status__button shared-send-status__button--danger${
+                    recommendSkip || autoFailed
+                      ? " shared-send-status__button--recommend"
+                      : ""
+                  }`}
                   disabled={busy}
-                  onClick={() => void handleStopAndRebuild()}
-                  title={t("sharedSend.recoveryStopAndRebuildHint")}
+                  data-testid="shared-send-recovery-skip"
+                  title={
+                    recommendSkip || autoFailed
+                      ? t("sharedSend.recoverySkipRecommendedHint")
+                      : t("sharedSend.recoverySkipHint")
+                  }
+                  onClick={() => setSkipConfirmOpen(true)}
                 >
-                  {t("sharedSend.recoveryStopAndRebuild")}
+                  {t("sharedSend.recoverySkip")}
                 </button>
                 <button
                   type="button"
-                  className="shared-send-status__button shared-send-status__button--danger"
-                  disabled={busy}
-                  onClick={() => void handleAbandon()}
-                  title={t("sharedSend.recoveryAbandonHint")}
+                  className="shared-send-status__icon-btn shared-send-status__expand"
+                  title={
+                    expanded
+                      ? t("sharedSend.recoveryCollapseAdvanced")
+                      : t("sharedSend.recoveryExpandAdvanced")
+                  }
+                  aria-expanded={expanded}
+                  aria-label={
+                    expanded
+                      ? t("sharedSend.recoveryCollapseAdvanced")
+                      : t("sharedSend.recoveryExpandAdvanced")
+                  }
+                  data-testid="shared-send-recovery-expand"
+                  onClick={() => {
+                    setExpanded((v) => {
+                      const next = !v;
+                      if (next) {
+                        // 展开时刷新 stoppable，避免停止按钮永远禁用
+                        void findRecoveryOwner().catch(() => {
+                          setStoppableAttemptId(null);
+                        });
+                      }
+                      return next;
+                    });
+                  }}
                 >
-                  {t("sharedSend.recoveryAbandon")}
+                  <ChevronDown
+                    size={13}
+                    aria-hidden
+                    className={
+                      expanded
+                        ? "shared-send-status__chevron shared-send-status__chevron--open"
+                        : "shared-send-status__chevron"
+                    }
+                  />
                 </button>
-              </>
-            ) : (
+              </span>
+            </div>
+
+            {expanded ? (
+              <div
+                className="shared-send-status__advanced"
+                data-testid="shared-send-recovery-advanced"
+              >
+                <p className="shared-send-status__advanced-hint">
+                  {t("sharedSend.recoveryAdvancedHint")}
+                </p>
+                <div className="shared-send-status__advanced-actions">
+                  <button
+                    type="button"
+                    className="shared-send-status__button"
+                    disabled={busy}
+                    onClick={() => void handleProbe()}
+                  >
+                    {busy
+                      ? t("sharedSend.recoveryProbing")
+                      : t("sharedSend.recoveryProbe")}
+                  </button>
+                  <button
+                    type="button"
+                    className="shared-send-status__button"
+                    disabled={!canStop}
+                    title={
+                      canStop
+                        ? t("sharedSend.recoveryStopHint")
+                        : t("sharedSend.recoveryStopNoAttempt")
+                    }
+                    onClick={() => void handleStop()}
+                  >
+                    {t("sharedSend.recoveryStop")}
+                  </button>
+                  <button
+                    type="button"
+                    className="shared-send-status__button"
+                    disabled={busy}
+                    title={t("sharedSend.recoveryStopAndRebuildHint")}
+                    onClick={() => void handleStopAndRebuild()}
+                  >
+                    {t("sharedSend.recoveryStopAndRebuild")}
+                  </button>
+                </div>
+                {lastErrorDetail ? (
+                  <p
+                    className="shared-send-status__tech"
+                    data-testid="shared-send-recovery-detail"
+                    title={lastErrorDetail}
+                  >
+                    {t("sharedSend.recoveryTechDetail")}
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
+        )}
+
+        {state === "recovery-required" && !exitLadderEnabled && (
+          <>
+            <span className="shared-send-status__text">
+              <strong>{t("sharedSend.recoveryTitle")}</strong>
+              {" · "}
+              {t("sharedSend.recoveryHint")}
+            </span>
+            <span className="shared-send-status__actions">
+              <button
+                type="button"
+                className="shared-send-status__button"
+                disabled={busy}
+                onClick={() => void handleProbe()}
+              >
+                {busy
+                  ? t("sharedSend.recoveryProbing")
+                  : t("sharedSend.recoveryProbe")}
+              </button>
               <button
                 type="button"
                 className="shared-send-status__button"
@@ -648,20 +1077,150 @@ export function SharedSendStatusBar({
               >
                 {t("sharedSend.recoveryRebuild")}
               </button>
-            )}
-          </span>
-        </>
-      )}
+            </span>
+          </>
+        )}
 
-      {state === "target-unavailable" && (
-        <span className="shared-send-status__text">
-          {detail
-            ? t("sharedSend.targetUnavailableReason", { reason: detail })
-            : t("sharedSend.targetUnavailable")}
-          {" · "}
-          {t("sharedSend.targetUnavailableHint")}
-        </span>
-      )}
-    </div>
+        {state === "target-unavailable" && (
+          <span className="shared-send-status__text">
+            {detail
+              ? t("sharedSend.targetUnavailableReason", { reason: detail })
+              : t("sharedSend.targetUnavailable")}
+            {" · "}
+            {t("sharedSend.targetUnavailableHint")}
+          </span>
+        )}
+      </div>
+
+      <ConfirmDialog
+        open={skipConfirmOpen}
+        title={t("sharedSend.recoverySkipConfirmTitle")}
+        body={t("sharedSend.recoverySkipConfirm")}
+        confirmText={t("sharedSend.recoverySkipConfirmAction")}
+        danger
+        onCancel={() => setSkipConfirmOpen(false)}
+        onConfirm={() => {
+          setSkipConfirmOpen(false);
+          void performAbandon();
+        }}
+      />
+
+      <AlertDialog
+        open={detailsOpen}
+        onOpenChange={(next) => {
+          if (!next) {
+            setDetailsOpen(false);
+          }
+        }}
+      >
+        <AlertDialogPopup bottomStickOnMobile={false} modalLayer>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {t("sharedSend.recoveryDetailsTitle")}
+            </AlertDialogTitle>
+            {/* Description 仅作无障碍摘要；正文用结构化段落，避免一整坨挤在一起 */}
+            <AlertDialogDescription className="shared-send-status__sr-only">
+              {t("sharedSend.recoveryDetailsBody")}
+            </AlertDialogDescription>
+            <div className="shared-send-status__details-body">
+              <p>{t("sharedSend.recoveryDetailsBody")}</p>
+              <p>{t("sharedSend.recoveryDetailsBodyWhy")}</p>
+
+              <div className="shared-send-status__details-section shared-send-status__details-section--auto">
+                <p className="shared-send-status__details-section-title">
+                  <span
+                    className="shared-send-status__details-icon shared-send-status__details-icon--auto"
+                    aria-hidden
+                  >
+                    <Sparkles size={13} />
+                  </span>
+                  {t("sharedSend.recoveryDetailsAutoTitle")}
+                </p>
+                <p>{t("sharedSend.recoveryDetailsAuto")}</p>
+              </div>
+
+              <div className="shared-send-status__details-section shared-send-status__details-section--skip">
+                <p className="shared-send-status__details-section-title">
+                  <span
+                    className="shared-send-status__details-icon shared-send-status__details-icon--skip"
+                    aria-hidden
+                  >
+                    <SkipForward size={13} />
+                  </span>
+                  {t("sharedSend.recoveryDetailsSkipTitle")}
+                </p>
+                <p>{t("sharedSend.recoveryDetailsSkip")}</p>
+              </div>
+
+              <div className="shared-send-status__details-section shared-send-status__details-section--rebuild">
+                <p className="shared-send-status__details-section-title">
+                  <span
+                    className="shared-send-status__details-icon shared-send-status__details-icon--rebuild"
+                    aria-hidden
+                  >
+                    <Unplug size={13} />
+                  </span>
+                  {t("sharedSend.recoveryDetailsRebuildTitle")}
+                </p>
+                <p>{t("sharedSend.recoveryDetailsRebuild")}</p>
+              </div>
+
+              <div className="shared-send-status__details-compare">
+                <p className="shared-send-status__details-section-title">
+                  <span
+                    className="shared-send-status__details-icon shared-send-status__details-icon--compare"
+                    aria-hidden
+                  >
+                    <ArrowRightLeft size={13} />
+                  </span>
+                  {t("sharedSend.recoveryDetailsDiffTitle")}
+                </p>
+                <div className="shared-send-status__details-compare-grid">
+                  <div className="shared-send-status__details-compare-card shared-send-status__details-compare-card--skip">
+                    <p className="shared-send-status__details-compare-label">
+                      <SkipForward size={12} aria-hidden />
+                      {t("sharedSend.recoveryDetailsDiffSkipLabel")}
+                    </p>
+                    <p>{t("sharedSend.recoveryDetailsDiffSkip")}</p>
+                  </div>
+                  <div className="shared-send-status__details-compare-card shared-send-status__details-compare-card--rebuild">
+                    <p className="shared-send-status__details-compare-label">
+                      <RefreshCw size={12} aria-hidden />
+                      {t("sharedSend.recoveryDetailsDiffRebuildLabel")}
+                    </p>
+                    <p>{t("sharedSend.recoveryDetailsDiffRebuild")}</p>
+                  </div>
+                </div>
+                <p className="shared-send-status__details-compare-tip">
+                  {t("sharedSend.recoveryDetailsDiffTip")}
+                </p>
+              </div>
+
+              <div className="shared-send-status__details-section shared-send-status__details-section--advanced">
+                <p className="shared-send-status__details-section-title">
+                  <span
+                    className="shared-send-status__details-icon shared-send-status__details-icon--advanced"
+                    aria-hidden
+                  >
+                    <Search size={13} />
+                  </span>
+                  {t("sharedSend.recoveryDetailsAdvancedTitle")}
+                </p>
+                <p>{t("sharedSend.recoveryDetailsAdvanced")}</p>
+              </div>
+            </div>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <button
+              type="button"
+              className="primary"
+              onClick={() => setDetailsOpen(false)}
+            >
+              {t("sharedSend.recoveryDetailsDismiss")}
+            </button>
+          </AlertDialogFooter>
+        </AlertDialogPopup>
+      </AlertDialog>
+    </>
   );
 }

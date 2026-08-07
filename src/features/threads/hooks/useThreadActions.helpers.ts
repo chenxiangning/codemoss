@@ -11,7 +11,10 @@ import {
   type SessionDisplayTitleSources,
 } from "../utils/sessionDisplayProjection";
 import { matchesWorkspacePath } from "./useThreadActions.workspacePath";
-import { classifyContextProtocolText } from "../../../utils/contextProtocol";
+import {
+  classifyContextProtocolText,
+  isMossxProgramControlTitle,
+} from "../../../utils/contextProtocol";
 
 const CLAUDE_HISTORY_MESSAGE_ID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -1201,19 +1204,29 @@ export function isSharedCollabWorkerSpawnTitle(
 }
 
 /**
- * Shared control-plane 标题：完整 protocol 分类 **或** 协作 worker multi-line 包。
- * 不单凭 `Agent N` 删行。
+ * Shared control-plane / 程序内部 session 标题闸（侧栏 hide 安全网）。
+ *
+ * 命中任一即视为非用户顶层会话：
+ * 1. 行首 `MOSSX_*`（含 previewThreadName 截断后的半截 package）
+ * 2. 完整 protocol classify（未截断的 exact marker / envelope）
+ * 3. 协作 worker multi-line（MOSSX + binding:squad:）
+ *
+ * 不单凭 `Agent N` 删行；Shared 顶层行由 stripHiddenSharedBindingSummaries 豁免。
  */
 export function isSharedControlPlaneSpawnTitle(
   value: string | null | undefined,
 ): boolean {
   const normalized = typeof value === "string" ? value.trim() : "";
   if (!normalized) return false;
-  // 完整 protocol（含单行 package marker，用于 strip 已污染显示名）
+  // 行首 MOSSX_：覆盖截断 title（主缺口）与全部已知 control token
+  if (isMossxProgramControlTitle(normalized)) {
+    return true;
+  }
+  // 完整 protocol envelope（未截断 multi-line 也可能被 classify 命中）
   if (classifyContextProtocolText(normalized) !== null) {
     return true;
   }
-  // 协作 worker multi-line 包
+  // 协作 worker multi-line 包（binding:squad: 可能在截断后丢失，raw 路径另拦）
   return isSharedCollabWorkerSpawnTitle(normalized);
 }
 
@@ -1306,6 +1319,10 @@ function mergeNativeCliSessionSummaries(params: {
     if (hiddenSharedBindingIds?.has(id)) {
       return;
     }
+    // 在 clip 标题前用 raw firstMessage 拦 control-plane（截断会丢 sha256 body）
+    if (isSharedControlPlaneSpawnTitle(session.firstMessage)) {
+      return;
+    }
     const prev = mergedById.get(id);
     const updatedAt = Number.isFinite(session.updatedAt)
       ? Math.max(0, session.updatedAt)
@@ -1313,6 +1330,10 @@ function mergeNativeCliSessionSummaries(params: {
     const mappedTitle = mappedTitles[id];
     const customTitle = getCustomName(workspaceId, id);
     const title = previewThreadName(session.firstMessage, fallbackTitle);
+    // 双闸：clip 后 name 仍以 MOSSX_ 开头（或 protocol）则不入侧栏
+    if (isSharedControlPlaneSpawnTitle(title)) {
+      return;
+    }
     const rawParent = session.parentSessionId?.trim() || "";
     const parentThreadId =
       rawParent.length > 0
@@ -1505,12 +1526,21 @@ export function mergeCodexCatalogSessionSummaries(
     ) {
       return;
     }
-    // 在改写显示名之前拦截协作 worker 首包（含 multi-line MOSSX+squad）
-    // 注意：不要用「任意 MOSSX 单行 package」——Provider Continuation 需改写成「继续：…」
+    // 协作 worker multi-line（改名 Agent N 前）必须拦
     if (
       isSharedCollabWorkerSpawnTitle(title) ||
       isSharedCollabWorkerSpawnTitle(nativeTitle)
     ) {
+      return;
+    }
+    // 程序 MOSSX_* control-plane：非 Provider Continuation 直接丢；
+    // Continuation 走下方「继续：…」改写，避免侧栏残留半截 package。
+    const isControlPlaneTitle =
+      isSharedControlPlaneSpawnTitle(title) ||
+      isSharedControlPlaneSpawnTitle(nativeTitle);
+    const isProviderContinuation =
+      session.originKind === "provider-continuation";
+    if (isControlPlaneTitle && !isProviderContinuation) {
       return;
     }
     if (
@@ -1554,7 +1584,7 @@ export function mergeCodexCatalogSessionSummaries(
       ? mergedById.get(session.sourceSessionId)?.name?.trim()
       : null;
     const continuationFallbackTitle =
-      session.originKind === "provider-continuation"
+      isProviderContinuation
         ? continuationSourceName
           ? `继续：${continuationSourceName}`
           : `Provider 续接 · ${
@@ -1562,9 +1592,9 @@ export function mergeCodexCatalogSessionSummaries(
               engineFallbackTitle.replace(/ Session$/, "")
             }`
         : null;
+    // 截断 title 无法 classify；用 control-plane 闸（含 MOSSX_ 行首）触发改写
     const fallbackTitle =
-      continuationFallbackTitle &&
-      classifyContextProtocolText(title) !== null
+      continuationFallbackTitle && isControlPlaneTitle
         ? continuationFallbackTitle
         : previewThreadName(title || nativeTitle, engineFallbackTitle);
     const next: ThreadSummary = {

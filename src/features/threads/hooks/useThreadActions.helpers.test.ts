@@ -833,19 +833,33 @@ describe("useThreadActions.helpers", () => {
     const packageTitle =
       `MOSSX_CONTEXT_PACKAGE:sha256:${"a".repeat(64)}:` +
       `sha256:${"b".repeat(64)}`;
+    // previewThreadName 截到 50 字后的半截（实机侧栏泄漏形态）
+    const truncatedPackageTitle = "MOSSX_CONTEXT_PACKAGE:sha256:aaaaaaaaaaaaaa";
     const input: ThreadSummary[] = [
       {
         id: "shared:s1",
         name: "Shared collab",
-        updatedAt: 3,
+        updatedAt: 5,
         threadKind: "shared",
         engineSource: "claude",
       },
       {
         id: "claude:spawn-1",
         name: packageTitle,
-        updatedAt: 2,
+        updatedAt: 4,
         engineSource: "claude",
+      },
+      {
+        id: "grok:spawn-trunc",
+        name: truncatedPackageTitle,
+        updatedAt: 3,
+        engineSource: "grok",
+      },
+      {
+        id: "codex:spawn-accepted",
+        name: "MOSSX_CONTEXT_ACCEPTED:sha256:deadbeef",
+        updatedAt: 2,
+        engineSource: "codex",
       },
       {
         id: "claude:user-1",
@@ -861,6 +875,36 @@ describe("useThreadActions.helpers", () => {
     ]);
   });
 
+  it("isSharedControlPlaneSpawnTitle covers all MOSSX_ program tokens and rejects user prose", () => {
+    const fullPackage =
+      `MOSSX_CONTEXT_PACKAGE:sha256:${"a".repeat(64)}:` +
+      `sha256:${"b".repeat(64)}`;
+    expect(isSharedControlPlaneSpawnTitle(fullPackage)).toBe(true);
+    expect(
+      isSharedControlPlaneSpawnTitle("MOSSX_CONTEXT_PACKAGE:sha25…"),
+    ).toBe(true);
+    expect(
+      isSharedControlPlaneSpawnTitle(
+        `MOSSX_CONTEXT_ACCEPTED:sha256:${"c".repeat(64)}:` +
+          `sha256:${"d".repeat(64)}`,
+      ),
+    ).toBe(true);
+    expect(isSharedControlPlaneSpawnTitle("MOSSX_NATIVE_CONTEXT_V1")).toBe(
+      true,
+    );
+    expect(isSharedControlPlaneSpawnTitle("MOSSX_SHARED_CONTEXT_V1")).toBe(
+      true,
+    );
+    // 用户讨论 / 非行首 → 不杀
+    expect(
+      isSharedControlPlaneSpawnTitle(
+        "请解释 MOSSX_CONTEXT_PACKAGE 是什么，不要隐藏这条消息",
+      ),
+    ).toBe(false);
+    expect(isSharedControlPlaneSpawnTitle("Agent 81")).toBe(false);
+    expect(isSharedControlPlaneSpawnTitle("正常功能讨论")).toBe(false);
+  });
+
   it("isSharedCollabWorkerSpawnTitle catches multi-line collab worker titles", () => {
     const multiLine =
       `MOSSX_CONTEXT_PACKAGE:sha256:${"a".repeat(64)}:` +
@@ -871,14 +915,49 @@ describe("useThreadActions.helpers", () => {
       "hello";
     expect(isSharedCollabWorkerSpawnTitle(multiLine)).toBe(true);
     expect(isSharedControlPlaneSpawnTitle(multiLine)).toBe(true);
-    // 单行 package（Provider Continuation）不算 collab worker
+    // 单行 package 不是 collab worker，但是 control-plane（侧栏仍应 hide）
     const singlePackage =
       `MOSSX_CONTEXT_PACKAGE:sha256:${"a".repeat(64)}:` +
       `sha256:${"b".repeat(64)}`;
     expect(isSharedCollabWorkerSpawnTitle(singlePackage)).toBe(false);
-    // 用户真会话：仅 Agent N 不杀
-    expect(isSharedControlPlaneSpawnTitle("Agent 81")).toBe(false);
-    expect(isSharedControlPlaneSpawnTitle("正常功能讨论")).toBe(false);
+    expect(isSharedControlPlaneSpawnTitle(singlePackage)).toBe(true);
+  });
+
+  it("mergeGrokSessionSummaries drops MOSSX_ raw firstMessage before title clip", () => {
+    const fullPackage =
+      `MOSSX_CONTEXT_PACKAGE:sha256:${"a".repeat(64)}:` +
+      `sha256:${"b".repeat(64)}`;
+    const merged = mergeGrokSessionSummaries(
+      [
+        {
+          id: "grok:keep",
+          name: "用户 Grok 会话",
+          updatedAt: 1,
+          engineSource: "grok",
+        },
+      ],
+      [
+        {
+          sessionId: "spawn-pkg",
+          firstMessage: fullPackage,
+          updatedAt: 20,
+          fileSizeBytes: 10,
+        },
+        {
+          sessionId: "keep-user",
+          firstMessage: "请对工作区做变更代际分析",
+          updatedAt: 15,
+          fileSizeBytes: 10,
+        },
+      ],
+      "ws-1",
+      {},
+      () => undefined,
+    );
+    expect(merged.map((row) => row.id).sort()).toEqual([
+      "grok:keep",
+      "grok:keep-user",
+    ]);
   });
 
   it("mergeCodexCatalogSessionSummaries drops collab MOSSX worker before Agent N rename", () => {

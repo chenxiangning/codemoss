@@ -2315,13 +2315,20 @@ pub fn rebuild_binding_core(
         })
         .and_then(ensure_supported_shared_session_engine)?;
     let provider_profile_id = existing.provider_profile_id.clone();
-    let durable_binding_key = shared_target_binding_key(engine, provider_profile_id.as_deref());
-    if durable_binding_key != binding_key {
-        return Err(format!(
-            "binding owner mismatch: key '{binding_key}' does not match durable owner '{durable_binding_key}'"
-        ));
+    // Squad worker binding key is first-class (`squad:{run}:{node}:{engine}:{provider}`).
+    // Main durable path still requires key == engine:provider to prevent identity mix-ups.
+    let is_squad_binding = binding_key.starts_with("squad:");
+    if !is_squad_binding {
+        let durable_binding_key =
+            shared_target_binding_key(engine, provider_profile_id.as_deref());
+        if durable_binding_key != binding_key {
+            return Err(format!(
+                "binding owner mismatch: key '{binding_key}' does not match durable owner '{durable_binding_key}'"
+            ));
+        }
     }
     let archived_native_session_id = existing.native_session_id.clone();
+    // Squad worker turns are excluded from main unresolved evidence; filter is still safe.
     let unresolved = unresolved_attempt_evidence(writer, session_id, Some(binding_key))?;
     if unresolved.len() > 1 {
         return Err(format!(
@@ -5295,6 +5302,11 @@ fn clear_binding_recovery_if_idle(
 }
 
 /// 用户显式放弃未决 Attempt（durable cancel）。可选 `force_stop`：在 Runtime own 时先 interrupt。
+///
+/// 可完成出口合同（OpenSpec recovery exit / § interrupt capability missing）：
+/// - `force_stop=false` 且 Runtime own → 拒绝（须先 Stop 或显式 force）
+/// - `force_stop=true` → best-effort interrupt；**interrupt 失败也必须 durable cancel + 清 coordinator**
+///   （否则停不掉时「跳过本轮」会永久锁死会话）
 #[tauri::command]
 pub async fn shared_session_v2_abandon_unresolved_attempt(
     workspace_id: String,
@@ -5361,24 +5373,27 @@ pub async fn shared_session_v2_abandon_unresolved_attempt(
     }
 
     let owned = state.shared_runtime_coordinator.owns_attempt(&attempt_id);
+    let mut interrupt_warning: Option<String> = None;
     if owned {
         if !force_stop {
             return Err(format!(
                 "recovery-active-requires-stop: attempt {attempt_id} is still owned by Runtime; Stop before abandon or pass forceStop"
             ));
         }
-        // force_stop：best-effort interrupt；失败则拒绝 abandon（禁止假装释放）。
-        let interrupt = shared_session_v2_interrupt_turn(
+        // force_stop：best-effort interrupt。失败不阻断 durable abandon（可完成出口）。
+        // 迟到 terminal 由 generation/terminal 冲突吸收，不得复活已 cancel 的 attempt。
+        match shared_session_v2_interrupt_turn(
             workspace_id.clone(),
             thread_id.clone(),
             attempt_id.clone(),
             state.clone(),
         )
-        .await;
-        if let Err(error) = interrupt {
-            return Err(format!(
-                "recovery-active-requires-stop: interrupt failed before abandon: {error}"
-            ));
+        .await
+        {
+            Ok(_) => {}
+            Err(error) => {
+                interrupt_warning = Some(error);
+            }
         }
         // 不立即 remove_attempt —— 先检查 settled_for_attempt，
         // 以防 interrupt 与真实完成竞态导致 settled 证据被误删。
@@ -5400,21 +5415,25 @@ pub async fn shared_session_v2_abandon_unresolved_attempt(
             "attemptId": attempt_id,
             "bindingKey": committed.binding_key,
             "sequence": committed.sequence,
+            "interruptWarning": interrupt_warning,
         }));
     }
 
-    // 未 settled：清理 coordinator 跟踪，走 durable cancel。
-    if owned {
-        state.shared_runtime_coordinator.remove_attempt(&attempt_id);
-    }
+    // 未 settled：强制清 coordinator 跟踪（含 force_stop 且 interrupt 失败），再 durable cancel。
+    // 否则 Runtime own 会永久挡住 rebuild，跳过也无法解锁。
+    state.shared_runtime_coordinator.remove_attempt(&attempt_id);
 
     let committed = abandon_unresolved_attempt_core(
         writer,
         &shared_session_id,
         &attempt_id,
-        "user-abandon-unresolved",
+        if interrupt_warning.is_some() {
+            "user-abandon-unresolved-force-after-interrupt-fail"
+        } else {
+            "user-abandon-unresolved"
+        },
     )?;
-    // abandon_unresolved_attempt_core 不负责 coordinator；最终清理。
+    // abandon_unresolved_attempt_core 不负责 coordinator；最终再清一次（幂等）。
     state.shared_runtime_coordinator.remove_attempt(&attempt_id);
 
     Ok(json!({
@@ -5423,6 +5442,8 @@ pub async fn shared_session_v2_abandon_unresolved_attempt(
         "bindingKey": committed.binding_key,
         "sequence": committed.sequence,
         "duplicate": committed.duplicate,
+        "interruptWarning": interrupt_warning,
+        "forcedAfterInterruptFailure": interrupt_warning.is_some(),
     }))
 }
 
@@ -6489,6 +6510,40 @@ mod shared_interrupt_owner_tests {
             read_native_context_trust(&binding),
             NativeContextTrust::Dirty,
             "rebuild must mark trust dirty"
+        );
+
+        writer.shutdown().expect("shutdown writer");
+        std::fs::remove_dir_all(root).expect("remove test root");
+    }
+
+    #[test]
+    fn rebuild_binding_core_allows_squad_worker_key() {
+        // Squad worker keys are first-class; rebuild must clear recovery-required
+        // without durable-key mismatch refusal.
+        let session_id = "rebuild-squad-worker-key";
+        let provider = "provider-squad";
+        let (root, writer) = open_test_writer("rebuild-squad-worker-key");
+        let squad_key = format!("squad:run-1:node-plan:claude:{provider}");
+        mark_recovery_core(
+            &writer,
+            session_id,
+            &squad_key,
+            EngineType::Claude,
+            Some(provider.to_string()),
+            Some("squad-worker-binding-recovery-required"),
+        )
+        .expect("mark squad recovery");
+        let rebuilt =
+            rebuild_binding_core(&writer, session_id, &squad_key).expect("rebuild squad");
+        assert!(rebuilt.replaced_attempt_ids.is_empty());
+        let binding = writer
+            .binding_state(session_id, &squad_key)
+            .expect("read")
+            .expect("binding");
+        assert_eq!(
+            provisioning_state_of(&binding),
+            PROVISIONING_PREPARED,
+            "squad rebuild must return provisioning to prepared"
         );
 
         writer.shutdown().expect("shutdown writer");

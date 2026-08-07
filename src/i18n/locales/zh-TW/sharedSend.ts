@@ -42,9 +42,48 @@ const sharedSend = {
     cancelPending: "正在確認取消結果…",
     settling: "正在儲存結果…",
     recoveryTitle: "需要恢復",
+    recoveryTitleShort: "會話卡住",
+    recoveryHintShort: "上一句有沒有被對面收到還不清楚，先鎖住避免亂序",
+    recoveryAuto: "自動處理",
+    recoveryAutoWorking: "處理中…",
+    recoveryAutoRetry: "再試自動處理",
+    recoveryAutoFailedTitle: "自動處理沒成功",
+    recoveryAutoFailedHint: "自動失敗了 · 下一步：點右側「跳過本輪，繼續聊」解鎖",
+    recoverySkipRecommendedHint: "推薦：點這裡跳過卡住的上一句並解鎖，然後可以重新發送",
+    recoverySkip: "跳過本輪，繼續聊",
+    recoverySkipHint: "取消未確認的上一句並解鎖會話；對話本身會保留",
+    recoverySkipConfirmTitle: "跳過本輪？",
+    recoverySkipConfirm: "將跳過上一句未確認的發送並解鎖會話。對話本身會保留，只有這一輪記為取消。",
+    recoverySkipConfirmAction: "跳過並解鎖",
+    recoveryDetails: "查看詳情",
+    recoveryDetailsTitle: "為什麼會話會卡住？",
+    recoveryDetailsAdvancedTitle: "其他進階選項",
+    recoveryDetailsSkipTitle: "跳過本輪，繼續聊",
+    recoveryDetailsDiffTip: "日常優先：自動處理 → 不行就跳過本輪。換連線留給進階排查，不要和跳過當成一回事。",
+    recoveryDetailsDiffRebuild: "換底層管道再試。連線壞了才用。狀態對不上時可能仍失敗，不能當放棄用。",
+    recoveryDetailsDiffRebuildLabel: "換連線",
+    recoveryDetailsDiffSkip: "不要這句未確認的話 → 本輪記取消 → 解鎖。對話還在，不換管道。失敗時優先點它。",
+    recoveryDetailsDiffSkipLabel: "跳過本輪",
+    recoveryDetailsDiffTitle: "跳過本輪 vs 換連線，差在哪？",
+    recoveryDetailsRebuild: "進階操作。會盡量先停掉進行中的請求，再封存舊的底層連線並新開一條。共用會話還是這個，換的是下面那根「管子」。管道壞了、連線亂了時才需要；它不是「跳過本輪」的替身。",
+    recoveryDetailsRebuildTitle: "換連線",
+    recoveryDetailsAutoTitle: "自動處理",
+    recoveryDetailsBodyWhy: "共用會話必須按順序接話，不能一邊還沒定論、一邊又發出下一句，否則歷史會對不齊。所以會先暫時鎖住輸入框，等這輪有了明確結果再繼續聊。",
+    recoveryDetailsBody: "剛才那句話有沒有真正被對面的 AI 渠道接收到，我們暫時還說不準。網路抖動、渠道繁忙、連線中斷時，都可能出現這種「半路上說不清」的情況。",
+    recoveryDetailsAuto: "適合大多數情況。點一下後，系統會按順序幫你排查：先確認目前狀態，若還有進行中的請求會嘗試停掉，仍解不開時會換一條底層連線。它會盡量保住或清乾淨這輪，但不會擅自替你「不要這輪」。",
+    recoveryDetailsSkip: "適合你不想再等、也不在乎這一句是否發送出去的時候。確認後，未決的這一輪會記為取消，會話立刻解鎖。整段對話記錄還在，不會刪聊天。它處理的是「這一句話」，不會去換底層連線。",
+    recoveryDetailsAdvanced: "展開後還有「再查一次」（只查看是否已有結果）、「停止請求」（僅當有進行中的請求時可點）。一般不必用；自動失敗時請優先跳過本輪。",
+    recoveryDetailsDismiss: "知道了",
+    recoveryExpandAdvanced: "展開進階選項",
+    recoveryCollapseAdvanced: "收起進階選項",
+    recoveryAdvancedHint: "一般不用點這裡。自動處理已經會按順序試下面幾步。",
     recoveryHint:
       "上一次發送的接收結果不確定，已鎖定本會話。請檢查狀態、停止投遞、停止並重建，或放棄本輪。",
     recoveryProbe: "檢查狀態",
+    recoveryProbeReattached: "已接上正在進行的回覆，可以等待結果。",
+    recoveryProbeHeldNext: "查過了仍卡住 · 下一步：點「跳過本輪，繼續聊」",
+    recoveryProbeStillLocked: "查過了，這輪還是說不清。請點「跳過本輪，繼續聊」解鎖，再重新發。",
+    recoveryProbeTitle: "再查一次",
     recoveryProbing: "正在檢查…",
     recoveryRebuild: "重建會話連線",
     recoveryProbeHeld:
@@ -67,17 +106,32 @@ const sharedSend = {
     recoveryAbandonConfirm:
       "確定放棄本輪未決發送並解鎖共用會話嗎？該輪次將標記為已取消，對話本身會保留。",
     recoveryStopNoAttempt:
-      "目前沒有可停止的進行中投遞。請改用檢查狀態、重建連線或放棄本輪。",
+      "目前沒有可停止的進行中請求。請改用自動處理、換連線，或跳過本輪。",
+    recoveryStopFailedTitle: "停止請求失敗",
+    recoveryErrorGenericStop:
+      "沒能停掉進行中的請求。Runtime 可能已無回應；請直接點「跳過本輪，繼續聊」強制解鎖。",
     recoveryHintAfterStop:
-      "已請求停止投遞。請繼續檢查狀態、停止並重建，或放棄本輪以完成解鎖。",
+      "已請求停止。請繼續自動處理、換連線，或跳過本輪以完成解鎖。",
     recoveryErrorActive:
       "執行環境仍占用該輪次。請先停止投遞再重建，或使用「放棄本輪」。",
     recoveryErrorActiveRequiresStop:
       "執行環境仍占用該輪次。請先停止投遞再放棄，或在放棄時確認強制停止。",
+    recoveryErrorActiveRebuild:
+      "執行環境仍占用該輪次，換連線被拒絕。請先停止請求；若停止也失敗，請直接「跳過本輪」解鎖。",
+    recoveryErrorActiveRequiresStopSkip:
+      "跳過時強制停止未完全成功。請再點一次「跳過本輪」；若仍失敗請重啟應用後重試。",
+    recoverySkipFailedTitle: "跳過本輪失敗",
+    recoveryErrorGenericSkip:
+      "跳過本輪沒能解鎖。請再試一次；若持續失敗請重啟應用。",
     recoveryErrorAmbiguous:
       "發現多個未決占用，無法安全自動處理。若持續出現，請攜帶會話資訊聯繫支援。",
     recoveryErrorOwnerMissing:
       "未找到對應的未決輪次。請再檢查狀態；會話可能已經可以繼續。",
+    recoveryErrorOwnerMismatch: "目前連線狀態對不上，沒法繼續這一步。請點「跳過本輪，繼續聊」解鎖，然後重新發一句。",
+    recoveryErrorOwnerMismatchRebuild: "換連線沒完成：連線身份對不上。請點「跳過本輪，繼續聊」解鎖，或切換可用目標後再發。",
+    recoveryErrorGenericNext: "這一步沒能解開。請點「跳過本輪，繼續聊」解鎖會話，再重新發送。",
+    recoveryErrorGenericRebuild: "換連線沒能解開會話。請點「跳過本輪，繼續聊」解鎖，再重新發送。",
+    recoveryRebuildFailedTitle: "換連線失敗",
     recoveryErrorEmptyContextHandoff:
       "無法為目前目標重建共享上下文（歷史可能不完整）。請嘗試停止並重建連線，或切換可用目標後重送。",
     recoveryTechDetail: "可查看技術詳情",

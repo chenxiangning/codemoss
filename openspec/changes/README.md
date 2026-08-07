@@ -2,7 +2,7 @@
 
 本页是 `mossx` OpenSpec proposal 的当前入口。它只维护 active change 的执行状态，并把 archived change 路由到完整历史索引；详细治理快照仍以 [`../project.md`](../project.md) 为准。
 
-- Updated At: `2026-08-05`
+- Updated At: `2026-08-07`
 - Active proposals: `5+`（以磁盘 `openspec/changes/*` 为准）
 - Archived proposals: `848+`
 - Main capability specs: `492`
@@ -11,6 +11,7 @@
 
 | Change | Progress | Current gate | Artifacts |
 | ------ | -------: | ------------ | --------- |
+| [`fix-shared-collab-context-and-sidebar-spawn`](fix-shared-collab-context-and-sidebar-spawn/proposal.md) | follow-up implemented / await human check | G1 collab context 已验；侧栏 follow-up：行首 `MOSSX_*` 截断标题闸 + merge 预过滤已落地；vitest 62/62；**待实机确认侧栏无崽子，不 commit** | [proposal](fix-shared-collab-context-and-sidebar-spawn/proposal.md) · [design](fix-shared-collab-context-and-sidebar-spawn/design.md) · [tasks](fix-shared-collab-context-and-sidebar-spawn/tasks.md) · [specs](fix-shared-collab-context-and-sidebar-spawn/specs/) |
 | [`add-windows-main-window-close-confirm`](add-windows-main-window-close-confirm/proposal.md) | implemented / user accepted | Win 自绘 X 每次自定义二次确认；隔离 helper；Mac/菜单不动；vitest 16/16；本机验收通过 | [proposal](add-windows-main-window-close-confirm/proposal.md) · [design](add-windows-main-window-close-confirm/design.md) · [tasks](add-windows-main-window-close-confirm/tasks.md) · [specs](add-windows-main-window-close-confirm/specs/) |
 | [`fix-windows-ui-scale-webview2-hang`](fix-windows-ui-scale-webview2-hang/proposal.md) | implementing | Windows `uiScale≠1` WebView2 SetZoomFactor 假死；CSS zoom + native pin 1；Mac/Linux 保持 native；**不 commit，交用户验收** | [proposal](fix-windows-ui-scale-webview2-hang/proposal.md) · [design](fix-windows-ui-scale-webview2-hang/design.md) · [tasks](fix-windows-ui-scale-webview2-hang/tasks.md) · [specs](fix-windows-ui-scale-webview2-hang/specs/) · [分析](../../docs/analysis/windows-ccgui-startup-hang-2026-08-05.md) |
 | [`retire-claude-subagent-agent-session-card`](retire-claude-subagent-agent-session-card/proposal.md) | implementing | Claude Shared/Native：退役 SubAgent 旧 Agent session 卡；事实迁 S10 + inspector；**不 commit，交用户审批** | [proposal](retire-claude-subagent-agent-session-card/proposal.md) · [design](retire-claude-subagent-agent-session-card/design.md) · [tasks](retire-claude-subagent-agent-session-card/tasks.md) · [specs](retire-claude-subagent-agent-session-card/specs/) |
@@ -24,8 +25,9 @@
 | [`fix-codex-collab-subagent-live-parity`](fix-codex-collab-subagent-live-parity/proposal.md) | implemented / need manual smoke | 代码已落地 + focused vitest/tsc 绿；待 Codex live wait 与其他 CLI 人工冒烟后 verify/archive | [proposal](fix-codex-collab-subagent-live-parity/proposal.md) · [design](fix-codex-collab-subagent-live-parity/design.md) · [tasks](fix-codex-collab-subagent-live-parity/tasks.md) · [specs](fix-codex-collab-subagent-live-parity/specs/) · [verification](fix-codex-collab-subagent-live-parity/verification.md) |
 | [`add-linux-native-menu-localization`](add-linux-native-menu-localization/proposal.md) | 4/5 | NOT READY archive — Linux non-default language native menu smoke（原 GTK 缺陷边界，未在本机验证） | [proposal](add-linux-native-menu-localization/proposal.md) · [design](add-linux-native-menu-localization/design.md) · [tasks](add-linux-native-menu-localization/tasks.md) · [specs](add-linux-native-menu-localization/specs/) · [verification](add-linux-native-menu-localization/verification.md) |
 
-## Active backlog notes（2026-08-05）
+## Active backlog notes（2026-08-07）
 
+- **跟进** `fix-shared-collab-context-and-sidebar-spawn`：侧栏 follow-up——`previewThreadName` 截断后严格 classify 失效导致 `MOSSX_CONTEXT_PACKAGE:sha25…` 泄漏；行首 `MOSSX_*` 闸 + merge raw 预过滤；幕布 classifier 仍严格；待实机、不 commit。
 - **新增** `add-windows-main-window-close-confirm`：Windows 主窗自绘 X 每次二次确认；隔离 `windowsMainWindowCloseConfirm`；不改 Mac/菜单/Alt+F4；代码已落地，待 Win 冒烟。
 - **新增** `fix-shared-context-resume-integrity`：Shared 失败后续接 / 换绑后 zero-transfer package 只发「继续」导致 Runtime 丢原任务；empty-handoff + rematerialize；与 recovery-exit 正交。
 - **新增** `retire-claude-subagent-agent-session-card`：Claude Shared/Native 幕布 SubAgent 退役 legacy `Agent session` 卡，能力迁 S10/inspector。

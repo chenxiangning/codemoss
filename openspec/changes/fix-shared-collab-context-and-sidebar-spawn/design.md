@@ -56,18 +56,33 @@
 
 ### D4 — Sidebar control-plane 标题闸
 
-在 `stripHiddenSharedBindingSummaries` 之后或合并路径中：
+在 `stripHiddenSharedBindingSummaries` 与各 engine merge 路径中：
 
-- 剔除 `name` / 映射标题经 `classifyContextProtocolText` 非 null 的 **native** 行（非 `shared:`）。
+- 剔除 `name` / mapped / raw firstMessage 命中 control-plane 的 **native** 行（非 `shared:`）。
 - 已有 hide set 逻辑保留；本闸防 orphan 泄漏。
+
+### D4b — 侧栏 title 与幕布 filter 分层（2026-08-07 follow-up）
+
+| 边界 | 识别规则 | 原因 |
+|------|----------|------|
+| **侧栏 title / list merge** | 行首 `MOSSX_*`（`isMossxProgramControlTitle`）∪ 严格 classify ∪ collab worker | `previewThreadName` 截 50 字后完整 sha256 body 不可达；hide set 漏时安全网必须靠行首 |
+| **主幕 canvas transcript** | **仅** `classifyContextProtocolText` 严格 envelope | 基石 §10.4：禁止 `includes("MOSSX")` 宽泛吞用户正文 |
+
+实现合同：
+
+1. `isSharedControlPlaneSpawnTitle` = 行首闸 ∪ classify ∪ `isSharedCollabWorkerSpawnTitle`。
+2. `mergeNativeCliSessionSummaries` / Claude / OpenCode：raw firstMessage **先于** clip 预过滤。
+3. `mergeCodexCatalogSessionSummaries`：`MOSSX_*` 且非 `provider-continuation` → drop；continuation →「继续：…」改写（改写条件用 control 闸，不单靠完整 classify）。
+4. `stripHiddenSharedBindingSummaries` 仍为最终闸；Shared 顶层 id/`threadKind` 豁免。
+5. Token 清单（会话 title）：`MOSSX_CONTEXT_PACKAGE` / `ACCEPTED` / `NATIVE_CONTEXT_V1` / `SHARED_CONTEXT_V1`（见 `MOSSX_PROGRAM_CONTROL_TITLE_TOKENS`）。
 
 ### D5 — 范围隔离
 
 | 路径 | 变更 |
 |------|------|
 | 无 collab 的 Shared ordinary | 仅 D3 在「无 marker」时 no-op |
-| native list | 仅 strip，不改 native identity |
-| 主幕 canvas filter | **不改** |
+| native list | strip + merge 预过滤，不改 native identity / 不删盘 |
+| 主幕 canvas filter | **不改**严格 classifier |
 
 ## Risks / Trade-offs
 
@@ -76,8 +91,8 @@
 | body 增大 event log | 已有 STAGE_OUTCOME_BODY_CHARS 硬阀 |
 | checkpoint 仍挤掉 digest | 优先保留 collab-stage category |
 | 双份内容（turnCommitted + nodeOutcome） | 可接受；digest 有标签；budget 下 digest 优先 |
-| 标题闸误伤用户真会话名含 MOSSX | 仅 classifyContextProtocol 严格 marker 形状 |
-
+| 标题闸误伤用户真会话名含 MOSSX | **行首** `MOSSX_`；用户讨论句非行首不杀；幕布仍严格 classify |
+| 用户手动把会话改名为 `MOSSX_foo` | 极低概率；与「程序内部 session 一律隐藏」产品口径一致 |
 ## Migration
 
 - 无 DB migration。
@@ -90,10 +105,13 @@
 | `agent_orchestration/commands.rs` | outcome 写 body |
 | `agent_orchestration/projection.rs` | full_outcome 优先 body |
 | `shared_context/compiler.rs` | transform + 过滤豁免 + 可选 control demote |
-| `useThreadActions.helpers.ts` | control-plane title strip |
-| foundation design md | 校准表 |
-| tests | Rust compiler + FE strip |
+| `src/utils/contextProtocol.ts` | `isMossxProgramControlTitle` + token 清单（follow-up） |
+| `useThreadActions.helpers.ts` | control-plane title strip + raw 预过滤 + catalog 改写闸 |
+| `useThreadActions.ts` | Claude / OpenCode merge 预过滤 |
+| `sessionDisplayProjection.ts` | 截断 MOSSX_ weak + mapped 丢弃 |
+| foundation design md | 校准表（侧栏行首闸 vs 幕布严格 classify） |
+| tests | Rust compiler + FE strip / 截断 / 用户正文 |
 
 ## Open Questions
 
-无（产品已确认：只修 AI 上下文 + 侧栏，不改人眼主幕）。
+无（产品已确认：只修 AI 上下文 + 侧栏，不改人眼主幕；follow-up 确认行首 `MOSSX_` 为侧栏 hide 口径）。

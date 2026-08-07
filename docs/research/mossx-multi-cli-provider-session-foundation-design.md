@@ -44,7 +44,7 @@ status: implemented
 | Multi-agent stage 执行 target | 每 stage `begin_stage_turn(&stage.target)` + squad worker bindingKey；本地 event log 核对 plan/claude、implement/codex、review/grok 分 binding **真实执行** | `agent_orchestration/{commands,support}.rs`、`shared_session_v2.begin_squad_worker_turn_core`、`shared-event-log-v2.sqlite3` |
 | Multi-agent Inspector 流式与隔离 | 右栏 **禁止** `extractRealtimeTextDelta` 旁路；`agent-canvas:{shared}:{attemptId}` + 主幕同源 adapter / liveAssistantTextChannel；**幕布仅当前 attempt**；settle 只信本 stage `fullOutcome`；徽章 **强制对齐 stage.target**；activeTurn 查询用 **shared:** key 非 agent-canvas key | `useAppServerEvents.ts`、`agentCanvasThread.ts`、`useAgentStageTranscript.ts` |
 | Multi-agent 模板智能体 | 环节可选客户端智能体（`agentProvider` 同源）；persona 字段进 stageBindings；Inspector 头展示「· 智能体 {name}」；注入目前为 rolePrompt 前缀（非 Composer 全量 AGENT_PROMPT 协议） | `StageAgentPicker.tsx`、`templates/types.ts`、`AgentInspectorDrawer` |
-| Shared Sidebar hidden binding | Shared 内部 native binding **永不**作为用户顶层会话展示；hide set（fresh∪outer）+ control-plane 标题闸（`MOSSX_CONTEXT_*`）双闸 | `list_shared_sessions.nativeThreadIds`、`expandHiddenSharedBindingIds`、`stripHiddenSharedBindingSummaries`、OpenSpec `fix-shared-collab-context-and-sidebar-spawn` |
+| Shared Sidebar hidden binding | Shared 内部 native binding **永不**作为用户顶层会话展示；hide set（fresh∪outer）+ control-plane 标题闸双闸。**侧栏 title**：行首 `MOSSX_*`（兼容 `previewThreadName` 50 字截断）∪ 严格 classify ∪ collab worker；**幕布 transcript**：仍仅严格 `classifyContextProtocolText`（禁止 `includes("MOSSX")`） | `isMossxProgramControlTitle`、`isSharedControlPlaneSpawnTitle`、`stripHiddenSharedBindingSummaries`、merge 预过滤、`list_shared_sessions.nativeThreadIds`、OpenSpec `fix-shared-collab-context-and-sidebar-spawn` §follow-up 2026-08-07 |
 
 本文中的 `RuntimeDeliveryAdapter`、`Canonical Fact`、`ContextPackage` 等名称既包含实现合同，也包含 ADR 概念层语言。读者需要复制代码或接新 CLI 时，必须同时使用 [Engine Onboarding Guide](./mossx-new-cli-onboarding-guide.md) 的「当前注册面」清单，不能只按概念接口猜文件名。
 
@@ -1514,9 +1514,18 @@ Available Models
 ### 10.4 Control-plane 信息的 UI 投影边界
 
 `MOSSX_CONTEXT_PACKAGE:*`、`MOSSX_CONTEXT_ACCEPTED:*`、package checksum 与
-native context prompt 是 ACK/recovery 证据，不是用户消息。Renderer 必须使用严格、
-版本化的 classifier 隐藏已知完整 marker；不得用 `includes("MOSSX")` 之类宽泛规则，
-否则会吞掉用户正常讨论协议的内容。
+native context prompt 是 ACK/recovery 证据，不是用户消息。
+
+投影边界分层（2026-08-07 校准，事实源：OpenSpec
+`fix-shared-collab-context-and-sidebar-spawn` follow-up +
+`src/utils/contextProtocol.ts`）：
+
+| 边界 | 规则 | 禁止 |
+|------|------|------|
+| **幕布 / conversation transcript** | 严格、版本化 `classifyContextProtocolText` 隐藏完整 marker / envelope | 不得用 `includes("MOSSX")` 宽泛规则，否则吞用户讨论协议的正文 |
+| **侧栏 thread title / list merge** | 行首 `MOSSX_*`（`isMossxProgramControlTitle`，兼容 title 截断）∪ 严格 classify ∪ collab worker；最终 `stripHiddenSharedBindingSummaries` | 不得把完整 sha256 body 当侧栏可识别前提；不得误杀非行首用户句 |
+
+Provider Continuation 的用户投影必须至少包含：
 
 Provider Continuation 的用户投影必须至少包含：
 

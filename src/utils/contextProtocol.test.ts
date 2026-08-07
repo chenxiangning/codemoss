@@ -4,6 +4,8 @@ import {
   classifyContextProtocolText,
   filterContextProtocolConversationItems,
   hasContextProtocolControlTail,
+  isMossxProgramControlTitle,
+  MOSSX_PROGRAM_CONTROL_TITLE_TOKENS,
 } from "./contextProtocol";
 
 const PACKAGE = `sha256:${"a".repeat(64)}`;
@@ -78,6 +80,39 @@ describe("classifyContextProtocolText", () => {
         "请解释 MOSSX_SHARED_CONTEXT_V1 和 Current user request 的作用",
       ),
     ).toBeNull();
+  });
+});
+
+describe("isMossxProgramControlTitle", () => {
+  it("lists the full runtime control token inventory", () => {
+    expect([...MOSSX_PROGRAM_CONTROL_TITLE_TOKENS]).toEqual([
+      "MOSSX_CONTEXT_PACKAGE",
+      "MOSSX_CONTEXT_ACCEPTED",
+      "MOSSX_NATIVE_CONTEXT_V1",
+      "MOSSX_SHARED_CONTEXT_V1",
+    ]);
+  });
+
+  it("matches line-start MOSSX_ titles including truncated package hashes", () => {
+    for (const token of MOSSX_PROGRAM_CONTROL_TITLE_TOKENS) {
+      expect(isMossxProgramControlTitle(`${token}:partial`)).toBe(true);
+    }
+    expect(
+      isMossxProgramControlTitle("MOSSX_CONTEXT_PACKAGE:sha25…"),
+    ).toBe(true);
+    expect(isMossxProgramControlTitle("  MOSSX_SHARED_CONTEXT_V1\nbody")).toBe(
+      true,
+    );
+  });
+
+  it("does not match user prose that only mentions MOSSX mid-sentence", () => {
+    expect(
+      isMossxProgramControlTitle(
+        "请解释 MOSSX_CONTEXT_PACKAGE 是什么，不要隐藏这条消息",
+      ),
+    ).toBe(false);
+    expect(isMossxProgramControlTitle("Agent 12")).toBe(false);
+    expect(isMossxProgramControlTitle("")).toBe(false);
   });
 });
 

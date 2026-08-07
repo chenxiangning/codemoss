@@ -27,3 +27,16 @@
 - [x] 5.1 focused cargo test / vitest
 - [x] 5.2 自检 diff 与验收对照
 - [x] 5.3 **不 git commit**；交付用户检查
+
+## 6. Follow-up（2026-08-07）：截断 `MOSSX_*` 侧栏标题闸
+
+- [x] 6.1 盘点 runtime 注入 token 全量（PACKAGE / ACCEPTED / NATIVE_V1 / SHARED_V1）与遗漏（clip 后严格 classify 失败）
+- [x] 6.2 `isMossxProgramControlTitle` 行首闸 + `isSharedControlPlaneSpawnTitle` 合并
+- [x] 6.3 `mergeNativeCliSessionSummaries` / Claude / OpenCode raw 预过滤
+- [x] 6.4 Codex catalog：非 continuation drop；continuation 用 control 闸改写「继续：…」
+- [x] 6.5 `sessionDisplayProjection`：截断 MOSSX_ weak + mapped 丢弃
+- [x] 6.6 Vitest：截断 title / 全 token / 用户正文 / Grok merge drop
+- [x] 6.7 补充本 change proposal / design / shared-session-thread delta / foundation 校准
+- [x] 6.8 `openspec validate fix-shared-collab-context-and-sidebar-spawn --strict`
+- [ ] 6.9 用户实机：Shared context 注入后侧栏无 `MOSSX_*` 行首 native 行
+- [ ] 6.10 **不 git commit** 直至用户 review 通过
