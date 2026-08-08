@@ -3,6 +3,7 @@ import {
   buildAssistantFinalBoundaryMetaText,
   formatDurationCompact,
   formatDurationMs,
+  formatDurationSecondsLabel,
   formatTokenCount,
 } from "./messagesRenderUtils";
 import {
@@ -13,7 +14,7 @@ import type { ConversationItem, ThreadTokenUsage } from "../../../types";
 
 const t = (key: string, params?: Record<string, unknown>) => {
   if (key === "messages.durationSeconds") {
-    return `耗时${String(params?.seconds ?? "")}s`;
+    return `耗时${String(params?.duration ?? "")}`;
   }
   if (key === "messages.tokenUsageTooltip") {
     return `输入 ${String(params?.input ?? "")} token / 输出 ${String(params?.output ?? "")} token`;
@@ -42,6 +43,16 @@ describe("buildAssistantFinalBoundaryMetaText", () => {
     ).toBe("07-31 20:42:26 耗时13s · 输入 41.1K token / 输出 105 token");
   });
 
+  it("formats durations as compact h/m/s (no spaces)", () => {
+    expect(
+      buildAssistantFinalBoundaryMetaText({
+        finalDurationMs: 81_000,
+        finalCompletedAt: new Date(2026, 7, 8, 12, 41, 57).getTime(),
+        t,
+      }),
+    ).toBe("08-08 12:41:57 耗时1m21s");
+  });
+
   it("keeps completion time when duration and tokens are absent", () => {
     expect(
       buildAssistantFinalBoundaryMetaText({
@@ -62,6 +73,16 @@ describe("formatDurationCompact", () => {
     expect(formatDurationCompact(63_000)).toBe("1m 3s");
     expect(formatDurationCompact(120_000)).toBe("2m");
     expect(formatDurationCompact(3_661_000)).toBe("1h 1m 1s");
+  });
+});
+
+describe("formatDurationSecondsLabel", () => {
+  it("formats tight h/m/s labels for final-boundary meta", () => {
+    expect(formatDurationSecondsLabel(3_000)).toBe("3s");
+    expect(formatDurationSecondsLabel(81_000)).toBe("1m21s");
+    expect(formatDurationSecondsLabel(63_000)).toBe("1m3s");
+    expect(formatDurationSecondsLabel(120_000)).toBe("2m");
+    expect(formatDurationSecondsLabel(3_661_000)).toBe("1h1m1s");
   });
 });
 

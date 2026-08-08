@@ -140,7 +140,7 @@ pub fn prepare_delivery(
         through_sequence_inclusive: request.package.manifest.through_sequence_inclusive,
         mode: canonical_mode(request.package.manifest.mode),
         operation: canonical_operation(&pending.operation),
-        extra: Value::Object(Default::default()),
+        extra: serde_json::json!({"scope": request.package.manifest.scope}),
     });
     let binding = binding_update(
         existing.as_ref(),

@@ -20,7 +20,18 @@ const messages = {
       "title_one": "{{count}} fichier modifié",
       "title_other": "{{count}} fichiers modifiés",
       "showMore_one": "Afficher {{count}} fichier de plus",
-      "showMore_other": "Afficher {{count}} fichiers de plus"
+      "showMore_other": "Afficher {{count}} fichiers de plus",
+      "revertAll": "Tout annuler",
+      "revertFile": "Annuler {{path}}",
+      "revertFileAction": "Annuler",
+      "revertAllConfirmTitle": "Annuler toutes les modifications",
+      "revertAllConfirmBody":
+        "Les modifications locales de {{count}} fichiers seront abandonnées et restaurées au dernier commit. Cette action est irréversible.",
+      "revertAllConfirmAction": "Tout annuler",
+      "revertFileConfirmTitle": "Annuler les modifications du fichier",
+      "revertFileConfirmBody":
+        "Les modifications locales de « {{path}} » seront abandonnées et restaurées au dernier commit. Cette action est irréversible.",
+      "revertFileConfirmAction": "Annuler"
     },
     "noThinkingContent": "Aucun contenu de réflexion",
     "hiddenThinkingContent": "Le contenu de réflexion est masqué par le paramètre actuel.",
@@ -52,6 +63,7 @@ const messages = {
     "restoringHistory": "Chargement de la fenêtre de conversation…",
     "restoringHistoryHint": "Chargement de la transcription locale et de l'état de la session.",
     "generatingResponse": "Génération de la réponse...",
+    "responding": "Réponse en cours...",
     "codexWaitingForFirstText": "Codex est en cours d'exécution. En attente du premier bloc de texte...",
     "codexSilentSuspected": "Aucune nouvelle sortie de Codex depuis un moment. Toujours à l'écoute de l'activité d'exécution...",
     "nonStreamingHint": "Ce modèle peut renvoyer une sortie non diffusée en continu, ou le réseau peut être injoignable. Veuillez patienter...",
@@ -66,7 +78,7 @@ const messages = {
     "opencodeModelSwitchMessage": "Changement de modèle détecté dans la même session. Une nouvelle session backend a été créée pour éviter les délais d'attente.",
     "doneIn": "Terminé en {{duration}}",
     "totalDuration": "Durée",
-    "durationSeconds": "{{seconds}}s",
+    "durationSeconds": "{{duration}}",
     "tokenUsage": "Entrée {{input}} / Sortie {{output}}",
     "tokenUsageTooltip": "Entrée {{input}} token / Sortie {{output}} token",
     "messageActions": "Actions du message",

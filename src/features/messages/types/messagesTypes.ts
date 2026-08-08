@@ -111,6 +111,11 @@ export type MessagesProps = {
   taskRuns?: TaskRunRecord[];
   /** 稳定 metadata slot；不得承载普通 message/streaming lifecycle。 */
   timelineLeadingNode?: ReactNode;
+  /**
+   * 时间线尾部 slot（落在 messages.scrollable 内、时间线之后）。
+   * 用于协作终态 HistoryFold 等需随主幕布滚动的 UI，勿放 sticky 区。
+   */
+  timelineTrailingNode?: ReactNode;
   /** Catalog authoritative origin；仅用于 Provider Continuation presentation gate。 */
   isProviderContinuation?: boolean;
 };

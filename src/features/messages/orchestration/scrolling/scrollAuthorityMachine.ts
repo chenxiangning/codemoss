@@ -5,6 +5,7 @@
 
 import {
   FOLLOW_REARM_THRESHOLD_PX,
+  FOLLOW_RELEASE_THRESHOLD_PX,
   MIN_FORCED_HOLD_MS,
   STABLE_HEIGHT_MIN_SAMPLES,
   STABLE_HEIGHT_WINDOW_MS,
@@ -729,6 +730,12 @@ export function shouldContinuousPin(mode: ViewportMode): boolean {
   return mode === "forced-bottom" || mode === "stick-bottom";
 }
 
+/** re-arm 只认真底（≤ TRUE_BOTTOM / FOLLOW_REARM 已收敛为 1px） */
 export function isNearBottomForRearm(distancePx: number): boolean {
   return distancePx <= FOLLOW_REARM_THRESHOLD_PX;
+}
+
+/** scroll 事件离底释放：滞回阈值，避免 2px 抖动反复解/绑 */
+export function isFarEnoughToReleaseFollow(distancePx: number): boolean {
+  return distancePx > FOLLOW_RELEASE_THRESHOLD_PX;
 }

@@ -25,12 +25,14 @@ export {
   dedupeSubagentSquadCards,
   enrichCardsWithChildThreads,
   expandSubagentToolToCards,
+  extractAgentId,
   extractCollabAgentIds,
   extractSwarmAgentEntries,
   extractClaudeParentSessionIdFromAgentOutput,
   isClaudeAsyncAgentLaunchOutput,
   isOpaqueCiphertext,
   looksLikeClaudeAgentId,
+  resolveClaudeSubagentSessionFromContext,
   resolveClaudeSubagentThreadId,
   resolveSubagentProgress,
   resolveSubagentSessionThreadId,
@@ -45,16 +47,16 @@ export {
   injectSyntheticSubagentToolsIfNeeded,
   shouldInjectChildSubagentSynthetic,
 } from "./utils/syntheticSharedSubagentTools";
+export type {
+  ChildSubagentSyntheticEligibilityInput,
+  EnrichTimelineSyntheticSubagentInput,
+} from "./utils/syntheticSharedSubagentTools";
 export {
   collectSubagentStyleNotificationsFromItems,
   enrichSubagentCardsFromTaskNotifications,
   matchToolItemToNotificationToolUseId,
   mergeConversationItemSources,
 } from "./utils/enrichSubagentCardsFromTaskNotifications";
-export type {
-  ChildSubagentSyntheticEligibilityInput,
-  EnrichTimelineSyntheticSubagentInput,
-} from "./utils/syntheticSharedSubagentTools";
 export {
   enrichSubagentCardStatuses,
   isSubagentFinishedOutput,
@@ -77,8 +79,7 @@ export {
   useSubagentSessionProbeVersion,
 } from "./hooks/useSubagentSessionProbeStore";
 export { SubagentPersonaCard } from "./components/SubagentPersonaCard";
-export { SubagentRingCard } from "./components/SubagentRingCard";
-export { SubagentSquadGrid } from "./components/SubagentSquadGrid";
 export { SubagentInspectorDrawer } from "./components/SubagentInspectorDrawer";
 export { SubagentChatSplit } from "./components/SubagentChatSplit";
+export { ConversationInspectorSplit } from "./components/ConversationInspectorSplit";
 export { SubagentProgressBar } from "./components/SubagentProgressBar";

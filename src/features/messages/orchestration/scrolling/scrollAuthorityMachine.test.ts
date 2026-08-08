@@ -159,8 +159,8 @@ describe("scrollAuthorityMachine", () => {
     });
     state = reduceIntent(state, { type: "turn-settle" }, now).state;
     const m = metricsAtBottom(2400);
-    // 最短保持内不得稳态退役（固定时刻，不越界）
-    let t = now + 200;
+    // 最短保持内不得稳态退役（固定时刻，不越界 MIN_FORCED_HOLD=300）
+    let t = now + 40;
     for (let i = 0; i < STABLE_HEIGHT_MIN_SAMPLES + 2; i += 1) {
       state = reduceGeometry(
         state,
@@ -285,9 +285,12 @@ describe("scrollAuthorityMachine", () => {
     expect(state.mode).toBe("stick-bottom");
   });
 
-  it("MIN_FORCED_HOLD covers Codex finalizing window", () => {
-    expect(MIN_FORCED_HOLD_MS).toBeGreaterThanOrEqual(6_000);
+  it("MIN_FORCED_HOLD stays short; finalizing is held by geometry flag not time budget", () => {
+    // 不再绑 Codex 6s；最短保持覆盖发送后首包布局，仍远短于旧 6s
+    expect(MIN_FORCED_HOLD_MS).toBeLessThanOrEqual(1_000);
+    expect(MIN_FORCED_HOLD_MS).toBeGreaterThanOrEqual(300);
     expect(SAFETY_TIMEOUT_FORCED_MS).toBeGreaterThanOrEqual(MIN_FORCED_HOLD_MS);
+    expect(SAFETY_TIMEOUT_FORCED_MS).toBeLessThanOrEqual(5_000);
   });
 
   it("safety-timeout forces final pin and retires", () => {
@@ -320,22 +323,20 @@ describe("scrollAuthorityMachine", () => {
   });
 
   it("canRetireForced holds when not at bottom", () => {
-    const now = 5_000;
+    // now 须 < safetyTimeout（ticket@0 + 3000），且 ≥ min hold
+    const now = 800;
     const state = createInitialScrollAuthorityState({
       liveAutoFollowEnabled: true,
       now: 0,
     });
     const withTicket = reduceIntent(state, { type: "turn-settle" }, 0).state;
     // stabilize height samples without being at bottom
-    let geometry = withTicket.geometry;
-    for (let i = 0; i < STABLE_HEIGHT_MIN_SAMPLES + 2; i += 1) {
-      geometry = {
-        ...geometry,
-        lastScrollHeight: 3000,
-        lastScrollHeightChangeAt: now - STABLE_HEIGHT_WINDOW_MS - 10,
-        sameHeightSampleCount: STABLE_HEIGHT_MIN_SAMPLES + 1,
-      };
-    }
+    const geometry = {
+      ...withTicket.geometry,
+      lastScrollHeight: 3000,
+      lastScrollHeightChangeAt: now - STABLE_HEIGHT_WINDOW_MS - 10,
+      sameHeightSampleCount: STABLE_HEIGHT_MIN_SAMPLES + 1,
+    };
     expect(
       canRetireForced({
         ticket: withTicket.ticket,

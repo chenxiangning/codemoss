@@ -166,29 +166,28 @@ describe("groupToolItems", () => {
     expect(entries[0]?.kind).toBe("searchGroup");
   });
 
-  it("promotes a single Agent tool into a subagentGroup", () => {
+  it("keeps a single Agent tool as a plain item (no subagent squad group)", () => {
     const entries = groupToolItems([createToolItem("agent-1", "Tool: Agent", "agent")]);
     expect(entries).toHaveLength(1);
-    expect(entries[0]?.kind).toBe("subagentGroup");
-    if (entries[0]?.kind === "subagentGroup") {
-      expect(entries[0].items).toHaveLength(1);
-      expect(entries[0].items[0]?.id).toBe("agent-1");
+    expect(entries[0]?.kind).toBe("item");
+    if (entries[0]?.kind === "item") {
+      expect(entries[0].item.id).toBe("agent-1");
     }
   });
 
-  it("groups consecutive Agent tools into one subagentGroup", () => {
+  it("keeps consecutive Agent tools as plain items (no subagent squad group)", () => {
     const entries = groupToolItems([
       createToolItem("agent-1", "Tool: Agent", "agent"),
       createToolItem("agent-2", "Tool: Agent", "agent"),
     ]);
-    expect(entries).toHaveLength(1);
-    expect(entries[0]?.kind).toBe("subagentGroup");
-    if (entries[0]?.kind === "subagentGroup") {
-      expect(entries[0].items).toHaveLength(2);
+    expect(entries.map((entry) => entry.kind)).toEqual(["item", "item"]);
+    if (entries[0]?.kind === "item" && entries[1]?.kind === "item") {
+      expect(entries[0].item.id).toBe("agent-1");
+      expect(entries[1].item.id).toBe("agent-2");
     }
   });
 
-  it("groups Shared description-as-title agents into one subagentGroup (replaces wrench rows)", () => {
+  it("keeps Shared description-as-title agents as plain items", () => {
     const makeDescTitleAgent = (id: string, name: string) =>
       ({
         id,
@@ -206,28 +205,20 @@ describe("groupToolItems", () => {
       makeDescTitleAgent("a2", "问候测试代理2"),
       makeDescTitleAgent("a3", "问候测试代理3"),
     ]);
-    expect(entries).toHaveLength(1);
-    expect(entries[0]?.kind).toBe("subagentGroup");
-    if (entries[0]?.kind === "subagentGroup") {
-      expect(entries[0].items).toHaveLength(3);
-    }
+    expect(entries).toHaveLength(3);
+    expect(entries.every((entry) => entry.kind === "item")).toBe(true);
   });
 
-  it("breaks subagentGroup when a non-agent tool interrupts", () => {
+  it("keeps Agent tools as items when a non-agent tool interrupts", () => {
     const entries = groupToolItems([
       createToolItem("agent-1", "Tool: Agent", "agent"),
       createToolItem("read-1", "Tool: read"),
       createToolItem("agent-2", "Tool: Agent", "agent"),
     ]);
-    // 单个 read 不足以形成 readGroup，仍以 item 打断 subagent 连续段
-    expect(entries.map((entry) => entry.kind)).toEqual([
-      "subagentGroup",
-      "item",
-      "subagentGroup",
-    ]);
+    expect(entries.map((entry) => entry.kind)).toEqual(["item", "item", "item"]);
   });
 
-  it("groups Codex collab spawn into subagentGroup and keeps wait/close as items", () => {
+  it("keeps Codex collab spawn/wait/close as plain items", () => {
     const entries = groupToolItems([
       createToolItem("spawn-1", "Collab: spawn Agent", "collabToolCall"),
       createToolItem("spawn-2", "Collab: spawn Agent", "collabToolCall"),
@@ -235,16 +226,14 @@ describe("groupToolItems", () => {
       createToolItem("close-1", "Collab: close Agent", "collabToolCall"),
     ]);
     expect(entries.map((entry) => entry.kind)).toEqual([
-      "subagentGroup",
+      "item",
+      "item",
       "item",
       "item",
     ]);
-    if (entries[0]?.kind === "subagentGroup") {
-      expect(entries[0].items).toHaveLength(2);
-    }
   });
 
-  it("groups Grok Spawn Subagent into subagentGroup and skips output poller", () => {
+  it("keeps Grok Spawn Subagent as plain items alongside output poller", () => {
     const entries = groupToolItems([
       createToolItem("s1", "Spawn Subagent", "spawn_subagent"),
       createToolItem("s2", "Spawn Subagent", "spawn_subagent"),
@@ -254,9 +243,6 @@ describe("groupToolItems", () => {
         "get_command_or_subagent_output",
       ),
     ]);
-    expect(entries.map((entry) => entry.kind)).toEqual(["subagentGroup", "item"]);
-    if (entries[0]?.kind === "subagentGroup") {
-      expect(entries[0].items).toHaveLength(2);
-    }
+    expect(entries.map((entry) => entry.kind)).toEqual(["item", "item", "item"]);
   });
 });

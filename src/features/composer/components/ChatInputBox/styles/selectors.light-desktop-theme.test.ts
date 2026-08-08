@@ -64,4 +64,16 @@ describe("selector light desktop theme guards", () => {
       /\.composer-tool-menu-surface-row \{[\s\S]*?padding: 0 2px 2px;/,
     );
   });
+
+  it("defines session control HUD dual-pane layout with theme tokens", () => {
+    expect(selectorsCss).toContain(".composer-session-control-hud");
+    expect(selectorsCss).toContain(".composer-session-hud-main");
+    expect(selectorsCss).toContain(".composer-session-hud-quota");
+    expect(selectorsCss).toContain(
+      "width: var(--composer-session-hud-width, 100%);",
+    );
+    expect(selectorsCss).toContain(
+      "background: var(--composer-tool-popover-bg, var(--dropdown-bg, #1f2028)) !important;",
+    );
+  });
 });

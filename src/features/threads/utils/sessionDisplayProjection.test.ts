@@ -23,6 +23,10 @@ describe("sessionDisplayProjection", () => {
       `MOSSX_CONTEXT_PACKAGE:sha256:${"a".repeat(64)}:` +
       `sha256:${"b".repeat(64)}`;
     expect(isWeakSessionDisplayTitle(protocolTitle)).toBe(true);
+    // 截断后的半截 package 也必须是 weak，避免粘在侧栏
+    expect(
+      isWeakSessionDisplayTitle("MOSSX_CONTEXT_PACKAGE:sha256:aaaaaaaaaaaaaa"),
+    ).toBe(true);
     expect(
       mergeSessionDisplaySummary(
         undefined,

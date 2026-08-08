@@ -192,8 +192,8 @@ describe('ConfigSelect usage entry', () => {
     expect(onCodexReviewQuickStart).toHaveBeenCalledTimes(1);
   });
 
-  it('shows live usage entry only when provider is codex', async () => {
-    const { container, rerender } = render(
+  it('does not show live usage entry (quota lives in Session Control HUD rail)', async () => {
+    const { container } = render(
       <ConfigSelect
         currentProvider="codex"
         onProviderChange={() => {}}
@@ -201,84 +201,9 @@ describe('ConfigSelect usage entry', () => {
     );
 
     fireEvent.click(container.querySelector('.config-button') as HTMLElement);
-    await waitFor(() => {
-      expect(container.querySelector('.selector-option-live-usage')).toBeTruthy();
-    });
-
-    rerender(
-      <ConfigSelect
-        currentProvider="claude"
-        onProviderChange={() => {}}
-      />,
-    );
-
     await waitFor(() => {
       expect(container.querySelector('.selector-option-live-usage')).toBeFalsy();
-    });
-  });
-
-  it('triggers usage refresh callback from live usage entry', async () => {
-    const onRefreshAccountRateLimits = vi.fn().mockResolvedValue(undefined);
-    const { container } = render(
-      <ConfigSelect
-        currentProvider="codex"
-        onProviderChange={() => {}}
-        onRefreshAccountRateLimits={onRefreshAccountRateLimits}
-      />,
-    );
-
-    fireEvent.click(container.querySelector('.config-button') as HTMLElement);
-    const usageEntry = container.querySelector('.selector-option-live-usage');
-    expect(usageEntry).toBeTruthy();
-
-    fireEvent.click(usageEntry as HTMLElement);
-    await waitFor(() => {
-      expect(onRefreshAccountRateLimits).toHaveBeenCalled();
-    });
-  });
-
-  it('derives limit titles from each runtime window duration', async () => {
-    const { container } = render(
-      <ConfigSelect
-        currentProvider="codex"
-        onProviderChange={() => {}}
-        accountRateLimits={{
-          primary: { usedPercent: 26, windowDurationMins: 10080, resetsAt: null },
-          secondary: { usedPercent: 40, windowDurationMins: 720, resetsAt: null },
-        }}
-      />,
-    );
-
-    fireEvent.click(container.querySelector('.config-button') as HTMLElement);
-    fireEvent.mouseEnter(
-      container.querySelector('.selector-option-live-usage') as HTMLElement,
-    );
-
-    await waitFor(() => {
-      expect(container.textContent).toContain('Weekly limit');
-      expect(container.textContent).toContain('12h limit');
-      expect(container.textContent).not.toContain('5h limit');
-    });
-  });
-
-  it('falls back to a generic title when the runtime omits window duration', async () => {
-    const { container } = render(
-      <ConfigSelect
-        currentProvider="codex"
-        onProviderChange={() => {}}
-        accountRateLimits={{
-          primary: { usedPercent: 26, windowDurationMins: null, resetsAt: null },
-        }}
-      />,
-    );
-
-    fireEvent.click(container.querySelector('.config-button') as HTMLElement);
-    fireEvent.mouseEnter(
-      container.querySelector('.selector-option-live-usage') as HTMLElement,
-    );
-
-    await waitFor(() => {
-      expect(container.textContent).toContain('Rate limit');
+      expect(container.querySelector('.composer-tool-menu-live-usage')).toBeFalsy();
     });
   });
 

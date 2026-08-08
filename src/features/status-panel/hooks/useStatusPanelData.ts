@@ -20,6 +20,11 @@ import {
   normalizeCollabAgentStatusMap,
   parseCollabFallbackLink,
 } from "../../../utils/collabToolParsing";
+import {
+  isCollabLifecycleTool,
+  isCollabSpawnTool,
+  isSubagentTool,
+} from "../../subagent-ui/utils/isSubagentTool";
 
 interface StatusPanelData {
   todos: TodoItem[];
@@ -52,6 +57,11 @@ interface StatusPanelDataOptions {
   itemsByThread?: Record<string, ConversationItem[]>;
   threadParentById?: Record<string, string>;
   threadStatusById?: Record<string, ThreadStatusSnapshot | undefined>;
+  /**
+   * S10 同源：canvas 已收集的子代理线程 id（含 Shared 无 parent 的 claude:subagent:owner:*）。
+   * seed 时与 threadParentById 并集，避免历史只靠 parent 表漏子。
+   */
+  childSubagentThreadIds?: readonly string[] | null;
   deferSummary?: boolean;
 }
 
@@ -142,6 +152,7 @@ export function useStatusPanelData(
     itemsByThread,
     threadParentById,
     threadStatusById,
+    childSubagentThreadIds = null,
     deferSummary = false,
   } = options;
   const projectionInputs = useDeferredStatusPanelInputs(
@@ -204,140 +215,150 @@ export function useStatusPanelData(
 
   const subagents = useMemo(() => {
     const result = new Map<string, SubagentAccumulator>();
+    const engineForTask =
+      activeEngine ?? (isCodexEngine ? "codex" : "claude");
 
     scopedToolEntries.entries.forEach(({ threadId, item }) => {
       const toolName = extractToolName(getToolTitle(item)).trim().toLowerCase();
-      const taskLike = isTaskLikeSubagentTool(item, toolName);
-      if (taskLike) {
-        const args = parseToolArgs(getToolDetail(item));
-        const resolved = resolveToolStatus(item.status, Boolean(getToolOutput(item)));
-        const taskStatus =
-          resolved === "failed"
-            ? "error"
-            : resolved === "completed"
-              ? "completed"
-              : "running";
-        const threadScopedStatus =
-          scopedToolEntries.rootThreadId && threadId !== scopedToolEntries.rootThreadId
-            ? resolveThreadScopedSubagentStatus(
-                threadId,
-                projectionInputs.threadStatusById,
-                projectionInputs.itemsByThread,
-              )
-            : undefined;
-        const taskDescription = extractTaskDescription(args, item);
-        const taskType = extractTaskType(args, toolName);
-        const taskId = resolveTaskLikeTaskId(args);
-        const toolOutput = getToolOutput(item) ?? null;
-        const subagentId =
-          scopedToolEntries.rootThreadId && threadId !== scopedToolEntries.rootThreadId
-            ? threadId
-            : item.id;
-        const subagentType =
-          scopedToolEntries.rootThreadId && threadId !== scopedToolEntries.rootThreadId
-            ? threadId
-            : taskType;
-        upsertSubagent(result, {
-          id: subagentId,
-          type: subagentType,
-          description: taskDescription,
-          status: threadScopedStatus ?? taskStatus,
-          statusPriority: threadScopedStatus ? 5 : 2,
-          taskOutput: {
-            id: subagentId,
-            engine: activeEngine ?? (isCodexEngine ? "codex" : "claude"),
-            title: taskType,
-            description: taskDescription,
-            status: mapSubagentStatusToTaskOutputStatus(threadScopedStatus ?? taskStatus),
-            taskId,
-            toolUseId: item.id,
-            threadId:
-              scopedToolEntries.rootThreadId && threadId !== scopedToolEntries.rootThreadId
-                ? threadId
-                : null,
-            outputFileName: extractOutputFileName(args),
-            outputFilePath: extractOutputFilePath(args),
-            recentOutput: toolOutput,
-          },
-          navigationTarget:
-            scopedToolEntries.rootThreadId && threadId !== scopedToolEntries.rootThreadId
-              ? { kind: "thread", threadId }
-              : buildTaskLikeNavigationTarget(item, args),
-        });
-      }
+      const normalizedType = getToolType(item).trim().toLowerCase();
+      const isCollabToolRow =
+        normalizedType === "collabtoolcall" ||
+        normalizedType === "collabagenttoolcall" ||
+        isCollabSpawnTool(item) ||
+        isCollabLifecycleTool(item);
 
-      if (getToolType(item) !== "collabToolCall") {
-        return;
-      }
-
-      const collabActionName = extractCollabActionName(getToolTitle(item));
-      if (!COLLAB_ACTION_NAMES.has(collabActionName)) {
-        return;
-      }
-
-      const fallbackLink = parseCollabFallbackLink(getToolDetail(item), threadId);
-      const structuredStatuses = collectStructuredAgentStatuses(item.agentStatus);
-      const textStatuses = collectTextAgentStatuses(getToolOutput(item));
-      const agentIds = uniqueStringList([
-        ...(item.receiverThreadIds ?? []),
-        ...(fallbackLink?.receivers ?? []),
-        ...Object.keys(structuredStatuses),
-        ...Object.keys(textStatuses),
-      ]);
-      if (agentIds.length === 0) {
-        return;
-      }
-
-      const collabDescription = extractCollabDescription(getToolOutput(item));
-      agentIds.forEach((agentId) => {
-        const threadScopedStatus = resolveThreadScopedSubagentStatus(
-          agentId,
-          projectionInputs.threadStatusById,
-          projectionInputs.itemsByThread,
-        );
-        const explicitStatus = structuredStatuses[agentId] ?? textStatuses[agentId];
-        const genericStatus = inferCollabRuntimeStatus(collabActionName, item.status);
-        const resolvedStatus = threadScopedStatus ?? explicitStatus ?? genericStatus;
-        if (!resolvedStatus) {
+      // Codex collab：spawn/wait/close 必须走 agentIds 路径（多 agent），不能压成单条 tool id
+      if (isCollabToolRow) {
+        const collabActionName = extractCollabActionName(getToolTitle(item));
+        if (!COLLAB_ACTION_NAMES.has(collabActionName)) {
           return;
         }
-        upsertSubagent(result, {
-          id: agentId,
-          type: agentId,
-          description: collabDescription,
-          status: resolvedStatus,
-          statusPriority: threadScopedStatus
-            ? 5
-            : explicitStatus
-              ? 4
-              : collabActionName === "wait" ||
-                  collabActionName === "wait agent" ||
-                  collabActionName === "close agent"
-                ? 3
-                : 1,
-          taskOutput: {
+
+        const fallbackLink = parseCollabFallbackLink(getToolDetail(item), threadId);
+        const structuredStatuses = collectStructuredAgentStatuses(item.agentStatus);
+        const textStatuses = collectTextAgentStatuses(getToolOutput(item));
+        const agentIds = uniqueStringList([
+          ...(item.receiverThreadIds ?? []),
+          ...(fallbackLink?.receivers ?? []),
+          ...Object.keys(structuredStatuses),
+          ...Object.keys(textStatuses),
+        ]);
+        if (agentIds.length === 0) {
+          // 无 receiver 时留给下方 child 种子（S10 合成同口径）
+          return;
+        }
+
+        const collabDescription = extractCollabDescription(getToolOutput(item));
+        agentIds.forEach((agentId) => {
+          const threadScopedStatus = resolveThreadScopedSubagentStatus(
+            agentId,
+            projectionInputs.threadStatusById,
+            projectionInputs.itemsByThread,
+          );
+          const explicitStatus = structuredStatuses[agentId] ?? textStatuses[agentId];
+          const genericStatus = inferCollabRuntimeStatus(collabActionName, item.status);
+          const resolvedStatus = threadScopedStatus ?? explicitStatus ?? genericStatus;
+          if (!resolvedStatus) {
+            return;
+          }
+          upsertSubagent(result, {
             id: agentId,
-            engine: "codex",
-            title: agentId,
+            type: agentId,
             description: collabDescription,
-            status: mapSubagentStatusToTaskOutputStatus(resolvedStatus),
-            taskId: null,
-            toolUseId: item.id,
-            threadId: agentId,
-            outputFileName: null,
-            recentOutput: collabDescription || getToolOutput(item) || null,
-          },
-          navigationTarget: { kind: "thread", threadId: agentId },
+            status: resolvedStatus,
+            statusPriority: threadScopedStatus
+              ? 5
+              : explicitStatus
+                ? 4
+                : collabActionName === "wait" ||
+                    collabActionName === "wait agent" ||
+                    collabActionName === "close agent"
+                  ? 3
+                  : 1,
+            taskOutput: {
+              id: agentId,
+              engine: "codex",
+              title: agentId,
+              description: collabDescription,
+              status: mapSubagentStatusToTaskOutputStatus(resolvedStatus),
+              taskId: null,
+              toolUseId: item.id,
+              threadId: agentId,
+              outputFileName: null,
+              recentOutput: collabDescription || getToolOutput(item) || null,
+            },
+            navigationTarget: { kind: "thread", threadId: agentId },
+          });
         });
+        return;
+      }
+
+      // S10 宽识别：与 isSubagentTool 完全对齐（含 detail payload / 描述顶 title / swarm…）
+      if (!isSubagentTool(item)) {
+        return;
+      }
+
+      const args = parseToolArgs(getToolDetail(item));
+      const resolved = resolveToolStatus(item.status, Boolean(getToolOutput(item)));
+      const taskStatus =
+        resolved === "failed"
+          ? "error"
+          : resolved === "completed"
+            ? "completed"
+            : "running";
+      const onChildThread =
+        Boolean(scopedToolEntries.rootThreadId) &&
+        threadId !== scopedToolEntries.rootThreadId;
+      const threadScopedStatus = onChildThread
+        ? resolveThreadScopedSubagentStatus(
+            threadId,
+            projectionInputs.threadStatusById,
+            projectionInputs.itemsByThread,
+          )
+        : undefined;
+      const taskDescription = extractTaskDescription(args, item);
+      const taskType = extractTaskType(args, toolName);
+      const taskId = resolveTaskLikeTaskId(args);
+      const toolOutput = getToolOutput(item) ?? null;
+      // S10 同源：优先 subagent_id/agentId（args 或 output meta），禁止只用 tool 行 id
+      // （tool 行 id 无法 load 子会话 → 右侧详情退回原始 JSON）
+      const agentKey = extractSubagentAgentKey(args, toolOutput);
+      const subagentId = onChildThread ? threadId : agentKey ?? item.id;
+      const subagentType = onChildThread ? threadId : taskType;
+      const sessionThreadHint = onChildThread ? threadId : agentKey;
+      upsertSubagent(result, {
+        id: subagentId,
+        type: subagentType,
+        description: taskDescription,
+        status: threadScopedStatus ?? taskStatus,
+        statusPriority: threadScopedStatus ? 5 : 2,
+        taskOutput: {
+          id: subagentId,
+          engine: engineForTask,
+          title: taskType,
+          description: taskDescription,
+          status: mapSubagentStatusToTaskOutputStatus(threadScopedStatus ?? taskStatus),
+          taskId,
+          toolUseId: item.id,
+          threadId: sessionThreadHint,
+          outputFileName: extractOutputFileName(args),
+          outputFilePath: extractOutputFilePath(args),
+          // 详情回退用：优先 output；历史常只有 detail，把 detail 也并入便于抽 agentId
+          recentOutput:
+            toolOutput ||
+            (typeof getToolDetail(item) === "string" ? getToolDetail(item) : null),
+        },
+        navigationTarget: onChildThread
+          ? { kind: "thread", threadId }
+          : sessionThreadHint && looksLikeLoadableThreadId(sessionThreadHint)
+            ? { kind: "thread", threadId: sessionThreadHint }
+            : buildTaskLikeNavigationTarget(item, args),
       });
     });
 
-    // Codex live wait 缺口：collab 抽不出 agentIds 时，用 parent→child 树种子化 Agents 列表。
-    // 硬闸：仅 isCodexEngine / activeEngine=codex；其他 CLI 不走此路径。
-    const codexContext =
-      isCodexEngine || activeEngine === "codex";
-    if (codexContext && result.size === 0) {
-      seedCodexSubagentsFromChildTree(result, {
+    // tool/collab 扫空时：parent 表 ∪ canvas 子代理线程列表（S10 childSubagentThreads 同源）
+    if (result.size === 0) {
+      seedSubagentsFromChildTree(result, {
         rootThreadId:
           scopedToolEntries.rootThreadId ??
           projectionInputs.activeThreadId ??
@@ -346,6 +367,8 @@ export function useStatusPanelData(
         threadParentById: projectionInputs.threadParentById,
         threadStatusById: projectionInputs.threadStatusById,
         itemsByThread: projectionInputs.itemsByThread,
+        childSubagentThreadIds,
+        engine: engineForTask,
       });
     }
 
@@ -360,6 +383,7 @@ export function useStatusPanelData(
       });
   }, [
     activeEngine,
+    childSubagentThreadIds,
     isCodexEngine,
     projectionInputs.activeThreadId,
     projectionInputs.itemsByThread,
@@ -585,45 +609,66 @@ function isDescendantOfRoot(
   return false;
 }
 
-function isTaskLikeSubagentTool(item: ToolItem, toolName: string) {
-  const normalizedToolType = getToolType(item).trim().toLowerCase();
-  // collab 仍走下方 collab 专用路径，避免 spawn 双写两套 id
-  if (
-    normalizedToolType === "collabtoolcall" ||
-    normalizedToolType === "collabagenttoolcall"
-  ) {
-    return false;
+/**
+ * S10 同源：从 args / output 抽 subagent_id / agentId，供 Strip→inspector 加载子会话。
+ */
+function extractSubagentAgentKey(
+  args: Record<string, unknown> | null,
+  outputText: string | null,
+): string | null {
+  for (const key of [
+    "subagent_id",
+    "subagentId",
+    "agent_id",
+    "agentId",
+    "agentID",
+    "child_session_id",
+    "childSessionId",
+  ]) {
+    const value = args?.[key];
+    if (typeof value === "string" && value.trim()) {
+      return value.trim();
+    }
   }
+  const nested = args?._input;
+  if (nested && typeof nested === "object" && nested !== null) {
+    const fromNested = extractSubagentAgentKey(
+      nested as Record<string, unknown>,
+      null,
+    );
+    if (fromNested) {
+      return fromNested;
+    }
+  }
+  if (!outputText?.trim()) {
+    return null;
+  }
+  const match =
+    /subagent_id\s*[:=]\s*['"]?([a-z0-9:_-]+)['"]?/i.exec(outputText) ??
+    /"subagent_id"\s*:\s*"([^"]+)"/i.exec(outputText) ??
+    /agentId\s*[:=]\s*['"]?([a-z0-9:_-]+)['"]?/i.exec(outputText) ??
+    /"agentId"\s*:\s*"([^"]+)"/i.exec(outputText) ??
+    /agent_id\s*[:=]\s*['"]?([a-z0-9:_-]+)['"]?/i.exec(outputText) ??
+    /"agent_id"\s*:\s*"([^"]+)"/i.exec(outputText);
+  return match?.[1]?.trim() || null;
+}
+
+/** 已是可交给 history loader 的 thread id（或裸 UUID / Claude hex） */
+function looksLikeLoadableThreadId(id: string): boolean {
+  const raw = id.trim();
+  if (!raw) return false;
   if (
-    toolName === "task" ||
-    toolName === "agent" ||
-    normalizedToolType === "task" ||
-    normalizedToolType === "agent"
+    raw.startsWith("claude:") ||
+    raw.startsWith("grok:") ||
+    raw.startsWith("kimi:") ||
+    raw.startsWith("gemini:") ||
+    raw.startsWith("opencode:") ||
+    raw.startsWith("shared:")
   ) {
     return true;
   }
-  // 排除 Grok 轮询输出工具
-  if (
-    toolName.includes("get_command_or_subagent") ||
-    normalizedToolType.includes("get_command_or_subagent")
-  ) {
-    return false;
-  }
-  // Grok / Kimi / Shared：spawn_subagent、Subagent N、agent swarm
-  const rawTitle = getToolTitle(item).trim().toLowerCase();
-  if (
-    toolName === "spawn_subagent" ||
-    toolName === "spawn subagent" ||
-    normalizedToolType === "spawn_subagent" ||
-    (toolName.includes("spawn") && toolName.includes("subagent")) ||
-    toolName.startsWith("subagent") ||
-    rawTitle.startsWith("subagent") ||
-    toolName.includes("agent swarm") ||
-    rawTitle.includes("agent swarm") ||
-    rawTitle.includes("launching agent swarm")
-  ) {
-    return true;
-  }
+  if (/^[0-9a-f]{8}-[0-9a-f-]{20,}$/i.test(raw)) return true;
+  if (/^[a-f0-9]{12,32}$/i.test(raw)) return true;
   return false;
 }
 
@@ -851,9 +896,10 @@ function resolveThreadScopedSubagentStatus(
 }
 
 /**
- * Codex collab live：wait 无 receiver 时，从 threadParentById 子树补 SubagentInfo。
+ * parent→child 子树补 SubagentInfo（Strip / StatusPanel 共用）。
+ * 不限引擎：Claude/Grok/Shared 历史重开与 Codex wait 无 receiver 都走这里。
  */
-function seedCodexSubagentsFromChildTree(
+function seedSubagentsFromChildTree(
   result: Map<string, SubagentAccumulator>,
   options: {
     rootThreadId: string | null;
@@ -861,20 +907,31 @@ function seedCodexSubagentsFromChildTree(
     threadParentById?: Record<string, string>;
     threadStatusById?: Record<string, ThreadStatusSnapshot | undefined>;
     itemsByThread?: Record<string, ConversationItem[]>;
+    /** S10 canvas child 列表（可含无 parent 的 subagent 行） */
+    childSubagentThreadIds?: readonly string[] | null;
+    engine?: EngineType | null;
   },
 ) {
   const parentById = options.threadParentById ?? {};
-  // 只用 collab 根会话找直接 children；勿把 active child 也当 root，避免误收集无关子树
   const rootId =
     (options.rootThreadId ?? options.activeThreadId ?? "").trim() || null;
-  if (!rootId) {
+  // parent 表：仅当前根下的直接 children
+  const fromParentMap = rootId
+    ? Object.entries(parentById)
+        .filter(([, parentId]) => parentId === rootId)
+        .map(([childId]) => childId.trim())
+        .filter((childId) => childId && childId !== rootId)
+    : [];
+  // canvas 已过滤的子代理线程（Shared claude:subagent:owner:* 等）
+  const fromCanvasChildren = (options.childSubagentThreadIds ?? [])
+    .map((id) => id.trim())
+    .filter((id) => id && id !== rootId);
+  const childIds = uniqueStringList([...fromParentMap, ...fromCanvasChildren]);
+  if (childIds.length === 0) {
     return;
   }
-  const childIds = Object.entries(parentById)
-    .filter(([, parentId]) => parentId === rootId)
-    .map(([childId]) => childId.trim())
-    .filter((childId) => childId && childId !== rootId);
-  uniqueStringList(childIds).forEach((childId) => {
+  const engineLabel: EngineType = options.engine ?? "claude";
+  childIds.forEach((childId) => {
     const threadScopedStatus = resolveThreadScopedSubagentStatus(
       childId,
       options.threadStatusById,
@@ -890,7 +947,7 @@ function seedCodexSubagentsFromChildTree(
       statusPriority: threadScopedStatus ? 5 : 2,
       taskOutput: {
         id: childId,
-        engine: "codex",
+        engine: engineLabel,
         title: childId,
         description: "",
         status: mapSubagentStatusToTaskOutputStatus(status),

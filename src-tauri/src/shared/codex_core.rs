@@ -93,6 +93,11 @@ fn resolve_execution_policy(
     let mut sandbox_policy = match access_mode {
         "full-access" => json!({ "type": "dangerFullAccess" }),
         "read-only" => json!({ "type": "readOnly" }),
+        "squad-current-workspace" => json!({
+            "type": "workspaceWrite",
+            "writableRoots": [workspace_path],
+            "networkAccess": false
+        }),
         _ => {
             let writable_roots = build_writable_roots(workspace_path, custom_spec_root);
             json!({
@@ -103,7 +108,7 @@ fn resolve_execution_policy(
         }
     };
 
-    let mut approval_policy = if access_mode == "full-access" {
+    let mut approval_policy = if matches!(access_mode, "full-access" | "squad-current-workspace") {
         "never"
     } else {
         "on-request"
@@ -120,6 +125,24 @@ fn resolve_execution_policy(
     }
 
     (sandbox_policy, approval_policy, None)
+}
+
+/// Squad Mutate 的 sealed `squad-current-workspace` 边界不能被 collaboration-mode 强制
+/// 静默降级为 read-only：降级后 worker 会拿到比已批准权限更小的执行面，且 change fence
+/// 无法对账。命中时 dispatch 必须 fail closed，而不是发出一个被改写的 sandbox policy。
+fn squad_mutation_policy_rejection(
+    access_mode: &str,
+    enforcement_reason: Option<&str>,
+) -> Option<String> {
+    if access_mode == "squad-current-workspace" && enforcement_reason.is_some() {
+        Some(
+            "squad-mutate-authority-denied: plan mode enforcement would downgrade the sealed \
+             workspace mutation boundary to read-only"
+                .to_string(),
+        )
+    } else {
+        None
+    }
 }
 
 pub(crate) fn extract_thread_id_from_response(value: &Value) -> Option<String> {
@@ -916,6 +939,11 @@ pub(crate) async fn send_user_message_core(
         &policy.effective_mode,
         mode_enforcement_enabled,
     );
+    if let Some(rejection) =
+        squad_mutation_policy_rejection(access_mode.as_str(), enforcement_reason)
+    {
+        return Err(rejection);
+    }
     if let Some(reason) = enforcement_reason {
         log::info!(
             "[collaboration_mode_enforcement] decision=override_execution_policy workspace_id={} thread_id={} effective_mode={} requested_access_mode={} sandbox_policy=readOnly approval_policy=on-request reason={}",
@@ -1237,8 +1265,9 @@ mod tests {
         is_method_not_found_response, is_thread_not_found_error_message,
         is_thread_not_found_response, is_thread_resume_rollout_pending_error_message,
         normalize_custom_spec_root, normalize_preferred_language, resolve_execution_policy,
-        should_soft_ready_for_not_ready_reason, validate_thread_resume_ready_response,
-        validate_thread_start_response, INVALID_THREAD_START_RESPONSE_ERROR_PREFIX,
+        should_soft_ready_for_not_ready_reason, squad_mutation_policy_rejection,
+        validate_thread_resume_ready_response, validate_thread_start_response,
+        INVALID_THREAD_START_RESPONSE_ERROR_PREFIX,
     };
     use serde_json::{json, Value};
 
@@ -1513,6 +1542,29 @@ mod tests {
         );
         assert_eq!(approval, "on-request");
         assert_eq!(reason, None);
+    }
+
+    #[test]
+    fn squad_mutation_rejects_plan_enforcement_downgrade() {
+        let rejection = squad_mutation_policy_rejection(
+            "squad-current-workspace",
+            Some("plan_readonly_violation"),
+        )
+        .expect("must fail closed");
+        assert!(rejection.contains("squad-mutate-authority-denied"));
+
+        assert_eq!(
+            squad_mutation_policy_rejection("squad-current-workspace", None),
+            None
+        );
+        assert_eq!(
+            squad_mutation_policy_rejection("read-only", Some("plan_readonly_violation")),
+            None
+        );
+        assert_eq!(
+            squad_mutation_policy_rejection("full-access", Some("plan_readonly_violation")),
+            None
+        );
     }
 
     #[test]

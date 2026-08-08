@@ -439,6 +439,7 @@ export {
   noteWebServiceReconnected,
   openNewWindow,
   openWorkspaceIn,
+  revealInFileManager,
   prewarmCodexDiskRuntime,
   queryTurnReconciliationStatus,
   readPanelLockPasswordFile,

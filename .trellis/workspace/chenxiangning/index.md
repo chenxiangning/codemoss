@@ -7,9 +7,9 @@
 ## Current Status
 
 <!-- @@@auto:current-status -->
-- **Active File**: `journal-31.md`
-- **Total Sessions**: 1335
-- **Last Active**: 2026-08-05
+- **Active File**: `journal-32.md`
+- **Total Sessions**: 1355
+- **Last Active**: 2026-08-08
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,8 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-31.md` | ~1407 | Active |
+| `journal-32.md` | ~256 | Active |
+| `journal-31.md` | ~1968 | Archived |
 | `journal-30.md` | ~1985 | Archived |
 | `journal-29.md` | ~1970 | Archived |
 | `journal-28.md` | ~1984 | Archived |
@@ -59,6 +60,26 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 1355 | 2026-08-08 | 冷启 first-paint 编排闭环收口 | `a094a67ab` | `cxn-version-0.8.4` |
+| 1354 | 2026-08-08 | 自定义模型按供应商绑定（Claude/Codex 对称） | `c03428f20` | `cxn-version-0.8.4` |
+| 1353 | 2026-08-08 | 抑制切换场景误报 toast | `88dd0c4c2` | `cxn-version-0.8.4` |
+| 1352 | 2026-08-08 | 注入上下文展开态保底高度 | `c568c1b66` | `cxn-version-0.8.4` |
+| 1351 | 2026-08-08 | 本地 HTML 内置浏览器打开 + OpenSpec 收口 | `daad1393c` | `cxn-version-0.8.4` |
+| 1350 | 2026-08-08 | 对齐 tauri plugin-dialog 版本以修复打包 | `b1e0c7851` | `cxn-version-0.8.4` |
+| 1349 | 2026-08-08 | 修复 mac 打包 TypeScript 门禁阻塞 | `7492d4f58` | `cxn-version-0.8.4` |
+| 1348 | 2026-08-08 | Composer 会话控制 HUD 与多供应商实时用量 | `f97a5ed74` | `cxn-version-0.8.4` |
+| 1347 | 2026-08-08 | S10 退役后 Strip 宽识别与右侧详情补齐 | `ec9811c49` | `cxn-version-0.8.4` |
+| 1346 | 2026-08-08 | Shared Composer Run Status Strip 合成数据源 | `2ad5a0cc2` | `cxn-version-0.8.4` |
+| 1345 | 2026-08-08 | 协作上游喂料策略贯通与验收收口 | `07f095ec8` | `cxn-version-0.8.4` |
+| 1344 | 2026-08-08 | 协作 Inspector 注入上下文 Header | `4f4c053c6` | `cxn-version-0.8.4` |
+| 1343 | 2026-08-08 | Shared 创建/打开历史 Claude catalog 串台修复 | `1974c4cee` | `cxn-version-0.8.4` |
+| 1342 | 2026-08-08 | 协作入口下移至输入框下方 | `149af622a` | `cxn-version-0.8.4` |
+| 1341 | 2026-08-08 | 协作批准补充说明与操作条统一布局 | `d24ca09ab` | `cxn-version-0.8.4` |
+| 1340 | 2026-08-08 | 主幕布退役 subagent 小队卡片 | `61c8bf537` | `cxn-version-0.8.4` |
+| 1339 | 2026-08-08 | 补齐 Shared 协作左侧会话运行态指示 | `256801cb6` | `cxn-version-0.8.4` |
+| 1338 | 2026-08-07 | 合并 upstream/chore/bump-version-0.8.3 到 cxn-win-version-0.8.3 | `41bcb2699` | `cxn-win-version-0.8.3` |
+| 1337 | 2026-08-05 | 隔离非 Squad 会话副作用 | `979814ccb` | `CXN-version-0.7.16` |
+| 1336 | 2026-08-05 | 实现 Phase 5 Agent Squad 基础编排 | `38db8cae7` | `CXN-version-0.7.16` |
 | 1335 | 2026-08-05 | fix Windows uiScale WebView2 假死并恢复右侧 chrome | `b62e241fe` | `cxn-version-0.8` |
 | 1334 | 2026-08-04 | 修复 PR 创建弹窗下拉被遮罩挡住 | `1a6ffab1f` | `CXN-version-0.7.16` |
 | 1333 | 2026-08-04 | 阻断 Shared 初始化回落 Native 思考档位 | `385d20e3a` | `CXN-version-0.7.16` |

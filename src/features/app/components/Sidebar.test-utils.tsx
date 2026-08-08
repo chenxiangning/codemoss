@@ -64,6 +64,8 @@ vi.mock("react-i18next", () => ({
         "sidebar.quickNewThread": "Home",
         "sidebar.quickAutomation": "Automation",
         "sidebar.quickSearch": "Search",
+        "quickSwitcher.open": "Quick Switcher",
+        "sidebar.hideThreadsSidebar": "Hide conversation sidebar",
         "sidebar.quickSkills": "Skills",
         "sidebar.plugins": "Market",
         "sidebar.extensions": "Extensions",

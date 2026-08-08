@@ -1,6 +1,10 @@
 import type { ConversationItem, IntentCanvasContextSendAttachment } from "../types";
 import { parseIntentCanvasContextSummaries } from "../features/intent-canvas/utils/messageContext";
 import {
+  isMultiAgentHistFoldItemId,
+  resolveMultiAgentHistFoldInsertIndex,
+} from "../features/multi-agent/utils/canvasItems";
+import {
   findEquivalentReasoningObservationIndex,
   withMessagePresentationMetadata,
 } from "../features/threads/assembly/conversationNormalization";
@@ -832,10 +836,22 @@ export function upsertItem(list: ConversationItem[], item: ConversationItem) {
   const index = list.findIndex(
     (entry) => entry.id === item.id && entry.kind === item.kind,
   );
+  const isMultiAgentHistFold =
+    item.kind === "message" && isMultiAgentHistFoldItemId(item.id);
+
   if (index === -1) {
     if (item.kind === "tool") {
       const insertAt = findToolInsertIndexBeforeTrailingAssistants(list);
       if (insertAt < list.length) {
+        const next = list.slice();
+        next.splice(insertAt, 0, item);
+        return next;
+      }
+    }
+    // Multi-Agent 完成卡：紧跟**本 run** user（及已有同 run fold）之后
+    if (isMultiAgentHistFold) {
+      const insertAt = resolveMultiAgentHistFoldInsertIndex(list, item.id);
+      if (insertAt != null) {
         const next = list.slice();
         next.splice(insertAt, 0, item);
         return next;
@@ -849,6 +865,18 @@ export function upsertItem(list: ConversationItem[], item: ConversationItem) {
     return [...list, item];
   }
   next[index] = mergeSameKindItem(existing, item);
+
+  // 已存在但位置错：取出后按本 run user 目标位重插
+  if (isMultiAgentHistFold) {
+    const [foldItem] = next.splice(index, 1);
+    if (!foldItem) return next;
+    const insertAt = resolveMultiAgentHistFoldInsertIndex(next, item.id);
+    if (insertAt != null) {
+      next.splice(insertAt, 0, foldItem);
+    } else {
+      next.push(foldItem);
+    }
+  }
   return next;
 }
 

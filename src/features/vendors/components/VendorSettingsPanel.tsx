@@ -8,7 +8,22 @@ import File from "lucide-react/dist/esm/icons/file";
 import Import from "lucide-react/dist/esm/icons/import";
 import Search from "lucide-react/dist/esm/icons/search";
 import type { CodexCustomModel, CodexProviderConfig, VendorTab } from "../types";
-import { LOCAL_GROK_PROVIDER_ID, LOCAL_KIMI_PROVIDER_ID, LOCAL_OPENCODE_PROVIDER_ID, STORAGE_KEYS, validateCodexCustomModels } from "../types";
+import {
+  LOCAL_GROK_PROVIDER_ID,
+  LOCAL_KIMI_PROVIDER_ID,
+  LOCAL_OPENCODE_PROVIDER_ID,
+  LOCAL_SETTINGS_PROVIDER_ID,
+  STORAGE_KEYS,
+  validateCodexCustomModels,
+} from "../types";
+import {
+  buildManagedProviderOptions,
+  resolveDefaultProviderOptionId,
+} from "../customModelProviderBinding";
+import {
+  persistClaudeCustomModelCatalog,
+  persistCodexCustomModelCatalog,
+} from "../persistCustomModelCatalog";
 import type { AppSettings, CodexUnifiedExecExternalStatus } from "../../../types";
 import { notifyProviderTargetCatalogChanged } from "../../composer/components/ChatInputBox/hooks/useProviderTargetCatalogOwners";
 import { useProviderManagement } from "../hooks/useProviderManagement";
@@ -202,6 +217,9 @@ export function VendorSettingsPanel({
   const [dialogTarget, setDialogTarget] = useState<ModelDialogTarget>("claude");
   const [modelDialogOpen, setModelDialogOpen] = useState(false);
   const [modelDialogAddMode, setModelDialogAddMode] = useState(false);
+  const [modelDialogPersistError, setModelDialogPersistError] = useState<
+    string | null
+  >(null);
   const [customPathDialogEngine, setCustomPathDialogEngine] =
     useState<CliCustomPathEngine | null>(null);
   const [codexGlobalConfigContent, setCodexGlobalConfigContent] = useState("");
@@ -413,6 +431,7 @@ export function VendorSettingsPanel({
   const closeModelDialog = useCallback(() => {
     setModelDialogOpen(false);
     setModelDialogAddMode(false);
+    setModelDialogPersistError(null);
   }, []);
 
   const loadCodexGlobalConfig = useCallback(async () => {
@@ -656,15 +675,87 @@ export function VendorSettingsPanel({
       ? codexModels.models
       : claudeModels.models;
 
+  const modelManagerLocalLabel = t("settings.vendor.modelManager.localProvider", {
+    defaultValue: "本地配置",
+  });
+
+  const dialogProviderOptions = useMemo(() => {
+    if (dialogTarget === "codex") {
+      return buildManagedProviderOptions(
+        codex.codexProviders,
+        modelManagerLocalLabel,
+      );
+    }
+    return buildManagedProviderOptions(
+      claude.providers,
+      modelManagerLocalLabel,
+      [LOCAL_SETTINGS_PROVIDER_ID],
+    );
+  }, [
+    claude.providers,
+    codex.codexProviders,
+    dialogTarget,
+    modelManagerLocalLabel,
+  ]);
+
+  const dialogDefaultProviderProfileId = useMemo(() => {
+    const active =
+      dialogTarget === "codex"
+        ? codex.codexProviders.find((provider) => provider.isActive)?.id
+        : claude.providers.find(
+            (provider) =>
+              provider.isActive &&
+              !provider.isLocalProvider &&
+              provider.id !== LOCAL_SETTINGS_PROVIDER_ID,
+          )?.id;
+    return resolveDefaultProviderOptionId(
+      dialogProviderOptions,
+      null,
+      active ?? null,
+    );
+  }, [
+    claude.providers,
+    codex.codexProviders,
+    dialogProviderOptions,
+    dialogTarget,
+  ]);
+
   const handleDialogModelsChange = useCallback(
     (models: CodexCustomModel[]) => {
+      setModelDialogPersistError(null);
       if (dialogTarget === "codex") {
         codexModels.updateModels(models);
+        void persistCodexCustomModelCatalog(models, codex.codexProviders)
+          .then(() => {
+            void codex.loadCodexProviders();
+          })
+          .catch((error: unknown) => {
+            setModelDialogPersistError(
+              error instanceof Error
+                ? error.message
+                : t("settings.vendor.modelManager.persistFailed", {
+                    defaultValue: "同步供应商自定义模型失败，请重试。",
+                  }),
+            );
+          });
         return;
       }
       claudeModels.updateModels(models);
+      void persistClaudeCustomModelCatalog(models, claude.providers)
+        .then(() => {
+          void claude.loadProviders();
+        })
+        .catch((error: unknown) => {
+          setModelDialogPersistError(
+            error instanceof Error
+              ? error.message
+              : t("settings.vendor.modelManager.persistFailed", {
+                  defaultValue: "同步供应商自定义模型失败，请重试。",
+                }),
+          );
+        });
     },
-    [claudeModels, codexModels, dialogTarget],
+    [claude, claudeModels, codex, codexModels, dialogTarget, t],
   );
 
   const claudeHasConfig = Boolean(claude.currentConfig);
@@ -1368,6 +1459,9 @@ export function VendorSettingsPanel({
         onClose={closeModelDialog}
         initialAddMode={modelDialogAddMode}
         modelValidation={dialogTarget === "claude" ? "shape-only" : "model-id"}
+        providerOptions={dialogProviderOptions}
+        defaultProviderProfileId={dialogDefaultProviderProfileId}
+        persistError={modelDialogPersistError}
       />
       {customPathDialogEngine ? (
         <CliCustomPathDialog

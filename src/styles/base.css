@@ -160,11 +160,8 @@ body::-webkit-scrollbar-corner,
 
 /*
  * Full-window shell must use a % size chain (not 100vh/100vw).
- * Windows uiScale is transform:scale on <body> + layout fill width/height =
- * 100/scale% (CSS zoom alone left a letterboxed shell on WebView2).
- * <html> stays 100% viewport. Viewport units ignore parent expansion, so the
- * outer .app shell would stay letterboxed while only some paint scaled —
- * see applyUiScale.ts and docs/analysis/windows-ccgui-startup-hang-2026-08-05.md.
+ * uiScale uses CSS `zoom` on <body> (see applyUiScale.ts). Do not reintroduce
+ * body transform:scale + 100/scale% — that freezes WebView2 with cold-start load.
  */
 html,
 body {

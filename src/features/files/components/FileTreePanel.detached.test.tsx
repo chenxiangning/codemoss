@@ -48,10 +48,7 @@ vi.mock("../../../services/tauri", () => ({
     invokeMock("trash_workspace_item", { workspaceId, path }),
   writeWorkspaceFile: (workspaceId: string, path: string, content: string) =>
     invokeMock("write_workspace_file", { workspaceId, path, content }),
-}));
-
-vi.mock("@tauri-apps/plugin-opener", () => ({
-  revealItemInDir: vi.fn(async () => undefined),
+  revealInFileManager: vi.fn(async () => undefined),
 }));
 
 vi.mock("@tauri-apps/plugin-dialog", () => ({

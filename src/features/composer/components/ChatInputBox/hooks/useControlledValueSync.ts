@@ -11,6 +11,8 @@ export interface UseControlledValueSyncOptions {
   setHasContent: (hasContent: boolean) => void;
   adjustHeight: () => void;
   invalidateCache: () => void;
+  /** Turn `@path` / `@path#L…` text into elegant file chips after external writes. */
+  renderFileTags?: () => void;
 }
 
 /**
@@ -35,6 +37,7 @@ export function useControlledValueSync({
   setHasContent,
   adjustHeight,
   invalidateCache,
+  renderFileTags,
 }: UseControlledValueSyncOptions): void {
   useEffect(() => {
     if (value === undefined) return;
@@ -59,15 +62,20 @@ export function useControlledValueSync({
       if (value) {
         const range = document.createRange();
         const selection = window.getSelection();
-        if (!selection) return;
-
-        range.selectNodeContents(editableRef.current);
-        range.collapse(false);
-        selection.removeAllRanges();
-        selection.addRange(range);
+        if (selection) {
+          range.selectNodeContents(editableRef.current);
+          range.collapse(false);
+          selection.removeAllRanges();
+          selection.addRange(range);
+        }
       }
 
       invalidateCache();
+      // External inserts (editor "send to input", terminal, etc.) arrive as plain
+      // text; promote @path / @path#L… references to file chips after write.
+      if (value.includes("@")) {
+        renderFileTags?.();
+      }
     }
   }, [
     value,
@@ -78,5 +86,6 @@ export function useControlledValueSync({
     setHasContent,
     adjustHeight,
     invalidateCache,
+    renderFileTags,
   ]);
 }

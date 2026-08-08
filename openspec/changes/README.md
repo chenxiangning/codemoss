@@ -2,7 +2,7 @@
 
 本页是 `mossx` OpenSpec proposal 的当前入口。它只维护 active change 的执行状态，并把 archived change 路由到完整历史索引；详细治理快照仍以 [`../project.md`](../project.md) 为准。
 
-- Updated At: `2026-08-05`
+- Updated At: `2026-08-08`
 - Active proposals: `5+`（以磁盘 `openspec/changes/*` 为准）
 - Archived proposals: `848+`
 - Main capability specs: `492`
@@ -11,6 +11,13 @@
 
 | Change | Progress | Current gate | Artifacts |
 | ------ | -------: | ------------ | --------- |
+| [`fix-runtime-workspace-switch-main-thread-stall`](fix-runtime-workspace-switch-main-thread-stall/proposal.md) | implementing / verify no commit | 跨项目 shared 切换 UI 假死：list soft-ignore 协作式早退；**不 commit，先验证** | [proposal](fix-runtime-workspace-switch-main-thread-stall/proposal.md) · [design](fix-runtime-workspace-switch-main-thread-stall/design.md) · [tasks](fix-runtime-workspace-switch-main-thread-stall/tasks.md) · [specs](fix-runtime-workspace-switch-main-thread-stall/specs/) |
+| [`add-windows-sidebar-quick-switcher-and-collapse`](add-windows-sidebar-quick-switcher-and-collapse/proposal.md) | implemented / committed | Win 主导航 Ctrl+E Quick Switcher + 设置菜单隐藏对话侧栏；mac titlebar 不重复；手测通过；author chenxiangning | [proposal](add-windows-sidebar-quick-switcher-and-collapse/proposal.md) · [design](add-windows-sidebar-quick-switcher-and-collapse/design.md) · [tasks](add-windows-sidebar-quick-switcher-and-collapse/tasks.md) · [specs](add-windows-sidebar-quick-switcher-and-collapse/specs/) |
+| [`add-collab-stage-upstream-feed-mode`](add-collab-stage-upstream-feed-mode/proposal.md) | implemented / await human check | 模板第 2 段起「吃摘要/吃全文」；`prior_feed_notes` + implement 追加上游；Inspector 对齐；vitest 31 + rust binding ok；**待手测定稿 full** | [proposal](add-collab-stage-upstream-feed-mode/proposal.md) · [design](add-collab-stage-upstream-feed-mode/design.md) · [tasks](add-collab-stage-upstream-feed-mode/tasks.md) · [specs](add-collab-stage-upstream-feed-mode/specs/) |
+| [`add-multi-agent-inspector-inject-context`](add-multi-agent-inspector-inject-context/proposal.md) | implemented / committed | B+C 注入上下文 Header；commit `4f4c053c6` | [proposal](add-multi-agent-inspector-inject-context/proposal.md) · [design](add-multi-agent-inspector-inject-context/design.md) · [tasks](add-multi-agent-inspector-inject-context/tasks.md) · [specs](add-multi-agent-inspector-inject-context/specs/) |
+| [`fix-shared-create-default-provider-catalog`](fix-shared-create-default-provider-catalog/proposal.md) | implemented / user accepted | Shared 创建第一 Provider + 权威 catalog；打开历史文案/图标与 mapping 同源；人工验收通过 | [proposal](fix-shared-create-default-provider-catalog/proposal.md) · [design](fix-shared-create-default-provider-catalog/design.md) · [tasks](fix-shared-create-default-provider-catalog/tasks.md) · [specs](fix-shared-create-default-provider-catalog/specs/) · [verification](fix-shared-create-default-provider-catalog/verification.md) · [分析](../../docs/analysis/shared-create-local-catalog-stale-mapping-2026-08-08.md) |
+| [`retire-canvas-subagent-squad-grid`](retire-canvas-subagent-squad-grid/proposal.md) | implemented / await review + commit hygiene | 主幕布摘 S10 Squad/Ring；canonical 表面 → ComposerRunStatusStrip；代码已落地；**提案补齐待审，commit 勿混 multi-agent 无关 diff** | [proposal](retire-canvas-subagent-squad-grid/proposal.md) · [design](retire-canvas-subagent-squad-grid/design.md) · [tasks](retire-canvas-subagent-squad-grid/tasks.md) · [specs](retire-canvas-subagent-squad-grid/specs/) |
+| [`fix-shared-collab-context-and-sidebar-spawn`](fix-shared-collab-context-and-sidebar-spawn/proposal.md) | follow-up implemented / await human check | G1 collab context 已验；侧栏 follow-up：行首 `MOSSX_*` 截断标题闸 + merge 预过滤已落地；vitest 62/62；**待实机确认侧栏无崽子，不 commit** | [proposal](fix-shared-collab-context-and-sidebar-spawn/proposal.md) · [design](fix-shared-collab-context-and-sidebar-spawn/design.md) · [tasks](fix-shared-collab-context-and-sidebar-spawn/tasks.md) · [specs](fix-shared-collab-context-and-sidebar-spawn/specs/) |
 | [`add-windows-main-window-close-confirm`](add-windows-main-window-close-confirm/proposal.md) | implemented / user accepted | Win 自绘 X 每次自定义二次确认；隔离 helper；Mac/菜单不动；vitest 16/16；本机验收通过 | [proposal](add-windows-main-window-close-confirm/proposal.md) · [design](add-windows-main-window-close-confirm/design.md) · [tasks](add-windows-main-window-close-confirm/tasks.md) · [specs](add-windows-main-window-close-confirm/specs/) |
 | [`fix-windows-ui-scale-webview2-hang`](fix-windows-ui-scale-webview2-hang/proposal.md) | implementing | Windows `uiScale≠1` WebView2 SetZoomFactor 假死；CSS zoom + native pin 1；Mac/Linux 保持 native；**不 commit，交用户验收** | [proposal](fix-windows-ui-scale-webview2-hang/proposal.md) · [design](fix-windows-ui-scale-webview2-hang/design.md) · [tasks](fix-windows-ui-scale-webview2-hang/tasks.md) · [specs](fix-windows-ui-scale-webview2-hang/specs/) · [分析](../../docs/analysis/windows-ccgui-startup-hang-2026-08-05.md) |
 | [`fix-ui-scale-native-zoom-freeze-all-platforms`](fix-ui-scale-native-zoom-freeze-all-platforms/proposal.md) | implemented / await human check | P0：Mac `setPageZoom(≠1)` 亦卡死 → 三端统一 CSS scale + native 钉 1；启动看门狗自救（残留 pending → 临时 100% + notice）；vitest 32/32；**不 commit，交用户验收** | [proposal](fix-ui-scale-native-zoom-freeze-all-platforms/proposal.md) · [tasks](fix-ui-scale-native-zoom-freeze-all-platforms/tasks.md) |
@@ -25,11 +32,18 @@
 | [`fix-codex-collab-subagent-live-parity`](fix-codex-collab-subagent-live-parity/proposal.md) | implemented / need manual smoke | 代码已落地 + focused vitest/tsc 绿；待 Codex live wait 与其他 CLI 人工冒烟后 verify/archive | [proposal](fix-codex-collab-subagent-live-parity/proposal.md) · [design](fix-codex-collab-subagent-live-parity/design.md) · [tasks](fix-codex-collab-subagent-live-parity/tasks.md) · [specs](fix-codex-collab-subagent-live-parity/specs/) · [verification](fix-codex-collab-subagent-live-parity/verification.md) |
 | [`add-linux-native-menu-localization`](add-linux-native-menu-localization/proposal.md) | 4/5 | NOT READY archive — Linux non-default language native menu smoke（原 GTK 缺陷边界，未在本机验证） | [proposal](add-linux-native-menu-localization/proposal.md) · [design](add-linux-native-menu-localization/design.md) · [tasks](add-linux-native-menu-localization/tasks.md) · [specs](add-linux-native-menu-localization/specs/) · [verification](add-linux-native-menu-localization/verification.md) |
 
-## Active backlog notes（2026-08-05）
+## Active backlog notes（2026-08-08）
 
+- **已归档** `add-local-html-open-in-builtin-browser` → `archive/2026-08-08-add-local-html-open-in-builtin-browser`：本地 HTML 内置 Browser Agent；三入口 + 全局 toast i18n；main specs 已同步。
+- **已提交** `add-windows-sidebar-quick-switcher-and-collapse`：Win 侧栏补 Quick Switcher（Ctrl+E）与设置菜单「隐藏对话侧边栏」；mac titlebar 互斥；手测通过。
+- **新增** `add-collab-stage-upstream-feed-mode`：协作模板第 2 段起配置上游吃摘要/全文；运行时与 Inspector 对齐；代码已落地待手测。
+- **已提交** `add-multi-agent-inspector-inject-context`：`4f4c053c6`。
+- **落地** `fix-shared-create-default-provider-catalog`：Shared 创建默认第一 Provider + profile 权威 catalog；打开历史文案/图标 catalog runtime 优先 + Claude mapping sync；人工验收通过。
+- **新增** `retire-canvas-subagent-squad-grid`：主幕布退役 S10 Squad/Ring；子代理主表面收敛到 Composer run-status strip；**部分 supersede** `retire-claude-subagent-agent-session-card`（canonical 不再是幕布 S10）与 `fix-codex-collab-subagent-live-parity`（幕布合成小队注入）。
+- **跟进** `fix-shared-collab-context-and-sidebar-spawn`：侧栏 follow-up——`previewThreadName` 截断后严格 classify 失效导致 `MOSSX_CONTEXT_PACKAGE:sha25…` 泄漏；行首 `MOSSX_*` 闸 + merge raw 预过滤；幕布 classifier 仍严格；待实机、不 commit。
 - **新增** `add-windows-main-window-close-confirm`：Windows 主窗自绘 X 每次二次确认；隔离 `windowsMainWindowCloseConfirm`；不改 Mac/菜单/Alt+F4；代码已落地，待 Win 冒烟。
 - **新增** `fix-shared-context-resume-integrity`：Shared 失败后续接 / 换绑后 zero-transfer package 只发「继续」导致 Runtime 丢原任务；empty-handoff + rematerialize；与 recovery-exit 正交。
-- **新增** `retire-claude-subagent-agent-session-card`：Claude Shared/Native 幕布 SubAgent 退役 legacy `Agent session` 卡，能力迁 S10/inspector。
+- **新增** `retire-claude-subagent-agent-session-card`：Claude Shared/Native 幕布 SubAgent 退役 legacy `Agent session` 卡；**canonical 表面后续由 `retire-canvas-subagent-squad-grid` 迁到 strip**（legacy 退役 + enrich 仍有效）。
 - **新增** `fix-assistant-duplicate-render-native-shared`：Shared+Native assistant「渲染两遍」——单气泡 early-body 回显 + 跨 id 双气泡；OpenSpec Batch 1 齐，分批实现、不 commit。
 - **新增** `fix-live-settle-assistant-tool-order`：幕布 live settle 后助手结论落到工具前（Shared×Claude 已确认；Shared/Native 共用 segment+live-text）；artifacts 齐，待 apply。
 - **进行中** `fix-claude-background-shell-settlement`：Claude 后台 Shell 被 `CLAUDE_POST_RESULT_GRACE` 误杀（issue #983）；后端门闩已接线（helpers + `claude.rs` + fake-stream 回归）；FE waiting 文案为 P1；待 commit/收口。

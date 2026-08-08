@@ -169,4 +169,125 @@ describe("useTerminalSession remount after host unmount", () => {
     expect(secondHost.isConnected).toBe(true);
     expect(secondHost).not.toBe(firstHost);
   });
+
+  it("reattaches when host swaps in the same commit (chat↔extensions)", async () => {
+    // DesktopLayout early-returns different trees for chat vs extensions.
+    // One appMode setState unmounts the old host and mounts a new one in the
+    // same commit: callback-ref(null) then callback-ref(newNode) before any
+    // effect runs. Effects only see the final host; if we keep the old xterm
+    // because terminalRef.current is truthy, the new panel stays blank white.
+    const workspace = {
+      id: "ws-1",
+      name: "ws",
+      path: "/tmp/ws",
+    } as const;
+
+    const { result } = renderHook(() =>
+      useTerminalSession({
+        activeWorkspace: workspace as never,
+        activeTerminalId: "term-1",
+        isVisible: true,
+      }),
+    );
+
+    const firstHost = document.createElement("div");
+    const secondHost = document.createElement("div");
+    document.body.appendChild(firstHost);
+    document.body.appendChild(secondHost);
+
+    act(() => {
+      (result.current.containerRef as (node: HTMLDivElement | null) => void)(
+        firstHost,
+      );
+    });
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(openMock).toHaveBeenCalledTimes(1);
+    expect(openMock.mock.calls[0]?.[0]).toBe(firstHost);
+
+    // Atomic remount: null then new host without flushing effects in between.
+    act(() => {
+      const setRef = result.current.containerRef as (
+        node: HTMLDivElement | null,
+      ) => void;
+      setRef(null);
+      setRef(secondHost);
+    });
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(disposeMock).toHaveBeenCalledTimes(1);
+    expect(openMock).toHaveBeenCalledTimes(2);
+    expect(openMock.mock.calls[1]?.[0]).toBe(secondHost);
+    expect(secondHost).not.toBe(firstHost);
+
+    firstHost.remove();
+    secondHost.remove();
+  });
+
+  it("does not steal focus during open / refresh / remount lifecycle", async () => {
+    const workspace = {
+      id: "ws-1",
+      name: "ws",
+      path: "/tmp/ws",
+    } as const;
+
+    const { result } = renderHook(() =>
+      useTerminalSession({
+        activeWorkspace: workspace as never,
+        activeTerminalId: "term-1",
+        isVisible: true,
+      }),
+    );
+
+    const view = render(
+      <Host
+        containerRef={result.current.containerRef as (node: HTMLDivElement | null) => void}
+        mounted
+      />,
+    );
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(openMock).toHaveBeenCalled();
+    // open → applyTerminalAppearance → refreshTerminal must not focus,
+    // otherwise composer typing loses keyboard focus when the dock is open.
+    expect(focusMock).not.toHaveBeenCalled();
+
+    view.rerender(
+      <Host
+        containerRef={result.current.containerRef as (node: HTMLDivElement | null) => void}
+        mounted={false}
+      />,
+    );
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    view.rerender(
+      <Host
+        containerRef={result.current.containerRef as (node: HTMLDivElement | null) => void}
+        mounted
+      />,
+    );
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(openMock).toHaveBeenCalledTimes(2);
+    expect(focusMock).not.toHaveBeenCalled();
+  });
 });

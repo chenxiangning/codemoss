@@ -26,7 +26,9 @@ export type StartupFallbackReason = "timeout" | "failure" | "cancelled" | "stale
 export type StartupMilestoneName =
   | "shell-ready"
   | "input-ready"
-  | "active-workspace-ready";
+  | "active-workspace-ready"
+  /** Windows startup gate: full-catalog (or equivalent) settled enough to unmask. */
+  | "startup-gate-ready";
 
 export type StartupWorkspaceScope = "global" | { workspaceId: string };
 

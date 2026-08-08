@@ -123,3 +123,61 @@
     --codex-context-accent-track: color-mix(in srgb, var(--text-primary, #333333) 18%, transparent);
   }
 }
+
+/*
+ * Tool menu / Session Control HUD portals under <body>, so tokens scoped only
+ * to .chat-input-box never resolve. Mirror the same theme vars on portaled
+ * surfaces for light/dark (and system-light).
+ */
+:root .composer-tool-menu,
+:root .composer-tool-menu-sub-content,
+[data-theme="dark"] .composer-tool-menu,
+[data-theme="dark"] .composer-tool-menu-sub-content {
+  /* Literal + non-self app tokens only — avoid circular --x: var(--x). */
+  --text-primary: #e6e7ea;
+  --text-secondary: #b3b3b3;
+  --text-muted: #888888;
+  --dropdown-bg: #1f2028;
+  --dropdown-border: #353540;
+  --dropdown-hover: #2a2d2e;
+  --composer-tool-popover-bg: #1f2028;
+  --composer-tool-popover-border: #353540;
+  --composer-tool-popover-shadow: 0 20px 48px rgba(0, 0, 0, 0.32),
+    0 0 0 1px rgba(255, 255, 255, 0.035);
+  --accent-strong: #3b82f6;
+  --composer-tool-selected-color: #60a5fa;
+}
+
+[data-theme="light"] .composer-tool-menu,
+[data-theme="light"] .composer-tool-menu-sub-content {
+  --text-primary: #333333;
+  --text-secondary: #666666;
+  --text-muted: #999999;
+  --dropdown-bg: #ffffff;
+  --dropdown-border: rgba(15, 23, 36, 0.12);
+  --dropdown-hover: rgba(15, 23, 36, 0.05);
+  --composer-tool-popover-bg: #ffffff;
+  --composer-tool-popover-border: rgba(15, 23, 36, 0.12);
+  --composer-tool-popover-shadow: 0 20px 46px rgba(15, 23, 42, 0.12),
+    0 1px 0 rgba(255, 255, 255, 0.86) inset;
+  --accent-strong: #4d8ff0;
+  --composer-tool-selected-color: #2563eb;
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme]) .composer-tool-menu,
+  :root:not([data-theme]) .composer-tool-menu-sub-content {
+    --text-primary: #333333;
+    --text-secondary: #666666;
+    --text-muted: #999999;
+    --dropdown-bg: #ffffff;
+    --dropdown-border: rgba(15, 23, 36, 0.12);
+    --dropdown-hover: rgba(15, 23, 36, 0.05);
+    --composer-tool-popover-bg: #ffffff;
+    --composer-tool-popover-border: rgba(15, 23, 36, 0.12);
+    --composer-tool-popover-shadow: 0 20px 46px rgba(15, 23, 42, 0.12),
+      0 1px 0 rgba(255, 255, 255, 0.86) inset;
+    --accent-strong: #4d8ff0;
+    --composer-tool-selected-color: #2563eb;
+  }
+}

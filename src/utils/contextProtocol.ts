@@ -38,6 +38,40 @@ export type ContextProtocolKind =
   | "native-context-prompt"
   | "shared-runtime-prompt";
 
+/**
+ * Runtime 注入的 control-plane protocol token（会成为 native 会话 firstMessage / 侧栏 title）。
+ * 全量清单（与 compiler / shared_session_v2 / native_continuation 一致）：
+ * - MOSSX_CONTEXT_PACKAGE
+ * - MOSSX_CONTEXT_ACCEPTED
+ * - MOSSX_NATIVE_CONTEXT_V1
+ * - MOSSX_SHARED_CONTEXT_V1
+ *
+ * 非会话标题（勿当 hide 依据）：env / window / 测试 probe（MOSSX_WEB_*、MOSSX_S2_PROBE 等）
+ * 不会以 `MOSSX_` 行首出现在用户可命名的侧栏 title；用户正文讨论这些词也不会行首。
+ *
+ * 侧栏 title 经 previewThreadName 截到 50 字后无法满足完整 sha256 正则，
+ * 因此标题闸必须用行首 `MOSSX_` 前缀，不能只依赖 classifyContextProtocolText。
+ */
+export const MOSSX_PROGRAM_CONTROL_TITLE_TOKENS = [
+  "MOSSX_CONTEXT_PACKAGE",
+  "MOSSX_CONTEXT_ACCEPTED",
+  "MOSSX_NATIVE_CONTEXT_V1",
+  "MOSSX_SHARED_CONTEXT_V1",
+] as const;
+
+/** 行首程序生成 control-plane 标题（含截断后的 `MOSSX_CONTEXT_PACKAGE:sha25…`）。 */
+export function isMossxProgramControlTitle(
+  text: string | null | undefined,
+): boolean {
+  const normalized = typeof text === "string" ? text.trim() : "";
+  if (!normalized) {
+    return false;
+  }
+  // 用户明确要求：MOSSX_ 开头且代码可认知的程序内部 session 一律隐藏。
+  // 行首匹配可兼容 previewThreadName 截断；用户讨论句（非行首）不误伤。
+  return normalized.startsWith("MOSSX_");
+}
+
 export function classifyContextProtocolText(
   text: string,
 ): ContextProtocolKind | null {

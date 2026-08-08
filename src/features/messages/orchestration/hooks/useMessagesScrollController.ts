@@ -21,6 +21,7 @@ import {
 } from "../scrolling/messagesScrollConvergence";
 import {
   createInitialScrollAuthorityState,
+  isAtTrueBottom,
   reduceGeometry,
   reduceIntent,
   shouldContinuousPin,
@@ -38,10 +39,18 @@ import {
   type ScrollGeometrySnapshot,
 } from "../scrolling/messagesScrollEcho";
 
-const AUTOMATIC_BOTTOM_RECHECK_DELAYS_MS = [100, 300, 1_000, 2_000] as const;
+/**
+ * live-follow：无定时 recheck，只靠 ResizeObserver（避免幽灵拽底）。
+ * turn-send / turn-settle / history-open：短 recheck 盖住乐观气泡与首包测高，
+ * 解决「第二次发送不回底 / 工具折叠后卡住中部」——长延迟数组已砍。
+ */
+const LIVE_FOLLOW_RECHECK_DELAYS_MS = [] as const;
+const TURN_BOUNDARY_RECHECK_DELAYS_MS = [80, 250, 700] as const;
 const PROGRAMMATIC_SCROLL_ECHO_LIMIT = 32;
 /** 与 convergence 模块同阈值：已在目标边 ±1px 视为到位，避免无意义二次写。 */
 const ACTIVE_CONVERGENCE_EDGE_TOLERANCE_PX = 1;
+/** 拖条离底时合成 user-scroll intent 的 delta（须 ≥ USER_SCROLL_MIN_DELTA_Y） */
+const USER_SCROLL_RELEASE_DELTA_Y = 16;
 
 type ConversationScrollIntent =
   | "history-open"
@@ -323,31 +332,31 @@ export function useMessagesScrollController({
   }, [cancelScrollConvergence, liveAutoFollowEnabledRef, renderScopeKey]);
   useEffect(() => cancelScrollConvergence, [cancelScrollConvergence]);
 
-  // 焦点跟随 stick-to-bottom：只要 liveAutoFollow 开着且用户仍停在底部（autoScroll），
-  // 内容高度变化就必须追真实底部。不得把资格绑死在 isWorking/finalizing——回合结束后
-  // 思考折叠、full markdown、虚拟化 remeasure 仍会改 scrollHeight，否则会「总差一点」。
-  // 关闭焦点跟随后此路径停手；turn-send/settle 仍走独立 boundary ownership。
+  // 焦点跟随 stick-to-bottom：仅 mode∈{stick-bottom, forced-bottom} 可 continuous pin。
+  // forced 不依赖 autoScroll：内容长高假离底不得掐死发送/settle 强制追底。
+  // 全砍：禁止 free+autoScroll 旁路追底。
   const canContinueFocusFollowStick = useCallback(() => {
-    if (hasRecentUserScrollIntent() || !autoScrollRef.current) {
+    if (hasRecentUserScrollIntent()) {
       return false;
     }
     const authorityMode = scrollAuthorityRef.current.mode;
-    // forced-bottom：安全阀/稳态前持续追底（F 类），不被 2.4s deadline 单独掐死
     if (authorityMode === "forced-bottom") {
       return true;
+    }
+    if (!autoScrollRef.current) {
+      return false;
     }
     if (!liveAutoFollowEnabledRef.current) {
       return false;
     }
-    // stick 或尚未同步的 free+autoScroll（re-arm 竞态）都允许追底
-    return shouldContinuousPin(authorityMode) || authorityMode === "free";
+    return shouldContinuousPin(authorityMode);
   }, [hasRecentUserScrollIntent, liveAutoFollowEnabledRef]);
   const flushLiveFollowStick = useCallback(() => {
     if (!canContinueFocusFollowStick() || !containerRef.current) {
       return;
     }
     requestScrollConvergence("bottom", "instant", "live-follow", {
-      recheckDelaysMs: AUTOMATIC_BOTTOM_RECHECK_DELAYS_MS,
+      recheckDelaysMs: LIVE_FOLLOW_RECHECK_DELAYS_MS,
       shouldContinue: canContinueFocusFollowStick,
     });
   }, [canContinueFocusFollowStick, requestScrollConvergence]);
@@ -371,28 +380,86 @@ export function useMessagesScrollController({
   }, [canContinueFocusFollowStick, flushLiveFollowStick]);
   /**
    * 权威回底原语（与 ScrollControl「回到底部」同一通道）。
-   * 所有发送/settle/历史回刷/打开会话/按钮 的贴底都必须经此入口，禁止旁路只写一次 scrollTop。
+   * 全砍：history-restore 不再清 user intent / 不再无条件再入 forced；
+   * 仅 forced 或已武装 stick 时 nudge，避免读历史被二次拽回。
    */
   const pinCanvasToBottom = useCallback(
     (reason: PinCanvasToBottomReason, motionOverride?: ConversationScrollMotion) => {
-      // 与按钮一致：清干扰 + 武装跟随 + 清 jump
-      clearUserScrollIntent();
-      autoScrollRef.current = true;
-      clearPendingJumpMessage();
-      cancelLiveFollowCoalesce();
-
       const now = performance.now();
       const motion: ConversationScrollMotion =
         motionOverride ?? (reason === "explicit" ? "smooth" : "instant");
       const armDeadline = () => {
         stickToBottomDeadlineRef.current = Date.now() + SETTLE_REPIN_WINDOW_MS;
       };
-
-      let convergenceIntent: ConversationScrollIntent = "explicit-control";
       const liveFollow = liveAutoFollowEnabledRef.current;
 
+      // history-restore：布局迟到（尾窗回全量 / 虚拟化 handoff / finalizing 结束）。
+      // 不 clearUserScrollIntent；用户已 free 则完全停手；已 stick/forced 只 nudge。
+      if (reason === "history-restore") {
+        if (hasRecentUserScrollIntent()) {
+          return;
+        }
+        const mode = scrollAuthorityRef.current.mode;
+        if (mode === "free" || mode === "history-head" || mode === "jump-anchor") {
+          if (!autoScrollRef.current) {
+            return;
+          }
+          // autoScroll 仍 true 但 mode 已 free：只在真 stick 语义下回 stick，不 forced
+          if (!liveFollow) {
+            return;
+          }
+          const rearm = reduceIntent(
+            {
+              ...scrollAuthorityRef.current,
+              liveAutoFollowEnabled: true,
+            },
+            { type: "focus-follow-on" },
+            now,
+          );
+          scrollAuthorityRef.current = rearm.state;
+          requestScrollConvergence("bottom", motion, "live-follow", {
+            recheckDelaysMs: LIVE_FOLLOW_RECHECK_DELAYS_MS,
+            shouldContinue: () =>
+              autoScrollRef.current &&
+              !hasRecentUserScrollIntent() &&
+              liveAutoFollowEnabledRef.current &&
+              shouldContinuousPin(scrollAuthorityRef.current.mode),
+          });
+          return;
+        }
+        if (mode === "forced-bottom") {
+          const keepTurn: "turn-send" | "turn-settle" =
+            stickToBottomIntentRef.current === "turn-send" ? "turn-send" : "turn-settle";
+          requestScrollConvergence("bottom", motion, keepTurn, {
+            recheckDelaysMs: TURN_BOUNDARY_RECHECK_DELAYS_MS,
+            shouldContinue: () =>
+              !hasRecentUserScrollIntent() &&
+              scrollAuthorityRef.current.mode === "forced-bottom",
+          });
+          return;
+        }
+        // stick-bottom：只 nudge，不再入 forced
+        requestScrollConvergence("bottom", motion, "live-follow", {
+          recheckDelaysMs: LIVE_FOLLOW_RECHECK_DELAYS_MS,
+          shouldContinue: () =>
+            autoScrollRef.current &&
+            !hasRecentUserScrollIntent() &&
+            liveAutoFollowEnabledRef.current &&
+            shouldContinuousPin(scrollAuthorityRef.current.mode),
+        });
+        return;
+      }
+
+      // 发送 / settle / 打开会话 / 按钮 / 焦点 rearm：清干扰 + 武装跟随 + 清 jump
+      clearUserScrollIntent();
+      autoScrollRef.current = true;
+      clearPendingJumpMessage();
+      cancelLiveFollowCoalesce();
+
+      let convergenceIntent: ConversationScrollIntent = "explicit-control";
+
       if (reason === "explicit") {
-        // 按钮：explicit-bottom 武装 stick，并再入 forced 以便 RO 追迟到测高
+        // 按钮：explicit-bottom 武装 stick；短 forced 仅用于 RO 追当帧迟到测高（不再绑 6s）
         let decision = reduceIntent(
           {
             ...scrollAuthorityRef.current,
@@ -439,22 +506,6 @@ export function useMessagesScrollController({
         );
         scrollAuthorityRef.current = decision.state;
         convergenceIntent = "history-open";
-      } else if (reason === "history-restore") {
-        // 尾窗回全量 / 虚拟化 handoff：再入 forced，与按钮同款武装，追新真底
-        const keepTurn: "turn-send" | "turn-settle" =
-          stickToBottomIntentRef.current === "turn-send" ? "turn-send" : "turn-settle";
-        stickToBottomIntentRef.current = keepTurn;
-        armDeadline();
-        const decision = reduceIntent(
-          {
-            ...scrollAuthorityRef.current,
-            liveAutoFollowEnabled: liveFollow,
-          },
-          { type: keepTurn },
-          now,
-        );
-        scrollAuthorityRef.current = decision.state;
-        convergenceIntent = keepTurn;
       } else {
         // focus-rearm
         const decision = reduceIntent(
@@ -470,24 +521,42 @@ export function useMessagesScrollController({
       }
 
       const pinnedConvergenceIntent = convergenceIntent;
+      const isTurnOrHistoryBoundary =
+        pinnedConvergenceIntent === "turn-send" ||
+        pinnedConvergenceIntent === "turn-settle" ||
+        pinnedConvergenceIntent === "history-open" ||
+        pinnedConvergenceIntent === "explicit-control";
       requestScrollConvergence("bottom", motion, pinnedConvergenceIntent, {
-        recheckDelaysMs: AUTOMATIC_BOTTOM_RECHECK_DELAYS_MS,
+        recheckDelaysMs: isTurnOrHistoryBoundary
+          ? TURN_BOUNDARY_RECHECK_DELAYS_MS
+          : LIVE_FOLLOW_RECHECK_DELAYS_MS,
         shouldContinue: () => {
-          if (!autoScrollRef.current || hasRecentUserScrollIntent()) {
+          // 用户明确上滚：立刻停。forced 期间不得被「假离底」的 autoScroll=false 掐死。
+          if (hasRecentUserScrollIntent()) {
             return false;
           }
-          // forced：回刷/发送生命周期内持续追，不单靠 2.4s
           if (scrollAuthorityRef.current.mode === "forced-bottom") {
             return true;
           }
-          // 按钮 explicit：与用户手感一致，autoScroll 武装则继续 recheck
+          if (!autoScrollRef.current) {
+            return false;
+          }
           if (pinnedConvergenceIntent === "explicit-control") {
-            return true;
+            return shouldContinuousPin(scrollAuthorityRef.current.mode);
           }
           if (pinnedConvergenceIntent === "live-follow") {
-            return liveAutoFollowEnabledRef.current;
+            return (
+              liveAutoFollowEnabledRef.current &&
+              shouldContinuousPin(scrollAuthorityRef.current.mode)
+            );
           }
-          return Date.now() <= stickToBottomDeadlineRef.current;
+          if (shouldContinuousPin(scrollAuthorityRef.current.mode)) {
+            return true;
+          }
+          return (
+            pinnedConvergenceIntent === "history-open" &&
+            Date.now() <= stickToBottomDeadlineRef.current
+          );
         },
       });
     },
@@ -505,6 +574,62 @@ export function useMessagesScrollController({
     pinCanvasToBottom("focus-rearm", "instant");
   }, [pinCanvasToBottom]);
 
+  /**
+   * scroll 事件到达真底：武装 autoScroll，并把 free → stick（不写 scrollTop，仅状态）。
+   * 与「120 近底 re-arm」切割：调用方必须先确认 distance ≤ 1px。
+   */
+  const noteViewportAtTrueBottom = useCallback(() => {
+    autoScrollRef.current = true;
+    if (!liveAutoFollowEnabledRef.current) {
+      return;
+    }
+    if (shouldContinuousPin(scrollAuthorityRef.current.mode)) {
+      return;
+    }
+    if (scrollAuthorityRef.current.mode === "forced-bottom") {
+      return;
+    }
+    const now = performance.now();
+    const decision = reduceIntent(
+      {
+        ...scrollAuthorityRef.current,
+        liveAutoFollowEnabled: true,
+      },
+      { type: "focus-follow-on" },
+      now,
+    );
+    // focus-follow-on 会 requestBottomPin；此处只同步 mode，不立刻 pin
+    // （避免 scroll 回调里二次写顶；后续 RO / scrollKey 自然追）
+    scrollAuthorityRef.current = {
+      ...decision.state,
+      // 保持 stick；清掉可能被 focus-follow-on 带上的 forced 语义（它本身是 stick）
+    };
+  }, [liveAutoFollowEnabledRef]);
+
+  /**
+   * 用户离底（拖条 / 上滚后 scroll 确认）：解除 autoScroll；
+   * stick → free。forced 仅由 wheel 路径打断，避免内容假离底误杀 forced。
+   */
+  const noteViewportLeftBottom = useCallback(() => {
+    autoScrollRef.current = false;
+    stickToBottomIntentRef.current = null;
+    stickToBottomDeadlineRef.current = 0;
+    const mode = scrollAuthorityRef.current.mode;
+    if (mode !== "stick-bottom" && mode !== "forced-bottom") {
+      return;
+    }
+    const now = performance.now();
+    const decision = reduceIntent(
+      {
+        ...scrollAuthorityRef.current,
+        liveAutoFollowEnabled: liveAutoFollowEnabledRef.current,
+      },
+      { type: "user-scroll", deltaY: -USER_SCROLL_RELEASE_DELTA_Y },
+      now,
+    );
+    scrollAuthorityRef.current = decision.state;
+  }, [liveAutoFollowEnabledRef]);
+
   const requestHistoryBottomConvergence = useCallback(() => {
     pinCanvasToBottom("history-open", "instant");
   }, [pinCanvasToBottom]);
@@ -514,22 +639,37 @@ export function useMessagesScrollController({
    * 不得 clearUserScrollIntent / 不得完整 re-arm，否则会吞掉用户上滚。
    */
   const continueBottomPinIfArmed = useCallback(() => {
-    if (!autoScrollRef.current || hasRecentUserScrollIntent()) {
+    if (hasRecentUserScrollIntent()) {
+      return;
+    }
+    // forced：不依赖 autoScroll（内容长高假离底不得掐死发送/settle）
+    if (scrollAuthorityRef.current.mode === "forced-bottom") {
+      const intent =
+        stickToBottomIntentRef.current === "turn-send" ? "turn-send" : "turn-settle";
+      requestScrollConvergence("bottom", "instant", intent, {
+        recheckDelaysMs: TURN_BOUNDARY_RECHECK_DELAYS_MS,
+        shouldContinue: () =>
+          !hasRecentUserScrollIntent() &&
+          scrollAuthorityRef.current.mode === "forced-bottom",
+      });
+      return;
+    }
+    if (!autoScrollRef.current) {
       return;
     }
     const boundary = stickToBottomIntentRef.current;
-    if (
-      scrollAuthorityRef.current.mode === "forced-bottom" ||
-      isTurnBoundaryScrollIntent(boundary)
-    ) {
+    const boundaryActive =
+      isTurnBoundaryScrollIntent(boundary) &&
+      Date.now() <= stickToBottomDeadlineRef.current;
+    if (boundaryActive) {
       const intent =
         isTurnBoundaryScrollIntent(boundary) && boundary
           ? boundary
           : "turn-settle";
       requestScrollConvergence("bottom", "instant", intent, {
-        recheckDelaysMs: AUTOMATIC_BOTTOM_RECHECK_DELAYS_MS,
+        recheckDelaysMs: TURN_BOUNDARY_RECHECK_DELAYS_MS,
         shouldContinue: () => {
-          if (!autoScrollRef.current || hasRecentUserScrollIntent()) {
+          if (hasRecentUserScrollIntent() || !autoScrollRef.current) {
             return false;
           }
           if (scrollAuthorityRef.current.mode === "forced-bottom") {
@@ -543,6 +683,12 @@ export function useMessagesScrollController({
       });
       return;
     }
+    // turn 边界意图的 settle 死线已过：清掉残留意图。否则旧逻辑会让该分支永真、
+    // shouldContinue 永假，下面的 live-follow 通道被永久短路——回合结束后
+    // 容器收缩 / 迟到测高（虚拟化回填、Markdown 全量渲染）将再也无人追底。
+    if (isTurnBoundaryScrollIntent(boundary)) {
+      stickToBottomIntentRef.current = null;
+    }
     if (liveAutoFollowEnabledRef.current) {
       flushLiveFollowStick();
     } else if (
@@ -550,7 +696,7 @@ export function useMessagesScrollController({
       Date.now() <= stickToBottomDeadlineRef.current
     ) {
       requestScrollConvergence("bottom", "instant", "history-open", {
-        recheckDelaysMs: AUTOMATIC_BOTTOM_RECHECK_DELAYS_MS,
+        recheckDelaysMs: TURN_BOUNDARY_RECHECK_DELAYS_MS,
         shouldContinue: () =>
           autoScrollRef.current &&
           !hasRecentUserScrollIntent() &&
@@ -565,17 +711,13 @@ export function useMessagesScrollController({
   ]);
 
   const requestTimelineLayoutBottomConvergence = useCallback(() => {
-    // 虚拟化/static handoff、尾窗回全量：完整权威 pin（与按钮同通道），再入 forced。
-    const forced = scrollAuthorityRef.current.mode === "forced-bottom";
-    const boundaryIntent = stickToBottomIntentRef.current;
-    const turnBoundaryActive =
-      isTurnBoundaryScrollIntent(boundaryIntent) &&
-      Date.now() <= stickToBottomDeadlineRef.current;
-    // history-open 预算窗不能在用户已离底时强行 pin（否则流式上滚读历史会被拽回）
-    if (hasRecentUserScrollIntent() && !forced && !turnBoundaryActive) {
+    // 虚拟化/static handoff、尾窗回全量：仅 forced 或仍 armed 时 nudge。
+    // 禁止「deadline 还在 + 用户已 free」旁路强 pin（读历史被二次拽回 / 测试卡中部）。
+    if (hasRecentUserScrollIntent()) {
       return;
     }
-    if (!autoScrollRef.current && !forced && !turnBoundaryActive) {
+    const forced = scrollAuthorityRef.current.mode === "forced-bottom";
+    if (!forced && !autoScrollRef.current) {
       return;
     }
     pinCanvasToBottom("history-restore", "instant");
@@ -647,6 +789,13 @@ export function useMessagesScrollController({
       lastUserScrollIntentAtRef.current = performance.now();
       cancelScrollConvergence();
     };
+    /** 用户明确离底：解除 armed、清 turn 边界死线，禁止 deadline 旁路再 pin */
+    const releaseFollowForUserScroll = () => {
+      markUserScrollIntent();
+      autoScrollRef.current = false;
+      stickToBottomIntentRef.current = null;
+      stickToBottomDeadlineRef.current = 0;
+    };
     const applyAuthorityUserScroll = (
       partial: {
         deltaY?: number;
@@ -668,8 +817,7 @@ export function useMessagesScrollController({
       );
       scrollAuthorityRef.current = decision.state;
       if (decision.reasonCode === "forced-interrupted-by-user-scroll") {
-        markUserScrollIntent();
-        autoScrollRef.current = false;
+        releaseFollowForUserScroll();
         return;
       }
       if (decision.reasonCode === "forced-ignored-noise-scroll") {
@@ -677,11 +825,11 @@ export function useMessagesScrollController({
         return;
       }
       if (partial.deltaY !== undefined && partial.deltaY < 0) {
-        markUserScrollIntent();
-        autoScrollRef.current = false;
+        releaseFollowForUserScroll();
         return;
       }
       if (partial.explicitSource && partial.explicitSource !== "wheel") {
+        // key/touch/pointer：先记租约；是否离底由后续 scroll 几何判定
         markUserScrollIntent();
       }
     };
@@ -766,7 +914,7 @@ export function useMessagesScrollController({
     window.addEventListener("pointercancel", handlePointerEnd);
     window.addEventListener("keydown", handleScrollKey);
     recordCurrentScrollGeometry(container);
-    if (!content || typeof ResizeObserver === "undefined") {
+    if (typeof ResizeObserver === "undefined") {
       return removeInputListeners;
     }
     const observer = new ResizeObserver(() => {
@@ -813,7 +961,7 @@ export function useMessagesScrollController({
       );
       scrollAuthorityRef.current = geoDecision.state;
 
-      // forced 退役后同步 legacy autoScroll / deadline 语义
+      // forced 退役后同步 legacy autoScroll 语义（只认真底，不用 120 近底）
       if (
         geoDecision.reasonCode === "forced-retired-stable" ||
         geoDecision.reasonCode === "settle-timeout-short-of-bottom"
@@ -821,56 +969,65 @@ export function useMessagesScrollController({
         if (geoDecision.state.mode === "stick-bottom") {
           autoScrollRef.current = true;
         } else if (geoDecision.state.mode === "free") {
-          // 跟随关：退役时已在真底或做过最后 pin；保持 autoScroll 与是否近底一致
-          autoScrollRef.current = isNearBottom(container);
+          autoScrollRef.current = isAtTrueBottom({
+            scrollHeight: container.scrollHeight,
+            clientHeight: container.clientHeight,
+            scrollTop: container.scrollTop,
+          });
         }
         if (geoDecision.requestBottomPin) {
-          // safety timeout 等：完整 pin，保证最终真底
+          // safety timeout：最后一次 nudge（history-restore 不 clear intent / 不强制 re-force）
           pinCanvasToBottom("history-restore", "instant");
         }
       }
 
-      // 视口已在底且 autoScroll 武装：清掉过期 lease 竞态（fake timers 下
-      // performance.now 与 Date 不同步会导致 wheel lease 假死），并 re-arm stick。
+      // 全砍：Resize 绝不 clearUserScrollIntent。
+      // re-arm stick 只在真底（≤1px）且无用户租约时；禁止 120px 近底把 free 拽回 stick。
+      const atTrueBottom = isAtTrueBottom({
+        scrollHeight: container.scrollHeight,
+        clientHeight: container.clientHeight,
+        scrollTop: container.scrollTop,
+      });
       if (
-        autoScrollRef.current &&
+        atTrueBottom &&
+        !hasRecentUserScrollIntent() &&
         liveAutoFollowEnabledRef.current &&
-        isNearBottom(container)
+        autoScrollRef.current &&
+        (scrollAuthorityRef.current.mode === "free" ||
+          scrollAuthorityRef.current.mode === "history-head")
       ) {
-        if (hasRecentUserScrollIntent()) {
-          clearUserScrollIntent();
-        }
-        if (
-          scrollAuthorityRef.current.mode === "free" ||
-          scrollAuthorityRef.current.mode === "history-head"
-        ) {
-          const rearm = reduceIntent(
-            {
-              ...scrollAuthorityRef.current,
-              liveAutoFollowEnabled: true,
-            },
-            { type: "focus-follow-on" },
-            now,
-          );
-          scrollAuthorityRef.current = rearm.state;
-        }
+        const rearm = reduceIntent(
+          {
+            ...scrollAuthorityRef.current,
+            liveAutoFollowEnabled: true,
+          },
+          { type: "focus-follow-on" },
+          now,
+        );
+        scrollAuthorityRef.current = rearm.state;
       }
 
       const mode = scrollAuthorityRef.current.mode;
-      const authorityWantsPin =
-        mode === "forced-bottom" ||
-        mode === "stick-bottom" ||
-        geoDecision.requestBottomPin ||
-        (liveAutoFollowEnabledRef.current && autoScrollRef.current);
+      // forced 不依赖 autoScroll；stick 须 armed。用户租约一律停。
+      const shouldContinuePin =
+        !hasRecentUserScrollIntent() &&
+        (mode === "forced-bottom" ||
+          (autoScrollRef.current &&
+            (shouldContinuousPin(mode) || Boolean(geoDecision.requestBottomPin))));
 
-      if (autoScrollRef.current && authorityWantsPin && !hasRecentUserScrollIntent()) {
-        // Resize 只「继续追」，不走完整 pin（避免 clearUserScrollIntent 吞用户上滚）
+      if (shouldContinuePin) {
         continueBottomPinIfArmed();
       }
       // convergence 首次 pulse 同步写 scrollTop；snapshot 必须反映写后的真实位置。
       recordCurrentScrollGeometry(container);
     });
-    observer.observe(content);
+    // 观察容器自身 + 内容：Composer 运行态条（「已编辑 N 个文件」等）挂载或窗口 resize
+    // 会压小 clientHeight，maxScrollTop 静默变大——scrollTop 不变、不派发 scroll 事件，
+    // 仅观察内容永远感知不到（回合结束后视口滞留底部上方的主根因之一）。
+    observer.observe(container);
+    if (content) {
+      observer.observe(content);
+    }
     return () => {
       observer.disconnect();
       removeInputListeners();
@@ -879,10 +1036,8 @@ export function useMessagesScrollController({
     };
   }, [
     cancelScrollConvergence,
-    clearUserScrollIntent,
     continueBottomPinIfArmed,
     hasRecentUserScrollIntent,
-    isNearBottom,
     liveAutoFollowEnabledRef,
     pinCanvasToBottom,
     recordCurrentScrollGeometry,
@@ -923,52 +1078,40 @@ export function useMessagesScrollController({
   );
 
   /**
-   * 内容高度阶跃导致的「假离底」：用户仍停在原 scrollTop，maxScrollTop 暴涨，
-   * distance 瞬时 > 阈值，但 scrollTop 几乎没动。不得据此解除 autoScroll。
+   * 内容高度阶跃导致的「假离底」：用户仍停在原 scrollTop，max 变大，
+   * distance 瞬时变大但 scrollTop 几乎没动。不得据此解除 autoScroll。
    *
-   * 与用户真上滚（scrollTop 明显下移）区分开。
+   * 与用户真上滚（scrollTop 明显减小）区分开。
+   * 注意：不要求「之前 nearBottom」——工具折叠/MD 开渲后可能已假离底多帧，
+   * 只要仍 armed 且 scrollTop 稳定 + 高度在变，就继续保护。
    */
   const isContentGrowthLagFromSnapshot = useCallback(
     (previous: ScrollGeometrySnapshot | null, current: ScrollGeometrySnapshot) => {
       if (!previous) {
         return false;
       }
-      const previousDistance = previous.maxScrollTop - previous.scrollTop;
-      const wasNearBottom = previousDistance <= SCROLL_THRESHOLD_PX;
       const scrollTopStable =
         Math.abs(current.scrollTop - previous.scrollTop) <=
         PROGRAMMATIC_SCROLL_ECHO_TOLERANCE_PX + 1;
-      const maxGrew =
-        current.maxScrollTop > previous.maxScrollTop + SCROLL_THRESHOLD_PX;
-      return wasNearBottom && scrollTopStable && maxGrew;
+      const maxChanged =
+        Math.abs(current.maxScrollTop - previous.maxScrollTop) > 1;
+      return scrollTopStable && maxChanged;
     },
     [],
   );
 
   /**
-   * scroll 事件到来时：仅在「回合结束 settle / 打开会话」所有权下，
-   * 若判定为内容长高假离底，则保护跟随。
-   *
-   * 故意不覆盖 turn-send 流式 forced：流式中用户拖滚动条读历史必须能立刻松手；
-   * 流式贴底仍靠 ResizeObserver + autoScroll，不靠假离底保护。
-   * 用户真上滚（scrollTop 变化或 wheel 租约）不保护。
+   * scroll 事件到来时：armed / forced / stick 下若是内容长高假离底则保护跟随。
+   * 用户真上滚（wheel 租约或 scrollTop 明显上移）不保护。
    */
   const shouldProtectFollowOnScrollEvent = useCallback(
     (previous: ScrollGeometrySnapshot | null, current: ScrollGeometrySnapshot) => {
-      const boundary = stickToBottomIntentRef.current;
-      // 仅 turn-settle：AI 回复结束后尾窗→全量 / idle 虚拟化 remeasure 的主战场。
-      // 不覆盖 history-open（开会话迟到测高走 RO 追底）与 turn-send（流式中拖条须能松手）。
-      if (boundary !== "turn-settle") {
-        return false;
-      }
       const mode = scrollAuthorityRef.current.mode;
-      const inSettleDeadline = Date.now() <= stickToBottomDeadlineRef.current;
-      // forced 最短保持可长于 2.4s settle 预算（Codex finalizing 6s）；两者任一有效都保护
-      if (mode !== "forced-bottom" && !inSettleDeadline) {
-        return false;
-      }
-      if (!autoScrollRef.current && activeProgrammaticScrollEdgeRef.current !== "bottom") {
-        // 跟随已解除：不再用假离底把用户拽回
+      const following =
+        autoScrollRef.current ||
+        mode === "forced-bottom" ||
+        activeProgrammaticScrollEdgeRef.current === "bottom";
+      if (!following) {
         return false;
       }
       return isContentGrowthLagFromSnapshot(previous, current);
@@ -990,6 +1133,8 @@ export function useMessagesScrollController({
     hasRecentUserScrollIntent,
     initialBottomPinScopeRef,
     isNearBottom,
+    noteViewportAtTrueBottom,
+    noteViewportLeftBottom,
     programmaticScrollTopEchoRef,
     rearmAutoFollowToBottom,
     recordCurrentScrollGeometry,

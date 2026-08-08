@@ -16,6 +16,7 @@ status: active
 - [Live settle assistant/tool order](./live-settle-assistant-tool-order-2026-08-04.md) — Active incident analysis；Shared×Claude 已确认「流式对 / 结束后偶发错序 / 历史恢复」；Shared+Native 跨引擎同源矩阵。
 - [Native session provider select vs disk overwrite](./native-session-provider-select-vs-disk-overwrite-2026-07-31.md) — Active session-selection contract explanation。
 - [Native vs Shared CLI explained](./native-vs-shared-cli-explained.md) — Active product/engineering guide。
+- [Shared create / open local catalog stale mapping](./shared-create-local-catalog-stale-mapping-2026-08-08.md) — Active fix reference；Shared 创建权威 catalog + 打开历史文案/图标 mapping 同源。
 - [React #185 Maximum Update Depth playbook](./react-185-maximum-update-depth-playbook.md) — Active troubleshooting runbook；最新 case `C-20260805-01`（0.7.16 Messages canvas 空集合 thrash / `App-BG-8EZ_F`；前案 C-20260804-01..03）。
 
 ## Resolved incidents and closure evidence

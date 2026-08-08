@@ -15,6 +15,8 @@ export type ConversationCanvasNodeInput = {
   messagesProps: ComponentProps<typeof Messages>;
   forkConfirmDialogProps: ComponentProps<typeof MessageForkConfirmDialog>;
   continuationContextNode?: ReactNode;
+  /** 主幕布时间线尾部（随 messages.scrollable 滚动） */
+  timelineTrailingNode?: ReactNode;
   isProviderContinuation?: boolean;
 };
 
@@ -80,6 +82,7 @@ export function buildConversationCanvasNode({
   messagesProps,
   forkConfirmDialogProps,
   continuationContextNode,
+  timelineTrailingNode = null,
   isProviderContinuation = false,
 }: ConversationCanvasNodeInput): ReactNode {
   return (
@@ -88,6 +91,7 @@ export function buildConversationCanvasNode({
         messagesProps={{
           ...messagesProps,
           timelineLeadingNode: continuationContextNode ?? null,
+          timelineTrailingNode: timelineTrailingNode ?? null,
           isProviderContinuation,
         }}
       />

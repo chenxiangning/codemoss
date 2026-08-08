@@ -1,10 +1,5 @@
 export default {
   subagentUi: {
-    squadAria: "子代理小队",
-    squadTitle: "{{completed}}/{{total}} 个助手",
-    squadTitleCount: "{{total}} 个助手",
-
-    squadFallbackTitle: "并行子代理",
     defaultName: "子代理",
     badge: "SubAgent",
     claudeLaunchNoSession:
@@ -18,12 +13,6 @@ export default {
     emptySession: "子代理会话暂无消息（可能仍在索引）",
     noSessionYet:
       "尚未关联到子代理会话（agentId 未解析或 transcript 仍在索引中）。可从左侧会话树打开「子代理」行查看。",
-
-    statusShort: {
-      completed: "完成",
-      running: "运行",
-      error: "失败",
-    },
     status: {
       running: "运行中",
       completed: "已完成",

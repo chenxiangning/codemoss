@@ -171,6 +171,10 @@ function readCustomClaudeModels(): EngineModelInfo[] {
     displayName: model.label,
     description: model.description ?? "",
     source: CUSTOM_MODEL_SOURCE,
+    // Optional ownership only — never invent. Open-session / Native Claude
+    // create still do not bind provider from Claude custom model picks
+    // (useAppShellComposerModelSection keeps Claude resolvedProviderProfileId null).
+    providerProfileId: model.providerProfileId?.trim() || null,
     isDefault: false,
   }));
 }

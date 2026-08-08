@@ -9,9 +9,9 @@ status: historical
 
 # 多 CLI × 多 Provider 会话基石 A–D：代码梳理、客户端影响与人工测试计划
 
-> **2026-08-01 生命周期校准**：A–D canonical changes 已归档；本文作为影响与 release smoke 证据保留。后续 Native/Shared repair changes 不回填为 A–D 未完成项。
+> **2026-08-05 生命周期校准**：A–D canonical changes 已归档；本文作为影响与 release smoke 证据保留。Phase 5 Agent Squad V1 已完成本地实现与 automated contract tests，四个 active OpenSpec change 仍等待 Desktop/CLI smoke。
 > - 初始分析日期：2026-07-28
-> - 最近校准：2026-07-29
+> - 最近校准：2026-08-05
 > - 分析窗口：2026-07-27～2026-07-29
 > - 基线分支：`feature/v-0710`
 > - 文档性质：代码与 OpenSpec 现状审计、A–D 实际影响、人工验收计划、D 后路线图
@@ -1037,7 +1037,7 @@ Desktop 非破坏性步骤：
 - D UI 入口缺少明确 feature flag；而设计回滚要求“可隐藏 UI 入口并保留 metadata”。
 - operation / artifact 的 retention、GC、磁盘增长和诊断入口尚未形成产品策略。
 - A2 的独立 Event Log Inspector 仍未实现。
-- Token 用量汇总、会话家族视图和多 Agent 状态视图尚未进入普通用户界面。
+- Token 用量汇总与会话家族视图尚未进入普通用户界面；Agent Squad 状态已进入 Shared conversation card + right inspector，但真实 Desktop/CLI smoke 尚未完成。
 
 ## 10. 接下来必须查什么
 
@@ -1074,16 +1074,24 @@ Desktop degraded confirmation；取消后目标列表不新增会话。
 - Continuation 多代 lineage：A→B→C 后 family root、parent、depth 是否稳定。
 - operation / artifact GC 是否会提前删除仍需 recovery 的数据。
 
-### P2：进入第五阶段“多 Agent 编排”前查
+### P2：第五阶段“Agent Squad V1”已决策边界与待查项
 
-- 哪些 CLI 真正支持“运行中纠偏”，哪些只能等当前任务结束后再补充
-- 并行 Agent 的 owner、approval、interrupt、budget、retry 如何隔离。
-- 多 Agent 状态面板最少需要显示哪些数据
-- `run.settled` 是否足以表达所有引擎的结束与失败。
-- 任务调度是否需要持久化队列；禁止只把任务状态放在前端内存里
-- 人工介入点：AskUserQuestion、Approval、Cancel、Retry 在多 Agent 下如何路由。
-- 多 Agent 界面采用时间线、泳道还是关系图，第一版只能选一种
-- 并行运行对 token / cost / rate limit 的预算与可见性。
+已决策并实现：
+
+- V1 不承诺 mid-turn steer；只在 attempt boundary 做 event-driven dispatch。
+- owner 使用 `workspace + sharedSession + run + node + attempt + binding + target` exact tuple；禁止相似 owner fallback。
+- 用户只在 Lead plan 后确认一次；执行期只保留 `Emergency Stop`，不插入 AskUserQuestion/Retry checkpoint。
+- DAG、budget、attempt、typed outcome 与 recovery 都落 Canonical Fact / durable store；frontend graph state 不是真相。
+- UI 采用 compact DAG list + overview/detail inspector，不做独立 Task Center、Project Map 或 graph canvas。
+- Parallel Analyze + Single Writer；workspace mutation 由 durable lease 串行化，dirty baseline 由 Change Fence 保留和对账。
+
+仍需真实 Desktop/CLI 验证：
+
+- Codex 完整 DAG 的 target identity、terminal、interrupt 和 changed-path evidence。
+- Claude `permission-mode=plan` 的 pure read-only DAG；含 Mutate 时必须在 Lead side effect 前拒绝。
+- Kimi/Grok/OpenCode 的 hard read-only capability 在可证明前持续 fail closed。
+- reload/crash 后 exact-owner recovery、active Mutate Stop 和 ambiguous lease 不误释放。
+- ignored path 与 credential read 属于 V1 可证明性 ceiling；不得把 prompt policy 表述为 OS-level isolation。
 
 ### P3：进入第六阶段“插件与自动流程”前查
 
@@ -1099,7 +1107,7 @@ Desktop degraded confirmation；取消后目标列表不新增会话。
 
 ## 11. Change D 之后的规划
 
-现有正式规划只有 Phase 5 / Phase 6 的方向，尚未达到 implementation-ready，也没有对应 OpenSpec change。以下拆分是基于现有设计的建议，不是已经承诺的任务。
+Phase 5 已从远期方向推进为四个 active OpenSpec change，并完成本地实现与 automated contract tests。由于真实 Desktop/CLI smoke 尚未完成，当前状态是 implementation complete / manual gate pending，不是 archived。Phase 6 仍是远期方向。
 
 ### 11.1 第五阶段：多 Agent 编排基础
 
@@ -1107,63 +1115,68 @@ Desktop degraded confirmation；取消后目标列表不新增会话。
 
 > 让多个 Agent 或 CLI 围绕同一份会话事实协作，但不能各记各的账。
 
-大白话场景：
+V1 大白话场景：
 
 ```text
-Claude 先分析需求
+用户在 Shared conversation 点一次 Squad
         ↓
-Codex 接着修改代码
+当前 Composer target 作为 Lead 生成 Dynamic DAG
         ↓
-另一个 Agent 运行测试
+用户确认一次 plan
         ↓
-Claude 汇总结论
+多个 read-only Worker 并行分析
+        ↓
+唯一 Mutate Worker 修改当前 workspace
+        ↓
+read-only Verify + nested Synthesize
+        ↓
+conversation 只出现一次最终答案
 ```
 
-四个参与者看到的是同一条会话事实。停止、审批、重试和补充要求必须发给正确的参与者。
+Agent prose 不是调度权威。Lead 只提交 structured proposal；mossx 校验、持久化、调度并对账。四个 active change：
 
-建议拆为三个 Change：
+| OpenSpec change | 交付边界 | 状态 |
+| --- | --- | --- |
+| `add-shared-squad-control-plane` | typed Canonical Facts、plan validator、deterministic projection、one-active-run、Tauri contract | 本地实现；automated gate 已覆盖，manual pending |
+| `add-shared-squad-worker-execution` | scoped ordinary CLI Worker Binding、node-scoped Context Package、Dynamic DAG scheduler、typed outcome、bounded repair/final synthesis | 本地实现；真实 CLI smoke pending |
+| `add-conversation-squad-inspector` | send 左侧 one-shot button、conversation plan/run card、SubAgent 同形 right inspector、i18n/a11y/mobile | 本地实现；Playwright preview 与 focused tests 已覆盖，Desktop smoke pending |
+| `harden-shared-squad-recovery` | durable mutation lease、dirty-preserving Change Fence、exact-owner recovery/Stop、kill switch | 本地实现；kill/restart/dirty workspace smoke pending |
 
-#### Change E1：Orchestrator Projection
+V1 capability policy：
 
-- 只读取 A2 已经安全保存的统一事实，不再新建第二套事实库。
-- 整理每次运行、Agent、真实执行者、状态和依赖关系，供界面显示。
-- 复用现有幂等 `run.settled`。
-- 不建立第二个权威事件写入口。
-- 不把前端内存里的状态当成真实调度状态。
-
-预期 UI：
-
-- Session 内可看到多个 Agent / Run 的状态。
-- 明确区分 active、waiting input、approval、settled、failed。
-- 第一版建议采用线性 timeline / lanes，不直接上完整 DAG。
-
-#### Change E2：Control Delivery
-
-- 定义三种控制：运行中纠偏、当前任务完成后接力、下一轮开始前预置输入。
-- 根据 CLI 真实能力选择控制方式。
-- CLI 不支持运行中纠偏时，降级为“结束后接力”，但界面必须说明。
-- 每个控制都携带完整的会话、CLI、Provider、原生会话、运行和轮次身份。
-- 审批、停止、重试和向用户提问不能发错 Agent。
-
-预期体验：
-
-- 用户可以在运行中纠偏、在结算后接力、为下一轮预置输入。
-- 不同 CLI 能力不同时，UI 明确说明实际执行语义。
-
-#### Change E3：Durable Orchestration
-
-- 用持久化队列保存待执行任务和待发送控制。
-- 支持崩溃恢复、取消、重试和“部分 Agent 成功、部分失败”。
-- 同一 CLI 的不同 Provider 并行运行时互不串线。
-- 使用事件更新状态，禁止每秒轮询。
-- 限制 Token、费用和并发数量，并让用户看得到。
+- 全部 Worker 使用用户触发时 Composer 的 sealed exact target，不做 target allowlist 扩权。
+- Codex 具备 hard read-only 与 current-workspace sandbox，可执行完整 DAG。
+- Claude 只在 `permission-mode=plan` 下执行 pure read-only DAG；含 Mutate 的 plan fail closed。
+- Kimi/Grok/OpenCode 的 headless adapter 缺少可验证 hard read-only mode，Lead side effect 前拒绝。
+- V1 不使用 Worktree Executor，不做 multi-writer merge、自动 rollback、mid-turn steer 或 native subagent promotion。
+- Mutate 必须在 Git workspace。Change Fence覆盖 tracked 与 non-ignored untracked delta；ignored path/credential read 无法由 Git delta 完整证明，属于明确 ceiling。
 
 验收红线：
 
-- Orchestrator 不反向定义 Canonical Fact。
-- Shared / Native Canvas contract 不回退。
-- Provider-scoped 并行不串 Owner。
-- 后台 Agent 不制造根渲染风暴。
+- Canonical Fact 是唯一 durable authority；checkpoint 可删，frontend store 只作 projection cache。
+- 同一 Shared Session 只有一个 active Squad；同一 workspace 只有一个 Mutate owner。
+- mutation outcome 必须先 durable append，再释放 lease；未知 side effect 不得自动 replay。
+- Worker turns 全部 nested-only；successful settlement exactly once 投影 top-level final。
+- Stop 先写 cancel intent，再 best-effort interrupt exact owner；不 reset/stash/checkout/rollback。
+- kill switch 关闭后拒绝新 run/approval/dispatch；历史读取、exact-owner Stop 与既有 attempt terminal settlement 继续可用。
+- 后台执行由 attempt boundary/event 驱动，不做秒级 polling，不向 root reducer灌 Worker raw delta。
+
+#### Phase 5 V1 人工测试矩阵
+
+| ID | 场景 | 预期 | 当前状态 |
+| --- | --- | --- | --- |
+| MT-SQ01 | Shared / Native 入口边界 | Shared send 左侧显示 one-shot `Squad`；Native 不显示 | ⏳ Desktop pending |
+| MT-SQ02 | Codex Lead + 一次确认 | plan 前无 Worker；确认后 inspector 自动打开并全自动执行 | ⏳ Desktop/CLI pending |
+| MT-SQ03 | Parallel Analyze + Single Writer | read-only nodes 可并行；任一时刻仅一个 Mutate lease | ⏳ CLI pending |
+| MT-SQ04 | dirty workspace | 保留既有改动；只接受声明内 delta；不 reset/stash/rollback | ⏳ dirty smoke pending |
+| MT-SQ05 | workspace lease 隔离 | 相同 root 的第二 writer 被阻塞；不同 root 可独立推进 | ⏳ multi-run smoke pending |
+| MT-SQ06 | reload / crash recovery | 使用 exact attempt owner 恢复；ambiguous owner 保持 blocked，不按时间放租约 | ⏳ kill/restart pending |
+| MT-SQ07 | nested presentation | Worker/Synthesize raw turns 不出现在主幕布；成功时只有一个 final | ⏳ Desktop projection pending |
+| MT-SQ08 | Emergency Stop | 停止新 dispatch；只 interrupt exact owner；active Mutate 不明时 Blocked 且无 rollback | ⏳ Stop smoke pending |
+| MT-SQ09 | 权限越界 | workspace 外、credential candidate、remote write、deploy、commit/push 全部 fail closed | ⏳ adversarial smoke pending |
+| MT-SQ10 | engine capability | Claude pure read-only 可运行；Claude Mutate 与 Kimi/Grok/OpenCode 在 side effect 前拒绝 | ⏳ CLI matrix pending |
+| MT-SQ11 | inspector 交互 | desktop resize、keyboard separator、focus restore、mobile focus trap、SubAgent parity | ⏳ Desktop/mobile pending；focused test 已覆盖 keyboard/focus |
+| MT-SQ12 | 老会话与普通 Shared 浏览隔离 | 连续切换 Native、旧 SubAgent 与至少 100 个无 canonical Squad evidence 的 Shared Session 时，`shared_squad_get`、Squad recovery 与 Squad Toast 均为 0；真实 Squad 同一 evidence revision 最多 hydration 一次 | ✅ automated 40/40；⏳ Desktop stress pending |
 
 ### 11.2 第六阶段：插件与自动流程
 
@@ -1226,18 +1239,20 @@ mossx 先检查它声明的能力和权限
 ### 11.3 推荐优先级
 
 ```text
-先完成 D 的 Codex-target 产品闭环
+完成 Phase 5 automated gate 与 ADR/spec 校准
         ↓
-补齐 Claude target；Kimi 按 capability go / no-go
+执行 Codex 完整 DAG + Claude read-only Desktop/CLI smoke
         ↓
-做 1～2 个 release cycle 的真实恢复与长会话观测
+执行 dirty workspace / reload / Stop / adversarial boundary smoke
         ↓
-Phase 5：先 Projection，再 Control，再 Durable Orchestration
+OpenSpec verify / sync / archive Phase 5 四个 change
         ↓
-第六阶段：先做插件注册和权限，再做事件接口与远程调用，最后做自动流程和任务关系图
+观察 1～2 个 release cycle
+        ↓
+第六阶段：先定义 extension permission 与 registration，再开放 public Pipeline/DAG API
 ```
 
-不要在 D 刚完成后直接做完整任务关系图或插件市场。A–D 解决的是可信会话与上下文；多 Agent 编排还需要单独设计真实执行者、任务队列、费用预算、部分失败和人工介入规则。
+不要因为 Phase 5 内部已经使用 Dynamic DAG，就提前把它暴露为 Plugin/Pipeline public contract。V1 的 exact owner、permission envelope、mutation lease 与 recovery 需要先经过真实 CLI 和崩溃场景验证。
 
 ## 12. 最终判断
 
@@ -1253,7 +1268,7 @@ A–D 完成后，mossx 的客户端定位会发生一次实质跃迁：
 安全迁移上下文、
 并从 Native Session 派生可追溯的 Provider Continuation
 
-完成 Phase 5：
+Phase 5 V1 本地实现：
 多个 Agent 能在同一会话事实之上被协调
 
 完成 Phase 6：
@@ -1269,9 +1284,9 @@ A–D 完成后，mossx 的客户端定位会发生一次实质跃迁：
 - 新 CLI 按 Adapter contract 接入，而不是继续堆条件分支。
 
 Shared Session 的 Claude → Codex → Claude 正常交叉切换已于 2026-07-29 通过产品 owner
-验证。当前最重要的下一步不是继续扩功能，而是补齐 MT-B04 Stop、MT-X04 故障恢复记录，
-并独立完成 Native Provider Continuation 的 Claude A → Codex B → 原 Claude A Desktop
-smoke。Kimi target 继续保持 capability gate。
+验证。2026-08-05 Phase 5 Agent Squad V1 已完成本地实现与 automated contract tests；当前最重要的
+下一步是按 MT-SQ01～MT-SQ11 完成真实 Desktop/CLI、dirty workspace、reload 与 Stop 证据。
+证据完成前不得 archive 四个 Phase 5 change；Kimi/Grok/OpenCode Squad target 继续 fail closed。
 
 ## 13. 核对范围
 
@@ -1283,6 +1298,10 @@ smoke。Kimi target 继续保持 capability gate。
 - `openspec/changes/archive/2026-07-28-add-native-provider-continuation/**`
 - `openspec/changes/archive/2026-07-28-calibrate-multi-cli-session-foundation-a-d/**`
 - `openspec/changes/archive/2026-07-27-{establish-shared-event-storage,assemble-shared-canonical-facts,project-shared-canonical-conversation}/**`
+- `openspec/changes/{add-shared-squad-control-plane,add-shared-squad-worker-execution,add-conversation-squad-inspector,harden-shared-squad-recovery}/**`
+- `src-tauri/src/squad_orchestration/**`
+- `src/features/squad-orchestration/**`
+- `docs/previews/phase5-conversation-squad-inspector-v1.html`
 - `openspec/changes/archive/2026-07-28-{compose-shared-session-execution-target,add-shared-context-compiler}/**`
 - `openspec/changes/fix-shared-terminal-recovery-i18n/**`
 - `openspec/changes/fix-shared-canonical-history-recovery/**`

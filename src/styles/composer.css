@@ -3,6 +3,7 @@
 @import "./composer.part2.css";
 @import "./composer.kanban-mode.css";
 @import "./shared-send-status.css";
+@import "./composer-run-status.css";
 
 .composer-browser-context {
   display: flex;

@@ -53,7 +53,37 @@ export function normalizeFsPath(path: string) {
 }
 
 export function isLikelyWindowsFsPath(path: string) {
-  return /^[a-zA-Z]:\//.test(path) || path.startsWith("//");
+  const trimmed = path.trim();
+  return (
+    /^[a-zA-Z]:[\\/]/.test(trimmed) ||
+    trimmed.startsWith("\\\\") ||
+    trimmed.startsWith("//") ||
+    /^[a-zA-Z]:\//.test(normalizeFsPath(trimmed))
+  );
+}
+
+/**
+ * Join a workspace root and a workspace-relative path into an absolute OS path.
+ * Windows workspaces always get backslash separators so Explorer/`/select` works.
+ */
+export function joinWorkspaceAbsolutePath(
+  workspacePath: string,
+  relativePath: string,
+): string {
+  const trimmedRelative = relativePath.replace(/^[\\/]+/, "").replace(/[\\/]+$/, "");
+  const usesWindowsSeparators = isLikelyWindowsFsPath(workspacePath);
+  const separator = usesWindowsSeparators ? "\\" : "/";
+  const base = workspacePath.replace(/[\\/]+$/, "");
+  const normalizedBase = usesWindowsSeparators
+    ? base.replaceAll("/", "\\")
+    : base;
+  if (!trimmedRelative) {
+    return normalizedBase;
+  }
+  const normalizedRelative = usesWindowsSeparators
+    ? trimmedRelative.replaceAll("/", "\\")
+    : trimmedRelative.replaceAll("\\", "/");
+  return `${normalizedBase}${separator}${normalizedRelative}`;
 }
 
 export function normalizeComparablePath(path: string, caseInsensitive: boolean) {

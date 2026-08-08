@@ -20,7 +20,18 @@ const messages = {
       "title_one": "{{count}} फ़ाइल संपादित की",
       "title_other": "{{count}} फ़ाइलें संपादित कीं",
       "showMore_one": "{{count}} और फ़ाइल दिखाएँ",
-      "showMore_other": "{{count}} और फ़ाइलें दिखाएँ"
+      "showMore_other": "{{count}} और फ़ाइलें दिखाएँ",
+      "revertAll": "सभी पूर्ववत करें",
+      "revertFile": "{{path}} पूर्ववत करें",
+      "revertFileAction": "पूर्ववत करें",
+      "revertAllConfirmTitle": "सभी परिवर्तन पूर्ववत करें",
+      "revertAllConfirmBody":
+        "इससे {{count}} फ़ाइलों में स्थानीय परिवर्तन छोड़ दिए जाएंगे और अंतिम commit पर पुनर्स्थापित होंगे। इसे पूर्ववत नहीं किया जा सकता।",
+      "revertAllConfirmAction": "सभी पूर्ववत करें",
+      "revertFileConfirmTitle": "फ़ाइल परिवर्तन पूर्ववत करें",
+      "revertFileConfirmBody":
+        "इससे «{{path}}» के स्थानीय परिवर्तन छोड़ दिए जाएंगे और अंतिम commit पर पुनर्स्थापित होंगे। इसे पूर्ववत नहीं किया जा सकता।",
+      "revertFileConfirmAction": "पूर्ववत करें"
     },
     "noThinkingContent": "कोई सोच सामग्री नहीं",
     "hiddenThinkingContent": "वर्तमान सेटिंग के कारण सोच सामग्री छिपी हुई है।",
@@ -52,6 +63,7 @@ const messages = {
     "restoringHistory": "बातचीत विंडो लोड हो रही है…",
     "restoringHistoryHint": "स्थानीय ट्रांसक्रिप्ट और सत्र स्थिति लोड हो रही है।",
     "generatingResponse": "प्रतिक्रिया उत्पन्न हो रही है...",
+    "responding": "प्रतिक्रिया में...",
     "codexWaitingForFirstText": "Codex चल रहा है। पहले टेक्स्ट चंक की प्रतीक्षा हो रही है...",
     "codexSilentSuspected": "कुछ समय से कोई नया Codex आउटपुट नहीं। अभी भी रनटाइम गतिविधि सुनी जा रही है...",
     "nonStreamingHint": "यह मॉडल गैर-स्ट्रीमिंग आउटपुट लौटा सकता है, या नेटवर्क अगम्य हो सकता है। कृपया प्रतीक्षा करें...",
@@ -66,7 +78,7 @@ const messages = {
     "opencodeModelSwitchMessage": "एक ही सत्र में मॉडल स्विच का पता चला। टाइमआउट से बचने के लिए एक नया बैकएंड सत्र बनाया गया है।",
     "doneIn": "{{duration}} में पूर्ण",
     "totalDuration": "अवधि",
-    "durationSeconds": "{{seconds}}s",
+    "durationSeconds": "{{duration}}",
     "tokenUsage": "इन {{input}} / आउट {{output}}",
     "tokenUsageTooltip": "In {{input}} token / Out {{output}} token",
     "messageActions": "संदेश क्रियाएँ",

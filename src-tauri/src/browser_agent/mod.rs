@@ -1351,6 +1351,12 @@ fn create_browser_agent_window(
     Ok(())
 }
 
+fn is_local_html_file_url(url: &str) -> bool {
+    let without_fragment = url.split(['?', '#']).next().unwrap_or(url);
+    let lower = without_fragment.to_ascii_lowercase();
+    lower.ends_with(".html") || lower.ends_with(".htm")
+}
+
 fn validate_browser_url_for_workspace(
     raw_url: &str,
     workspace_id: Option<&str>,
@@ -1367,16 +1373,35 @@ fn validate_browser_url_for_workspace(
             return blocked_url(
                 raw_url,
                 "missing_scheme",
-                "Browser Agent URL must include an http:// or https:// scheme.",
+                "Browser Agent URL must include an http://, https://, or file:// scheme.",
             );
         }
     };
+
+    // Local HTML preview: allow file:// only for .html / .htm (relative assets keep working).
+    if scheme == "file" {
+        if !is_local_html_file_url(trimmed) {
+            return blocked_url(
+                raw_url,
+                "blocked_file_type",
+                "Browser Agent only opens local .html / .htm files via file://.",
+            );
+        }
+        return BrowserUrlValidationResult {
+            raw_url: raw_url.to_string(),
+            normalized_url: Some(trimmed.to_string()),
+            allowed: true,
+            blocked_reason: None,
+            diagnostic: None,
+            workspace_local_allowed: true,
+        };
+    }
 
     if scheme != "http" && scheme != "https" {
         return blocked_url(
             raw_url,
             "blocked_scheme",
-            "Browser Agent MVP only allows http:// and https:// pages.",
+            "Browser Agent only allows http://, https://, and local file:// HTML pages.",
         );
     }
 

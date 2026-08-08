@@ -207,6 +207,52 @@ export function clearLiveAssistantText(threadId: string): void {
 }
 
 /**
+ * 读权威累积正文（entriesByThread），不是 48ms publish 节流后的 published 快照。
+ * complete / terminal salvage 必须用这个，否则会漏掉尚未 publish 的尾段。
+ */
+export function peekLiveAssistantText(
+  threadId: string,
+): LiveAssistantTextEntry | null {
+  return entriesByThread.get(threadId) ?? null;
+}
+
+/**
+ * 为 complete/settle 选择应写入 durable state 的终稿。
+ *
+ * A4 路径下 reducer 往往只有建壳首段（例如 Markdown 的 `**`），全文在通道里。
+ * 若 provider 终稿为空/偏短却 `clearLiveAssistantText`，UI 会在 isStreaming 结束后
+ * 回退到壳文本，重开历史才恢复——本函数在 clear 前把更完整的一侧保住。
+ *
+ * 不修改通道；调用方写入 reducer 后再 clear/drain。
+ */
+export function resolveLiveAssistantSettlementText(
+  threadId: string,
+  completedText: string,
+): string {
+  const liveText = entriesByThread.get(threadId)?.text ?? "";
+  const completed = completedText ?? "";
+  if (!liveText) {
+    return completed;
+  }
+  if (!completed) {
+    return liveText;
+  }
+  if (liveText === completed) {
+    return completed;
+  }
+  // provider 终稿只是 live 前缀（不完整 complete）→ 保留通道全文
+  if (liveText.startsWith(completed)) {
+    return liveText;
+  }
+  // 正常路径：complete 已是 live 的超集
+  if (completed.startsWith(liveText)) {
+    return completed;
+  }
+  // 两侧有分叉时取更长者，避免 clear 后不可恢复地丢掉通道正文
+  return liveText.length >= completed.length ? liveText : completed;
+}
+
+/**
  * terminal settlement / 中断时取走「尚未落入 reducer 的尾段」并清除条目。
  * 调用方应把 tailDelta 作为一条普通 delta dispatch，让被中断的部分正文
  * 落进 items（否则退出 streaming 后该行会回退到壳首段）。

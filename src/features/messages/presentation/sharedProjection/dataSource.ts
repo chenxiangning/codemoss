@@ -19,6 +19,7 @@ import { BUILTIN_ENGINE_TYPES } from "../../../engine/engineRegistry";
 import type { SharedProjectionItem } from "./types";
 import { LOCAL_PROVIDER_LABEL } from "../../../../utils/turnBadge";
 import { buildConversationItem } from "../../../../utils/threadItems";
+import { isMultiAgentSettledSummaryItemId } from "../../../multi-agent/utils/canvasItems";
 
 export const SHARED_PROJECTION_STORAGE_KEY = "mossx.sharedProjection";
 
@@ -186,7 +187,7 @@ function enrichSharedToolConversationItem(input: {
         detail.includes("subagentType") ||
         detail.includes("background")));
   // Claude Agent/Task：即使 title 被换成 description，也要保住 toolType，
-  // 否则会掉进 Generic 扳手行，与 SubagentSquadGrid 双重渲染。
+  // 以便 status-panel / run-status strip 的 isSubagentTool 识别。
   const looksLikeClaudeAgent =
     /^agent$/i.test(toolType) ||
     /^task$/i.test(toolType) ||
@@ -423,6 +424,10 @@ function toConversationItem(item: SharedProjectionItem): ConversationItem | null
   switch (kind) {
     case "message": {
       const role = content.role === "user" ? "user" : "assistant";
+      // Multi-Agent durable settle 摘要：不进独立气泡，由 HistoryFold 卡下汇总展示
+      if (role === "assistant" && isMultiAgentSettledSummaryItemId(id)) {
+        return null;
+      }
       const executionTargetSnapshot = readExecutionTargetSnapshot(
         content,
         item.fidelity,

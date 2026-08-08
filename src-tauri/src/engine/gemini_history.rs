@@ -1652,10 +1652,7 @@ mod tests {
             "/Users/demo/code/AI/github/mossx",
             &workspace_variants
         ));
-        assert!(!matches_workspace_path(
-            "/Users/demo",
-            &workspace_variants
-        ));
+        assert!(!matches_workspace_path("/Users/demo", &workspace_variants));
     }
 
     #[cfg(not(windows))]

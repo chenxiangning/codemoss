@@ -280,7 +280,7 @@ export function classifyToolCategory(item: {
   const toolName = extractToolName(item.title);
   const lower = toolName.toLowerCase();
 
-  // 优先级0：subAgent 跨引擎统一识别，供 persona 卡片墙
+  // 优先级0：subAgent 跨引擎统一识别（strip / status-panel / enrich；幕布不再组 squad）
   if (isSubagentTool(item)) {
     return "subagent";
   }

@@ -1,7 +1,7 @@
 {
   "name": "ccgui",
   "private": true,
-  "version": "0.8.2",
+  "version": "0.8.5",
   "type": "module",
   "scripts": {
     "preinstall": "node scripts/enforce-package-manager.mjs npm",
@@ -108,10 +108,11 @@
     "@floating-ui/react-dom": "2.1.7",
     "@hello-pangea/dnd": "^18.0.1",
     "@lobehub/icons-static-svg": "^1.93.0",
+    "@number-flow/react": "^0.6.2",
     "@tailwindcss/vite": "^4.1.18",
     "@tanstack/react-virtual": "^3.13.18",
     "@tauri-apps/api": "~2.9.0",
-    "@tauri-apps/plugin-dialog": "^2.6.0",
+    "@tauri-apps/plugin-dialog": "2.6.0",
     "@tauri-apps/plugin-notification": "^2.3.3",
     "@tauri-apps/plugin-opener": "^2",
     "@tauri-apps/plugin-process": "^2.3.1",

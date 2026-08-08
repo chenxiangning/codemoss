@@ -209,6 +209,19 @@
   flex: 0 0 32px;
 }
 
+/* 运行时提示固定入口：有失败时恢复对号→叹号的红色态（与 dock bubble is-has-error 对齐） */
+.sidebar-settings-pinned-item.is-runtime-notice-error {
+  color: #fda4af;
+}
+
+.sidebar-settings-runtime-notice-icon.is-has-error {
+  color: #fda4af;
+}
+
+.sidebar-settings-runtime-notice-icon.is-idle {
+  color: inherit;
+}
+
 .sidebar-settings-dropdown {
   /* 跟随侧栏宽度收缩，避免窄侧栏时被 .sidebar-body 的 overflow:hidden 裁掉右侧圆角/阴影 */
   width: min(220px, calc(var(--sidebar-width, 210px) - 24px));
@@ -1969,8 +1982,12 @@
   flex-direction: column;
   gap: 2px;
   margin-left: 0;
-  /* Horizontal inset matches workspace-row (4px) so active pills align */
-  padding: 1px 4px 2px;
+  /*
+   * Session selection pills stay inset vs workspace-row (margin 4px) so nested
+   * session backgrounds are narrower and do not flush-align with the project
+   * pill above. Left is a bit larger for clear tree hierarchy.
+   */
+  padding: 1px 8px 2px 12px;
 }
 
 .thread-list[data-virtualized="true"] {
@@ -2377,10 +2394,11 @@
 }
 
 /* Updated Thread Row Styles — selection geometry aligned with workspace-row */
+/* Session pill geometry is inset via .thread-list padding (not flush with workspace-row). */
 .thread-row {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 2px;
   min-height: var(--sidebar-row-height-thread);
   padding: 2px 6px 2px calc(10px + var(--thread-indent, 0px));
   border-radius: var(--sidebar-row-radius);

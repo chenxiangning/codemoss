@@ -41,3 +41,16 @@ export function isMacPlatform(): boolean {
   }
   return cachedIsMac;
 }
+
+/**
+ * Cold-start full-window click gate: all Tauri desktop shells (Win / macOS /
+ * Linux). List full-catalog + early pointer freezes are not engine-specific.
+ * Pure web / non-Tauri previews keep the gate off.
+ */
+export function isStartupGatePlatform(): boolean {
+  try {
+    return isTauri();
+  } catch {
+    return false;
+  }
+}

@@ -203,6 +203,50 @@ describe("useCustomCommands", () => {
     unsubscribe();
   });
 
+  it("does not toast when orchestrator soft-cancels the list as stale", async () => {
+    const { startupOrchestrator } = await import(
+      "../../startup-orchestration/utils/startupOrchestrator"
+    );
+    const toasts: ErrorToast[] = [];
+    const unsubscribe = subscribeErrorToasts((toast) => {
+      toasts.push(toast);
+    });
+
+    let releaseList!: (value: unknown[]) => void;
+    vi.mocked(getClaudeCommandsList).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          releaseList = resolve;
+        }),
+    );
+
+    const { result } = renderHook(() =>
+      useCustomCommands({
+        activeEngine: "claude",
+        workspaceId: "workspace-1",
+      }),
+    );
+
+    await waitFor(() => {
+      expect(getClaudeCommandsList).toHaveBeenCalled();
+    });
+
+    act(() => {
+      startupOrchestrator.cancelWorkspaceTasks("workspace-1", "stale");
+    });
+    releaseList([]);
+
+    await waitFor(() => {
+      // soft-cancel 结束后 inFlight 应放开；commandsError 保持空
+      expect(result.current.commandsError).toBeNull();
+    });
+
+    expect(
+      toasts.find((entry) => entry.id === "commands-list-unavailable"),
+    ).toBeUndefined();
+    unsubscribe();
+  });
+
   it("refreshes when the Rust watcher emits claude-commands-changed", async () => {
     vi.mocked(getClaudeCommandsList).mockResolvedValue([]);
 

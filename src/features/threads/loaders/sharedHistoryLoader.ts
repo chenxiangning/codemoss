@@ -8,6 +8,10 @@ import {
 } from "../../messages/presentation/sharedProjection/dataSource";
 import type { SharedProjectionItem } from "../../messages/presentation/sharedProjection/types";
 import {
+  findCanonicalAgentRunId,
+  registerAgentConversationEvidence,
+} from "../../multi-agent/store/agentStore";
+import {
   hydrateSharedTargetState,
   getSharedTargetState,
   getPersistGeneration,
@@ -116,10 +120,20 @@ export function createSharedHistoryLoader({
       if (isSharedProjectionDataSourceEnabled()) {
         report(buildSharedHistoryProjectionProgress("start"));
         try {
+          const sharedProjection = await loadSharedProjection(
+            workspaceId,
+            threadId,
+          );
+          const agentRunId = findCanonicalAgentRunId(sharedProjection);
+          if (agentRunId) {
+            registerAgentConversationEvidence(
+              workspaceId,
+              threadId,
+              agentRunId,
+            );
+          }
           const projectedItems =
-            resolveSharedConversationItems(
-              await loadSharedProjection(workspaceId, threadId),
-            ) ?? [];
+            resolveSharedConversationItems(sharedProjection) ?? [];
           report(
             buildSharedHistoryProjectionProgress("done", projectedItems.length),
           );

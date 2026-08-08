@@ -20,7 +20,18 @@ const messages = {
       "title_one": "{{count}} 個のファイルを編集",
       "title_other": "{{count}} 個のファイルを編集",
       "showMore_one": "他 {{count}} 個のファイルを表示",
-      "showMore_other": "他 {{count}} 個のファイルを表示"
+      "showMore_other": "他 {{count}} 個のファイルを表示",
+      "revertAll": "すべて取り消し",
+      "revertFile": "{{path}} を取り消し",
+      "revertFileAction": "取り消し",
+      "revertAllConfirmTitle": "すべての変更を取り消し",
+      "revertAllConfirmBody":
+        "{{count}} 個のファイルのローカル変更を破棄し、最新のコミットに戻します。この操作は元に戻せません。",
+      "revertAllConfirmAction": "すべて取り消す",
+      "revertFileConfirmTitle": "ファイル変更を取り消し",
+      "revertFileConfirmBody":
+        "「{{path}}」のローカル変更を破棄し、最新のコミットに戻します。この操作は元に戻せません。",
+      "revertFileConfirmAction": "取り消す"
     },
     "noThinkingContent": "思考内容がありません",
     "hiddenThinkingContent": "現在の設定により思考内容は非表示になっています。",
@@ -52,6 +63,7 @@ const messages = {
     "restoringHistory": "会話ウィンドウを読み込み中…",
     "restoringHistoryHint": "ローカルの記録とセッション状態を読み込んでいます。",
     "generatingResponse": "応答を生成中...",
+    "responding": "応答中...",
     "codexWaitingForFirstText": "Codex を実行中です。最初のテキストチャンクを待機しています...",
     "codexSilentSuspected": "しばらく Codex の新しい出力がありません。ランタイムのアクティビティを引き続き待機しています...",
     "nonStreamingHint": "このモデルは非ストリーミング出力を返す場合や、ネットワークに到達できない場合があります。お待ちください...",
@@ -66,7 +78,7 @@ const messages = {
     "opencodeModelSwitchMessage": "同じセッション内でモデルの切り替えを検出しました。タイムアウトを避けるため、新しいバックエンドセッションを作成しました。",
     "doneIn": "{{duration}} で完了",
     "totalDuration": "所要時間",
-    "durationSeconds": "{{seconds}}秒",
+    "durationSeconds": "{{duration}}",
     "tokenUsage": "入力 {{input}} / 出力 {{output}}",
     "tokenUsageTooltip": "入力 {{input}} token / 出力 {{output}} token",
     "messageActions": "メッセージ操作",

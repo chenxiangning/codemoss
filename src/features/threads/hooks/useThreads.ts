@@ -51,6 +51,7 @@ import { useThreadAccountInfo } from "./useThreadAccountInfo";
 import { useThreadRateLimits } from "./useThreadRateLimits";
 import { useThreadSelectors } from "./useThreadSelectors";
 import { useThreadStatus } from "./useThreadStatus";
+import { registerCollabThreadProcessingMarker } from "../../multi-agent/runtime/collabThreadProcessingBridge";
 import { useThreadUserInput } from "./useThreadUserInput";
 import { useThreadCompletionEmail } from "./useThreadCompletionEmail";
 import { useMailDrivenSessionContinuation } from "./useMailDrivenSessionContinuation";
@@ -483,6 +484,14 @@ export function useThreads({
     },
     [markImmediateCodexProcessingOwner, markProcessing],
   );
+
+  // Multi-Agent 协作生命周期 → 左侧会话蓝点 / 代理电（executor 经 bridge 调用）
+  useEffect(() => {
+    registerCollabThreadProcessingMarker(markProcessingWithImmediateOwner);
+    return () => {
+      registerCollabThreadProcessingMarker(null);
+    };
+  }, [markProcessingWithImmediateOwner]);
 
   const pushThreadErrorMessage = useCallback(
     (

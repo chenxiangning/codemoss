@@ -160,6 +160,7 @@ function disposeFrontendTerminalInstance(refs: {
   webLinksAddonRef: { current: WebLinksAddon | null };
   inputDisposableRef: { current: { dispose: () => void } | null };
   renderedKeyRef: { current: string | null };
+  attachedHostRef?: { current: HTMLElement | null };
 }) {
   refs.inputDisposableRef.current?.dispose();
   refs.inputDisposableRef.current = null;
@@ -171,6 +172,9 @@ function disposeFrontendTerminalInstance(refs: {
   refs.searchAddonRef.current = null;
   refs.webLinksAddonRef.current = null;
   refs.renderedKeyRef.current = null;
+  if (refs.attachedHostRef) {
+    refs.attachedHostRef.current = null;
+  }
 }
 
 export function useTerminalSession({
@@ -180,10 +184,16 @@ export function useTerminalSession({
   onDebug,
 }: UseTerminalSessionOptions): TerminalSessionState {
   // Object ref holds the live host node; callback ref drives remount detection.
-  // Settings / memory / home transitions unmount the dock while terminalOpen
-  // stays true — without a remount signal, xterm stays attached to a detached
-  // node and the remounted panel is blank (white).
+  // Settings / memory / home / chat↔extensions transitions unmount the dock while
+  // terminalOpen stays true — without a remount signal, xterm stays attached to a
+  // detached node and the remounted panel is blank (white).
+  //
+  // Important: chat↔extensions is a single React commit that fires
+  // callback-ref(null) then callback-ref(newHost) before any effect runs.
+  // Effects only see the final host; we must compare against attachedHostRef
+  // rather than assuming "terminalRef.current exists ⇒ already on the live host".
   const containerNodeRef = useRef<HTMLDivElement | null>(null);
+  const attachedHostRef = useRef<HTMLElement | null>(null);
   const [containerEpoch, setContainerEpoch] = useState(0);
   const setContainerRef = useCallback((node: HTMLDivElement | null) => {
     if (containerNodeRef.current === node) {
@@ -270,6 +280,9 @@ export function useTerminalSession({
       : false;
   }, []);
 
+  // Visual-only refresh. Never call terminal.focus() here — appearance sync,
+  // buffer restore, HMR/theme observers, and session readiness all call this
+  // while the user may be typing in the composer.
   const refreshTerminal = useCallback(() => {
     const terminal = terminalRef.current;
     if (!terminal) {
@@ -277,7 +290,6 @@ export function useTerminalSession({
     }
     const lastRow = Math.max(0, terminal.rows - 1);
     terminal.refresh(0, lastRow);
-    terminal.focus();
   }, []);
   const applyTerminalAppearance = useCallback(() => {
     const terminal = terminalRef.current;
@@ -344,9 +356,10 @@ export function useTerminalSession({
   }, [onDebug, writeToTerminal]);
 
   useEffect(() => {
-    // Host node gone (settings/memory/home unmount the dock) or panel closed:
-    // always drop the frontend xterm instance so a later remount can reattach.
-    if (!isVisible || !containerNodeRef.current) {
+    // Host node gone (settings/memory/home/extensions tree swap unmounts the dock)
+    // or panel closed: drop the frontend xterm so a later remount can reattach.
+    const host = containerNodeRef.current;
+    if (!isVisible || !host) {
       disposeFrontendTerminalInstance({
         terminalRef,
         fitAddonRef,
@@ -354,20 +367,43 @@ export function useTerminalSession({
         webLinksAddonRef,
         inputDisposableRef,
         renderedKeyRef,
+        attachedHostRef,
       });
       return;
     }
 
-    if (terminalRef.current) {
+    // Already bound to the live host — keep the instance.
+    if (terminalRef.current && attachedHostRef.current === host) {
       return;
     }
+
+    // Stale instance on a detached / previous host. Same-commit remount
+    // (chat ↔ extensions) never flushes intermediate null into this effect,
+    // so "terminalRef.current exists" alone would leave a white blank panel.
+    if (terminalRef.current) {
+      disposeFrontendTerminalInstance({
+        terminalRef,
+        fitAddonRef,
+        searchAddonRef,
+        webLinksAddonRef,
+        inputDisposableRef,
+        renderedKeyRef,
+        attachedHostRef,
+      });
+    }
+
     let cancelled = false;
+    const openHost = host;
     void loadXtermModules()
       .then(({ Terminal, FitAddon, SearchAddon, WebLinksAddon }) => {
-        if (cancelled || terminalRef.current || !containerNodeRef.current) {
+        if (
+          cancelled ||
+          terminalRef.current ||
+          containerNodeRef.current !== openHost
+        ) {
           return;
         }
-        const appearance = getTerminalAppearance(containerNodeRef.current);
+        const appearance = getTerminalAppearance(openHost);
         const terminal = new Terminal({
           cursorBlink: true,
           fontSize: 12,
@@ -396,12 +432,13 @@ export function useTerminalSession({
         if (webLinksAddon) {
           terminal.loadAddon(webLinksAddon);
         }
-        terminal.open(containerNodeRef.current);
+        terminal.open(openHost);
         fitAddon.fit();
         terminalRef.current = terminal;
         fitAddonRef.current = fitAddon;
         searchAddonRef.current = searchAddon;
         webLinksAddonRef.current = webLinksAddon;
+        attachedHostRef.current = openHost;
         applyTerminalAppearance();
 
         inputDisposableRef.current = terminal.onData((data: string) => {
@@ -445,6 +482,7 @@ export function useTerminalSession({
         webLinksAddonRef,
         inputDisposableRef,
         renderedKeyRef,
+        attachedHostRef,
       });
     };
   }, []);

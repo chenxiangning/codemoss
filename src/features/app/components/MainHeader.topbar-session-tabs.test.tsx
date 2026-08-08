@@ -10,9 +10,14 @@ vi.mock("react-i18next", () => ({
   }),
 }));
 
-vi.mock("@tauri-apps/plugin-opener", () => ({
-  revealItemInDir: vi.fn(),
-}));
+vi.mock("../../../services/tauri", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../../services/tauri")>();
+  return {
+    ...actual,
+    revealInFileManager: vi.fn(),
+    openWorkspaceIn: vi.fn(),
+  };
+});
 
 const workspace = {
   id: "w1",

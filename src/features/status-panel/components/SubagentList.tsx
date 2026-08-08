@@ -33,6 +33,9 @@ export const SubagentList = memo(function SubagentList({
   const { t } = useTranslation();
   const probeVersion = useSubagentSessionProbeVersion();
   const parentThreadId = useActiveCanvasSelector((snapshot) => snapshot.threadId);
+  const nativeThreadIds = useActiveCanvasSelector(
+    (snapshot) => snapshot.activeNativeThreadIds,
+  );
   const threadStatusById = useActiveCanvasSelector(
     (snapshot) => snapshot.threadStatusById,
   );
@@ -46,6 +49,7 @@ export const SubagentList = memo(function SubagentList({
       buildSubagentCardFromSubagentInfo(agent, {
         index,
         parentThreadId,
+        nativeThreadIds,
       }),
     );
     const enrichment = mergeSubagentEnrichmentSources({
@@ -73,6 +77,7 @@ export const SubagentList = memo(function SubagentList({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- probeVersion 订阅旁路 load
   }, [
     canvasItems,
+    nativeThreadIds,
     parentThreadId,
     probeVersion,
     subagents,
