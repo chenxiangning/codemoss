@@ -413,17 +413,6 @@ export function estimateTimelineProjectionRowSize(row: TimelineProjectionRow) {
   switch (row.kind) {
     case "entry":
       if (row.entry.kind !== "item") {
-        if (row.entry.kind === "subagentGroup") {
-          // 对齐 compact 卡片：minmax(168px) 约 2~3 列；描述单行 + 细进度条。
-          const count = Math.max(1, row.entry.items.length);
-          const columns = count === 1 ? 1 : Math.min(3, count);
-          const rows = Math.ceil(count / columns);
-          const header = count > 1 ? 28 : 0;
-          const card = count === 1 ? 88 : 82;
-          const gap = 6;
-          const chrome = 18;
-          return header + rows * card + Math.max(0, rows - 1) * gap + chrome;
-        }
         if (row.entry.kind === "bashGroup" || row.entry.kind === "readGroup") {
           return 128;
         }

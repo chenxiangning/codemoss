@@ -1,4 +1,4 @@
-//! 六表 DDL、PRAGMA runtime contract 与 `user_version` migration。
+//! Shared Event Log DDL、PRAGMA runtime contract 与 `user_version` migration。
 //!
 //! DDL 以 Foundation §14.4.2 为基准；允许的 SQL 细节调整：
 //! - `shared_binding_state` 增加 `length(...) > 0` CHECK（binding_key / engine / availability），
@@ -12,7 +12,7 @@ use rusqlite::Connection;
 use super::error::StoreError;
 
 /// 当前 schema 版本；migration 只能单调递增到该版本。
-pub(crate) const SCHEMA_VERSION: u32 = 1;
+pub(crate) const SCHEMA_VERSION: u32 = 2;
 
 /// Foundation §14.4.3 runtime contract。
 pub(crate) const BUSY_TIMEOUT: Duration = Duration::from_secs(5);
@@ -109,6 +109,27 @@ CREATE TABLE IF NOT EXISTS provider_usage_aggregate_log (
 );
 "#;
 
+const DDL_V2: &str = r#"
+CREATE TABLE IF NOT EXISTS squad_workspace_mutation_lease (
+  workspace_id TEXT PRIMARY KEY,
+  session_id TEXT NOT NULL,
+  run_id TEXT NOT NULL,
+  node_id TEXT NOT NULL,
+  attempt_id TEXT NOT NULL,
+  epoch INTEGER NOT NULL,
+  state TEXT NOT NULL,
+  acquired_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  CHECK (length(workspace_id) > 0),
+  CHECK (length(session_id) > 0),
+  CHECK (length(run_id) > 0),
+  CHECK (length(node_id) > 0),
+  CHECK (length(attempt_id) > 0),
+  CHECK (epoch > 0),
+  CHECK (state IN ('held', 'released', 'blocked'))
+);
+"#;
+
 /// 应用 Foundation §14.4.3 的 runtime PRAGMA 契约（仅写连接可调用）。
 pub(crate) fn apply_runtime_pragmas(conn: &Connection) -> Result<(), StoreError> {
     conn.busy_timeout(BUSY_TIMEOUT)
@@ -147,12 +168,18 @@ pub(crate) fn migrate(conn: &mut Connection) -> Result<(), StoreError> {
         return Ok(());
     }
 
-    // v0 -> v1：六表 + 两个 partial unique index；DDL 幂等（IF NOT EXISTS）。
+    // v0 -> v2 可在同一 transaction 连续应用；每段 DDL 均幂等。
     let tx = conn
         .transaction()
         .map_err(|source| StoreError::sqlite("begin schema migration transaction", source))?;
-    tx.execute_batch(DDL_V1)
-        .map_err(|source| StoreError::migration_failed(from_version, source.to_string()))?;
+    if from_version < 1 {
+        tx.execute_batch(DDL_V1)
+            .map_err(|source| StoreError::migration_failed(from_version, source.to_string()))?;
+    }
+    if from_version < 2 {
+        tx.execute_batch(DDL_V2)
+            .map_err(|source| StoreError::migration_failed(from_version, source.to_string()))?;
+    }
     tx.pragma_update(None, "user_version", SCHEMA_VERSION)
         .map_err(|source| StoreError::migration_failed(from_version, source.to_string()))?;
     tx.commit()
@@ -217,13 +244,14 @@ pub(crate) fn harden_db_file_permissions(path: &Path) -> Result<(), StoreError> 
 mod tests {
     use super::*;
 
-    const SIX_TABLES: [&str; 6] = [
+    const TABLES: [&str; 7] = [
         "shared_sessions_v2",
         "shared_event_log",
         "shared_binding_state",
         "shared_projection_checkpoint",
         "shared_legacy_import",
         "provider_usage_aggregate_log",
+        "squad_workspace_mutation_lease",
     ];
 
     #[test]
@@ -242,7 +270,7 @@ mod tests {
             SCHEMA_VERSION
         );
 
-        for table in SIX_TABLES {
+        for table in TABLES {
             let exists: bool = conn
                 .query_row(
                     "SELECT count(*) > 0 FROM sqlite_master WHERE type = 'table' AND name = ?1",
@@ -261,5 +289,25 @@ mod tests {
             .expect("bump user_version");
         let error = migrate(&mut conn).expect_err("must fail closed on newer version");
         assert!(matches!(error, StoreError::MigrationFailed { .. }));
+    }
+
+    #[test]
+    fn migration_upgrades_existing_v1_database_additively() {
+        let mut conn = Connection::open_in_memory().expect("in-memory connection");
+        conn.execute_batch(DDL_V1).expect("seed v1 schema");
+        conn.pragma_update(None, "user_version", 1)
+            .expect("seed v1 version");
+
+        migrate(&mut conn).expect("upgrade v1 to v2");
+
+        assert_eq!(current_user_version(&conn).expect("version"), 2);
+        let exists: bool = conn
+            .query_row(
+                "SELECT count(*) > 0 FROM sqlite_master WHERE type = 'table' AND name = 'squad_workspace_mutation_lease'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("lease table lookup");
+        assert!(exists);
     }
 }

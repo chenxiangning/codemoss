@@ -201,6 +201,7 @@ fn build_local_provider(is_active: bool) -> ProviderConfig {
         source: None,
         is_local_provider: Some(true),
         settings_config: extract_local_model_mapping_settings(),
+        custom_models: None,
     }
 }
 
@@ -584,6 +585,10 @@ fn value_to_claude_provider(
         .map(String::from);
     let is_local_provider = value.get("isLocalProvider").and_then(|v| v.as_bool());
     let settings_config = value.get("settingsConfig").cloned();
+    let custom_models = value
+        .get("customModels")
+        .cloned()
+        .and_then(|v| serde_json::from_value::<Vec<crate::types::CodexCustomModel>>(v).ok());
 
     Ok(ProviderConfig {
         id: id.to_string(),
@@ -597,6 +602,7 @@ fn value_to_claude_provider(
         source,
         is_local_provider,
         settings_config,
+        custom_models,
     })
 }
 
@@ -628,6 +634,11 @@ fn claude_provider_to_value(provider: &ProviderConfig) -> Value {
     }
     if let Some(ref sc) = provider.settings_config {
         map.insert("settingsConfig".into(), sc.clone());
+    }
+    if let Some(ref models) = provider.custom_models {
+        if let Ok(v) = serde_json::to_value(models) {
+            map.insert("customModels".into(), v);
+        }
     }
     Value::Object(map)
 }
@@ -1172,9 +1183,7 @@ pub(crate) async fn vendor_switch_codex_provider(id: String) -> Result<(), Strin
 }
 
 #[tauri::command]
-pub(crate) async fn vendor_reorder_codex_providers(
-    ordered_ids: Vec<String>,
-) -> Result<(), String> {
+pub(crate) async fn vendor_reorder_codex_providers(ordered_ids: Vec<String>) -> Result<(), String> {
     let mut config = read_config()?;
     apply_codex_provider_sort_order(&mut config, &ordered_ids);
     write_config(&config)
@@ -1314,6 +1323,7 @@ mod tests {
             source: None,
             is_local_provider: None,
             settings_config: None,
+            custom_models: None,
         }
     }
 

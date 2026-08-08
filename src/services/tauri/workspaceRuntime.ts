@@ -136,6 +136,11 @@ export async function openWorkspaceIn(
   });
 }
 
+/** Reveal a path in Finder / Explorer / the system file manager. */
+export async function revealInFileManager(path: string): Promise<void> {
+  return invoke("reveal_in_file_manager", { path });
+}
+
 export async function openNewWindow(path?: string | null): Promise<void> {
   return invoke("open_new_window", {
     path: path ?? null,

@@ -199,6 +199,10 @@ export function useAppShellComposerModelSection({
       ? claudeRuntimeResolution?.runtime ?? null
       : (effectiveSelectedModel?.model ?? effectiveSelectedModelId ?? null);
   const resolvedModelSource = effectiveSelectedModel?.source ?? "unknown";
+  // Codex: custom/catalog models may carry providerProfileId for first-send binding.
+  // Claude (and others): MUST stay null here — session open / Shared hydrate /
+  // Native create authority is thread or explicit provider pick, not reverse
+  // inference from custom-model ownership metadata (custom-model-provider-binding).
   const resolvedProviderProfileId =
     activeEngine === "codex"
       ? (effectiveSelectedModel?.providerProfileId?.trim() || null)

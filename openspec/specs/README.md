@@ -325,6 +325,7 @@
 - [linux-appimage-startup-compatibility](./linux-appimage-startup-compatibility/spec.md)
 - [linux-native-baidu-analytics-stability](./linux-native-baidu-analytics-stability/spec.md)
 - [live-assistant-shadow-transcript](./live-assistant-shadow-transcript/spec.md)
+- [local-html-builtin-browser-open](./local-html-builtin-browser-open/spec.md)
 - [long-list-virtualization-performance](./long-list-virtualization-performance/spec.md)
 
 ## M
@@ -361,6 +362,7 @@
 - [messages-timeline-ownership](./messages-timeline-ownership/spec.md)
 - [model-provider-catalog-runtime](./model-provider-catalog-runtime/spec.md)
 - [model-structured-output-normalization](./model-structured-output-normalization/spec.md)
+- [multi-agent-orchestration](./multi-agent-orchestration/spec.md)
 - [multi-repository-file-tree-decorations](./multi-repository-file-tree-decorations/spec.md)
 - [multi-repository-git-command-center](./multi-repository-git-command-center/spec.md)
 - [multi-repository-git-commit-workspace](./multi-repository-git-commit-workspace/spec.md)

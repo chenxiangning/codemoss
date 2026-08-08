@@ -1,5 +1,6 @@
 import type { ConversationItem, ThreadSummary } from "../../../types";
 import { previewThreadName } from "../../../utils/threadItems";
+import { getCollabWorkerNativeHideIds } from "../../multi-agent/runtime/collabNativeHideRegistry";
 import { asNumber, asString } from "../utils/threadNormalize";
 import { hasCodexBackgroundHelperPreview } from "../utils/codexBackgroundHelpers";
 import {
@@ -11,7 +12,10 @@ import {
   type SessionDisplayTitleSources,
 } from "../utils/sessionDisplayProjection";
 import { matchesWorkspacePath } from "./useThreadActions.workspacePath";
-import { classifyContextProtocolText } from "../../../utils/contextProtocol";
+import {
+  classifyContextProtocolText,
+  isMossxProgramControlTitle,
+} from "../../../utils/contextProtocol";
 
 const CLAUDE_HISTORY_MESSAGE_ID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -1180,21 +1184,167 @@ export function normalizeGrokSessionSummaries(
 }
 
 /**
+ * 协作 multi-agent worker 的 Codex 首包标题（整段 multi-line context）。
+ * 特征：MOSSX 包 + `binding:squad:`（Provider Continuation 单行 package 不含 squad）。
+ * 安全：不单凭 `Agent N` / 普通 MOSSX 单行 package 误杀用户会话或续接会话。
+ */
+export function isSharedCollabWorkerSpawnTitle(
+  value: string | null | undefined,
+): boolean {
+  const normalized = typeof value === "string" ? value.trim() : "";
+  if (!normalized) return false;
+  // 协作 worker context 必含 squad binding key
+  if (
+    /binding\s*:\s*squad:/i.test(normalized) &&
+    (normalized.includes("MOSSX_CONTEXT_PACKAGE:") ||
+      normalized.includes("MOSSX_SHARED_CONTEXT_V1"))
+  ) {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * 协作规划段把模型首行 `SUMMARY: …` 写进 native session 标题（preview 后常见
+ * `SUMMARY: 创建…` / 截断 `SUM`）。这不是用户会话，侧栏必须隐藏。
+ * 不匹配句中讨论（非行首），避免误伤。
+ */
+export function isCollabPlanSummarySidebarTitle(
+  value: string | null | undefined,
+): boolean {
+  const normalized = typeof value === "string" ? value.trim() : "";
+  if (!normalized) return false;
+  // 半角/全角冒号
+  if (/^SUMMARY\s*[:：]/i.test(normalized)) return true;
+  // previewThreadName 截到极短：`SUM` / `SUMMARY`
+  if (/^SUM(?:MARY)?$/i.test(normalized)) return true;
+  return false;
+}
+
+/**
+ * 协作 worker 首包/改名后的侧栏碎片标题。
+ *
+ * ⚠️ 仅匹配 **协作管线特有** 文案，禁止泛 Markdown（`##` / `**`）——否则 native
+ * 用户首条消息是「## 需求」会被误踢出侧栏。
+ */
+export function isCollabWorkerOrchestrationPromptTitle(
+  value: string | null | undefined,
+): boolean {
+  const normalized = typeof value === "string" ? value.trim() : "";
+  if (!normalized) return false;
+  // 自定义模板 stage id 也是【draft】/【polish】等，不能只认中文规划/实现/审查
+  if (/多\s*Agent\s*协作管线/i.test(normalized)) return true;
+  if (/【[^】]{1,32}】\s*环节/.test(normalized)) return true;
+  if (/binding\s*:\s*squad:/i.test(normalized)) return true;
+  // 本环节自定义指令 / 协作交付说明块（非任意 **bold**）
+  if (normalized.includes("本环节自定义指令")) return true;
+  if (/^\*\*交付说明\*\*/.test(normalized)) return true;
+  if (/^交付说明\b/.test(normalized)) return true;
+  return false;
+}
+
+/**
+ * Codex catalog 常把 worker 显示名压成 `Agent 11`。
+ * 仅当同时具备协作信号时才 hide，避免误杀用户真·Agent 会话。
+ * 协作信号：shared 父、hide set（由调用方先查）、nativeTitle/raw 仍含协作特征。
+ */
+export function isCollabWorkerAgentNumberTitle(
+  value: string | null | undefined,
+): boolean {
+  const normalized = typeof value === "string" ? value.trim() : "";
+  return /^Agent\s+\d+$/i.test(normalized);
+}
+
+/**
+ * Shared control-plane / 程序内部 session 标题闸（侧栏 hide 安全网）。
+ *
+ * 命中任一即视为非用户顶层会话：
+ * 1. 行首 `MOSSX_*`（含 previewThreadName 截断后的半截 package）
+ * 2. 完整 protocol classify（未截断的 exact marker / envelope）
+ * 3. 协作 worker multi-line（MOSSX + binding:squad:）
+ * 4. 协作规划 SUMMARY 标题（改名后仍泄漏的主形态）
+ *
+ * 不单凭 `Agent N` 删行；Shared 顶层行由 stripHiddenSharedBindingSummaries 豁免。
+ */
+export function isSharedControlPlaneSpawnTitle(
+  value: string | null | undefined,
+): boolean {
+  const normalized = typeof value === "string" ? value.trim() : "";
+  if (!normalized) return false;
+  // 行首 MOSSX_：覆盖截断 title（主缺口）与全部已知 control token
+  if (isMossxProgramControlTitle(normalized)) {
+    return true;
+  }
+  // 完整 protocol envelope（未截断 multi-line 也可能被 classify 命中）
+  if (classifyContextProtocolText(normalized) !== null) {
+    return true;
+  }
+  // 协作规划 SUMMARY 当 title（实机侧栏：`SUMMARY: 创建…` / `SUM`）
+  if (isCollabPlanSummarySidebarTitle(normalized)) {
+    return true;
+  }
+  // 协作 worker 管线 prompt 当 firstMessage / title
+  if (isCollabWorkerOrchestrationPromptTitle(normalized)) {
+    return true;
+  }
+  // 协作 worker multi-line 包（binding:squad: 可能在截断后丢失，raw 路径另拦）
+  return isSharedCollabWorkerSpawnTitle(normalized);
+}
+
+/** hide set 命中：id 本体 + 去 engine 前缀后的 raw uuid */
+export function threadIdInHiddenSharedBindingSet(
+  threadId: string,
+  hiddenSharedBindingIds: ReadonlySet<string>,
+): boolean {
+  const id = threadId.trim();
+  if (!id) return false;
+  if (hiddenSharedBindingIds.has(id)) return true;
+  const colon = id.indexOf(":");
+  if (colon > 0) {
+    const bare = id.slice(colon + 1).trim();
+    if (bare && hiddenSharedBindingIds.has(bare)) return true;
+  }
+  return false;
+}
+
+/**
  * 从侧栏快照剔除 Shared Hidden Native Binding。
  * hide set 由 expandHiddenSharedBindingIds 构建（含 raw / engine:raw / pending 变体）。
+ * 额外：剔除 control-plane 标题的 native 行（MOSSX 包 / 协作 context）。
  */
 export function stripHiddenSharedBindingSummaries(
   summaries: ThreadSummary[],
   hiddenSharedBindingIds: ReadonlySet<string>,
 ): ThreadSummary[] {
-  if (hiddenSharedBindingIds.size === 0 || summaries.length === 0) {
+  if (summaries.length === 0) {
     return summaries;
   }
+  // 并入协作 worker runtime 登记表（改名 Agent N 后 id 仍命中）
+  const collabHide = getCollabWorkerNativeHideIds();
+  const effectiveHide =
+    collabHide.size === 0
+      ? hiddenSharedBindingIds
+      : new Set<string>([...hiddenSharedBindingIds, ...collabHide]);
   let changed = false;
   const next = summaries.filter((summary) => {
-    if (hiddenSharedBindingIds.has(summary.id)) {
+    if (threadIdInHiddenSharedBindingSet(summary.id, effectiveHide)) {
       changed = true;
       return false;
+    }
+    // Shared 顶层会话永不因 control-plane 标题被误杀
+    if (summary.id.startsWith("shared:") || summary.threadKind === "shared") {
+      return true;
+    }
+    if (isSharedControlPlaneSpawnTitle(summary.name)) {
+      changed = true;
+      return false;
+    }
+    // Shared 子代理：parent 已 remap 到 shared: 时必须保留在列表中，
+    // 供 useThreadRows / childSubagentThreads / S10→Strip 合成使用。
+    // （旧逻辑直接丢掉 → Shared 无子代理入口；Native 不受影响）
+    const parent = summary.parentThreadId?.trim() ?? "";
+    if (parent.startsWith("shared:") && !summary.id.startsWith("shared:")) {
+      return true;
     }
     return true;
   });
@@ -1240,7 +1390,17 @@ function mergeNativeCliSessionSummaries(params: {
   baseSummaries.forEach((entry) => mergedById.set(entry.id, entry));
   sessions.forEach((session) => {
     const id = `${idPrefix}:${session.sessionId}`;
-    if (hiddenSharedBindingIds?.has(id)) {
+    // id 本体 + bare uuid（与 Codex catalog 路径对齐，避免 hide set 变体漏网）
+    if (
+      threadIdInHiddenSharedBindingSet(
+        id,
+        hiddenSharedBindingIds ?? new Set(),
+      )
+    ) {
+      return;
+    }
+    // 在 clip 标题前用 raw firstMessage 拦 control-plane（截断会丢 sha256 body）
+    if (isSharedControlPlaneSpawnTitle(session.firstMessage)) {
       return;
     }
     const prev = mergedById.get(id);
@@ -1250,6 +1410,17 @@ function mergeNativeCliSessionSummaries(params: {
     const mappedTitle = mappedTitles[id];
     const customTitle = getCustomName(workspaceId, id);
     const title = previewThreadName(session.firstMessage, fallbackTitle);
+    // 双闸：clip 后 name 仍 control-plane / SUMMARY / MOSSX 则不入侧栏
+    if (isSharedControlPlaneSpawnTitle(title)) {
+      return;
+    }
+    // mapped/custom 改名后的展示名也过闸（避免「继续：」类之外的协作残留）
+    if (
+      isSharedControlPlaneSpawnTitle(mappedTitle) ||
+      isSharedControlPlaneSpawnTitle(customTitle)
+    ) {
+      return;
+    }
     const rawParent = session.parentSessionId?.trim() || "";
     const parentThreadId =
       rawParent.length > 0
@@ -1413,12 +1584,19 @@ export function mergeCodexCatalogSessionSummaries(
   workspaceId: string,
   mappedTitles: Record<string, string>,
   getCustomName: (workspaceId: string, threadId: string) => string | undefined,
+  /** Shared-owned native ids；merge 前剔除，避免改名成 Agent N 后漏网 */
+  hiddenSharedBindingIds: ReadonlySet<string> = new Set(),
 ): ThreadSummary[] {
+  // 先清 baseline 泄漏
+  const safeBase = stripHiddenSharedBindingSummaries(
+    baseSummaries,
+    hiddenSharedBindingIds,
+  );
   if (codexSessions.length === 0) {
-    return baseSummaries;
+    return safeBase;
   }
   const mergedById = new Map<string, ThreadSummary>();
-  baseSummaries.forEach((entry) => mergedById.set(entry.id, entry));
+  safeBase.forEach((entry) => mergedById.set(entry.id, entry));
   codexSessions.forEach((session) => {
     const title = normalizeSessionDisplayTitle(session.title);
     const nativeTitle = normalizeSessionDisplayTitle(session.nativeTitle);
@@ -1426,6 +1604,33 @@ export function mergeCodexCatalogSessionSummaries(
     if (!title && !nativeTitle) {
       return;
     }
+    // id hide（含 raw / engine: 变体）
+    if (
+      threadIdInHiddenSharedBindingSet(
+        session.sessionId,
+        hiddenSharedBindingIds,
+      )
+    ) {
+      return;
+    }
+    // 协作 worker multi-line（改名 Agent N 前）必须拦
+    if (
+      isSharedCollabWorkerSpawnTitle(title) ||
+      isSharedCollabWorkerSpawnTitle(nativeTitle)
+    ) {
+      return;
+    }
+    // 程序 MOSSX_* / SUMMARY / 管线 prompt / Markdown 碎片：非 Provider Continuation 直接丢
+    const isControlPlaneTitle =
+      isSharedControlPlaneSpawnTitle(title) ||
+      isSharedControlPlaneSpawnTitle(nativeTitle);
+    const isProviderContinuation =
+      session.originKind === "provider-continuation";
+    if (isControlPlaneTitle && !isProviderContinuation) {
+      return;
+    }
+    // ⚠️ 禁止：凡 Agent N + parentSessionId 就丢——会误杀 native Codex/Claude 子代理树。
+    // 协作 worker 改名 Agent N 的主路径：hide set / collabNativeHideRegistry / MOSSX nativeTitle。
     if (
       engineSource === "codex" &&
       !nativeTitle &&
@@ -1467,7 +1672,7 @@ export function mergeCodexCatalogSessionSummaries(
       ? mergedById.get(session.sourceSessionId)?.name?.trim()
       : null;
     const continuationFallbackTitle =
-      session.originKind === "provider-continuation"
+      isProviderContinuation
         ? continuationSourceName
           ? `继续：${continuationSourceName}`
           : `Provider 续接 · ${
@@ -1475,9 +1680,9 @@ export function mergeCodexCatalogSessionSummaries(
               engineFallbackTitle.replace(/ Session$/, "")
             }`
         : null;
+    // 截断 title 无法 classify；用 control-plane 闸（含 MOSSX_ 行首）触发改写
     const fallbackTitle =
-      continuationFallbackTitle &&
-      classifyContextProtocolText(title) !== null
+      continuationFallbackTitle && isControlPlaneTitle
         ? continuationFallbackTitle
         : previewThreadName(title || nativeTitle, engineFallbackTitle);
     const next: ThreadSummary = {

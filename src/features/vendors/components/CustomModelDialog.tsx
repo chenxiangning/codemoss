@@ -1,9 +1,18 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import Pencil from "lucide-react/dist/esm/icons/pencil";
 import Trash2 from "lucide-react/dist/esm/icons/trash-2";
 import type { CodexCustomModel } from "../types";
 import { isValidModelId } from "../types";
+import {
+  LOCAL_CUSTOM_MODEL_PROVIDER_OPTION_ID,
+  normalizeProviderProfileId,
+  providerDisplayName,
+  resolveDefaultProviderOptionId,
+  type CustomModelProviderOption,
+} from "../customModelProviderBinding";
+
+const EMPTY_PROVIDER_OPTIONS: CustomModelProviderOption[] = [];
 
 interface CustomModelDialogProps {
   isOpen: boolean;
@@ -12,6 +21,12 @@ interface CustomModelDialogProps {
   onClose: () => void;
   initialAddMode?: boolean;
   modelValidation?: "model-id" | "shape-only";
+  /** When empty, provider binding UI is hidden (legacy / gemini). */
+  providerOptions?: CustomModelProviderOption[];
+  /** Preferred default when opening add mode. */
+  defaultProviderProfileId?: string | null;
+  /** Persist/provider dual-write failure surface (optional). */
+  persistError?: string | null;
 }
 
 function stripControlCharacters(value: string): string {
@@ -30,6 +45,9 @@ export function CustomModelDialog({
   onClose,
   initialAddMode = false,
   modelValidation = "model-id",
+  providerOptions = EMPTY_PROVIDER_OPTIONS,
+  defaultProviderProfileId = null,
+  persistError = null,
 }: CustomModelDialogProps) {
   const { t } = useTranslation();
   const [isAdding, setIsAdding] = useState(false);
@@ -39,29 +57,108 @@ export function CustomModelDialog({
   const [modelId, setModelId] = useState("");
   const [modelLabel, setModelLabel] = useState("");
   const [modelDescription, setModelDescription] = useState("");
+  const [providerOptionId, setProviderOptionId] = useState(
+    LOCAL_CUSTOM_MODEL_PROVIDER_OPTION_ID,
+  );
   const [validationError, setValidationError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (isOpen && initialAddMode) {
-      setIsAdding(true);
-      setEditingModel(null);
-      setModelId("");
-      setModelLabel("");
-      setModelDescription("");
-      setValidationError(null);
-    }
-  }, [initialAddMode, isOpen]);
+  /** True after open edge; used so async providerOptions never wipe typed fields. */
+  const wasOpenRef = useRef(false);
+  /** User manually changed provider select in this add/edit session. */
+  const userTouchedProviderRef = useRef(false);
 
+  const providerBindingEnabled = providerOptions.length > 0;
+  const localProviderLabel = t("settings.vendor.modelManager.localProvider", {
+    defaultValue: "本地配置",
+  });
+
+  const providerNameById = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const option of providerOptions) {
+      if (option.id) {
+        map.set(option.id, option.name);
+      }
+    }
+    return map;
+  }, [providerOptions]);
+
+  const resolveProviderDefault = useCallback(
+    () =>
+      resolveDefaultProviderOptionId(
+        providerOptions,
+        defaultProviderProfileId,
+        null,
+      ),
+    [defaultProviderProfileId, providerOptions],
+  );
+
+  const resetEditorFields = useCallback(() => {
+    setModelId("");
+    setModelLabel("");
+    setModelDescription("");
+    setValidationError(null);
+    userTouchedProviderRef.current = false;
+    setProviderOptionId(resolveProviderDefault());
+  }, [resolveProviderDefault]);
+
+  // Open edge only: enter add mode once. Do NOT depend on providerOptions identity
+  // (async load would otherwise clear mid-typing fields).
   useEffect(() => {
-    if (!isOpen) {
+    if (isOpen && !wasOpenRef.current) {
+      wasOpenRef.current = true;
+      userTouchedProviderRef.current = false;
+      if (initialAddMode) {
+        setIsAdding(true);
+        setEditingModel(null);
+        resetEditorFields();
+      }
+      return;
+    }
+    if (!isOpen && wasOpenRef.current) {
+      wasOpenRef.current = false;
       setIsAdding(false);
       setEditingModel(null);
       setModelId("");
       setModelLabel("");
       setModelDescription("");
+      setProviderOptionId(LOCAL_CUSTOM_MODEL_PROVIDER_OPTION_ID);
       setValidationError(null);
+      userTouchedProviderRef.current = false;
     }
-  }, [isOpen]);
+  }, [initialAddMode, isOpen, resetEditorFields]);
+
+  // Soft-update provider default when options / preferred arrive asynchronously.
+  // Never clears model id/label/description. Respects user manual selection.
+  useEffect(() => {
+    if (!isOpen || !isAdding || editingModel) {
+      return;
+    }
+    if (userTouchedProviderRef.current) {
+      return;
+    }
+    const nextDefault = resolveProviderDefault();
+    setProviderOptionId((prev) => {
+      const prevStillValid =
+        prev === LOCAL_CUSTOM_MODEL_PROVIDER_OPTION_ID ||
+        providerOptions.some((option) => option.id === prev);
+      // Keep a still-valid non-local selection; only promote from local/missing.
+      if (
+        prevStillValid &&
+        prev !== LOCAL_CUSTOM_MODEL_PROVIDER_OPTION_ID &&
+        prev.trim().length > 0
+      ) {
+        return prev;
+      }
+      return nextDefault;
+    });
+  }, [
+    defaultProviderProfileId,
+    editingModel,
+    isAdding,
+    isOpen,
+    providerOptions,
+    resolveProviderDefault,
+  ]);
 
   useEffect(() => {
     if (!isOpen) {
@@ -102,29 +199,33 @@ export function CustomModelDialog({
   const resetEditor = useCallback(() => {
     setIsAdding(false);
     setEditingModel(null);
-    setModelId("");
-    setModelLabel("");
-    setModelDescription("");
-    setValidationError(null);
-  }, []);
+    resetEditorFields();
+  }, [resetEditorFields]);
 
   const handleStartAdd = useCallback(() => {
     setIsAdding(true);
     setEditingModel(null);
-    setModelId("");
-    setModelLabel("");
-    setModelDescription("");
-    setValidationError(null);
-  }, []);
+    resetEditorFields();
+  }, [resetEditorFields]);
 
-  const handleStartEdit = useCallback((model: CodexCustomModel) => {
-    setIsAdding(true);
-    setEditingModel(model);
-    setModelId(model.id);
-    setModelLabel(model.label);
-    setModelDescription(model.description ?? "");
-    setValidationError(null);
-  }, []);
+  const handleStartEdit = useCallback(
+    (model: CodexCustomModel) => {
+      setIsAdding(true);
+      setEditingModel(model);
+      setModelId(model.id);
+      setModelLabel(model.label);
+      setModelDescription(model.description ?? "");
+      setValidationError(null);
+      userTouchedProviderRef.current = false;
+      const owned = normalizeProviderProfileId(model.providerProfileId);
+      if (owned && providerOptions.some((option) => option.id === owned)) {
+        setProviderOptionId(owned);
+      } else {
+        setProviderOptionId(LOCAL_CUSTOM_MODEL_PROVIDER_OPTION_ID);
+      }
+    },
+    [providerOptions],
+  );
 
   const handleDelete = useCallback(
     (id: string) => {
@@ -144,11 +245,15 @@ export function CustomModelDialog({
     const normalizedLabel =
       stripControlCharacters(modelLabel).trim() || normalizedId;
     const normalizedDescription = stripControlCharacters(modelDescription).trim();
+    const boundProviderId = providerBindingEnabled
+      ? normalizeProviderProfileId(providerOptionId)
+      : normalizeProviderProfileId(editingModel?.providerProfileId);
 
     const nextModel: CodexCustomModel = {
       id: normalizedId,
       label: normalizedLabel,
       description: normalizedDescription || undefined,
+      providerProfileId: boundProviderId ?? undefined,
     };
 
     if (editingModel) {
@@ -166,6 +271,8 @@ export function CustomModelDialog({
     modelLabel,
     models,
     onModelsChange,
+    providerBindingEnabled,
+    providerOptionId,
     resetEditor,
     validateModelId,
   ]);
@@ -220,6 +327,15 @@ export function CustomModelDialog({
                     {model.description && (
                       <div className="vendor-model-manager-desc">{model.description}</div>
                     )}
+                    {providerBindingEnabled ? (
+                      <div className="vendor-model-manager-provider">
+                        {providerDisplayName(
+                          model.providerProfileId,
+                          providerNameById,
+                          localProviderLabel,
+                        )}
+                      </div>
+                    ) : null}
                   </div>
                   <div className="vendor-model-manager-actions">
                     <button
@@ -246,6 +362,31 @@ export function CustomModelDialog({
 
           {isAdding ? (
             <div className="vendor-model-manager-form">
+              {providerBindingEnabled ? (
+                <div className="vendor-form-group">
+                  <label htmlFor="vendor-custom-model-provider">
+                    {t("settings.vendor.modelManager.provider", {
+                      defaultValue: "供应商",
+                    })}
+                  </label>
+                  <select
+                    id="vendor-custom-model-provider"
+                    className="vendor-input vendor-input-sm"
+                    value={providerOptionId}
+                    onChange={(event) => {
+                      userTouchedProviderRef.current = true;
+                      setProviderOptionId(event.target.value);
+                    }}
+                    data-testid="custom-model-provider-select"
+                  >
+                    {providerOptions.map((option) => (
+                      <option key={option.id || "__local__"} value={option.id}>
+                        {option.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ) : null}
               <div className="vendor-model-add">
                 <input
                   type="text"
@@ -258,7 +399,7 @@ export function CustomModelDialog({
                     }
                   }}
                   placeholder={t("settings.vendor.modelManager.modelIdPlaceholder")}
-                  autoFocus
+                  autoFocus={!providerBindingEnabled}
                 />
                 <input
                   type="text"
@@ -299,6 +440,12 @@ export function CustomModelDialog({
                     : t("settings.vendor.modelManager.addModel")}
                 </button>
               </div>
+            </div>
+          ) : null}
+
+          {persistError ? (
+            <div className="vendor-json-error" role="alert">
+              {persistError}
             </div>
           ) : null}
         </div>

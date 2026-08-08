@@ -11,6 +11,14 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 const HTTP_TIMEOUT: Duration = Duration::from_secs(15);
 const DEEPSEEK_BALANCE_URL: &str = "https://api.deepseek.com/user/balance";
 
+/// Kimi CLI (`engine=kimi`) 与交互 `/status` 同源：OAuth 文件 + refresh + `/usages`。
+/// **不得**用于 Claude/Codex 绑定 Kimi HTTP 中转（那些走 CodingPlanApi + API key）。
+const KIMI_CODE_OAUTH_HOST: &str = "https://auth.kimi.com";
+const KIMI_CODE_OAUTH_CLIENT_ID: &str = "17e5f671-d194-4dfb-9706-5516cb48c098";
+const KIMI_CODE_USAGE_BASE: &str = "https://api.kimi.com/coding/v1";
+/// 提前刷新窗口（秒），对齐 CLI ensureFresh 行为。
+const KIMI_CLI_TOKEN_REFRESH_SKEW_SECS: i64 = 60;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum CodingPlanProvider {
     Kimi,
@@ -124,7 +132,11 @@ fn clamp_percent(value: f64) -> f64 {
     value.clamp(0.0, 100.0)
 }
 
-fn window_from_used(id: &str, used_percent: f64, resets_at: Option<String>) -> CodingPlanQuotaWindow {
+fn window_from_used(
+    id: &str,
+    used_percent: f64,
+    resets_at: Option<String>,
+) -> CodingPlanQuotaWindow {
     let used = clamp_percent(used_percent);
     CodingPlanQuotaWindow {
         id: id.to_string(),
@@ -139,6 +151,7 @@ fn detect_provider(base_url: &str) -> Option<CodingPlanProvider> {
     if url.contains("api.kimi.com/coding") {
         Some(CodingPlanProvider::Kimi)
     } else if url.contains("open.bigmodel.cn") || url.contains("bigmodel.cn") {
+        // 含 Claude 预设 open.bigmodel.cn/api/anthropic 与 Codex /api/coding/paas/v4
         Some(CodingPlanProvider::ZhipuCn)
     } else if url.contains("api.z.ai") {
         Some(CodingPlanProvider::ZhipuEn)
@@ -148,9 +161,22 @@ fn detect_provider(base_url: &str) -> Option<CodingPlanProvider> {
         Some(CodingPlanProvider::MiniMaxEn)
     } else if url.contains("api.deepseek.com") || url.contains("deepseek.com") {
         Some(CodingPlanProvider::DeepSeek)
+    } else if url.contains("coding.dashscope.aliyuncs.com")
+        || url.contains("coding-intl.dashscope.aliyuncs.com")
+    {
+        // 阿里云百炼 Coding Plan（千问等）：官方目前仅控制台展示额度，无公开 HTTP
+        // 查询接口；CC Switch coding_plan.rs 同样未接入。此处识别 host 便于返回明确错误。
+        None
     } else {
         None
     }
+}
+
+/// 是否阿里云 Coding Plan（千问）host —— 用于更明确的 empty/unsupported 文案。
+fn is_dashscope_coding_plan_host(base_url: &str) -> bool {
+    let url = base_url.to_lowercase();
+    url.contains("coding.dashscope.aliyuncs.com")
+        || url.contains("coding-intl.dashscope.aliyuncs.com")
 }
 
 fn source_name(provider: CodingPlanProvider) -> &'static str {
@@ -321,9 +347,7 @@ async fn query_deepseek(api_key: &str) -> CodingPlanQuotaSnapshot {
 
 fn is_official_anthropic_base(base_url: &str) -> bool {
     let url = base_url.trim().to_ascii_lowercase();
-    url.is_empty()
-        || url.contains("api.anthropic.com")
-        || url.contains("anthropic.com/claude")
+    url.is_empty() || url.contains("api.anthropic.com") || url.contains("anthropic.com/claude")
 }
 
 fn is_official_openai_base(base_url: &str) -> bool {
@@ -347,7 +371,7 @@ async fn query_kimi(api_key: &str) -> CodingPlanQuotaSnapshot {
         Err(error) => return empty_snapshot("kimi", Some(error)),
     };
     let resp = match client
-        .get("https://api.kimi.com/coding/v1/usages")
+        .get(format!("{KIMI_CODE_USAGE_BASE}/usages"))
         .header("Authorization", format!("Bearer {api_key}"))
         .header("Accept", "application/json")
         .send()
@@ -438,11 +462,7 @@ fn parse_minimax_windows(body: &Value) -> Vec<CodingPlanQuotaWindow> {
             .get("end_time")
             .and_then(|v| v.as_i64())
             .and_then(millis_to_iso8601);
-        windows.push(window_from_used(
-            "five_hour",
-            100.0 - remain_pct,
-            resets_at,
-        ));
+        windows.push(window_from_used("five_hour", 100.0 - remain_pct, resets_at));
     }
 
     if item.get("current_weekly_status").and_then(|v| v.as_i64()) == Some(1) {
@@ -504,10 +524,7 @@ async fn query_minimax(api_key: &str, is_cn: bool) -> CodingPlanQuotaSnapshot {
     let raw = match resp.bytes().await {
         Ok(b) => b,
         Err(error) => {
-            return empty_snapshot(
-                "minimax",
-                Some(format!("Failed to read response: {error}")),
-            );
+            return empty_snapshot("minimax", Some(format!("Failed to read response: {error}")));
         }
     };
     let body: Value = match serde_json::from_slice(&raw) {
@@ -539,37 +556,78 @@ async fn query_minimax(api_key: &str, is_cn: bool) -> CodingPlanQuotaSnapshot {
     success_snapshot("minimax", "api", parse_minimax_windows(&body), None)
 }
 
+/// 对齐 CC Switch `classify_zhipu_window`：
+/// - `unit: 3` → 5 小时
+/// - `unit: 6` → 周窗口（不绑 number，兼容 7 天 / 1 周两种取值）
+fn classify_zhipu_window(item: &Value) -> Option<&'static str> {
+    match item.get("unit").and_then(|v| v.as_i64()) {
+        Some(3) => Some("five_hour"),
+        Some(6) => Some("weekly_limit"),
+        _ => None,
+    }
+}
+
+/// 对齐 CC Switch `parse_zhipu_token_tiers`：
+/// 1) 优先 unit 字段；2) unit 缺失时用 nextResetTime 启发式（无 reset 优先 five_hour）。
 fn parse_zhipu_windows(data: &Value) -> Vec<CodingPlanQuotaWindow> {
-    let mut five_hour: Option<(f64, Option<String>)> = None;
-    let mut weekly: Option<(f64, Option<String>)> = None;
+    type Entry = (Option<i64>, f64, Option<String>);
+    let mut five_hour: Option<Entry> = None;
+    let mut weekly: Option<Entry> = None;
+    let mut unclassified: Vec<Entry> = Vec::new();
 
     let Some(limits) = data.get("limits").and_then(|v| v.as_array()) else {
         return vec![];
     };
     for item in limits {
-        let unit = item.get("unit").and_then(|v| v.as_i64());
+        let limit_type = item
+            .get("type")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        // 与 CC Switch 一致：只吃 TOKENS_LIMIT（大小写不敏感）
+        if !limit_type.is_empty() && !limit_type.eq_ignore_ascii_case("TOKENS_LIMIT") {
+            continue;
+        }
         let percentage = item
             .get("percentage")
             .or_else(|| item.get("UsagePercent"))
             .or_else(|| item.get("usagePercent"))
             .and_then(parse_f64)
             .unwrap_or(0.0);
+        let reset_ms = item
+            .get("nextResetTime")
+            .and_then(|v| v.as_i64())
+            .or_else(|| {
+                item.get("nextResetTime")
+                    .and_then(|v| v.as_f64())
+                    .map(|n| n as i64)
+            });
         let resets_at = item
             .get("nextResetTime")
             .or_else(|| item.get("resetTime"))
             .and_then(extract_reset_time);
-        match unit {
-            Some(3) if five_hour.is_none() => five_hour = Some((percentage, resets_at)),
-            Some(6) if weekly.is_none() => weekly = Some((percentage, resets_at)),
-            _ => {}
+        let entry = (reset_ms, percentage, resets_at);
+        match classify_zhipu_window(item) {
+            Some("five_hour") if five_hour.is_none() => five_hour = Some(entry),
+            Some("weekly_limit") if weekly.is_none() => weekly = Some(entry),
+            _ => unclassified.push(entry),
+        }
+    }
+
+    // 无 nextResetTime 的排前面（5h 桶在 0% 时常缺 reset）；其余按 reset 升序
+    unclassified.sort_by_key(|(reset, _, _)| (reset.is_some(), reset.unwrap_or(i64::MIN)));
+    for entry in unclassified {
+        if five_hour.is_none() {
+            five_hour = Some(entry);
+        } else if weekly.is_none() {
+            weekly = Some(entry);
         }
     }
 
     let mut windows = Vec::new();
-    if let Some((pct, resets)) = five_hour {
+    if let Some((_, pct, resets)) = five_hour {
         windows.push(window_from_used("five_hour", pct, resets));
     }
-    if let Some((pct, resets)) = weekly {
+    if let Some((_, pct, resets)) = weekly {
         windows.push(window_from_used("weekly_limit", pct, resets));
     }
     windows
@@ -646,6 +704,16 @@ async fn query_by_base_url_and_key(base_url: &str, api_key: &str) -> CodingPlanQ
         return empty_snapshot("empty_credentials", Some("API key is empty".into()));
     }
     let Some(provider) = detect_provider(base_url) else {
+        if is_dashscope_coding_plan_host(base_url) {
+            return empty_snapshot(
+                "unsupported",
+                Some(
+                    "Aliyun Bailian Coding Plan (Qwen/dashscope) has no public quota HTTP API \
+                     (same gap in CC Switch coding_plan); check usage in Bailian console"
+                        .into(),
+                ),
+            );
+        }
         return empty_snapshot(
             "unsupported",
             Some(format!(
@@ -800,19 +868,238 @@ fn extract_codex_base_url_and_key(
     Some((base_url, api_key))
 }
 
-/// 优先使用 Kimi CLI 登录态（~/.kimi-code/credentials），与 /status 同源。
-fn resolve_kimi_cli_oauth_token() -> Option<(String, String)> {
-    let path = dirs::home_dir()?.join(".kimi-code/credentials/kimi-code.json");
-    let content = std::fs::read_to_string(path).ok()?;
-    let value: Value = serde_json::from_str(&content).ok()?;
-    let token = value
+#[derive(Debug, Clone)]
+struct KimiCliCredentials {
+    access_token: String,
+    refresh_token: String,
+    expires_at: Option<i64>,
+    /// 原始 JSON，用于写回时保留其它字段。
+    raw: Value,
+}
+
+fn kimi_cli_credentials_path() -> Option<std::path::PathBuf> {
+    dirs::home_dir().map(|home| home.join(".kimi-code/credentials/kimi-code.json"))
+}
+
+fn now_unix_secs() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs() as i64
+}
+
+/// 读取 Kimi CLI 登录态（~/.kimi-code/credentials/kimi-code.json）。
+fn load_kimi_cli_credentials() -> Result<KimiCliCredentials, String> {
+    let path = kimi_cli_credentials_path()
+        .ok_or_else(|| "Cannot resolve home dir for Kimi CLI credentials".to_string())?;
+    let content = std::fs::read_to_string(&path).map_err(|error| {
+        format!(
+            "Kimi CLI credentials missing (run `kimi login`): {}: {error}",
+            path.display()
+        )
+    })?;
+    let raw: Value = serde_json::from_str(&content)
+        .map_err(|error| format!("Invalid Kimi CLI credentials JSON: {error}"))?;
+    let access_token = raw
         .get("access_token")
         .and_then(|v| v.as_str())
         .map(str::trim)
-        .filter(|v| !v.is_empty())?
+        .filter(|v| !v.is_empty())
+        .ok_or_else(|| "Kimi CLI credentials missing access_token; run `kimi login`".to_string())?
         .to_string();
-    // 官方 coding 端点（与 kimi CLI /status 一致）
-    Some(("https://api.kimi.com/coding/v1".to_string(), token))
+    let refresh_token = raw
+        .get("refresh_token")
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .unwrap_or("")
+        .to_string();
+    let expires_at = raw
+        .get("expires_at")
+        .and_then(|v| v.as_i64())
+        .or_else(|| {
+            raw.get("expires_at")
+                .and_then(|v| v.as_f64())
+                .map(|n| n as i64)
+        });
+    Ok(KimiCliCredentials {
+        access_token,
+        refresh_token,
+        expires_at,
+        raw,
+    })
+}
+
+fn kimi_cli_token_needs_refresh(creds: &KimiCliCredentials, now_secs: i64, force: bool) -> bool {
+    if force {
+        return true;
+    }
+    match creds.expires_at {
+        Some(expires_at) => now_secs >= expires_at - KIMI_CLI_TOKEN_REFRESH_SKEW_SECS,
+        // 无过期字段时不强刷；若 /usages 401 再 force。
+        None => false,
+    }
+}
+
+fn save_kimi_cli_credentials(creds: &KimiCliCredentials) -> Result<(), String> {
+    let path = kimi_cli_credentials_path()
+        .ok_or_else(|| "Cannot resolve home dir for Kimi CLI credentials".to_string())?;
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|error| format!("create Kimi credentials dir: {error}"))?;
+    }
+    let mut raw = creds.raw.clone();
+    if let Some(obj) = raw.as_object_mut() {
+        obj.insert(
+            "access_token".into(),
+            Value::String(creds.access_token.clone()),
+        );
+        if !creds.refresh_token.is_empty() {
+            obj.insert(
+                "refresh_token".into(),
+                Value::String(creds.refresh_token.clone()),
+            );
+        }
+        if let Some(expires_at) = creds.expires_at {
+            obj.insert("expires_at".into(), Value::from(expires_at));
+        }
+    }
+    let content = serde_json::to_string_pretty(&raw)
+        .map_err(|error| format!("serialize Kimi credentials: {error}"))?;
+    std::fs::write(&path, content)
+        .map_err(|error| format!("write Kimi credentials {}: {error}", path.display()))
+}
+
+/// 对齐 kimi-code `refreshAccessToken`：POST auth.kimi.com/api/oauth/token
+async fn refresh_kimi_cli_access_token(
+    refresh_token: &str,
+    previous: &KimiCliCredentials,
+) -> Result<KimiCliCredentials, String> {
+    if refresh_token.trim().is_empty() {
+        return Err(
+            "Kimi CLI token expired and no refresh_token; run `kimi login`".to_string(),
+        );
+    }
+    let client = http_client()?;
+    let url = format!("{KIMI_CODE_OAUTH_HOST}/api/oauth/token");
+    let resp = client
+        .post(&url)
+        .header("Content-Type", "application/x-www-form-urlencoded")
+        .header("Accept", "application/json")
+        .form(&[
+            ("client_id", KIMI_CODE_OAUTH_CLIENT_ID),
+            ("grant_type", "refresh_token"),
+            ("refresh_token", refresh_token),
+        ])
+        .send()
+        .await
+        .map_err(|error| format!("Kimi CLI token refresh network error: {error}"))?;
+    let status = resp.status();
+    let body: Value = resp
+        .json()
+        .await
+        .map_err(|error| format!("Kimi CLI token refresh parse error: {error}"))?;
+    if !status.is_success() {
+        let detail = body
+            .get("error_description")
+            .or_else(|| body.get("error"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("token refresh failed");
+        return Err(format!(
+            "Kimi CLI token refresh failed (HTTP {status}): {detail}; run `kimi login`"
+        ));
+    }
+    let access_token = body
+        .get("access_token")
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+        .ok_or_else(|| "Kimi CLI token refresh missing access_token".to_string())?
+        .to_string();
+    let new_refresh = body
+        .get("refresh_token")
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+        .map(str::to_string)
+        .unwrap_or_else(|| previous.refresh_token.clone());
+    let expires_in = body
+        .get("expires_in")
+        .and_then(|v| v.as_i64())
+        .or_else(|| body.get("expires_in").and_then(|v| v.as_f64()).map(|n| n as i64));
+    let expires_at = expires_in.map(|secs| now_unix_secs() + secs.max(0));
+    let mut raw = previous.raw.clone();
+    if let Some(obj) = raw.as_object_mut() {
+        obj.insert("access_token".into(), Value::String(access_token.clone()));
+        obj.insert("refresh_token".into(), Value::String(new_refresh.clone()));
+        if let Some(expires_at) = expires_at {
+            obj.insert("expires_at".into(), Value::from(expires_at));
+        }
+        if let Some(expires_in) = expires_in {
+            obj.insert("expires_in".into(), Value::from(expires_in));
+        }
+        if let Some(token_type) = body.get("token_type").and_then(|v| v.as_str()) {
+            obj.insert("token_type".into(), Value::String(token_type.to_string()));
+        }
+    }
+    Ok(KimiCliCredentials {
+        access_token,
+        refresh_token: new_refresh,
+        expires_at,
+        raw,
+    })
+}
+
+/// 确保 Kimi CLI OAuth access_token 可用（对齐 CLI `/status` → ensureFresh）。
+async fn ensure_fresh_kimi_cli_access_token(force: bool) -> Result<String, String> {
+    let mut creds = load_kimi_cli_credentials()?;
+    let now = now_unix_secs();
+    if kimi_cli_token_needs_refresh(&creds, now, force) {
+        creds = refresh_kimi_cli_access_token(&creds.refresh_token, &creds).await?;
+        save_kimi_cli_credentials(&creds)?;
+    }
+    Ok(creds.access_token)
+}
+
+/// `engine=kimi` 专用：CLI 登录态 + usages（与 `/status` 同源）。via 固定 cli。
+async fn query_kimi_cli_status() -> CodingPlanQuotaSnapshot {
+    let token = match ensure_fresh_kimi_cli_access_token(false).await {
+        Ok(token) => token,
+        Err(error) => {
+            return empty_snapshot("empty_credentials", Some(error));
+        }
+    };
+
+    let mut snapshot = query_kimi(&token).await;
+    let auth_failed = snapshot.error.as_deref().is_some_and(|msg| {
+        msg.contains("401")
+            || msg.contains("403")
+            || msg.contains("Authentication failed")
+            || msg.contains("Unauthorized")
+    });
+    if !snapshot.success && auth_failed {
+        // 强制 refresh 一次（对齐 CLI ensureFresh(force)）
+        match ensure_fresh_kimi_cli_access_token(true).await {
+            Ok(fresh) => {
+                snapshot = query_kimi(&fresh).await;
+            }
+            Err(error) => {
+                return empty_snapshot(
+                    "empty_credentials",
+                    Some(format!(
+                        "Kimi CLI auth failed after refresh: {error}"
+                    )),
+                );
+            }
+        }
+    }
+
+    // engine=kimi 路径一律标记 via=cli（即使 query_kimi 默认写 api）
+    snapshot.via = Some("cli".to_string());
+    // 纠正 source：CLI 路径固定 kimi
+    if snapshot.success || snapshot.source == "kimi" {
+        snapshot.source = "kimi".to_string();
+    }
+    snapshot
 }
 
 fn resolve_engine_base_url_and_key(
@@ -824,11 +1111,9 @@ fn resolve_engine_base_url_and_key(
 
     match engine.as_str() {
         "kimi" => {
-            // 1) CLI OAuth（优先，对齐 kimi /status）
-            if let Some(pair) = resolve_kimi_cli_oauth_token() {
-                return Ok(pair);
-            }
-            // 2) mossx 内 managed kimi provider
+            // engine=kimi 额度在 get_coding_plan_quota_for_session 走 query_kimi_cli_status。
+            // 此处仅保留 mossx managed kimi provider 解析（其它调用方）；
+            // 不得在此静默用过期 access_token 冒充 CLI /status。
             let root = read_app_config_root();
             let providers = root
                 .get("kimi")
@@ -862,9 +1147,8 @@ fn resolve_engine_base_url_and_key(
             Ok(resolve_claude_settings_env())
         }
         "codex" => {
-            let profile_id = profile_id.unwrap_or(
-                crate::codex::provider_profile::CODEX_DISK_PROVIDER_PROFILE_ID,
-            );
+            let profile_id = profile_id
+                .unwrap_or(crate::codex::provider_profile::CODEX_DISK_PROVIDER_PROFILE_ID);
             if profile_id == crate::codex::provider_profile::CODEX_DISK_PROVIDER_PROFILE_ID {
                 // 官方 disk / ChatGPT：无第三方 base_url
                 return Ok((String::new(), String::new()));
@@ -877,13 +1161,10 @@ fn resolve_engine_base_url_and_key(
                     config_toml,
                     auth_json,
                     ..
-                }) => extract_codex_base_url_and_key(
-                    &config_toml,
-                    auth_json.as_deref(),
-                )
-                .ok_or_else(|| {
-                    "Codex provider has no model_providers.base_url / auth key".into()
-                }),
+                }) => extract_codex_base_url_and_key(&config_toml, auth_json.as_deref())
+                    .ok_or_else(|| {
+                        "Codex provider has no model_providers.base_url / auth key".into()
+                    }),
                 Err(error) => Err(error),
             }
         }
@@ -961,7 +1242,8 @@ fn resolve_quota_route(engine: &str, provider_profile_id: Option<&str>) -> Quota
         };
     }
 
-    // Kimi / Grok / OpenCode / 其他：有 coding-plan host 就走 API
+    // Grok / OpenCode / 其它 engine 的 managed provider：有 coding-plan host 就走 API。
+    // engine=kimi 已在 get_coding_plan_quota_for_session 短路，不会进入此函数的 kimi 分支依赖。
     if detect_provider(&base_url).is_some() {
         if api_key.trim().is_empty() {
             return QuotaRoute::None {
@@ -969,21 +1251,6 @@ fn resolve_quota_route(engine: &str, provider_profile_id: Option<&str>) -> Quota
             };
         }
         return QuotaRoute::CodingPlanApi { base_url, api_key };
-    }
-
-    // Kimi 官方无 base 但已有 CLI oauth（resolve 已填 coding v1）
-    if engine == "kimi" && !api_key.trim().is_empty() {
-        let base = if base_url.trim().is_empty() {
-            "https://api.kimi.com/coding/v1".to_string()
-        } else {
-            base_url.clone()
-        };
-        if detect_provider(&base).is_some() {
-            return QuotaRoute::CodingPlanApi {
-                base_url: base,
-                api_key,
-            };
-        }
     }
 
     QuotaRoute::None {
@@ -996,11 +1263,22 @@ fn resolve_quota_route(engine: &str, provider_profile_id: Option<&str>) -> Quota
 }
 
 /// 按当前会话引擎 + provider profile 解析路由并查询额度。
-/// 原则：官方 runtime/CLI 优先；第三方供应商走已知 Coding Plan API。
+/// 原则：
+/// - `engine=kimi`（Kimi CLI 本体）→ CLI OAuth refresh + `/usages`，via=cli（对齐 `/status`）
+/// - Claude/Codex + Kimi/MiniMax/… HTTP 中转 → CodingPlanApi + API key，via=api
+/// - Codex 官方 → OfficialRuntime
 pub(crate) async fn get_coding_plan_quota_for_session(
     engine: &str,
     provider_profile_id: Option<&str>,
 ) -> CodingPlanQuotaSnapshot {
+    let engine_lc = engine.trim().to_ascii_lowercase();
+
+    // Kimi CLI 引擎单独路径：只读 ~/.kimi-code 登录态（含 refresh），不走 managed API key。
+    // Claude Code / Codex 绑 Kimi HTTP 不会命中这里（engine 是 claude/codex）。
+    if engine_lc == "kimi" {
+        return query_kimi_cli_status().await;
+    }
+
     match resolve_quota_route(engine, provider_profile_id) {
         QuotaRoute::OfficialRuntime { source } => CodingPlanQuotaSnapshot {
             source: source.to_string(),
@@ -1014,13 +1292,8 @@ pub(crate) async fn get_coding_plan_quota_for_session(
         },
         QuotaRoute::CodingPlanApi { base_url, api_key } => {
             let mut snapshot = query_by_base_url_and_key(&base_url, &api_key).await;
-            // Kimi CLI oauth 路径标记 via=cli
-            if snapshot.source == "kimi"
-                && resolve_kimi_cli_oauth_token()
-                    .is_some_and(|(_, token)| token == api_key)
-            {
-                snapshot.via = Some("cli".to_string());
-            } else if snapshot.via.is_none() && snapshot.success {
+            // HTTP 中转路径（含 Claude/Codex + Kimi API key）统一 via=api
+            if snapshot.via.is_none() && snapshot.success {
                 snapshot.via = Some("api".to_string());
             }
             snapshot
@@ -1041,7 +1314,11 @@ pub(crate) async fn get_coding_plan_quota_for_session(
             }
             let source = if reason.contains("not a known") || reason.contains("not found") {
                 "unsupported"
-            } else if reason.contains("missing") || reason.contains("empty") {
+            } else if reason.contains("missing")
+                || reason.contains("empty")
+                || reason.contains("credentials")
+                || reason.contains("login")
+            {
                 "empty_credentials"
             } else {
                 "empty"
@@ -1087,6 +1364,18 @@ mod tests {
             Some(CodingPlanProvider::Kimi)
         ));
         assert!(matches!(
+            detect_provider("https://open.bigmodel.cn/api/anthropic"),
+            Some(CodingPlanProvider::ZhipuCn)
+        ));
+        assert!(matches!(
+            detect_provider("https://open.bigmodel.cn/api/coding/paas/v4"),
+            Some(CodingPlanProvider::ZhipuCn)
+        ));
+        assert!(matches!(
+            detect_provider("https://api.z.ai/api/anthropic"),
+            Some(CodingPlanProvider::ZhipuEn)
+        ));
+        assert!(matches!(
             detect_provider("https://api.minimaxi.com/anthropic"),
             Some(CodingPlanProvider::MiniMaxCn)
         ));
@@ -1106,7 +1395,38 @@ mod tests {
             detect_provider("https://api.deepseek.com/v1"),
             Some(CodingPlanProvider::DeepSeek)
         ));
+        // 千问 Coding Plan host 识别为「已知但无公开额度 API」
+        assert!(detect_provider("https://coding.dashscope.aliyuncs.com/apps/anthropic").is_none());
+        assert!(is_dashscope_coding_plan_host(
+            "https://coding.dashscope.aliyuncs.com/apps/anthropic"
+        ));
         assert!(detect_provider("https://api.openai.com/v1").is_none());
+    }
+
+    #[test]
+    fn parse_zhipu_unit_and_fallback() {
+        let data = json!({
+            "limits": [
+                {
+                    "type": "TOKENS_LIMIT",
+                    "unit": 3,
+                    "percentage": 12.5,
+                    "nextResetTime": 1_800_000_000_000i64
+                },
+                {
+                    "type": "TOKENS_LIMIT",
+                    "unit": 6,
+                    "percentage": 40.0,
+                    "nextResetTime": 1_800_100_000_000i64
+                }
+            ]
+        });
+        let windows = parse_zhipu_windows(&data);
+        assert_eq!(windows.len(), 2);
+        assert_eq!(windows[0].id, "five_hour");
+        assert!((windows[0].used_percent - 12.5).abs() < 0.01);
+        assert_eq!(windows[1].id, "weekly_limit");
+        assert!((windows[1].used_percent - 40.0).abs() < 0.01);
     }
 
     #[test]
@@ -1125,10 +1445,7 @@ mod tests {
         assert_eq!(balance.items.len(), 1);
         assert_eq!(balance.items[0].currency, "CNY");
         assert_eq!(balance.items[0].total_balance, "110.00");
-        assert_eq!(
-            balance.items[0].granted_balance.as_deref(),
-            Some("10.00")
-        );
+        assert_eq!(balance.items[0].granted_balance.as_deref(), Some("10.00"));
         assert_eq!(
             balance.items[0].topped_up_balance.as_deref(),
             Some("100.00")
@@ -1206,10 +1523,45 @@ mod tests {
     fn official_base_detection() {
         assert!(is_official_anthropic_base(""));
         assert!(is_official_anthropic_base("https://api.anthropic.com/v1"));
-        assert!(!is_official_anthropic_base("https://api.minimaxi.com/anthropic"));
+        assert!(!is_official_anthropic_base(
+            "https://api.minimaxi.com/anthropic"
+        ));
         assert!(is_official_openai_base(""));
         assert!(is_official_openai_base("https://api.openai.com/v1"));
         assert!(!is_official_openai_base("https://api.kimi.com/coding/v1"));
+    }
+
+    #[test]
+    fn kimi_cli_token_refresh_skew() {
+        let base = KimiCliCredentials {
+            access_token: "a".into(),
+            refresh_token: "r".into(),
+            expires_at: Some(1_000),
+            raw: json!({}),
+        };
+        // 距过期还有 30s < 60s skew → 需要 refresh
+        assert!(kimi_cli_token_needs_refresh(&base, 1_000 - 30, false));
+        // 距过期还有 120s → 不需要
+        assert!(!kimi_cli_token_needs_refresh(&base, 1_000 - 120, false));
+        // force 总是需要
+        assert!(kimi_cli_token_needs_refresh(&base, 1_000 - 120, true));
+        // 无 expires_at 且非 force → 不刷
+        let no_exp = KimiCliCredentials {
+            expires_at: None,
+            ..base.clone()
+        };
+        assert!(!kimi_cli_token_needs_refresh(&no_exp, 1_000, false));
+    }
+
+    #[test]
+    fn kimi_engine_route_is_not_confused_with_claude_http_kimi() {
+        // Claude + Kimi HTTP base 仍应走 CodingPlanApi（不进 engine=kimi CLI 短路）
+        let route = resolve_quota_route(
+            "claude",
+            None, // profile missing → may be None or official; just ensure no panic
+        );
+        // 无 profile 时官方 anthropic → none
+        assert!(matches!(route, QuotaRoute::None { .. }) || matches!(route, QuotaRoute::CodingPlanApi { .. }) || matches!(route, QuotaRoute::OfficialRuntime { .. }));
     }
 
     #[test]

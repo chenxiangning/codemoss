@@ -1896,7 +1896,7 @@ describe("useLayoutNodes client UI visibility", () => {
     expect(screen.getByRole("button", { name: "files" })).toBeTruthy();
   });
 
-  it("keeps the bottom status dock mounted when baseline tabs are visible and collapsed", async () => {
+  it("retires the bottom status dock in favor of composer run-status strip", async () => {
     clientUiVisibilityMock.visiblePanels.add("bottomActivityPanel");
     clientUiVisibilityMock.visibleControls.add("bottomActivity.checkpoint");
 
@@ -1907,21 +1907,12 @@ describe("useLayoutNodes client UI visibility", () => {
       }),
     );
 
-    expect(result.current.planPanelNode).toBeTruthy();
+    // 任务/子代理/Plan/编辑迁到 Composer 上方；底部 dock（含概览）不再挂载。
+    expect(result.current.planPanelNode).toBeNull();
 
-    render(
-      <>
-        {result.current.composerNode}
-        {result.current.planPanelNode}
-      </>,
-    );
+    render(<>{result.current.composerNode}</>);
 
-    expect(screen.getByTestId("status-panel").dataset.dockCollapsed).toBe(
-      "true",
-    );
-    expect(screen.getByTestId("status-panel").dataset.selectedEngine).toBe(
-      "opencode",
-    );
+    expect(screen.queryByTestId("status-panel")).toBeNull();
     expect(
       screen.getByTestId("composer").dataset.showStatusPanelToggleOverride,
     ).toBe("false");

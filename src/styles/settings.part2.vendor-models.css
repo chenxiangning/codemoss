@@ -161,6 +161,12 @@
   word-break: break-word;
 }
 
+.vendor-model-manager-provider {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
 .vendor-model-manager-actions {
   display: flex;
   align-items: center;

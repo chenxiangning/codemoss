@@ -12,12 +12,17 @@ describe("modelManagerRequest", () => {
   });
 
   it("stores and consumes codex request", () => {
-    requestVendorModelManager({ target: "codex", addMode: true });
+    requestVendorModelManager({
+      target: "codex",
+      addMode: true,
+      preferredProviderProfileId: "provider-a",
+    });
 
     const request = consumeVendorModelManagerRequest();
     expect(request).toEqual({
       target: "codex",
       addMode: true,
+      preferredProviderProfileId: "provider-a",
     });
 
     expect(consumeVendorModelManagerRequest()).toBeNull();
@@ -30,6 +35,7 @@ describe("modelManagerRequest", () => {
     expect(request).toEqual({
       target: "gemini",
       addMode: true,
+      preferredProviderProfileId: null,
     });
   });
 
@@ -42,6 +48,7 @@ describe("modelManagerRequest", () => {
     expect(consumeVendorModelManagerRequest()).toEqual({
       target: "claude",
       addMode: false,
+      preferredProviderProfileId: null,
     });
   });
 

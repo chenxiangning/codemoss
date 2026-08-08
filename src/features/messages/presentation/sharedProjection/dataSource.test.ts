@@ -475,6 +475,34 @@ describe("projection rollout flag", () => {
     expect(resolveSharedConversationItems(undefined)).toBeNull();
   });
 
+  it("drops multi-agent durable settle summary assistant bubbles", () => {
+    const items: SharedProjectionItem[] = [
+      makeItem({
+        id: "squad:run-1:user",
+        kind: "message",
+        content: {
+          role: "user",
+          text: "fix docs",
+          turnId: "squad:run-1",
+          squadRunId: "run-1",
+        },
+      }),
+      makeItem({
+        id: "squad:run-1:assistant",
+        kind: "message",
+        content: {
+          role: "assistant",
+          text: "short final summary",
+          turnId: "squad:run-1",
+          squadRunId: "run-1",
+          isFinal: true,
+        },
+      }),
+    ];
+    const mapped = toSharedConversationItems(items);
+    expect(mapped.map((item) => item.id)).toEqual(["squad:run-1:user"]);
+  });
+
   it("persists positive/negative overrides and can clear them", () => {
     expect(setSharedProjectionTestOverrideEnabled(true)).toBe(true);
     expect(window.localStorage.getItem(SHARED_PROJECTION_STORAGE_KEY)).toBe("1");

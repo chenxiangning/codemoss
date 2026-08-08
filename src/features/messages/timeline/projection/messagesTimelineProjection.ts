@@ -91,10 +91,6 @@ export function getGroupedEntryProjectionKey(entry: GroupedEntry): string {
   if (entry.kind === "editGroup") {
     return `${entry.kind}:${firstId}`;
   }
-  // subagentGroup：用 firstId 锚定，避免并行 running 中 length 变化 remount 丢失选中态。
-  if (entry.kind === "subagentGroup") {
-    return `${entry.kind}:${firstId}`;
-  }
   const lastId = entry.items.at(-1)?.id ?? firstId;
   return `${entry.kind}:${firstId}:${lastId}:${entry.items.length}`;
 }

@@ -13,6 +13,25 @@ function traceStartupInvoke<T>(
   return traceStartupCommand(commandLabel, scope, run);
 }
 
+async function withInvokeTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+): Promise<T | null> {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<null>((resolve) => {
+        timer = setTimeout(() => resolve(null), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timer) {
+      clearTimeout(timer);
+    }
+  }
+}
+
 /**
  * Expected OpenCode CLI unavailability for discovery / catalog prewarm.
  * Missing / disabled / unsafe CLI must resolve as empty data — not as a
@@ -32,13 +51,25 @@ export function isOpenCodeCliUnavailableError(error: unknown): boolean {
 /** @deprecated Use {@link isOpenCodeCliUnavailableError}. */
 export const isOpenCodeSessionListUnavailableError = isOpenCodeCliUnavailableError;
 
-export async function getOpenCodeSessionList(workspaceId: string) {
+export type GetOpenCodeSessionListOptions = {
+  /**
+   * When set, the startup trace duration is capped by this budget (timeout
+   * returns []). Outer withTimeout without this still lets zombie IPC record
+   * full wall-clock in command cost rank.
+   */
+  timeoutMs?: number;
+};
+
+export async function getOpenCodeSessionList(
+  workspaceId: string,
+  options?: GetOpenCodeSessionListOptions,
+) {
   return traceStartupInvoke(
     "opencode_session_list",
     workspaceScope(workspaceId),
     async () => {
       try {
-        return await invoke<
+        const invokePromise = invoke<
           Array<{
             sessionId: string;
             title: string;
@@ -46,6 +77,18 @@ export async function getOpenCodeSessionList(workspaceId: string) {
             updatedAt?: number | null;
           }>
         >("opencode_session_list", { workspaceId });
+        if (
+          typeof options?.timeoutMs === "number" &&
+          Number.isFinite(options.timeoutMs) &&
+          options.timeoutMs > 0
+        ) {
+          const budgeted = await withInvokeTimeout(
+            invokePromise,
+            options.timeoutMs,
+          );
+          return budgeted ?? [];
+        }
+        return await invokePromise;
       } catch (error) {
         if (isOpenCodeCliUnavailableError(error)) {
           return [];

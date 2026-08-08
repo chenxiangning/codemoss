@@ -1,6 +1,14 @@
 import { useState, useCallback, useEffect, useMemo } from "react";
-import type { ClaudeCurrentConfig, ProviderConfig } from "../types";
-import { LOCAL_SETTINGS_PROVIDER_ID } from "../types";
+import type {
+  ClaudeCurrentConfig,
+  CodexCustomModel,
+  ProviderConfig,
+} from "../types";
+import {
+  LOCAL_SETTINGS_PROVIDER_ID,
+  STORAGE_KEYS,
+  validateShapeOnlyCustomModels,
+} from "../types";
 import {
   getClaudeProviders,
   addClaudeProvider,
@@ -16,6 +24,7 @@ import {
 } from "../../models/constants";
 import { VENDOR_ACTIVE_PROVIDER_CHANGED_EVENT } from "../vendorActiveProviderEvents";
 import { notifyProviderTargetCatalogChanged } from "../../composer/components/ChatInputBox/hooks/useProviderTargetCatalogOwners";
+import { normalizeProviderProfileId } from "../customModelProviderBinding";
 
 export interface ProviderDialogState {
   isOpen: boolean;
@@ -60,6 +69,119 @@ function providerActionError(
     message: `Claude provider ${action} failed: ${detail}`,
     cause,
   });
+}
+
+function readStoredClaudeCustomModels(): CodexCustomModel[] {
+  if (typeof window === "undefined" || !window.localStorage) {
+    return [];
+  }
+  const rawValue = window.localStorage.getItem(STORAGE_KEYS.CLAUDE_CUSTOM_MODELS);
+  if (!rawValue) {
+    return [];
+  }
+  try {
+    return validateShapeOnlyCustomModels(JSON.parse(rawValue));
+  } catch {
+    return [];
+  }
+}
+
+function normalizeClaudeProviderCustomModels(
+  providers: ProviderConfig[],
+): CodexCustomModel[] {
+  const mergedModels: CodexCustomModel[] = [];
+  const seenIds = new Set<string>();
+
+  for (const provider of providers) {
+    if (provider.isLocalProvider || provider.id === LOCAL_SETTINGS_PROVIDER_ID) {
+      continue;
+    }
+    const providerModels = validateShapeOnlyCustomModels(
+      provider.customModels ?? [],
+    );
+    for (const providerModel of providerModels) {
+      const id = providerModel.id.trim();
+      if (!id || seenIds.has(id)) {
+        continue;
+      }
+      seenIds.add(id);
+      const label = providerModel.label?.trim() || id;
+      const description = providerModel.description?.trim();
+      const providerProfileId = provider.id.trim();
+      mergedModels.push({
+        id,
+        label,
+        description:
+          description && description.length > 0 ? description : undefined,
+        providerProfileId:
+          providerProfileId.length > 0 ? providerProfileId : undefined,
+      });
+    }
+  }
+
+  return mergedModels;
+}
+
+/**
+ * Merge Claude provider-owned custom models into the engine localStorage catalog
+ * (symmetric with mergeCodexProviderCustomModelsIntoStore).
+ */
+export function mergeClaudeProviderCustomModelsIntoStore(
+  providers: ProviderConfig[],
+): void {
+  if (typeof window === "undefined" || !window.localStorage) {
+    return;
+  }
+
+  const providerModels = normalizeClaudeProviderCustomModels(providers);
+  if (providerModels.length === 0) {
+    return;
+  }
+
+  const storedModels = readStoredClaudeCustomModels();
+  const originById = new Map<string, string>();
+  for (const model of providerModels) {
+    const id = model.id.trim();
+    const profileId = normalizeProviderProfileId(model.providerProfileId);
+    if (id && profileId) {
+      originById.set(id, profileId);
+    }
+  }
+
+  const enrichedStoredModels = storedModels.map((model) => {
+    if (normalizeProviderProfileId(model.providerProfileId)) {
+      return model;
+    }
+    const providerProfileId = originById.get(model.id.trim());
+    return providerProfileId ? { ...model, providerProfileId } : model;
+  });
+  const storedIds = new Set(storedModels.map((model) => model.id.trim()));
+  const missingProviderModels = providerModels.filter(
+    (model) => !storedIds.has(model.id.trim()),
+  );
+
+  const didEnrich = enrichedStoredModels.some(
+    (model, index) =>
+      model.providerProfileId !== storedModels[index]?.providerProfileId,
+  );
+  if (missingProviderModels.length === 0 && !didEnrich) {
+    return;
+  }
+
+  const nextModels = [...enrichedStoredModels, ...missingProviderModels];
+  try {
+    window.localStorage.setItem(
+      STORAGE_KEYS.CLAUDE_CUSTOM_MODELS,
+      JSON.stringify(nextModels),
+    );
+    window.dispatchEvent(
+      new CustomEvent("localStorageChange", {
+        detail: { key: STORAGE_KEYS.CLAUDE_CUSTOM_MODELS },
+      }),
+    );
+  } catch {
+    // localStorage can be unavailable; provider save still succeeds.
+  }
 }
 
 export function useProviderManagement() {
@@ -119,6 +241,7 @@ export function useProviderManagement() {
     try {
       const list = await getClaudeProviders();
       setProviders(list);
+      mergeClaudeProviderCustomModelsIntoStore(list);
       syncActiveProviderModelMapping(list);
       return { ok: true } as const;
     } catch (error) {

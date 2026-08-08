@@ -1,8 +1,10 @@
 import Brain from "lucide-react/dist/esm/icons/brain";
+import CircleAlert from "lucide-react/dist/esm/icons/circle-alert";
 import CircleCheck from "lucide-react/dist/esm/icons/circle-check";
 import GitCommitHorizontal from "lucide-react/dist/esm/icons/git-commit-horizontal";
 import LayoutDashboard from "lucide-react/dist/esm/icons/layout-dashboard";
 import Lock from "lucide-react/dist/esm/icons/lock";
+import PanelLeftClose from "lucide-react/dist/esm/icons/panel-left-close";
 import Settings from "lucide-react/dist/esm/icons/settings";
 import type { ReactNode, RefObject } from "react";
 import {
@@ -34,6 +36,14 @@ type SidebarSettingsMenuProps = {
   onOpenRuntimeNotice?: () => void;
   /** 是否展示运行时提示菜单项（受 clientUiVisibility 控制） */
   showRuntimeNotice?: boolean;
+  /**
+   * 运行时提示是否有失败项。入口迁到设置菜单/固定旁栏后仍需切换对号↔叹号，
+   * 与 GlobalRuntimeNoticeDock 最小化气泡的 has-error 语义一致。
+   */
+  runtimeNoticeHasError?: boolean;
+  /** non-macOS：设置菜单「隐藏对话侧边栏」；mac 用 titlebar */
+  showHideThreadsSidebar?: boolean;
+  onCollapseSidebar?: () => void;
 };
 
 type SettingsMenuAction = {
@@ -60,9 +70,26 @@ export function SidebarSettingsMenu({
   onAppModeChange,
   onOpenRuntimeNotice,
   showRuntimeNotice = false,
+  runtimeNoticeHasError = false,
+  showHideThreadsSidebar = false,
+  onCollapseSidebar,
 }: SidebarSettingsMenuProps) {
   const { pinnedIds, togglePinned } = useSidebarSettingsPinnedActions();
   const atPinLimit = pinnedIds.length >= SIDEBAR_SETTINGS_PINNED_MAX;
+  const runtimeNoticeIcon = runtimeNoticeHasError ? (
+    <CircleAlert
+      size={14}
+      aria-hidden
+      className="sidebar-settings-runtime-notice-icon is-has-error"
+    />
+  ) : (
+    <CircleCheck
+      size={14}
+      aria-hidden
+      className="sidebar-settings-runtime-notice-icon is-idle"
+    />
+  );
+  const showHideThreads = Boolean(showHideThreadsSidebar && onCollapseSidebar);
 
   const actions: SettingsMenuAction[] = [
     {
@@ -109,7 +136,7 @@ export function SidebarSettingsMenu({
     {
       id: "runtime-notice",
       label: t("runtimeNotice.title"),
-      icon: <CircleCheck size={14} aria-hidden />,
+      icon: runtimeNoticeIcon,
       onSelect: () => {
         onClose();
         onOpenRuntimeNotice?.();
@@ -135,6 +162,20 @@ export function SidebarSettingsMenu({
             ref={menuRef}
             role="menu"
           >
+            {showHideThreads ? (
+              <button
+                type="button"
+                role="menuitem"
+                className="sidebar-settings-dropdown-item"
+                onClick={() => {
+                  onClose();
+                  onCollapseSidebar?.();
+                }}
+              >
+                <PanelLeftClose size={14} aria-hidden />
+                <span>{t("sidebar.hideThreadsSidebar")}</span>
+              </button>
+            ) : null}
             {visibleActions.map((action) => {
               const pinned = pinnedIds.includes(action.id);
               const pinDisabled = !pinned && atPinLimit;
@@ -244,12 +285,23 @@ export function SidebarSettingsMenu({
               type="button"
               className={`sidebar-primary-nav-item sidebar-primary-nav-item-bottom sidebar-settings-pinned-item${
                 action.active ? " is-active" : ""
+              }${
+                action.id === "runtime-notice" && runtimeNoticeHasError
+                  ? " is-runtime-notice-error"
+                  : ""
               }`}
               onClick={action.onSelect}
               title={action.label}
               aria-label={action.label}
               aria-pressed={action.active}
               data-tauri-drag-region="false"
+              data-runtime-notice-status={
+                action.id === "runtime-notice"
+                  ? runtimeNoticeHasError
+                    ? "has-error"
+                    : "idle"
+                  : undefined
+              }
             >
               <span className="sidebar-primary-nav-icon" aria-hidden>
                 {action.icon}

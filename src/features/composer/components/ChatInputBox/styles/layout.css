@@ -17,7 +17,7 @@
   width: 100%;
   background: transparent;
   border: 1px solid var(--input-border);
-  border-radius: 14px;
+  border-radius: 12px;
   overflow: visible;
   position: relative;
   margin: 0 auto;

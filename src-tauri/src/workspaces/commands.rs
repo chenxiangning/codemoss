@@ -2340,6 +2340,59 @@ pub(crate) async fn open_workspace_in(
     ))
 }
 
+/// Reveal a local path in the OS file manager (Finder / Explorer / file manager).
+///
+/// Windows uses `explorer /select,...` rather than plugin-opener's
+/// `SHOpenFolderAndSelectItems`: the latter can fail with non-FILE_NOT_FOUND
+/// HRESULTs that the plugin silently swallows, which presents as "click does
+/// nothing" for Windows users.
+#[tauri::command]
+pub(crate) async fn reveal_in_file_manager(path: String) -> Result<(), String> {
+    let trimmed = path.trim();
+    if trimmed.is_empty() {
+        return Err("Path is empty".to_string());
+    }
+
+    let canonical = dunce::canonicalize(trimmed).map_err(|error| {
+        format!("Failed to resolve path `{trimmed}`: {error}")
+    })?;
+
+    #[cfg(windows)]
+    {
+        // Do not route through `std_command` (CREATE_NO_WINDOW): Explorer is a
+        // GUI process and must be able to show a window. `spawn` (not `status`)
+        // because explorer often returns non-zero even when it succeeds.
+        let path_str = canonical.to_string_lossy();
+        std::process::Command::new("explorer")
+            .arg(format!("/select,{path_str}"))
+            .spawn()
+            .map_err(|error| format!("Failed to open Explorer: {error}"))?;
+        return Ok(());
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        let status = crate::utils::std_command("open")
+            .arg("-R")
+            .arg(&canonical)
+            .status()
+            .map_err(|error| format!("Failed to reveal in Finder: {error}"))?;
+        if status.success() {
+            return Ok(());
+        }
+        return Err(format!(
+            "Failed to reveal in Finder ({}).",
+            format_exit_detail(status.code())
+        ));
+    }
+
+    #[cfg(all(unix, not(target_os = "macos")))]
+    {
+        tauri_plugin_opener::reveal_item_in_dir(&canonical)
+            .map_err(|error| format!("Failed to reveal in file manager: {error}"))
+    }
+}
+
 const DEFAULT_MACOS_APP_NAME: &str = "ccgui";
 
 fn normalize_new_window_path(path: Option<String>) -> Option<String> {

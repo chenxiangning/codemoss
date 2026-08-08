@@ -5,8 +5,9 @@ use std::collections::{HashMap, HashSet};
 use serde_json::{json, Value};
 
 use crate::shared_event_log::canonical::types::{
-    ArtifactRef, CanonicalBlock, CanonicalFact, ControlFact, OutcomeStatus, ToolResultStatus,
-    TurnCommittedFact, TurnRequestedFact, UsageRecordedFact, UsageShape, UsageSource,
+    ArtifactRef, CanonicalBlock, CanonicalFact, ControlFact, OutcomeStatus, SquadRunRequestedFact,
+    SquadRunSettledFact, ToolResultStatus, TurnCommittedFact, TurnRequestedFact, UsageRecordedFact,
+    UsageShape, UsageSource,
 };
 use crate::shared_event_log::{
     ProjectionCheckpointRow, SharedEventWriter, StoreError, StoredEvent,
@@ -63,6 +64,26 @@ impl SharedProjector {
         &self,
         events: &[StoredEvent],
     ) -> Result<Vec<ProjectionItem>, StoreError> {
+        let squad_attempts = events
+            .iter()
+            .filter(|event| event.fact_type == "conversation.turnRequested")
+            .filter_map(|event| {
+                let payload = serde_json::from_str::<Value>(&event.payload_json).ok()?;
+                payload
+                    .get("squadWorkerBindingKey")
+                    .and_then(Value::as_str)
+                    .filter(|value| !value.trim().is_empty())?;
+                event.attempt_id.clone()
+            })
+            .collect::<HashSet<_>>();
+        self.project_events_with_squad_attempts(events, &squad_attempts)
+    }
+
+    fn project_events_with_squad_attempts(
+        &self,
+        events: &[StoredEvent],
+        squad_attempts: &HashSet<String>,
+    ) -> Result<Vec<ProjectionItem>, StoreError> {
         let canonical_turn_ids = events
             .iter()
             .filter(|event| event.fidelity == crate::shared_event_log::Fidelity::Canonical)
@@ -91,6 +112,19 @@ impl SharedProjector {
                 requested_at_by_attempt
                     .entry(requested.attempt_id.clone())
                     .or_insert(requested.requested_at);
+            }
+            if event
+                .attempt_id
+                .as_ref()
+                .is_some_and(|attempt| squad_attempts.contains(attempt))
+                && matches!(
+                    fact,
+                    CanonicalFact::TurnRequested(_)
+                        | CanonicalFact::TurnCommitted(_)
+                        | CanonicalFact::UsageRecorded(_)
+                )
+            {
+                continue;
             }
             if let CanonicalFact::UsageRecorded(usage) = &fact {
                 let priority = match usage.source {
@@ -207,7 +241,11 @@ impl SharedProjector {
                 return Ok(items);
             }
         }
-        let projected = self.project_events(&events)?;
+        let squad_attempts = writer
+            .squad_attempt_ids_for_session(session_id)?
+            .into_iter()
+            .collect::<HashSet<_>>();
+        let projected = self.project_events_with_squad_attempts(&events, &squad_attempts)?;
         merge_projected_items(&mut items, projected);
         // project_events already stamps within the delta set; re-stamp the merged
         // checkpoint+delta list so late UsageRecorded can patch earlier assistant rows.
@@ -283,8 +321,72 @@ impl SharedProjector {
             CanonicalFact::TurnCommitted(f) => self.project_turn_committed(event, f, hints),
             CanonicalFact::UsageRecorded(f) => self.project_usage_recorded(event, f),
             CanonicalFact::Control(f) => self.project_control(event, f),
+            CanonicalFact::SquadRunRequested(f) => self.project_squad_run_requested(event, f),
+            CanonicalFact::SquadRunSettled(f) => self.project_squad_run_settled(event, f),
             _ => vec![],
         }
+    }
+
+    fn project_squad_run_requested(
+        &self,
+        event: &StoredEvent,
+        fact: &SquadRunRequestedFact,
+    ) -> Vec<ProjectionItem> {
+        vec![ProjectionItem {
+            id: format!("squad:{}:user", fact.run_id),
+            kind: ProjectionItemKind::Message,
+            content: json!({
+                "role": "user",
+                "text": fact.request_text,
+                "turnId": format!("squad:{}", fact.run_id),
+                "squadRunId": fact.run_id,
+                "engineSource": fact.lead_target.engine,
+                "executionTargetSnapshot": fact.lead_target,
+            }),
+            fidelity: event.fidelity,
+            checksum: event.payload_checksum.clone(),
+        }]
+    }
+
+    fn project_squad_run_settled(
+        &self,
+        event: &StoredEvent,
+        fact: &SquadRunSettledFact,
+    ) -> Vec<ProjectionItem> {
+        let Some(summary) = fact
+            .summary
+            .as_deref()
+            .map(str::trim)
+            .filter(|summary| !summary.is_empty())
+        else {
+            return vec![];
+        };
+        if fact.status != "succeeded" {
+            return vec![];
+        }
+        let mut content = json!({
+            "role": "assistant",
+            "text": summary,
+            "turnId": format!("squad:{}", fact.run_id),
+            "squadRunId": fact.run_id,
+            "isFinal": true,
+        });
+        if let Some(target) = fact.extra.get("target") {
+            content["executionTargetSnapshot"] = target.clone();
+            if let Some(engine) = target.get("engine") {
+                content["engineSource"] = engine.clone();
+            }
+        }
+        if let Some(attempt_id) = fact.extra.get("finalAttemptId") {
+            content["squadFinalAttemptId"] = attempt_id.clone();
+        }
+        vec![ProjectionItem {
+            id: format!("squad:{}:assistant", fact.run_id),
+            kind: ProjectionItemKind::Message,
+            content,
+            fidelity: event.fidelity,
+            checksum: event.payload_checksum.clone(),
+        }]
     }
 
     fn project_turn_requested(
@@ -423,11 +525,7 @@ impl SharedProjector {
                 ToolResultStatus::Error => "error",
                 ToolResultStatus::Incomplete => "incomplete",
             };
-            let detail = exchange
-                .call
-                .arguments_summary
-                .clone()
-                .unwrap_or_default();
+            let detail = exchange.call.arguments_summary.clone().unwrap_or_default();
             let mut tool_type = resolve_canvas_tool_type_value(&exchange.tool_name);
             let mut title = canvas_tool_title(&exchange.tool_name, &detail);
             let has_native_changes_array = detail_has_changes_array(&detail);

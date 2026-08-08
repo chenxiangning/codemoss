@@ -53,6 +53,7 @@ toml = "0.8"
 dirs = "5"
 which = "7"
 trash = "5"
+dunce = "1"
 rusqlite = { version = "0.32", features = ["bundled"] }
 regex = "1"
 sha2 = "0.10"

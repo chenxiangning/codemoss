@@ -3,6 +3,8 @@ export type VendorModelManagerTarget = "claude" | "codex" | "gemini";
 export interface VendorModelManagerRequest {
   target: VendorModelManagerTarget;
   addMode?: boolean;
+  /** Preferred managed provider profile for add-form default binding. */
+  preferredProviderProfileId?: string | null;
 }
 
 const REQUEST_STORAGE_KEY = "ccgui.vendor.model-manager-request";
@@ -16,6 +18,11 @@ export function requestVendorModelManager(
     return;
   }
 
+  const preferred =
+    typeof request.preferredProviderProfileId === "string"
+      ? request.preferredProviderProfileId.trim()
+      : "";
+
   const payload = {
     target:
       request.target === "codex"
@@ -24,6 +31,7 @@ export function requestVendorModelManager(
           ? "gemini"
           : "claude",
     addMode: Boolean(request.addMode),
+    preferredProviderProfileId: preferred.length > 0 ? preferred : null,
     timestamp: Date.now(),
   } satisfies VendorModelManagerRequest & { timestamp: number };
 
@@ -63,9 +71,14 @@ export function consumeVendorModelManagerRequest():
         : parsed.target === "gemini"
           ? "gemini"
           : "claude";
+    const preferred =
+      typeof parsed.preferredProviderProfileId === "string"
+        ? parsed.preferredProviderProfileId.trim()
+        : "";
     return {
       target,
       addMode: Boolean(parsed.addMode),
+      preferredProviderProfileId: preferred.length > 0 ? preferred : null,
     };
   } catch {
     return null;

@@ -31,6 +31,10 @@ export function useWorkspaceRestore({
     if (!hasLoaded) {
       return;
     }
+    // Cold-start: only restore the active workspace thread list.
+    // Expanding every non-collapsed workspace here dual-scanned first-paint
+    // (mossx + 内容分析) and blocked the active path for multi-seconds.
+    // Non-active workspaces hydrate after startup-gate via idle prewarm / focus.
     const pending = workspaces.filter((workspace) => {
       if (restoredWorkspaces.current.has(workspace.id)) {
         return false;
@@ -38,10 +42,10 @@ export function useWorkspaceRestore({
       if (restoringWorkspaces.current.has(workspace.id)) {
         return false;
       }
-      if (workspace.id === activeWorkspaceId) {
-        return true;
+      if (!activeWorkspaceId) {
+        return false;
       }
-      return !workspace.settings.sidebarCollapsed;
+      return workspace.id === activeWorkspaceId;
     });
     if (pending.length === 0) {
       return;

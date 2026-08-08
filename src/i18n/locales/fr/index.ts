@@ -47,6 +47,7 @@ import sidebar from "./sidebar";
 import specHub from "./specHub";
 import statusPanel from "./statusPanel";
 import subagentUi from "./subagentUi";
+import multiAgent from "./multiAgent";
 import tabbar from "./tabbar";
 import taskCenter from "./taskCenter";
 import terminal from "./terminal";
@@ -106,6 +107,7 @@ const locale = {
   ...specHub,
   ...statusPanel,
   ...subagentUi,
+  ...multiAgent,
   ...tabbar,
   ...taskCenter,
   ...terminal,

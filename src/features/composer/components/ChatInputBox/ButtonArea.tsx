@@ -1,7 +1,9 @@
 import {
   useCallback,
+  useEffect,
   useId,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
 } from 'react';
@@ -11,8 +13,19 @@ import ArrowUp from 'lucide-react/dist/esm/icons/arrow-up';
 import Square from 'lucide-react/dist/esm/icons/square';
 import Plus from 'lucide-react/dist/esm/icons/plus';
 import WandSparkles from 'lucide-react/dist/esm/icons/wand-sparkles';
-import type { ButtonAreaProps, MemoryReferenceMode, PermissionMode, ReasoningEffort } from './types';
+import type {
+  AccountRateLimitsInfo,
+  ButtonAreaProps,
+  MemoryReferenceMode,
+  PermissionMode,
+  ReasoningEffort,
+} from './types';
 import { ConfigSelect, ModeSelect, ReasoningSelect } from './selectors';
+import { SessionControlQuotaPane } from './selectors/SessionControlQuotaPane';
+import { useCodingPlanQuota } from '../../../status-panel/hooks/useCodingPlanQuota';
+import { buildSessionOverviewQuota } from '../../../status-panel/utils/sessionOverviewViewModel';
+import type { EngineType } from '../../../../types';
+import type { RateLimitSnapshot, RateLimitWindow } from '../../../../types/planning';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -40,6 +53,49 @@ const MEMORY_REFERENCE_OPTIONS: ReadonlyArray<{
   { mode: 'always', labelKey: 'composer.memoryReferenceEnableAlways', fallback: '常开引用' },
 ];
 
+const ENGINE_TYPES: ReadonlySet<string> = new Set([
+  'claude',
+  'codex',
+  'gemini',
+  'grok',
+  'kimi',
+  'opencode',
+]);
+
+function asEngineType(provider: string | undefined): EngineType | null {
+  if (!provider || !ENGINE_TYPES.has(provider)) {
+    return null;
+  }
+  return provider as EngineType;
+}
+
+/** AccountRateLimitsInfo → RateLimitSnapshot for overview quota merge. */
+function accountLimitsToRateLimitSnapshot(
+  limits: AccountRateLimitsInfo | null | undefined,
+): RateLimitSnapshot | null {
+  if (!limits) {
+    return null;
+  }
+  const mapWindow = (
+    window: AccountRateLimitsInfo['primary'],
+  ): RateLimitWindow | null => {
+    if (!window || typeof window.usedPercent !== 'number') {
+      return null;
+    }
+    return {
+      usedPercent: window.usedPercent,
+      windowDurationMins: window.windowDurationMins ?? null,
+      resetsAt: window.resetsAt ?? null,
+    };
+  };
+  return {
+    primary: mapWindow(limits.primary),
+    secondary: mapWindow(limits.secondary),
+    credits: null,
+    planType: null,
+  };
+}
+
 function ToolGridIcon() {
   return <Plus size={18} className="selector-tool-icon" aria-hidden="true" />;
 }
@@ -56,6 +112,7 @@ export const ButtonArea = ({
   streamActivityPhase = 'idle',
   permissionMode = 'bypassPermissions',
   currentProvider = 'claude',
+  currentProviderProfileId = null,
   providerAvailability,
   providerVersions,
   reasoningEffort = null,
@@ -89,6 +146,7 @@ export const ButtonArea = ({
   toolSurface,
   panelToggleSurface,
   curatedSkillSurface,
+  squadSurface,
 }: ButtonAreaProps) => {
   const { t } = useTranslation();
   const supportsStreamActivityPhaseFx =
@@ -102,15 +160,16 @@ export const ButtonArea = ({
   const toolDockId = useId();
   const buttonAreaRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
-  // The tool menu should read as a panel attached to the input box's top edge:
-  // full input width, left edge aligned to the box. Radix anchors the popover
-  // to the "+" trigger, so we measure the box width and the trigger's offset
-  // to derive an equivalent width + negative alignOffset.
+  // Session Control HUD anchors to the chat-input-box top edge: full dialog
+  // width, left edge aligned. Radix anchors to the "+" trigger, so we measure
+  // the box width and the trigger's offset → width + negative alignOffset.
   const [menuMetrics, setMenuMetrics] = useState<{
     width: number;
     alignOffset: number;
     sideOffset: number;
   } | null>(null);
+  const [usageLoading, setUsageLoading] = useState(false);
+  const usageLoadingRef = useRef(false);
 
   useLayoutEffect(() => {
     if (!isToolDockOpen) {
@@ -125,7 +184,9 @@ export const ButtonArea = ({
     const MENU_GAP = 8;
     const inputBox = buttonArea.closest('.chat-input-box') as HTMLElement | null;
     const measure = () => {
-      const boxRect = buttonArea.getBoundingClientRect();
+      // Prefer full composer shell width so HUD fills the dialog above input.
+      const shell = inputBox ?? buttonArea;
+      const boxRect = shell.getBoundingClientRect();
       const triggerRect = trigger.getBoundingClientRect();
       const width = Math.round(boxRect.width);
       if (width <= 0) {
@@ -152,12 +213,87 @@ export const ButtonArea = ({
     const resizeObserver =
       typeof ResizeObserver !== 'undefined' ? new ResizeObserver(measure) : null;
     resizeObserver?.observe(buttonArea);
+    if (inputBox) {
+      resizeObserver?.observe(inputBox);
+    }
     window.addEventListener('resize', measure);
     return () => {
       resizeObserver?.disconnect();
       window.removeEventListener('resize', measure);
     };
   }, [isToolDockOpen]);
+
+  const engineType = asEngineType(currentProvider);
+
+  // 复用 Status Panel 概览同源 hook：DeepSeek / MiniMax / Kimi / 智谱等 coding plan + 官方 CLI 路由。
+  const {
+    snapshot: codingPlanSnapshot,
+    loading: codingPlanLoading,
+    refresh: refreshCodingPlanQuota,
+  } = useCodingPlanQuota({
+    engine: engineType,
+    providerProfileId: currentProviderProfileId,
+    enabled: isToolDockOpen && engineType != null,
+  });
+
+  const sessionQuotaView = useMemo(
+    () =>
+      buildSessionOverviewQuota(
+        engineType,
+        accountLimitsToRateLimitSnapshot(accountRateLimits),
+        usageShowRemaining,
+        codingPlanSnapshot
+          ? {
+              source: codingPlanSnapshot.source,
+              success: codingPlanSnapshot.success,
+              error: codingPlanSnapshot.error,
+              planLabel: codingPlanSnapshot.planLabel,
+              windows: codingPlanSnapshot.windows,
+              balance: codingPlanSnapshot.balance ?? null,
+            }
+          : null,
+        codingPlanLoading,
+      ),
+    [
+      accountRateLimits,
+      codingPlanLoading,
+      codingPlanSnapshot,
+      engineType,
+      usageShowRemaining,
+    ],
+  );
+
+  const refreshUsageSnapshot = useCallback(async () => {
+    if (usageLoadingRef.current) {
+      return;
+    }
+    usageLoadingRef.current = true;
+    setUsageLoading(true);
+    try {
+      await Promise.all([
+        refreshCodingPlanQuota(),
+        onRefreshAccountRateLimits
+          ? Promise.resolve(onRefreshAccountRateLimits())
+          : Promise.resolve(),
+      ]);
+    } catch {
+      // Keep HUD usable if refresh fails.
+    } finally {
+      usageLoadingRef.current = false;
+      setUsageLoading(false);
+    }
+  }, [onRefreshAccountRateLimits, refreshCodingPlanQuota]);
+
+  // Open HUD → also refresh official Codex account rate limits (coding plan hook self-refreshes on enable).
+  useEffect(() => {
+    if (!isToolDockOpen) {
+      return;
+    }
+    if (onRefreshAccountRateLimits) {
+      void Promise.resolve(onRefreshAccountRateLimits());
+    }
+  }, [isToolDockOpen, onRefreshAccountRateLimits]);
+
   const memoryReferenceStateLabel =
     memoryReferenceMode === 'always'
       ? t('composer.memoryReferenceAlwaysOn')
@@ -227,12 +363,21 @@ export const ButtonArea = ({
               sideOffset={menuMetrics?.sideOffset ?? 12}
               alignOffset={menuMetrics?.alignOffset ?? 0}
               avoidCollisions={false}
-              className="composer-tool-menu"
+              className="composer-tool-menu composer-session-control-hud"
+              data-testid="composer-session-control-hud"
               aria-label={toolDockToggleLabel}
-              style={menuMetrics ? { width: menuMetrics.width } : undefined}
+              style={
+                menuMetrics
+                  ? {
+                      width: menuMetrics.width,
+                      // CSS var for nested layout / tests
+                      ['--composer-session-hud-width' as string]: `${menuMetrics.width}px`,
+                    }
+                  : undefined
+              }
             >
               {(toolSurface || onEnhancePrompt || panelToggleSurface || curatedSkillSurface) ? (
-                <>
+                <div className="composer-session-hud-footer">
                   <div className="composer-tool-menu-surface-row">
                     {toolSurface ? (
                       <div className="button-area-tool-surface">
@@ -257,73 +402,95 @@ export const ButtonArea = ({
                       </div>
                     ) : null}
                     {panelToggleSurface}
+                    {selectedAgent?.name ? (
+                      <span className="composer-session-hud-agent-pill" title={selectedAgent.name}>
+                        {selectedAgent.name}
+                      </span>
+                    ) : null}
                   </div>
-                  <DropdownMenuSeparator />
-                </>
+                </div>
+              ) : selectedAgent?.name ? (
+                <div className="composer-session-hud-footer">
+                  <div className="composer-tool-menu-surface-row">
+                    <span className="composer-session-hud-agent-pill" title={selectedAgent.name}>
+                      {selectedAgent.name}
+                    </span>
+                  </div>
+                </div>
               ) : null}
-              <ConfigSelect
-                inline
-                currentProvider={currentProvider}
-                onProviderChange={
-                  onProviderSelect ? handleProviderSelect : undefined
-                }
-                providerAvailability={providerAvailability}
-                providerVersions={providerVersions}
-                alwaysThinkingEnabled={alwaysThinkingEnabled}
-                onToggleThinking={onToggleThinking}
-                streamingEnabled={streamingEnabled}
-                onStreamingEnabledChange={onStreamingEnabledChange}
-                accountRateLimits={accountRateLimits}
-                usageShowRemaining={usageShowRemaining}
-                onRefreshAccountRateLimits={onRefreshAccountRateLimits}
-                selectedCollaborationModeId={selectedCollaborationModeId}
-                onSelectCollaborationMode={onSelectCollaborationMode}
-                codexSpeedMode={codexSpeedMode}
-                onCodexSpeedModeChange={onCodexSpeedModeChange}
-                onCodexReviewQuickStart={onCodexReviewQuickStart}
-                onForkQuickStart={onForkQuickStart}
-                selectedAgent={selectedAgent}
-                onAgentSelect={onAgentSelect}
-                onOpenAgentSettings={onOpenAgentSettings}
-              />
-              <DropdownMenuSeparator />
-              {onSetMemoryReferenceMode ? (
-                <DropdownMenuSub>
-                  <DropdownMenuSubTrigger className="composer-tool-menu-sub-trigger">
-                    <span className="composer-tool-menu-item-icon" aria-hidden>
-                      <DatabaseZap size={16} />
-                    </span>
-                    <span className="composer-tool-menu-item-body">
-                      <span className="composer-tool-menu-item-label">
-                        {t('composer.memoryReferenceToggle')}
-                      </span>
-                      <span className="composer-tool-menu-item-value">
-                        {memoryReferenceStateLabel}
-                      </span>
-                    </span>
-                  </DropdownMenuSubTrigger>
-                  <DropdownMenuSubContent className="composer-tool-menu-sub-content">
-                    {MEMORY_REFERENCE_OPTIONS.map((option) => (
-                      <DropdownMenuItem
-                        key={option.mode}
-                        className={`composer-tool-menu-option${
-                          memoryReferenceMode === option.mode ? ' is-selected' : ''
-                        }`}
-                        onSelect={() => onSetMemoryReferenceMode?.(option.mode)}
-                      >
-                        <span className="composer-tool-menu-option-body">
-                          <span className="composer-tool-menu-option-label">
-                            {t(option.labelKey, { defaultValue: option.fallback })}
+              <div className="composer-session-hud-main">
+                <div className="composer-session-hud-left">
+                  <ConfigSelect
+                    inline
+                    currentProvider={currentProvider}
+                    onProviderChange={
+                      onProviderSelect ? handleProviderSelect : undefined
+                    }
+                    providerAvailability={providerAvailability}
+                    providerVersions={providerVersions}
+                    alwaysThinkingEnabled={alwaysThinkingEnabled}
+                    onToggleThinking={onToggleThinking}
+                    streamingEnabled={streamingEnabled}
+                    onStreamingEnabledChange={onStreamingEnabledChange}
+                    selectedCollaborationModeId={selectedCollaborationModeId}
+                    onSelectCollaborationMode={onSelectCollaborationMode}
+                    codexSpeedMode={codexSpeedMode}
+                    onCodexSpeedModeChange={onCodexSpeedModeChange}
+                    onCodexReviewQuickStart={onCodexReviewQuickStart}
+                    onForkQuickStart={onForkQuickStart}
+                    selectedAgent={selectedAgent}
+                    onAgentSelect={onAgentSelect}
+                    onOpenAgentSettings={onOpenAgentSettings}
+                  />
+                  {onSetMemoryReferenceMode ? (
+                    <>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuSub>
+                        <DropdownMenuSubTrigger className="composer-tool-menu-sub-trigger">
+                          <span className="composer-tool-menu-item-icon" aria-hidden>
+                            <DatabaseZap size={16} />
                           </span>
-                        </span>
-                        {memoryReferenceMode === option.mode && (
-                          <span className="codicon codicon-check composer-tool-menu-option-check" aria-hidden="true" />
-                        )}
-                      </DropdownMenuItem>
-                    ))}
-                  </DropdownMenuSubContent>
-                </DropdownMenuSub>
-              ) : null}
+                          <span className="composer-tool-menu-item-body">
+                            <span className="composer-tool-menu-item-label">
+                              {t('composer.memoryReferenceToggle')}
+                            </span>
+                            <span className="composer-tool-menu-item-value">
+                              {memoryReferenceStateLabel}
+                            </span>
+                          </span>
+                        </DropdownMenuSubTrigger>
+                        <DropdownMenuSubContent className="composer-tool-menu-sub-content">
+                          {MEMORY_REFERENCE_OPTIONS.map((option) => (
+                            <DropdownMenuItem
+                              key={option.mode}
+                              className={`composer-tool-menu-option${
+                                memoryReferenceMode === option.mode ? ' is-selected' : ''
+                              }`}
+                              onSelect={() => onSetMemoryReferenceMode?.(option.mode)}
+                            >
+                              <span className="composer-tool-menu-option-body">
+                                <span className="composer-tool-menu-option-label">
+                                  {t(option.labelKey, { defaultValue: option.fallback })}
+                                </span>
+                              </span>
+                              {memoryReferenceMode === option.mode && (
+                                <span className="codicon codicon-check composer-tool-menu-option-check" aria-hidden="true" />
+                              )}
+                            </DropdownMenuItem>
+                          ))}
+                        </DropdownMenuSubContent>
+                      </DropdownMenuSub>
+                    </>
+                  ) : null}
+                </div>
+                <SessionControlQuotaPane
+                  quota={sessionQuotaView}
+                  usageLoading={usageLoading || codingPlanLoading}
+                  onRefresh={() => {
+                    void refreshUsageSnapshot();
+                  }}
+                />
+              </div>
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
@@ -364,6 +531,7 @@ export const ButtonArea = ({
         </div>
 
         <div className="button-area-right">
+          {squadSurface}
           {isLoading ? (
             <Button
               type="button"

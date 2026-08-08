@@ -105,8 +105,11 @@ describe("Messages reasoning render", () => {
     expect(container.querySelector(".reasoning-markdown")).toBeTruthy();
     const reasoningDetail = container.querySelector(".thinking-content");
     expect(reasoningDetail?.textContent ?? "").toContain("Looking for entry points");
-    const workingText = container.querySelector(".working-text");
-    expect(workingText?.textContent ?? "").toContain("Scanning repository");
+    // Working indicator: spinner + timer + fixed status; does not echo reasoning first-line.
+    expect(container.querySelector(".working")).toBeTruthy();
+    expect(container.querySelector(".working-timer-clock")).toBeTruthy();
+    expect(container.querySelector(".working-text")?.textContent ?? "").toContain("响应中");
+    expect(container.querySelector(".working-activity")).toBeNull();
   });
 
   it("collapses fragmented blockquote text in reasoning detail", () => {
@@ -963,8 +966,9 @@ describe("Messages reasoning render", () => {
       />,
     );
 
-    const workingText = container.querySelector(".working-text");
-    expect(workingText?.textContent ?? "").toContain("Plan from content");
+    // Working indicator no longer echoes reasoning title; detail still strips title from body.
+    expect(container.querySelector(".working")).toBeTruthy();
+    expect(container.querySelector(".working-text")?.textContent ?? "").toContain("响应中");
     const reasoningDetail = container.querySelector(".thinking-content");
     expect(reasoningDetail?.textContent ?? "").toContain("More detail here");
     expect(reasoningDetail?.textContent ?? "").not.toContain("Plan from content");
@@ -998,11 +1002,14 @@ describe("Messages reasoning render", () => {
       />,
     );
 
-    const workingText = container.querySelector(".working-text");
-    const label = workingText?.textContent ?? "";
-    expect(label).toBeTruthy();
-    expect(label).not.toContain("Old reasoning title");
-    expect(label).toMatch(/Working|Generating response|messages\.generatingResponse/);
+    expect(container.querySelector(".working")).toBeTruthy();
+    expect(container.querySelector(".working-timer-clock")).toBeTruthy();
+    // Fixed status only; no reasoning first-line echo in the working bar.
+    expect(container.querySelector(".working-text")?.textContent ?? "").toContain("响应中");
+    expect(container.querySelector(".working-activity")).toBeNull();
+    expect(container.querySelector(".working")?.textContent ?? "").not.toContain(
+      "Old reasoning title",
+    );
   });
 
   it("uses merged codex command summary for live activity and hides cwd-only detail", () => {

@@ -15,7 +15,7 @@ import {
   consumePendingPromptCreationRequest,
   subscribePromptCreationRequests,
 } from "../../../prompts/promptEvents";
-import { revealItemInDir } from "@tauri-apps/plugin-opener";
+import { revealInFileManager } from "../../../../services/tauri";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -439,7 +439,7 @@ export function PromptSection({
               variant="outline"
               size="sm"
               onClick={() => {
-                void getWorkspacePromptsDir().then((path) => revealItemInDir(path));
+                void getWorkspacePromptsDir().then((path) => revealInFileManager(path));
               }}
             >
               <FolderOpen size={14} />
@@ -452,7 +452,7 @@ export function PromptSection({
               onClick={() => {
                 void getGlobalPromptsDir().then((path) => {
                   if (path) {
-                    return revealItemInDir(path);
+                    return revealInFileManager(path);
                   }
                   return Promise.resolve();
                 });

@@ -10,9 +10,9 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { invoke } from "@tauri-apps/api/core";
-import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { pushErrorToast } from "../../../services/toasts";
+import { revealInFileManager } from "../../../services/tauri";
 import type { ConversationItem } from "../../../types";
 import { Composer } from "./Composer";
 
@@ -29,9 +29,13 @@ vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(async () => null),
 }));
 
-vi.mock("@tauri-apps/plugin-opener", () => ({
-  revealItemInDir: vi.fn(async () => undefined),
-}));
+vi.mock("../../../services/tauri", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../../services/tauri")>();
+  return {
+    ...actual,
+    revealInFileManager: vi.fn(async () => undefined),
+  };
+});
 
 vi.mock("../../engine/components/EngineSelector", () => ({
   EngineSelector: () => null,
@@ -40,6 +44,8 @@ vi.mock("../../engine/components/EngineSelector", () => ({
 
 vi.mock("../../status-panel/hooks/useStatusPanelData", () => ({
   useStatusPanelData: () => ({
+    todos: [],
+    subagents: [],
     todoTotal: 0,
     subagentTotal: 0,
     fileChanges: [],
@@ -831,8 +837,8 @@ describe("Composer Claude rewind confirmation", () => {
   beforeEach(() => {
     vi.mocked(invoke).mockReset();
     vi.mocked(invoke).mockImplementation(async () => null);
-    vi.mocked(revealItemInDir).mockReset();
-    vi.mocked(revealItemInDir).mockImplementation(async () => undefined);
+    vi.mocked(revealInFileManager).mockReset();
+    vi.mocked(revealInFileManager).mockImplementation(async () => undefined);
   });
 
   afterEach(() => {
@@ -1168,7 +1174,7 @@ describe("Composer Claude rewind confirmation", () => {
 
   it("reveals the stored changes directory from the inline success prompt", async () => {
     const invokeMock = vi.mocked(invoke);
-    const revealMock = vi.mocked(revealItemInDir);
+    const revealMock = vi.mocked(revealInFileManager);
     invokeMock.mockResolvedValueOnce({
       outputPath:
         "/Users/demo/.ccgui/chat-diff/claude/2026-04-13/session-1/user-1",

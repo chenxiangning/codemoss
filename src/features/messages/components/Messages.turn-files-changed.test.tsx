@@ -76,59 +76,21 @@ describe("Messages turn files changed cards", () => {
     }
   });
 
-  it("renders the session summary card at the timeline tail instead of an inline card for the latest turn", () => {
+  it("does not render inline or session file-change cards in the timeline (moved to composer strip)", () => {
     const { container } = renderMessages([
       userMessage("u1"),
       editTool("t1", "src/a.ts", "old", "new\nnew2"),
-      finalAssistant("a1"),
-    ]);
-
-    const cards = container.querySelectorAll(".turn-files-changed-card");
-    expect(cards).toHaveLength(1);
-    expect(
-      container.querySelector(".messages-session-files-changed"),
-    ).toBeTruthy();
-  });
-
-  it("keeps inline cards for earlier turns and accumulates the session card", () => {
-    const { container } = renderMessages([
-      userMessage("u1"),
-      editTool("t1", "src/a.ts", "a", "b"),
       finalAssistant("a1"),
       userMessage("u2"),
       editTool("t2", "src/b.ts", "", "one\ntwo"),
       finalAssistant("a2"),
     ]);
 
-    const cards = container.querySelectorAll(".turn-files-changed-card");
-    // 第一轮内联卡 + 底部会话累计卡
-    expect(cards).toHaveLength(2);
-    const sessionCard = container.querySelector(
-      ".messages-session-files-changed .turn-files-changed-card",
-    );
-    expect(sessionCard).toBeTruthy();
-    // 会话卡累计两轮的两个文件
-    expect(sessionCard?.textContent ?? "").toContain("a.ts");
-    expect(sessionCard?.textContent ?? "").toContain("b.ts");
-  });
-
-  it("pins the completed turn's inline card and hides the session card while a new turn is pending", () => {
-    const { container } = renderMessages([
-      userMessage("u1"),
-      editTool("t1", "src/a.ts", "old", "new\nnew2"),
-      finalAssistant("a1"),
-      // 用户又发了新问题，本回合还没有最终回复 = 有新回合进行中
-      userMessage("u2"),
-    ]);
-
-    // 上一轮的汇总钉在它自己的回合边界（内联卡），不再飘到末尾
-    const cards = container.querySelectorAll(".turn-files-changed-card");
-    expect(cards).toHaveLength(1);
-    // 末尾会话累计卡在新回合进行中时不渲染，避免落到新问题之后
+    expect(container.querySelectorAll(".turn-files-changed-card")).toHaveLength(0);
     expect(container.querySelector(".messages-session-files-changed")).toBeNull();
   });
 
-  it("renders no cards when the conversation has no file edits", () => {
+  it("still renders no cards when the conversation has no file edits", () => {
     const { container } = renderMessages([
       userMessage("u1"),
       finalAssistant("a1"),

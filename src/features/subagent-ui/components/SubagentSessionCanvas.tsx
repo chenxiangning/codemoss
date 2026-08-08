@@ -10,7 +10,10 @@ import { createThreadHistoryLoaderForThread } from "../../threads/hooks/useThrea
 import { useSubagentInspectorSelection } from "../hooks/useSubagentInspectorStore";
 import { publishSubagentSessionProbe } from "../hooks/useSubagentSessionProbeStore";
 import {
+  appendAssistantReplyIfMissing,
   buildTranscriptItemsFromSubagentFallback,
+  conversationHasAssistantReply,
+  extractSubagentAssistantFromParentItems,
   isOpaqueCiphertextOutput,
   isSyntheticSubagentMetaOutput,
 } from "../utils/subagentDetailTranscript";
@@ -32,7 +35,10 @@ function inferEngine(threadId: string): EngineType {
   return "codex";
 }
 
-function candidateThreadIds(sessionThreadId: string): string[] {
+function candidateThreadIds(
+  sessionThreadId: string,
+  parentThreadId?: string | null,
+): string[] {
   const id = sessionThreadId.trim();
   if (!id) {
     return [];
@@ -44,8 +50,37 @@ function candidateThreadIds(sessionThreadId: string): string[] {
     if (/^[0-9a-f]{8}-[0-9a-f-]{20,}$/i.test(bare)) {
       out.push(bare);
     }
+  } else if (id.startsWith("kimi:")) {
+    const bare = id.slice("kimi:".length);
+    if (bare) out.push(bare);
+  } else if (/^[0-9a-f]{8}-[0-9a-f-]{20,}$/i.test(id)) {
+    // 裸 UUID：按父会话引擎补前缀，提高子会话 load 命中率
+    const parent = (parentThreadId ?? "").trim();
+    if (parent.startsWith("grok:") || parent.startsWith("shared:")) {
+      out.push(`grok:${id}`);
+    }
+    if (parent.startsWith("kimi:")) {
+      out.push(`kimi:${id}`);
+    }
   }
   return out;
+}
+
+function collectAgentKeysForParentLookup(selection: {
+  agentId?: string | null;
+  id?: string;
+  sessionThreadId?: string | null;
+  taskOutput?: { threadId?: string | null } | null;
+} | null): string[] {
+  if (!selection) return [];
+  return [
+    selection.agentId,
+    selection.sessionThreadId,
+    selection.taskOutput?.threadId,
+    selection.id,
+  ]
+    .map((value) => (typeof value === "string" ? value.trim() : ""))
+    .filter(Boolean);
 }
 
 /**
@@ -59,6 +94,8 @@ export const SubagentSessionCanvas = memo(function SubagentSessionCanvas({
 }: SubagentSessionCanvasProps) {
   const { t } = useTranslation();
   const selection = useSubagentInspectorSelection();
+  const parentThreadId = useActiveCanvasSelector((snapshot) => snapshot.threadId);
+  const canvasItems = useActiveCanvasSelector((snapshot) => snapshot.items);
   const threadItemsByThread = useActiveCanvasSelector(
     (snapshot) => snapshot.threadItemsByThread,
   );
@@ -68,8 +105,8 @@ export const SubagentSessionCanvas = memo(function SubagentSessionCanvas({
   const resolvedWorkspaceId = workspaceId ?? canvasWorkspaceId;
   const resolvedWorkspacePath = workspacePath ?? canvasWorkspacePath;
   const loadCandidates = useMemo(
-    () => candidateThreadIds(sessionThreadId),
-    [sessionThreadId],
+    () => candidateThreadIds(sessionThreadId, parentThreadId),
+    [parentThreadId, sessionThreadId],
   );
 
   const cachedItems = useMemo(() => {
@@ -186,11 +223,8 @@ export const SubagentSessionCanvas = memo(function SubagentSessionCanvas({
       : rawFallbackCandidate;
   const isClaudeLaunchMeta = isClaudeAsyncAgentLaunchOutput(rawFallbackCandidate);
 
-  // 合成 meta：抽成 user/assistant；纯密文：仅用 description（任务名/昵称）
+  // 始终可算 fallback（即使用会话里已有 user-only，也要用来补 assistant）
   const fallbackTranscriptItems = useMemo(() => {
-    if (items.length > 0) {
-      return EMPTY_ACTIVE_CANVAS_ITEMS;
-    }
     const desc = selection?.description?.trim() || "";
     const readableDesc = isOpaqueCiphertextOutput(desc) ? "" : desc;
     if (isClaudeLaunchMeta) {
@@ -222,16 +256,83 @@ export const SubagentSessionCanvas = memo(function SubagentSessionCanvas({
     return EMPTY_ACTIVE_CANVAS_ITEMS;
   }, [
     isClaudeLaunchMeta,
-    items.length,
     rawFallback,
     selection?.description,
     selection?.id,
     sessionThreadId,
   ]);
 
+  const parentItemsForLookup = useMemo(() => {
+    const fromParentTable =
+      parentThreadId && threadItemsByThread
+        ? threadItemsByThread[parentThreadId]
+        : null;
+    if (fromParentTable && fromParentTable.length > 0) {
+      return fromParentTable;
+    }
+    return canvasItems;
+  }, [canvasItems, parentThreadId, threadItemsByThread]);
+
   const activeEngine = inferEngine(resolvedLoadId);
-  const displayItems =
-    items.length > 0 ? items : fallbackTranscriptItems.length > 0 ? fallbackTranscriptItems : items;
+
+  /**
+   * 显示策略：
+   * 1) 子会话 history 优先
+   * 2) 若 history 空 → 用 fallback 气泡
+   * 3) 若 history 只有 user、没有 AI 回复（Grok 常见：回复在父线 get_command_or_subagent_output）
+   *    → 从 fallback / 父线 tool 补 assistant
+   */
+  const displayItems = useMemo(() => {
+    const cardId = selection?.id ?? sessionThreadId;
+    const base =
+      items.length > 0
+        ? items
+        : fallbackTranscriptItems.length > 0
+          ? fallbackTranscriptItems
+          : EMPTY_ACTIVE_CANVAS_ITEMS;
+
+    if (conversationHasAssistantReply(base)) {
+      return base;
+    }
+
+    const fallbackAssistant = fallbackTranscriptItems.find(
+      (item) =>
+        item.kind === "message" &&
+        item.role === "assistant" &&
+        typeof item.text === "string" &&
+        item.text.trim().length > 0,
+    );
+    const fromFallback =
+      fallbackAssistant && fallbackAssistant.kind === "message"
+        ? fallbackAssistant.text
+        : null;
+
+    const fromParent = extractSubagentAssistantFromParentItems(
+      parentItemsForLookup,
+      collectAgentKeysForParentLookup(selection),
+    );
+
+    const assistantText = (fromFallback || fromParent || "").trim();
+    if (!assistantText) {
+      return base;
+    }
+
+    // base 为空时：用 fallback 整段（通常已含 user）；再确保 assistant
+    if (base.length === 0) {
+      return appendAssistantReplyIfMissing(
+        fallbackTranscriptItems,
+        assistantText,
+        cardId,
+      );
+    }
+    return appendAssistantReplyIfMissing(base, assistantText, cardId);
+  }, [
+    fallbackTranscriptItems,
+    items,
+    parentItemsForLookup,
+    selection,
+    sessionThreadId,
+  ]);
 
   if (loading && displayItems.length === 0) {
     return (

@@ -257,15 +257,17 @@ export function formatCompletedTimeMs(timestampMs: number) {
 
 type TranslateFn = (key: string, options?: Record<string, unknown>) => string;
 
-/** Whole seconds for compact duration labels like "耗时13s". */
+/**
+ * Compact duration for final-boundary labels, e.g. "13s" / "1m21s" / "1h1m1s"
+ * (no spaces — denser than formatDurationCompact).
+ */
 export function formatDurationSecondsLabel(durationMs: number) {
-  const seconds = Math.max(0, Math.floor(durationMs / 1000));
-  return `${seconds}s`;
+  return formatDurationCompact(durationMs).replaceAll(" ", "");
 }
 
 /**
  * Build final-boundary meta next to message actions, e.g.
- * "07-31 20:42:26 耗时13s · 输入 41.1K token / 输出 105 token"
+ * "07-31 20:42:26 耗时1m21s · 输入 41.1K token / 输出 105 token"
  */
 export function buildAssistantFinalBoundaryMetaText(options: {
   finalDurationMs?: number;
@@ -288,7 +290,7 @@ export function buildAssistantFinalBoundaryMetaText(options: {
   ) {
     headParts.push(
       options.t("messages.durationSeconds", {
-        seconds: Math.max(0, Math.floor(options.finalDurationMs / 1000)),
+        duration: formatDurationSecondsLabel(options.finalDurationMs),
       }),
     );
   }
@@ -609,8 +611,7 @@ export function countRenderableCollapsedEntries(
     if (
       entry.kind === "readGroup" ||
       entry.kind === "editGroup" ||
-      entry.kind === "searchGroup" ||
-      entry.kind === "subagentGroup"
+      entry.kind === "searchGroup"
     ) {
       return count + Math.max(1, entry.items.length);
     }

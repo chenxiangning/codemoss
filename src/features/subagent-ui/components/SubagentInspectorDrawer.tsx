@@ -13,6 +13,7 @@ import {
 } from "../hooks/useSubagentInspectorStore";
 import {
   isClaudeAsyncAgentLaunchOutput,
+  resolveClaudeSubagentSessionFromContext,
   resolveSubagentSessionThreadId,
 } from "../utils/subagentViewModel";
 import { SubagentProgressBar } from "./SubagentProgressBar";
@@ -38,6 +39,13 @@ export const SubagentInspectorDrawer = memo(function SubagentInspectorDrawer({
   const nativeThreadIds = useActiveCanvasSelector(
     (snapshot) => snapshot.activeNativeThreadIds,
   );
+  const canvasItems = useActiveCanvasSelector((snapshot) => snapshot.items);
+  const threadItemsByThread = useActiveCanvasSelector(
+    (snapshot) => snapshot.threadItemsByThread,
+  );
+  const childSubagentThreads = useActiveCanvasSelector(
+    (snapshot) => snapshot.childSubagentThreads,
+  );
 
   useEffect(() => {
     if (!card) {
@@ -51,6 +59,15 @@ export const SubagentInspectorDrawer = memo(function SubagentInspectorDrawer({
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [card]);
+
+  const parentItemsForResolve = useMemo(() => {
+    const table =
+      parentThreadId && threadItemsByThread
+        ? threadItemsByThread[parentThreadId]
+        : null;
+    if (table && table.length > 0) return table;
+    return canvasItems;
+  }, [canvasItems, parentThreadId, threadItemsByThread]);
 
   const sessionThreadId = useMemo(() => {
     if (!card) {
@@ -70,7 +87,18 @@ export const SubagentInspectorDrawer = memo(function SubagentInspectorDrawer({
     ) {
       return fromCard;
     }
-    // Shared Claude Agent：card 可能只存了裸 agentId，运行时再拼 claude:subagent:…
+    // Shared Claude / DeepSeek：父线 items + child 列表 + native owner 宽解析
+    const fromContext = resolveClaudeSubagentSessionFromContext({
+      agentId: card.agentId || fromCard,
+      outputText: card.outputText,
+      nativeThreadIds,
+      childThreadIds: childSubagentThreads.map((thread) => thread.id),
+      parentItems: parentItemsForResolve,
+    });
+    if (fromContext) {
+      return fromContext;
+    }
+    // 通用解析（含 Shared 其它引擎 / native Claude 父）
     const resolved = resolveSubagentSessionThreadId({
       parentThreadId: parentThreadId,
       agentId: card.agentId || fromCard,
@@ -80,9 +108,15 @@ export const SubagentInspectorDrawer = memo(function SubagentInspectorDrawer({
         fromCard && fromCard.includes(":") ? fromCard : null,
     });
     return resolved;
-  }, [card, nativeThreadIds, parentThreadId]);
+  }, [
+    card,
+    childSubagentThreads,
+    nativeThreadIds,
+    parentItemsForResolve,
+    parentThreadId,
+  ]);
 
-  const isClaudeLaunchOnly =
+  const isClaudeLaunchAck =
     Boolean(card) && isClaudeAsyncAgentLaunchOutput(card?.outputText);
 
   const taskOutputSnapshot = useMemo(() => {
@@ -101,12 +135,9 @@ export const SubagentInspectorDrawer = memo(function SubagentInspectorDrawer({
   }
 
   const hasArtifactPath = Boolean(taskOutputSnapshot?.outputFilePath);
-  // session 与 artifact 可并存：session 空/仅 launch ack 时 artifact 作主路径；
-  // 已有 session 时 artifact 作 secondary（session 可能仍是空壳）
-  const showArtifactAsPrimary =
-    hasArtifactPath && (!sessionThreadId || isClaudeLaunchOnly);
-  const showArtifactAsSecondary =
-    hasArtifactPath && Boolean(sessionThreadId) && !isClaudeLaunchOnly;
+  // 有可加载 session 时优先幕布；artifact 仅作补充
+  const showArtifactAsPrimary = hasArtifactPath && !sessionThreadId;
+  const showArtifactAsSecondary = hasArtifactPath && Boolean(sessionThreadId);
 
   const artifactBlock =
     hasArtifactPath && taskOutputSnapshot ? (
@@ -121,7 +152,7 @@ export const SubagentInspectorDrawer = memo(function SubagentInspectorDrawer({
     ) : null;
 
   const resultFallback =
-    card.outputText?.trim() && !isClaudeLaunchOnly ? (
+    card.outputText?.trim() && !isClaudeLaunchAck ? (
       <div className="subagent-session-canvas-fallback">
         <div className="subagent-inspector-label">
           {t("subagentUi.fields.output", { defaultValue: "交付报告" })}
@@ -169,7 +200,8 @@ export const SubagentInspectorDrawer = memo(function SubagentInspectorDrawer({
       </div>
 
       <div className="subagent-inspector-body is-session-canvas">
-        {sessionThreadId && !isClaudeLaunchOnly ? (
+        {/* 有 session 就开幕布：即使 output 仍是 launch ack（DeepSeek/Shared 常见） */}
+        {sessionThreadId ? (
           <>
             <SubagentSessionCanvas
               sessionThreadId={sessionThreadId}
@@ -183,7 +215,7 @@ export const SubagentInspectorDrawer = memo(function SubagentInspectorDrawer({
             {artifactBlock}
             {resultFallback}
           </>
-        ) : isClaudeLaunchOnly ? (
+        ) : isClaudeLaunchAck ? (
           <div className="subagent-session-canvas-status">
             {t("subagentUi.claudeLaunchNoSession", {
               defaultValue:

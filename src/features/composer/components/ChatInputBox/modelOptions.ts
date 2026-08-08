@@ -142,6 +142,11 @@ function getCustomClaudeModels(): ModelInfo[] {
     label: model.label,
     description: model.description,
     source: model.source,
+    // Ownership is optional metadata. Absence must stay unbound so Shared
+    // open-session and Native Claude create keep prior selection semantics.
+    ...(model.providerProfileId
+      ? { providerProfileId: model.providerProfileId }
+      : {}),
   }));
 }
 

@@ -4,11 +4,13 @@ Codex CLI multi-agent collab 在 **对话结束后** 历史重开能正确渲染
 
 其他 CLI（Claude / Grok / Kimi / Gemini / OpenCode）在实时与历史阶段均已稳定，本变更 MUST 限定 Codex collab 路径，禁止扩大识别面或改动跨引擎默认行为。
 
+> **Supersession note（2026-08-08）**：幕布「合成小队卡」目标已被 [`retire-canvas-subagent-squad-grid`](../retire-canvas-subagent-squad-grid/proposal.md) **部分 supersede**（幕布不再注入 Squad）。本 change **仍有效**：StatusPanel 子树种子化、wait/close 非 persona、live collab id 归一；live wait 期子代理可见性改由 strip / StatusPanel 承担。
+
 ## 目标与边界
 
-- **目标**：Codex native（及 Shared 上 Codex owner）在 **live wait 主导阶段** 也能稳定展示子代理小队与 Status Agents 列表，语义与 history 结束态对齐。
+- **目标**：Codex native（及 Shared 上 Codex owner）在 **live wait 主导阶段** 也能稳定展示子代理（Status Agents + Composer run-status），语义与 history 结束态对齐；**幕布不再要求 N 张 persona 卡**（见 supersession）。
 - **边界**：只改 frontend presentation / status aggregation / collab id 归一；不改 app-server 协议、不改 JSONL、不改其他引擎 adapter。
-- **验收主路径**：实时 fan-out → 长时间 `Collab: wait` → 侧栏已有 N 个子代理时，幕布仍有 N 卡（或等价小队）、右侧 Agents tab 可见；turn 结束后与现 history 渲染一致、无双卡。
+- **验收主路径**：实时 fan-out → 长时间 `Collab: wait` → 侧栏已有 N 个子代理时，Status Agents / strip 可见 N 项；turn 结束后无双表面回归。
 
 ## 非目标
 

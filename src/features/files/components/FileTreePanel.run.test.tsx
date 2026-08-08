@@ -3,7 +3,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import type { GitRepositorySummary, OpenAppTarget } from "../../../types";
 
-const revealItemInDirMock = vi.fn(async () => undefined);
+const revealInFileManagerMock = vi.fn(async (_path: string) => undefined);
 const emitToMock = vi.fn(async () => undefined);
 
 const invokeMock = vi.fn(async (...args: any[]) => {
@@ -69,14 +69,12 @@ vi.mock("../../../services/tauri", () => ({
     invokeMock("trash_workspace_item", { workspaceId, path }),
   writeWorkspaceFile: (workspaceId: string, path: string, content: string) =>
     invokeMock("write_workspace_file", { workspaceId, path, content }),
+  revealInFileManager: (...args: unknown[]) =>
+    revealInFileManagerMock(...(args as [string])),
 }));
 
 vi.mock("../../../services/rendererDiagnostics", () => ({
   appendWorkspaceFileListingBudgetDiagnostic: vi.fn(),
-}));
-
-vi.mock("@tauri-apps/plugin-opener", () => ({
-  revealItemInDir: revealItemInDirMock,
 }));
 
 vi.mock("@tauri-apps/plugin-dialog", () => ({
@@ -109,7 +107,7 @@ afterEach(() => {
   cleanup();
   invokeMock.mockClear();
   emitToMock.mockClear();
-  revealItemInDirMock.mockClear();
+  revealInFileManagerMock.mockClear();
   delete window.handleFilePathFromJava;
   delete window.__fileTreeDragPaths;
   delete window.__fileTreeDragStamp;
@@ -2249,6 +2247,48 @@ describe("FileTreePanel run action isolation", () => {
       configurable: true,
       value: originalPlatform,
     });
+  });
+
+  it("reveals a Windows workspace path via native Explorer command with backslashes", async () => {
+    const originalPlatform = window.navigator.platform;
+    Object.defineProperty(window.navigator, "platform", {
+      configurable: true,
+      value: "Win32",
+    });
+
+    try {
+      render(
+        <FileTreePanel
+          workspaceId="workspace-win-reveal"
+          workspacePath="C:/Users/Chen/Project"
+          files={["README.md"]}
+          isLoading={false}
+          filePanelMode="files"
+          onFilePanelModeChange={() => undefined}
+          onOpenFile={() => undefined}
+          openTargets={[]}
+          openAppIconById={{}}
+          selectedOpenAppId=""
+          onSelectOpenAppId={() => undefined}
+        />,
+      );
+
+      fireEvent.contextMenu(screen.getByRole("button", { name: "README.md" }));
+      fireEvent.click(
+        await screen.findByRole("menuitem", { name: "files.revealInExplorer" }),
+      );
+
+      await waitFor(() => {
+        expect(revealInFileManagerMock).toHaveBeenCalledWith(
+          "C:\\Users\\Chen\\Project\\README.md",
+        );
+      });
+    } finally {
+      Object.defineProperty(window.navigator, "platform", {
+        configurable: true,
+        value: originalPlatform,
+      });
+    }
   });
 
   it("uses the same insertion bridge as the + action when tree drag ends over chat input", () => {

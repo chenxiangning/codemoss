@@ -164,7 +164,10 @@ export async function compileFastMarkdownToUnsafeArtifact(
       args.bodyStartLine ?? 1,
       args.documentKey,
     );
-    unsafeHtml = toHtml(hast, { allowDangerousHtml: false });
+    // hast-util-to-html 与 import "hast" 可能解析到不同 @types/hast 副本（pnpm 双路径）
+    unsafeHtml = toHtml(hast as Parameters<typeof toHtml>[0], {
+      allowDangerousHtml: false,
+    });
   } catch {
     return createUnsafeArtifact({
       args,

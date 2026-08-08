@@ -201,6 +201,41 @@ describe("StartupOrchestrator", () => {
     expect(lifecycleStates).not.toContain("completed");
   });
 
+  it("cancelAllTasks settles every queued and running task as stale by default", async () => {
+    let releaseRunning: (value: string) => void = () => {};
+    const orchestrator = new StartupOrchestrator({
+      phaseConcurrency: { "active-workspace": 1 },
+    });
+    const running = createTask({
+      id: "running",
+      dedupeKey: "running",
+      run: vi.fn(
+        () =>
+          new Promise<string>((resolve) => {
+            releaseRunning = resolve;
+          }),
+      ),
+      fallback: vi.fn(async (reason) => `fallback:${reason}`),
+    });
+    const queued = createTask({
+      id: "queued",
+      dedupeKey: "queued",
+      run: vi.fn(async () => "should-not-run"),
+      fallback: vi.fn(async (reason) => `fallback:${reason}`),
+    });
+
+    const runningPromise = orchestrator.run(running);
+    const queuedPromise = orchestrator.run(queued);
+    expect(orchestrator.getQueuedTaskCount()).toBe(1);
+
+    orchestrator.cancelAllTasks();
+    releaseRunning("late");
+
+    await expect(runningPromise).resolves.toBe("fallback:stale");
+    await expect(queuedPromise).resolves.toBe("fallback:stale");
+    expect(orchestrator.getQueuedTaskCount()).toBe(0);
+  });
+
   it("settles hard-aborted workspace tasks through stale fallback instead of failure", async () => {
     const orchestrator = new StartupOrchestrator();
     const task = createTask({

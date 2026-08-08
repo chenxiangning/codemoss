@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   isAbsoluteFsPath,
+  joinWorkspaceAbsolutePath,
   resolveGitRootWorkspacePrefix,
   resolveGitStatusPathCandidates,
   resolveWorkspacePathCandidates,
@@ -10,6 +11,24 @@ import {
 } from "./workspacePaths";
 
 describe("workspacePaths", () => {
+  it("joins Windows absolute paths with native separators for Explorer reveal", () => {
+    expect(joinWorkspaceAbsolutePath("C:/Users/Chen/Project", "figures/a.png")).toBe(
+      "C:\\Users\\Chen\\Project\\figures\\a.png",
+    );
+    expect(joinWorkspaceAbsolutePath("D:\\repo", "src/main.ts")).toBe(
+      "D:\\repo\\src\\main.ts",
+    );
+    expect(joinWorkspaceAbsolutePath("C:/Users/Chen/Project", "")).toBe(
+      "C:\\Users\\Chen\\Project",
+    );
+  });
+
+  it("joins POSIX absolute paths with forward slashes", () => {
+    expect(joinWorkspaceAbsolutePath("/Users/chen/project", "figures/a.png")).toBe(
+      "/Users/chen/project/figures/a.png",
+    );
+  });
+
   it("resolves Windows workspace-relative paths case-insensitively", () => {
     expect(
       resolveWorkspaceRelativePath(

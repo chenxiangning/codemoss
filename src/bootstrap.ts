@@ -38,6 +38,7 @@ import "./styles/engine-task-output.css";
 import "./styles/status-panel.responsive.css";
 import "./styles/status-panel.plan-list.css";
 import "./styles/subagent-ui.css";
+import "./styles/multi-agent.css";
 import "./styles/panel-lock.css";
 // 统一滚动条兜底清单（须最后加载，覆盖未登记的滚动容器）
 import "./styles/scrollbars.css";

@@ -22,6 +22,14 @@ const COMMANDS_FALLBACK_POLL_MS = 60_000;
 
 type CommandRefreshPhase = "idle-prewarm" | "on-demand";
 
+/**
+ * orchestrator 取消/过期（切 workspace、force-enter 等）走 fallback("stale"|"cancelled")。
+ * 这是预期语义，不是加载失败，禁止 error toast / 清空已有列表。
+ */
+function isSoftCancelledCommandsReason(reason: string | null): boolean {
+  return reason === "stale" || reason === "cancelled";
+}
+
 function normalizeCommandsPayload(response: unknown): CustomCommandOption[] {
   const responsePayload = response as any;
   let rawCommands: any[] = [];
@@ -148,6 +156,10 @@ export function useCustomCommands({
           return [];
         },
       });
+      if (isSoftCancelledCommandsReason(failedReason)) {
+        // 保留已有 commands；稍后 watcher / 兜底轮询会再拉。
+        return;
+      }
       if (failedReason) {
         reportCommandsFailure(failedReason);
       } else {

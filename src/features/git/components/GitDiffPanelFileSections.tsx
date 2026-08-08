@@ -8,6 +8,7 @@ import { useTranslation } from "react-i18next";
 import ChevronDown from "lucide-react/dist/esm/icons/chevron-down";
 import ChevronRight from "lucide-react/dist/esm/icons/chevron-right";
 import Expand from "lucide-react/dist/esm/icons/expand";
+import Globe from "lucide-react/dist/esm/icons/globe";
 import Minus from "lucide-react/dist/esm/icons/minus";
 import PanelRightOpen from "lucide-react/dist/esm/icons/panel-right-open";
 import Plus from "lucide-react/dist/esm/icons/plus";
@@ -16,6 +17,7 @@ import { Badge } from "@/components/ui/badge";
 import { FloatingTooltipButton } from "@/components/ui/floating-tooltip-button";
 import type { GitFileStatus } from "../../../types";
 import { getFileTreeIconSvg } from "../../files/utils/fileTreeIcons";
+import { isHtmlFilePath } from "../../files/utils/openHtmlInBrowser";
 import { GitDiffPanelSectionActions } from "./GitDiffPanelSectionActions";
 import {
   type InclusionState,
@@ -192,6 +194,7 @@ type DiffFileRowProps = {
   onKeySelect: () => void;
   onOpenInlinePreview?: () => void;
   onOpenPreview?: () => void;
+  onOpenInBrowser?: () => void;
   onContextMenu: (event: ReactMouseEvent<HTMLDivElement>) => void;
   onStageFile?: (path: string) => Promise<void> | void;
   onUnstageFile?: (path: string) => Promise<void> | void;
@@ -219,6 +222,7 @@ export const DiffFileRow = memo(function DiffFileRow({
   onKeySelect,
   onOpenInlinePreview,
   onOpenPreview,
+  onOpenInBrowser,
   onContextMenu,
   onStageFile,
   onUnstageFile,
@@ -234,6 +238,10 @@ export const DiffFileRow = memo(function DiffFileRow({
   const showStage = section === "unstaged" && Boolean(onStageFile) && !mutationDisabled;
   const showUnstage = section === "staged" && Boolean(onUnstageFile) && !mutationDisabled;
   const showDiscard = section === "unstaged" && Boolean(onDiscardFile) && !mutationDisabled;
+  const showOpenInBrowser =
+    Boolean(onOpenInBrowser) &&
+    isHtmlFilePath(file.path) &&
+    !isDeletedDiffFile(file);
   const inclusionLabel = t("git.commitSelectionToggleFile", { path: file.path });
   const treeIndentPx = indentLevel * TREE_INDENT_STEP;
   const treeRowStyle = treeItem
@@ -306,6 +314,23 @@ export const DiffFileRow = memo(function DiffFileRow({
           </span>
         ) : null}
         <div className="diff-row-actions" role="group" aria-label={t("git.fileActions")}>
+          {showOpenInBrowser ? (
+            <FloatingTooltipButton
+              type="button"
+              className="diff-row-action diff-row-action--open-browser"
+              tooltipLabel={t("files.openInBrowser")}
+              tooltipSide="bottom"
+              tooltipAlign="end"
+              tooltipDelay={180}
+              aria-label={t("files.openInBrowser")}
+              onClick={(event) => {
+                event.stopPropagation();
+                onOpenInBrowser?.();
+              }}
+            >
+              <Globe size={12} aria-hidden />
+            </FloatingTooltipButton>
+          ) : null}
           {onOpenInlinePreview ? (
             <FloatingTooltipButton
               type="button"
@@ -447,6 +472,7 @@ export type DiffSectionProps = {
     file: DiffFile,
     section: "staged" | "unstaged",
   ) => void;
+  onOpenInBrowser?: (path: string) => void;
   onShowFileMenu: (
     event: ReactMouseEvent<HTMLDivElement>,
     path: string,
@@ -551,6 +577,7 @@ export function DiffSection({
   onFileClick,
   onOpenInlinePreview,
   onOpenFilePreview,
+  onOpenInBrowser,
   onShowFileMenu,
 }: DiffSectionProps) {
   const { t } = useTranslation();
@@ -700,6 +727,11 @@ export function DiffSection({
                 onKeySelect={() => onActivateFile?.(file.path, section)}
                 onOpenInlinePreview={() => onOpenInlinePreview?.(file.path)}
                 onOpenPreview={() => onOpenFilePreview?.(file, section)}
+                onOpenInBrowser={
+                  onOpenInBrowser
+                    ? () => onOpenInBrowser(file.path)
+                    : undefined
+                }
                 onContextMenu={(event) =>
                   onShowFileMenu(event, file.path, section)
                 }

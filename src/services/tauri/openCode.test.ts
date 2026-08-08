@@ -103,4 +103,16 @@ describe("getOpenCodeSessionList", () => {
       /permission denied/,
     );
   });
+
+  it("honors timeoutMs budget and returns empty without waiting forever", async () => {
+    vi.mocked(invoke).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          setTimeout(() => resolve([{ sessionId: "late" }]), 500);
+        }),
+    );
+    await expect(
+      getOpenCodeSessionList("ws-1", { timeoutMs: 30 }),
+    ).resolves.toEqual([]);
+  }, 5_000);
 });

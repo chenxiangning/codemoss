@@ -9,7 +9,19 @@ const files = {
     "openFile": "फ़ाइल खोलें",
     "copyPath": "पथ कॉपी करें",
     "revealInFinder": "Finder में दिखाएँ",
+    "revealInExplorer": "Explorer में दिखाएँ",
+    "revealInFileManager": "फ़ाइल प्रबंधक में दिखाएँ",
+    "revealFailed": "फ़ाइल प्रबंधक में नहीं दिखाया जा सका: {{message}}",
     "revealInFileTree": "फ़ाइल ट्री में दिखाएँ",
+    "openInBrowser": "ब्राउज़र में खोलें",
+    "openInBrowserFailed":
+      "इस फ़ाइल को अंतर्निहित ब्राउज़र में नहीं खोला जा सका",
+    "openInBrowserNoWorkspace":
+      "अंतर्निहित ब्राउज़र में खोलने से पहले एक कार्यस्थान चुनें",
+    "openInBrowserWindowBusy":
+      "अंतर्निहित ब्राउज़र विंडो पहले से खुली है। उस पर जाएँ या बंद करके फिर कोशिश करें",
+    "openInBrowserBlocked":
+      "इस फ़ाइल को अंतर्निहित ब्राउज़र में नहीं खोला जा सकता",
     "deleteItem": "ट्रैश में ले जाएँ",
     "deleteFileConfirm": "क्या आप वाकई \"{{name}}\" को ट्रैश में ले जाना चाहते हैं?",
     "deleteFolderConfirm": "क्या आप वाकई फ़ोल्डर \"{{name}}\" और उसकी सभी सामग्री को ट्रैश में ले जाना चाहते हैं?",
@@ -187,7 +199,7 @@ const files = {
     "documentPreviewTooLarge": "दस्तावेज़ पूर्वावलोकन {{maxMb}} MB तक की फ़ाइलों तक सीमित है। पहले बाहरी रूप से खोलें या दस्तावेज़ छोटा करें।",
     "documentPreviewOutlineEmpty": "कोई शीर्षक रूपरेखा नहीं मिली। स्थिर सामग्री-सूची प्रदर्शित करने के लिए Word शीर्षक शैलियों का उपयोग करें।",
     "clearSelection": "साफ़ करें",
-    "addToChat": "चैट में जोड़ें",
+    "addToChat": "इनपुट में भेजें",
     "selectionHintShiftClick": "Shift + क्लिक या ड्रैग + क्लिक",
     "selectionHintMultiLine": "बहु-पंक्ति चयन के लिए",
     "annotateForAi": "AI के लिए एनोटेट करें",

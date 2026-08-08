@@ -84,6 +84,8 @@ const MODEL_VENDOR_PATTERNS: ReadonlyArray<
   [/qwen/i, "bailian"],
   [/deepseek/i, "deepseek"],
   [/kimi/i, "kimi"],
+  // Moonshot Coding 短 id（ANTHROPIC 映射常见 k3 / k3-256k），须在宽泛规则前命中
+  [/^k3(?:-[\w.]+)?$/i, "kimi"],
   [/moonshot/i, "moonshot"],
   [/glm|chatglm|zhipu/i, "zhipu"],
   [/minimax/i, "minimax"],

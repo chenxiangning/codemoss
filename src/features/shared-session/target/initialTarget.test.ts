@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { buildLocalSharedSessionInitialTarget } from "./initialTarget";
+import {
+  buildLocalSharedSessionInitialTarget,
+  buildSharedSessionInitialTarget,
+} from "./initialTarget";
 
 describe("buildLocalSharedSessionInitialTarget", () => {
   it("uses the selected CLI default model without borrowing composer state", () => {
@@ -101,5 +104,68 @@ describe("buildLocalSharedSessionInitialTarget", () => {
         "Grok CLI 没有可用于 Shared Session 的本地 Model。",
       ),
     ).toThrow("Grok CLI");
+  });
+});
+
+describe("buildSharedSessionInitialTarget", () => {
+  it("labels managed first provider without faking local disk", () => {
+    expect(
+      buildSharedSessionInitialTarget({
+        engine: "claude",
+        models: [
+          {
+            id: "claude-sonnet-5",
+            model: "MiniMax-M3",
+            displayName: "MiniMax-M3",
+            description: "",
+            isDefault: true,
+          },
+        ],
+        provider: {
+          id: "minimax-m3",
+          name: "MiniMax-M3",
+          source: "managed",
+        },
+        unavailableModelMessage: "Claude 没有可用 Model。",
+      }),
+    ).toEqual(
+      expect.objectContaining({
+        engine: "claude",
+        providerProfileId: "minimax-m3",
+        modelCatalogEntryId: "claude-sonnet-5",
+        model: "MiniMax-M3",
+        providerProfileNameSnapshot: "MiniMax-M3",
+        providerProfileSource: "managed",
+      }),
+    );
+  });
+
+  it("keeps local sentinel as null providerProfileId on disk source", () => {
+    expect(
+      buildSharedSessionInitialTarget({
+        engine: "claude",
+        models: [
+          {
+            id: "claude-opus-5",
+            model: "claude-opus-5",
+            displayName: "Opus 5",
+            description: "",
+            isDefault: true,
+          },
+        ],
+        provider: {
+          id: "__local_settings_json__",
+          name: "本地配置",
+          source: "disk",
+        },
+        unavailableModelMessage: "Claude 没有可用 Model。",
+      }),
+    ).toEqual(
+      expect.objectContaining({
+        providerProfileId: null,
+        providerProfileSource: "disk",
+        providerProfileNameSnapshot: "本地配置",
+      }),
+    );
   });
 });

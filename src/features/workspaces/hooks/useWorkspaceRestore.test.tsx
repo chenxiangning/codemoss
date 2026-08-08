@@ -23,7 +23,7 @@ function createWorkspace(
 }
 
 describe("useWorkspaceRestore", () => {
-  it("优先恢复当前工作区，并跳过非当前的折叠工作区", async () => {
+  it("冷启只恢复 active workspace，不扫其他可见工作区", async () => {
     const activeWorkspace = createWorkspace({
       id: "ws-active",
       connected: false,
@@ -47,28 +47,16 @@ describe("useWorkspaceRestore", () => {
     );
 
     await waitFor(() => {
-      expect(listThreadsForWorkspace).toHaveBeenCalledTimes(2);
+      expect(listThreadsForWorkspace).toHaveBeenCalledTimes(1);
     });
 
-    expect(listThreadsForWorkspace).toHaveBeenNthCalledWith(
-      1,
-      activeWorkspace,
-      {
-        recoverySource: "workspace-restore",
-        allowRuntimeReconnect: true,
-      },
-    );
-    expect(listThreadsForWorkspace).toHaveBeenNthCalledWith(
-      2,
-      visibleWorkspace,
-      {
-        recoverySource: "workspace-restore",
-        allowRuntimeReconnect: true,
-      },
-    );
+    expect(listThreadsForWorkspace).toHaveBeenCalledWith(activeWorkspace, {
+      recoverySource: "workspace-restore",
+      allowRuntimeReconnect: true,
+    });
     expect(
       listThreadsForWorkspace.mock.calls.map((call) => call[0].id),
-    ).toEqual(["ws-active", "ws-visible"]);
+    ).toEqual(["ws-active"]);
   });
 
   it("开启线程恢复模式时不会在启动阶段批量连接 runtime", async () => {
@@ -93,28 +81,16 @@ describe("useWorkspaceRestore", () => {
     );
 
     await waitFor(() => {
-      expect(listThreadsForWorkspace).toHaveBeenCalledTimes(2);
+      expect(listThreadsForWorkspace).toHaveBeenCalledTimes(1);
     });
 
-    expect(listThreadsForWorkspace).toHaveBeenNthCalledWith(
-      1,
-      activeWorkspace,
-      {
-        recoverySource: "workspace-restore",
-        allowRuntimeReconnect: false,
-      },
-    );
-    expect(listThreadsForWorkspace).toHaveBeenNthCalledWith(
-      2,
-      visibleWorkspace,
-      {
-        recoverySource: "workspace-restore",
-        allowRuntimeReconnect: false,
-      },
-    );
+    expect(listThreadsForWorkspace).toHaveBeenCalledWith(activeWorkspace, {
+      recoverySource: "workspace-restore",
+      allowRuntimeReconnect: false,
+    });
   });
 
-  it("active workspace 恢复失败时不会阻断其他工作区，并且后续 render 会重试失败项", async () => {
+  it("active workspace 恢复失败时后续 render 会重试", async () => {
     const activeWorkspace = createWorkspace({
       id: "ws-active",
       connected: false,
@@ -123,7 +99,8 @@ describe("useWorkspaceRestore", () => {
       id: "ws-visible",
       connected: true,
     });
-    const listThreadsForWorkspace = vi.fn()
+    const listThreadsForWorkspace = vi
+      .fn()
       .mockRejectedValueOnce(new Error("connect failed"))
       .mockResolvedValue(undefined);
 
@@ -148,16 +125,12 @@ describe("useWorkspaceRestore", () => {
     );
 
     await waitFor(() => {
-      expect(listThreadsForWorkspace).toHaveBeenCalledWith(visibleWorkspace, {
+      expect(listThreadsForWorkspace).toHaveBeenCalledWith(activeWorkspace, {
         recoverySource: "workspace-restore",
         allowRuntimeReconnect: true,
       });
     });
-    expect(listThreadsForWorkspace).toHaveBeenCalledWith(activeWorkspace, {
-      recoverySource: "workspace-restore",
-      allowRuntimeReconnect: true,
-    });
-    expect(listThreadsForWorkspace).toHaveBeenCalledTimes(2);
+    expect(listThreadsForWorkspace).toHaveBeenCalledTimes(1);
 
     rerender({
       workspaces: [visibleWorkspace, activeWorkspace],
@@ -165,12 +138,13 @@ describe("useWorkspaceRestore", () => {
     });
 
     await waitFor(() => {
-      expect(listThreadsForWorkspace).toHaveBeenCalledWith(activeWorkspace, {
-        recoverySource: "workspace-restore",
-        allowRuntimeReconnect: true,
-      });
+      expect(listThreadsForWorkspace).toHaveBeenCalledTimes(2);
     });
-    expect(listThreadsForWorkspace).toHaveBeenCalledTimes(3);
+    expect(
+      listThreadsForWorkspace.mock.calls.every(
+        (call) => call[0].id === "ws-active",
+      ),
+    ).toBe(true);
   });
 
   it("workspace refresh rerender does not restart a restore that already succeeded in flight", async () => {

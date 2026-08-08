@@ -9,7 +9,19 @@ const files = {
     "openFile": "Abrir arquivo",
     "copyPath": "Copiar caminho",
     "revealInFinder": "Revelar no Finder",
+    "revealInExplorer": "Mostrar no Explorador",
+    "revealInFileManager": "Revelar no gerenciador de arquivos",
+    "revealFailed": "Não foi possível mostrar no gerenciador de arquivos: {{message}}",
     "revealInFileTree": "Revelar na árvore de arquivos",
+    "openInBrowser": "Abrir no navegador",
+    "openInBrowserFailed":
+      "Não foi possível abrir este arquivo no navegador integrado",
+    "openInBrowserNoWorkspace":
+      "Selecione um espaço de trabalho antes de abrir um arquivo no navegador integrado",
+    "openInBrowserWindowBusy":
+      "A janela do navegador integrado já está aberta. Mude para ela ou feche-a e tente novamente",
+    "openInBrowserBlocked":
+      "Este arquivo não pode ser aberto no navegador integrado",
     "deleteItem": "Mover para a lixeira",
     "deleteFileConfirm": "Tem certeza de que deseja mover \"{{name}}\" para a lixeira?",
     "deleteFolderConfirm": "Tem certeza de que deseja mover a pasta \"{{name}}\" e todo o seu conteúdo para a lixeira?",
@@ -187,7 +199,7 @@ const files = {
     "documentPreviewTooLarge": "A prévia do documento é limitada a arquivos de até {{maxMb}} MB. Abra externamente ou reduza o documento primeiro.",
     "documentPreviewOutlineEmpty": "Nenhuma estrutura de títulos foi detectada. Use estilos de título do Word para expor um sumário estável.",
     "clearSelection": "Limpar",
-    "addToChat": "Adicionar ao chat",
+    "addToChat": "Enviar para a entrada",
     "selectionHintShiftClick": "Shift + clique ou arraste + clique",
     "selectionHintMultiLine": "para seleção de múltiplas linhas",
     "annotateForAi": "Anotar para a IA",

@@ -1940,7 +1940,8 @@ fn extract_codex_tool_payload(item: &Value) -> Option<Value> {
     }
 
     // custom_tool_call / function_call name (apply_patch, shell, …)
-    if let Some(name) = value_string_by_aliases(Some(item), &["name", "tool", "toolName", "tool_name"])
+    if let Some(name) =
+        value_string_by_aliases(Some(item), &["name", "tool", "toolName", "tool_name"])
     {
         let trimmed = name.trim();
         if !trimmed.is_empty() {
@@ -3031,8 +3032,7 @@ mod tests {
         coordinator
             .register_attempt(owner("attempt-ap", Some("run-ap"), Some("native-ap")))
             .expect("register");
-        let patch =
-            "*** Begin Patch\n*** Update File: src/a.ts\n@@\n-old\n+new\n*** End Patch\n";
+        let patch = "*** Begin Patch\n*** Update File: src/a.ts\n@@\n-old\n+new\n*** End Patch\n";
         let events = [
             json!({
                 "method": "item/started",
@@ -3168,7 +3168,9 @@ mod tests {
             "fileChange changes[] must be packed into arguments_summary for history projection, got: {summary}"
         );
         assert_eq!(
-            settled.final_snapshot.tool_calls[0].tool_name.to_ascii_lowercase(),
+            settled.final_snapshot.tool_calls[0]
+                .tool_name
+                .to_ascii_lowercase(),
             "filechange"
         );
     }
@@ -4605,8 +4607,7 @@ mod tests {
             "claude:native-ask"
         );
         assert_eq!(
-            event.message["params"]["turnId"],
-            "runtime-turn-ask",
+            event.message["params"]["turnId"], "runtime-turn-ask",
             "control events must overwrite stale assistant-item turnId"
         );
         assert_eq!(event.message["params"]["turn_id"], "runtime-turn-ask");
@@ -4615,8 +4616,7 @@ mod tests {
             "runtime-turn-ask"
         );
         assert_eq!(
-            event.message["params"]["itemId"],
-            "askuserquestion-ask-req-shared",
+            event.message["params"]["itemId"], "askuserquestion-ask-req-shared",
             "ask card item id must stay request-scoped"
         );
     }
@@ -4643,8 +4643,7 @@ mod tests {
         project_app_server_event_to_shared_owner(&mut event, &owner);
 
         assert_eq!(
-            event.message["params"]["turnId"],
-            "pre-existing-turn",
+            event.message["params"]["turnId"], "pre-existing-turn",
             "non-control events keep existing turnId via or_insert"
         );
         assert_eq!(
@@ -4677,8 +4676,11 @@ mod tests {
     #[test]
     fn remove_attempt_clears_settled_evidence() {
         let coordinator = SharedRuntimeCoordinator::default();
-        let attempt_owner =
-            owner("attempt-settled-race", Some("run-settled"), Some("native-settled"));
+        let attempt_owner = owner(
+            "attempt-settled-race",
+            Some("run-settled"),
+            Some("native-settled"),
+        );
         coordinator
             .register_attempt(attempt_owner.clone())
             .expect("register");

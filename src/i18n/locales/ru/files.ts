@@ -9,7 +9,19 @@ const files = {
     "openFile": "Открыть файл",
     "copyPath": "Скопировать путь",
     "revealInFinder": "Показать в Finder",
+    "revealInExplorer": "Показать в Проводнике",
+    "revealInFileManager": "Показать в файловом менеджере",
+    "revealFailed": "Не удалось показать в файловом менеджере: {{message}}",
     "revealInFileTree": "Показать в дереве файлов",
+    "openInBrowser": "Открыть в браузере",
+    "openInBrowserFailed":
+      "Не удалось открыть этот файл во встроенном браузере",
+    "openInBrowserNoWorkspace":
+      "Сначала выберите рабочую область, затем откройте файл во встроенном браузере",
+    "openInBrowserWindowBusy":
+      "Окно встроенного браузера уже открыто. Переключитесь на него или закройте и попробуйте снова",
+    "openInBrowserBlocked":
+      "Этот файл нельзя открыть во встроенном браузере",
     "deleteItem": "Переместить в корзину",
     "deleteFileConfirm": "Вы уверены, что хотите переместить «{{name}}» в корзину?",
     "deleteFolderConfirm": "Вы уверены, что хотите переместить папку «{{name}}» и всё её содержимое в корзину?",
@@ -187,7 +199,7 @@ const files = {
     "documentPreviewTooLarge": "Просмотр документов ограничен файлами до {{maxMb}} МБ. Откройте во внешней программе или сначала уменьшите документ.",
     "documentPreviewOutlineEmpty": "Структура заголовков не обнаружена. Используйте стили заголовков Word, чтобы получить стабильное оглавление.",
     "clearSelection": "Очистить",
-    "addToChat": "Добавить в чат",
+    "addToChat": "Отправить во ввод",
     "selectionHintShiftClick": "Shift + клик или перетаскивание + клик",
     "selectionHintMultiLine": "для многострочного выделения",
     "annotateForAi": "Аннотировать для ИИ",

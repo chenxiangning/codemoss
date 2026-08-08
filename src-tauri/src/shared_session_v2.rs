@@ -51,7 +51,7 @@ use crate::state::AppState;
 // ---------------------------------------------------------------------------
 
 /// 前端四级 Picker 固化的 Execution Target（含 provider 元信息快照）。
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ExecutionTargetInput {
     pub engine: EngineType,
@@ -877,7 +877,9 @@ fn validate_execution_target(target: &ExecutionTargetInput) -> Result<EngineType
     Ok(engine)
 }
 
-fn validate_resolved_execution_target(target: &ExecutionTargetInput) -> Result<EngineType, String> {
+pub(crate) fn validate_resolved_execution_target(
+    target: &ExecutionTargetInput,
+) -> Result<EngineType, String> {
     let provider_profile_id = target.normalized_provider();
     let expected_source = if provider_profile_id.is_some() {
         CanonicalProviderProfileSource::Managed
@@ -958,6 +960,14 @@ fn unresolved_session_operation(
         let CanonicalFact::TurnRequested(requested) = fact else {
             return Err("invalid unresolved turnRequested payload".to_string());
         };
+        if requested
+            .extra
+            .get("squadWorkerBindingKey")
+            .and_then(Value::as_str)
+            .is_some_and(|value| !value.trim().is_empty())
+        {
+            continue;
+        }
         let target = target_input_from_snapshot(&requested.target)?;
         let engine = ensure_supported_shared_session_engine(target.engine)?;
         let binding_key =
@@ -995,6 +1005,92 @@ fn recover_creating_binding(
         row.provider_profile_id.clone(),
         Some("provisioning-crash-window"),
     )
+}
+
+/// Dispatch 附图：调用方显式路径优先；否则从 durable TurnRequested.image_refs.locator 回填。
+/// 协作编排只在 begin 写入 image_refs，drive 侧不重传图，必须走此 SSOT。
+fn resolve_dispatch_images(
+    images: Option<Vec<String>>,
+    input: &crate::shared_event_log::canonical::types::CanonicalUserInput,
+) -> Option<Vec<String>> {
+    let from_param: Vec<String> = images
+        .unwrap_or_default()
+        .into_iter()
+        .map(|path| path.trim().to_string())
+        .filter(|path| !path.is_empty())
+        .collect();
+    if !from_param.is_empty() {
+        return Some(from_param);
+    }
+    let from_refs: Vec<String> = input
+        .image_refs
+        .as_ref()
+        .into_iter()
+        .flatten()
+        .map(|artifact| artifact.locator.trim().to_string())
+        .filter(|path| !path.is_empty())
+        .collect();
+    if from_refs.is_empty() {
+        None
+    } else {
+        Some(from_refs)
+    }
+}
+
+#[cfg(test)]
+mod resolve_dispatch_images_tests {
+    use super::resolve_dispatch_images;
+    use crate::shared_event_log::canonical::types::{ArtifactRef, CanonicalUserInput};
+    use serde_json::Value;
+
+    fn artifact(locator: &str) -> ArtifactRef {
+        ArtifactRef {
+            artifact_id: "img-1".into(),
+            media_type: "image/png".into(),
+            size_bytes: Some(12),
+            sha256: "a".repeat(64),
+            locator: locator.into(),
+            redaction: None,
+            extra: Value::Object(Default::default()),
+        }
+    }
+
+    #[test]
+    fn prefers_explicit_param_over_image_refs() {
+        let input = CanonicalUserInput {
+            text: Some("hi".into()),
+            image_refs: Some(vec![artifact("/from/ref.png")]),
+            attachment_refs: None,
+            extra: Value::Object(Default::default()),
+        };
+        let resolved = resolve_dispatch_images(Some(vec!["/from/param.png".into()]), &input);
+        assert_eq!(resolved, Some(vec!["/from/param.png".into()]));
+    }
+
+    #[test]
+    fn falls_back_to_durable_image_refs_when_param_empty() {
+        let input = CanonicalUserInput {
+            text: Some("这是什么".into()),
+            image_refs: Some(vec![artifact("/Users/me/shot.png")]),
+            attachment_refs: None,
+            extra: Value::Object(Default::default()),
+        };
+        let resolved = resolve_dispatch_images(None, &input);
+        assert_eq!(resolved, Some(vec!["/Users/me/shot.png".into()]));
+        let resolved_empty = resolve_dispatch_images(Some(vec![]), &input);
+        assert_eq!(resolved_empty, Some(vec!["/Users/me/shot.png".into()]));
+    }
+
+    #[test]
+    fn returns_none_when_no_images_anywhere() {
+        let input = CanonicalUserInput {
+            text: Some("no images".into()),
+            image_refs: None,
+            attachment_refs: None,
+            extra: Value::Object(Default::default()),
+        };
+        assert_eq!(resolve_dispatch_images(None, &input), None);
+    }
 }
 
 /// 用户本地附图路径 → 合法 ArtifactRef（UI projection 用 locator）。
@@ -1216,6 +1312,141 @@ pub fn begin_turn_core(
     );
     writer
         .append_turn_requested_with_binding_at(session_id.to_string(), fact, requested_at, &binding)
+        .map_err(|error| error.to_string())?;
+
+    Ok(BeginTurnOutcome {
+        status: BeginTurnStatus::Creating,
+        reason: None,
+        attempt_id: Some(attempt_id),
+        logical_turn_id: Some(logical_turn_id),
+        binding_key,
+        snapshot: Some(snapshot),
+    })
+}
+
+/// Squad Worker 专用 Tx1。它复用 Shared V2 lifecycle，但使用 run/node scoped Binding，
+/// 因此不参与主对话的 linear unresolved-attempt guard。
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn begin_squad_worker_turn_core(
+    writer: &SharedEventWriter,
+    session_id: &str,
+    target: &ExecutionTargetInput,
+    text: String,
+    // 仅首段协作节点可带图；后续段传 None
+    images: Option<Vec<String>>,
+    run_id: &str,
+    node_id: &str,
+    worker_role: &str,
+    permission_class: &str,
+    expose_final: bool,
+    context_identity: Value,
+    attempt_id: String,
+    logical_turn_id: String,
+) -> Result<BeginTurnOutcome, String> {
+    let engine = validate_resolved_execution_target(target)?;
+    let provider_profile_id = target.normalized_provider();
+    let base_binding_key = shared_target_binding_key(engine, provider_profile_id.as_deref());
+    let binding_key = format!("squad:{run_id}:{node_id}:{base_binding_key}");
+    let existing = writer
+        .binding_state(session_id, &binding_key)
+        .map_err(|error| error.to_string())?;
+    if let Some(row) = existing.as_ref() {
+        match provisioning_state_of(row).as_str() {
+            PROVISIONING_RECOVERY_REQUIRED => {
+                return Ok(BeginTurnOutcome {
+                    status: BeginTurnStatus::RecoveryRequired,
+                    reason: Some("squad-worker-binding-recovery-required".to_string()),
+                    attempt_id: None,
+                    logical_turn_id: None,
+                    binding_key,
+                    snapshot: None,
+                });
+            }
+            PROVISIONING_CREATING => {
+                mark_recovery_core(
+                    writer,
+                    session_id,
+                    &binding_key,
+                    engine,
+                    provider_profile_id,
+                    Some("squad-worker-provisioning-crash-window"),
+                )?;
+                return Ok(BeginTurnOutcome {
+                    status: BeginTurnStatus::RecoveryRequired,
+                    reason: Some("squad-worker-provisioning-crash-window".to_string()),
+                    attempt_id: None,
+                    logical_turn_id: None,
+                    binding_key,
+                    snapshot: None,
+                });
+            }
+            _ => {}
+        }
+    }
+
+    let snapshot = target.to_snapshot();
+    let binding_operation_id = existing
+        .as_ref()
+        .and_then(binding_operation_id_of)
+        .unwrap_or_else(|| Uuid::new_v4().to_string());
+    let binding_has_native_identity = existing
+        .as_ref()
+        .and_then(|row| row.native_session_id.as_deref())
+        .is_some_and(|native_session_id| !native_session_id.trim().is_empty());
+    let initial_provisioning_state = if binding_has_native_identity {
+        PROVISIONING_READY
+    } else {
+        PROVISIONING_PREPARED
+    };
+    let initial_availability = if binding_has_native_identity {
+        "ready"
+    } else {
+        "provisioning"
+    };
+    let requested_at = now_millis() as i64;
+    let fact = CanonicalFact::TurnRequested(TurnRequestedFact {
+        logical_turn_id: logical_turn_id.clone(),
+        attempt_id: attempt_id.clone(),
+        retry_of_attempt_id: None,
+        input: CanonicalUserInput {
+            text: Some(text),
+            image_refs: user_image_paths_to_artifact_refs(images),
+            attachment_refs: None,
+            extra: Value::Object(Default::default()),
+        },
+        target: snapshot.clone(),
+        requested_at,
+        extra: json!({
+            "bindingOperationId": binding_operation_id,
+            "squadWorkerBindingKey": binding_key,
+            "squadRunId": run_id,
+            "squadNodeId": node_id,
+            "squadWorkerRole": worker_role,
+            "squadPermissionClass": permission_class,
+            "squadExposeFinal": expose_final,
+            "squadContextIdentity": context_identity,
+        }),
+    });
+    let binding = binding_row_update(
+        session_id,
+        &binding_key,
+        engine,
+        provider_profile_id,
+        existing.as_ref(),
+        None,
+        None,
+        provisioning_json(
+            initial_provisioning_state,
+            None,
+            Some(&attempt_id),
+            Some(&binding_operation_id),
+            existing.as_ref(),
+            None,
+        ),
+        initial_availability,
+    );
+    writer
+        .append_canonical_fact_with_binding_at(session_id.to_string(), fact, requested_at, &binding)
         .map_err(|error| error.to_string())?;
 
     Ok(BeginTurnOutcome {
@@ -1482,7 +1713,7 @@ fn resolve_shared_attempt_interrupt_route(
     })
 }
 
-fn target_input_from_snapshot(
+pub(crate) fn target_input_from_snapshot(
     snapshot: &TurnExecutionSnapshot,
 ) -> Result<ExecutionTargetInput, String> {
     let engine = serde_json::from_value::<EngineType>(Value::String(snapshot.engine.clone()))
@@ -1517,7 +1748,14 @@ fn durable_attempt_owner(
     let engine = ensure_supported_shared_session_engine(target.engine)
         .map_err(|error| format!("target-unavailable: {error}"))?;
     let provider_profile_id = target.normalized_provider();
-    let binding_key = shared_target_binding_key(engine, provider_profile_id.as_deref());
+    let binding_key = requested
+        .extra
+        .get("squadWorkerBindingKey")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+        .unwrap_or_else(|| shared_target_binding_key(engine, provider_profile_id.as_deref()));
     // Legacy V2 facts 没有 generation。只在 durable row 仍是同一旧 Binding 时
     // 兼容读取；重建后新 row 会持有新的 operationId，后续新 Attempt 都显式冻结。
     let binding_operation_id = requested_binding_operation_id(&requested)
@@ -1538,6 +1776,31 @@ fn durable_attempt_owner(
         binding_key,
         binding_operation_id,
     })
+}
+
+fn scoped_attempt_access_mode(
+    owner: &DurableAttemptOwner,
+    requested: Option<String>,
+) -> Result<Option<String>, String> {
+    let is_squad = owner
+        .requested
+        .extra
+        .get("squadWorkerBindingKey")
+        .and_then(Value::as_str)
+        .is_some_and(|value| !value.trim().is_empty());
+    if !is_squad {
+        return Ok(requested);
+    }
+    match owner
+        .requested
+        .extra
+        .get("squadPermissionClass")
+        .and_then(Value::as_str)
+    {
+        Some("read-only") => Ok(Some("read-only".to_string())),
+        Some("current-workspace") => Ok(Some("squad-current-workspace".to_string())),
+        _ => Err("squad-permission-invalid: durable permission class is missing".to_string()),
+    }
 }
 
 fn validate_durable_attempt_target(owner: &DurableAttemptOwner) -> Result<(), String> {
@@ -2052,13 +2315,20 @@ pub fn rebuild_binding_core(
         })
         .and_then(ensure_supported_shared_session_engine)?;
     let provider_profile_id = existing.provider_profile_id.clone();
-    let durable_binding_key = shared_target_binding_key(engine, provider_profile_id.as_deref());
-    if durable_binding_key != binding_key {
-        return Err(format!(
-            "binding owner mismatch: key '{binding_key}' does not match durable owner '{durable_binding_key}'"
-        ));
+    // Squad worker binding key is first-class (`squad:{run}:{node}:{engine}:{provider}`).
+    // Main durable path still requires key == engine:provider to prevent identity mix-ups.
+    let is_squad_binding = binding_key.starts_with("squad:");
+    if !is_squad_binding {
+        let durable_binding_key =
+            shared_target_binding_key(engine, provider_profile_id.as_deref());
+        if durable_binding_key != binding_key {
+            return Err(format!(
+                "binding owner mismatch: key '{binding_key}' does not match durable owner '{durable_binding_key}'"
+            ));
+        }
     }
     let archived_native_session_id = existing.native_session_id.clone();
+    // Squad worker turns are excluded from main unresolved evidence; filter is still safe.
     let unresolved = unresolved_attempt_evidence(writer, session_id, Some(binding_key))?;
     if unresolved.len() > 1 {
         return Err(format!(
@@ -2159,6 +2429,18 @@ fn unresolved_attempt_evidence(
         };
         match event.fact_type.as_str() {
             "conversation.turnRequested" => {
+                let squad_worker = serde_json::from_str::<Value>(&event.payload_json)
+                    .ok()
+                    .and_then(|payload| {
+                        payload
+                            .get("squadWorkerBindingKey")
+                            .and_then(Value::as_str)
+                            .map(|value| !value.trim().is_empty())
+                    })
+                    .unwrap_or(false);
+                if squad_worker {
+                    continue;
+                }
                 if seen_requested.insert(attempt_id.clone()) {
                     requested.push(attempt_id);
                 }
@@ -2205,14 +2487,14 @@ fn unresolved_attempt_evidence(
 // Tauri commands（薄封装）
 // ---------------------------------------------------------------------------
 
-fn require_writer(state: &AppState) -> Result<&SharedEventWriter, String> {
+pub(crate) fn require_writer(state: &AppState) -> Result<&SharedEventWriter, String> {
     state
         .shared_event_writer
         .as_ref()
         .ok_or_else(|| "shared event log unavailable".to_string())
 }
 
-fn require_shared_session_workspace_owner(
+pub(crate) fn require_shared_session_workspace_owner(
     workspace_id: &str,
     shared_session_id: &str,
 ) -> Result<(), String> {
@@ -3491,8 +3773,8 @@ pub async fn shared_session_v2_prepare_delivery(
             .map(|event| event.sequence.saturating_sub(1))
             .ok_or_else(|| "turnRequested missing before context prepare".to_string())?;
         let capabilities = context_capabilities(&owner.target);
-        let destination = serde_json::to_value(&owner.requested.target)
-            .map_err(|error| error.to_string())?;
+        let destination =
+            serde_json::to_value(&owner.requested.target).map_err(|error| error.to_string())?;
         let incremental_request = CompileContextRequest {
             session_id: shared_session_id.clone(),
             binding_key: owner.binding_key.clone(),
@@ -3620,6 +3902,7 @@ pub async fn shared_session_v2_dispatch_turn(
     let shared_session_id = parse_shared_session_id(&thread_id)?;
     require_shared_session_workspace_owner(&workspace_id, &shared_session_id)?;
     let owner = durable_attempt_owner(writer, &shared_session_id, &attempt_id)?;
+    let access_mode = scoped_attempt_access_mode(&owner, access_mode)?;
     validate_durable_attempt_target(&owner).map_err(|error| {
         persist_not_accepted_dispatch_and_cleanup(
             &state,
@@ -3911,6 +4194,10 @@ pub async fn shared_session_v2_dispatch_turn(
         }
     }
 
+    // 附图：调用方参数优先；缺省时从 durable TurnRequested.image_refs 回填。
+    // 协作 driveAttempt 只传 attemptId、不重复传图，必须走这条 SSOT。
+    let images = resolve_dispatch_images(images, &owner.requested.input);
+    let has_images = images.as_ref().is_some_and(|paths| !paths.is_empty());
     let user_text = owner
         .requested
         .input
@@ -3918,6 +4205,15 @@ pub async fn shared_session_v2_dispatch_turn(
         .as_deref()
         .map(str::trim)
         .filter(|value| !value.is_empty())
+        .map(str::to_string)
+        .or_else(|| {
+            if has_images {
+                // 纯图轮：引擎侧至少需要占位文案，避免 silent empty prompt
+                Some("（请根据附图回答）".to_string())
+            } else {
+                None
+            }
+        })
         .ok_or_else(|| {
             persist_ambiguous_dispatch(
                 writer,
@@ -3935,7 +4231,7 @@ pub async fn shared_session_v2_dispatch_turn(
             user_text
         )
     } else {
-        user_text.to_string()
+        user_text
     };
 
     let response = match owner.engine {
@@ -5006,6 +5302,11 @@ fn clear_binding_recovery_if_idle(
 }
 
 /// 用户显式放弃未决 Attempt（durable cancel）。可选 `force_stop`：在 Runtime own 时先 interrupt。
+///
+/// 可完成出口合同（OpenSpec recovery exit / § interrupt capability missing）：
+/// - `force_stop=false` 且 Runtime own → 拒绝（须先 Stop 或显式 force）
+/// - `force_stop=true` → best-effort interrupt；**interrupt 失败也必须 durable cancel + 清 coordinator**
+///   （否则停不掉时「跳过本轮」会永久锁死会话）
 #[tauri::command]
 pub async fn shared_session_v2_abandon_unresolved_attempt(
     workspace_id: String,
@@ -5063,9 +5364,7 @@ pub async fn shared_session_v2_abandon_unresolved_attempt(
         }
     };
 
-    if let Some(sequence) =
-        committed_attempt_sequence(writer, &shared_session_id, &attempt_id)?
-    {
+    if let Some(sequence) = committed_attempt_sequence(writer, &shared_session_id, &attempt_id)? {
         return Ok(json!({
             "status": "terminal-committed",
             "attemptId": attempt_id,
@@ -5074,24 +5373,27 @@ pub async fn shared_session_v2_abandon_unresolved_attempt(
     }
 
     let owned = state.shared_runtime_coordinator.owns_attempt(&attempt_id);
+    let mut interrupt_warning: Option<String> = None;
     if owned {
         if !force_stop {
             return Err(format!(
                 "recovery-active-requires-stop: attempt {attempt_id} is still owned by Runtime; Stop before abandon or pass forceStop"
             ));
         }
-        // force_stop：best-effort interrupt；失败则拒绝 abandon（禁止假装释放）。
-        let interrupt = shared_session_v2_interrupt_turn(
+        // force_stop：best-effort interrupt。失败不阻断 durable abandon（可完成出口）。
+        // 迟到 terminal 由 generation/terminal 冲突吸收，不得复活已 cancel 的 attempt。
+        match shared_session_v2_interrupt_turn(
             workspace_id.clone(),
             thread_id.clone(),
             attempt_id.clone(),
             state.clone(),
         )
-        .await;
-        if let Err(error) = interrupt {
-            return Err(format!(
-                "recovery-active-requires-stop: interrupt failed before abandon: {error}"
-            ));
+        .await
+        {
+            Ok(_) => {}
+            Err(error) => {
+                interrupt_warning = Some(error);
+            }
         }
         // 不立即 remove_attempt —— 先检查 settled_for_attempt，
         // 以防 interrupt 与真实完成竞态导致 settled 证据被误删。
@@ -5113,21 +5415,25 @@ pub async fn shared_session_v2_abandon_unresolved_attempt(
             "attemptId": attempt_id,
             "bindingKey": committed.binding_key,
             "sequence": committed.sequence,
+            "interruptWarning": interrupt_warning,
         }));
     }
 
-    // 未 settled：清理 coordinator 跟踪，走 durable cancel。
-    if owned {
-        state.shared_runtime_coordinator.remove_attempt(&attempt_id);
-    }
+    // 未 settled：强制清 coordinator 跟踪（含 force_stop 且 interrupt 失败），再 durable cancel。
+    // 否则 Runtime own 会永久挡住 rebuild，跳过也无法解锁。
+    state.shared_runtime_coordinator.remove_attempt(&attempt_id);
 
     let committed = abandon_unresolved_attempt_core(
         writer,
         &shared_session_id,
         &attempt_id,
-        "user-abandon-unresolved",
+        if interrupt_warning.is_some() {
+            "user-abandon-unresolved-force-after-interrupt-fail"
+        } else {
+            "user-abandon-unresolved"
+        },
     )?;
-    // abandon_unresolved_attempt_core 不负责 coordinator；最终清理。
+    // abandon_unresolved_attempt_core 不负责 coordinator；最终再清一次（幂等）。
     state.shared_runtime_coordinator.remove_attempt(&attempt_id);
 
     Ok(json!({
@@ -5136,6 +5442,8 @@ pub async fn shared_session_v2_abandon_unresolved_attempt(
         "bindingKey": committed.binding_key,
         "sequence": committed.sequence,
         "duplicate": committed.duplicate,
+        "interruptWarning": interrupt_warning,
+        "forcedAfterInterruptFailure": interrupt_warning.is_some(),
     }))
 }
 
@@ -5535,7 +5843,8 @@ mod shared_interrupt_owner_tests {
             &session_id,
             &target(engine, provider),
             "hello".to_string(),
-            None)
+            None,
+        )
         .expect("begin");
         let attempt_id = begin.attempt_id.expect("attempt");
         let logical_turn_id = begin.logical_turn_id.expect("logical turn");
@@ -5602,8 +5911,14 @@ mod shared_interrupt_owner_tests {
         let provider = "provider-active";
         let active_target = target(EngineType::Codex, provider);
         let (root, writer) = open_test_writer("recovery-active-owner");
-        let begin = begin_turn_core(&writer, session_id, &active_target, "hello".to_string(), None)
-            .expect("begin");
+        let begin = begin_turn_core(
+            &writer,
+            session_id,
+            &active_target,
+            "hello".to_string(),
+            None,
+        )
+        .expect("begin");
         let attempt_id = begin.attempt_id.expect("attempt");
         let logical_turn_id = begin.logical_turn_id.expect("logical turn");
         let binding_key = begin.binding_key;
@@ -5693,7 +6008,8 @@ mod shared_interrupt_owner_tests {
             session_id,
             &target(EngineType::Codex, provider),
             "hello".to_string(),
-            None)
+            None,
+        )
         .expect("begin");
         let attempt_id = begin.attempt_id.expect("attempt");
         let binding_operation_id = durable_attempt_owner(&writer, session_id, &attempt_id)
@@ -5776,8 +6092,14 @@ mod shared_interrupt_owner_tests {
         let session_id = "compaction-active-attempt";
         let (root, writer) = open_test_writer("compaction-active-attempt");
         let active_target = target(EngineType::Codex, "provider-active");
-        let begin = begin_turn_core(&writer, session_id, &active_target, "hello".to_string(), None)
-            .expect("begin");
+        let begin = begin_turn_core(
+            &writer,
+            session_id,
+            &active_target,
+            "hello".to_string(),
+            None,
+        )
+        .expect("begin");
         let attempt_id = begin.attempt_id.expect("attempt");
         let logical_turn_id = begin.logical_turn_id.expect("logical turn");
         accept_turn_core(
@@ -5811,8 +6133,14 @@ mod shared_interrupt_owner_tests {
         let session_id = "compaction-selected-target";
         let (root, writer) = open_test_writer("compaction-selected-target");
         let selected_target = target(EngineType::Codex, "provider-selected");
-        let begin = begin_turn_core(&writer, session_id, &selected_target, "hello".to_string(), None)
-            .expect("begin");
+        let begin = begin_turn_core(
+            &writer,
+            session_id,
+            &selected_target,
+            "hello".to_string(),
+            None,
+        )
+        .expect("begin");
         let attempt_id = begin.attempt_id.expect("attempt");
         let logical_turn_id = begin.logical_turn_id.expect("logical turn");
         accept_turn_core(
@@ -5858,8 +6186,14 @@ mod shared_interrupt_owner_tests {
         let session_id = "compaction-selected-claude";
         let (root, writer) = open_test_writer("compaction-selected-claude");
         let selected_target = target(EngineType::Claude, "provider-managed");
-        let begin = begin_turn_core(&writer, session_id, &selected_target, "hello".to_string(), None)
-            .expect("begin");
+        let begin = begin_turn_core(
+            &writer,
+            session_id,
+            &selected_target,
+            "hello".to_string(),
+            None,
+        )
+        .expect("begin");
         let attempt_id = begin.attempt_id.expect("attempt");
         let logical_turn_id = begin.logical_turn_id.expect("logical turn");
         accept_turn_core(
@@ -5934,8 +6268,14 @@ mod shared_interrupt_owner_tests {
         let session_id = "interrupt-already-committed";
         let (root, writer) = open_test_writer("already-committed");
         let selected_target = target(EngineType::Claude, "provider-committed");
-        let begin = begin_turn_core(&writer, session_id, &selected_target, "hello".to_string(), None)
-            .expect("begin");
+        let begin = begin_turn_core(
+            &writer,
+            session_id,
+            &selected_target,
+            "hello".to_string(),
+            None,
+        )
+        .expect("begin");
         let attempt_id = begin.attempt_id.expect("attempt");
         let logical_turn_id = begin.logical_turn_id.expect("logical turn");
         commit_turn_core(
@@ -5968,8 +6308,14 @@ mod shared_interrupt_owner_tests {
         let session_id = "await-terminal-committed";
         let (root, writer) = open_test_writer("await-terminal-committed");
         let selected_target = target(EngineType::Claude, "provider-committed");
-        let begin = begin_turn_core(&writer, session_id, &selected_target, "hello".to_string(), None)
-            .expect("begin");
+        let begin = begin_turn_core(
+            &writer,
+            session_id,
+            &selected_target,
+            "hello".to_string(),
+            None,
+        )
+        .expect("begin");
         let attempt_id = begin.attempt_id.expect("attempt");
         let logical_turn_id = begin.logical_turn_id.expect("logical turn");
         let binding_key = begin.binding_key;
@@ -6022,7 +6368,8 @@ mod shared_interrupt_owner_tests {
             session_id,
             &target(EngineType::Codex, "provider-a"),
             "hello".to_string(),
-            None)
+            None,
+        )
         .expect("begin");
         let attempt_id = begin.attempt_id.expect("attempt");
         let binding_operation_id = durable_attempt_owner(&writer, session_id, &attempt_id)
@@ -6079,7 +6426,8 @@ mod shared_interrupt_owner_tests {
             session_id,
             &target(EngineType::Codex, provider),
             "hello".to_string(),
-            None)
+            None,
+        )
         .expect("begin");
         let attempt_id = begin.attempt_id.expect("attempt");
         let binding_key = begin.binding_key.clone();
@@ -6110,11 +6458,9 @@ mod shared_interrupt_owner_tests {
         )
         .expect("abandon");
         assert_eq!(committed.binding_key, binding_key);
-        assert!(
-            unresolved_attempt_evidence(&writer, session_id, None)
-                .expect("evidence")
-                .is_empty()
-        );
+        assert!(unresolved_attempt_evidence(&writer, session_id, None)
+            .expect("evidence")
+            .is_empty());
         assert_ne!(
             provisioning_state_of(
                 &writer
@@ -6131,7 +6477,8 @@ mod shared_interrupt_owner_tests {
             session_id,
             &target(EngineType::Codex, provider),
             "again".to_string(),
-            None)
+            None,
+        )
         .expect("begin after abandon");
         assert_eq!(next.status, BeginTurnStatus::Creating);
 
@@ -6149,7 +6496,8 @@ mod shared_interrupt_owner_tests {
             session_id,
             &target(EngineType::Codex, provider),
             "one".to_string(),
-            None)
+            None,
+        )
         .expect("begin first");
         let binding_key = first.binding_key.clone();
         let rebuilt = rebuild_binding_core(&writer, session_id, &binding_key).expect("rebuild");
@@ -6169,6 +6517,40 @@ mod shared_interrupt_owner_tests {
     }
 
     #[test]
+    fn rebuild_binding_core_allows_squad_worker_key() {
+        // Squad worker keys are first-class; rebuild must clear recovery-required
+        // without durable-key mismatch refusal.
+        let session_id = "rebuild-squad-worker-key";
+        let provider = "provider-squad";
+        let (root, writer) = open_test_writer("rebuild-squad-worker-key");
+        let squad_key = format!("squad:run-1:node-plan:claude:{provider}");
+        mark_recovery_core(
+            &writer,
+            session_id,
+            &squad_key,
+            EngineType::Claude,
+            Some(provider.to_string()),
+            Some("squad-worker-binding-recovery-required"),
+        )
+        .expect("mark squad recovery");
+        let rebuilt =
+            rebuild_binding_core(&writer, session_id, &squad_key).expect("rebuild squad");
+        assert!(rebuilt.replaced_attempt_ids.is_empty());
+        let binding = writer
+            .binding_state(session_id, &squad_key)
+            .expect("read")
+            .expect("binding");
+        assert_eq!(
+            provisioning_state_of(&binding),
+            PROVISIONING_PREPARED,
+            "squad rebuild must return provisioning to prepared"
+        );
+
+        writer.shutdown().expect("shutdown writer");
+        std::fs::remove_dir_all(root).expect("remove test root");
+    }
+
+    #[test]
     fn mark_recovery_and_failed_terminal_mark_native_context_trust_dirty() {
         let session_id = "trust-dirty-on-failure";
         let provider = "provider-trust";
@@ -6178,7 +6560,8 @@ mod shared_interrupt_owner_tests {
             session_id,
             &target(EngineType::Claude, provider),
             "原任务正文".to_string(),
-            None)
+            None,
+        )
         .expect("begin");
         let attempt_id = begin.attempt_id.expect("attempt");
         let binding_key = begin.binding_key.clone();
@@ -6264,21 +6647,22 @@ mod shared_interrupt_owner_tests {
         };
         use crate::shared_event_log::{Fidelity, StoredEvent};
 
-        let stored = |sequence: i64, event_id: &str, fact_type: &str, attempt: &str, payload: Value| {
-            StoredEvent {
-                session_id: "s-needs".to_string(),
-                sequence,
-                event_id: event_id.to_string(),
-                fact_type: fact_type.to_string(),
-                logical_turn_id: Some(format!("turn-{sequence}")),
-                attempt_id: Some(attempt.to_string()),
-                dedupe_key: None,
-                payload_json: payload.to_string(),
-                payload_checksum: format!("sha256:{event_id}"),
-                fidelity: Fidelity::Canonical,
-                committed_at: sequence,
-            }
-        };
+        let stored =
+            |sequence: i64, event_id: &str, fact_type: &str, attempt: &str, payload: Value| {
+                StoredEvent {
+                    session_id: "s-needs".to_string(),
+                    sequence,
+                    event_id: event_id.to_string(),
+                    fact_type: fact_type.to_string(),
+                    logical_turn_id: Some(format!("turn-{sequence}")),
+                    attempt_id: Some(attempt.to_string()),
+                    dedupe_key: None,
+                    payload_json: payload.to_string(),
+                    payload_checksum: format!("sha256:{event_id}"),
+                    fidelity: Fidelity::Canonical,
+                    committed_at: sequence,
+                }
+            };
         let events = vec![
             stored(
                 1,
@@ -6363,7 +6747,9 @@ mod shared_interrupt_owner_tests {
         )
         .expect("rematerialize");
         assert!(!is_zero_transfer_package(&rematerialized));
-        assert!(rematerialized.prompt_prefix.contains("原任务正文请实现登录"));
+        assert!(rematerialized
+            .prompt_prefix
+            .contains("原任务正文请实现登录"));
     }
 
     #[test]
@@ -6376,21 +6762,22 @@ mod shared_interrupt_owner_tests {
         };
         use crate::shared_event_log::{Fidelity, StoredEvent};
 
-        let stored = |sequence: i64, event_id: &str, fact_type: &str, attempt: &str, payload: Value| {
-            StoredEvent {
-                session_id: "s-continue-only".to_string(),
-                sequence,
-                event_id: event_id.to_string(),
-                fact_type: fact_type.to_string(),
-                logical_turn_id: Some(format!("turn-{sequence}")),
-                attempt_id: Some(attempt.to_string()),
-                dedupe_key: None,
-                payload_json: payload.to_string(),
-                payload_checksum: format!("sha256:{event_id}"),
-                fidelity: Fidelity::Canonical,
-                committed_at: sequence,
-            }
-        };
+        let stored =
+            |sequence: i64, event_id: &str, fact_type: &str, attempt: &str, payload: Value| {
+                StoredEvent {
+                    session_id: "s-continue-only".to_string(),
+                    sequence,
+                    event_id: event_id.to_string(),
+                    fact_type: fact_type.to_string(),
+                    logical_turn_id: Some(format!("turn-{sequence}")),
+                    attempt_id: Some(attempt.to_string()),
+                    dedupe_key: None,
+                    payload_json: payload.to_string(),
+                    payload_checksum: format!("sha256:{event_id}"),
+                    fidelity: Fidelity::Canonical,
+                    committed_at: sequence,
+                }
+            };
         let events = vec![
             stored(
                 1,
@@ -6509,9 +6896,7 @@ mod shared_interrupt_owner_tests {
                 accepted_through_sequence: Some(3),
                 committed_through_sequence: Some(3),
                 // 无 nativeContextTrust 字段
-                provisioning_json: Some(
-                    json!({"state": "ready", "updatedAt": 1}).to_string(),
-                ),
+                provisioning_json: Some(json!({"state": "ready", "updatedAt": 1}).to_string()),
                 pending_delivery_json: None,
                 availability: "ready".to_string(),
                 updated_at: 1,

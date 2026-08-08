@@ -1,8 +1,19 @@
+/**
+ * Claude custom model facts from localStorage.
+ *
+ * providerProfileId is optional provenance for managed-provider-owned customs.
+ * It MUST NOT be invented when absent — open-session / Shared hydrate and
+ * Native create still treat missing ownership as unbound (see
+ * useAppShellComposerModelSection: Claude resolvedProviderProfileId stays null
+ * from model pick; session target remains thread/snapshot authority).
+ */
 export type ClaudeCustomModelFact = {
   id: string;
   model: string;
   label: string;
   description?: string;
+  /** Optional managed-provider ownership; omit/undefined = local/unscoped. */
+  providerProfileId?: string;
   source: "custom";
   catalogSource: "configured";
   provider: string;
@@ -33,6 +44,8 @@ export function normalizeClaudeCustomModels(input: unknown): ClaudeCustomModelFa
 
     const labelValue = (entry as { label?: unknown }).label;
     const descriptionValue = (entry as { description?: unknown }).description;
+    const providerProfileRaw = (entry as { providerProfileId?: unknown })
+      .providerProfileId;
     const label =
       typeof labelValue === "string" && labelValue.trim().length > 0
         ? labelValue.trim()
@@ -41,12 +54,17 @@ export function normalizeClaudeCustomModels(input: unknown): ClaudeCustomModelFa
       typeof descriptionValue === "string" && descriptionValue.trim().length > 0
         ? descriptionValue.trim()
         : undefined;
+    const providerProfileId =
+      typeof providerProfileRaw === "string" && providerProfileRaw.trim().length > 0
+        ? providerProfileRaw.trim()
+        : undefined;
 
     models.push({
       id,
       model: id,
       label,
       description,
+      ...(providerProfileId ? { providerProfileId } : {}),
       source: "custom",
       catalogSource: "configured",
       provider: "anthropic",

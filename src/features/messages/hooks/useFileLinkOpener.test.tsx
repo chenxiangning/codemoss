@@ -7,7 +7,7 @@ import { useFileLinkOpener } from "./useFileLinkOpener";
 
 const openerMocks = vi.hoisted(() => ({
   openPath: vi.fn(),
-  revealItemInDir: vi.fn(),
+  revealInFileManager: vi.fn(),
   openWorkspaceIn: vi.fn(),
   pushErrorToast: vi.fn(),
   clipboardWriteText: vi.fn(),
@@ -15,11 +15,11 @@ const openerMocks = vi.hoisted(() => ({
 
 vi.mock("@tauri-apps/plugin-opener", () => ({
   openPath: openerMocks.openPath,
-  revealItemInDir: openerMocks.revealItemInDir,
 }));
 
 vi.mock("../../../services/tauri", () => ({
   openWorkspaceIn: openerMocks.openWorkspaceIn,
+  revealInFileManager: openerMocks.revealInFileManager,
 }));
 
 vi.mock("../../../services/toasts", () => ({
@@ -43,7 +43,7 @@ function makeOpenTarget(
 describe("useFileLinkOpener", () => {
   beforeEach(() => {
     openerMocks.openPath.mockReset();
-    openerMocks.revealItemInDir.mockReset();
+    openerMocks.revealInFileManager.mockReset();
     openerMocks.openWorkspaceIn.mockReset();
     openerMocks.pushErrorToast.mockReset();
     openerMocks.clipboardWriteText.mockReset();
@@ -58,7 +58,7 @@ describe("useFileLinkOpener", () => {
   it("builds a renderer-owned file link menu with the expected actions", async () => {
     openerMocks.openPath.mockResolvedValue(undefined);
     openerMocks.openWorkspaceIn.mockResolvedValue(undefined);
-    openerMocks.revealItemInDir.mockResolvedValue(undefined);
+    openerMocks.revealInFileManager.mockResolvedValue(undefined);
     openerMocks.clipboardWriteText.mockResolvedValue(undefined);
     const { result } = renderHook(() =>
       useFileLinkOpener(
@@ -133,7 +133,7 @@ describe("useFileLinkOpener", () => {
         await reveal.onSelect();
       });
     }
-    expect(openerMocks.revealItemInDir).toHaveBeenCalledWith("/repo/src/main.ts");
+    expect(openerMocks.revealInFileManager).toHaveBeenCalledWith("/repo/src/main.ts");
 
     if (copyLink?.type === "item") {
       await act(async () => {

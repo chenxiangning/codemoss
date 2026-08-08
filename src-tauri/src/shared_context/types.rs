@@ -71,6 +71,10 @@ pub struct ProjectionManifest {
     pub from_sequence_exclusive: Option<i64>,
     pub through_sequence_inclusive: i64,
     pub source_checksum: String,
+    /// Optional domain-owned compile scope. Squad uses this to bind package identity to the
+    /// sealed node contract while ordinary Shared turns keep the field absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scope: Option<Value>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

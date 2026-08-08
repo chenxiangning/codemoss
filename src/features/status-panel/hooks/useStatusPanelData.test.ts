@@ -278,23 +278,15 @@ describe("useStatusPanelData helpers", () => {
     ).toBe("running");
   });
 
-  it("does not seed child-tree Agents for non-Codex engines", () => {
-    const waitTool: ConversationItem = {
-      id: "wait-1",
-      kind: "tool",
-      toolType: "collabToolCall",
-      title: "Collab: wait",
-      detail: "",
-      status: "running",
-    };
-
+  it("seeds child-tree subagents for non-Codex engines when tool scan is empty", () => {
+    // Claude/Grok/Shared：主线无 task-like tool 时仍应用 parent→child 补 Strip
     const { result } = renderHook(() =>
-      useStatusPanelData([waitTool], {
+      useStatusPanelData([], {
         isCodexEngine: false,
         activeEngine: "claude",
         activeThreadId: "parent-root",
         itemsByThread: {
-          "parent-root": [waitTool],
+          "parent-root": [],
           "child-1": [],
         },
         threadParentById: {
@@ -303,6 +295,57 @@ describe("useStatusPanelData helpers", () => {
       }),
     );
 
-    expect(result.current.subagentTotal).toBe(0);
+    expect(result.current.subagentTotal).toBe(1);
+    expect(result.current.subagents[0]?.id).toBe("child-1");
+  });
+
+  it("uses S10-wide isSubagentTool for description-as-title history tools", () => {
+    // Shared/历史：title 是问候文案，payload 才带 subagent_type
+    const payloadTool: ConversationItem = {
+      id: "spawn-hist-1",
+      kind: "tool",
+      toolType: "toolCall",
+      title: "问候测试代理1",
+      detail: JSON.stringify({
+        description: "问候测试代理1",
+        subagent_type: "general-purpose",
+        subagent_id: "agent-hist-1",
+      }),
+      status: "completed",
+      output: "Subagent completed.",
+    };
+
+    const { result } = renderHook(() =>
+      useStatusPanelData([payloadTool], {
+        isCodexEngine: false,
+        activeEngine: "claude",
+        activeThreadId: "shared:session-1",
+      }),
+    );
+
+    expect(result.current.subagentTotal).toBe(1);
+    // 应用 payload 内 subagent_id，禁止用 tool 行 id（否则 inspector 无法 load 子会话）
+    expect(result.current.subagents[0]?.id).toBe("agent-hist-1");
+    expect(result.current.subagents[0]?.taskOutput?.threadId).toBe("agent-hist-1");
+    expect(result.current.subagents[0]?.description).toContain("问候");
+  });
+
+  it("seeds from childSubagentThreadIds when parent map is empty (S10 canvas children)", () => {
+    const { result } = renderHook(() =>
+      useStatusPanelData([], {
+        isCodexEngine: false,
+        activeEngine: "claude",
+        activeThreadId: "shared:abc",
+        itemsByThread: {
+          "shared:abc": [],
+          "claude:subagent:owner:agent-9": [],
+        },
+        threadParentById: {},
+        childSubagentThreadIds: ["claude:subagent:owner:agent-9"],
+      }),
+    );
+
+    expect(result.current.subagentTotal).toBe(1);
+    expect(result.current.subagents[0]?.id).toBe("claude:subagent:owner:agent-9");
   });
 });

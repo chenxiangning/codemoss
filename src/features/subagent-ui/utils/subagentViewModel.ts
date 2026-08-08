@@ -228,7 +228,11 @@ function mapToolStatus(item: ToolItem): SubagentCardStatus {
   return "running";
 }
 
-function extractAgentId(
+/**
+ * 从 tool args / output 提取引擎侧 agent/subagent id（S10 与 Strip/inspector 共用）。
+ * 支持：args 字段、纯文本 meta 行、以及历史投影的 JSON 信封（_input/_output）。
+ */
+export function extractAgentId(
   args: Record<string, unknown> | null,
   outputText: string | null,
 ): string | null {
@@ -246,17 +250,53 @@ function extractAgentId(
       return value.trim();
     }
   }
+  // args._input 嵌套（部分历史把整段 JSON 塞进 detail）
+  const nestedInput = args?._input;
+  if (nestedInput && typeof nestedInput === "object" && nestedInput !== null) {
+    const nested = extractAgentId(nestedInput as Record<string, unknown>, null);
+    if (nested) {
+      return nested;
+    }
+  }
   if (!outputText) {
     return null;
   }
   const match =
     // 允许 grok:uuid / claude:… 完整 thread id
     /subagent_id\s*[:=]\s*['"]?([a-z0-9:_-]+)['"]?/i.exec(outputText) ??
+    /"subagent_id"\s*:\s*"([^"]+)"/i.exec(outputText) ??
     /agentId\s*[:=]\s*['"]?([a-z0-9:_-]+)['"]?/i.exec(outputText) ??
+    /"agentId"\s*:\s*"([^"]+)"/i.exec(outputText) ??
     /agent_id\s*[:=]\s*['"]?([a-z0-9:_-]+)['"]?/i.exec(outputText) ??
+    /"agent_id"\s*:\s*"([^"]+)"/i.exec(outputText) ??
     /agent_id="([^"]+)"/i.exec(outputText) ??
     /child_session_id\s*[:=]\s*['"]?([a-z0-9:_-]+)['"]?/i.exec(outputText);
   return match?.[1]?.trim() || null;
+}
+
+/** tool 行 id / 占位 id，不能当 session 加载目标 */
+function looksLikeOpaqueToolRowId(id: string): boolean {
+  const raw = id.trim();
+  if (!raw) return true;
+  // tool use / 合成占位
+  if (raw.startsWith("tool") || raw.includes("synthetic-")) return true;
+  if (/^(spawn|task|agent)-/i.test(raw)) return true;
+  // 完整引擎 thread id 或 UUID / Claude hex 都算合法 agent key
+  if (
+    raw.startsWith("claude:") ||
+    raw.startsWith("grok:") ||
+    raw.startsWith("kimi:") ||
+    raw.startsWith("gemini:") ||
+    raw.startsWith("opencode:") ||
+    raw.startsWith("shared:")
+  ) {
+    return false;
+  }
+  if (/^[0-9a-f]{8}-[0-9a-f-]{20,}$/i.test(raw)) return false;
+  if (looksLikeClaudeAgentId(raw)) return false;
+  // 其它短 id 可能是 collab agent 名
+  if (raw.length >= 4 && raw.length <= 64 && !/\s/.test(raw)) return false;
+  return true;
 }
 
 /**
@@ -325,7 +365,9 @@ export function extractClaudeParentSessionIdFromAgentOutput(
   }
   const pathMatch =
     /output_file\s*[:=]\s*(\S+)/i.exec(text) ??
-    /outputFile\s*[:=]\s*(\S+)/i.exec(text);
+    /outputFile\s*[:=]\s*(\S+)/i.exec(text) ??
+    /"output_file"\s*:\s*"([^"]+)"/i.exec(text) ??
+    /"outputFile"\s*:\s*"([^"]+)"/i.exec(text);
   const rawPath = pathMatch?.[1]?.trim().replace(/[.,;)"']+$/, "") ?? "";
   if (rawPath) {
     const fromTasks =
@@ -342,6 +384,14 @@ export function extractClaudeParentSessionIdFromAgentOutput(
     if (fromSubagents?.[1]) {
       return fromSubagents[1];
     }
+    // DeepSeek / 部分 CLI：.../<sessionUUID>/<agentId>.output 无 tasks 段
+    const fromDirect =
+      /\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/(?:agent-)?[a-f0-9]{12,32}\.output/i.exec(
+        rawPath,
+      );
+    if (fromDirect?.[1]) {
+      return fromDirect[1];
+    }
   }
   // 无 path 时：部分回执会写 session 字段
   const sessionField =
@@ -349,6 +399,66 @@ export function extractClaudeParentSessionIdFromAgentOutput(
       text,
     );
   return sessionField?.[1]?.trim() || null;
+}
+
+/**
+ * Shared Claude / DeepSeek：从父线 items + child 线程列表补齐 claude:subagent 会话 id。
+ * 解决 nativeThreadIds 空、单卡 output 缺 output_file 时详情只显示 launch 提示。
+ */
+export function resolveClaudeSubagentSessionFromContext(options: {
+  agentId: string | null | undefined;
+  outputText?: string | null;
+  nativeThreadIds?: readonly string[] | null;
+  /** canvas childSubagentThreads ids */
+  childThreadIds?: readonly string[] | null;
+  /** 父会话时间线（扫 Agent tool 的 output_file） */
+  parentItems?: readonly ConversationItem[] | null;
+}): string | null {
+  const agent = options.agentId?.trim() || "";
+  if (!agent || !looksLikeClaudeAgentId(agent)) {
+    return null;
+  }
+
+  // 1) 侧栏/canvas 已有完整子会话 id
+  for (const raw of options.childThreadIds ?? []) {
+    const id = raw.trim();
+    if (!id) continue;
+    if (id.startsWith("claude:subagent:") && id.endsWith(`:${agent}`)) {
+      return id;
+    }
+  }
+
+  // 2) 父线所有 tool 输出里找该 agentId 的 output_file / session
+  let ownerFromItems: string | null = null;
+  let richerOutput = options.outputText ?? "";
+  for (const item of options.parentItems ?? []) {
+    if (!item || item.kind !== "tool") continue;
+    const detail = typeof item.detail === "string" ? item.detail : "";
+    const output = typeof item.output === "string" ? item.output : "";
+    const hay = `${detail}\n${output}`;
+    if (!hay.includes(agent)) continue;
+    if (output.length > richerOutput.length) {
+      richerOutput = output;
+    }
+    const fromItem = extractClaudeParentSessionIdFromAgentOutput(hay);
+    if (fromItem) {
+      ownerFromItems = fromItem;
+      break;
+    }
+  }
+
+  const claudeOwner =
+    pickClaudeNativeOwnerId(options.nativeThreadIds) ||
+    (ownerFromItems ? `claude:${ownerFromItems}` : null) ||
+    (() => {
+      const fromOutput = extractClaudeParentSessionIdFromAgentOutput(richerOutput);
+      return fromOutput ? `claude:${fromOutput}` : null;
+    })();
+
+  if (!claudeOwner) {
+    return null;
+  }
+  return resolveClaudeSubagentThreadId(claudeOwner, agent);
 }
 
 function pickClaudeNativeOwnerId(
@@ -424,6 +534,7 @@ export function resolveSubagentSessionThreadId(options: {
     // Shared Claude Agent 启动回执 / Claude 风格 agentId → claude:subagent
     // 1) bindings 里的 native owner
     // 2) 启动回执 output_file 路径里的 parent session UUID（bindings 常为空时的关键兜底）
+    // 3) 调用方可通过 resolveClaudeSubagentSessionFromContext 再补 parentItems/child 列表
     const claudeOwner =
       pickClaudeNativeOwnerId(options.nativeThreadIds) ||
       (() => {
@@ -1091,22 +1202,38 @@ export function buildSubagentCardsFromToolItems(
 
 export function buildSubagentCardFromSubagentInfo(
   agent: SubagentInfo,
-  options?: { index?: number; parentThreadId?: string | null },
+  options?: {
+    index?: number;
+    parentThreadId?: string | null;
+    /** Shared 父 nativeThreadIds，拼 claude:subagent:{owner}:{agentId} */
+    nativeThreadIds?: readonly string[] | null;
+  },
 ): SubagentCardViewModel {
   const toolCount = null;
   const outputText = agent.taskOutput?.recentOutput ?? null;
+  // S10 同源：优先从 output meta / agent.id（若是真 agent key）取 id，禁止 tool 行 id 当 session
   const agentIdFromOutput = extractAgentId(null, outputText);
+  const agentIdFromRow =
+    agent.id && !looksLikeOpaqueToolRowId(agent.id) ? agent.id.trim() : null;
+  const agentId = agentIdFromOutput ?? agentIdFromRow;
   const navigationThreadId =
     agent.navigationTarget?.kind === "thread"
       ? agent.navigationTarget.threadId
       : null;
+  const explicitFromTask =
+    agent.taskOutput?.threadId?.trim() &&
+    !looksLikeOpaqueToolRowId(agent.taskOutput.threadId)
+      ? agent.taskOutput.threadId.trim()
+      : null;
   const sessionThreadId =
     navigationThreadId ??
-    agent.taskOutput?.threadId ??
+    explicitFromTask ??
     resolveSubagentSessionThreadId({
       parentThreadId: options?.parentThreadId,
-      agentId: agentIdFromOutput ?? (agent.id.includes(":") ? agent.id : agent.id),
-      explicitThreadId: navigationThreadId,
+      agentId,
+      explicitThreadId: navigationThreadId ?? explicitFromTask,
+      outputText,
+      nativeThreadIds: options?.nativeThreadIds,
     });
   return {
     id: agent.id,
@@ -1121,7 +1248,7 @@ export function buildSubagentCardFromSubagentInfo(
     taskOutput: agent.taskOutput
       ? { ...agent.taskOutput, threadId: sessionThreadId ?? agent.taskOutput.threadId }
       : null,
-    agentId: agentIdFromOutput ?? agent.id,
+    agentId: agentId,
     sessionThreadId,
   };
 }

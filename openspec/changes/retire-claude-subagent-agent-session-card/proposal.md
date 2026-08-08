@@ -2,11 +2,13 @@
 
 Claude Shared / Native 幕布在 SubAgent 完成后会同时渲染两套完成态：新的 S10 `SubagentSquadGrid` 卡，以及历史 `message-agent-task-card`（`Agent session` + COMPLETED + 查看输出）。后者来自 `<task-notification>` 消息，是 engine-task-output 时代的入口，现已与 S10 重复，造成视觉噪音与「渲染了两遍」的错觉。应退役 SubAgent 场景下的旧卡，并把仍有价值的能力收敛到新卡 / inspector。
 
+> **Supersession note（2026-08-08）**：幕布 S10 作为 canonical 完成表面，已被 [`retire-canvas-subagent-squad-grid`](../retire-canvas-subagent-squad-grid/proposal.md) **部分 supersede**。本 change 仍有效的核心是：退役 legacy Agent session 卡 + task-notification 事实 enrich + inspector 输出承接；enrich 宿主改为 Composer run-status strip / StatusPanel 行，而非幕布 SquadGrid。
+
 ## 目标与边界
 
-- **目标**：Claude（Shared + Native）SubAgent 幕布只保留 S10 小队卡为 canonical 完成态表面；旧 `Agent session` 卡在 SubAgent 型 task-notification 上不再可见。
+- **目标**：Claude（Shared + Native）SubAgent 场景下旧 `Agent session` 卡在 SubAgent 型 task-notification 上不再可见；事实 enrich 到 subagent 视图模型 / inspector（canonical 观察面见 `retire-canvas-subagent-squad-grid`：Composer strip，**非** 幕布 S10）。
 - **边界**：仅影响「像 SubAgent 完成通知」的 task-notification 呈现；解析契约、锚点数据、非 SubAgent 的任务输出卡保留。
-- **能力迁移**：旧卡上仍有用的能力（终态 status、result 摘要、output-file 可观测）必须落到 S10 卡或 inspector，不得裸丢。
+- **能力迁移**：旧卡上仍有用的能力（终态 status、result 摘要、output-file 可观测）必须落到 strip/StatusPanel 行或 inspector，不得裸丢。
 
 ## 非目标
 

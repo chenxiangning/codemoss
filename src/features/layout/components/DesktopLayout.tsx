@@ -14,9 +14,10 @@ import type { CenterMode, EditorSplitCompanion } from "../../app/hooks/useGitPan
 import { getClientStoreSync, writeClientStoreValue } from "../../../services/clientStorage";
 import { WorkspaceNoteCardsLayoutProvider, useWorkspaceNoteCardsLayoutController } from "../../note-cards/components/WorkspaceNoteCardsLayoutContext";
 import {
-  SubagentChatSplit,
   useSubagentInspectorSelection,
 } from "../../subagent-ui";
+import { MultiAgentConversationHost } from "../../multi-agent";
+import { useAgentInspectorSelection } from "../../multi-agent/store/inspectorStore";
 
 const NOTE_CARDS_SPLIT_RATIO_KEY = "noteCardsSplitRatio";
 const DEFAULT_NOTE_CARDS_SPLIT_RATIO = 66.667;
@@ -174,13 +175,15 @@ export function DesktopLayout({
     isEditorSplitMode && editorSplitCompanion === "chat" && !isEditorFileMaximized;
   const isEditorSplitProjectMapVisible = isEditorSplitMode && editorSplitCompanion === "projectMap" && !isEditorFileMaximized;
   const isBrowserDockSplitVisible = centerMode === "chat" && Boolean(browserDockNode);
-  // 子代理详情打开时，composer 必须进左列，才能形成「左上下 | 右」而非「上左右 | 下全宽」
+  // 对话内 Inspector 打开时，composer 必须进左列，形成「左上下 | 右」。
   const subagentInspectorOpen = Boolean(useSubagentInspectorSelection());
+  const agentInspectorOpen = Boolean(useAgentInspectorSelection());
   const shouldPlaceComposerInChatColumn =
     isEditorSplitChatVisible ||
     isBrowserDockSplitVisible ||
     isNoteCardsSplitMode ||
-    subagentInspectorOpen;
+    subagentInspectorOpen ||
+    agentInspectorOpen;
   const hasBottomPanel = Boolean(planPanelNode);
   const shouldShowComposerBelowContent =
     centerMode !== "projectMap" &&
@@ -767,7 +770,7 @@ export function DesktopLayout({
                     }
                     ref={chatLayerRef}
                   >
-                    <SubagentChatSplit
+                    <MultiAgentConversationHost
                       messagesNode={messagesNode}
                       composerNode={
                         shouldPlaceComposerInChatColumn ? composerNode : null

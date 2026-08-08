@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { revealItemInDir } from "@tauri-apps/plugin-opener";
-import type { ExportRewindFilesResult } from "../../../services/tauri";
+import {
+  revealInFileManager,
+  type ExportRewindFilesResult,
+} from "../../../services/tauri";
 import { parseDiff, type ParsedDiffLine } from "../../../utils/diff";
 import { languageFromPath } from "../../../utils/syntax";
 import FileIcon from "../../../components/FileIcon";
@@ -393,7 +395,7 @@ export function ClaudeRewindConfirmDialog({
       return;
     }
     try {
-      await revealItemInDir(exportResult.outputPath);
+      await revealInFileManager(exportResult.outputPath);
     } catch (error) {
       setExportError(
         (error instanceof Error ? error.message : String(error)) ||

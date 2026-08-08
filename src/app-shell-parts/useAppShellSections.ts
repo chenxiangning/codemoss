@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { revealItemInDir } from "@tauri-apps/plugin-opener";
+
 import {
-  getEngineModels,
   getWorkspaceFiles,
+  revealInFileManager,
 } from "../services/tauri";
 import { pushErrorToast } from "../services/toasts";
 import { useSoloMode } from "../features/layout/hooks/useSoloMode";
@@ -16,7 +16,7 @@ import { useAppMenuEvents } from "../features/app/hooks/useAppMenuEvents";
 import { useMenuAcceleratorController } from "../features/app/hooks/useMenuAcceleratorController";
 import { useMenuLocalization } from "../features/app/hooks/useMenuLocalization";
 import { runWithLoadingProgress } from "../features/app/utils/loadingProgressActions";
-import { buildLocalSharedSessionInitialTarget } from "../features/shared-session/target/initialTarget";
+import { resolveSharedSessionCreateInitialTarget } from "../features/shared-session/target/resolveSharedSessionCreateInitialTarget";
 import type { SharedSessionSupportedEngine } from "../features/shared-session/utils/sharedSessionEngines";
 import {
   buildDetachedSpecHubSession,
@@ -365,14 +365,18 @@ export function useAppShellSections(input: UseAppShellSectionsInput) {
               kimi: "workspace.engineKimi",
               grok: "workspace.engineGrok",
             }[sharedEngine];
-            const initialTarget = buildLocalSharedSessionInitialTarget(
-              sharedEngine,
-              await getEngineModels(sharedEngine),
+            // 创建：第一 Provider + profile 权威 catalog（local forceRefresh）。
+            // 打开既有会话不走此路径，回显 last selectedTarget。
+            const initialTarget = await resolveSharedSessionCreateInitialTarget({
+              engine: sharedEngine,
               localProviderName,
-              t("workspace.sharedSessionLocalModelUnavailable", {
-                engine: t(engineLabelKey),
-              }),
-            );
+              unavailableModelMessage: t(
+                "workspace.sharedSessionLocalModelUnavailable",
+                {
+                  engine: t(engineLabelKey),
+                },
+              ),
+            });
             const threadId = await startSharedSessionForWorkspace(
               targetWorkspace.id,
               {
@@ -476,7 +480,7 @@ export function useAppShellSections(input: UseAppShellSectionsInput) {
       return;
     }
     try {
-      await revealItemInDir(activeWorkspace.path);
+      await revealInFileManager(activeWorkspace.path);
     } catch (error) {
       alertError(error);
     }

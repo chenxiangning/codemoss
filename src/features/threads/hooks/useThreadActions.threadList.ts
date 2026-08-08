@@ -45,6 +45,12 @@ export const KIMI_SESSION_CACHE_TTL_MS = 60_000;
 export const KIMI_SESSION_FETCH_TIMEOUT_MS = SIDEBAR_THREAD_LIST_TIMEOUT_MS;
 export const NATIVE_SESSION_LIST_FETCH_TIMEOUT_MS =
   SIDEBAR_THREAD_LIST_TIMEOUT_MS;
+
+/**
+ * Cold-start / full-catalog OpenCode 子源预算：远短于通用 30s，
+ * 超时走 last-good，避免 opencode_session_list 10s+ 占窗。
+ */
+export const OPENCODE_FULL_CATALOG_FETCH_TIMEOUT_MS = 3_000;
 export const CODEX_SESSION_CATALOG_FETCH_TIMEOUT_MS =
   SIDEBAR_THREAD_LIST_TIMEOUT_MS;
 /** Load-older / recovery catalog page size. */
@@ -70,7 +76,12 @@ const WORKSPACE_SESSION_SOURCE_COMPLETENESS_VALUES =
 
 type ThreadListCursorSource = "catalog" | "runtime";
 
-export type StartupThreadHydrationMode = "full-catalog";
+/**
+ * - first-paint: codex page + last-good only; skip multi-engine project catalog
+ *   and gemini/kimi/grok refresh storms so cold-start stays clickable.
+ * - full-catalog: full multi-engine merge (post first-paint / force reload).
+ */
+export type StartupThreadHydrationMode = "full-catalog" | "first-paint";
 
 export type ThreadListCursorState = {
   source: ThreadListCursorSource;

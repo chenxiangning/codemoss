@@ -59,7 +59,16 @@ import {
   getSharedTargetState,
   selectNextTarget,
 } from "../../shared-session/target/targetStore";
-import { isResolvedExecutionTarget } from "../../shared-session/target/types";
+import {
+  freezeTurnSnapshot,
+  isResolvedExecutionTarget,
+} from "../../shared-session/target/types";
+import { requestAgentPlan } from "../../multi-agent/runtime/executor";
+import { injectCollabSkillContext } from "../../multi-agent/runtime/skillContextInjection";
+import { getSelectedTemplate } from "../../multi-agent/templates/templateStore";
+import { templateToStageBindings } from "../../multi-agent/templates/types";
+import { subscribeMultiAgentConversationItems } from "../../multi-agent/runtime/conversationBridge";
+import { readExternalAbsoluteFile } from "../../../services/tauri/workspaceFiles";
 import { reconcileAtomicReasoningEffort } from "../../models/atomicModelReasoning";
 import { projectMemoryFacade } from "../../project-memory/services/projectMemoryFacade";
 import {
@@ -176,6 +185,7 @@ type SendMessageOptions = {
   codexInvalidThreadRetryAttempted?: boolean;
   autoSession?: AutoSessionMetadata | null;
   sharedExecutionTarget?: SharedQueuedExecutionTarget;
+  squadRequest?: true;
 };
 
 export type ThreadMessageDispatchResult =
@@ -253,7 +263,9 @@ type UseThreadMessagingOptions = {
   codexAcceptedTurnByThread: ThreadState["codexAcceptedTurnByThread"];
   tokenUsageByThread: Record<string, ThreadTokenUsage>;
   rateLimitsByWorkspace: Record<string, RateLimitSnapshot | null>;
-  codexCompactionInFlightByThreadRef?: MutableRefObject<Record<string, boolean>>;
+  codexCompactionInFlightByThreadRef?: MutableRefObject<
+    Record<string, boolean>
+  >;
   pendingInterruptsRef: MutableRefObject<WorkspaceScopedMap<true>>;
   interruptedThreadsRef: MutableRefObject<WorkspaceScopedMap<true>>;
   dispatch: Dispatch<ThreadAction>;
@@ -287,7 +299,10 @@ type UseThreadMessagingOptions = {
   ) => void;
   ensureThreadForActiveWorkspace: () => Promise<string | null>;
   ensureThreadForWorkspace: (workspaceId: string) => Promise<string | null>;
-  refreshThread: (workspaceId: string, threadId: string) => Promise<string | null>;
+  refreshThread: (
+    workspaceId: string,
+    threadId: string,
+  ) => Promise<string | null>;
   forkThreadForWorkspace: (
     workspaceId: string,
     threadId: string,
@@ -377,11 +392,16 @@ export function useThreadMessaging({
   onSharedDurableTurnCommitted,
 }: UseThreadMessagingOptions) {
   const { t, i18n } = useTranslation();
-  const internalCodexCompactionInFlightByThreadRef = useRef<Record<string, boolean>>({});
+  const internalCodexCompactionInFlightByThreadRef = useRef<
+    Record<string, boolean>
+  >({});
   const effectiveCodexCompactionInFlightByThreadRef =
-    codexCompactionInFlightByThreadRef ?? internalCodexCompactionInFlightByThreadRef;
+    codexCompactionInFlightByThreadRef ??
+    internalCodexCompactionInFlightByThreadRef;
   const lastOpenCodeModelByThreadRef = useRef<Map<string, string>>(new Map());
-  const sessionSpecLinkByThreadRef = useRef<Map<string, SessionSpecLinkContext>>(new Map());
+  const sessionSpecLinkByThreadRef = useRef<
+    Map<string, SessionSpecLinkContext>
+  >(new Map());
   const sendMessageToThreadRef = useRef<SendMessageToThreadFn | null>(null);
   const { createRecoveryAttempt } = useCodexMessageRecovery();
   const {
@@ -432,6 +452,21 @@ export function useThreadMessaging({
     ],
   );
 
+  useEffect(
+    () =>
+      subscribeMultiAgentConversationItems(({ workspaceId, threadId, item }) => {
+        dispatch({
+          type: "upsertItem",
+          workspaceId,
+          threadId,
+          item,
+          hasCustomName: Boolean(getCustomName(workspaceId, threadId)),
+        });
+        safeMessageActivity();
+      }),
+    [dispatch, getCustomName, safeMessageActivity],
+  );
+
   const sendMessageToThread = useCallback(
     async (
       workspace: WorkspaceInfo,
@@ -450,10 +485,8 @@ export function useThreadMessaging({
         assertEngineExecutionEnabled(resolvedThreadEngine);
       }
       if (threadId.startsWith("claude-pending-")) {
-        const reconciledThreadId = await reconcileClaudePendingThreadFromCandidate(
-          workspace,
-          threadId,
-        );
+        const reconciledThreadId =
+          await reconcileClaudePendingThreadFromCandidate(workspace, threadId);
         const retrySend = sendMessageToThreadRef.current;
         if (reconciledThreadId && retrySend) {
           return retrySend(
@@ -535,6 +568,11 @@ export function useThreadMessaging({
             state: sharedSendState.state,
           },
         });
+        if (options?.squadRequest) {
+          throw new Error(
+            `agent-request-busy: Shared Session state=${sharedSendState.state}`,
+          );
+        }
         return {
           status: "blocked",
           state: sharedSendState.state,
@@ -542,6 +580,11 @@ export function useThreadMessaging({
         };
       }
       if (storedSharedTarget && !supportedStoredSharedTarget) {
+        if (options?.squadRequest) {
+          throw new Error(
+            "agent-request-target-unavailable: stored Shared Session target is unsupported",
+          );
+        }
         pushThreadErrorMessage(
           workspace.id,
           threadId,
@@ -557,6 +600,11 @@ export function useThreadMessaging({
         sharedV2SendEnabled &&
         !isResolvedExecutionTarget(supportedStoredSharedTarget)
       ) {
+        if (options?.squadRequest) {
+          throw new Error(
+            "agent-request-target-incomplete: Shared Session target is incomplete",
+          );
+        }
         pushThreadErrorMessage(
           workspace.id,
           threadId,
@@ -567,6 +615,166 @@ export function useThreadMessaging({
           status: "target-unavailable",
           reason: "shared-target-incomplete",
         };
+      }
+      if (options?.squadRequest) {
+        // Shared 内已走协作发送：不再二次判断 feature flag；
+        // 仍强制 shared + V2 + 完整 target，避免 native / 半开 target 越界。
+        // Context Fan-in（§8.6）：图/skill/记忆/便签对齐注入首段，不再整类拒绝。
+        if (
+          threadKind !== "shared" ||
+          !sharedV2SendEnabled ||
+          !isResolvedExecutionTarget(supportedStoredSharedTarget)
+        ) {
+          throw new Error(
+            "agent-request-unavailable: Multi-Agent requires Shared Session V2 and a complete target",
+          );
+        }
+        const snapshot = freezeTurnSnapshot(supportedStoredSharedTarget);
+        const collabTarget = {
+          engine: snapshot.engine,
+          providerProfileId: snapshot.providerProfileId,
+          modelCatalogEntryId: snapshot.modelCatalogEntryId,
+          model: snapshot.model,
+          reasoningEffort: snapshot.reasoning?.effort ?? null,
+          providerProfileNameSnapshot: snapshot.providerProfileNameSnapshot,
+          providerProfileSource: snapshot.providerProfileSource,
+          runtimeCapabilityFingerprint: snapshot.runtimeCapabilityFingerprint,
+        };
+        // 可见原文（主幕气泡）；model text 在此基础上叠 skill/记忆/便签
+        // 纯图：可见可空，model 侧在 executor 内补占位
+        // Context Fan-in 口径：
+        // - 记忆/便签：正文注入进 modelText（与图不同，不走独立 image_refs 通道）
+        // - skill：协作 prompt 包层后 slash 常失效 → 读 SKILL.md 正文注入首段
+        // - 图 / 便签附图：firstStageImages + dispatch durable 回填
+        const visibleUserText = messageText.trim();
+        let modelText = messageText.trim() || messageText;
+        const skillRefs = (options?.skillInvocations ?? [])
+          .map((entry) => ({
+            name: entry.name?.trim() ?? "",
+            path: entry.path?.trim() || null,
+          }))
+          .filter((entry) => entry.name.length > 0);
+        if (skillRefs.length > 0) {
+          const skillInjection = await injectCollabSkillContext({
+            workspaceId: workspace.id,
+            userText: modelText,
+            skills: skillRefs,
+            readFile: readExternalAbsoluteFile,
+          });
+          modelText = skillInjection.finalText;
+        }
+        const selectedMemoryIds = Array.from(
+          new Set(
+            (options?.selectedMemoryIds ?? [])
+              .map((entry) => entry.trim())
+              .filter((entry) => entry.length > 0),
+          ),
+        );
+        if (selectedMemoryIds.length > 0) {
+          const retrievalStart = Date.now();
+          const selectedMemoryInjectionMode =
+            options?.selectedMemoryInjectionMode === "summary"
+              ? "summary"
+              : "detail";
+          const selectedMemories = (
+            await Promise.all(
+              selectedMemoryIds.map((memoryId) =>
+                projectMemoryFacade
+                  .get(memoryId, workspace.id)
+                  .catch(() => null),
+              ),
+            )
+          ).filter(
+            (entry): entry is NonNullable<typeof entry> => entry !== null,
+          );
+          modelText = injectSelectedMemoriesContext({
+            userText: modelText,
+            memories: selectedMemories,
+            mode: selectedMemoryInjectionMode,
+            retrievalMs: Date.now() - retrievalStart,
+          }).finalText;
+        }
+        if (options?.memoryReferenceEnabled === true) {
+          const memoryBrief = await withMemoryScoutTimeout(
+            scoutProjectMemory({
+              workspaceId: workspace.id,
+              query: visibleUserText,
+              listFn: projectMemoryFacade.listSummary,
+            }),
+          );
+          modelText = injectMemoryScoutBriefContext({
+            userText: modelText,
+            brief: memoryBrief,
+            startIndex: 1,
+          }).finalText;
+        }
+        let finalImages = [...images];
+        const selectedNoteCardIds = Array.from(
+          new Set(
+            (options?.selectedNoteCardIds ?? [])
+              .map((entry) => entry.trim())
+              .filter((entry) => entry.length > 0),
+          ),
+        );
+        if (selectedNoteCardIds.length > 0) {
+          const selectedNotes = (
+            await Promise.all(
+              selectedNoteCardIds.map((noteId) =>
+                noteCardsFacade
+                  .get({
+                    noteId,
+                    workspaceId: workspace.id,
+                    workspaceName: workspace.name,
+                    workspacePath: workspace.path,
+                  })
+                  .catch(() => null),
+              ),
+            )
+          ).filter(
+            (entry): entry is NonNullable<typeof entry> => entry !== null,
+          );
+          const noteInjection = injectSelectedNoteCardsContext({
+            userText: modelText,
+            noteCards: selectedNotes,
+          });
+          modelText = noteInjection.finalText;
+          finalImages = Array.from(
+            new Set([...finalImages, ...noteInjection.imagePaths]),
+          );
+        }
+        finalImages = sanitizeImageAttachmentPaths(finalImages);
+        if (
+          finalImages.length > 0 &&
+          !engineSupportsImageInput(collabTarget.engine)
+        ) {
+          throw new Error(
+            `agent-request-images-unsupported: engine ${collabTarget.engine} does not support image input`,
+          );
+        }
+        // 按当前选中模板生成每段独立 stageBindings（CLI·模型·思考强度）。
+        const stageBindings = templateToStageBindings(
+          getSelectedTemplate(),
+          collabTarget,
+        );
+        // A：入口只负责点亮 + 异常熄灭；终态/审批/停止由 executor（B）权威收口，
+        // 避免 A 晚到的 false 盖掉「停→立刻再开」的新 run。
+        markProcessing(threadId, true);
+        safeMessageActivity();
+        try {
+          await requestAgentPlan({
+            workspaceId: workspace.id,
+            threadId,
+            text: modelText,
+            visibleText: visibleUserText,
+            images: finalImages,
+            target: collabTarget,
+            stageBindings,
+          });
+        } catch (error) {
+          markProcessing(threadId, false);
+          throw error;
+        }
+        return;
       }
       const resolvedEngine =
         threadKind === "shared"
@@ -588,7 +796,10 @@ export function useThreadMessaging({
       });
       let finalText = messageText;
       if (!options?.skipPromptExpansion) {
-        const promptExpansion = expandCustomPromptText(messageText, customPrompts);
+        const promptExpansion = expandCustomPromptText(
+          messageText,
+          customPrompts,
+        );
         if (promptExpansion && "error" in promptExpansion) {
           pushThreadErrorMessage(workspace.id, threadId, promptExpansion.error);
           safeMessageActivity();
@@ -630,7 +841,9 @@ export function useThreadMessaging({
       if (selectedMemoryIds.length > 0) {
         const retrievalStart = Date.now();
         const selectedMemoryInjectionMode =
-          options?.selectedMemoryInjectionMode === "summary" ? "summary" : "detail";
+          options?.selectedMemoryInjectionMode === "summary"
+            ? "summary"
+            : "detail";
         const selectedMemories = (
           await Promise.all(
             selectedMemoryIds.map((memoryId) =>
@@ -718,10 +931,7 @@ export function useThreadMessaging({
       finalImages = sanitizeImageAttachmentPaths(finalImages);
       // Capability gate: matrix `image.input`. Current engines are all supported;
       // keep the guard for future unsupported engines (fail before optimistic UI).
-      if (
-        finalImages.length > 0 &&
-        !engineSupportsImageInput(resolvedEngine)
-      ) {
+      if (finalImages.length > 0 && !engineSupportsImageInput(resolvedEngine)) {
         pushThreadErrorMessage(
           workspace.id,
           threadId,
@@ -734,10 +944,12 @@ export function useThreadMessaging({
         return;
       }
       let resolvedSelectedAgent =
-        resolvedEngine !== "opencode" ? options?.selectedAgent ?? null : null;
+        resolvedEngine !== "opencode" ? (options?.selectedAgent ?? null) : null;
       if (resolvedSelectedAgent?.source === "builtIn") {
         const selectedBuiltInAgentId = resolvedSelectedAgent.id;
-        const sendResolution = await resolveSelectedAgentForSend(resolvedSelectedAgent);
+        const sendResolution = await resolveSelectedAgentForSend(
+          resolvedSelectedAgent,
+        );
         resolvedSelectedAgent = sendResolution.agent;
         if (sendResolution.error) {
           onDebug?.({
@@ -770,15 +982,21 @@ export function useThreadMessaging({
       const selectedAgentPrompt = resolvedSelectedAgent?.prompt?.trim() || "";
       const selectedAgentPromptSections: string[] = [];
       if (selectedAgentName) {
-        selectedAgentPromptSections.push(`${AGENT_PROMPT_NAME_PREFIX} ${selectedAgentName}`);
+        selectedAgentPromptSections.push(
+          `${AGENT_PROMPT_NAME_PREFIX} ${selectedAgentName}`,
+        );
       }
       if (selectedAgentIcon) {
-        selectedAgentPromptSections.push(`${AGENT_PROMPT_ICON_PREFIX} ${selectedAgentIcon}`);
+        selectedAgentPromptSections.push(
+          `${AGENT_PROMPT_ICON_PREFIX} ${selectedAgentIcon}`,
+        );
       }
       if (selectedAgentPrompt) {
         selectedAgentPromptSections.push(selectedAgentPrompt);
       }
-      const selectedAgentPromptBlock = selectedAgentPromptSections.join("\n\n").trim();
+      const selectedAgentPromptBlock = selectedAgentPromptSections
+        .join("\n\n")
+        .trim();
       if (selectedAgentPromptBlock) {
         if (!finalText.includes(AGENT_PROMPT_HEADER)) {
           finalText = `${finalText}\n\n${AGENT_PROMPT_HEADER}\n\n${selectedAgentPromptBlock}`;
@@ -791,7 +1009,10 @@ export function useThreadMessaging({
           ? getClaudeMcpRuntimeSnapshot(workspace.id)
           : null;
       if (resolvedEngine === "claude") {
-        const rewriteResult = rewriteClaudePlaywrightAlias(workspace.id, finalText);
+        const rewriteResult = rewriteClaudePlaywrightAlias(
+          workspace.id,
+          finalText,
+        );
         finalText = rewriteResult.text;
         claudeMcpDiagnostics = rewriteResult.diagnostics;
         if (rewriteResult.aliasMentioned) {
@@ -815,7 +1036,11 @@ export function useThreadMessaging({
         }
       }
       if (resolvedEngine === "claude") {
-        setPendingClaudeMcpOutputNotice(workspace.id, threadId, claudeMcpOutputNotice);
+        setPendingClaudeMcpOutputNotice(
+          workspace.id,
+          threadId,
+          claudeMcpOutputNotice,
+        );
       } else {
         clearPendingClaudeMcpOutputNotice(workspace.id, threadId);
       }
@@ -855,7 +1080,10 @@ export function useThreadMessaging({
           hasCustomName: Boolean(getCustomName(workspace.id, threadId)),
         });
       }
-      if (noteInjectionResult.injectedCount > 0 && noteInjectionResult.previewText) {
+      if (
+        noteInjectionResult.injectedCount > 0 &&
+        noteInjectionResult.previewText
+      ) {
         dispatch({
           type: "upsertItem",
           workspaceId: workspace.id,
@@ -922,25 +1150,28 @@ export function useThreadMessaging({
       const modelFromHook = resolvedComposerSelection?.model ?? model;
       const selectedModelId =
         threadKind === "shared"
-          ? supportedStoredSharedTarget?.modelCatalogEntryId ?? null
-          : resolvedComposerSelection?.id ?? null;
+          ? (supportedStoredSharedTarget?.modelCatalogEntryId ?? null)
+          : (resolvedComposerSelection?.id ?? null);
       const selectedModelSource =
         threadKind === "shared"
-          ? supportedStoredSharedTarget?.providerProfileSource ?? "unknown"
-          : resolvedComposerSelection?.source ?? "unknown";
+          ? (supportedStoredSharedTarget?.providerProfileSource ?? "unknown")
+          : (resolvedComposerSelection?.source ?? "unknown");
       const resolvedModel =
         threadKind === "shared" && supportedStoredSharedTarget
-          ? supportedStoredSharedTarget.model ?? null
+          ? (supportedStoredSharedTarget.model ?? null)
           : modelFromOptions !== undefined
             ? modelFromOptions
             : modelFromHook;
       const rawResolvedEffort =
         threadKind === "shared" && supportedStoredSharedTarget
-          ? supportedStoredSharedTarget.reasoning?.effort ?? null
+          ? (supportedStoredSharedTarget.reasoning?.effort ?? null)
           : options?.effort !== undefined
-          ? options.effort
-          : (resolvedComposerSelection?.effort ?? effort);
-      const resolvedEffort = normalizeEngineScopedEffort(resolvedEngine, rawResolvedEffort);
+            ? options.effort
+            : (resolvedComposerSelection?.effort ?? effort);
+      const resolvedEffort = normalizeEngineScopedEffort(
+        resolvedEngine,
+        rawResolvedEffort,
+      );
       const disableThinkingForClaude =
         resolvedEngine === "claude" && claudeThinkingVisible === false;
       const resolvedCollaborationMode =
@@ -956,21 +1187,26 @@ export function useThreadMessaging({
       const resolvedCollaborationModeIdForSend =
         resolveCollaborationModeIdFromPayload(sanitizedCollaborationMode);
       const userCollaborationMode =
-        resolvedEngine === "codex"
-          ? resolvedCollaborationModeIdForSend
-          : null;
+        resolvedEngine === "codex" ? resolvedCollaborationModeIdForSend : null;
       const accessModeForSend =
-        resolvedEngine === "claude" && resolvedCollaborationModeIdForSend === "plan"
+        resolvedEngine === "claude" &&
+        resolvedCollaborationModeIdForSend === "plan"
           ? "read-only"
-          : options?.accessMode !== undefined ? options.accessMode : accessMode;
+          : options?.accessMode !== undefined
+            ? options.accessMode
+            : accessMode;
       const resolvedAccessMode = normalizeAccessMode(
         accessModeForSend,
         resolvedEngine,
       );
       const resolvedOpenCodeAgent =
-        resolvedEngine === "opencode" ? (resolveOpenCodeAgent?.(threadId) ?? null) : null;
+        resolvedEngine === "opencode"
+          ? (resolveOpenCodeAgent?.(threadId) ?? null)
+          : null;
       const resolvedOpenCodeVariant =
-        resolvedEngine === "opencode" ? (resolveOpenCodeVariant?.(threadId) ?? null) : null;
+        resolvedEngine === "opencode"
+          ? (resolveOpenCodeVariant?.(threadId) ?? null)
+          : null;
       const sanitizeOpenCodeModel = (candidate: string | null | undefined) => {
         if (!candidate) {
           return null;
@@ -987,7 +1223,7 @@ export function useThreadMessaging({
       };
       const sanitizedModel =
         resolvedEngine === "claude" && resolvedModel
-          ? (resolvedModel.trim() || null)
+          ? resolvedModel.trim() || null
           : resolvedEngine === "codex" &&
               resolvedModel &&
               resolvedModel.startsWith("claude-")
@@ -996,7 +1232,7 @@ export function useThreadMessaging({
                 resolvedModel &&
                 isLikelyForeignModelForGemini(resolvedModel)
               ? null
-            : resolvedModel;
+              : resolvedModel;
       const sanitizedOpenCodeModel =
         resolvedEngine === "opencode"
           ? sanitizeOpenCodeModel(sanitizedModel)
@@ -1093,14 +1329,15 @@ export function useThreadMessaging({
       const shouldAddOptimisticUserBubble =
         !options?.suppressUserMessageRender &&
         !options?.skipOptimisticUserBubble &&
-        (
-          resolvedEngine === "codex" ||
+        (resolvedEngine === "codex" ||
           wasProcessing ||
           threadKind === "shared" ||
           Boolean(options?.browserContextAttachment) ||
-          Boolean(options?.intentCanvasContextAttachments?.length)
-        );
-      let optimisticUserItem: Extract<ConversationItem, { kind: "message" }> | null = null;
+          Boolean(options?.intentCanvasContextAttachments?.length));
+      let optimisticUserItem: Extract<
+        ConversationItem,
+        { kind: "message" }
+      > | null = null;
       let optimisticGeneratedImageItem: Extract<
         ConversationItem,
         { kind: "generatedImage" }
@@ -1127,7 +1364,8 @@ export function useThreadMessaging({
             selectedAgentName,
             selectedAgentIcon,
             browserContextAttachment: options?.browserContextAttachment ?? null,
-            intentCanvasContextAttachments: options?.intentCanvasContextAttachments,
+            intentCanvasContextAttachments:
+              options?.intentCanvasContextAttachments,
           };
           dispatch({
             type: "upsertItem",
@@ -1141,11 +1379,12 @@ export function useThreadMessaging({
               ? extractOptimisticGeneratedImagePrompt(optimisticDisplayText)
               : null;
           if (optimisticGeneratedImagePrompt) {
-            optimisticGeneratedImageItem = createOptimisticGeneratedImageProcessingItem({
-              threadId,
-              userMessageId: optimisticUserItem.id,
-              promptText: optimisticGeneratedImagePrompt,
-            });
+            optimisticGeneratedImageItem =
+              createOptimisticGeneratedImageProcessingItem({
+                threadId,
+                userMessageId: optimisticUserItem.id,
+                promptText: optimisticGeneratedImagePrompt,
+              });
             dispatch({
               type: "upsertItem",
               workspaceId: workspace.id,
@@ -1165,10 +1404,11 @@ export function useThreadMessaging({
               items: itemsByThread[threadId] ?? [],
             })
           : null;
-      const shouldDeferCodexDraftActivity =
-        codexPreSendAcceptedTurnResolution
-          ? shouldDeferCodexActivityUntilTurnAccepted(codexPreSendAcceptedTurnResolution)
-          : false;
+      const shouldDeferCodexDraftActivity = codexPreSendAcceptedTurnResolution
+        ? shouldDeferCodexActivityUntilTurnAccepted(
+            codexPreSendAcceptedTurnResolution,
+          )
+        : false;
       if (!shouldDeferCodexDraftActivity) {
         recordThreadActivity(workspace.id, threadId, timestamp);
         dispatch({
@@ -1178,15 +1418,36 @@ export function useThreadMessaging({
           timestamp,
         });
       }
-      if (workspaceScopedHas(pendingInterruptsRef.current, workspace.id, threadId)) {
-        workspaceScopedDelete(pendingInterruptsRef.current, workspace.id, threadId);
+      if (
+        workspaceScopedHas(pendingInterruptsRef.current, workspace.id, threadId)
+      ) {
+        workspaceScopedDelete(
+          pendingInterruptsRef.current,
+          workspace.id,
+          threadId,
+        );
       }
-      if (workspaceScopedHas(interruptedThreadsRef.current, workspace.id, threadId)) {
-        workspaceScopedDelete(interruptedThreadsRef.current, workspace.id, threadId);
+      if (
+        workspaceScopedHas(
+          interruptedThreadsRef.current,
+          workspace.id,
+          threadId,
+        )
+      ) {
+        workspaceScopedDelete(
+          interruptedThreadsRef.current,
+          workspace.id,
+          threadId,
+        );
       }
       markProcessing(threadId, true);
       safeMessageActivity();
-      primeThreadStreamLatencyForSend(workspace.id, threadId, effectiveResolvedEngine, modelForSend);
+      primeThreadStreamLatencyForSend(
+        workspace.id,
+        threadId,
+        effectiveResolvedEngine,
+        modelForSend,
+      );
       onDebug?.({
         id: `${Date.now()}-client-turn-start`,
         timestamp: Date.now(),
@@ -1236,7 +1497,8 @@ export function useThreadMessaging({
         });
       }
       const retryCodexSendAfterThreadRefresh = async (errorMessage: string) => {
-        const staleRecoveryClassification = classifyStaleThreadRecovery(errorMessage);
+        const staleRecoveryClassification =
+          classifyStaleThreadRecovery(errorMessage);
         if (
           threadKind === "shared" ||
           resolvedEngine !== "codex" ||
@@ -1251,7 +1513,9 @@ export function useThreadMessaging({
           reboundThreadId = await refreshThread(workspace.id, threadId);
         } catch (refreshError) {
           refreshErrorMessage =
-            refreshError instanceof Error ? refreshError.message : String(refreshError);
+            refreshError instanceof Error
+              ? refreshError.message
+              : String(refreshError);
           reboundThreadId = null;
         }
         const acceptedTurnResolution =
@@ -1289,7 +1553,9 @@ export function useThreadMessaging({
                 ...optimisticGeneratedImageItem,
                 id: `optimistic-generated-image:${targetThreadId}:${optimisticUserItem.id}`,
               },
-              hasCustomName: Boolean(getCustomName(workspace.id, targetThreadId)),
+              hasCustomName: Boolean(
+                getCustomName(workspace.id, targetThreadId),
+              ),
             });
           }
         };
@@ -1297,17 +1563,23 @@ export function useThreadMessaging({
           markProcessing(threadId, false);
           setActiveTurnId(threadId, null);
           safeMessageActivity();
-          await sendMessageToThread(workspace, targetThreadId, finalText, finalImages, {
-            skipPromptExpansion: true,
-            skipOptimisticUserBubble: true,
-            model: modelForSend,
-            effort: resolvedEffort,
-            collaborationMode: sanitizedCollaborationMode,
-            accessMode: resolvedAccessMode,
-            resumeSource: options?.resumeSource,
-            resumeTurnId: options?.resumeTurnId,
-            codexInvalidThreadRetryAttempted: true,
-          });
+          await sendMessageToThread(
+            workspace,
+            targetThreadId,
+            finalText,
+            finalImages,
+            {
+              skipPromptExpansion: true,
+              skipOptimisticUserBubble: true,
+              model: modelForSend,
+              effort: resolvedEffort,
+              collaborationMode: sanitizedCollaborationMode,
+              accessMode: resolvedAccessMode,
+              resumeSource: options?.resumeSource,
+              resumeTurnId: options?.resumeTurnId,
+              codexInvalidThreadRetryAttempted: true,
+            },
+          );
         };
         const recoveryAttempt = createRecoveryAttempt({
           threadId,
@@ -1328,7 +1600,8 @@ export function useThreadMessaging({
             getThreadProviderProfileId?.(workspace.id, threadId) ?? null,
         });
         const isSameMissingThreadRebind =
-          reboundThreadId === threadId && isCodexMissingThreadBindingError(errorMessage);
+          reboundThreadId === threadId &&
+          isCodexMissingThreadBindingError(errorMessage);
         if (
           !reboundThreadId ||
           recoveryAttempt.isUnverifiedSameThreadMissingRebind ||
@@ -1362,8 +1635,10 @@ export function useThreadMessaging({
             reasonCode: staleRecoveryClassification?.reasonCode ?? null,
             staleReason: staleRecoveryClassification?.staleReason ?? null,
             retryable: staleRecoveryClassification?.retryable ?? true,
-            userAction: staleRecoveryClassification?.userAction ?? "recover-thread",
-            outcome: staleRecoveryClassification?.recommendedOutcome ?? "rebound",
+            userAction:
+              staleRecoveryClassification?.userAction ?? "recover-thread",
+            outcome:
+              staleRecoveryClassification?.recommendedOutcome ?? "rebound",
           },
         });
         if (reboundThreadId !== threadId) {
@@ -1399,8 +1674,7 @@ export function useThreadMessaging({
             providerProfileId:
               resolvedComposerSelection?.providerProfileId?.trim() || null,
             model: modelForSend ?? null,
-            modelCatalogEntryId:
-              resolvedComposerSelection?.id?.trim() || null,
+            modelCatalogEntryId: resolvedComposerSelection?.id?.trim() || null,
             reasoning: resolvedEffort ? { effort: resolvedEffort } : null,
           };
           const sharedReconciledEffort = reconcileAtomicReasoningEffort({
@@ -1423,25 +1697,24 @@ export function useThreadMessaging({
           if (!sharedV2SendEnabled && !supportedStoredSharedTarget) {
             selectNextTarget(workspace.id, threadId, sharedNextTarget);
           }
-          response =
-            (await sendSharedSessionTurnRouted({
-              workspaceId: workspace.id,
-              threadId,
-              engine: sharedResolvedEngine,
-              text: finalText,
-              model: sharedNextTarget.model ?? null,
-              effort: sharedNextTarget.reasoning?.effort ?? null,
-              disableThinking: disableThinkingForClaude,
-              collaborationMode: sanitizedCollaborationMode,
-              accessMode: resolvedAccessMode,
-              images: finalImages,
-              preferredLanguage: i18n.language.toLowerCase().startsWith("zh")
-                ? "zh"
-                : "en",
-              customSpecRoot: resolveWorkspaceSpecRoot(workspace.id),
-              sharedSendAdmissionRevision,
-              target: sharedNextTarget,
-            })) as Record<string, unknown>;
+          response = (await sendSharedSessionTurnRouted({
+            workspaceId: workspace.id,
+            threadId,
+            engine: sharedResolvedEngine,
+            text: finalText,
+            model: sharedNextTarget.model ?? null,
+            effort: sharedNextTarget.reasoning?.effort ?? null,
+            disableThinking: disableThinkingForClaude,
+            collaborationMode: sanitizedCollaborationMode,
+            accessMode: resolvedAccessMode,
+            images: finalImages,
+            preferredLanguage: i18n.language.toLowerCase().startsWith("zh")
+              ? "zh"
+              : "en",
+            customSpecRoot: resolveWorkspaceSpecRoot(workspace.id),
+            sharedSendAdmissionRevision,
+            target: sharedNextTarget,
+          })) as Record<string, unknown>;
           // V2 begin 早退（recovery-required / target-unavailable）：编排层已驱动
           // send 状态机，这里不按发送失败处理，也不抛出；复位 processing，
           // 让 Composer 按状态机渲染恢复/不可用 UI。
@@ -1456,8 +1729,13 @@ export function useThreadMessaging({
             safeMessageActivity();
             return response as SendSharedSessionTurnV2Result;
           }
-          const sharedNativeThreadId = asString(response?.nativeThreadId ?? "").trim();
-          if (sharedNativeThreadId && !sharedNativeThreadId.startsWith("shared:")) {
+          const sharedNativeThreadId = asString(
+            response?.nativeThreadId ?? "",
+          ).trim();
+          if (
+            sharedNativeThreadId &&
+            !sharedNativeThreadId.startsWith("shared:")
+          ) {
             dispatch({
               type: "hideThread",
               workspaceId: workspace.id,
@@ -1484,10 +1762,7 @@ export function useThreadMessaging({
               response.runtimeTurnId ?? "",
             ).trim();
             if (sharedRuntimeTurnId) {
-              onSharedDurableTurnCommitted?.(
-                threadId,
-                sharedRuntimeTurnId,
-              );
+              onSharedDurableTurnCommitted?.(threadId, sharedRuntimeTurnId);
             } else {
               onDebug?.({
                 id: `${Date.now()}-shared-durable-terminal-runtime-id-missing`,
@@ -1510,437 +1785,509 @@ export function useThreadMessaging({
             return response as SendSharedSessionTurnV2Result;
           }
         } else {
-
-        const isClaudeSession = threadId.startsWith("claude:");
-        const isOpenCodeSession = threadId.startsWith("opencode:");
-        const cliEngine = resolvedEngine === "codex" ? null : resolvedEngine;
-        const threadItems = itemsByThread[threadId] ?? [];
-        const sessionSpecKey = `${workspace.id}:${threadId}`;
-        const customSpecRoot = resolveWorkspaceSpecRoot(workspace.id);
-        let sessionSpecLink = sessionSpecLinkByThreadRef.current.get(sessionSpecKey) ?? null;
-        const shouldProbeSessionSpecLink =
-          shouldProbeSessionSpecForEngine(resolvedEngine) &&
-          Boolean(customSpecRoot) &&
-          (threadItems.length === 0 || !sessionSpecLink);
-        if (shouldProbeSessionSpecLink && customSpecRoot) {
-          const probeStartAt = Date.now();
-          sessionSpecLink = await probeSessionSpecLinkWithTimeout(
-            workspace.id,
-            workspace.path,
-            "custom",
-            customSpecRoot,
-          );
-          const probeDurationMs = Date.now() - probeStartAt;
-          sessionSpecLinkByThreadRef.current.set(sessionSpecKey, sessionSpecLink);
-          onDebug?.({
-            id: `${Date.now()}-spec-root-probe`,
-            timestamp: Date.now(),
-            source: "client",
-            label: "specRoot/probe",
-            payload: {
-              workspaceId: workspace.id,
-              threadId,
-              engine: resolvedEngine,
-              source: "custom",
-              rootPath: customSpecRoot,
-              status: sessionSpecLink.status,
-              reason: sessionSpecLink.reason,
-              durationMs: probeDurationMs,
-            },
-          });
-        }
-        const shouldInjectSpecRootHintInPrompt =
-          resolvedEngine === "codex" &&
-          Boolean(sessionSpecLink) &&
-          threadItems.length === 0;
-        const codexEffectiveText =
-          shouldInjectSpecRootHintInPrompt && sessionSpecLink
-            ? buildCodexTextWithSpecRootPriority(finalText, sessionSpecLink)
-            : finalText;
-        const shouldInjectSpecRootCard =
-          resolvedEngine === "codex" &&
-          Boolean(sessionSpecLink) &&
-          threadItems.length === 0;
-        if (shouldInjectSpecRootCard && sessionSpecLink) {
-          const statusLabel = sessionSpecLink.status;
-          const priorityDetail =
-            sessionSpecLink.status === "visible"
-              ? t("threads.specRootContext.priorityDetail")
-              : "Linked root is not usable. Resolve link before relying on fallback inference.";
-          const entries: { kind: "read" | "search" | "list" | "run"; label: string; detail?: string }[] = [
-            {
-              kind: "list",
-              label: t("threads.specRootContext.activeRoot"),
-              detail: sessionSpecLink.rootPath,
-            },
-            {
-              kind: "list",
-              label: "Probe status",
-              detail: statusLabel,
-            },
-            {
-              kind: "read",
-              label: t("threads.specRootContext.priorityLabel"),
-              detail: priorityDetail,
-            },
-          ];
-          if (sessionSpecLink.reason) {
-            entries.push({
-              kind: "read",
-              label: "Failure reason",
-              detail: sessionSpecLink.reason,
-            });
-          }
-          if (sessionSpecLink.status !== "visible") {
-            entries.push(
-              {
-                kind: "run",
-                label: "/spec-root rebind",
-                detail: "Rebind to latest Spec Hub path and re-probe.",
-              },
-              {
-                kind: "run",
-                label: "/spec-root default",
-                detail: "Restore workspace default openspec path and re-probe.",
-              },
+          const isClaudeSession = threadId.startsWith("claude:");
+          const isOpenCodeSession = threadId.startsWith("opencode:");
+          const cliEngine = resolvedEngine === "codex" ? null : resolvedEngine;
+          const threadItems = itemsByThread[threadId] ?? [];
+          const sessionSpecKey = `${workspace.id}:${threadId}`;
+          const customSpecRoot = resolveWorkspaceSpecRoot(workspace.id);
+          let sessionSpecLink =
+            sessionSpecLinkByThreadRef.current.get(sessionSpecKey) ?? null;
+          const shouldProbeSessionSpecLink =
+            shouldProbeSessionSpecForEngine(resolvedEngine) &&
+            Boolean(customSpecRoot) &&
+            (threadItems.length === 0 || !sessionSpecLink);
+          if (shouldProbeSessionSpecLink && customSpecRoot) {
+            const probeStartAt = Date.now();
+            sessionSpecLink = await probeSessionSpecLinkWithTimeout(
+              workspace.id,
+              workspace.path,
+              "custom",
+              customSpecRoot,
             );
-          }
-          dispatch({
-            type: "upsertItem",
-            workspaceId: workspace.id,
-            threadId,
-            item: {
-              id: `spec-root-context-${threadId}`,
-              kind: "explore",
-              status: "explored",
-              title: t("threads.specRootContext.title"),
-              collapsible: true,
-              mergeKey: "spec-root-context",
-              entries,
-            },
-            hasCustomName: Boolean(getCustomName(workspace.id, threadId)),
-          });
-        }
-        const realSessionId =
-          resolvedEngine === "claude" && isClaudeSession
-            ? threadId.slice("claude:".length)
-            : resolvedEngine === "claude" && isClaudeForkThreadId(threadId)
-              ? null
-            : resolvedEngine === "claude" && threadId.startsWith("claude-pending-")
-              ? null
-            : resolvedEngine === "gemini" && threadId.startsWith("gemini:")
-              ? threadId.slice("gemini:".length)
-            : resolvedEngine === "gemini" && threadId.startsWith("gemini-pending-")
-              ? (geminiSessionIdByPendingThreadRef.current.get(threadId) ?? null)
-            : resolvedEngine === "grok" && threadId.startsWith("grok:")
-              ? threadId.slice("grok:".length)
-            : resolvedEngine === "grok" && threadId.startsWith("grok-pending-")
-              ? (grokSessionIdByPendingThreadRef.current.get(threadId) ?? null)
-            : resolvedEngine === "kimi" && threadId.startsWith("kimi:")
-              ? threadId.slice("kimi:".length)
-            : resolvedEngine === "kimi" && threadId.startsWith("kimi-pending-")
-              ? (kimiSessionIdByPendingThreadRef.current.get(threadId) ?? null)
-            : resolvedEngine === "opencode" && isOpenCodeSession
-              ? threadId.slice("opencode:".length)
-              : null;
-        const shouldAttachCliSpecRootHint = realSessionId === null && Boolean(customSpecRoot);
-
-        if (cliEngine) {
-          if (
-            resolvedEngine === "claude" &&
-            isClaudePendingThreadAwaitingNativeSession(threadId, {
-              hasAwaitingMarker:
-                claudePendingThreadAwaitingNativeSessionRef.current.has(threadId),
-              hasLocalItems: threadItems.length > 0,
-              hasActiveTurn: Boolean(activeTurnIdByThread[threadId]),
-              isProcessing: Boolean(threadStatusById[threadId]?.isProcessing),
-            })
-          ) {
-            const waitingMessage = t(
-              "threads.claudePendingNativeSessionWait",
-              {
-                defaultValue:
-                  "Claude session is still initializing. Wait for the session to finish binding, then send again.",
-              },
+            const probeDurationMs = Date.now() - probeStartAt;
+            sessionSpecLinkByThreadRef.current.set(
+              sessionSpecKey,
+              sessionSpecLink,
             );
-            pushThreadErrorMessage(workspace.id, threadId, waitingMessage);
-            markProcessing(threadId, false);
-            setActiveTurnId(threadId, null);
-            safeMessageActivity();
             onDebug?.({
-              id: `${Date.now()}-client-claude-pending-native-session-blocked`,
+              id: `${Date.now()}-spec-root-probe`,
               timestamp: Date.now(),
               source: "client",
-              label: "thread/session pending native confirmation blocked",
+              label: "specRoot/probe",
               payload: {
                 workspaceId: workspace.id,
                 threadId,
+                engine: resolvedEngine,
+                source: "custom",
+                rootPath: customSpecRoot,
+                status: sessionSpecLink.status,
+                reason: sessionSpecLink.reason,
+                durationMs: probeDurationMs,
               },
             });
-            return;
           }
-
-          // Claude/OpenCode: backend only streams assistant/tool events, so add user item locally.
-          if (!options?.suppressUserMessageRender) {
-            const userMessageId = `user-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+          const shouldInjectSpecRootHintInPrompt =
+            resolvedEngine === "codex" &&
+            Boolean(sessionSpecLink) &&
+            threadItems.length === 0;
+          const codexEffectiveText =
+            shouldInjectSpecRootHintInPrompt && sessionSpecLink
+              ? buildCodexTextWithSpecRootPriority(finalText, sessionSpecLink)
+              : finalText;
+          const shouldInjectSpecRootCard =
+            resolvedEngine === "codex" &&
+            Boolean(sessionSpecLink) &&
+            threadItems.length === 0;
+          if (shouldInjectSpecRootCard && sessionSpecLink) {
+            const statusLabel = sessionSpecLink.status;
+            const priorityDetail =
+              sessionSpecLink.status === "visible"
+                ? t("threads.specRootContext.priorityDetail")
+                : "Linked root is not usable. Resolve link before relying on fallback inference.";
+            const entries: {
+              kind: "read" | "search" | "list" | "run";
+              label: string;
+              detail?: string;
+            }[] = [
+              {
+                kind: "list",
+                label: t("threads.specRootContext.activeRoot"),
+                detail: sessionSpecLink.rootPath,
+              },
+              {
+                kind: "list",
+                label: "Probe status",
+                detail: statusLabel,
+              },
+              {
+                kind: "read",
+                label: t("threads.specRootContext.priorityLabel"),
+                detail: priorityDetail,
+              },
+            ];
+            if (sessionSpecLink.reason) {
+              entries.push({
+                kind: "read",
+                label: "Failure reason",
+                detail: sessionSpecLink.reason,
+              });
+            }
+            if (sessionSpecLink.status !== "visible") {
+              entries.push(
+                {
+                  kind: "run",
+                  label: "/spec-root rebind",
+                  detail: "Rebind to latest Spec Hub path and re-probe.",
+                },
+                {
+                  kind: "run",
+                  label: "/spec-root default",
+                  detail:
+                    "Restore workspace default openspec path and re-probe.",
+                },
+              );
+            }
             dispatch({
               type: "upsertItem",
               workspaceId: workspace.id,
               threadId,
               item: {
-                id: userMessageId,
-                kind: "message",
-                role: "user",
-                // Keep user-visible text free of engine-private injection
-                // (e.g. Kimi ReadMediaFile path block is CLI-only).
-                text: visibleUserText,
-                // Prefer sanitized image list so canvas screenshots (data URLs /
-                // paths) still render as thumbnails, never as wire text.
-                images: finalImages.length > 0 ? finalImages : undefined,
-                collaborationMode: userCollaborationMode,
-                selectedAgentName,
-                selectedAgentIcon,
-                intentCanvasContextAttachments: options?.intentCanvasContextAttachments,
+                id: `spec-root-context-${threadId}`,
+                kind: "explore",
+                status: "explored",
+                title: t("threads.specRootContext.title"),
+                collapsible: true,
+                mergeKey: "spec-root-context",
+                entries,
               },
               hasCustomName: Boolean(getCustomName(workspace.id, threadId)),
             });
           }
+          const realSessionId =
+            resolvedEngine === "claude" && isClaudeSession
+              ? threadId.slice("claude:".length)
+              : resolvedEngine === "claude" && isClaudeForkThreadId(threadId)
+                ? null
+                : resolvedEngine === "claude" &&
+                    threadId.startsWith("claude-pending-")
+                  ? null
+                  : resolvedEngine === "gemini" &&
+                      threadId.startsWith("gemini:")
+                    ? threadId.slice("gemini:".length)
+                    : resolvedEngine === "gemini" &&
+                        threadId.startsWith("gemini-pending-")
+                      ? (geminiSessionIdByPendingThreadRef.current.get(
+                          threadId,
+                        ) ?? null)
+                      : resolvedEngine === "grok" &&
+                          threadId.startsWith("grok:")
+                        ? threadId.slice("grok:".length)
+                        : resolvedEngine === "grok" &&
+                            threadId.startsWith("grok-pending-")
+                          ? (grokSessionIdByPendingThreadRef.current.get(
+                              threadId,
+                            ) ?? null)
+                          : resolvedEngine === "kimi" &&
+                              threadId.startsWith("kimi:")
+                            ? threadId.slice("kimi:".length)
+                            : resolvedEngine === "kimi" &&
+                                threadId.startsWith("kimi-pending-")
+                              ? (kimiSessionIdByPendingThreadRef.current.get(
+                                  threadId,
+                                ) ?? null)
+                              : resolvedEngine === "opencode" &&
+                                  isOpenCodeSession
+                                ? threadId.slice("opencode:".length)
+                                : null;
+          const shouldAttachCliSpecRootHint =
+            realSessionId === null && Boolean(customSpecRoot);
 
-          const sendRequestedAt = Date.now();
-          const providerProfileId =
-            getThreadProviderProfileId?.(workspace.id, threadId) ?? null;
-          response = await engineSendMessageService(workspace.id, {
-            text: finalText,
-            engine: resolvedEngine,
-            model: modelForSend,
-            effort: resolvedEffort,
-            disableThinking: disableThinkingForClaude,
-            images: finalImages.length > 0 ? finalImages : null,
-            accessMode: resolvedAccessMode,
-            continueSession: realSessionId !== null,
-            sessionId: realSessionId,
-            threadId: threadId,
-            agent: resolvedOpenCodeAgent,
-            variant: resolvedOpenCodeVariant,
-            providerProfileId,
-            forkSessionId:
-              resolvedEngine === "claude"
-                ? extractClaudeForkParentSessionId(threadId)
-                : null,
-            autoSession: options?.autoSession ?? null,
-            skillInvocations: options?.skillInvocations ?? null,
-            ...(customSpecRoot && shouldAttachCliSpecRootHint ? { customSpecRoot } : {}),
-          });
-
-          onDebug?.({
-            id: `${Date.now()}-server-turn-start`,
-            timestamp: Date.now(),
-            source: "server",
-            label: `turn/start response (${cliEngine})`,
-            payload: response,
-          });
-
-        const rpcError = extractRpcErrorMessage(response);
-        if (rpcError) {
-          const stabilityDiagnostic = resolveThreadStabilityDiagnostic(rpcError);
-          const staleRecoveryClassification = classifyStaleThreadRecovery(rpcError);
-          const normalized = mapNetworkErrorToUserMessage(rpcError, t);
-          const claudeMcpHint =
-            resolvedEngine === "claude" &&
-            !normalized.isNetwork &&
-              claudeMcpDiagnostics.length > 0
-                ? `\n\n${claudeMcpDiagnostics.join("\n")}`
-                : "";
-            markProcessing(threadId, false);
-            setActiveTurnId(threadId, null);
-          pushThreadErrorMessage(
-          workspace.id,
-          threadId,
-            normalized.isNetwork
-              ? normalized.message
-              : `${t("threads.turnFailedWithMessage", { message: normalized.message })}${claudeMcpHint}`,
-          );
-          pushThreadFailureRuntimeNotice({
-            workspaceId: workspace.id,
-            threadId,
-            engine: resolvedEngine,
-            message: normalized.message,
-            reasonCode: staleRecoveryClassification?.reasonCode ?? null,
-            userAction: staleRecoveryClassification?.userAction ?? null,
-          });
-          if (stabilityDiagnostic) {
-            onDebug?.({
-              id: `${Date.now()}-client-turn-start-stability-diagnostic`,
-              timestamp: Date.now(),
-              source: "client",
-              label: "turn/start stability diagnostic",
-              payload: {
-                workspaceId: workspace.id,
-                threadId,
-                category: stabilityDiagnostic.category,
-                rawMessage: stabilityDiagnostic.rawMessage,
-                recoveryReason: stabilityDiagnostic.reconnectReason ?? null,
-                stage: "rpc-error",
-              },
-            });
-          }
-          if (normalized.isNetwork) {
-            pushErrorToast({
-              title: t("common.error"),
-                message: normalized.message,
-                durationMs: 4800,
-              });
-            }
-            safeMessageActivity();
-            return;
-          }
-
-          if (resolvedEngine === "claude" && threadId.startsWith("claude-pending-")) {
-            const candidateSessionId = extractClaudeCandidateSessionId(response);
-            if (candidateSessionId) {
-              claudeCandidateSessionIdByPendingThreadRef.current.set(
-                threadId,
-                candidateSessionId,
+          if (cliEngine) {
+            if (
+              resolvedEngine === "claude" &&
+              isClaudePendingThreadAwaitingNativeSession(threadId, {
+                hasAwaitingMarker:
+                  claudePendingThreadAwaitingNativeSessionRef.current.has(
+                    threadId,
+                  ),
+                hasLocalItems: threadItems.length > 0,
+                hasActiveTurn: Boolean(activeTurnIdByThread[threadId]),
+                isProcessing: Boolean(threadStatusById[threadId]?.isProcessing),
+              })
+            ) {
+              const waitingMessage = t(
+                "threads.claudePendingNativeSessionWait",
+                {
+                  defaultValue:
+                    "Claude session is still initializing. Wait for the session to finish binding, then send again.",
+                },
               );
+              pushThreadErrorMessage(workspace.id, threadId, waitingMessage);
+              markProcessing(threadId, false);
+              setActiveTurnId(threadId, null);
+              safeMessageActivity();
+              onDebug?.({
+                id: `${Date.now()}-client-claude-pending-native-session-blocked`,
+                timestamp: Date.now(),
+                source: "client",
+                label: "thread/session pending native confirmation blocked",
+                payload: {
+                  workspaceId: workspace.id,
+                  threadId,
+                },
+              });
+              return;
             }
-            claudePendingThreadAwaitingNativeSessionRef.current.add(threadId);
-            onDebug?.({
-              id: `${Date.now()}-client-claude-session-await-native`,
-              timestamp: Date.now(),
-              source: "client",
-              label: "thread/session awaiting native confirmation",
-              payload: {
+
+            // Claude/OpenCode: backend only streams assistant/tool events, so add user item locally.
+            if (!options?.suppressUserMessageRender) {
+              const userMessageId = `user-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+              dispatch({
+                type: "upsertItem",
                 workspaceId: workspace.id,
                 threadId,
-                sessionId: candidateSessionId,
-                source: "engineSendMessageResponse",
-              },
+                item: {
+                  id: userMessageId,
+                  kind: "message",
+                  role: "user",
+                  // Keep user-visible text free of engine-private injection
+                  // (e.g. Kimi ReadMediaFile path block is CLI-only).
+                  text: visibleUserText,
+                  // Prefer sanitized image list so canvas screenshots (data URLs /
+                  // paths) still render as thumbnails, never as wire text.
+                  images: finalImages.length > 0 ? finalImages : undefined,
+                  collaborationMode: userCollaborationMode,
+                  selectedAgentName,
+                  selectedAgentIcon,
+                  intentCanvasContextAttachments:
+                    options?.intentCanvasContextAttachments,
+                },
+                hasCustomName: Boolean(getCustomName(workspace.id, threadId)),
+              });
+            }
+
+            const sendRequestedAt = Date.now();
+            const providerProfileId =
+              getThreadProviderProfileId?.(workspace.id, threadId) ?? null;
+            response = await engineSendMessageService(workspace.id, {
+              text: finalText,
+              engine: resolvedEngine,
+              model: modelForSend,
+              effort: resolvedEffort,
+              disableThinking: disableThinkingForClaude,
+              images: finalImages.length > 0 ? finalImages : null,
+              accessMode: resolvedAccessMode,
+              continueSession: realSessionId !== null,
+              sessionId: realSessionId,
+              threadId: threadId,
+              agent: resolvedOpenCodeAgent,
+              variant: resolvedOpenCodeVariant,
+              providerProfileId,
+              forkSessionId:
+                resolvedEngine === "claude"
+                  ? extractClaudeForkParentSessionId(threadId)
+                  : null,
+              autoSession: options?.autoSession ?? null,
+              skillInvocations: options?.skillInvocations ?? null,
+              ...(customSpecRoot && shouldAttachCliSpecRootHint
+                ? { customSpecRoot }
+                : {}),
             });
-          }
-          if (resolvedEngine === "gemini" && threadId.startsWith("gemini-pending-")) {
-            let responseSessionId = extractSessionIdFromEngineSendResponse(response);
-            if (!responseSessionId) {
-              const workspacePath = workspace.path?.trim();
-              if (workspacePath) {
-                try {
-                  const sessions = await listGeminiSessionsService(workspacePath, 6);
-                  responseSessionId = pickLikelyGeminiSessionId(
-                    sessions,
-                    sendRequestedAt - 120_000,
-                  );
-                } catch {
-                  responseSessionId = null;
-                }
+
+            onDebug?.({
+              id: `${Date.now()}-server-turn-start`,
+              timestamp: Date.now(),
+              source: "server",
+              label: `turn/start response (${cliEngine})`,
+              payload: response,
+            });
+
+            const rpcError = extractRpcErrorMessage(response);
+            if (rpcError) {
+              const stabilityDiagnostic =
+                resolveThreadStabilityDiagnostic(rpcError);
+              const staleRecoveryClassification =
+                classifyStaleThreadRecovery(rpcError);
+              const normalized = mapNetworkErrorToUserMessage(rpcError, t);
+              const claudeMcpHint =
+                resolvedEngine === "claude" &&
+                !normalized.isNetwork &&
+                claudeMcpDiagnostics.length > 0
+                  ? `\n\n${claudeMcpDiagnostics.join("\n")}`
+                  : "";
+              markProcessing(threadId, false);
+              setActiveTurnId(threadId, null);
+              pushThreadErrorMessage(
+                workspace.id,
+                threadId,
+                normalized.isNetwork
+                  ? normalized.message
+                  : `${t("threads.turnFailedWithMessage", { message: normalized.message })}${claudeMcpHint}`,
+              );
+              pushThreadFailureRuntimeNotice({
+                workspaceId: workspace.id,
+                threadId,
+                engine: resolvedEngine,
+                message: normalized.message,
+                reasonCode: staleRecoveryClassification?.reasonCode ?? null,
+                userAction: staleRecoveryClassification?.userAction ?? null,
+              });
+              if (stabilityDiagnostic) {
+                onDebug?.({
+                  id: `${Date.now()}-client-turn-start-stability-diagnostic`,
+                  timestamp: Date.now(),
+                  source: "client",
+                  label: "turn/start stability diagnostic",
+                  payload: {
+                    workspaceId: workspace.id,
+                    threadId,
+                    category: stabilityDiagnostic.category,
+                    rawMessage: stabilityDiagnostic.rawMessage,
+                    recoveryReason: stabilityDiagnostic.reconnectReason ?? null,
+                    stage: "rpc-error",
+                  },
+                });
               }
+              if (normalized.isNetwork) {
+                pushErrorToast({
+                  title: t("common.error"),
+                  message: normalized.message,
+                  durationMs: 4800,
+                });
+              }
+              safeMessageActivity();
+              return;
             }
-            if (responseSessionId) {
-              geminiSessionIdByPendingThreadRef.current.set(threadId, responseSessionId);
+
+            if (
+              resolvedEngine === "claude" &&
+              threadId.startsWith("claude-pending-")
+            ) {
+              const candidateSessionId =
+                extractClaudeCandidateSessionId(response);
+              if (candidateSessionId) {
+                claudeCandidateSessionIdByPendingThreadRef.current.set(
+                  threadId,
+                  candidateSessionId,
+                );
+              }
+              claudePendingThreadAwaitingNativeSessionRef.current.add(threadId);
               onDebug?.({
-                id: `${Date.now()}-client-gemini-session-cache`,
+                id: `${Date.now()}-client-claude-session-await-native`,
                 timestamp: Date.now(),
                 source: "client",
-                label: "thread/session cached",
+                label: "thread/session awaiting native confirmation",
                 payload: {
                   workspaceId: workspace.id,
                   threadId,
-                  sessionId: responseSessionId,
-                  source: "geminiSessionListFallback",
+                  sessionId: candidateSessionId,
+                  source: "engineSendMessageResponse",
                 },
               });
             }
-          }
-          if (resolvedEngine === "grok" && threadId.startsWith("grok-pending-")) {
-            let responseSessionId = extractSessionIdFromEngineSendResponse(response);
-            if (!responseSessionId) {
-              const workspacePath = workspace.path?.trim();
-              if (workspacePath) {
-                try {
-                  const sessions = await listGrokSessionsService(workspacePath, 6);
-                  responseSessionId = pickLikelyGrokSessionId(
-                    sessions,
-                    sendRequestedAt - 120_000,
-                  );
-                } catch {
-                  responseSessionId = null;
+            if (
+              resolvedEngine === "gemini" &&
+              threadId.startsWith("gemini-pending-")
+            ) {
+              let responseSessionId =
+                extractSessionIdFromEngineSendResponse(response);
+              if (!responseSessionId) {
+                const workspacePath = workspace.path?.trim();
+                if (workspacePath) {
+                  try {
+                    const sessions = await listGeminiSessionsService(
+                      workspacePath,
+                      6,
+                    );
+                    responseSessionId = pickLikelyGeminiSessionId(
+                      sessions,
+                      sendRequestedAt - 120_000,
+                    );
+                  } catch {
+                    responseSessionId = null;
+                  }
                 }
               }
-            }
-            if (responseSessionId) {
-              grokSessionIdByPendingThreadRef.current.set(threadId, responseSessionId);
-              onDebug?.({
-                id: `${Date.now()}-client-grok-session-cache`,
-                timestamp: Date.now(),
-                source: "client",
-                label: "thread/session cached",
-                payload: {
-                  workspaceId: workspace.id,
+              if (responseSessionId) {
+                geminiSessionIdByPendingThreadRef.current.set(
                   threadId,
-                  sessionId: responseSessionId,
-                  source: "grokSessionListFallback",
-                },
-              });
-            }
-          }
-          if (resolvedEngine === "kimi" && threadId.startsWith("kimi-pending-")) {
-            let responseSessionId = extractSessionIdFromEngineSendResponse(response);
-            if (!responseSessionId) {
-              const workspacePath = workspace.path?.trim();
-              if (workspacePath) {
-                try {
-                  const sessions = await listKimiSessionsService(workspacePath, 6);
-                  responseSessionId = pickLikelyKimiSessionId(
-                    sessions,
-                    sendRequestedAt - 120_000,
-                  );
-                } catch {
-                  responseSessionId = null;
-                }
+                  responseSessionId,
+                );
+                onDebug?.({
+                  id: `${Date.now()}-client-gemini-session-cache`,
+                  timestamp: Date.now(),
+                  source: "client",
+                  label: "thread/session cached",
+                  payload: {
+                    workspaceId: workspace.id,
+                    threadId,
+                    sessionId: responseSessionId,
+                    source: "geminiSessionListFallback",
+                  },
+                });
               }
             }
-            if (responseSessionId) {
-              kimiSessionIdByPendingThreadRef.current.set(threadId, responseSessionId);
-              onDebug?.({
-                id: `${Date.now()}-client-kimi-session-cache`,
-                timestamp: Date.now(),
-                source: "client",
-                label: "thread/session cached",
-                payload: {
-                  workspaceId: workspace.id,
+            if (
+              resolvedEngine === "grok" &&
+              threadId.startsWith("grok-pending-")
+            ) {
+              let responseSessionId =
+                extractSessionIdFromEngineSendResponse(response);
+              if (!responseSessionId) {
+                const workspacePath = workspace.path?.trim();
+                if (workspacePath) {
+                  try {
+                    const sessions = await listGrokSessionsService(
+                      workspacePath,
+                      6,
+                    );
+                    responseSessionId = pickLikelyGrokSessionId(
+                      sessions,
+                      sendRequestedAt - 120_000,
+                    );
+                  } catch {
+                    responseSessionId = null;
+                  }
+                }
+              }
+              if (responseSessionId) {
+                grokSessionIdByPendingThreadRef.current.set(
                   threadId,
-                  sessionId: responseSessionId,
-                  source: "kimiSessionListFallback",
-                },
-              });
+                  responseSessionId,
+                );
+                onDebug?.({
+                  id: `${Date.now()}-client-grok-session-cache`,
+                  timestamp: Date.now(),
+                  source: "client",
+                  label: "thread/session cached",
+                  payload: {
+                    workspaceId: workspace.id,
+                    threadId,
+                    sessionId: responseSessionId,
+                    source: "grokSessionListFallback",
+                  },
+                });
+              }
             }
-          }
+            if (
+              resolvedEngine === "kimi" &&
+              threadId.startsWith("kimi-pending-")
+            ) {
+              let responseSessionId =
+                extractSessionIdFromEngineSendResponse(response);
+              if (!responseSessionId) {
+                const workspacePath = workspace.path?.trim();
+                if (workspacePath) {
+                  try {
+                    const sessions = await listKimiSessionsService(
+                      workspacePath,
+                      6,
+                    );
+                    responseSessionId = pickLikelyKimiSessionId(
+                      sessions,
+                      sendRequestedAt - 120_000,
+                    );
+                  } catch {
+                    responseSessionId = null;
+                  }
+                }
+              }
+              if (responseSessionId) {
+                kimiSessionIdByPendingThreadRef.current.set(
+                  threadId,
+                  responseSessionId,
+                );
+                onDebug?.({
+                  id: `${Date.now()}-client-kimi-session-cache`,
+                  timestamp: Date.now(),
+                  source: "client",
+                  label: "thread/session cached",
+                  payload: {
+                    workspaceId: workspace.id,
+                    threadId,
+                    sessionId: responseSessionId,
+                    source: "kimiSessionListFallback",
+                  },
+                });
+              }
+            }
 
-          // Extract turn ID - streaming events will handle the rest
-          const result = (response?.result ?? response) as Record<string, unknown>;
-          const turn = (result?.turn ?? response?.turn ?? null) as
-            | Record<string, unknown>
-            | null;
-          const turnId = asString(turn?.id ?? "");
+            // Extract turn ID - streaming events will handle the rest
+            const result = (response?.result ?? response) as Record<
+              string,
+              unknown
+            >;
+            const turn = (result?.turn ?? response?.turn ?? null) as Record<
+              string,
+              unknown
+            > | null;
+            const turnId = asString(turn?.id ?? "");
 
-          if (!turnId) {
-            markProcessing(threadId, false);
-            setActiveTurnId(threadId, null);
-            pushThreadErrorMessage(workspace.id, threadId, t("threads.turnFailedToStart"));
-            safeMessageActivity();
-            return;
-          }
+            if (!turnId) {
+              markProcessing(threadId, false);
+              setActiveTurnId(threadId, null);
+              pushThreadErrorMessage(
+                workspace.id,
+                threadId,
+                t("threads.turnFailedToStart"),
+              );
+              safeMessageActivity();
+              return;
+            }
 
-          // Set active turn ID - useAppServerEvents will handle streaming deltas
-          // and mark processing complete when turn/completed event arrives
-          setActiveTurnId(threadId, turnId);
-
-        } else {
-          // Codex assistant/tool events are event-driven from backend.
-          // User message bubble is inserted optimistically on send for instant feedback.
-          const preferredLanguage = i18n.language.toLowerCase().startsWith("zh")
-            ? "zh"
-            : "en";
-          response =
-            (await sendUserMessageService(
+            // Set active turn ID - useAppServerEvents will handle streaming deltas
+            // and mark processing complete when turn/completed event arrives
+            setActiveTurnId(threadId, turnId);
+          } else {
+            // Codex assistant/tool events are event-driven from backend.
+            // User message bubble is inserted optimistically on send for instant feedback.
+            const preferredLanguage = i18n.language
+              .toLowerCase()
+              .startsWith("zh")
+              ? "zh"
+              : "en";
+            response = (await sendUserMessageService(
               workspace.id,
               threadId,
               codexEffectiveText,
@@ -1956,156 +2303,173 @@ export function useThreadMessaging({
                 ...(customSpecRoot ? { customSpecRoot } : {}),
               },
             )) as Record<string, unknown>;
-        }
-
-        onDebug?.({
-          id: `${Date.now()}-server-turn-start`,
-          timestamp: Date.now(),
-          source: "server",
-          label: "turn/start response",
-          payload: response,
-        });
-        const rpcError = extractRpcErrorMessage(response);
-        if (rpcError) {
-          if (await retryCodexSendAfterThreadRefresh(rpcError)) {
-            return;
           }
-          const stabilityDiagnostic = resolveThreadStabilityDiagnostic(rpcError);
-          const staleRecoveryClassification = classifyStaleThreadRecovery(rpcError);
-          const firstPacketTimeoutSeconds =
-            resolveRecoverableCodexFirstPacketTimeout(resolvedEngine, rpcError);
-          if (firstPacketTimeoutSeconds) {
-            const warningMessage = t("threads.firstPacketTimeout", {
-              seconds: firstPacketTimeoutSeconds,
-            });
-            onDebug?.({
-              id: `${Date.now()}-client-turn-start-timeout-warning`,
-              timestamp: Date.now(),
-              source: "client",
-              label: "turn/start delayed",
-              payload: {
-                threadId,
-                engine: resolvedEngine,
-                timeoutSeconds: firstPacketTimeoutSeconds,
-              },
-            });
-            pushErrorToast({
-              title: t("common.warning"),
-              message: warningMessage,
-              durationMs: 4800,
-            });
-            pushThreadErrorMessage(workspace.id, threadId, warningMessage);
+
+          onDebug?.({
+            id: `${Date.now()}-server-turn-start`,
+            timestamp: Date.now(),
+            source: "server",
+            label: "turn/start response",
+            payload: response,
+          });
+          const rpcError = extractRpcErrorMessage(response);
+          if (rpcError) {
+            if (await retryCodexSendAfterThreadRefresh(rpcError)) {
+              return;
+            }
+            const stabilityDiagnostic =
+              resolveThreadStabilityDiagnostic(rpcError);
+            const staleRecoveryClassification =
+              classifyStaleThreadRecovery(rpcError);
+            const firstPacketTimeoutSeconds =
+              resolveRecoverableCodexFirstPacketTimeout(
+                resolvedEngine,
+                rpcError,
+              );
+            if (firstPacketTimeoutSeconds) {
+              const warningMessage = t("threads.firstPacketTimeout", {
+                seconds: firstPacketTimeoutSeconds,
+              });
+              onDebug?.({
+                id: `${Date.now()}-client-turn-start-timeout-warning`,
+                timestamp: Date.now(),
+                source: "client",
+                label: "turn/start delayed",
+                payload: {
+                  threadId,
+                  engine: resolvedEngine,
+                  timeoutSeconds: firstPacketTimeoutSeconds,
+                },
+              });
+              pushErrorToast({
+                title: t("common.warning"),
+                message: warningMessage,
+                durationMs: 4800,
+              });
+              pushThreadErrorMessage(workspace.id, threadId, warningMessage);
+              markProcessing(threadId, false);
+              setActiveTurnId(threadId, null);
+              safeMessageActivity();
+              return;
+            }
+            const normalized = mapNetworkErrorToUserMessage(rpcError, t);
             markProcessing(threadId, false);
             setActiveTurnId(threadId, null);
+            pushThreadErrorMessage(
+              workspace.id,
+              threadId,
+              normalized.isNetwork
+                ? normalized.message
+                : t("threads.turnFailedToStartWithMessage", {
+                    message: normalized.message,
+                  }),
+            );
+            pushThreadFailureRuntimeNotice({
+              workspaceId: workspace.id,
+              threadId,
+              engine: resolvedEngine,
+              message: normalized.message,
+              reasonCode: staleRecoveryClassification?.reasonCode ?? null,
+              userAction: staleRecoveryClassification?.userAction ?? null,
+            });
+            if (stabilityDiagnostic) {
+              onDebug?.({
+                id: `${Date.now()}-client-turn-start-stability-diagnostic`,
+                timestamp: Date.now(),
+                source: "client",
+                label: "turn/start stability diagnostic",
+                payload: {
+                  workspaceId: workspace.id,
+                  threadId,
+                  category: stabilityDiagnostic.category,
+                  rawMessage: stabilityDiagnostic.rawMessage,
+                  recoveryReason: stabilityDiagnostic.reconnectReason ?? null,
+                  stage: "rpc-error",
+                },
+              });
+            }
+            if (normalized.isNetwork) {
+              pushErrorToast({
+                title: t("common.error"),
+                message: normalized.message,
+                durationMs: 4800,
+              });
+            }
             safeMessageActivity();
             return;
           }
-          const normalized = mapNetworkErrorToUserMessage(rpcError, t);
-          markProcessing(threadId, false);
-          setActiveTurnId(threadId, null);
-          pushThreadErrorMessage(
-          workspace.id,
-          threadId,
-            normalized.isNetwork
-              ? normalized.message
-              : t("threads.turnFailedToStartWithMessage", { message: normalized.message }),
-          );
-          pushThreadFailureRuntimeNotice({
-            workspaceId: workspace.id,
-            threadId,
-            engine: resolvedEngine,
-            message: normalized.message,
-            reasonCode: staleRecoveryClassification?.reasonCode ?? null,
-            userAction: staleRecoveryClassification?.userAction ?? null,
-          });
-          if (stabilityDiagnostic) {
-            onDebug?.({
-              id: `${Date.now()}-client-turn-start-stability-diagnostic`,
+          const result = (response?.result ?? response) as Record<
+            string,
+            unknown
+          >;
+          const turn = (result?.turn ?? response?.turn ?? null) as Record<
+            string,
+            unknown
+          > | null;
+          const turnId = asString(turn?.id ?? "");
+          if (!turnId) {
+            markProcessing(threadId, false);
+            setActiveTurnId(threadId, null);
+            pushThreadErrorMessage(
+              workspace.id,
+              threadId,
+              t("threads.turnFailedToStart"),
+            );
+            safeMessageActivity();
+            return;
+          }
+          setActiveTurnId(threadId, turnId);
+          if (resolvedEngine === "codex") {
+            dispatch({
+              type: "markCodexAcceptedTurn",
+              threadId,
+              fact: "accepted",
+              source: "turn-start-response",
               timestamp: Date.now(),
-              source: "client",
-              label: "turn/start stability diagnostic",
-              payload: {
+            });
+            if (shouldDeferCodexDraftActivity) {
+              const acceptedTimestamp = Date.now();
+              recordThreadActivity(workspace.id, threadId, acceptedTimestamp);
+              dispatch({
+                type: "setThreadTimestamp",
                 workspaceId: workspace.id,
                 threadId,
-                category: stabilityDiagnostic.category,
-                rawMessage: stabilityDiagnostic.rawMessage,
-                recoveryReason: stabilityDiagnostic.reconnectReason ?? null,
-                stage: "rpc-error",
-              },
-            });
+                timestamp: acceptedTimestamp,
+              });
+            }
           }
-          if (normalized.isNetwork) {
-            pushErrorToast({
-              title: t("common.error"),
-              message: normalized.message,
-              durationMs: 4800,
-            });
-          }
-          safeMessageActivity();
-          return;
-        }
-        const result = (response?.result ?? response) as Record<string, unknown>;
-        const turn = (result?.turn ?? response?.turn ?? null) as
-          | Record<string, unknown>
-          | null;
-        const turnId = asString(turn?.id ?? "");
-        if (!turnId) {
-          markProcessing(threadId, false);
-          setActiveTurnId(threadId, null);
-          pushThreadErrorMessage(workspace.id, threadId, t("threads.turnFailedToStart"));
-          safeMessageActivity();
-          return;
-        }
-        setActiveTurnId(threadId, turnId);
-        if (resolvedEngine === "codex") {
-          dispatch({
-            type: "markCodexAcceptedTurn",
-            threadId,
-            fact: "accepted",
-            source: "turn-start-response",
-            timestamp: Date.now(),
-          });
-          if (shouldDeferCodexDraftActivity) {
-            const acceptedTimestamp = Date.now();
-            recordThreadActivity(workspace.id, threadId, acceptedTimestamp);
-            dispatch({
-              type: "setThreadTimestamp",
-              workspaceId: workspace.id,
-              threadId,
-              timestamp: acceptedTimestamp,
-            });
-          }
-        }
 
-        void projectMemoryFacade.captureTurnInput({
-          workspaceId: workspace.id,
-          userInput: visibleUserText,
-          threadId,
-          turnId,
-          workspaceName: workspace.name ?? null,
-          workspacePath: workspace.path ?? null,
-          engine: resolvedEngine,
-        })
-          .then((captured) => {
-            onInputMemoryCaptured?.({
+          void projectMemoryFacade
+            .captureTurnInput({
               workspaceId: workspace.id,
+              userInput: visibleUserText,
               threadId,
               turnId,
-              inputText: visibleUserText,
-              memoryId: captured?.id ?? null,
               workspaceName: workspace.name ?? null,
               workspacePath: workspace.path ?? null,
               engine: resolvedEngine,
+            })
+            .then((captured) => {
+              onInputMemoryCaptured?.({
+                workspaceId: workspace.id,
+                threadId,
+                turnId,
+                inputText: visibleUserText,
+                memoryId: captured?.id ?? null,
+                workspaceName: workspace.name ?? null,
+                workspacePath: workspace.path ?? null,
+                engine: resolvedEngine,
+              });
+            })
+            .catch((err) => {
+              if (shouldEmitThreadMessagingDevLogs) {
+                console.warn("[project-memory] auto capture failed:", err);
+              }
             });
-          })
-          .catch((err) => {
-            if (shouldEmitThreadMessagingDevLogs) {
-              console.warn("[project-memory] auto capture failed:", err);
-            }
-          });
         }
       } catch (error) {
-        const rawMessage = error instanceof Error ? error.message : String(error);
+        const rawMessage =
+          error instanceof Error ? error.message : String(error);
         if (await retryCodexSendAfterThreadRefresh(rawMessage)) {
           return;
         }
@@ -2134,8 +2498,10 @@ export function useThreadMessaging({
             reason: rawMessage,
           };
         }
-        const stabilityDiagnostic = resolveThreadStabilityDiagnostic(rawMessage);
-        const staleRecoveryClassification = classifyStaleThreadRecovery(rawMessage);
+        const stabilityDiagnostic =
+          resolveThreadStabilityDiagnostic(rawMessage);
+        const staleRecoveryClassification =
+          classifyStaleThreadRecovery(rawMessage);
         const firstPacketTimeoutSeconds =
           resolveRecoverableCodexFirstPacketTimeout(resolvedEngine, rawMessage);
         if (firstPacketTimeoutSeconds) {
@@ -2256,7 +2622,11 @@ export function useThreadMessaging({
   sendMessageToThreadRef.current = sendMessageToThread;
 
   const sendUserMessage = useCallback(
-    async (text: string, images: string[] = [], options?: SendMessageOptions) => {
+    async (
+      text: string,
+      images: string[] = [],
+      options?: SendMessageOptions,
+    ) => {
       if (!activeWorkspace) {
         return;
       }
@@ -2264,10 +2634,17 @@ export function useThreadMessaging({
       if (!messageText && images.length === 0) {
         return;
       }
-      const promptExpansion = expandCustomPromptText(messageText, customPrompts);
+      const promptExpansion = expandCustomPromptText(
+        messageText,
+        customPrompts,
+      );
       if (promptExpansion && "error" in promptExpansion) {
         if (activeThreadId) {
-          pushThreadErrorMessage(activeWorkspace.id, activeThreadId, promptExpansion.error);
+          pushThreadErrorMessage(
+            activeWorkspace.id,
+            activeThreadId,
+            promptExpansion.error,
+          );
           safeMessageActivity();
         } else {
           onDebug?.({
@@ -2287,15 +2664,24 @@ export function useThreadMessaging({
       const resolvedComposerSelection = resolveComposerSelection?.() ?? null;
       const codexFirstSendProviderProfileId =
         currentEngine === "codex"
-          ? (resolvedComposerSelection?.providerProfileId?.trim() || null)
+          ? resolvedComposerSelection?.providerProfileId?.trim() || null
           : null;
       const codexFirstSendOptions = codexFirstSendProviderProfileId
         ? { providerProfileId: codexFirstSendProviderProfileId }
         : undefined;
       if (activeThreadId) {
-        const storedThreadEngine = getThreadEngine(activeWorkspace.id, activeThreadId);
-        const threadKind = resolveThreadKind(activeWorkspace.id, activeThreadId);
-        const threadEngine = resolveThreadEngine(activeWorkspace.id, activeThreadId);
+        const storedThreadEngine = getThreadEngine(
+          activeWorkspace.id,
+          activeThreadId,
+        );
+        const threadKind = resolveThreadKind(
+          activeWorkspace.id,
+          activeThreadId,
+        );
+        const threadEngine = resolveThreadEngine(
+          activeWorkspace.id,
+          activeThreadId,
+        );
         if (threadKind !== "shared") {
           assertEngineExecutionEnabled(threadEngine);
         }
@@ -2304,10 +2690,16 @@ export function useThreadMessaging({
           activeThreadId,
         );
         if (threadKind === "shared") {
-          await sendMessageToThread(activeWorkspace, activeThreadId, finalText, images, {
-            ...options,
-            skipPromptExpansion: true,
-          });
+          await sendMessageToThread(
+            activeWorkspace,
+            activeThreadId,
+            finalText,
+            images,
+            {
+              ...options,
+              skipPromptExpansion: true,
+            },
+          );
           return;
         }
         assertEngineExecutionEnabled(currentEngine);
@@ -2337,10 +2729,16 @@ export function useThreadMessaging({
             return;
           }
           // Send message to the new thread
-          await sendMessageToThread(activeWorkspace, newThreadId, finalText, images, {
-            ...options,
-            skipPromptExpansion: true,
-          });
+          await sendMessageToThread(
+            activeWorkspace,
+            newThreadId,
+            finalText,
+            images,
+            {
+              ...options,
+              skipPromptExpansion: true,
+            },
+          );
           return;
         }
       }
@@ -2415,8 +2813,8 @@ export function useThreadMessaging({
       markReviewing(threadId, false);
       setActiveTurnId(threadId, null);
       pushThreadErrorMessage(
-          activeWorkspace.id,
-          threadId,
+        activeWorkspace.id,
+        threadId,
         options?.message?.trim() || t("threads.fusionTurnStalled"),
       );
       safeMessageActivity();
@@ -2433,93 +2831,252 @@ export function useThreadMessaging({
     ],
   );
 
-  const interruptTurn = useCallback(async (options?: InterruptTurnOptions) => {
-    if (!activeWorkspace || !activeThreadId) {
-      return;
-    }
-    const reason = options?.reason ?? "user-stop";
-    const activeThreadKind = resolveThreadKind(activeWorkspace.id, activeThreadId);
-    const usesSharedV2Control =
-      activeThreadKind === "shared" && isSharedV2SendEnabled();
-    const sharedAttemptId = usesSharedV2Control
-      ? getSharedSendActiveAttemptId(activeWorkspace.id, activeThreadId)
-      : null;
-    const activeTurnId = activeTurnIdByThread[activeThreadId] ?? null;
-    const activeThreadIsProcessing =
-      threadStatusById[activeThreadId]?.isProcessing ?? false;
-    if (!activeTurnId && !activeThreadIsProcessing && !usesSharedV2Control) {
-      onDebug?.({
-        id: `${Date.now()}-client-turn-interrupt-skipped`,
-        timestamp: Date.now(),
-        source: "client",
-        label: "turn/interrupt skipped",
-        payload: {
-          workspaceId: activeWorkspace.id,
-          threadId: activeThreadId,
-          reason,
-          cause: "no-active-or-processing-turn",
-        },
-      });
-      return;
-    }
-    if (usesSharedV2Control && !sharedAttemptId) {
-      const sharedSendState = getSharedSendState(
+  const interruptTurn = useCallback(
+    async (options?: InterruptTurnOptions) => {
+      if (!activeWorkspace || !activeThreadId) {
+        return;
+      }
+      const reason = options?.reason ?? "user-stop";
+      const activeThreadKind = resolveThreadKind(
         activeWorkspace.id,
         activeThreadId,
-      ).state;
-      if (
-        sharedSendState === "idle" &&
-        (activeTurnId || activeThreadIsProcessing)
-      ) {
-        // canonical commit 已把 Shared send state 收口并释放 Attempt；此时只剩
-        // frontend lifecycle residue。它不再需要、也不允许触发 Runtime interrupt。
-        markProcessing(activeThreadId, false);
-        setActiveTurnId(activeThreadId, null);
+      );
+      const usesSharedV2Control =
+        activeThreadKind === "shared" && isSharedV2SendEnabled();
+      const sharedAttemptId = usesSharedV2Control
+        ? getSharedSendActiveAttemptId(activeWorkspace.id, activeThreadId)
+        : null;
+      const activeTurnId = activeTurnIdByThread[activeThreadId] ?? null;
+      const activeThreadIsProcessing =
+        threadStatusById[activeThreadId]?.isProcessing ?? false;
+      if (!activeTurnId && !activeThreadIsProcessing && !usesSharedV2Control) {
         onDebug?.({
-          id: `${Date.now()}-client-shared-turn-residue-converged`,
+          id: `${Date.now()}-client-turn-interrupt-skipped`,
           timestamp: Date.now(),
           source: "client",
-          label: "shared-session/turn residue converged",
+          label: "turn/interrupt skipped",
           payload: {
             workspaceId: activeWorkspace.id,
             threadId: activeThreadId,
             reason,
+            cause: "no-active-or-processing-turn",
+          },
+        });
+        return;
+      }
+      if (usesSharedV2Control && !sharedAttemptId) {
+        const sharedSendState = getSharedSendState(
+          activeWorkspace.id,
+          activeThreadId,
+        ).state;
+        if (
+          sharedSendState === "idle" &&
+          (activeTurnId || activeThreadIsProcessing)
+        ) {
+          // canonical commit 已把 Shared send state 收口并释放 Attempt；此时只剩
+          // frontend lifecycle residue。它不再需要、也不允许触发 Runtime interrupt。
+          markProcessing(activeThreadId, false);
+          setActiveTurnId(activeThreadId, null);
+          onDebug?.({
+            id: `${Date.now()}-client-shared-turn-residue-converged`,
+            timestamp: Date.now(),
+            source: "client",
+            label: "shared-session/turn residue converged",
+            payload: {
+              workspaceId: activeWorkspace.id,
+              threadId: activeThreadId,
+              reason,
+              sharedSendState,
+            },
+          });
+          return;
+        }
+        onDebug?.({
+          id: `${Date.now()}-client-turn-interrupt-skipped`,
+          timestamp: Date.now(),
+          source: "client",
+          label: "turn/interrupt skipped",
+          payload: {
+            workspaceId: activeWorkspace.id,
+            threadId: activeThreadId,
+            reason,
+            cause: "shared-attempt-owner-missing",
             sharedSendState,
           },
         });
         return;
       }
+      if (sharedAttemptId) {
+        try {
+          const interruptResult = await sharedSessionV2InterruptTurnService(
+            activeWorkspace.id,
+            activeThreadId,
+            sharedAttemptId,
+          );
+          if (interruptResult.status === "terminal-committed") {
+            dispatchSharedSendEvent(activeWorkspace.id, activeThreadId, {
+              type: "terminalCommitted",
+            });
+            setSharedSendActiveAttempt(
+              activeWorkspace.id,
+              activeThreadId,
+              null,
+            );
+            markProcessing(activeThreadId, false);
+            setActiveTurnId(activeThreadId, null);
+            return;
+          }
+        } catch (error) {
+          onDebug?.({
+            id: `${Date.now()}-client-turn-interrupt-error`,
+            timestamp: Date.now(),
+            source: "error",
+            label: "turn/interrupt error",
+            payload: error instanceof Error ? error.message : String(error),
+          });
+          return;
+        }
+      }
+      const turnId = activeTurnId ?? "pending";
+      const shouldGuardInterruptedThread = reason !== "queue-fusion";
+      // A4 live-text 外部化：中断前把通道里「尚未落 reducer 的尾段」灌回 items，
+      // 否则中断后该行会从通道全量文本回退到壳首段。hasCustomName: true 表示
+      // 灌回不参与线程自动命名。
+      const liveTextTail = drainLiveAssistantTextTail(activeThreadId);
+      if (liveTextTail) {
+        dispatch({
+          type: "appendAgentDelta",
+          workspaceId: activeWorkspace.id,
+          threadId: activeThreadId,
+          itemId: liveTextTail.itemId,
+          delta: liveTextTail.tailDelta,
+          hasCustomName: true,
+        });
+      }
+      // Queue fusion immediately starts a successor turn on the same curtain; a
+      // long-lived interrupted guard would drop that successor's realtime output.
+      if (shouldGuardInterruptedThread) {
+        workspaceScopedSet(
+          interruptedThreadsRef.current,
+          activeWorkspace.id,
+          activeThreadId,
+          true,
+        );
+      }
+      markProcessing(activeThreadId, false);
+      setActiveTurnId(activeThreadId, null);
+      const interruptNotice =
+        reason === "queue-fusion"
+          ? t("threads.sessionStoppedForFusion")
+          : reason === "plan-handoff"
+            ? null
+            : t("threads.sessionStopped");
+      if (interruptNotice) {
+        dispatch({
+          type: "addAssistantMessage",
+          threadId: activeThreadId,
+          text: interruptNotice,
+        });
+      }
+      if (!activeTurnId && shouldGuardInterruptedThread) {
+        workspaceScopedSet(
+          pendingInterruptsRef.current,
+          activeWorkspace.id,
+          activeThreadId,
+          true,
+        );
+      }
+
+      // Determine whether this thread is backed by a local CLI session.
+      const resolvedThreadEngine = resolveThreadEngine(
+        activeWorkspace.id,
+        activeThreadId,
+      );
+      const isCliManagedEngine = resolvedThreadEngine !== "codex";
+
       onDebug?.({
-        id: `${Date.now()}-client-turn-interrupt-skipped`,
+        id: `${Date.now()}-client-turn-interrupt`,
         timestamp: Date.now(),
         source: "client",
-        label: "turn/interrupt skipped",
+        label: "turn/interrupt",
         payload: {
           workspaceId: activeWorkspace.id,
           threadId: activeThreadId,
+          turnId,
+          queued: !activeTurnId,
+          engine: resolvedThreadEngine,
           reason,
-          cause: "shared-attempt-owner-missing",
-          sharedSendState,
         },
       });
-      return;
-    }
-    if (sharedAttemptId) {
       try {
-        const interruptResult = await sharedSessionV2InterruptTurnService(
-          activeWorkspace.id,
-          activeThreadId,
-          sharedAttemptId,
-        );
-        if (interruptResult.status === "terminal-committed") {
-          dispatchSharedSendEvent(activeWorkspace.id, activeThreadId, {
-            type: "terminalCommitted",
+        const sharedProviderProfileId =
+          activeThreadKind === "shared"
+            ? (getSharedTargetState(activeWorkspace.id, activeThreadId)
+                .activeTurnTarget?.providerProfileId ?? null)
+            : null;
+        if (usesSharedV2Control) {
+          // Shared V2 已由 durable attempt owner 精确中断；禁止再走 mutable
+          // target / workspace-wide fallback 产生第二次 control side effect。
+          onDebug?.({
+            id: `${Date.now()}-server-turn-interrupt`,
+            timestamp: Date.now(),
+            source: "server",
+            label: "turn/interrupt response",
+            payload: { success: true },
           });
-          setSharedSendActiveAttempt(activeWorkspace.id, activeThreadId, null);
-          markProcessing(activeThreadId, false);
-          setActiveTurnId(activeThreadId, null);
           return;
         }
+        if (isCliManagedEngine) {
+          // Claude/OpenCode/Gemini: target only the current turn process.
+          // If turn id is not known yet, keep pending interrupt and let onTurnStarted
+          // execute a precise kill once the backend emits the real turn id.
+          if (activeTurnId) {
+            try {
+              if (activeThreadKind === "shared") {
+                await engineInterruptTurnService(
+                  activeWorkspace.id,
+                  activeTurnId,
+                  resolvedThreadEngine,
+                  sharedProviderProfileId,
+                );
+              } else {
+                await engineInterruptTurnService(
+                  activeWorkspace.id,
+                  activeTurnId,
+                  resolvedThreadEngine,
+                );
+              }
+            } catch (error) {
+              if (isUnknownEngineInterruptTurnMethodError(error)) {
+                // Compatibility fallback for stale daemon/runtime that doesn't
+                // implement engine_interrupt_turn yet.
+                await engineInterruptService(activeWorkspace.id);
+              } else {
+                throw error;
+              }
+            }
+          }
+        } else {
+          // Codex: notify daemon via turn_interrupt RPC, plus engine_interrupt fallback.
+          // B.5：Shared Thread 按 active Turn 的 Execution Target provider 路由，
+          // 避免同 engine 双 Provider 并行时中断打到 default Provider 会话。
+          await Promise.allSettled([
+            interruptTurnService(
+              activeWorkspace.id,
+              activeThreadId,
+              turnId,
+              sharedProviderProfileId,
+            ),
+            engineInterruptService(activeWorkspace.id),
+          ]);
+        }
+        onDebug?.({
+          id: `${Date.now()}-server-turn-interrupt`,
+          timestamp: Date.now(),
+          source: "server",
+          label: "turn/interrupt response",
+          payload: { success: true },
+        });
       } catch (error) {
         onDebug?.({
           id: `${Date.now()}-client-turn-interrupt-error`,
@@ -2528,163 +3085,30 @@ export function useThreadMessaging({
           label: "turn/interrupt error",
           payload: error instanceof Error ? error.message : String(error),
         });
-        return;
       }
-    }
-    const turnId = activeTurnId ?? "pending";
-    const shouldGuardInterruptedThread = reason !== "queue-fusion";
-    // A4 live-text 外部化：中断前把通道里「尚未落 reducer 的尾段」灌回 items，
-    // 否则中断后该行会从通道全量文本回退到壳首段。hasCustomName: true 表示
-    // 灌回不参与线程自动命名。
-    const liveTextTail = drainLiveAssistantTextTail(activeThreadId);
-    if (liveTextTail) {
-      dispatch({
-        type: "appendAgentDelta",
-        workspaceId: activeWorkspace.id,
-        threadId: activeThreadId,
-        itemId: liveTextTail.itemId,
-        delta: liveTextTail.tailDelta,
-        hasCustomName: true,
-      });
-    }
-    // Queue fusion immediately starts a successor turn on the same curtain; a
-    // long-lived interrupted guard would drop that successor's realtime output.
-    if (shouldGuardInterruptedThread) {
-      workspaceScopedSet(interruptedThreadsRef.current, activeWorkspace.id, activeThreadId, true);
-    }
-    markProcessing(activeThreadId, false);
-    setActiveTurnId(activeThreadId, null);
-    const interruptNotice =
-      reason === "queue-fusion"
-        ? t("threads.sessionStoppedForFusion")
-        : reason === "plan-handoff"
-          ? null
-          : t("threads.sessionStopped");
-    if (interruptNotice) {
-      dispatch({
-        type: "addAssistantMessage",
-        threadId: activeThreadId,
-        text: interruptNotice,
-      });
-    }
-    if (!activeTurnId && shouldGuardInterruptedThread) {
-      workspaceScopedSet(pendingInterruptsRef.current, activeWorkspace.id, activeThreadId, true);
-    }
-
-    // Determine whether this thread is backed by a local CLI session.
-    const resolvedThreadEngine = resolveThreadEngine(activeWorkspace.id, activeThreadId);
-    const isCliManagedEngine = resolvedThreadEngine !== "codex";
-
-    onDebug?.({
-      id: `${Date.now()}-client-turn-interrupt`,
-      timestamp: Date.now(),
-      source: "client",
-      label: "turn/interrupt",
-      payload: {
-        workspaceId: activeWorkspace.id,
-        threadId: activeThreadId,
-        turnId,
-        queued: !activeTurnId,
-        engine: resolvedThreadEngine,
-        reason,
-      },
-    });
-    try {
-      const sharedProviderProfileId =
-        activeThreadKind === "shared"
-          ? (getSharedTargetState(activeWorkspace.id, activeThreadId)
-              .activeTurnTarget?.providerProfileId ?? null)
-          : null;
-      if (usesSharedV2Control) {
-        // Shared V2 已由 durable attempt owner 精确中断；禁止再走 mutable
-        // target / workspace-wide fallback 产生第二次 control side effect。
-        onDebug?.({
-          id: `${Date.now()}-server-turn-interrupt`,
-          timestamp: Date.now(),
-          source: "server",
-          label: "turn/interrupt response",
-          payload: { success: true },
-        });
-        return;
-      }
-      if (isCliManagedEngine) {
-        // Claude/OpenCode/Gemini: target only the current turn process.
-        // If turn id is not known yet, keep pending interrupt and let onTurnStarted
-        // execute a precise kill once the backend emits the real turn id.
-        if (activeTurnId) {
-          try {
-            if (activeThreadKind === "shared") {
-              await engineInterruptTurnService(
-                activeWorkspace.id,
-                activeTurnId,
-                resolvedThreadEngine,
-                sharedProviderProfileId,
-              );
-            } else {
-              await engineInterruptTurnService(
-                activeWorkspace.id,
-                activeTurnId,
-                resolvedThreadEngine,
-              );
-            }
-          } catch (error) {
-            if (isUnknownEngineInterruptTurnMethodError(error)) {
-              // Compatibility fallback for stale daemon/runtime that doesn't
-              // implement engine_interrupt_turn yet.
-              await engineInterruptService(activeWorkspace.id);
-            } else {
-              throw error;
-            }
-          }
-        }
-      } else {
-        // Codex: notify daemon via turn_interrupt RPC, plus engine_interrupt fallback.
-        // B.5：Shared Thread 按 active Turn 的 Execution Target provider 路由，
-        // 避免同 engine 双 Provider 并行时中断打到 default Provider 会话。
-        await Promise.allSettled([
-          interruptTurnService(
-            activeWorkspace.id,
-            activeThreadId,
-            turnId,
-            sharedProviderProfileId,
-          ),
-          engineInterruptService(activeWorkspace.id),
-        ]);
-      }
-      onDebug?.({
-        id: `${Date.now()}-server-turn-interrupt`,
-        timestamp: Date.now(),
-        source: "server",
-        label: "turn/interrupt response",
-        payload: { success: true },
-      });
-    } catch (error) {
-      onDebug?.({
-        id: `${Date.now()}-client-turn-interrupt-error`,
-        timestamp: Date.now(),
-        source: "error",
-        label: "turn/interrupt error",
-        payload: error instanceof Error ? error.message : String(error),
-      });
-    }
-  }, [
-    activeThreadId,
-    activeTurnIdByThread,
-    activeWorkspace,
-    dispatch,
-    interruptedThreadsRef,
-    markProcessing,
-    onDebug,
-    pendingInterruptsRef,
-    resolveThreadEngine,
-    resolveThreadKind,
-    setActiveTurnId,
-    t,
-    threadStatusById,
-  ]);
+    },
+    [
+      activeThreadId,
+      activeTurnIdByThread,
+      activeWorkspace,
+      dispatch,
+      interruptedThreadsRef,
+      markProcessing,
+      onDebug,
+      pendingInterruptsRef,
+      resolveThreadEngine,
+      resolveThreadKind,
+      setActiveTurnId,
+      t,
+      threadStatusById,
+    ],
+  );
 
   const startReviewTarget = useCallback(
-    async (target: ReviewTarget, workspaceIdOverride?: string): Promise<boolean> => {
+    async (
+      target: ReviewTarget,
+      workspaceIdOverride?: string,
+    ): Promise<boolean> => {
       const workspaceId = workspaceIdOverride ?? activeWorkspace?.id ?? null;
       if (!workspaceId) {
         return false;
@@ -2736,7 +3160,9 @@ export function useThreadMessaging({
 
       if (reviewExecutionEngine === "claude") {
         const reviewWorkspace =
-          activeWorkspace && activeWorkspace.id === workspaceId ? activeWorkspace : null;
+          activeWorkspace && activeWorkspace.id === workspaceId
+            ? activeWorkspace
+            : null;
         if (!reviewWorkspace) {
           return false;
         }
@@ -2754,10 +3180,16 @@ export function useThreadMessaging({
             engine: "claude",
           },
         });
-        await sendMessageToThread(reviewWorkspace, threadId, reviewCommand, [], {
-          skipPromptExpansion: true,
-          autoSession: reviewAutoSession,
-        });
+        await sendMessageToThread(
+          reviewWorkspace,
+          threadId,
+          reviewCommand,
+          [],
+          {
+            skipPromptExpansion: true,
+            autoSession: reviewAutoSession,
+          },
+        );
         return true;
       }
 
@@ -2779,7 +3211,9 @@ export function useThreadMessaging({
       try {
         const runStartReview = async (
           targetThreadId: string,
-          label: "review/start response" | "review/start retry response" = "review/start response",
+          label:
+            | "review/start response"
+            | "review/start retry response" = "review/start response",
         ) => {
           const response = await startReviewService(
             workspaceId,
@@ -2824,7 +3258,10 @@ export function useThreadMessaging({
             reviewThreadId = fallbackThreadId;
             markProcessing(reviewThreadId, true);
             markReviewing(reviewThreadId, true);
-            response = await runStartReview(reviewThreadId, "review/start retry response");
+            response = await runStartReview(
+              reviewThreadId,
+              "review/start retry response",
+            );
             rpcError = extractRpcErrorMessage(response);
           }
         }
@@ -2832,7 +3269,11 @@ export function useThreadMessaging({
           markProcessing(reviewThreadId, false);
           markReviewing(reviewThreadId, false);
           setActiveTurnId(reviewThreadId, null);
-          pushThreadErrorMessage(workspaceId, reviewThreadId, `Review failed to start: ${rpcError}`);
+          pushThreadErrorMessage(
+            workspaceId,
+            reviewThreadId,
+            `Review failed to start: ${rpcError}`,
+          );
           safeMessageActivity();
           return false;
         }
@@ -2911,7 +3352,8 @@ export function useThreadMessaging({
       if (!trimmed.startsWith("/")) {
         return;
       }
-      const commandToken = trimmed.slice(1).split(/\s+/, 1)[0]?.toLowerCase() ?? "";
+      const commandToken =
+        trimmed.slice(1).split(/\s+/, 1)[0]?.toLowerCase() ?? "";
       if (commandToken !== "review") {
         return;
       }
@@ -2924,11 +3366,7 @@ export function useThreadMessaging({
       const target = parseReviewTarget(trimmed);
       await startReviewTarget(target);
     },
-    [
-      activeWorkspace,
-      openReviewPrompt,
-      startReviewTarget,
-    ],
+    [activeWorkspace, openReviewPrompt, startReviewTarget],
   );
 
   const {
@@ -2971,7 +3409,8 @@ export function useThreadMessaging({
     sessionSpecLinkByThreadRef,
     t,
     threadStatusById,
-    codexCompactionInFlightByThreadRef: effectiveCodexCompactionInFlightByThreadRef,
+    codexCompactionInFlightByThreadRef:
+      effectiveCodexCompactionInFlightByThreadRef,
     tokenUsageByThread,
   });
 

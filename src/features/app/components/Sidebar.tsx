@@ -84,6 +84,7 @@ import ArrowRight from "lucide-react/dist/esm/icons/arrow-right";
 import Eye from "lucide-react/dist/esm/icons/eye";
 import EyeOff from "lucide-react/dist/esm/icons/eye-off";
 import FolderTree from "lucide-react/dist/esm/icons/folder-tree";
+import GalleryVerticalEnd from "lucide-react/dist/esm/icons/gallery-vertical-end";
 import GitBranch from "lucide-react/dist/esm/icons/git-branch";
 import House from "lucide-react/dist/esm/icons/house";
 import Blocks from "lucide-react/dist/esm/icons/blocks";
@@ -126,6 +127,9 @@ import {
   runWithLoadingProgress,
   type LoadingProgressController,
 } from "../utils/loadingProgressActions";
+/** 与 useAppShellQuickSwitcherSection 硬编码 shortcut 一致 */
+const QUICK_SWITCHER_SHORTCUT = "cmd+e";
+
 type SidebarProps = {
   workspaces: WorkspaceInfo[];
   groupedWorkspaces: WorkspaceGroupSection[];
@@ -245,6 +249,10 @@ type SidebarProps = {
   onOpenSpecHub: () => void;
   onOpenWorkspaceHome: (workspaceId?: string) => void;
   onOpenGlobalSearch: () => void;
+  /** non-macOS 主导航 Quick Switcher（Ctrl+E）；mac 用 titlebar */
+  onOpenQuickSwitcher?: () => void;
+  /** non-macOS 设置菜单「隐藏对话侧边栏」；mac 用 titlebar */
+  onCollapseSidebar?: () => void;
   globalSearchShortcut: string | null;
   openChatShortcut: string | null;
   openKanbanShortcut: string | null;
@@ -258,6 +266,8 @@ type SidebarProps = {
   /** 打开运行时提示（入口在设置二级菜单，不在侧栏底部外显） */
   onOpenRuntimeNotice?: () => void;
   showRuntimeNoticeMenuItem?: boolean;
+  /** 运行时提示是否有失败（控制设置菜单/固定入口的对号↔叹号） */
+  runtimeNoticeHasError?: boolean;
 };
 
 function SidebarImpl({
@@ -344,6 +354,8 @@ function SidebarImpl({
   onOpenSpecHub,
   onOpenWorkspaceHome,
   onOpenGlobalSearch,
+  onOpenQuickSwitcher,
+  onCollapseSidebar,
   globalSearchShortcut,
   openChatShortcut,
   openKanbanShortcut,
@@ -356,14 +368,18 @@ function SidebarImpl({
   runtimeNoticeDockNode = null,
   onOpenRuntimeNotice,
   showRuntimeNoticeMenuItem = false,
+  runtimeNoticeHasError = false,
 }: SidebarProps) {
   const { t } = useTranslation();
   const quickSearchLabel = t("sidebar.quickSearch");
+  const quickSwitcherLabel = t("quickSwitcher.open");
   const isMac = isMacPlatform();
-  // Tauri macOS hosts move global search into the sidebar titlebar; keep the
-  // primary-nav entry on Windows / non-Tauri previews where that topbar slot is
-  // hidden or unavailable.
-  const showPrimaryNavGlobalSearch = !isMacDesktopHost();
+  // mac titlebar 已有搜索 / Quick Switcher / 收起侧栏；Win 与 non-Tauri 走主导航与设置菜单
+  const showWinChromeEntries = !isMacDesktopHost();
+  const showPrimaryNavQuickSwitcher =
+    showWinChromeEntries && Boolean(onOpenQuickSwitcher);
+  const showHideThreadsSidebar =
+    showWinChromeEntries && Boolean(onCollapseSidebar);
   const quickChatShortcutLabel = useMemo(
     () => formatShortcutForPlatform(openChatShortcut, isMac),
     [isMac, openChatShortcut],
@@ -371,6 +387,10 @@ function SidebarImpl({
   const quickKanbanShortcutLabel = useMemo(
     () => formatShortcutForPlatform(openKanbanShortcut, isMac),
     [isMac, openKanbanShortcut],
+  );
+  const quickSwitcherShortcutLabel = useMemo(
+    () => formatShortcutForPlatform(QUICK_SWITCHER_SHORTCUT, isMac),
+    [isMac],
   );
   const quickSearchShortcutLabel = useMemo(
     () => formatShortcutForPlatform(globalSearchShortcut, isMac),
@@ -2167,7 +2187,7 @@ function SidebarImpl({
               <Blocks className="sidebar-primary-nav-icon" aria-hidden size={20} strokeWidth={1.8} />
               <span className="sidebar-primary-nav-text">{t("sidebar.extensions")}</span>
             </button>
-            {showPrimaryNavGlobalSearch ? (
+            {showWinChromeEntries ? (
               <button
                 type="button"
                 className="sidebar-primary-nav-item sidebar-primary-nav-subitem"
@@ -2183,6 +2203,27 @@ function SidebarImpl({
                 <span className="sidebar-primary-nav-text">{quickSearchLabel}</span>
                 <span className="sidebar-primary-nav-shortcut" aria-hidden>
                   {quickSearchShortcutLabel}
+                </span>
+              </button>
+            ) : null}
+            {showPrimaryNavQuickSwitcher ? (
+              <button
+                type="button"
+                className="sidebar-primary-nav-item sidebar-primary-nav-subitem"
+                onClick={onOpenQuickSwitcher}
+                title={`${quickSwitcherLabel} (${quickSwitcherShortcutLabel})`}
+                aria-label={quickSwitcherLabel}
+                data-tauri-drag-region="false"
+              >
+                <GalleryVerticalEnd
+                  className="sidebar-primary-nav-icon"
+                  aria-hidden
+                  size={20}
+                  strokeWidth={1.8}
+                />
+                <span className="sidebar-primary-nav-text">{quickSwitcherLabel}</span>
+                <span className="sidebar-primary-nav-shortcut" aria-hidden>
+                  {quickSwitcherShortcutLabel}
                 </span>
               </button>
             ) : null}
@@ -2304,6 +2345,9 @@ function SidebarImpl({
               onAppModeChange={onAppModeChange}
               onOpenRuntimeNotice={onOpenRuntimeNotice}
               showRuntimeNotice={showRuntimeNoticeMenuItem}
+              runtimeNoticeHasError={runtimeNoticeHasError}
+              showHideThreadsSidebar={showHideThreadsSidebar}
+              onCollapseSidebar={onCollapseSidebar}
             />
             {/* 锚点保留在侧栏底部供展开面板定位；外显气泡入口已收入设置二级菜单 */}
             {runtimeNoticeDockNode}

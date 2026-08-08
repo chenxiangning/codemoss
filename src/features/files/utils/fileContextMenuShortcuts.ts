@@ -1,4 +1,5 @@
 export const FILE_CONTEXT_MENU_SHORTCUTS = {
+  addToChat: "alt+shift+a",
   associateIntentCanvas: "alt+shift+c",
   captureNote: "alt+shift+n",
   copy: "cmd+c",

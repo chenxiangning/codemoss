@@ -120,8 +120,14 @@ fn v2_provisioning_victim() {
         return;
     };
     let writer = open_writer(std::path::Path::new(&db_path)).expect("victim writer");
-    begin_turn_core(&writer, SESSION, &claude_target(None), "victim".to_string(), None)
-        .expect("victim begin");
+    begin_turn_core(
+        &writer,
+        SESSION,
+        &claude_target(None),
+        "victim".to_string(),
+        None,
+    )
+    .expect("victim begin");
     mark_binding_creating(&writer, "claude:default");
     println!("ready:creating");
     std::io::stdout().flush().expect("flush victim signal");
@@ -155,7 +161,8 @@ fn begin_then_commit_writes_requested_and_committed_and_advances_cursor() {
     let writer = open_writer(&store.db_path).expect("open writer");
     let target = claude_target(Some("openrouter"));
 
-    let begin = begin_turn_core(&writer, SESSION, &target, "hello".to_string(), None).expect("begin");
+    let begin =
+        begin_turn_core(&writer, SESSION, &target, "hello".to_string(), None).expect("begin");
     assert_eq!(begin.status, BeginTurnStatus::Creating);
     assert_eq!(begin.binding_key, "claude:openrouter");
     let attempt_id = begin.attempt_id.clone().expect("attempt id");
@@ -235,7 +242,8 @@ fn duplicate_commit_is_idempotent() {
     let writer = open_writer(&store.db_path).expect("open writer");
     let target = claude_target(None);
 
-    let begin = begin_turn_core(&writer, SESSION, &target, "hello".to_string(), None).expect("begin");
+    let begin =
+        begin_turn_core(&writer, SESSION, &target, "hello".to_string(), None).expect("begin");
     assert_eq!(begin.binding_key, "claude:default");
     let attempt_id = begin.attempt_id.clone().expect("attempt id");
     let logical_turn_id = begin.logical_turn_id.clone().expect("logical turn id");
@@ -289,7 +297,8 @@ fn settled_before_typed_acceptance_is_rejected() {
     let store = TempStoreDir::new("v2-settled-before-accept");
     let writer = open_writer(&store.db_path).expect("open writer");
     let target = claude_target(None);
-    let begin = begin_turn_core(&writer, SESSION, &target, "hello".to_string(), None).expect("begin");
+    let begin =
+        begin_turn_core(&writer, SESSION, &target, "hello".to_string(), None).expect("begin");
     let result = commit_turn_core(
         &writer,
         SESSION,
@@ -316,7 +325,8 @@ fn known_rejection_does_not_advance_context_committed_cursor() {
     let store = TempStoreDir::new("v2-known-rejection-cursor");
     let writer = open_writer(&store.db_path).expect("open writer");
     let target = claude_target(None);
-    let begin = begin_turn_core(&writer, SESSION, &target, "hello".to_string(), None).expect("begin");
+    let begin =
+        begin_turn_core(&writer, SESSION, &target, "hello".to_string(), None).expect("begin");
     let failed = CommitOutcomeInput {
         status: "failed".to_string(),
         error_code: Some("target-provider-rejected".to_string()),
@@ -365,8 +375,8 @@ fn invalid_target_after_begin_commits_context_prepare_failure() {
     let writer = open_writer(&store.db_path).expect("open writer");
     let mut removed_target = claude_target(None);
     removed_target.model = Some("removed-after-begin".to_string());
-    let begin =
-        begin_turn_core(&writer, SESSION, &removed_target, "hello".to_string(), None).expect("begin");
+    let begin = begin_turn_core(&writer, SESSION, &removed_target, "hello".to_string(), None)
+        .expect("begin");
 
     let error = validate_prepare_target_core(
         &writer,
@@ -409,7 +419,8 @@ fn cancelling_pre_dispatch_confirmation_terminalizes_exact_prepared_attempt() {
     let store = TempStoreDir::new("v2-cancel-before-dispatch");
     let writer = open_writer(&store.db_path).expect("open writer");
     let target = claude_target(None);
-    let begin = begin_turn_core(&writer, SESSION, &target, "hello".to_string(), None).expect("begin");
+    let begin =
+        begin_turn_core(&writer, SESSION, &target, "hello".to_string(), None).expect("begin");
     let attempt_id = begin.attempt_id.expect("attempt");
     let logical_turn_id = begin.logical_turn_id.expect("turn");
     let package = compile_context(
@@ -481,7 +492,8 @@ fn cancelling_pre_dispatch_confirmation_terminalizes_exact_prepared_attempt() {
         "user-cancelled-degraded-context"
     );
 
-    let next = begin_turn_core(&writer, SESSION, &target, "retry".to_string(), None).expect("retry");
+    let next =
+        begin_turn_core(&writer, SESSION, &target, "retry".to_string(), None).expect("retry");
     assert_eq!(next.status, BeginTurnStatus::Creating);
 }
 
@@ -492,7 +504,8 @@ fn conflicting_retry_for_same_attempt_fails_loud() {
     let writer = open_writer(&store.db_path).expect("open writer");
     let target = claude_target(None);
 
-    let begin = begin_turn_core(&writer, SESSION, &target, "hello".to_string(), None).expect("begin");
+    let begin =
+        begin_turn_core(&writer, SESSION, &target, "hello".to_string(), None).expect("begin");
     let attempt_id = begin.attempt_id.clone().expect("attempt id");
     let logical_turn_id = begin.logical_turn_id.clone().expect("logical turn id");
     accept(&writer, &target, &attempt_id, &logical_turn_id, "native-1");
@@ -530,8 +543,14 @@ fn acceptance_rejects_a_target_different_from_requested_snapshot() {
     let store = TempStoreDir::new("v2-accept-owner-mismatch");
     let writer = open_writer(&store.db_path).expect("open writer");
     let requested_target = claude_target(None);
-    let begin =
-        begin_turn_core(&writer, SESSION, &requested_target, "hello".to_string(), None).expect("begin");
+    let begin = begin_turn_core(
+        &writer,
+        SESSION,
+        &requested_target,
+        "hello".to_string(),
+        None,
+    )
+    .expect("begin");
 
     let error = accept_turn_core(
         &writer,
@@ -560,7 +579,8 @@ fn begin_on_creating_window_fails_closed_without_blind_rebuild() {
     let writer = open_writer(&store.db_path).expect("open writer");
     let target = claude_target(None);
 
-    let first = begin_turn_core(&writer, SESSION, &target, "hello".to_string(), None).expect("begin");
+    let first =
+        begin_turn_core(&writer, SESSION, &target, "hello".to_string(), None).expect("begin");
     assert_eq!(first.status, BeginTurnStatus::Creating);
 
     // 模拟 Runtime materialization 已开始、尚未写回 Native identity 时进程崩溃。
@@ -592,8 +612,8 @@ fn begin_on_creating_window_fails_closed_without_blind_rebuild() {
     );
 
     // recovery-required 状态下继续 begin 仍然拒绝（禁止盲目重建）。
-    let third =
-        begin_turn_core(&writer, SESSION, &target, "hello third".to_string(), None).expect("third begin");
+    let third = begin_turn_core(&writer, SESSION, &target, "hello third".to_string(), None)
+        .expect("third begin");
     assert_eq!(third.status, BeginTurnStatus::RecoveryRequired);
     assert_eq!(
         fact_types(&writer)
@@ -634,7 +654,8 @@ fn process_kill_in_creating_window_never_creates_a_second_binding() {
         SESSION,
         &claude_target(None),
         "must-not-redeliver".to_string(),
-            None)
+        None,
+    )
     .expect("probe begin");
     assert_eq!(result.status, BeginTurnStatus::RecoveryRequired);
     assert_eq!(
@@ -661,7 +682,8 @@ fn explicit_rebuild_archives_native_identity_and_allows_new_begin() {
     let writer = open_writer(&store.db_path).expect("open writer");
     let target = claude_target(Some("openrouter"));
 
-    let begin = begin_turn_core(&writer, SESSION, &target, "hello".to_string(), None).expect("begin");
+    let begin =
+        begin_turn_core(&writer, SESSION, &target, "hello".to_string(), None).expect("begin");
     let attempt_id = begin.attempt_id.clone().expect("attempt id");
     let logical_turn_id = begin.logical_turn_id.clone().expect("logical turn id");
     accept(
@@ -732,7 +754,8 @@ fn unsupported_engine_returns_target_unavailable_without_side_effects() {
         runtime_capability_fingerprint: None,
     };
 
-    let begin = begin_turn_core(&writer, SESSION, &target, "hello".to_string(), None).expect("begin");
+    let begin =
+        begin_turn_core(&writer, SESSION, &target, "hello".to_string(), None).expect("begin");
     assert_eq!(begin.status, BeginTurnStatus::TargetUnavailable);
     assert!(begin.reason.is_some());
     assert!(writer
@@ -751,8 +774,8 @@ fn default_and_managed_provider_bindings_do_not_cross_wire() {
     let default_target = claude_target(None);
     let managed_target = claude_target(Some("openrouter"));
 
-    let begin_default =
-        begin_turn_core(&writer, SESSION, &default_target, "a".to_string(), None).expect("begin default");
+    let begin_default = begin_turn_core(&writer, SESSION, &default_target, "a".to_string(), None)
+        .expect("begin default");
     let default_attempt_id = begin_default
         .attempt_id
         .clone()
@@ -780,8 +803,8 @@ fn default_and_managed_provider_bindings_do_not_cross_wire() {
     )
     .expect("commit default");
 
-    let begin_managed =
-        begin_turn_core(&writer, SESSION, &managed_target, "b".to_string(), None).expect("begin managed");
+    let begin_managed = begin_turn_core(&writer, SESSION, &managed_target, "b".to_string(), None)
+        .expect("begin managed");
 
     assert_eq!(begin_default.binding_key, "claude:default");
     assert_eq!(begin_managed.binding_key, "claude:openrouter");

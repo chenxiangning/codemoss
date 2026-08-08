@@ -9,7 +9,19 @@ const files = {
     "openFile": "Abrir archivo",
     "copyPath": "Copiar ruta",
     "revealInFinder": "Mostrar en Finder",
+    "revealInExplorer": "Mostrar en el Explorador",
+    "revealInFileManager": "Mostrar en el administrador de archivos",
+    "revealFailed": "No se pudo mostrar en el administrador de archivos: {{message}}",
     "revealInFileTree": "Mostrar en el árbol de archivos",
+    "openInBrowser": "Abrir en el navegador",
+    "openInBrowserFailed":
+      "No se pudo abrir este archivo en el navegador integrado",
+    "openInBrowserNoWorkspace":
+      "Selecciona un espacio de trabajo antes de abrir un archivo en el navegador integrado",
+    "openInBrowserWindowBusy":
+      "La ventana del navegador integrado ya está abierta. Cambia a ella o ciérrala e inténtalo de nuevo",
+    "openInBrowserBlocked":
+      "Este archivo no se puede abrir en el navegador integrado",
     "deleteItem": "Mover a la papelera",
     "deleteFileConfirm": "¿Seguro que quieres mover \"{{name}}\" a la papelera?",
     "deleteFolderConfirm": "¿Seguro que quieres mover la carpeta \"{{name}}\" y todo su contenido a la papelera?",
@@ -187,7 +199,7 @@ const files = {
     "documentPreviewTooLarge": "La vista previa de documento se limita a archivos de hasta {{maxMb}} MB. Ábrelo externamente o reduce primero el documento.",
     "documentPreviewOutlineEmpty": "No se detectó ningún esquema de encabezados. Usa los estilos de encabezado de Word para exponer una tabla de contenido estable.",
     "clearSelection": "Limpiar",
-    "addToChat": "Añadir al chat",
+    "addToChat": "Enviar al cuadro de entrada",
     "selectionHintShiftClick": "Mayús + clic o arrastrar + clic",
     "selectionHintMultiLine": "para selección de varias líneas",
     "annotateForAi": "Anotar para la IA",

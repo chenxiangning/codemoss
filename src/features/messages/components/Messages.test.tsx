@@ -1748,7 +1748,7 @@ describe("Messages", () => {
     expect(secondIndicator?.getAttribute("data-collapsed-count")).toBe("2");
   });
 
-  it("uses reasoning title for the working indicator and keeps title-only reasoning rows visible", () => {
+  it("keeps title-only reasoning rows visible without echoing title into the working indicator", () => {
     const items: ConversationItem[] = [
       {
         id: "reasoning-1",
@@ -1770,10 +1770,15 @@ describe("Messages", () => {
       />,
     );
 
-    const workingText = container.querySelector(".working-text");
-    expect(workingText?.textContent ?? "").toContain("Scanning repository");
+    // Spinner + timer + fixed status; reasoning title stays in the thinking row, not the working bar.
+    expect(container.querySelector(".working")).toBeTruthy();
+    expect(container.querySelector(".working-timer-clock")).toBeTruthy();
+    expect(container.querySelector(".working-text")?.textContent ?? "").toContain("响应中");
     expect(container.querySelector(".thinking-block")).toBeTruthy();
     expect(container.querySelector(".thinking-title")).toBeTruthy();
+    expect(container.querySelector(".thinking-content")?.textContent ?? "").toContain(
+      "Scanning repository",
+    );
   });
 
   it("shows title-only reasoning rows in codex canvas for real-time visibility", () => {

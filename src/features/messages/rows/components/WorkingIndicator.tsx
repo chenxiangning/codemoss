@@ -17,6 +17,7 @@ type WorkingIndicatorProps = {
   lastDurationMs?: number | null;
   heartbeatPulse?: number;
   hasItems: boolean;
+  /** Used only to suppress activity labels that duplicate reasoning first-line. Not rendered. */
   reasoningLabel?: string | null;
   activityLabel?: string | null;
   activeEngine?: MessagesEngine;
@@ -27,7 +28,8 @@ type WorkingIndicatorProps = {
 
 /**
  * Unified working indicator — Claude Code style.
- * Simple spinner + timer + label. No phase-based glow/spark/shimmer FX.
+ * Spinner + timer + fixed "响应中..." status always; special primary / tool activity optional.
+ * Does not echo reasoning first-line (that belongs in ReasoningRow).
  */
 export const WorkingIndicator = memo(function WorkingIndicator({
   isThinking,
@@ -64,10 +66,20 @@ export const WorkingIndicator = memo(function WorkingIndicator({
     isThinking &&
     waitingForFirstChunk &&
     elapsedMs >= OPENCODE_NON_STREAMING_HINT_DELAY_MS;
+  // reasoningLabel is only used to suppress activity that is itself a reasoning echo.
   const showActivityLabel = shouldDisplayWorkingActivityLabel(
     reasoningLabel,
     activityLabel,
   );
+  // Special system status (context compacting / codex wait / approval resume) wins.
+  // Otherwise show a fixed short status so the bar is not spinner+timer only.
+  // Never fall back to reasoning first-line.
+  const respondingText = t("messages.responding");
+  const defaultRespondingLabel =
+    respondingText === "messages.responding" ? "响应中..." : respondingText;
+  const displayPrimaryLabel = primaryLabel?.trim()
+    ? primaryLabel
+    : defaultRespondingLabel;
   const nonStreamingHintText = t("messages.nonStreamingHint");
   const resolvedNonStreamingHint =
     nonStreamingHintText === "messages.nonStreamingHint"
@@ -138,9 +150,7 @@ export const WorkingIndicator = memo(function WorkingIndicator({
           <div className="working-timer">
             <span className="working-timer-clock">{formatDurationMs(elapsedMs)}</span>
           </div>
-          <span className="working-text">
-            {primaryLabel || reasoningLabel || t("messages.generatingResponse")}
-          </span>
+          <span className="working-text">{displayPrimaryLabel}</span>
           {showActivityLabel && <span className="working-activity">{activityLabel}</span>}
           {showNonStreamingHint && (
             <span className="working-hint">

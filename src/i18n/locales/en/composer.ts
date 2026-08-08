@@ -151,6 +151,11 @@ const composer = {
     onRequest: "On-Request",
     fullAccess: "Full access",
     liveUsage: "Live usage",
+    quotaWindow: "Quota window",
+    quotaUsed: "Used",
+    quotaReset: "Reset",
+    quotaProvider: "Provider",
+    quotaExpandHint: "Details",
     speed: "Speed",
     speedStandard: "Standard",
     speedFast: "Fast",
@@ -286,6 +291,14 @@ const composer = {
     noteCardPreviewExpand: "Expand note",
     noteCardPreviewCollapse: "Collapse note",
     noteCardArchivedBadge: "Archived",
+    runStatus: {
+      label: "Turn run status",
+      panel: "Run status details",
+      edit: "Edits",
+      edited: "Edited",
+      expandChrome: "Show run status",
+      collapseChrome: "Hide run status",
+    },
   },
 };
 

@@ -311,6 +311,10 @@ export type LayoutNodesFlatOptions = {
   onOpenProjectMemory: () => void;
   onOpenReleaseNotes: () => void;
   onOpenGlobalSearch: () => void;
+  /** non-macOS 主导航 Quick Switcher */
+  onOpenQuickSwitcher?: () => void;
+  /** non-macOS 设置菜单收起侧栏 */
+  onCollapseSidebar?: () => void;
   globalSearchShortcut: string | null;
   openChatShortcut: string | null;
   openKanbanShortcut: string | null;
@@ -1281,6 +1285,8 @@ export type PanelsLayoutNodesOptions = Pick<
   | "focusedWorkspaceNoteId"
   | "focusedWorkspaceNoteRequestKey"
   | "onOpenGlobalSearch"
+  | "onOpenQuickSwitcher"
+  | "onCollapseSidebar"
   | "globalSearchShortcut"
   | "openChatShortcut"
   | "openKanbanShortcut"

@@ -38,6 +38,7 @@ afterEach(() => {
 
 beforeEach(() => {
   vi.mocked(invoke).mockReset().mockResolvedValue(null);
+  vi.mocked(pushErrorToast).mockReset();
 });
 
 vi.mock("../../../services/dragDrop", () => ({
@@ -661,6 +662,80 @@ describe("Composer file reference token", () => {
       degradedInfo: null,
       detail: "provider removed",
     });
+    // 仍停在同一会话的真失败：继续提示
+    expect(pushErrorToast).toHaveBeenCalled();
+  });
+
+  it("does not toast when shared target meta is missing (ENOENT)", async () => {
+    vi.mocked(invoke).mockRejectedValueOnce(
+      new Error("No such file or directory (os error 2)"),
+    );
+    const view = render(
+      <ComposerHarness
+        onSend={() => {}}
+        sharedTarget={{
+          providerProfileId: "openrouter",
+          model: "claude-sonnet-4-5",
+          effort: "high",
+        }}
+      />,
+    );
+
+    fireEvent.click(view.getByTestId("select-shared-target"));
+
+    await waitFor(() => expect(invoke).toHaveBeenCalledTimes(1));
+    await waitFor(() => {
+      // 静默回滚完成（无 previous 时 selected 可为空）
+      expect(invoke).toHaveBeenCalled();
+    });
+    expect(pushErrorToast).not.toHaveBeenCalled();
+  });
+
+  it("does not toast when target persist fails after the user left the session", async () => {
+    let releaseFirst!: (error: Error) => void;
+    const firstPersistence = new Promise<null>((_resolve, reject) => {
+      releaseFirst = reject;
+    });
+    vi.mocked(invoke).mockImplementationOnce(() => firstPersistence);
+
+    const sharedTarget = {
+      providerProfileId: "openrouter",
+      model: "claude-sonnet-4-5",
+      effort: "high",
+    };
+    const view = render(
+      <ComposerHarness
+        onSend={() => {}}
+        activeThreadId="shared-a"
+        sharedTarget={sharedTarget}
+      />,
+    );
+
+    fireEvent.click(view.getByTestId("select-shared-target"));
+    await waitFor(() => expect(invoke).toHaveBeenCalledTimes(1));
+
+    // 用户切到另一会话后，旧会话 persist 才失败
+    view.rerender(
+      <ComposerHarness
+        onSend={() => {}}
+        activeThreadId="shared-b"
+        sharedTarget={sharedTarget}
+      />,
+    );
+    await act(async () => {
+      releaseFirst(new Error("disk unavailable"));
+    });
+
+    await waitFor(() => {
+      expect(
+        getSharedTargetState("ws-1", "shared-a").selectedNextTarget,
+      ).not.toEqual(
+        expect.objectContaining({
+          model: "deepseek-v4-pro",
+        }),
+      );
+    });
+    expect(pushErrorToast).not.toHaveBeenCalled();
   });
 
   it("repairs target-unavailable only after backend confirms the exact target", async () => {

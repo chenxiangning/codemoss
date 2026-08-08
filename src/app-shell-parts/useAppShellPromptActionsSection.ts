@@ -1,5 +1,5 @@
 import { useCallback } from "react";
-import { revealItemInDir } from "@tauri-apps/plugin-opener";
+import { revealInFileManager } from "../services/tauri";
 import type { WorkspaceInfo } from "../types";
 
 type PromptScope = "workspace" | "global";
@@ -127,7 +127,7 @@ export function useAppShellPromptActionsSection({
   const handleRevealWorkspacePrompts = useCallback(async () => {
     try {
       const path = await getWorkspacePromptsDir();
-      await revealItemInDir(path);
+      await revealInFileManager(path);
     } catch (error) {
       alertError(error);
     }
@@ -139,7 +139,7 @@ export function useAppShellPromptActionsSection({
       if (!path) {
         return;
       }
-      await revealItemInDir(path);
+      await revealInFileManager(path);
     } catch (error) {
       alertError(error);
     }
