@@ -92,10 +92,11 @@ describe("Sidebar styles", () => {
     expect(ruleBody(sidebarCss, ".thread-row.active")).toMatch(
       /background:\s*var\(--sidebar-color-active-primary\);/,
     );
-    // Horizontal inset + radius keep session pills aligned with project rows.
-    // Anchor on the base `.thread-list` rule (not `.worktree-card .thread-list`).
+    // Session pills are intentionally more inset than workspace rows (4px) so
+    // nested selection backgrounds stay narrower and do not flush-align with
+    // the project pill above. Anchor on base `.thread-list` (not worktree).
     expect(sidebarCss).toMatch(
-      /\.thread-list\s*\{[\s\S]*?padding:\s*1px\s+4px\s+2px;/,
+      /\.thread-list\s*\{[\s\S]*?padding:\s*1px\s+8px\s+2px\s+12px;/,
     );
     expect(shellCss).toMatch(/--sidebar-row-radius:\s*6px;/);
   });

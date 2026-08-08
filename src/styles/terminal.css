@@ -237,13 +237,21 @@
   padding: 8px 12px 8px;
 }
 
+/* xterm 的 viewport 常驻 overflow-y: scroll。不主题化时,深色模式下系统默认
+   的浅色滚动槽会在深色终端上形成一条扎眼的亮竖条。
+   几何与全局 --sb-* / ScrollArea 一致：10px 通道、可视滑块约 4px；
+   默认隐藏滑块，悬停终端区域才淡显（对齐 .scrollable / 右侧面板轻滚动条）。 */
 .terminal-surface .xterm-viewport {
   height: 100% !important;
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
 }
 
-/* xterm 的 viewport 常驻 overflow-y: scroll。不主题化时,深色模式下系统默认
-   的浅色滚动槽会在深色终端上形成一条扎眼的亮竖条。让滚动槽透明(露出终端
-   背景)、滑块随全局滚动条色淡显,消除亮条同时保留滚动能力。 */
+.terminal-surface:hover .xterm-viewport,
+.terminal-surface:focus-within .xterm-viewport {
+  scrollbar-color: var(--scrollbar-thumb) transparent;
+}
+
 .terminal-surface .xterm-viewport::-webkit-scrollbar {
   width: var(--sb-size);
   height: var(--sb-size);
@@ -259,14 +267,21 @@
   border-color: transparent;
   border-width: var(--sb-thumb-inset);
   background-clip: content-box;
-  /* fallback 到 --scrollbar-thumb:滚动条样式收窄后,全局 `*` 不再兜底赋值
-     --sb-thumb-color,此处裸用会解析失败使滑块透明。终端不套用 .scrollable,
-     故直接取全局滚动条色还原原本表现。 */
-  background-color: var(--sb-thumb-color, var(--scrollbar-thumb));
+  /* 默认透明；不套 .scrollable，避免把终端登记进全局 scrollbars 清单 */
+  background-color: transparent;
+}
+
+.terminal-surface:hover .xterm-viewport::-webkit-scrollbar-thumb,
+.terminal-surface:focus-within .xterm-viewport::-webkit-scrollbar-thumb {
+  background-color: var(--scrollbar-thumb);
 }
 
 .terminal-surface .xterm-viewport::-webkit-scrollbar-thumb:hover {
-  background-color: color-mix(in srgb, var(--terminal-foreground) 40%, transparent);
+  background-color: var(--scrollbar-thumb-hover);
+}
+
+.terminal-surface .xterm-viewport::-webkit-scrollbar-corner {
+  background: transparent;
 }
 
 .terminal-surface .composition-view {

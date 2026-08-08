@@ -670,7 +670,7 @@ export type SharedV2AbandonUnresolvedAttemptResult =
 
 /**
  * 用户显式「放弃本轮」：durable cancel 未决 attempt。
- * `forceStop=true` 时若 Runtime 仍 own 会先 interrupt 再结算。
+ * `forceStop=true`：Runtime 仍 own 时 best-effort interrupt，失败也必须 durable cancel 解锁。
  */
 export async function sharedSessionV2AbandonUnresolvedAttempt(
   workspaceId: string,

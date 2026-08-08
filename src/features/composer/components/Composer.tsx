@@ -46,6 +46,7 @@ import {
   type ExecutionTarget,
 } from "../../shared-session/target/types";
 import { persistSharedSessionSelectedTarget } from "../../shared-session/services/sharedSessions";
+import { shouldSuppressSharedTargetPersistToast } from "../../shared-session/target/sharedTargetPersistErrors";
 import { resolveComposerAtomicSelectedModelId } from "../utils/resolveComposerAtomicSelectedModelId";
 import { resolveDefaultCreationExecutionTarget } from "../utils/resolveDefaultCreationExecutionTarget";
 import { isSharedSessionThreadId } from "../../shared-session/utils/sharedSessionIdentity";
@@ -61,9 +62,7 @@ import { useComposerAutocompleteState } from "../hooks/useComposerAutocompleteSt
 import { useComposerDraft } from "../hooks/composerDraftStore";
 import { ChatInputBoxAdapter } from "./ChatInputBox/ChatInputBoxAdapter";
 import type { ChatInputBoxHandle } from "./ChatInputBox/ChatInputBoxAdapter";
-import {
-  isSameProviderExecutionProfile,
-} from "./ChatInputBox/selectors/ModelSelect";
+import { isSameProviderExecutionProfile } from "./ChatInputBox/selectors/ModelSelect";
 import {
   accessModeToPermissionMode,
   permissionModeToAccessMode,
@@ -78,7 +77,10 @@ import {
   type ClaudeRewindPreviewState,
 } from "./ClaudeRewindConfirmDialog";
 import { ReviewInlinePrompt } from "./ReviewInlinePrompt";
-import { ComposerBranchBadge, type ComposerBranchControl } from "./ComposerBranchBadge";
+import {
+  ComposerBranchBadge,
+  type ComposerBranchControl,
+} from "./ComposerBranchBadge";
 import { ContextBar } from "./ChatInputBox/ContextBar";
 import { TokenIndicator } from "./ChatInputBox/TokenIndicator";
 import type {
@@ -90,6 +92,18 @@ import type {
   SelectedAgent as ChatInputSelectedAgent,
 } from "./ChatInputBox/types";
 import { useStatusPanelData } from "../../status-panel/hooks/useStatusPanelData";
+import {
+  ComposerRunStatusStrip,
+  collectRunStatusSubagentSourceItems,
+} from "./run-status";
+import { isEngineCapabilityAvailable } from "../../engine/engineCapabilityMatrix";
+import { overlaySessionFileChangesWithGitStats } from "../../messages/utils/turnFileChanges";
+import {
+  ingestFileEditsFromConversationItems,
+  removeFileEditPaths,
+} from "../../session-side-effects/sessionSideEffectLedger";
+import { useActiveCanvasSelector } from "../../layout/hooks/activeCanvasStore";
+import { enrichTimelineWithSyntheticSubagentsBeforeCollapse } from "../../subagent-ui";
 import {
   assembleSinglePrompt,
   expandLeadingManagedCommand,
@@ -155,6 +169,14 @@ import {
 import { IntentCanvasAttachmentCard } from "../../intent-canvas/components/IntentCanvasAttachmentCard";
 import type { IntentCanvasDocument } from "../../intent-canvas/types";
 import { resolveBrowserNavigationUrl } from "../utils/browserNavigation";
+import { useAgentProjection } from "../../multi-agent/store/agentStore";
+import { useCollabUiState } from "../../multi-agent/store/collabUiStore";
+import { isTerminalAgentStatus } from "../../multi-agent/types";
+import {
+  isMultiAgentTargetSupported,
+  MultiAgentComposerToggle,
+} from "../../multi-agent/components/ComposerToggle";
+
 
 type RewindExecutionOptions = {
   mode?: RewindMode;
@@ -177,16 +199,23 @@ function finiteNonNegative(value: number | null | undefined): number | null {
 
 function finitePositive(value: number | null | undefined): number | null {
   const normalizedValue = finiteNonNegative(value);
-  return normalizedValue !== null && normalizedValue > 0 ? normalizedValue : null;
+  return normalizedValue !== null && normalizedValue > 0
+    ? normalizedValue
+    : null;
 }
 
-function resolveClaudeWindowUsedTokens(contextUsage: ThreadTokenUsage): number | null {
-  const explicitContextUsedTokens = finiteNonNegative(contextUsage.contextUsedTokens);
+function resolveClaudeWindowUsedTokens(
+  contextUsage: ThreadTokenUsage,
+): number | null {
+  const explicitContextUsedTokens = finiteNonNegative(
+    contextUsage.contextUsedTokens,
+  );
   if (explicitContextUsedTokens !== null) {
     return explicitContextUsedTokens;
   }
   const inputTokens = finiteNonNegative(contextUsage.last.inputTokens) ?? 0;
-  const cachedInputTokens = finiteNonNegative(contextUsage.last.cachedInputTokens) ?? 0;
+  const cachedInputTokens =
+    finiteNonNegative(contextUsage.last.cachedInputTokens) ?? 0;
   const hasWindowSnapshot = inputTokens > 0 || cachedInputTokens > 0;
   return hasWindowSnapshot ? inputTokens + cachedInputTokens : null;
 }
@@ -260,7 +289,12 @@ type ComposerProps = {
   onSelectAccessMode: (
     mode: "default" | "read-only" | "current" | "full-access",
   ) => void;
-  skills: { name: string; path: string; description?: string; source?: string }[];
+  skills: {
+    name: string;
+    path: string;
+    description?: string;
+    source?: string;
+  }[];
   customSkillDirectories?: string[];
   prompts: CustomPromptOption[];
   commands?: CustomCommandOption[];
@@ -376,6 +410,23 @@ type ComposerProps = {
   plan?: TurnPlan | null;
   isPlanMode?: boolean;
   onOpenDiffPath?: (path: string) => void;
+  /**
+   * 工作区 git 脏文件（含行统计）。会话「已编辑」pill 的 +/− 以此为准，
+   * path 集合仍来自本会话 AI 工具调用。
+   */
+  gitChangedFiles?: Array<{
+    path: string;
+    additions: number;
+    deletions: number;
+  }> | null;
+  /** 非 git 仓库时传 false，退回 tool 统计 */
+  isGitRepository?: boolean;
+  /** AI 改文件后请求刷新 git status（防抖由 Composer 侧触发） */
+  onRequestGitStatusRefresh?: () => void;
+  /** 撤销会话已编辑列表中的单个文件（git restore） */
+  onRevertFile?: (path: string) => void | Promise<void>;
+  /** 撤销会话已编辑列表中的多个文件 */
+  onRevertAllFiles?: (paths: string[]) => void | Promise<void>;
   onRewind?: (
     userMessageId: string,
     options?: RewindExecutionOptions,
@@ -478,7 +529,6 @@ function resolveSelectedNamedItems<T extends { name: string }>(
   }
   return resolved;
 }
-
 
 const OPENCODE_DIRECT_COMMANDS = new Set(["status", "mcp", "export", "share"]);
 
@@ -637,6 +687,11 @@ function ComposerImpl({
   plan = null,
   isPlanMode = false,
   onOpenDiffPath,
+  gitChangedFiles = null,
+  isGitRepository = true,
+  onRequestGitStatusRefresh,
+  onRevertFile,
+  onRevertAllFiles,
   onRewind,
   rewindDialogRequest = null,
   onRewindDialogRequestConsumed,
@@ -669,12 +724,6 @@ function ComposerImpl({
   });
   const isReviewQuickActionEngine =
     selectedEngine === "codex" || selectedEngine === "claude";
-  const showStatusPanel =
-    selectedEngine === "claude" ||
-    selectedEngine === "codex" ||
-    selectedEngine === "gemini" ||
-    selectedEngine === "grok" ||
-    selectedEngine === "kimi";
   const sharedTargetState = useSharedTargetState(
     activeWorkspaceId ?? "",
     activeThreadId ?? "",
@@ -705,9 +754,9 @@ function ComposerImpl({
   const effectiveCreationTarget =
     selectedCreationTarget ?? defaultCreationTarget;
   // 只在 engine 语义变化时通知父层，避免等价 setState 触发 layout 重渲染环
-  const publishedCreationTargetEngineRef = useRef<EngineType | null | undefined>(
-    undefined,
-  );
+  const publishedCreationTargetEngineRef = useRef<
+    EngineType | null | undefined
+  >(undefined);
   useEffect(() => {
     if (!createSessionTargetPicker) {
       publishedCreationTargetEngineRef.current = undefined;
@@ -786,8 +835,7 @@ function ComposerImpl({
     const isLocalClaude =
       selectedEngine === "claude" &&
       rawProfileId === CLAUDE_LOCAL_PROVIDER_PROFILE_ID;
-    const profileId =
-      isLocalCodexDisk || isLocalClaude ? null : rawProfileId;
+    const profileId = isLocalCodexDisk || isLocalClaude ? null : rawProfileId;
     const profileName = providerProfileName?.trim() || null;
     const propModelId = selectedModelId?.trim() || null;
     const modelCatalogEntryId =
@@ -842,6 +890,34 @@ function ComposerImpl({
     : createSessionTargetPicker
       ? effectiveCreationTarget
       : nativeSessionTarget;
+  const [agentArmed, setAgentArmed] = useState(false);
+  const agentProjection = useAgentProjection(activeWorkspaceId, activeThreadId);
+  const agentTargetSupported = isMultiAgentTargetSupported(
+    selectedAtomicTarget?.engine,
+  );
+  const hasActiveAgentRun = Boolean(
+    agentProjection && !isTerminalAgentStatus(agentProjection.status),
+  );
+  const collabUi = useCollabUiState(activeWorkspaceId, activeThreadId);
+  // 协作运行中（含启动/汇总空窗）pill 显示进行中，避免「未开启」误导
+  const collabRunActive =
+    hasActiveAgentRun ||
+    Boolean(
+      collabUi &&
+        collabUi.phase !== "idle" &&
+        collabUi.phase !== "done",
+    );
+  // 编排执行中锁定主输入区；终态后 collabRunActive 变 false 自动恢复
+  const collabLocksComposer = collabRunActive;
+  const composerInteractionDisabled = disabled || collabLocksComposer;
+  useEffect(() => {
+    setAgentArmed(false);
+  }, [activeThreadId, activeWorkspaceId]);
+  useEffect(() => {
+    if (!agentTargetSupported) {
+      setAgentArmed(false);
+    }
+  }, [agentTargetSupported]);
   /**
    * Shared / create-session Atomic：思考档位 options + effort 只信 target 的
    * engine+model。Native Codex 残留的 activeEngine / selectedEffort /
@@ -870,7 +946,8 @@ function ComposerImpl({
       supportedReasoningEfforts?: ModelOption["supportedReasoningEfforts"];
       defaultReasoningEffort?: string | null;
     };
-    const catalog = (providerModelCatalogs?.codex ?? []) as ModelReasoningLike[];
+    const catalog = (providerModelCatalogs?.codex ??
+      []) as ModelReasoningLike[];
     const parentModels = models as ModelReasoningLike[];
     const matchByIdentity = (entry: ModelReasoningLike) => {
       if (catalogEntryId && entry.id === catalogEntryId) {
@@ -890,14 +967,8 @@ function ComposerImpl({
     return {
       engine: target.engine,
       model: {
-        id:
-          catalogEntryId ??
-          preferred?.id ??
-          runtimeModel,
-        model:
-          runtimeModel ??
-          preferred?.model ??
-          catalogEntryId,
+        id: catalogEntryId ?? preferred?.id ?? runtimeModel,
+        model: runtimeModel ?? preferred?.model ?? catalogEntryId,
         source: preferred?.source ?? undefined,
         supportedReasoningEfforts:
           preferred?.supportedReasoningEfforts &&
@@ -926,11 +997,7 @@ function ComposerImpl({
       );
     }
     return [];
-  }, [
-    atomicModelReasoningRef,
-    reasoningOptions,
-    useAtomicReasoningProjection,
-  ]);
+  }, [atomicModelReasoningRef, reasoningOptions, useAtomicReasoningProjection]);
   const atomicSelectedEffort = useMemo(() => {
     if (!useAtomicReasoningProjection) {
       return selectedEffort;
@@ -965,16 +1032,11 @@ function ComposerImpl({
       return;
     }
     const engine = selectedSharedTarget.engine;
-    if (
-      engine !== "codex" &&
-      engine !== "claude" &&
-      engine !== "grok"
-    ) {
+    if (engine !== "codex" && engine !== "claude" && engine !== "grok") {
       return;
     }
     const raw = selectedSharedTarget.reasoning?.effort ?? null;
-    const normalizedRaw =
-      typeof raw === "string" ? raw.trim() || null : null;
+    const normalizedRaw = typeof raw === "string" ? raw.trim() || null : null;
     const reconciled = reconcileAtomicReasoningEffort({
       engine,
       model: atomicModelReasoningRef.model,
@@ -997,10 +1059,7 @@ function ComposerImpl({
     sharedTargetPickerLocked,
   ]);
   const imageAttachEngine = useMemo((): EngineType | null => {
-    if (
-      isSharedSession &&
-      isResolvedExecutionTarget(selectedSharedTarget)
-    ) {
+    if (isSharedSession && isResolvedExecutionTarget(selectedSharedTarget)) {
       return selectedSharedTarget.engine;
     }
     if (
@@ -1057,13 +1116,18 @@ function ComposerImpl({
   const sharedTargetPersistenceByThreadRef = useRef(
     new Map<string, Promise<void>>(),
   );
+  // 异步 persist 晚于切 workspace/thread 时用 ref 判断「用户是否还在该会话」。
+  const activeSharedPersistScopeRef = useRef({
+    workspaceId: activeWorkspaceId,
+    threadId: activeThreadId,
+  });
+  activeSharedPersistScopeRef.current = {
+    workspaceId: activeWorkspaceId,
+    threadId: activeThreadId,
+  };
   const handleSharedTargetChange = useCallback(
     (target: ExecutionTarget) => {
-      if (
-        !activeWorkspaceId ||
-        !activeThreadId ||
-        sharedTargetPickerLocked
-      ) {
+      if (!activeWorkspaceId || !activeThreadId || sharedTargetPickerLocked) {
         return;
       }
       if (!isResolvedExecutionTarget(target)) {
@@ -1091,20 +1155,34 @@ function ComposerImpl({
             threadId,
             target,
           );
-          const persistedTarget =
-            resolveBackendAuthoritativeExecutionTarget(response, target);
+          const persistedTarget = resolveBackendAuthoritativeExecutionTarget(
+            response,
+            target,
+          );
           hydrateSharedTargetState(workspaceId, threadId, persistedTarget);
           dispatchSharedSendEvent(workspaceId, threadId, {
             type: "targetRepaired",
           });
         })
         .catch((error) => {
-          // 持久化失败：回滚到变更前值。
+          // 持久化失败：回滚到变更前值（不依赖 toast）。
           hydrateSharedTargetState(
             workspaceId,
             threadId,
             previousTarget ?? null,
           );
+          const scope = activeSharedPersistScopeRef.current;
+          if (
+            shouldSuppressSharedTargetPersistToast(error, {
+              persistWorkspaceId: workspaceId,
+              persistThreadId: threadId,
+              activeWorkspaceId: scope.workspaceId,
+              activeThreadId: scope.threadId,
+            })
+          ) {
+            // 切走会话 / meta 缺失：静默，避免用户只切空间/会话却被红字吓到。
+            return;
+          }
           pushErrorToast({
             title: t("sharedSend.selectionPersistFailedTitle"),
             message: t("sharedSend.selectionPersistFailedMessage", {
@@ -1128,12 +1206,7 @@ function ComposerImpl({
         }
       });
     },
-    [
-      activeThreadId,
-      activeWorkspaceId,
-      sharedTargetPickerLocked,
-      t,
-    ],
+    [activeThreadId, activeWorkspaceId, sharedTargetPickerLocked, t],
   );
   const handleNativeProviderTargetChange = useCallback(
     (target: ExecutionTarget) => {
@@ -1175,7 +1248,11 @@ function ComposerImpl({
    */
   const handleNativeAtomicTargetChange = useCallback(
     (target: ExecutionTarget) => {
-      if (isSharedSessionResolved || createSessionTargetPicker || !selectedEngine) {
+      if (
+        isSharedSessionResolved ||
+        createSessionTargetPicker ||
+        !selectedEngine
+      ) {
         return;
       }
       const currentProvider = selectedEngine as ProviderId;
@@ -1186,8 +1263,7 @@ function ComposerImpl({
       );
       const catalogEntryId =
         target.modelCatalogEntryId?.trim() || target.model?.trim() || null;
-      const runtimeModel =
-        target.model?.trim() || catalogEntryId;
+      const runtimeModel = target.model?.trim() || catalogEntryId;
       const nextEffort = target.reasoning?.effort ?? null;
       if (sameProfile) {
         if (catalogEntryId && runtimeModel) {
@@ -1260,49 +1336,258 @@ function ComposerImpl({
   const [text, setText] = useState(draftText);
   const [selectionStart, setSelectionStart] = useState<number | null>(null);
   const [selectedSkillNames, setSelectedSkillNames] = useState<string[]>([]);
-  const [selectedCommonsNames, setSelectedCommonsNames] = useState<string[]>([]);
-  const [selectedManualMemories, setSelectedManualMemories] = useState<ManualMemorySelection[]>([]);
-  const [selectedNoteCards, setSelectedNoteCards] = useState<NoteCardSelection[]>([]);
-  const [memoryReferenceMode, setMemoryReferenceMode] = useState<MemoryReferenceMode>("off");
-  const [carryOverManualMemoryIds, setCarryOverManualMemoryIds] = useState<string[]>([]);
-  const [retainedManualMemoryIds, setRetainedManualMemoryIds] = useState<string[]>([]);
-  const [carryOverNoteCardIds, setCarryOverNoteCardIds] = useState<string[]>([]);
+  const [selectedCommonsNames, setSelectedCommonsNames] = useState<string[]>(
+    [],
+  );
+  const [selectedManualMemories, setSelectedManualMemories] = useState<
+    ManualMemorySelection[]
+  >([]);
+  const [selectedNoteCards, setSelectedNoteCards] = useState<
+    NoteCardSelection[]
+  >([]);
+  const [memoryReferenceMode, setMemoryReferenceMode] =
+    useState<MemoryReferenceMode>("off");
+  const [carryOverManualMemoryIds, setCarryOverManualMemoryIds] = useState<
+    string[]
+  >([]);
+  const [retainedManualMemoryIds, setRetainedManualMemoryIds] = useState<
+    string[]
+  >([]);
+  const [carryOverNoteCardIds, setCarryOverNoteCardIds] = useState<string[]>(
+    [],
+  );
   const [retainedNoteCardIds, setRetainedNoteCardIds] = useState<string[]>([]);
-  const [carryOverContextChipKeys, setCarryOverContextChipKeys] = useState<string[]>([]);
+  const [carryOverContextChipKeys, setCarryOverContextChipKeys] = useState<
+    string[]
+  >([]);
   const [, setRetainedContextChipKeys] = useState<string[]>([]);
-  const [selectedInlineFileReferences, setSelectedInlineFileReferences] = useState<InlineFileReferenceSelection[]>([]);
+  const [selectedInlineFileReferences, setSelectedInlineFileReferences] =
+    useState<InlineFileReferenceSelection[]>([]);
   const browserContext = useBrowserContextAttachment(activeWorkspaceId);
   const onClearCodeAnnotationsRef = useRef(onClearCodeAnnotations);
   const [isComposerCollapsed, setIsComposerCollapsed] = useState(false);
   const [dismissedActiveFileReference, setDismissedActiveFileReference] =
     useState<string | null>(null);
-  const [openCodeProviderTone, _setOpenCodeProviderTone] = useState<"is-ok" | "is-runtime" | "is-fail">("is-fail");
-  const [openCodeProviderToneReady, _setOpenCodeProviderToneReady] = useState(false);
+  const [openCodeProviderTone, _setOpenCodeProviderTone] = useState<
+    "is-ok" | "is-runtime" | "is-fail"
+  >("is-fail");
+  const [openCodeProviderToneReady, _setOpenCodeProviderToneReady] =
+    useState(false);
   const [rewindInFlight, setRewindInFlight] = useState(false);
-  const [rewindPreviewState, setRewindPreviewState] = useState<ClaudeRewindPreviewState | null>(null);
-  const [rewindMode, setRewindMode] = useState<RewindMode>("messages-and-files");
+  const [rewindPreviewState, setRewindPreviewState] =
+    useState<ClaudeRewindPreviewState | null>(null);
+  const [rewindMode, setRewindMode] =
+    useState<RewindMode>("messages-and-files");
   const rewindInFlightRef = useRef(false);
   const handledRewindDialogRequestIdRef = useRef<number | null>(null);
   const handledNoteCardSelectionRequestIdRef = useRef<number | null>(null);
-  const lastExpandedHeightRef = useRef(Math.max(textareaHeight, COMPOSER_EXPAND_HEIGHT));
+  const lastExpandedHeightRef = useRef(
+    Math.max(textareaHeight, COMPOSER_EXPAND_HEIGHT),
+  );
   const composerInputInteractionTimerRef = useRef<number | null>(null);
-  const [isComposerInputInteractionActive, setIsComposerInputInteractionActive] = useState(false);
+  const [
+    isComposerInputInteractionActive,
+    setIsComposerInputInteractionActive,
+  ] = useState(false);
   const shouldDeferStatusSummary =
     isProcessing && isComposerInputInteractionActive;
-  const { todoTotal, subagentTotal, fileChanges, commandTotal } =
-    useStatusPanelData(performanceScopedItems, {
-      isCodexEngine,
+  // —— 子代理 Strip 源：S10 同源合成，只喂 Strip，不进主幕布 ——
+  // 断点修复：useStatusPanelData 在传入 itemsByThread 时只扫表内条目，
+  // 必须把「含 synthetic spawn」的 items 写回 activeThread 槽位，否则合成等于没接。
+  const canvasChildSubagentThreads = useActiveCanvasSelector(
+    (snapshot) => snapshot.childSubagentThreads,
+  );
+  const canvasThreadIdForStrip = useActiveCanvasSelector(
+    (snapshot) => snapshot.threadId,
+  );
+  const canvasStatusById = useActiveCanvasSelector(
+    (snapshot) => snapshot.threadStatusById,
+  );
+  const canvasItemsByThread = useActiveCanvasSelector(
+    (snapshot) => snapshot.threadItemsByThread,
+  );
+  // 子线程：canvas 过滤 + threadParentById 上挂到当前会话的 id（Shared 历史常用）
+  const stripChildThreads = useMemo(() => {
+    const byId = new Map(
+      canvasChildSubagentThreads.map((thread) => [thread.id, thread]),
+    );
+    const parentMap = threadParentById ?? {};
+    const activeId = (activeThreadId ?? "").trim();
+    if (activeId) {
+      for (const [childId, parentId] of Object.entries(parentMap)) {
+        if (parentId !== activeId || !childId || childId === activeId) continue;
+        if (byId.has(childId)) continue;
+        byId.set(childId, {
+          id: childId,
+          name: childId,
+          updatedAt: 0,
+          engineSource: selectedEngine ?? "claude",
+        });
+      }
+    }
+    return Array.from(byId.values());
+  }, [
+    canvasChildSubagentThreads,
+    threadParentById,
+    activeThreadId,
+    selectedEngine,
+  ]);
+  const runStatusItemsWithSyntheticSubagents = useMemo(
+    () =>
+      enrichTimelineWithSyntheticSubagentsBeforeCollapse({
+        items: performanceScopedItems,
+        ownThreadId: activeThreadId,
+        canvasThreadId: canvasThreadIdForStrip ?? activeThreadId,
+        activeEngine: selectedEngine ?? null,
+        childThreads: stripChildThreads,
+        statusById: canvasStatusById,
+        itemsByThread: canvasItemsByThread,
+      }),
+    [
+      performanceScopedItems,
       activeThreadId,
-      itemsByThread: threadItemsByThread,
-      threadParentById,
-      threadStatusById,
-      deferSummary: shouldDeferStatusSummary,
+      canvasThreadIdForStrip,
+      selectedEngine,
+      stripChildThreads,
+      canvasStatusById,
+      canvasItemsByThread,
+    ],
+  );
+  // 实时协作：worker 工具事实隔离在 agent-canvas:{shared}:{attempt}，
+  // 主幕 shared: 只有消息/汇总 → 把本会话 agent-canvas 的 subagent 工具并入扫描源。
+  const runStatusItemsForStrip = useMemo(
+    () =>
+      collectRunStatusSubagentSourceItems({
+        mainItems: runStatusItemsWithSyntheticSubagents,
+        threadItemsByThread: canvasItemsByThread ?? threadItemsByThread,
+        activeThreadId,
+      }),
+    [
+      runStatusItemsWithSyntheticSubagents,
+      canvasItemsByThread,
+      threadItemsByThread,
+      activeThreadId,
+    ],
+  );
+  // 关键：把合成后的 items 写入 activeThread，供 collectScopedToolEntries 扫到
+  const itemsByThreadForRunStatus = useMemo(() => {
+    const base = {
+      ...(canvasItemsByThread ?? {}),
+      ...(threadItemsByThread ?? {}),
+    };
+    const activeId = (activeThreadId ?? "").trim();
+    if (!activeId) return base;
+    return {
+      ...base,
+      [activeId]: runStatusItemsForStrip,
+    };
+  }, [
+    canvasItemsByThread,
+    threadItemsByThread,
+    activeThreadId,
+    runStatusItemsForStrip,
+  ]);
+  const {
+    todos: statusTodos,
+    subagents: statusSubagents,
+    todoTotal,
+    commandTotal,
+  } = useStatusPanelData(runStatusItemsForStrip, {
+    isCodexEngine,
+    activeEngine: selectedEngine ?? null,
+    activeThreadId,
+    itemsByThread: itemsByThreadForRunStatus,
+    threadParentById,
+    threadStatusById: threadStatusById ?? canvasStatusById,
+    // S10 同源子代理线程（含 Shared 无 parent 的 claude:subagent:owner:*）
+    childSubagentThreadIds: stripChildThreads.map((thread) => thread.id),
+    deferSummary: shouldDeferStatusSummary,
+  });
+  // 已编辑：ledger 合成主线∪agent-canvas（Shared/协作 fan-in），用未 deferred items 保证实时
+  const sessionToolFileChanges = useMemo(() => {
+    return ingestFileEditsFromConversationItems({
+      threadId: activeThreadId,
+      mainItems: items,
+      threadItemsByThread: threadItemsByThread ?? canvasItemsByThread,
     });
+  }, [items, threadItemsByThread, canvasItemsByThread, activeThreadId]);
+
+  // 回合结束后 git 刷新有延迟：短 grace 内仍允许 tool 临时数，避免 pill 闪空
+  const [gitOverlayGrace, setGitOverlayGrace] = useState(false);
+  useEffect(() => {
+    if (isProcessing) {
+      setGitOverlayGrace(true);
+      return;
+    }
+    const timer = window.setTimeout(() => setGitOverlayGrace(false), 1600);
+    return () => window.clearTimeout(timer);
+  }, [isProcessing]);
+
+  // 行统计对齐 git status；进行中/grace 内允许 tool 临时数，稳定后只保留仍 dirty 的 path
+  const sessionFileChanges = useMemo(
+    () =>
+      overlaySessionFileChangesWithGitStats(
+        sessionToolFileChanges,
+        isGitRepository ? gitChangedFiles : null,
+        {
+          workspacePath: activeWorkspacePath ?? null,
+          allowToolProvisional: Boolean(isProcessing) || gitOverlayGrace,
+        },
+      ),
+    [
+      activeWorkspacePath,
+      gitChangedFiles,
+      gitOverlayGrace,
+      isGitRepository,
+      isProcessing,
+      sessionToolFileChanges,
+    ],
+  );
+
+  // AI 改文件后尽快刷 git，避免 pill 长期停在 tool 临时数或虚高累加
+  const sessionToolFileSignature = useMemo(() => {
+    if (!sessionToolFileChanges) return "";
+    return sessionToolFileChanges.files
+      .map((file) => `${file.path}:${file.additions}:${file.deletions}`)
+      .join("|");
+  }, [sessionToolFileChanges]);
+
+  useEffect(() => {
+    if (!onRequestGitStatusRefresh || !isGitRepository) return;
+    if (!sessionToolFileSignature) return;
+    const timer = window.setTimeout(() => {
+      onRequestGitStatusRefresh();
+    }, 450);
+    return () => window.clearTimeout(timer);
+  }, [
+    isGitRepository,
+    onRequestGitStatusRefresh,
+    sessionToolFileSignature,
+  ]);
+
+  const handleRevertFileForStrip = useCallback(
+    async (path: string) => {
+      await onRevertFile?.(path);
+      removeFileEditPaths(activeThreadId, [path]);
+    },
+    [activeThreadId, onRevertFile],
+  );
+  const handleRevertAllFilesForStrip = useCallback(
+    async (paths: string[]) => {
+      await onRevertAllFiles?.(paths);
+      removeFileEditPaths(activeThreadId, paths);
+    },
+    [activeThreadId, onRevertAllFiles],
+  );
+  const mergePlanIntoTodos =
+    isCodexEngine &&
+    selectedEngine != null &&
+    isEngineCapabilityAvailable(selectedEngine, "collaboration.mode");
+  // 底部 legacy dock 活动：子代理已迁到 Strip 独立判定，不并入此铁律
   const hasStatusPanelActivity = useMemo(() => {
     const hasLegacyActivity =
       todoTotal > 0 ||
-      subagentTotal > 0 ||
-      fileChanges.length > 0 ||
+      Boolean(sessionFileChanges) ||
       isPlanMode ||
       Boolean(plan);
     if (isCodexEngine) {
@@ -1311,24 +1596,25 @@ function ComposerImpl({
     return hasLegacyActivity;
   }, [
     commandTotal,
-    fileChanges.length,
     isCodexEngine,
     isPlanMode,
     plan,
-    subagentTotal,
+    sessionFileChanges,
     todoTotal,
   ]);
-  const [statusPanelExpanded, setStatusPanelExpanded] = useState(hasStatusPanelActivity);
+  // 底部 dock 已退役；toggle 仅兼容旧 override，默认不再展示。
+  const [statusPanelExpanded, setStatusPanelExpanded] = useState(false);
   const previousStatusPanelActivityRef = useRef(hasStatusPanelActivity);
   const internalRef = useRef<HTMLTextAreaElement | null>(null);
   const textareaRef = externalTextareaRef ?? internalRef;
   const chatInputRef = useRef<ChatInputBoxHandle>(null);
   const activeFileReferenceSignature = activeFilePath
-    ? (activeFileLineRange
+    ? activeFileLineRange
       ? `${activeFilePath}:${activeFileLineRange.startLine}-${activeFileLineRange.endLine}`
-      : `${activeFilePath}:all`)
+      : `${activeFilePath}:all`
     : null;
-  const rewindSupportedEngine = resolveRewindSupportedEngineFromThreadId(activeThreadId);
+  const rewindSupportedEngine =
+    resolveRewindSupportedEngineFromThreadId(activeThreadId);
   const canRewindSession = Boolean(onRewind && rewindSupportedEngine);
   const resetRewindState = useEventCallback(() => {
     if (rewindPreviewState !== null) {
@@ -1576,11 +1862,7 @@ function ComposerImpl({
       cleanedText: cleanedSelectionText,
       matchedSkillNames,
       matchedCommonsNames,
-    } = extractInlineSelections(
-      text,
-      skillsRef.current,
-      commandsRef.current,
-    );
+    } = extractInlineSelections(text, skillsRef.current, commandsRef.current);
     if (matchedSkillNames.length > 0) {
       setSelectedSkillNames((prev) =>
         mergeUniqueNames(prev, matchedSkillNames),
@@ -1626,11 +1908,13 @@ function ComposerImpl({
   useEffect(() => {
     if (
       !externalNoteCardSelectionRequest ||
-      handledNoteCardSelectionRequestIdRef.current === externalNoteCardSelectionRequest.requestId
+      handledNoteCardSelectionRequestIdRef.current ===
+        externalNoteCardSelectionRequest.requestId
     ) {
       return;
     }
-    handledNoteCardSelectionRequestIdRef.current = externalNoteCardSelectionRequest.requestId;
+    handledNoteCardSelectionRequestIdRef.current =
+      externalNoteCardSelectionRequest.requestId;
     const requestedNoteCard = externalNoteCardSelectionRequest.noteCard;
     setSelectedNoteCards((previous) =>
       previous.some((entry) => entry.id === requestedNoteCard.id)
@@ -1675,16 +1959,13 @@ function ComposerImpl({
     );
   }, []);
 
-  const {
-    isAutocompleteOpen,
-    handleTextChange,
-    handleSelectionChange,
-  } = useComposerAutocompleteState({
-    text,
-    selectionStart,
-    setText: setComposerText,
-    setSelectionStart,
-  });
+  const { isAutocompleteOpen, handleTextChange, handleSelectionChange } =
+    useComposerAutocompleteState({
+      text,
+      selectionStart,
+      setText: setComposerText,
+      setSelectionStart,
+    });
   const reviewPromptOpen = Boolean(reviewPrompt);
   const suggestionsOpen = reviewPromptOpen || isAutocompleteOpen;
 
@@ -1698,13 +1979,11 @@ function ComposerImpl({
 
   const applyActiveFileReference = useCallback(
     (message: string) => {
-      if (
-        !(
-          hasActiveFileReference &&
-          fileReferenceMode === "path" &&
-          activeFilePath
-        )
-      ) {
+      if (!(
+        hasActiveFileReference &&
+        fileReferenceMode === "path" &&
+        activeFilePath
+      )) {
         return message;
       }
       const referenceTarget = activeFileLineRange
@@ -1753,8 +2032,7 @@ function ComposerImpl({
   const handleToggleStatusPanel = useCallback(() => {
     setStatusPanelExpanded((prev) => !prev);
   }, []);
-  const resolvedShowStatusPanelToggle =
-    showStatusPanelToggleOverride ?? showStatusPanel;
+  const resolvedShowStatusPanelToggle = showStatusPanelToggleOverride ?? false;
   const resolvedStatusPanelExpanded =
     statusPanelExpandedOverride ?? statusPanelExpanded;
   const resolvedToggleStatusPanel =
@@ -1845,7 +2123,9 @@ function ComposerImpl({
     if (!rewindDialogRequest) {
       return;
     }
-    if (handledRewindDialogRequestIdRef.current === rewindDialogRequest.requestId) {
+    if (
+      handledRewindDialogRequestIdRef.current === rewindDialogRequest.requestId
+    ) {
       return;
     }
     handledRewindDialogRequestIdRef.current = rewindDialogRequest.requestId;
@@ -1892,13 +2172,7 @@ function ComposerImpl({
       setRewindInFlight(false);
       rewindInFlightRef.current = false;
     }
-  }, [
-    onRewind,
-    rewindMode,
-    rewindInFlight,
-    rewindPreviewState,
-    t,
-  ]);
+  }, [onRewind, rewindMode, rewindInFlight, rewindPreviewState, t]);
 
   const handleStoreRewindChanges = useCallback(
     async (preview: ClaudeRewindPreviewState) => {
@@ -1972,7 +2246,7 @@ function ComposerImpl({
 
   const handleCodexQuickCommand = useCallback(
     (command: string) => {
-      if (disabled || effectiveSubmitDisabled) {
+      if (disabled || effectiveSubmitDisabled || collabLocksComposer) {
         return;
       }
       const normalized = command.trim().toLowerCase();
@@ -1990,6 +2264,7 @@ function ComposerImpl({
       void onSend(command, []);
     },
     [
+      collabLocksComposer,
       disabled,
       effectiveSubmitDisabled,
       isReviewQuickActionEngine,
@@ -1999,7 +2274,7 @@ function ComposerImpl({
   );
 
   const handleForkQuickStart = useCallback(() => {
-    if (disabled || effectiveSubmitDisabled) {
+    if (disabled || effectiveSubmitDisabled || collabLocksComposer) {
       return;
     }
     if (onForkQuickStart) {
@@ -2011,6 +2286,7 @@ function ComposerImpl({
     }
     void onSend("/fork", []);
   }, [
+    collabLocksComposer,
     disabled,
     effectiveSubmitDisabled,
     onForkQuickStart,
@@ -2020,7 +2296,7 @@ function ComposerImpl({
 
   const handleSend = useCallback(
     (submittedText?: string, submittedImages?: string[]) => {
-      if (disabled || effectiveSubmitDisabled) {
+      if (disabled || effectiveSubmitDisabled || collabLocksComposer) {
         return;
       }
       if (opencodeDisconnected) {
@@ -2045,6 +2321,38 @@ function ComposerImpl({
         !hasIntentCanvasAttachments
       ) {
         return;
+      }
+      const isAgentSubmission = agentArmed;
+      if (isAgentSubmission) {
+        // Shared 内用户已启用协作：不再用 feature flag 拦截；
+        // 边界只看 shared 身份 + 完整 target（native 永不会走到 arm）。
+        if (
+          !isSharedSessionResolved ||
+          !isResolvedExecutionTarget(selectedAtomicTarget)
+        ) {
+          pushErrorToast({
+            title: t("multiAgent.errors.unavailableTitle"),
+            message: t("multiAgent.errors.incompleteTarget"),
+          });
+          return;
+        }
+        if (!isMultiAgentTargetSupported(selectedAtomicTarget.engine)) {
+          setAgentArmed(false);
+          pushErrorToast({
+            title: t("multiAgent.errors.unavailableTitle"),
+            message: t("multiAgent.errors.targetUnavailable"),
+          });
+          return;
+        }
+        // 图片：Context Fan-in 进首段，已放行。
+        // Browser Context / Intent Canvas 尚未并入协作首段注入链，暂仍拦截。
+        if (hasIntentCanvasAttachments || Boolean(browserContext.attachment)) {
+          pushErrorToast({
+            title: t("multiAgent.errors.attachmentsTitle"),
+            message: t("multiAgent.errors.attachments"),
+          });
+          return;
+        }
       }
       // Composer-side capability gate: keep draft when engine cannot accept images.
       // Current engines are all image-capable; retained for future unsupported engines.
@@ -2074,7 +2382,10 @@ function ComposerImpl({
           ? resolveBrowserNavigationUrl(trimmed)
           : null;
       if (browserNavigationUrl && activeWorkspaceId) {
-        window.sessionStorage.setItem(PENDING_BROWSER_URL_KEY, browserNavigationUrl);
+        window.sessionStorage.setItem(
+          PENDING_BROWSER_URL_KEY,
+          browserNavigationUrl,
+        );
         window.dispatchEvent(new CustomEvent(BROWSER_OPEN_DOCK_EVENT));
         window.dispatchEvent(
           new CustomEvent(BROWSER_OPEN_URL_EVENT, {
@@ -2107,12 +2418,19 @@ function ComposerImpl({
       const skillInvocations = shouldAssembleSelectedSkills
         ? assembleSkillInvocations({
             skills: selectedSkills,
-            commons: selectedCommons.map((item) => ({ name: item.name })),
+            commons: selectedCommons.map((item) => ({
+              name: item.name,
+              path: item.path,
+            })),
           })
         : [];
       // managed 目录命令引擎不可见，发送前在客户端展开为正文。
-      const expandedFinalText = expandLeadingManagedCommand(finalText, commands);
-      const finalTextWithReference = applyActiveFileReference(expandedFinalText);
+      const expandedFinalText = expandLeadingManagedCommand(
+        finalText,
+        commands,
+      );
+      const finalTextWithReference =
+        applyActiveFileReference(expandedFinalText);
       const resolvedFinalText = replaceVisibleFileReferenceLabels(
         normalizeInlineFileReferenceTokens(finalTextWithReference),
         selectedInlineFileReferences,
@@ -2125,6 +2443,7 @@ function ComposerImpl({
       const selectedNoteCardIds = selectedNoteCards.map((entry) => entry.id);
       const selectedMemoryInjectionMode = getManualMemoryInjectionMode();
       const shouldReferenceMemory = memoryReferenceMode !== "off";
+      // Context Fan-in（§8.6）：协作不再整类拦截 skill/记忆/便签；注入由发送链路首段消化。
       const browserContextAttachment = browserContext.attachment;
       const hasBrowserContextAttachment = Boolean(browserContextAttachment);
       const createSessionTarget =
@@ -2138,8 +2457,7 @@ function ComposerImpl({
                 effectiveCreationTarget.providerProfileNameSnapshot,
               providerProfileSource:
                 effectiveCreationTarget.providerProfileSource,
-              modelCatalogEntryId:
-                effectiveCreationTarget.modelCatalogEntryId,
+              modelCatalogEntryId: effectiveCreationTarget.modelCatalogEntryId,
               model: effectiveCreationTarget.model,
               effort: effectiveCreationTarget.reasoning?.effort ?? null,
             }
@@ -2150,16 +2468,42 @@ function ComposerImpl({
         selectedNoteCardIds.length > 0 ||
         shouldReferenceMemory ||
         hasBrowserContextAttachment ||
-        createSessionTarget !== null
+        createSessionTarget !== null ||
+        isAgentSubmission
           ? {
               ...(skillInvocations.length > 0 ? { skillInvocations } : {}),
-              ...(shouldReferenceMemory ? { memoryReferenceEnabled: true } : {}),
+              ...(shouldReferenceMemory
+                ? { memoryReferenceEnabled: true }
+                : {}),
               ...(selectedMemoryIds.length > 0
                 ? { selectedMemoryIds, selectedMemoryInjectionMode }
                 : {}),
-              ...(selectedNoteCardIds.length > 0 ? { selectedNoteCardIds } : {}),
+              ...(selectedNoteCardIds.length > 0
+                ? { selectedNoteCardIds }
+                : {}),
               ...(browserContextAttachment ? { browserContextAttachment } : {}),
               ...(createSessionTarget ? { createSessionTarget } : {}),
+              ...(isAgentSubmission &&
+              isResolvedExecutionTarget(selectedAtomicTarget)
+                ? {
+                    squadRequest: true as const,
+                    sharedExecutionTarget: {
+                      engine: selectedAtomicTarget.engine,
+                      providerProfileId:
+                        selectedAtomicTarget.providerProfileId?.trim() || null,
+                      modelCatalogEntryId:
+                        selectedAtomicTarget.modelCatalogEntryId,
+                      model: selectedAtomicTarget.model,
+                      reasoning: selectedAtomicTarget.reasoning
+                        ? { ...selectedAtomicTarget.reasoning }
+                        : null,
+                      providerProfileNameSnapshot:
+                        selectedAtomicTarget.providerProfileNameSnapshot,
+                      providerProfileSource:
+                        selectedAtomicTarget.providerProfileSource,
+                    },
+                  }
+                : {}),
             }
           : undefined;
       const sendResult = onSend(
@@ -2167,6 +2511,9 @@ function ComposerImpl({
         mergedImages,
         sendOptions,
       );
+      if (isAgentSubmission) {
+        setAgentArmed(false);
+      }
       if (browserContextAttachment) {
         browserContext.remove();
       }
@@ -2194,25 +2541,71 @@ function ComposerImpl({
       );
       setSelectedSkillNames([]);
       setSelectedCommonsNames([]);
-      void Promise.resolve(sendResult).finally(() => {
-        setSelectedManualMemories(retainedManualMemories);
-        setSelectedNoteCards(retainedNoteCards);
-        setSelectedInlineFileReferences([]);
-        onClearCodeAnnotations?.();
-        setSelectedSkillNames(retainedSkillNames);
-        setSelectedCommonsNames(retainedCommonsNames);
-        setRetainedManualMemoryIds(
-          retainedManualMemories.map((entry) => entry.id),
-        );
-        setRetainedNoteCardIds(retainedNoteCards.map((entry) => entry.id));
-        setRetainedContextChipKeys(nextRetainedContextChipKeys);
-        setCarryOverManualMemoryIds([]);
-        setCarryOverNoteCardIds([]);
-        setCarryOverContextChipKeys([]);
-        setMemoryReferenceMode((currentMode) =>
-          currentMode === "single" ? "off" : currentMode,
-        );
-      });
+      void Promise.resolve(sendResult)
+        .catch((error: unknown) => {
+          if (!isAgentSubmission) {
+            throw error;
+          }
+          setComposerText(submittedText ?? text);
+          setAgentArmed(true);
+          const diagnostic =
+            error instanceof Error ? error.message : String(error);
+          let message = t("multiAgent.errors.startFailedDiagnostic", {
+            diagnostic,
+          });
+          if (diagnostic.startsWith("agent-request-busy:")) {
+            message = t("multiAgent.errors.busy");
+          } else if (diagnostic.startsWith("agent-run-conflict:")) {
+            message = t("multiAgent.entry.activeRun");
+          } else if (
+            diagnostic.startsWith("agent-request-images-unsupported:")
+          ) {
+            message = t("multiAgent.errors.attachments");
+          } else if (
+            diagnostic.startsWith("agent-request-context-unsupported:")
+          ) {
+            message = t("multiAgent.errors.contextUnsupportedTitle");
+          } else if (
+            diagnostic.includes("target-capability-unavailable") ||
+            diagnostic.startsWith("agent-request-target-unavailable:")
+          ) {
+            message = t("multiAgent.errors.targetUnavailable");
+          } else if (diagnostic.startsWith("agent-disabled:")) {
+            // 勿再映射成 incompleteTarget，避免「配置正确却报 CLI 不完整」
+            message = t("multiAgent.errors.featureDisabled");
+          } else if (
+            diagnostic.startsWith("agent-request-target-incomplete:") ||
+            diagnostic.startsWith("agent-request-unavailable:") ||
+            diagnostic.startsWith("invalid-target:") ||
+            diagnostic.includes("shared-v2-target-incomplete")
+          ) {
+            message = t("multiAgent.errors.incompleteTarget");
+          }
+          pushErrorToast({
+            title: t("multiAgent.errors.startFailed"),
+            message,
+            durationMs: 5_000,
+          });
+        })
+        .finally(() => {
+          setSelectedManualMemories(retainedManualMemories);
+          setSelectedNoteCards(retainedNoteCards);
+          setSelectedInlineFileReferences([]);
+          onClearCodeAnnotations?.();
+          setSelectedSkillNames(retainedSkillNames);
+          setSelectedCommonsNames(retainedCommonsNames);
+          setRetainedManualMemoryIds(
+            retainedManualMemories.map((entry) => entry.id),
+          );
+          setRetainedNoteCardIds(retainedNoteCards.map((entry) => entry.id));
+          setRetainedContextChipKeys(nextRetainedContextChipKeys);
+          setCarryOverManualMemoryIds([]);
+          setCarryOverNoteCardIds([]);
+          setCarryOverContextChipKeys([]);
+          setMemoryReferenceMode((currentMode) =>
+            currentMode === "single" ? "off" : currentMode,
+          );
+        });
       setComposerText("");
     },
     [
@@ -2221,6 +2614,7 @@ function ComposerImpl({
       browserContext,
       createSessionTargetPicker,
       effectiveCreationTarget,
+      collabLocksComposer,
       disabled,
       effectiveSubmitDisabled,
       imageAttachEngine,
@@ -2245,6 +2639,9 @@ function ComposerImpl({
       setSelectedManualMemories,
       t,
       text,
+      agentArmed,
+      isSharedSessionResolved,
+      selectedAtomicTarget,
       carryOverContextChipKeys,
       carryOverManualMemoryIds,
       carryOverNoteCardIds,
@@ -2276,9 +2673,12 @@ function ComposerImpl({
     );
   }, []);
 
-  const handleRemoveCodeAnnotation = useCallback((annotationId: string) => {
-    onRemoveCodeAnnotation?.(annotationId);
-  }, [onRemoveCodeAnnotation]);
+  const handleRemoveCodeAnnotation = useCallback(
+    (annotationId: string) => {
+      onRemoveCodeAnnotation?.(annotationId);
+    },
+    [onRemoveCodeAnnotation],
+  );
 
   useEffect(() => {
     if (!prefillDraft) {
@@ -2341,22 +2741,30 @@ function ComposerImpl({
     const usedTokens = resolveClaudeWindowUsedTokens(contextUsage);
     // CLI 没上报窗口总量时按模型估算兜底，让占用百分比可以计算。
     const contextWindow =
-      finitePositive(contextUsage.modelContextWindow)
-      ?? (usedTokens !== null ? estimateClaudeContextWindow(selectedModelId) : null);
+      finitePositive(contextUsage.modelContextWindow) ??
+      (usedTokens !== null
+        ? estimateClaudeContextWindow(selectedModelId)
+        : null);
     const totalTokens = finiteNonNegative(contextUsage.total.totalTokens);
     const inputTokens = finiteNonNegative(contextUsage.total.inputTokens);
-    const cachedInputTokens = finiteNonNegative(contextUsage.total.cachedInputTokens);
+    const cachedInputTokens = finiteNonNegative(
+      contextUsage.total.cachedInputTokens,
+    );
     const outputTokens = finiteNonNegative(contextUsage.total.outputTokens);
-    const explicitUsedPercent = finiteNonNegative(contextUsage.contextUsedPercent);
-    const usedPercent = explicitUsedPercent
-      ?? (
-        usedTokens !== null && contextWindow !== null
-          ? (usedTokens / contextWindow) * 100
-          : null
-      );
-    const explicitRemainingPercent = finiteNonNegative(contextUsage.contextRemainingPercent);
-    const remainingPercent = explicitRemainingPercent
-      ?? (usedPercent !== null ? Math.max(100 - usedPercent, 0) : null);
+    const explicitUsedPercent = finiteNonNegative(
+      contextUsage.contextUsedPercent,
+    );
+    const usedPercent =
+      explicitUsedPercent ??
+      (usedTokens !== null && contextWindow !== null
+        ? (usedTokens / contextWindow) * 100
+        : null);
+    const explicitRemainingPercent = finiteNonNegative(
+      contextUsage.contextRemainingPercent,
+    );
+    const remainingPercent =
+      explicitRemainingPercent ??
+      (usedPercent !== null ? Math.max(100 - usedPercent, 0) : null);
 
     return {
       usedTokens,
@@ -2369,7 +2777,8 @@ function ComposerImpl({
       remainingPercent,
       freshness: contextUsage.contextUsageFreshness ?? "estimated",
       source: contextUsage.contextUsageSource ?? null,
-      hasUsage: usedTokens !== null || usedPercent !== null || (totalTokens ?? 0) > 0,
+      hasUsage:
+        usedTokens !== null || usedPercent !== null || (totalTokens ?? 0) > 0,
       categoryUsages: contextUsage.contextCategoryUsages ?? null,
       toolUsages: contextUsage.contextToolUsages ?? null,
       toolUsagesTruncated: contextUsage.contextToolUsagesTruncated ?? null,
@@ -2383,8 +2792,8 @@ function ComposerImpl({
     if (selectedEngine === "claude") {
       const usedTokens = resolveClaudeWindowUsedTokens(contextUsage);
       const contextWindow =
-        finitePositive(contextUsage.modelContextWindow)
-        ?? estimateClaudeContextWindow(selectedModelId);
+        finitePositive(contextUsage.modelContextWindow) ??
+        estimateClaudeContextWindow(selectedModelId);
       return usedTokens !== null
         ? { used: usedTokens, total: contextWindow }
         : null;
@@ -2474,8 +2883,9 @@ function ComposerImpl({
   const footerUsagePercentage =
     resolvedLegacyContextUsage && resolvedLegacyContextUsage.total > 0
       ? Math.round(
-        (resolvedLegacyContextUsage.used / resolvedLegacyContextUsage.total) * 100,
-      )
+          (resolvedLegacyContextUsage.used / resolvedLegacyContextUsage.total) *
+            100,
+        )
       : null;
   const composerReadinessAccessMode =
     selectedEngine === "codex" && _selectedCollaborationModeId === "plan"
@@ -2499,7 +2909,9 @@ function ComposerImpl({
           selectedEngine === "codex" && _selectedCollaborationModeId === "plan"
             ? t("codexModes.plan.label")
             : t(`modes.${selectedPermissionMode}.label`),
-        modeImpactLabel: t(`composer.readinessModeImpact.${composerReadinessAccessMode}`),
+        modeImpactLabel: t(
+          `composer.readinessModeImpact.${composerReadinessAccessMode}`,
+        ),
         accessMode: composerReadinessAccessMode,
         draftText: text,
         hasAttachments: attachedImages.length > 0,
@@ -2516,7 +2928,8 @@ function ComposerImpl({
           selectedMemoryCount: selectedManualMemories.length,
           selectedNoteCardCount: selectedNoteCards.length,
           fileReferenceCount:
-            selectedInlineFileReferences.length + (hasActiveFileReference ? 1 : 0),
+            selectedInlineFileReferences.length +
+            (hasActiveFileReference ? 1 : 0),
           imageCount: attachedImages.length,
           selectedAgentName: selectedChatInputAgent?.name ?? null,
         },
@@ -2597,7 +3010,9 @@ function ComposerImpl({
     shouldRenderReviewInlinePrompt;
 
   return (
-    <footer className={`composer${disabled ? " is-disabled" : ""}`}>
+    <footer
+      className={`composer${composerInteractionDisabled ? " is-disabled" : ""}`}
+    >
       <div
         className={`composer-shell${isComposerCollapsed ? " is-collapsed" : ""}`}
       >
@@ -2640,7 +3055,8 @@ function ComposerImpl({
                     <div className="composer-memory-chip-list">
                       {selectedManualMemories.map((memory, memoryIndex) => {
                         const chipTitle = `[M${memoryIndex + 1}] ${resolveManualMemoryChipTitle(memory)}`;
-                        const chipDetail = resolveManualMemoryChipDetail(memory);
+                        const chipDetail =
+                          resolveManualMemoryChipDetail(memory);
                         return (
                           <article
                             key={`manual-memory-${memory.id}`}
@@ -2649,7 +3065,9 @@ function ComposerImpl({
                             <button
                               type="button"
                               className="composer-memory-chip-remove"
-                              onClick={() => handleRemoveManualMemory(memory.id)}
+                              onClick={() =>
+                                handleRemoveManualMemory(memory.id)
+                              }
                               title={t("composer.manualMemoryRemove", {
                                 title: memory.title,
                               })}
@@ -2669,25 +3087,32 @@ function ComposerImpl({
                                 </span>
                               )}
                               <span className="composer-memory-chip-meta">
-                                {carryOverManualMemoryIds.includes(memory.id) ? (
+                                {carryOverManualMemoryIds.includes(
+                                  memory.id,
+                                ) ? (
                                   <span className="composer-memory-chip-state composer-memory-chip-state--carry">
-                                    {t("composer.contextLedgerCarryOverReasonWillCarry")}
+                                    {t(
+                                      "composer.contextLedgerCarryOverReasonWillCarry",
+                                    )}
                                   </span>
-                                ) : retainedManualMemoryIds.includes(memory.id) ? (
+                                ) : retainedManualMemoryIds.includes(
+                                    memory.id,
+                                  ) ? (
                                   <span className="composer-memory-chip-state composer-memory-chip-state--retained">
-                                    {t("composer.contextLedgerCarryOverReasonInherited")}
+                                    {t(
+                                      "composer.contextLedgerCarryOverReasonInherited",
+                                    )}
                                   </span>
                                 ) : null}
                                 <span>{memory.kind}</span>
                                 <span>{memory.importance}</span>
                                 <span>
-                                  {new Date(memory.updatedAt).toLocaleDateString(
-                                    undefined,
-                                    {
-                                      month: "2-digit",
-                                      day: "2-digit",
-                                    },
-                                  )}
+                                  {new Date(
+                                    memory.updatedAt,
+                                  ).toLocaleDateString(undefined, {
+                                    month: "2-digit",
+                                    day: "2-digit",
+                                  })}
                                 </span>
                               </span>
                             </div>
@@ -2744,24 +3169,31 @@ function ComposerImpl({
                               <span className="composer-memory-chip-meta">
                                 {carryOverNoteCardIds.includes(noteCard.id) ? (
                                   <span className="composer-memory-chip-state composer-memory-chip-state--carry">
-                                    {t("composer.contextLedgerCarryOverReasonWillCarry")}
+                                    {t(
+                                      "composer.contextLedgerCarryOverReasonWillCarry",
+                                    )}
                                   </span>
-                                ) : retainedNoteCardIds.includes(noteCard.id) ? (
+                                ) : retainedNoteCardIds.includes(
+                                    noteCard.id,
+                                  ) ? (
                                   <span className="composer-memory-chip-state composer-memory-chip-state--retained">
-                                    {t("composer.contextLedgerCarryOverReasonInherited")}
+                                    {t(
+                                      "composer.contextLedgerCarryOverReasonInherited",
+                                    )}
                                   </span>
                                 ) : null}
                                 {noteCard.archived ? (
-                                  <span>{t("composer.noteCardArchivedBadge")}</span>
+                                  <span>
+                                    {t("composer.noteCardArchivedBadge")}
+                                  </span>
                                 ) : null}
                                 <span>
-                                  {new Date(noteCard.updatedAt).toLocaleDateString(
-                                    undefined,
-                                    {
-                                      month: "2-digit",
-                                      day: "2-digit",
-                                    },
-                                  )}
+                                  {new Date(
+                                    noteCard.updatedAt,
+                                  ).toLocaleDateString(undefined, {
+                                    month: "2-digit",
+                                    day: "2-digit",
+                                  })}
                                 </span>
                                 {noteCard.imageCount > 0 ? (
                                   <span>
@@ -2799,8 +3231,10 @@ function ComposerImpl({
                           annotation.lineRange,
                         );
                         const fileName =
-                          annotation.path.split(/[\\/]/).filter(Boolean).pop() ??
-                          annotation.path;
+                          annotation.path
+                            .split(/[\\/]/)
+                            .filter(Boolean)
+                            .pop() ?? annotation.path;
                         return (
                           <article
                             key={annotation.id}
@@ -2809,7 +3243,9 @@ function ComposerImpl({
                             <button
                               type="button"
                               className="composer-memory-chip-remove"
-                              onClick={() => handleRemoveCodeAnnotation(annotation.id)}
+                              onClick={() =>
+                                handleRemoveCodeAnnotation(annotation.id)
+                              }
                               title={t("composer.codeAnnotationRemove", {
                                 path: annotation.path,
                               })}
@@ -2864,10 +3300,14 @@ function ComposerImpl({
                       highlightedCommitIndex={_highlightedCommitIndex!}
                       onHighlightCommit={_onReviewPromptHighlightCommit!}
                       onSelectBranch={_onReviewPromptSelectBranch!}
-                      onSelectBranchAtIndex={_onReviewPromptSelectBranchAtIndex!}
+                      onSelectBranchAtIndex={
+                        _onReviewPromptSelectBranchAtIndex!
+                      }
                       onConfirmBranch={_onReviewPromptConfirmBranch!}
                       onSelectCommit={_onReviewPromptSelectCommit!}
-                      onSelectCommitAtIndex={_onReviewPromptSelectCommitAtIndex!}
+                      onSelectCommitAtIndex={
+                        _onReviewPromptSelectCommitAtIndex!
+                      }
                       onConfirmCommit={_onReviewPromptConfirmCommit!}
                       onUpdateCustomInstructions={
                         _onReviewPromptUpdateCustomInstructions!
@@ -2879,7 +3319,8 @@ function ComposerImpl({
                 )}
               </div>
             ) : null}
-            {activeWorkspaceId && (browserContext.attachment || browserContext.error) ? (
+            {activeWorkspaceId &&
+            (browserContext.attachment || browserContext.error) ? (
               <div className="composer-browser-context">
                 {browserContext.attachment ? (
                   <BrowserContextPreview
@@ -2891,7 +3332,8 @@ function ComposerImpl({
                 ) : null}
                 {browserContext.error ? (
                   <div className="composer-browser-context-error" role="status">
-                    {browserContext.error === "browser_context_no_active_session"
+                    {browserContext.error ===
+                    "browser_context_no_active_session"
                       ? t("browserAgent.composer.noSession")
                       : browserContext.error}
                   </div>
@@ -2912,11 +3354,31 @@ function ComposerImpl({
                 ))}
               </div>
             ) : null}
+            <ComposerRunStatusStrip
+              todos={statusTodos}
+              subagents={statusSubagents}
+              plan={plan ?? null}
+              isPlanMode={Boolean(isPlanMode)}
+              isProcessing={Boolean(isProcessing)}
+              mergePlanIntoTodos={mergePlanIntoTodos}
+              sessionFileChanges={sessionFileChanges}
+              sessionScopeKey={activeThreadId ?? null}
+              isCodexEngine={isCodexEngine}
+              onOpenDiffPath={onOpenDiffPath}
+              onRevertFile={
+                onRevertFile ? handleRevertFileForStrip : undefined
+              }
+              onRevertAllFiles={
+                onRevertAllFiles ? handleRevertAllFilesForStrip : undefined
+              }
+            />
             <ChatInputBoxAdapter
               ref={chatInputRef}
               text={text}
-              disabled={disabled}
-              submitDisabled={effectiveSubmitDisabled}
+              disabled={composerInteractionDisabled}
+              submitDisabled={
+                effectiveSubmitDisabled || collabLocksComposer
+              }
               isProcessing={isProcessing}
               streamActivityPhase={resolvedComposerStreamActivityPhase}
               canStop={canStop}
@@ -2928,9 +3390,7 @@ function ComposerImpl({
                 executionTarget: selectedAtomicTarget,
                 globalSelectedModelId: selectedModelId,
               })}
-              selectedEngine={
-                selectedAtomicTarget?.engine ?? selectedEngine
-              }
+              selectedEngine={selectedAtomicTarget?.engine ?? selectedEngine}
               isSharedSession={isSharedSessionResolved}
               // 全场景统一首页 Atomic 双栏 picker（含「本地配置」渠道），
               // 不再维护 conversation native 单栏/无渠道分叉。
@@ -2945,7 +3405,7 @@ function ComposerImpl({
               providerModelCatalogs={providerModelCatalogs}
               providerProfileId={
                 selectedAtomicTarget
-                  ? selectedAtomicTarget.providerProfileId ?? null
+                  ? (selectedAtomicTarget.providerProfileId ?? null)
                   : providerProfileId
               }
               executionTarget={selectedAtomicTarget}
@@ -2979,7 +3439,7 @@ function ComposerImpl({
                             ...effectiveCreationTarget,
                             reasoning: effort ? { effort } : null,
                           })
-                    : onSelectEffort
+                      : onSelectEffort
               }
               reasoningSupported={reasoningSupported}
               onResolvedAlwaysThinkingChange={onResolvedAlwaysThinkingChange}
@@ -3018,9 +3478,11 @@ function ComposerImpl({
               onSelectSkill={handleSelectSkill}
               sendShortcut={sendShortcut}
               placeholder={
-                sendShortcut === "cmdEnter"
-                  ? t("chat.inputPlaceholderCmdEnter")
-                  : t("chat.inputPlaceholderEnter")
+                collabLocksComposer
+                  ? t("multiAgent.entry.collabRunningLock")
+                  : sendShortcut === "cmdEnter"
+                    ? t("chat.inputPlaceholderCmdEnter")
+                    : t("chat.inputPlaceholderEnter")
               }
               activeFile={
                 hasActiveFileReference
@@ -3049,7 +3511,11 @@ function ComposerImpl({
               permissionMode={selectedPermissionMode}
               onModeSelect={handleModeSelect}
               sendReadiness={composerSendReadiness}
-              onJumpToRequest={activeUserInputRequest ? handleJumpToUserInputRequest : undefined}
+              onJumpToRequest={
+                activeUserInputRequest
+                  ? handleJumpToUserInputRequest
+                  : undefined
+              }
               onOpenSkillsSettings={_onOpenSkillsSettings}
               selectedCollaborationModeId={_selectedCollaborationModeId}
               onSelectCollaborationMode={_onSelectCollaborationMode}
@@ -3070,34 +3536,70 @@ function ComposerImpl({
               completionEmailDisabled={completionEmailDisabled}
               onToggleCompletionEmail={onToggleCompletionEmail}
             />
-            {branchControl?.branchName || showFooterUsageIndicator ? (
+            {branchControl?.branchName ||
+            showFooterUsageIndicator ||
+            isSharedSessionResolved ? (
               <div className="composer-branch-row">
                 {branchControl?.branchName ? (
                   <ComposerBranchBadge {...branchControl} />
                 ) : null}
-                {showFooterUsageIndicator ? (
-                  <div className="composer-branch-row-usage">
-                    {codexContextDualViewEnabled ? (
-                      <ContextBar
-                        surface="tool-popover"
-                        contextDualViewEnabled
-                        dualContextUsage={resolvedDualContextUsage}
-                        onRequestContextCompaction={handleManualCompactContext}
-                        codexAutoCompactionEnabled={codexAutoCompactionEnabled}
-                        codexAutoCompactionThresholdPercent={codexAutoCompactionThresholdPercent}
-                        onCodexAutoCompactionSettingsChange={onCodexAutoCompactionSettingsChange}
-                        currentProvider="codex"
-                      />
-                    ) : (
-                      <TokenIndicator
-                        percentage={footerUsagePercentage}
-                        usedTokens={resolvedLegacyContextUsage?.used}
-                        maxTokens={resolvedLegacyContextUsage?.total}
-                        claudeContextUsage={
-                          selectedEngine === "claude" ? resolvedClaudeContextUsage : null
-                        }
-                      />
-                    )}
+                {showFooterUsageIndicator || isSharedSessionResolved ? (
+                  <div className="composer-branch-row-trailing">
+                    {isSharedSessionResolved ? (
+                      <div className="composer-collab-slot">
+                        <MultiAgentComposerToggle
+                          engine={selectedAtomicTarget?.engine}
+                          armed={agentArmed || collabRunActive}
+                          disabled={
+                            disabled ||
+                            effectiveSubmitDisabled ||
+                            !isResolvedExecutionTarget(selectedAtomicTarget) ||
+                            collabRunActive
+                          }
+                          hasActiveRun={collabRunActive}
+                          onToggle={() => {
+                            if (collabRunActive) return;
+                            setAgentArmed((armed) => !armed);
+                          }}
+                          onArm={() => setAgentArmed(true)}
+                        />
+                      </div>
+                    ) : null}
+                    {showFooterUsageIndicator ? (
+                      <div className="composer-branch-row-usage">
+                        {codexContextDualViewEnabled ? (
+                          <ContextBar
+                            surface="tool-popover"
+                            contextDualViewEnabled
+                            dualContextUsage={resolvedDualContextUsage}
+                            onRequestContextCompaction={
+                              handleManualCompactContext
+                            }
+                            codexAutoCompactionEnabled={
+                              codexAutoCompactionEnabled
+                            }
+                            codexAutoCompactionThresholdPercent={
+                              codexAutoCompactionThresholdPercent
+                            }
+                            onCodexAutoCompactionSettingsChange={
+                              onCodexAutoCompactionSettingsChange
+                            }
+                            currentProvider="codex"
+                          />
+                        ) : (
+                          <TokenIndicator
+                            percentage={footerUsagePercentage}
+                            usedTokens={resolvedLegacyContextUsage?.used}
+                            maxTokens={resolvedLegacyContextUsage?.total}
+                            claudeContextUsage={
+                              selectedEngine === "claude"
+                                ? resolvedClaudeContextUsage
+                                : null
+                            }
+                          />
+                        )}
+                      </div>
+                    ) : null}
                   </div>
                 ) : null}
               </div>
@@ -3123,7 +3625,10 @@ function ComposerImpl({
   );
 }
 
-function areComposerPropsEqual(previous: ComposerProps, next: ComposerProps): boolean {
+function areComposerPropsEqual(
+  previous: ComposerProps,
+  next: ComposerProps,
+): boolean {
   const shouldUseInteractionLaneComparator =
     Boolean(previous.isProcessing) && Boolean(next.isProcessing);
   if (!shouldUseInteractionLaneComparator) {
@@ -3132,7 +3637,11 @@ function areComposerPropsEqual(previous: ComposerProps, next: ComposerProps): bo
   if ((previous.items?.length ?? 0) === 0 && (next.items?.length ?? 0) > 0) {
     return false;
   }
-  return areComposerPropsShallowEqual(previous, next, COMPOSER_CANVAS_ONLY_PROPS);
+  return areComposerPropsShallowEqual(
+    previous,
+    next,
+    COMPOSER_CANVAS_ONLY_PROPS,
+  );
 }
 
 function areComposerPropsShallowEqual(

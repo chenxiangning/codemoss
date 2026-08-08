@@ -12,12 +12,12 @@ status: implemented
 > 初始日期：2026-07-27
 > 内容类型：Historical implementation checklist
 > 生命周期：A–D 已完成并归档；Wave/R.* 保留演进过程，不是当前 active backlog
-> 最近校准：2026-08-01 · mossx `0.7.14` · HEAD `26f8065a0c`
+> 最近校准：2026-08-05 · Phase 5 Agent Squad V1 本地实现与 automated contract tests 已完成；四个 active OpenSpec change 等待 Desktop/CLI smoke，未绑定 commit
 > 上游设计：[`docs/research/mossx-multi-cli-provider-session-foundation-design.md`](../research/mossx-multi-cli-provider-session-foundation-design.md)（Implementation-ready）
 > 用途：照着执行的 Checklist。完成一项勾一项；每个 Wave 收尾必须过对应的 Gate，不过 Gate 不进下一 Wave。
 > 状态说明：Wave 0–6 保留原始实施时间线；`R.*` 记录上线前后校准，不回写历史 Gate。
 
-> **当前读法**：A1/A2/A3/B/C/D 的 canonical changes 已归档；后续 Native/Shared 修复与 closure changes 走各自 OpenSpec 轨道。本文未勾项只有在当前 OpenSpec 仍有对应 contract 时才可转成工作项。
+> **当前读法**：A1/A2/A3/B/C/D 的 canonical changes 已归档；后续 Native/Shared 修复与 Phase 5 changes 走各自 OpenSpec 轨道。本文未勾项只有在当前 OpenSpec 仍有对应 contract 时才可转成工作项。
 
 ## Change A 当前结论（2026-07-27 校准）
 
@@ -267,12 +267,34 @@ OpenSpec 已归档至 `openspec/changes/archive/2026-07-27-{establish-shared-eve
 
 ---
 
-## 远期（Wave 5 稳定后再细化，当前不展开）
+## Phase 5 实现校准与 Phase 6 远期边界
 
 | 阶段 | 任务 | 大白话说明 | 改变点 | UI 变化 | 状态 |
 |---|---|---|---|---|---|
-| Phase 5 | Orchestration Foundation：Orchestrator Projection 只消费 A2 Canonical Fact，不建第二条 authoritative Sink；`steer / followUp / nextTurn` | 让多个 Agent 能围绕同一份会话事实协作，不再复制第二套真相。 | 在 Canonical Fact 之上增加编排投影和 steer/followUp/nextTurn 控制。 | 预计有：多 Agent 编排状态和控制入口；尚未设计。 | ⏳ Wave 5 稳定后再细化 |
+| Phase 5 | Agent Squad V1：conversation-native Dynamic DAG、Parallel Analyze + Single Writer、exact-owner Worker、typed outcome、durable lease / Change Fence / Stop | 让多个 ordinary CLI Worker 围绕同一份 Shared Session 事实自动协作；Lead 只提方案，mossx 掌握校验、持久化和调度权。 | 一次用户确认后自动执行；内部 Worker 全部 nested-only；只在 successful settlement 生成一次 top-level final。 | **有**：Shared send 左侧 one-shot `Squad` button、conversation plan/run card、复用 SubAgent 形态的右侧 inspector。 | 🟡 本地实现与 automated tests 完成；Desktop/CLI smoke 待验收，changes 未 archive |
 | Phase 6 | Plugin / Pipeline：Agent Event Hooks、Provider/Engine Registration、Pipeline、外部 RPC/SDK | 让外部 Provider、Engine 和自动化流程通过正式扩展点接入。 | 从内置集成扩展为 registration、hooks、pipeline 与外部 API。 | 预计有：插件/流程管理入口；尚未设计。 | ⏳ 远期，不进入当前承诺 |
+
+### Phase 5 active changes（2026-08-05）
+
+| OpenSpec change | 责任边界 | 当前证据 |
+|---|---|---|
+| `add-shared-squad-control-plane` | Canonical facts、plan validator、deterministic projection、one-active-run、Tauri contract | `src-tauri/src/squad_orchestration/{types,validator,projection,commands,plan_commands}.rs` |
+| `add-shared-squad-worker-execution` | scoped Worker Binding、node Context Package、event-driven scheduler、typed outcome、bounded repair、final synthesis | `src-tauri/src/squad_orchestration/{scheduler,support}.rs`、`src-tauri/src/shared_session_v2.rs` |
+| `add-conversation-squad-inspector` | one-shot entry、conversation cards、generic inspector split、i18n/a11y、mobile focus | `src/features/squad-orchestration/**`、`ConversationInspectorSplit.tsx`、`docs/previews/phase5-conversation-squad-inspector-v1.html` |
+| `harden-shared-squad-recovery` | workspace Single Writer lease、dirty-preserving Change Fence、exact-owner Stop/recovery、kill switch | `src-tauri/src/squad_orchestration/{scope,stop_commands}.rs`、`src-tauri/src/shared_event_log/writer.rs` |
+
+### Phase 5 V1 gate 状态
+
+- [x] Agent proposal 只作为不可信输入；DAG、identity、permission、budget、exact target 在 side effect 前由 mossx 校验。
+- [x] Canonical Fact 是唯一 durable authority；frontend external store 只缓存 `SquadProjectionV1`。
+- [x] Parallel Analyze + Single Writer；mutation outcome 在 lease release 前 durable append，crash ambiguity 保守持有 lease。
+- [x] Worker realtime turn 不进入 Shared conversation；successful `SquadRunSettled` exactly once 投影 top-level final。
+- [x] Codex 支持完整 DAG；Claude 只支持 pure read-only DAG；Kimi/Grok/OpenCode 在 hard read-only capability 可证明前 fail closed。
+- [x] feature flag 可禁止新 admission/dispatch，且不破坏历史 projection。
+- [ ] 真实 Desktop/CLI smoke：Codex 完整 DAG、Claude read-only、reload/recovery、Stop、dirty workspace、mobile inspector。
+- [ ] smoke 证据完成后执行 OpenSpec verify / sync / archive；当前不得把四个 change 标记收口。
+
+V1 明确不做 Worktree Executor、multi-writer merge、自动 rollback、mid-turn steer 或 public Plugin/Pipeline API。Mutate 仅支持 Git workspace；Change Fence 能证明 tracked 与 non-ignored untracked delta，不能把 ignored path 检查或 prompt 约束包装成完整 OS-level credential read isolation。
 
 ---
 

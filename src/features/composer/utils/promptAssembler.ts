@@ -5,6 +5,7 @@ export type { SkillInvocation };
 type SkillPromptInput = {
   name: string;
   description?: string;
+  path?: string;
 };
 
 type AssembleSinglePromptInput = {
@@ -63,19 +64,31 @@ export function expandLeadingManagedCommand(
   return args ? `${content}\n\n${args}` : content;
 }
 
-/** 与 toSlashToken 同一归一化规则的结构化形式（无 `/` 前缀）。 */
+/** 与 toSlashToken 同一归一化规则的结构化形式（无 `/` 前缀；附 path 供协作正文注入）。 */
 export function assembleSkillInvocations(input: {
   skills: SkillPromptInput[];
-  commons: { name: string }[];
+  commons: Array<{ name: string; path?: string }>;
 }): SkillInvocation[] {
-  const names = [
-    ...input.skills.map((skill) => skill.name),
-    ...input.commons.map((common) => common.name),
+  const entries = [
+    ...input.skills.map((skill) => ({
+      name: skill.name,
+      path: skill.path,
+    })),
+    ...input.commons.map((common) => ({
+      name: common.name,
+      path: common.path,
+    })),
   ];
-  return names
-    .map((name) => toSlashToken(name).replace(/^\/+/, ""))
-    .filter(Boolean)
-    .map((name) => ({ name }));
+  const seen = new Set<string>();
+  const invocations: SkillInvocation[] = [];
+  for (const entry of entries) {
+    const name = toSlashToken(entry.name).replace(/^\/+/, "");
+    if (!name || seen.has(name.toLowerCase())) continue;
+    seen.add(name.toLowerCase());
+    const path = entry.path?.trim();
+    invocations.push(path ? { name, path } : { name });
+  }
+  return invocations;
 }
 
 export function shouldAssemblePrompt(input: {

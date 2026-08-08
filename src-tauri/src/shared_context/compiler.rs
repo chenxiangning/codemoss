@@ -101,6 +101,19 @@ fn event_payload(event: &StoredEvent) -> Result<Value, String> {
         .map_err(|error| format!("parse {} payload: {error}", event.fact_type))
 }
 
+fn squad_context_scope(events: &[StoredEvent], attempt_id: Option<&str>) -> Option<Value> {
+    let attempt_id = attempt_id?;
+    events
+        .iter()
+        .find(|event| {
+            event.fact_type == "conversation.turnRequested"
+                && event.attempt_id.as_deref() == Some(attempt_id)
+        })
+        .and_then(|event| event_payload(event).ok())
+        .and_then(|payload| payload.get("squadContextIdentity").cloned())
+        .filter(|scope| !scope.is_null())
+}
+
 fn destination_owned_attempts(events: &[StoredEvent], binding_key: &str) -> HashSet<String> {
     events
         .iter()
@@ -112,6 +125,44 @@ fn destination_owned_attempts(events: &[StoredEvent], binding_key: &str) -> Hash
                 .flatten()
         })
         .collect()
+}
+
+fn is_collab_control_user_text(text: &str) -> bool {
+    let raw = text.trim();
+    if raw.is_empty() {
+        return false;
+    }
+    raw.contains("[[mossx.collab.briefing")
+        || raw.contains("[[mossx.collab.summary")
+        || raw.contains("[[mossx.collab.")
+        || raw.contains("【协作调度")
+}
+
+fn collab_stage_portable_text(payload: &Value) -> Option<String> {
+    let outcome = payload.get("outcome")?;
+    let node_id = payload
+        .get("nodeId")
+        .and_then(Value::as_str)
+        .unwrap_or("stage");
+    let status = outcome
+        .get("status")
+        .and_then(Value::as_str)
+        .unwrap_or("unknown");
+    let body = outcome
+        .get("body")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .or_else(|| {
+            outcome
+                .get("summary")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+        })?;
+    Some(format!(
+        "[协作环节 {node_id} · {status}]\n{body}"
+    ))
 }
 
 fn transform_event(
@@ -126,6 +177,17 @@ fn transform_event(
             let input = payload.get("input")?;
             let mut blocks = Vec::new();
             if let Some(text) = input.get("text").and_then(Value::as_str) {
+                if is_collab_control_user_text(text) {
+                    omissions.push(ProjectionOmission {
+                        entry_id: entry_id.clone(),
+                        category: "collab-control-prompt".to_string(),
+                        reason: "collab scheduler briefing/summary is not portable ordinary context"
+                            .to_string(),
+                        disposition: OmissionDisposition::NotRetrievable,
+                        retrievable_ref: None,
+                    });
+                    return None;
+                }
                 blocks.push(text_block(text));
             }
             for field in ["imageRefs", "attachmentRefs"] {
@@ -267,6 +329,19 @@ fn transform_event(
                 retrievable_ref: None,
             });
             None
+        }
+        "squad.nodeOutcomeRecorded" => {
+            let text = collab_stage_portable_text(payload)?;
+            Some(PortableContextEntry {
+                entry_id,
+                sequence: event.sequence,
+                role: "assistant".to_string(),
+                blocks: vec![text_block(&text)],
+                outcome: payload
+                    .pointer("/outcome/status")
+                    .and_then(Value::as_str)
+                    .map(str::to_string),
+            })
         }
         _ => None,
     }
@@ -660,9 +735,22 @@ pub fn compile_context(
         .filter(|event| event.fidelity == Fidelity::Canonical)
         .filter_map(|event| event.logical_turn_id.as_deref())
         .collect::<HashSet<_>>();
+    let squad_attempt_ids = events
+        .iter()
+        .filter(|event| event.fact_type == "conversation.turnRequested")
+        .filter_map(|event| {
+            let payload = serde_json::from_str::<Value>(&event.payload_json).ok()?;
+            payload
+                .get("squadWorkerBindingKey")
+                .and_then(Value::as_str)
+                .filter(|value| !value.trim().is_empty())?;
+            event.attempt_id.clone()
+        })
+        .collect::<HashSet<_>>();
     let source = events
         .iter()
         .filter(|event| {
+            let is_collab_stage_outcome = event.fact_type == "squad.nodeOutcomeRecorded";
             (event.fidelity == Fidelity::Canonical
                 || (event.fidelity == Fidelity::PresentationOnly
                     && event
@@ -672,6 +760,13 @@ pub fn compile_context(
                 && event.sequence > lower
                 && event.sequence <= upper
                 && event.attempt_id.as_deref() != request.exclude_attempt_id.as_deref()
+                // collab stage digest 必须进入 ordinary turn context：
+                // 不因 squad worker attempt 集合被整段剔除。
+                && (is_collab_stage_outcome
+                    || event
+                        .attempt_id
+                        .as_ref()
+                        .is_none_or(|attempt| !squad_attempt_ids.contains(attempt)))
         })
         .cloned()
         .collect::<Vec<_>>();
@@ -689,6 +784,7 @@ pub fn compile_context(
     let source_bytes =
         deterministic_json_bytes(&json!(source_value)).map_err(|error| error.to_string())?;
     let source_checksum = sha256(&source_bytes);
+    let context_scope = squad_context_scope(events, request.exclude_attempt_id.as_deref());
     let budget = request
         .budget_estimated_tokens
         .unwrap_or(DEFAULT_TRANSCRIPT_BUDGET);
@@ -696,7 +792,10 @@ pub fn compile_context(
     let mut omissions = Vec::new();
     let mut entries = Vec::new();
     for event in &source {
-        if request.destination_native_session_id.is_some()
+        let is_collab_stage_outcome = event.fact_type == "squad.nodeOutcomeRecorded";
+        // collab stage digest 跨 binding 续聊必须可见，禁止 destination-owned 吞掉。
+        if !is_collab_stage_outcome
+            && request.destination_native_session_id.is_some()
             && event
                 .attempt_id
                 .as_ref()
@@ -755,6 +854,7 @@ pub fn compile_context(
         from_sequence_exclusive: request.from_sequence_exclusive,
         through_sequence_inclusive: upper,
         source_checksum: source_checksum.clone(),
+        scope: context_scope.clone(),
     };
     let identity = json!({
         "compilerVersion": COMPILER_VERSION,
@@ -767,6 +867,7 @@ pub fn compile_context(
         "fromSequenceExclusive": request.from_sequence_exclusive,
         "throughSequenceInclusive": upper,
         "sourceChecksum": source_checksum,
+        "scope": context_scope,
     });
     let package_id =
         sha256(&deterministic_json_bytes(&identity).map_err(|error| error.to_string())?);
@@ -912,6 +1013,7 @@ pub fn compile_native_context(
         from_sequence_exclusive: None,
         through_sequence_inclusive: source_entry_count as i64,
         source_checksum: source_checksum.clone(),
+        scope: None,
     };
     let identity = json!({
         "compilerVersion": COMPILER_VERSION,
@@ -1056,7 +1158,12 @@ mod tests {
         ];
         // 预算约等于首轮+最近轮，逼出中间轮删除。
         let tight_budget = estimated_tokens(&transcript(
-            &[entries[0].clone(), entries[1].clone(), entries[4].clone(), entries[5].clone()],
+            &[
+                entries[0].clone(),
+                entries[1].clone(),
+                entries[4].clone(),
+                entries[5].clone(),
+            ],
             true,
         ));
         let mut omissions = Vec::new();
@@ -1259,6 +1366,113 @@ mod tests {
         .expect_err("empty native history must fail closed");
 
         assert_eq!(error, "native history has no portable context entries");
+    }
+
+    #[test]
+    fn collab_stage_outcome_enters_portable_context_even_when_destination_owned() {
+        let stored = |sequence: i64, event_id: &str, fact_type: &str, payload: Value| StoredEvent {
+            session_id: "session-1".to_string(),
+            sequence,
+            event_id: event_id.to_string(),
+            fact_type: fact_type.to_string(),
+            logical_turn_id: Some(format!("turn-{sequence}")),
+            attempt_id: Some("attempt-stage-1".to_string()),
+            dedupe_key: None,
+            payload_json: payload.to_string(),
+            payload_checksum: format!("sha256:{event_id}"),
+            fidelity: Fidelity::Canonical,
+            committed_at: sequence,
+        };
+        let events = vec![
+            stored(
+                1,
+                "requested-1",
+                "conversation.turnRequested",
+                json!({
+                    "type": "conversation.turnRequested",
+                    "input": {
+                        "text": "user task\n---\n【协作调度 · 主幕对话】\n[[mossx.collab.briefing]]"
+                    }
+                }),
+            ),
+            stored(
+                2,
+                "accepted-1",
+                "conversation.turnAccepted",
+                json!({
+                    "type": "conversation.turnAccepted",
+                    "bindingKey": "claude::provider-a"
+                }),
+            ),
+            stored(
+                3,
+                "outcome-1",
+                "squad.nodeOutcomeRecorded",
+                json!({
+                    "type": "squad.nodeOutcomeRecorded",
+                    "factId": "agent:run1:implement:attempt-stage-1",
+                    "runId": "run1",
+                    "nodeId": "implement",
+                    "attemptId": "attempt-stage-1",
+                    "outcome": {
+                        "status": "succeeded",
+                        "summary": "短摘要",
+                        "body": "完整实现说明：新增 Phone CRUD 与测试。"
+                    },
+                    "recordedAt": 3
+                }),
+            ),
+        ];
+        let package = compile_context(
+            &events,
+            &CompileContextRequest {
+                session_id: "session-1".to_string(),
+                binding_key: "claude::provider-a".to_string(),
+                destination: json!({"engine": "claude"}),
+                destination_native_session_id: Some("claude:native-1".to_string()),
+                from_sequence_exclusive: None,
+                through_sequence_inclusive: None,
+                exclude_attempt_id: None,
+                capabilities: RuntimeContextCapabilities {
+                    native_delta: false,
+                    structured_history_import: false,
+                    native_clone: false,
+                    user_channel_transcript: true,
+                    tool_history: false,
+                    image_history: false,
+                    strong_context_ack: false,
+                },
+                budget_estimated_tokens: None,
+            },
+        )
+        .expect("collab stage package");
+
+        assert!(
+            package.prompt_prefix.contains("完整实现说明"),
+            "stage body must enter prompt: {}",
+            package.prompt_prefix
+        );
+        assert!(
+            package.prompt_prefix.contains("协作环节 implement"),
+            "stage label missing: {}",
+            package.prompt_prefix
+        );
+        assert!(
+            !package.prompt_prefix.contains("[[mossx.collab.briefing]]"),
+            "collab control briefing must not enter prompt: {}",
+            package.prompt_prefix
+        );
+        // briefing 可能被 destination-owned 先剔除，或被 collab-control omission 剔除
+        assert!(
+            package
+                .manifest
+                .omitted
+                .iter()
+                .any(|o| o.category == "collab-control-prompt"
+                    || o.category == "destination-owned"),
+            "expected control briefing omitted somehow: {:?}",
+            package.manifest.omitted
+        );
     }
 
     #[test]

@@ -1405,3 +1405,564 @@ Shared Grok 初始化禁止借用 Native Codex 的 reasoning options/effort；in
 ### Next Steps
 
 - None - task complete
+
+
+## Session 1336: 实现 Phase 5 Agent Squad 基础编排
+
+**Date**: 2026-08-05
+**Task**: 实现 Phase 5 Agent Squad 基础编排
+**Branch**: `CXN-version-0.7.16`
+
+### Summary
+
+完成 Shared Session 会话内 Agent Squad V1：Dynamic DAG、Parallel Analyze + Single Writer、durable mutation lease、Change Fence、exact-owner Stop/recovery、一次确认自动执行、conversation card 与右侧 Inspector；补齐四个 OpenSpec change、ADR/manual test 文档及 focused tests。自动门禁通过；真实 Desktop/CLI、dirty workspace、reload 与 Stop smoke 保持 pending，未 archive。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `38db8cae7` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 1337: 隔离非 Squad 会话副作用
+
+**Date**: 2026-08-05
+**Task**: 隔离非 Squad 会话副作用
+**Branch**: `CXN-version-0.7.16`
+
+### Summary
+
+修复 Squad passive hydration 对 Native、普通 Shared 与旧会话的越界探测，保持 workspace/thread 原子 scope，并在不支持的 engine 上禁用 Squad 入口；新增 44 项回归测试与规范。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `979814ccb` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 1338: 合并 upstream/chore/bump-version-0.8.3 到 cxn-win-version-0.8.3
+
+**Date**: 2026-08-07
+**Task**: 合并 upstream/chore/bump-version-0.8.3 到 cxn-win-version-0.8.3
+**Branch**: `cxn-win-version-0.8.3`
+
+### Summary
+
+解决 divergent branches pull 失败：以 merge 策略合入上游 4 个提交，保留本分支 2 个冷启动修复，自动合并无冲突。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `41bcb2699` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 1339: 补齐 Shared 协作左侧会话运行态指示
+
+**Date**: 2026-08-08
+**Task**: 补齐 Shared 协作左侧会话运行态指示
+**Branch**: `cxn-version-0.8.4`
+
+### Summary
+
+A+B 方案同步 isProcessing：协作蓝点/代理电、approve/retry 失败熄灭、hydrate 不踩普通 Shared turn
+
+### Main Changes
+
+| 项 | 说明 |
+|----|------|
+| 问题 | Shared 协作运行时左侧缺蓝点/绿点/代理电 |
+| 根因 | squadRequest 早退未 markProcessing |
+| 方案 | A 发送入口 + B executor 生命周期 + Bridge |
+| 加固 | approve/retry 失败熄灭；hydrate 仅活跃点亮 |
+| 测试 | collabThreadProcessingBridge.test.ts 7/7 |
+
+**Updated Files**:
+- `src/features/multi-agent/runtime/collabThreadProcessingBridge.ts`
+- `src/features/multi-agent/runtime/collabThreadProcessingBridge.test.ts`
+- `src/features/multi-agent/runtime/executor.ts`
+- `src/features/multi-agent/index.ts`
+- `src/features/threads/hooks/useThreadMessaging.ts`
+- `src/features/threads/hooks/useThreads.ts`
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `256801cb6` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 1340: 主幕布退役 subagent 小队卡片
+
+**Date**: 2026-08-08
+**Task**: 主幕布退役 subagent 小队卡片
+**Branch**: `cxn-version-0.8.4`
+
+### Summary
+
+从主幕布移除 SubagentSquadGrid/Ring，子代理主表面收敛到 ComposerRunStatusStrip；补齐 OpenSpec retire-canvas-subagent-squad-grid
+
+### Main Changes
+
+| 主题 | 说明 |
+|------|------|
+| 行为 | 幕布不再渲染「N 个助手」S10 小队；subagent tool 降级为 Generic 工具行 |
+| 主表面 | ComposerRunStatusStrip（pill + 展开行）+ StatusPanel + inspector |
+| 删除 | SubagentSquadGrid / SubagentRingCard / syntheticSharedSubagentTools + i18n squad* + CSS |
+| 保留 | PersonaCard / ProgressBar / subagent-ui utils enrich / isSubagentTool |
+| OpenSpec | 新增 retire-canvas-subagent-squad-grid；部分 supersede 既有 active change 的幕布 S10 表述 |
+
+**关键路径**:
+- `src/features/messages/**`（group / timeline / ToolBlock / MessagesCore）
+- `src/features/subagent-ui/**`
+- `src/i18n/locales/*/subagentUi.ts`
+- `openspec/changes/retire-canvas-subagent-squad-grid/**`
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `61c8bf537` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 1341: 协作批准补充说明与操作条统一布局
+
+**Date**: 2026-08-08
+**Task**: 协作批准补充说明与操作条统一布局
+**Branch**: `cxn-version-0.8.4`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+| 项 | 说明 |
+|----|------|
+| 批准补充 | 批准与打回对称：可展开可选 note；写入 fact.extra.approvalNote，后续 stage prompt 注入 |
+| 操作条布局 | ma-action-row 左主操作/右停止；待批准、超时卡、运行中共用同一视觉语言 |
+| i18n | multiAgent 补齐 8 语言 + parity 全量对齐 |
+| review 修复 | approve 气泡改为 RPC 成功后再 emit，避免失败误报 |
+
+**主要文件**:
+- `ConversationSurface.tsx` / `multi-agent.css`
+- `commands.rs` / `projection.rs` / `types.rs`
+- `executor.ts` / `conversationBridge.ts` / `agentOrchestration.ts`
+- `src/i18n/locales/*/multiAgent.ts`
+
+**未纳入**: Composer 协作 pill 挪位仍留 working tree
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `d24ca09ab` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 1342: 协作入口下移至输入框下方
+
+**Date**: 2026-08-08
+**Task**: 协作入口下移至输入框下方
+**Branch**: `cxn-version-0.8.4`
+
+### Summary
+
+将 Multi-Agent 协作 pill 从发送按钮前移到 composer-branch-row 右侧 trailing 区，并与上下文指示器左右对调
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `149af622a` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 1343: Shared 创建/打开历史 Claude catalog 串台修复
+
+**Date**: 2026-08-08
+**Task**: Shared 创建/打开历史 Claude catalog 串台修复
+**Branch**: `cxn-version-0.8.4`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+| 项 | 说明 |
+|----|------|
+| OpenSpec | fix-shared-create-default-provider-catalog |
+| 创建 | 第一 Provider + local forceRefresh / managed scoped catalog |
+| 打开 | 不 reseed last target；Claude sync mapping |
+| 展示 | 文案/图标 catalog runtime 优先于 localStorage mapping |
+| 品牌 | k3 短 id → kimi |
+| 验证 | vitest 相关绿；人工验收文案+图标通过 |
+| 文档 | analysis shared-create-local-catalog-stale-mapping-2026-08-08 |
+
+**代码 commit**：`1974c4cee`
+**未纳入**：multi-agent inspector 相关工作树改动（另轨）
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `1974c4cee` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 1344: 协作 Inspector 注入上下文 Header
+
+**Date**: 2026-08-08
+**Task**: 协作 Inspector 注入上下文 Header
+**Branch**: `cxn-version-0.8.4`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+| 项 | 说明 |
+|----|------|
+| 功能 | 节点幕布上方 B+C 可折叠注入上下文（用户/批准补充/上游 short/本环节指令） |
+| 交互 | 默认折叠；迷你条只高亮；打开节点才跳 stage |
+| 样式 | --ma-* 双主题 + 展开虚线框 |
+| i18n | 10 locale + parity |
+| OpenSpec | add-multi-agent-inspector-inject-context |
+| 验证 | inject 4 + locale 18 绿 |
+
+**Updated**:
+- AgentInspectorDrawer / StageInjectContextHeader / buildStageInjectContext
+- multi-agent.css / multiAgent locales / preview HTML
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `4f4c053c6` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 1345: 协作上游喂料策略贯通与验收收口
+
+**Date**: 2026-08-08
+**Task**: 协作上游喂料策略贯通与验收收口
+**Branch**: `cxn-version-0.8.4`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+| 项 | 说明 |
+|----|------|
+| 功能 | 模板 per-stage 吃摘要/吃全文；首段 full、移到首位强制 full |
+| 运行时 | prior_feed_notes + implement 追加上游；fact stageBindings 补 upstreamFeedMode |
+| Inspector | 吃全文/吃摘要徽章；注入区滚动与隐藏滚动条 |
+| UI | 模板帮助侧栏；协作 pill 去胶囊边框 |
+| 验证 | 人工验收通过；vitest 31；rust feed mode roundtrip ok |
+
+**Commits**
+- 4f4c053c6 注入上下文 Header
+- 07f095ec8 上游喂料策略贯通
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `07f095ec8` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 1346: Shared Composer Run Status Strip 合成数据源
+
+**Date**: 2026-08-08
+**Task**: Shared Composer Run Status Strip 合成数据源
+**Branch**: `cxn-version-0.8.4`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+| 项 | 说明 |
+|----|------|
+| OpenSpec | `wire-shared-composer-run-status-strip`（手测通过后单独提交） |
+| 核心改动 | Composer「已编辑/子代理」Strip 改为合成源：主 items ∪ agent-canvas ∪ child threads |
+| 支撑 | `collectRunStatusSourceItems`、sessionSideEffectLedger、syntheticSharedSubagentTools、collectCanvasChildSubagentThreads |
+| 文档 | 基石校准表 + Session File-Edit Ledger 设计草案 |
+| 未纳入 | 文件树 HTML 外部浏览器打开等无关 WIP 仍留 working tree |
+
+**验证**：用户已手测通过；本会话仅挑出提案相关 22 文件提交，未碰 files/tauri/i18n 等其它改动。
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `2ad5a0cc2` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 1347: S10 退役后 Strip 宽识别与右侧详情补齐
+
+**Date**: 2026-08-08
+**Task**: S10 退役后 Strip 宽识别与右侧详情补齐
+**Branch**: `cxn-version-0.8.4`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+| 项 | 说明 |
+|----|------|
+| 提交 | `ec9811c49` fix(subagent-ui): 补齐 S10 退役后 Strip 与右侧详情的宽识别与加载链路 |
+| 范围 | 14 文件；仅子代理 Strip / StatusPanel / Inspector；未混 session HUD/配额 WIP |
+| 要点 | isSubagentTool 宽扫；child 种子；session 身份解析；launch ack 不挡幕布；父线补 assistant |
+| 验证 | 相关 vitest 通过；手测多引擎历史/详情基本可用 |
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `ec9811c49` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 1348: Composer 会话控制 HUD 与多供应商实时用量
+
+**Date**: 2026-08-08
+**Task**: Composer 会话控制 HUD 与多供应商实时用量
+**Branch**: `cxn-version-0.8.4`
+
+### Summary
+
+双栏 Session Control HUD；复用概览额度链路；Kimi CLI OAuth refresh；智谱解析加固；千问 DashScope 明确无公开额度 API
+
+### Main Changes
+
+## 本次工作
+- OpenSpec: redesign-composer-session-control-hud
+- Composer 工具菜单改为双栏 HUD（左控制 / 右配额 / 底工具），宽度锚定 chat-input-box
+- 右侧用量复用 useCodingPlanQuota + buildSessionOverviewQuota
+- coding_plan_quota: Kimi CLI via=cli + token refresh；智谱窗口解析对齐 CC Switch；DashScope 给出明确 unsupported 文案
+- 测试：Vitest 26 + cargo coding_plan_quota 10 通过
+- 未入库：_temp 设计原型 HTML
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `f97a5ed74` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 1349: 修复 mac 打包 TypeScript 门禁阻塞
+
+**Date**: 2026-08-08
+**Task**: 修复 mac 打包 TypeScript 门禁阻塞
+**Branch**: `cxn-version-0.8.4`
+
+### Summary
+
+修复 build:mac-arm64 前端 tsc 四处错误：Composer 未使用 subagentTotal、hast/DOMPurify 跨包类型断言、seed 子代理 engine 收紧为 EngineType。vitest 相关 50 测通过后提交。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `7492d4f58` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

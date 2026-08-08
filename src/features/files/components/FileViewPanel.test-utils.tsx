@@ -284,6 +284,12 @@ vi.mock("../../../services/tauri", () => ({
     lifecycle: "ready",
     fallbackReasonCode: null,
   })),
+  createBrowserAgentSession: vi.fn(async () => ({
+    browserSessionId: "browser-session-mock",
+  })),
+  openBrowserAgentWindow: vi.fn(async () => ({
+    browserSessionId: "browser-session-mock",
+  })),
 }));
 
 vi.mock("../detachedFileExplorer", () => {

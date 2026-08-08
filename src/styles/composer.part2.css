@@ -2210,13 +2210,36 @@
   display: flex;
   align-items: center;
   padding: 0 2px;
+  gap: 8px;
+  min-height: 28px;
 }
 
-/* 分支行右侧的上下文占用指示器 */
+/* 分支行右侧：usage + 协作 pill 同组右对齐 */
+.composer-branch-row-trailing {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  min-width: 0;
+}
+
+/* 分支行 / home meta 右侧的上下文占用指示器
+   无 trailing 包裹时自身右推（HomeChat meta）；有 trailing 时由父级右推 */
 .composer-branch-row-usage {
   display: inline-flex;
   align-items: center;
   margin-left: auto;
+}
+
+.composer-branch-row-trailing .composer-branch-row-usage {
+  margin-left: 0;
+}
+
+/* 协作入口：输入框下方右侧，不再挤在发送按钮前 */
+.composer-collab-slot {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
 }
 
 .composer-branch-badge {

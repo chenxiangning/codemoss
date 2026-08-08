@@ -36,6 +36,8 @@ import {
   clearLiveAssistantText,
   drainLiveAssistantTextTail,
   drainLiveAssistantTextTailIfItemChanged,
+  peekLiveAssistantText,
+  resolveLiveAssistantSettlementText,
   updateLiveAssistantTextSnapshot,
 } from "../utils/liveAssistantTextChannel";
 import { isLiveTextExternalizationEnabled } from "../utils/realtimePerfFlags";
@@ -1369,13 +1371,22 @@ export function useThreadItemEvents({
       }
 
       if (itemType === "agentMessage") {
-        if (agentMessageSnapshotText) {
+        // item completed（shouldMarkProcessing=false）时 snapshot 可能偏短/空，
+        // 必须在 clear 通道前与 live 全文合并，否则只剩建壳首段（如 `**`）。
+        const settledSnapshotText =
+          LIVE_TEXT_EXTERNALIZATION_ENABLED && !shouldMarkProcessing
+            ? resolveLiveAssistantSettlementText(
+                threadId,
+                agentMessageSnapshotText,
+              )
+            : agentMessageSnapshotText;
+        if (settledSnapshotText) {
           upsertLiveAssistantShadowSnapshot({
             engine: inferEngineFromThreadId(threadId),
             workspaceId,
             threadId,
             itemId,
-            text: agentMessageSnapshotText,
+            text: settledSnapshotText,
             turnId,
           });
           // 同 delta 路径：snapshot 换 itemId 时先 drain 上一段，避免只剩建壳首字。
@@ -1400,7 +1411,7 @@ export function useThreadItemEvents({
               ? updateLiveAssistantTextSnapshot(
                   threadId,
                   itemId,
-                  agentMessageSnapshotText,
+                  settledSnapshotText,
                 )
               : "replacement";
           const shouldDispatchSnapshot =
@@ -1413,14 +1424,14 @@ export function useThreadItemEvents({
               workspaceId,
               threadId,
               itemId,
-              delta: agentMessageSnapshotText,
+              delta: settledSnapshotText,
               hasCustomName: Boolean(getCustomName(workspaceId, threadId)),
             });
             const dispatchCostMs =
               readHighResolutionNowMs() - dispatchStartedAt;
             noteThreadReducerWorkMeasured(threadId, {
               itemId,
-              textLength: agentMessageSnapshotText.length,
+              textLength: settledSnapshotText.length,
               mergeCostMs: dispatchCostMs,
               normalizationCostMs: dispatchCostMs,
             });
@@ -1433,8 +1444,8 @@ export function useThreadItemEvents({
             threadId,
             itemId,
             itemType,
-            deltaLength: agentMessageSnapshotText.length,
-            textPreview: createDebugPreview(agentMessageSnapshotText),
+            deltaLength: settledSnapshotText.length,
+            textPreview: createDebugPreview(settledSnapshotText),
           });
         }
         safeMessageActivity();
@@ -1723,7 +1734,9 @@ export function useThreadItemEvents({
           },
           {
             urgent:
-              threadId.startsWith("shared:") && liveTextResult?.isFirst === true,
+              (threadId.startsWith("shared:") ||
+                threadId.startsWith("agent-canvas:")) &&
+              liveTextResult?.isFirst === true,
           },
         );
       }
@@ -1764,17 +1777,63 @@ export function useThreadItemEvents({
         threadId,
         text,
       );
+      // A4：provider 终稿可能短于通道累积全文（或仅为建壳 `**`）。
+      // clear 前先与权威 live 合并，否则 isStreaming 结束后只剩壳文本。
+      const settledText = LIVE_TEXT_EXTERNALIZATION_ENABLED
+        ? resolveLiveAssistantSettlementText(threadId, resolvedText)
+        : resolvedText;
       settleLiveAssistantShadowTranscript({
         engine: inferEngineFromThreadId(threadId),
         workspaceId,
         threadId,
         itemId,
-        text: resolvedText,
+        text: settledText,
         turnId,
         providerFinalObserved: true,
       });
       flushRealtimeDeltaOps();
       if (isRealtimeTurnTerminal(threadId, turnId)) {
+        // 回合已 terminal：turn settle 通常已 drain。若通道仍有残留（竞态），
+        // 仍须把更长终稿写入 durable state，避免 UI 卡在壳首段。
+        if (LIVE_TEXT_EXTERNALIZATION_ENABLED && settledText) {
+          const residual = peekLiveAssistantText(threadId);
+          if (residual?.text) {
+            const timestamp = Date.now();
+            dispatch({
+              type: "ensureThread",
+              workspaceId,
+              threadId,
+              engine: inferEngineFromThreadId(threadId),
+            });
+            dispatch({
+              type: "flushAgentCompletedBatch",
+              workspaceId,
+              threadId,
+              itemId,
+              text: settledText,
+              hasCustomName: Boolean(getCustomName(workspaceId, threadId)),
+              timestamp,
+              isActiveThread: threadId === activeThreadId,
+            });
+            clearLiveAssistantText(threadId);
+            recordThreadActivity(workspaceId, threadId, timestamp);
+            safeMessageActivity();
+            onAgentMessageCompletedExternal?.({
+              workspaceId,
+              threadId,
+              ...(turnId ? { turnId } : {}),
+              itemId,
+              text: settledText,
+            });
+            logClaudeStream("agent-completed-terminal-salvage", {
+              workspaceId,
+              threadId,
+              itemId,
+              deltaLength: settledText.length,
+              textPreview: createDebugPreview(settledText),
+            });
+          }
+        }
         return;
       }
       const timestamp = Date.now();
@@ -1788,7 +1847,7 @@ export function useThreadItemEvents({
         workspaceId,
         threadId,
         itemId,
-        text: resolvedText,
+        text: settledText,
         hasCustomName,
         timestamp,
         isActiveThread: threadId === activeThreadId,
@@ -1805,14 +1864,14 @@ export function useThreadItemEvents({
         threadId,
         ...(turnId ? { turnId } : {}),
         itemId,
-        text: resolvedText,
+        text: settledText,
       });
       logClaudeStream("agent-completed", {
         workspaceId,
         threadId,
         itemId,
-        deltaLength: resolvedText.length,
-        textPreview: createDebugPreview(resolvedText),
+        deltaLength: settledText.length,
+        textPreview: createDebugPreview(settledText),
       });
     },
     [

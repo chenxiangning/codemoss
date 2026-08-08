@@ -61,6 +61,9 @@ type RunningTask = {
   descriptor: StartupTaskDescriptor<unknown>;
   generation: number;
   startedAt: number;
+  /** Settles the waiter with cancelled fallback; idempotent once released. */
+  settleCancelled: (reason: StartupFallbackReason) => void;
+  concurrencyReleased: boolean;
 };
 
 function nowMs() {
@@ -166,26 +169,51 @@ export class StartupOrchestrator {
       void this.settleWithFallback(queuedTask, reason, "cancelled");
     }
 
-    for (const runningTask of this.runningByDedupeKey.values()) {
+    for (const [dedupeKey, runningTask] of [
+      ...this.runningByDedupeKey.entries(),
+    ]) {
       if (!this.matchesWorkspace(runningTask.descriptor.workspaceScope, workspaceId)) {
         continue;
       }
-      if (runningTask.descriptor.cancelPolicy === "hard-abort") {
-        runningTask.abortController.abort();
-      }
+      // Always signal abort so cooperative run() bodies can stop.
+      runningTask.abortController.abort();
       this.cancelledGenerations.add(runningTask.generation);
-      recordStartupTaskTrace({
-        type: "task",
-        taskId: runningTask.descriptor.id,
-        phase: runningTask.descriptor.phase,
-        traceLabel: runningTask.descriptor.traceLabel,
-        workspaceScope: runningTask.descriptor.workspaceScope,
-        lifecycleState: "cancelled",
-        durationMs: nowMs() - runningTask.startedAt,
-        fallbackReason: reason,
-        cancellationMode: toCancellationMode(runningTask.descriptor.cancelPolicy),
-        commandLabel: runningTask.descriptor.commandLabel ?? null,
-      });
+      // Resolve the waiter immediately + free concurrency so the next
+      // workspace scan can start. Orphan run bodies honor isStale.
+      runningTask.settleCancelled(reason);
+      if (!runningTask.concurrencyReleased) {
+        runningTask.concurrencyReleased = true;
+        this.runningByDedupeKey.delete(dedupeKey);
+        this.decrementRunning(runningTask.descriptor);
+      }
+    }
+    this.drainQueue();
+  }
+
+  /**
+   * Abort every queued/running startup task (force-enter / emergency unmask).
+   * Orphan IPC bodies still finish but isStale skips setThreads commits.
+   *
+   * Default reason is `stale` (not `cancelled`): thread-list hydration fallback
+   * only maps `stale` → `{ applied: false, stale: true }`. Other reasons resolve
+   * as undefined and are treated as soft-success in finally blocks.
+   */
+  cancelAllTasks(reason: StartupFallbackReason = "stale") {
+    for (const queuedTask of [...this.queue]) {
+      this.removeQueuedTask(queuedTask);
+      void this.settleWithFallback(queuedTask, reason, "cancelled");
+    }
+    for (const [dedupeKey, runningTask] of [
+      ...this.runningByDedupeKey.entries(),
+    ]) {
+      runningTask.abortController.abort();
+      this.cancelledGenerations.add(runningTask.generation);
+      runningTask.settleCancelled(reason);
+      if (!runningTask.concurrencyReleased) {
+        runningTask.concurrencyReleased = true;
+        this.runningByDedupeKey.delete(dedupeKey);
+        this.decrementRunning(runningTask.descriptor);
+      }
     }
   }
 
@@ -236,11 +264,26 @@ export class StartupOrchestrator {
     const descriptor = task.descriptor;
     const abortController = new AbortController();
     const startedAt = nowMs();
+    let settled = false;
+    const settleOnce = async (
+      reason: StartupFallbackReason,
+      lifecycleState: "cancelled" | "degraded",
+    ) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      await this.settleWithFallback(task, reason, lifecycleState, startedAt);
+    };
     const runningTask: RunningTask = {
       abortController,
       descriptor: descriptor as StartupTaskDescriptor<unknown>,
       generation: task.generation,
       startedAt,
+      concurrencyReleased: false,
+      settleCancelled: (reason) => {
+        void settleOnce(reason, "cancelled");
+      },
     };
     this.runningByDedupeKey.set(descriptor.dedupeKey, runningTask);
     this.incrementRunning(descriptor);
@@ -264,9 +307,13 @@ export class StartupOrchestrator {
         isStale: () => this.cancelledGenerations.has(task.generation),
       });
       if (this.cancelledGenerations.has(task.generation)) {
-        await this.settleWithFallback(task, "stale", "cancelled", startedAt);
+        await settleOnce("stale", "cancelled");
         return;
       }
+      if (settled) {
+        return;
+      }
+      settled = true;
       recordStartupTaskTrace({
         type: "task",
         taskId: descriptor.id,
@@ -294,13 +341,17 @@ export class StartupOrchestrator {
           cancellationMode: null,
           commandLabel: descriptor.commandLabel ?? null,
         });
-        await this.settleWithFallback(task, "timeout", "degraded", startedAt);
+        await settleOnce("timeout", "degraded");
         return;
       }
-      if (this.cancelledGenerations.has(task.generation)) {
-        await this.settleWithFallback(task, "stale", "cancelled", startedAt);
+      if (this.cancelledGenerations.has(task.generation) || settled) {
+        await settleOnce("stale", "cancelled");
         return;
       }
+      if (settled) {
+        return;
+      }
+      settled = true;
       recordStartupTaskTrace({
         type: "task",
         taskId: descriptor.id,
@@ -315,10 +366,13 @@ export class StartupOrchestrator {
       });
       task.reject(error);
     } finally {
-      this.runningByDedupeKey.delete(descriptor.dedupeKey);
+      if (!runningTask.concurrencyReleased) {
+        runningTask.concurrencyReleased = true;
+        this.runningByDedupeKey.delete(descriptor.dedupeKey);
+        this.decrementRunning(descriptor);
+        this.drainQueue();
+      }
       this.cancelledGenerations.delete(task.generation);
-      this.decrementRunning(descriptor);
-      this.drainQueue();
     }
   }
 
@@ -448,4 +502,22 @@ class StartupTaskTimeoutError extends Error {
   }
 }
 
-export const startupOrchestrator = new StartupOrchestrator();
+/**
+ * Global orchestrator defaults tuned for cold-start interactivity:
+ * - active-workspace phase concurrency 1: thread list + model catalog no longer
+ *   race each other into the same AppShell commit window
+ * - thread-session-scan heavy cap 1: never run two full-catalog list_threads
+ *   (active + idle-prewarm / second workspace) at the same time
+ *
+ * Regression context: after 0.7.15, cold-start list hydration became mandatory
+ * and overlapping scans made the UI unresponsive to any click until the
+ * sidebar session list finished refreshing.
+ */
+export const startupOrchestrator = new StartupOrchestrator({
+  phaseConcurrency: {
+    "active-workspace": 1,
+  },
+  heavyCommandConcurrency: {
+    "thread-session-scan": 1,
+  },
+});

@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
 import type { CodexCustomModel } from "../types";
-import { STORAGE_KEYS, validateCodexCustomModels } from "../types";
-import { normalizeClaudeCustomModels } from "../../models/claudeCustomModels";
+import {
+  STORAGE_KEYS,
+  validateCodexCustomModels,
+  validateShapeOnlyCustomModels,
+} from "../types";
 
 const LEGACY_STORAGE_KEY_ALIASES: Record<string, string[]> = {
   "claude-custom-models": [
@@ -25,11 +28,19 @@ function parseModels(storageKey: string, value: string | null): CodexCustomModel
   try {
     const parsed = JSON.parse(value);
     if (storageKey === STORAGE_KEYS.CLAUDE_CUSTOM_MODELS) {
-      return normalizeClaudeCustomModels(parsed).map((model) => ({
-        id: model.id,
-        label: model.label,
-        description: model.description,
-      }));
+      // Shape-only + preserve providerProfileId for managed-provider binding.
+      return validateShapeOnlyCustomModels(parsed).map((model) => {
+        const id = model.id.trim();
+        const label = model.label.trim() || id;
+        const description = model.description?.trim();
+        const providerProfileId = model.providerProfileId?.trim();
+        return {
+          id,
+          label,
+          ...(description ? { description } : {}),
+          ...(providerProfileId ? { providerProfileId } : {}),
+        };
+      });
     }
     return validateCodexCustomModels(parsed);
   } catch {

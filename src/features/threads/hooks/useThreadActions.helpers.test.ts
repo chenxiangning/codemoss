@@ -1,10 +1,15 @@
 import { describe, expect, it } from "vitest";
 
 import type { ConversationItem, ThreadSummary } from "../../../types";
+import { expandHiddenSharedBindingIds } from "../../shared-session/runtime/sharedSessionSummaries";
 import {
   buildHiddenAutomaticSessionIdSet,
   filterHiddenAutomaticThreadSummaries,
   isRetainableEngineContinuitySummary,
+  isCollabPlanSummarySidebarTitle,
+  isCollabWorkerAgentNumberTitle,
+  isSharedCollabWorkerSpawnTitle,
+  isSharedControlPlaneSpawnTitle,
   mergeCodexCatalogSessionSummaries,
   mergeDegradedClaudeContinuitySummaries,
   mergeDegradedCodexContinuitySummaries,
@@ -822,8 +827,273 @@ describe("useThreadActions.helpers", () => {
       "shared:s1",
       "grok:visible-1",
     ]);
-    // 空 hide set 应返回原引用
+    // 空 hide set 且无 control-plane 标题时应返回原引用
     expect(stripHiddenSharedBindingSummaries(input, new Set())).toBe(input);
+  });
+
+  it("stripHiddenSharedBindingSummaries drops MOSSX_CONTEXT native spawn titles", () => {
+    const packageTitle =
+      `MOSSX_CONTEXT_PACKAGE:sha256:${"a".repeat(64)}:` +
+      `sha256:${"b".repeat(64)}`;
+    // previewThreadName 截到 50 字后的半截（实机侧栏泄漏形态）
+    const truncatedPackageTitle = "MOSSX_CONTEXT_PACKAGE:sha256:aaaaaaaaaaaaaa";
+    const input: ThreadSummary[] = [
+      {
+        id: "shared:s1",
+        name: "Shared collab",
+        updatedAt: 5,
+        threadKind: "shared",
+        engineSource: "claude",
+      },
+      {
+        id: "claude:spawn-1",
+        name: packageTitle,
+        updatedAt: 4,
+        engineSource: "claude",
+      },
+      {
+        id: "grok:spawn-trunc",
+        name: truncatedPackageTitle,
+        updatedAt: 3,
+        engineSource: "grok",
+      },
+      {
+        id: "codex:spawn-accepted",
+        name: "MOSSX_CONTEXT_ACCEPTED:sha256:deadbeef",
+        updatedAt: 2,
+        engineSource: "codex",
+      },
+      {
+        id: "claude:user-1",
+        name: "正常用户会话",
+        updatedAt: 1,
+        engineSource: "claude",
+      },
+    ];
+    const stripped = stripHiddenSharedBindingSummaries(input, new Set());
+    expect(stripped.map((row) => row.id)).toEqual([
+      "shared:s1",
+      "claude:user-1",
+    ]);
+  });
+
+  it("isSharedControlPlaneSpawnTitle covers all MOSSX_ program tokens and rejects user prose", () => {
+    const fullPackage =
+      `MOSSX_CONTEXT_PACKAGE:sha256:${"a".repeat(64)}:` +
+      `sha256:${"b".repeat(64)}`;
+    expect(isSharedControlPlaneSpawnTitle(fullPackage)).toBe(true);
+    expect(
+      isSharedControlPlaneSpawnTitle("MOSSX_CONTEXT_PACKAGE:sha25…"),
+    ).toBe(true);
+    expect(
+      isSharedControlPlaneSpawnTitle(
+        `MOSSX_CONTEXT_ACCEPTED:sha256:${"c".repeat(64)}:` +
+          `sha256:${"d".repeat(64)}`,
+      ),
+    ).toBe(true);
+    expect(isSharedControlPlaneSpawnTitle("MOSSX_NATIVE_CONTEXT_V1")).toBe(
+      true,
+    );
+    expect(isSharedControlPlaneSpawnTitle("MOSSX_SHARED_CONTEXT_V1")).toBe(
+      true,
+    );
+    // 用户讨论 / 非行首 → 不杀
+    expect(
+      isSharedControlPlaneSpawnTitle(
+        "请解释 MOSSX_CONTEXT_PACKAGE 是什么，不要隐藏这条消息",
+      ),
+    ).toBe(false);
+    expect(isSharedControlPlaneSpawnTitle("Agent 81")).toBe(false);
+    expect(isSharedControlPlaneSpawnTitle("正常功能讨论")).toBe(false);
+    // 协作规划 SUMMARY 当 title（实机侧栏泄漏形态）
+    expect(
+      isSharedControlPlaneSpawnTitle(
+        "SUMMARY: 创建一个最小 Hello World 示例",
+      ),
+    ).toBe(true);
+    expect(isSharedControlPlaneSpawnTitle("SUM")).toBe(true);
+    expect(isCollabPlanSummarySidebarTitle("SUMMARY: foo")).toBe(true);
+    expect(
+      isSharedControlPlaneSpawnTitle(
+        "你是多 Agent 协作管线中的【实现】环节。按已确认计划完成工作。",
+      ),
+    ).toBe(true);
+    // 自定义模板 stage id（draft/polish）
+    expect(
+      isSharedControlPlaneSpawnTitle(
+        "你是多 Agent 协作管线中的【draft】环节。",
+      ),
+    ).toBe(true);
+    // 泛 Markdown 不得当 control-plane（native 用户首条「## 需求」）
+    expect(isSharedControlPlaneSpawnTitle("## 需求说明")).toBe(false);
+    expect(isSharedControlPlaneSpawnTitle("**重要** 请审阅")).toBe(false);
+    expect(isSharedControlPlaneSpawnTitle("**交付说明** - 新")).toBe(true);
+    expect(isSharedControlPlaneSpawnTitle("SUMMARY：制定大纲")).toBe(true);
+    expect(isCollabWorkerAgentNumberTitle("Agent 11")).toBe(true);
+    expect(isCollabWorkerAgentNumberTitle("Agent 11 讨论")).toBe(false);
+  });
+
+  it("stripHiddenSharedBindingSummaries drops SUMMARY titles but keeps nested shared children", () => {
+    const input = [
+      {
+        id: "shared:s1",
+        name: "Shared Session",
+        updatedAt: 1,
+        engineSource: "claude" as const,
+        threadKind: "shared" as const,
+      },
+      {
+        id: "claude:plan-1",
+        name: "SUMMARY: 创建一个最小 Hello World",
+        updatedAt: 2,
+        engineSource: "claude" as const,
+      },
+      {
+        id: "grok:impl-1",
+        name: "按",
+        updatedAt: 3,
+        engineSource: "grok" as const,
+        parentThreadId: "shared:s1",
+      },
+      {
+        id: "claude:user-1",
+        name: "正常功能讨论",
+        updatedAt: 4,
+        engineSource: "claude" as const,
+      },
+    ];
+    const stripped = stripHiddenSharedBindingSummaries(input, new Set());
+    // control-plane 顶层仍丢；挂在 shared 下的子代理保留（Strip/childThreads 数据源）
+    expect(stripped.map((row) => row.id)).toEqual([
+      "shared:s1",
+      "grok:impl-1",
+      "claude:user-1",
+    ]);
+  });
+
+  it("isSharedCollabWorkerSpawnTitle catches multi-line collab worker titles", () => {
+    const multiLine =
+      `MOSSX_CONTEXT_PACKAGE:sha256:${"a".repeat(64)}:` +
+      `sha256:${"b".repeat(64)}\n` +
+      "MOSSX_SHARED_CONTEXT_V1\n" +
+      "session:abc\n" +
+      "binding:squad:agent-1:implement:codex:prof\n" +
+      "hello";
+    expect(isSharedCollabWorkerSpawnTitle(multiLine)).toBe(true);
+    expect(isSharedControlPlaneSpawnTitle(multiLine)).toBe(true);
+    // 单行 package 不是 collab worker，但是 control-plane（侧栏仍应 hide）
+    const singlePackage =
+      `MOSSX_CONTEXT_PACKAGE:sha256:${"a".repeat(64)}:` +
+      `sha256:${"b".repeat(64)}`;
+    expect(isSharedCollabWorkerSpawnTitle(singlePackage)).toBe(false);
+    expect(isSharedControlPlaneSpawnTitle(singlePackage)).toBe(true);
+  });
+
+  it("mergeGrokSessionSummaries drops MOSSX_ raw firstMessage before title clip", () => {
+    const fullPackage =
+      `MOSSX_CONTEXT_PACKAGE:sha256:${"a".repeat(64)}:` +
+      `sha256:${"b".repeat(64)}`;
+    const merged = mergeGrokSessionSummaries(
+      [
+        {
+          id: "grok:keep",
+          name: "用户 Grok 会话",
+          updatedAt: 1,
+          engineSource: "grok",
+        },
+      ],
+      [
+        {
+          sessionId: "spawn-pkg",
+          firstMessage: fullPackage,
+          updatedAt: 20,
+          fileSizeBytes: 10,
+        },
+        {
+          sessionId: "keep-user",
+          firstMessage: "请对工作区做变更代际分析",
+          updatedAt: 15,
+          fileSizeBytes: 10,
+        },
+      ],
+      "ws-1",
+      {},
+      () => undefined,
+    );
+    expect(merged.map((row) => row.id).sort()).toEqual([
+      "grok:keep",
+      "grok:keep-user",
+    ]);
+  });
+
+  it("mergeCodexCatalogSessionSummaries drops collab MOSSX worker before Agent N rename", () => {
+    const multiLine =
+      `MOSSX_CONTEXT_PACKAGE:sha256:${"a".repeat(64)}:` +
+      `sha256:${"b".repeat(64)}\n` +
+      "MOSSX_SHARED_CONTEXT_V1\n" +
+      "session:s1\n" +
+      "binding:squad:run:implement:codex:p\n" +
+      "body";
+    const merged = mergeCodexCatalogSessionSummaries(
+      [
+        {
+          id: "codex:user-1",
+          name: "用户自己的 Codex 会话",
+          updatedAt: 10,
+          engineSource: "codex",
+        },
+      ],
+      [
+        {
+          sessionId: "codex:019fd727-worker",
+          title: multiLine,
+          updatedAt: 20,
+          engine: "codex",
+        },
+        {
+          sessionId: "codex:user-keep",
+          title: "正常 codex 任务",
+          updatedAt: 15,
+          engine: "codex",
+        },
+      ],
+      "ws-1",
+      {},
+      () => undefined,
+    );
+    expect(merged.map((r) => r.id).sort()).toEqual([
+      "codex:user-1",
+      "codex:user-keep",
+    ]);
+  });
+
+  it("mergeCodexCatalogSessionSummaries respects hide set by bare uuid", () => {
+    const hidden = expandHiddenSharedBindingIds([
+      "019fd727-2a93-7f51-802e-ca817573d8e8",
+    ]);
+    const merged = mergeCodexCatalogSessionSummaries(
+      [],
+      [
+        {
+          sessionId: "codex:019fd727-2a93-7f51-802e-ca817573d8e8",
+          title: "Agent 81",
+          updatedAt: 20,
+          engine: "codex",
+        },
+        {
+          sessionId: "codex:visible-user",
+          title: "Agent 12",
+          updatedAt: 15,
+          engine: "codex",
+        },
+      ],
+      "ws-1",
+      {},
+      () => undefined,
+      hidden,
+    );
+    // Agent 12 用户会话保留；hide 命中的 worker 即使显示 Agent 81 也剔除
+    expect(merged.map((r) => r.id)).toEqual(["codex:visible-user"]);
   });
 
   it("mergeGrok clears leaked baseline even when sessions filter empties", () => {

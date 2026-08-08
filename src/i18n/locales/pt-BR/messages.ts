@@ -20,7 +20,18 @@ const messages = {
       "title_one": "{{count}} arquivo editado",
       "title_other": "{{count}} arquivos editados",
       "showMore_one": "Mostrar mais {{count}} arquivo",
-      "showMore_other": "Mostrar mais {{count}} arquivos"
+      "showMore_other": "Mostrar mais {{count}} arquivos",
+      "revertAll": "Desfazer tudo",
+      "revertFile": "Desfazer {{path}}",
+      "revertFileAction": "Desfazer",
+      "revertAllConfirmTitle": "Desfazer todas as alterações",
+      "revertAllConfirmBody":
+        "Isso descartará as alterações locais em {{count}} arquivos e os restaurará para o último commit. Isso não pode ser desfeito.",
+      "revertAllConfirmAction": "Desfazer tudo",
+      "revertFileConfirmTitle": "Desfazer alterações do arquivo",
+      "revertFileConfirmBody":
+        "Isso descartará as alterações locais de “{{path}}” e o restaurará para o último commit. Isso não pode ser desfeito.",
+      "revertFileConfirmAction": "Desfazer"
     },
     "noThinkingContent": "Sem conteúdo de raciocínio",
     "hiddenThinkingContent": "O conteúdo de raciocínio está oculto pela configuração atual.",
@@ -52,6 +63,7 @@ const messages = {
     "restoringHistory": "Carregando a janela da conversa…",
     "restoringHistoryHint": "Carregando a transcrição local e o estado da sessão.",
     "generatingResponse": "Gerando resposta...",
+    "responding": "Respondendo...",
     "codexWaitingForFirstText": "O Codex está em execução. Aguardando o primeiro trecho de texto...",
     "codexSilentSuspected": "Sem nova saída do Codex há algum tempo. Ainda escutando por atividade de execução...",
     "nonStreamingHint": "Este modelo pode retornar saída não incremental, ou a rede pode estar inacessível. Aguarde...",
@@ -66,7 +78,7 @@ const messages = {
     "opencodeModelSwitchMessage": "Troca de modelo detectada na mesma sessão. Uma nova sessão de backend foi criada para evitar timeouts.",
     "doneIn": "Concluído em {{duration}}",
     "totalDuration": "Duração",
-    "durationSeconds": "{{seconds}}s",
+    "durationSeconds": "{{duration}}",
     "tokenUsage": "Entrada {{input}} / Saída {{output}}",
     "tokenUsageTooltip": "Entrada {{input}} token / Saída {{output}} token",
     "messageActions": "Ações da mensagem",

@@ -283,8 +283,14 @@ describe("Messages live behavior", () => {
     });
   });
 
-  it("keeps only the latest title-only reasoning row for gemini and mirrors it in the working indicator", () => {
+  it("keeps only the latest title-only reasoning row for gemini and shows tool activity in the working indicator", () => {
     const items: ConversationItem[] = [
+      {
+        id: "user-gemini-title-only",
+        kind: "message",
+        role: "user",
+        text: "索引仓库",
+      },
       {
         id: "reasoning-title-only-old",
         kind: "reasoning",
@@ -321,8 +327,15 @@ describe("Messages live behavior", () => {
       />,
     );
 
-    const workingText = container.querySelector(".working-text");
-    expect(workingText?.textContent ?? "").toContain("Indexing workspace");
+    // Working bar: spinner + timer + fixed status + tool activity; no reasoning first-line echo.
+    expect(container.querySelector(".working")).toBeTruthy();
+    expect(container.querySelector(".working-text")?.textContent ?? "").toContain("响应中");
+    expect(container.querySelector(".working-activity")?.textContent ?? "").toContain(
+      "Command: rg --files",
+    );
+    expect(container.querySelector(".working-activity")?.textContent ?? "").not.toContain(
+      "Indexing workspace",
+    );
     const reasoningRows = container.querySelectorAll(".thinking-block");
     expect(reasoningRows.length).toBe(1);
     expect(container.querySelector(".thinking-title")).toBeTruthy();
@@ -743,7 +756,7 @@ describe("Messages live behavior", () => {
     );
   });
 
-  it("defers the Codex session file-change summary until the turn is no longer working", async () => {
+  it("does not render Codex session file-change summary cards in the timeline", async () => {
     const items: ConversationItem[] = [
       {
         id: "user-codex-file-summary",
@@ -775,23 +788,7 @@ describe("Messages live behavior", () => {
       },
     ];
 
-    const view = render(
-      <Messages
-        items={items}
-        threadId="thread-codex-file-summary"
-        workspaceId="ws-1"
-        isThinking
-        activeEngine="codex"
-        openTargets={[]}
-        selectedOpenAppId=""
-      />,
-    );
-
-    await waitFor(() => {
-      expect(screen.queryByText("messages.turnFilesChanged.title")).toBeNull();
-    });
-
-    view.rerender(
+    render(
       <Messages
         items={items}
         threadId="thread-codex-file-summary"
@@ -804,7 +801,7 @@ describe("Messages live behavior", () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText("messages.turnFilesChanged.title")).toBeTruthy();
+      expect(screen.queryByText("messages.turnFilesChanged.title")).toBeNull();
     });
   });
 
@@ -1096,8 +1093,10 @@ describe("Messages live behavior", () => {
     const { container, rerender } = render(renderWith(false));
 
     const scroller = getMessagesScroller(container);
-    // User scrolls up, far from the bottom — auto-follow must release.
+    // User scrolls up (wheel 租约 + 离底位置) — auto-follow must release.
+    // 仅改 scrollTop 不发 wheel 会被当成内容长高假离底，不得解绑。
     setScrollerMetrics(scroller, 400, 2000);
+    fireEvent.wheel(scroller, { deltaY: -120 });
     fireEvent.scroll(scroller);
 
     rerender(renderWith(true));
@@ -1422,6 +1421,68 @@ describe("Messages live behavior", () => {
     }
   });
 
+  it("re-pins when the composer status strip shrinks the container after the settle window", () => {
+    vi.useFakeTimers();
+    try {
+      const renderWith = (thinking: boolean) => (
+        <Messages
+          items={[
+            {
+              id: "settle-shrink-user",
+              kind: "message",
+              role: "user",
+              text: "run",
+            },
+            {
+              id: "settle-shrink-assistant",
+              kind: "message",
+              role: "assistant",
+              text: thinking ? "streaming tail" : "final answer",
+            },
+          ]}
+          threadId="thread-settle-shrink"
+          workspaceId="ws-1"
+          isThinking={thinking}
+          processingStartedAt={thinking ? Date.now() - 1_000 : null}
+          openTargets={[]}
+          selectedOpenAppId=""
+        />
+      );
+      const { container, rerender } = render(renderWith(true));
+      const scroller = getMessagesScroller(container);
+      const scrollHeight = 2_400;
+      let clientHeight = 720;
+      setScrollerMetrics(scroller, scrollHeight - 720, scrollHeight);
+      Object.defineProperty(scroller, "clientHeight", {
+        configurable: true,
+        get: () => clientHeight,
+      });
+      notifyContentResized();
+
+      // settle：先钉到当时的底
+      rerender(renderWith(false));
+      expect(scroller.scrollTop).toBe(scrollHeight - 720);
+
+      // 让 forced 走完最短保持（6s）并凭真底 + 高度稳定采样退役，
+      // 同时越过 settle 死线（finalizing 结束后 2.4s）。
+      for (let i = 0; i < 6; i += 1) {
+        act(() => {
+          vi.advanceTimersByTime(1_400);
+        });
+        scroller.scrollTop = scrollHeight - clientHeight;
+        notifyContentResized();
+      }
+
+      // Composer 运行态条（「已编辑 N 个文件」）迟到挂载：容器 clientHeight 被压小，
+      // scrollTop / scrollHeight 均不变、不派发 scroll 事件。视口必须被追回新底。
+      clientHeight = 620;
+      notifyContentResized();
+      expect(scroller.scrollTop).toBe(scrollHeight - 620);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("does not chase late idle growth when the user has scrolled away from the bottom", () => {
     window.localStorage.setItem("ccgui.messages.live.autoFollow", "1");
     vi.useFakeTimers();
@@ -1511,50 +1572,41 @@ describe("Messages live behavior", () => {
     scrollSpy.mockRestore();
   });
 
-  it("finishes history placement at the 2s checkpoint with focus follow off", () => {
-    vi.useFakeTimers();
-    try {
-      window.localStorage.setItem("ccgui.messages.live.autoFollow", "0");
-      const renderWith = (items: ConversationItem[], loading: boolean) => (
-        <Messages
-          items={items}
-          threadId="thread-history-focus-off"
-          workspaceId="ws-1"
-          isThinking={false}
-          isHistoryLoading={loading}
-          openTargets={[]}
-          selectedOpenAppId=""
-        />
-      );
-      const historyItems: ConversationItem[] = [
-        { id: "history-focus-off-1", kind: "message", role: "user", text: "hello" },
-        {
-          id: "history-focus-off-2",
-          kind: "message",
-          role: "assistant",
-          text: "late measured answer",
-        },
-      ];
-      const { container, rerender } = render(renderWith([], true));
-      const scroller = getMessagesScroller(container);
-      let scrollHeight = 2_400;
-      setScrollerMetrics(scroller, 0, () => scrollHeight);
+  it("finishes history placement on late geometry via ResizeObserver with focus follow off", () => {
+    // 全砍：不再靠 100/300/1000/2000ms 定时 recheck；迟到测高只靠 RO。
+    window.localStorage.setItem("ccgui.messages.live.autoFollow", "0");
+    const renderWith = (items: ConversationItem[], loading: boolean) => (
+      <Messages
+        items={items}
+        threadId="thread-history-focus-off"
+        workspaceId="ws-1"
+        isThinking={false}
+        isHistoryLoading={loading}
+        openTargets={[]}
+        selectedOpenAppId=""
+      />
+    );
+    const historyItems: ConversationItem[] = [
+      { id: "history-focus-off-1", kind: "message", role: "user", text: "hello" },
+      {
+        id: "history-focus-off-2",
+        kind: "message",
+        role: "assistant",
+        text: "late measured answer",
+      },
+    ];
+    const { container, rerender } = render(renderWith([], true));
+    const scroller = getMessagesScroller(container);
+    let scrollHeight = 2_400;
+    setScrollerMetrics(scroller, 0, () => scrollHeight);
 
-      rerender(renderWith(historyItems, false));
-      expect(scroller.scrollTop).toBe(2_400 - 720);
+    rerender(renderWith(historyItems, false));
+    expect(scroller.scrollTop).toBe(2_400 - 720);
 
-      act(() => {
-        vi.advanceTimersByTime(1_100);
-      });
-      scrollHeight = 4_000;
-      act(() => {
-        vi.advanceTimersByTime(900);
-      });
+    scrollHeight = 4_000;
+    notifyContentResized();
 
-      expect(scroller.scrollTop).toBe(4_000 - 720);
-    } finally {
-      vi.useRealTimers();
-    }
+    expect(scroller.scrollTop).toBe(4_000 - 720);
   });
 
   it("uses settle placement after an active-first history load", () => {
@@ -1824,7 +1876,8 @@ describe("Messages live behavior", () => {
     let scrollHeight = 2400;
     setScrollerMetrics(scroller, 0, () => scrollHeight);
 
-    // User scrolls up mid-stream to read history: follow releases.
+    // User scrolls up mid-stream to read history: wheel 租约解除跟随。
+    fireEvent.wheel(scroller, { deltaY: -120 });
     scroller.scrollTop = 400;
     fireEvent.scroll(scroller);
 
@@ -1876,57 +1929,44 @@ describe("Messages live behavior", () => {
   });
 
   it("keeps following when an actual write echo arrives after convergence completes", () => {
-    vi.useFakeTimers();
-    try {
-      window.localStorage.setItem("ccgui.messages.live.autoFollow", "1");
-      const scrollSpy = vi
-        .spyOn(HTMLElement.prototype, "scrollIntoView")
-        .mockImplementation(() => {});
-      const { container } = render(
-        <Messages
-          items={[
-            { id: "grace-echo-user", kind: "message", role: "user", text: "go" },
-            { id: "grace-echo-assistant", kind: "message", role: "assistant", text: "partial" },
-          ]}
-          threadId="thread-grace-echo"
-          workspaceId="ws-1"
-          isThinking
-          processingStartedAt={Date.now() - 1_000}
-          openTargets={[]}
-          selectedOpenAppId=""
-        />,
-      );
-      const scroller = getMessagesScroller(container);
+    // 全砍：迟到长高靠 RO 而非 2s checkpoint；write fingerprint + grace 仍保护 echo。
+    window.localStorage.setItem("ccgui.messages.live.autoFollow", "1");
+    const scrollSpy = vi
+      .spyOn(HTMLElement.prototype, "scrollIntoView")
+      .mockImplementation(() => {});
+    const { container } = render(
+      <Messages
+        items={[
+          { id: "grace-echo-user", kind: "message", role: "user", text: "go" },
+          { id: "grace-echo-assistant", kind: "message", role: "assistant", text: "partial" },
+        ]}
+        threadId="thread-grace-echo"
+        workspaceId="ws-1"
+        isThinking
+        processingStartedAt={Date.now() - 1_000}
+        openTargets={[]}
+        selectedOpenAppId=""
+      />,
+    );
+    const scroller = getMessagesScroller(container);
 
-      let scrollHeight = 2400;
-      const metrics = setScrollerMetrics(scroller, 1000, () => scrollHeight);
-      notifyContentResized();
-      expect(scroller.scrollTop).toBe(1680);
+    let scrollHeight = 2400;
+    const metrics = setScrollerMetrics(scroller, 1000, () => scrollHeight);
+    notifyContentResized();
+    expect(scroller.scrollTop).toBe(1680);
 
-      // 在最后一个 2000ms checkpoint 制造第二次真实 write。fake rAF 也由 timer 驱动，
-      // checkpoint 后的 settle frames 会在本次 advance 内完成，active run 随即清空。
-      act(() => {
-        vi.advanceTimersByTime(1900);
-      });
-      scrollHeight = 3000;
-      const writesBeforeFinalCheckpoint = metrics.getScrollTopWriteCount();
-      act(() => {
-        vi.advanceTimersByTime(101);
-      });
-      expect(scroller.scrollTop).toBe(2280);
-      expect(metrics.getScrollTopWriteCount()).toBeGreaterThan(
-        writesBeforeFinalCheckpoint,
-      );
+    scrollHeight = 3000;
+    const writesBeforeGrow = metrics.getScrollTopWriteCount();
+    notifyContentResized();
+    expect(scroller.scrollTop).toBe(2280);
+    expect(metrics.getScrollTopWriteCount()).toBeGreaterThan(writesBeforeGrow);
 
-      // run 已完成，但 2280 的独立 write fingerprint 尚在 350ms grace 内。
-      scrollHeight = 6000;
-      fireEvent.scroll(scroller);
-      notifyContentResized();
-      expect(scroller.scrollTop).toBe(6000 - 720);
-      scrollSpy.mockRestore();
-    } finally {
-      vi.useRealTimers();
-    }
+    // 刚写入 2280 的 fingerprint 尚在 grace 内；高度再涨后迟到 scroll 不得解除跟随。
+    scrollHeight = 6000;
+    fireEvent.scroll(scroller);
+    notifyContentResized();
+    expect(scroller.scrollTop).toBe(6000 - 720);
+    scrollSpy.mockRestore();
   });
 
   it("does not manufacture post-write grace from no-op convergence frames", () => {
@@ -1959,10 +1999,15 @@ describe("Messages live behavior", () => {
       });
       expect(metrics.getScrollTopWriteCount()).toBe(0);
 
-      scrollHeight = 6000;
+      // 用户 wheel 离底（可仍停在旧底坐标）；租约期内不得立刻 re-arm，随后长高也不得吸回。
+      fireEvent.wheel(scroller, { deltaY: -120 });
+      scroller.scrollTop = 1680;
       fireEvent.scroll(scroller);
+      const writesAfterLeave = metrics.getScrollTopWriteCount();
+      scrollHeight = 6000;
       notifyContentResized();
       expect(scroller.scrollTop).toBe(1680);
+      expect(metrics.getScrollTopWriteCount()).toBe(writesAfterLeave);
       scrollSpy.mockRestore();
     } finally {
       vi.useRealTimers();
@@ -3178,9 +3223,14 @@ describe("Messages live behavior", () => {
       />,
     );
 
-    const workingText = container.querySelector(".working-text");
-    expect(workingText?.textContent ?? "").toContain("用户回复了");
+    // Pure reasoning turn: spinner + timer + fixed status; no first-line echo in working bar.
+    expect(container.querySelector(".working")).toBeTruthy();
+    expect(container.querySelector(".working-timer-clock")).toBeTruthy();
+    expect(container.querySelector(".working-text")?.textContent ?? "").toContain("响应中");
     expect(container.querySelector(".working-activity")).toBeNull();
+    expect(container.querySelector(".thinking-content")?.textContent ?? "").toContain(
+      "用户回复了",
+    );
   });
 
   it("does not show stale backend activity from previous turns", () => {

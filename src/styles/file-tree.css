@@ -812,6 +812,10 @@
   padding-right: 22px;
 }
 
+.file-tree-row-wrap.has-browser-action .file-tree-git-summary {
+  padding-right: 40px;
+}
+
 .file-tree-git-token.is-branch {
   color: var(--git-branch);
   font-weight: 600;
@@ -834,15 +838,26 @@
   color: var(--git-status-conflict);
 }
 
-.file-tree-action {
+.file-tree-actions {
   position: absolute;
   right: 4px;
   top: 50%;
   transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
   opacity: 0;
   visibility: hidden;
   pointer-events: none;
   z-index: 2;
+}
+
+.file-tree-action {
+  position: static;
+  transform: none;
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
   padding: 2px;
   border: none;
   border-radius: 6px;
@@ -851,15 +866,15 @@
 }
 
 .file-tree-action:hover:not(:disabled) {
-  transform: translateY(-50%);
+  transform: none;
   box-shadow: none;
 }
 
-.file-tree-row-wrap:hover .file-tree-action,
-.file-tree-row-wrap:focus-within .file-tree-action,
-.file-tree-action.is-visible,
-.file-tree-action:hover,
-.file-tree-action:focus-visible {
+.file-tree-row-wrap:hover .file-tree-actions,
+.file-tree-row-wrap:focus-within .file-tree-actions,
+.file-tree-actions.is-visible,
+.file-tree-actions:hover,
+.file-tree-actions:focus-within {
   opacity: 1;
   visibility: visible;
   pointer-events: auto;

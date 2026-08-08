@@ -66,4 +66,20 @@ describe("terminal panel theming", () => {
       /\.xterm-viewport::-webkit-scrollbar-track\s*\{[^}]*background:\s*transparent/s,
     );
   });
+
+  it("keeps the xterm scrollbar thin and hover-revealed like ScrollArea", () => {
+    // Default thumb hidden; surface hover/focus reveals the global thin thumb.
+    expect(terminalCss).toMatch(
+      /\.terminal-surface \.xterm-viewport::-webkit-scrollbar-thumb\s*\{[^}]*background-color:\s*transparent/s,
+    );
+    expect(terminalCss).toMatch(
+      /\.terminal-surface:hover \.xterm-viewport::-webkit-scrollbar-thumb/,
+    );
+    expect(terminalCss).toMatch(
+      /\.terminal-surface \.xterm-viewport::-webkit-scrollbar\s*\{[^}]*width:\s*var\(--sb-size\)/s,
+    );
+    expect(terminalCss).toMatch(
+      /border-width:\s*var\(--sb-thumb-inset\)/,
+    );
+  });
 });

@@ -2,13 +2,17 @@
 
 本页为 `mossx` 已归档 OpenSpec proposal 的完整可点击索引。目录名中的日期是 archive date，不代表 proposal 首次创建时间。
 
-- Updated At: `2026-08-03`
-- Indexed proposals: `848`
+- Updated At: `2026-08-08`
+- Indexed proposals: `849+`
 - Source of truth: `openspec/changes/archive/<archive-date>-<change-id>/proposal.md`
 - Back to current changes: [`../README.md`](../README.md)
 - Back to workspace overview: [`../../project.md`](../../project.md)
 
-## 2026-08 (66)
+## 2026-08
+
+### 2026-08-08
+
+- [`2026-08-08-add-local-html-open-in-builtin-browser`](2026-08-08-add-local-html-open-in-builtin-browser/proposal.md) — verified implementation，已同步 `local-html-builtin-browser-open`、`vibecoding-browser-agent`；本地 HTML 经内置 Browser Agent（`file://`）打开；内容区/文件树/Git 入口；失败走全局 toast + i18n
 
 ### 2026-08-03
 

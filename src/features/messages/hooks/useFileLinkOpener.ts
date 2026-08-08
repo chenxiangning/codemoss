@@ -1,7 +1,7 @@
 import { useCallback, useRef, useState } from "react";
 import type { MouseEvent } from "react";
-import { openPath, revealItemInDir } from "@tauri-apps/plugin-opener";
-import { openWorkspaceIn } from "../../../services/tauri";
+import { openPath } from "@tauri-apps/plugin-opener";
+import { openWorkspaceIn, revealInFileManager } from "../../../services/tauri";
 import { pushErrorToast } from "../../../services/toasts";
 import type { OpenAppTarget } from "../../../types";
 import {
@@ -189,7 +189,7 @@ export function useFileLinkOpener(
 
       try {
         if (target.kind === "finder") {
-          await revealItemInDir(resolvedPath);
+          await revealInFileManager(resolvedPath);
           return;
         }
 
@@ -312,7 +312,7 @@ export function useFileLinkOpener(
                 label: revealLabel(),
                 onSelect: async () => {
                   try {
-                    await revealItemInDir(resolvedPath);
+                    await revealInFileManager(resolvedPath);
                   } catch (error) {
                     reportOpenError(error, {
                       rawPath,

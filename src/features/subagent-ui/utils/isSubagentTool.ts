@@ -252,7 +252,7 @@ export function isSubagentTool(item: ToolLike): boolean {
     return true;
   }
 
-  // Shared description-as-title：走 subagentGroup，替换扳手行，不再双重渲染
+  // Shared description-as-title：payload 含 subagent_type 等字段时仍识别为子代理工具
   if (looksLikeSubagentPayload(item.detail)) {
     return true;
   }

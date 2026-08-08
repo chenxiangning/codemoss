@@ -6,8 +6,10 @@ import {
   drainLiveAssistantTextTailIfItemChanged,
   getLiveAssistantTextSnapshot,
   LIVE_ASSISTANT_TEXT_PUBLISH_INTERVAL_MS,
+  peekLiveAssistantText,
   renameLiveAssistantTextThread,
   resetLiveAssistantTextChannelForTests,
+  resolveLiveAssistantSettlementText,
   subscribeLiveAssistantText,
   updateLiveAssistantTextSnapshot,
 } from "./liveAssistantTextChannel";
@@ -167,6 +169,36 @@ describe("liveAssistantTextChannel", () => {
       tailDelta: " tail-1 tail-2",
     });
     expect(getLiveAssistantTextSnapshot("t1")).toBeNull();
+  });
+
+  it("peeks authoritative text even when the published snapshot lags", () => {
+    appendLiveAssistantText("t1", "item-1", "**");
+    appendLiveAssistantText("t1", "item-1", "Todo 演示已就绪");
+    // 首段立即 publish；后续仍在 cadence 内 → published 仍是壳
+    expect(getLiveAssistantTextSnapshot("t1")?.text).toBe("**");
+    expect(peekLiveAssistantText("t1")?.text).toBe("**Todo 演示已就绪");
+  });
+
+  it("resolves settlement text so incomplete complete cannot wipe the live body", () => {
+    appendLiveAssistantText("t1", "item-1", "**");
+    appendLiveAssistantText(
+      "t1",
+      "item-1",
+      "Todo 演示已就绪（刻意放慢更新）**",
+    );
+    const full = "**Todo 演示已就绪（刻意放慢更新）**";
+
+    // provider 终稿只有建壳首段 / 空 → 保留通道全文
+    expect(resolveLiveAssistantSettlementText("t1", "**")).toBe(full);
+    expect(resolveLiveAssistantSettlementText("t1", "")).toBe(full);
+    // 正常完整终稿
+    expect(resolveLiveAssistantSettlementText("t1", full)).toBe(full);
+    // 无通道时回落 provider
+    expect(resolveLiveAssistantSettlementText("missing", "only-provider")).toBe(
+      "only-provider",
+    );
+    // 不 clear 通道（由调用方负责）
+    expect(peekLiveAssistantText("t1")?.text).toBe(full);
   });
 
   it("returns null from drain when nothing beyond the shell has accumulated", () => {

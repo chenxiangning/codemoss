@@ -1,10 +1,5 @@
 export default {
   subagentUi: {
-    squadAria: "सबएजेंट टीम",
-    squadTitle: "{{completed}}/{{total}} एजेंट",
-    squadTitleCount: "{{total}} एजेंट",
-
-    squadFallbackTitle: "समानांतर सबएजेंट",
     defaultName: "सबएजेंट",
     badge: "SubAgent",
     claudeLaunchNoSession:
@@ -18,12 +13,6 @@ export default {
     emptySession: "सबएजेंट सत्र में अभी कोई संदेश नहीं (संभवतः इंडेक्सिंग जारी है)",
     noSessionYet:
       "अभी कोई सबएजेंट सत्र जुड़ा नहीं है (agentId हल नहीं हुआ या transcript अभी इंडेक्स हो रहा है)। बाएँ सत्र ट्री में 「सबएजेंट」 पंक्ति खोलकर देखें।",
-
-    statusShort: {
-      completed: "पूर्ण",
-      running: "चल रहा",
-      error: "विफल",
-    },
     status: {
       running: "चल रहा है",
       completed: "पूर्ण",

@@ -209,7 +209,8 @@ async fn list_claude_sessions_rejects_non_ascii_project_dir_collision() {
 #[tokio::test]
 async fn list_claude_sessions_keeps_missing_cwd_project_dir_fallback() {
     let unique = Uuid::new_v4().to_string();
-    let temp_root = std::env::temp_dir().join(format!("ccgui-claude-missing-cwd-fallback-{}", unique));
+    let temp_root =
+        std::env::temp_dir().join(format!("ccgui-claude-missing-cwd-fallback-{}", unique));
     let base_dir = temp_root.join("claude-projects");
     let workspace_path = temp_root.join("workspace");
     std::fs::create_dir_all(&workspace_path).expect("create workspace path");

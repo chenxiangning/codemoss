@@ -13,8 +13,8 @@ use crate::app_paths;
 use crate::codex::home::{resolve_default_codex_home, resolve_workspace_codex_home};
 use crate::state::AppState;
 use crate::types::{
-    LocalUsageDay, LocalUsageModel, LocalUsageSessionSummary, LocalUsageSnapshot,
-    LocalUsageTotals, LocalUsageUsageData, WorkspaceEntry,
+    LocalUsageDay, LocalUsageModel, LocalUsageSessionSummary, LocalUsageSnapshot, LocalUsageTotals,
+    LocalUsageUsageData, WorkspaceEntry,
 };
 
 #[path = "local_usage/codex_rewind.rs"]
@@ -443,7 +443,6 @@ fn build_snapshot(
     }
 }
 
-
 fn calculate_usage_cost(usage: &LocalUsageUsageData, rates: CostRates) -> f64 {
     let input_cost = (usage.input_tokens as f64 / 1_000_000.0) * rates.input;
     let output_cost = (usage.output_tokens as f64 / 1_000_000.0) * rates.output;
@@ -460,7 +459,6 @@ fn codex_cost_rates() -> CostRates {
         cache_read: 0.30,
     }
 }
-
 
 fn scan_codex_session_summaries(
     workspace_path: Option<&Path>,

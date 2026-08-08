@@ -61,6 +61,7 @@ type GitMultiRepositoryChangesProps = {
     section: "staged" | "unstaged",
   ) => void;
   onOpenInlinePreview?: (repositoryRoot: string, path: string) => void;
+  onOpenInBrowser?: (repositoryRoot: string, path: string) => void;
   onShowFileMenu?: (
     event: ReactMouseEvent<HTMLDivElement>,
     repositoryRoot: string,
@@ -112,6 +113,7 @@ export function GitMultiRepositoryChanges({
   onOpenFile,
   onOpenFilePreview,
   onOpenInlinePreview,
+  onOpenInBrowser,
   onShowFileMenu,
   onRefresh,
 }: GitMultiRepositoryChangesProps) {
@@ -356,6 +358,11 @@ export function GitMultiRepositoryChanges({
                 section,
               )}
               onOpenInlinePreview={onOpenInlinePreview ? (path) => onOpenInlinePreview(status.repositoryRoot, path) : undefined}
+              onOpenInBrowser={
+                onOpenInBrowser
+                  ? (path) => onOpenInBrowser(status.repositoryRoot, path)
+                  : undefined
+              }
               onShowFileMenu={(event, path, section) => {
                 event.preventDefault();
                 event.stopPropagation();
@@ -404,6 +411,11 @@ export function GitMultiRepositoryChanges({
                 section,
               )}
               onOpenInlinePreview={onOpenInlinePreview ? (path) => onOpenInlinePreview(status.repositoryRoot, path) : undefined}
+              onOpenInBrowser={
+                onOpenInBrowser
+                  ? (path) => onOpenInBrowser(status.repositoryRoot, path)
+                  : undefined
+              }
               onShowFileMenu={(event, path, section) => {
                 event.preventDefault();
                 event.stopPropagation();

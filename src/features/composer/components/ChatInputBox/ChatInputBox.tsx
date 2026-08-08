@@ -26,6 +26,7 @@ import { ChatInputBoxFooter } from './ChatInputBoxFooter.js';
 import { ComposerReadinessBar } from './ComposerReadinessBar.js';
 import { ContextBar } from './ContextBar.js';
 import { ResizeHandles } from './ResizeHandles.js';
+import { shouldSkipComposerShellFocus } from './utils/shouldSkipComposerShellFocus.js';
 import { CuratedSkillIndicator } from '../../../curated-skills';
 import {
   useCompletionDropdown,
@@ -208,6 +209,7 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
       onCodexSpeedModeChange,
       onCodexReviewQuickStart,
       onForkQuickStart,
+      squadSurface,
       memoryReferenceMode = 'off',
       onSetMemoryReferenceMode,
       attachments: externalAttachments,
@@ -395,6 +397,8 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
 
     // Shared/Atomic enrichment：完整 executionTarget 时主动 ensure catalog。
     // 失败不清 target；闭合态标签由 ModelSelect snapshot authority 承担。
+    // Claude：打开历史会话 / 切 target 时同步 ANTHROPIC mapping 到当前渠道，
+    // 避免 chip 已是「本地配置」而列表标签仍是上一 managed 的 MiniMax/DeepSeek。
     useEffect(() => {
       const engine = executionTarget?.engine;
       if (
@@ -415,6 +419,15 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
         engine as EngineType,
         profileId,
       );
+      if (engine === "claude") {
+        void import("../../../vendors/activateEngineProviderProfile")
+          .then(({ syncClaudeModelMappingForProfile }) =>
+            syncClaudeModelMappingForProfile(profileId),
+          )
+          .catch(() => {
+            // mapping 失败不挡 catalog；列表仍可走 model.model 权威展示
+          });
+      }
     }, [
       atomicProviderTargetCatalog.ensureModels,
       atomicProviderTargetCatalog.ensureProfiles,
@@ -1382,6 +1395,7 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
       setHasContent,
       adjustHeight,
       invalidateCache,
+      renderFileTags,
     });
 
     useEffect(() => {
@@ -1679,8 +1693,10 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
       <div className="chat-input-box-wrapper">
         <div
           className={`chat-input-box ${isResizingInputBox ? 'is-resizing' : ''}${isInputBoxCollapsed ? ' is-collapsed' : ''}${isDragOver ? " is-drag-over" : ""}`}
-          onClick={() => {
+          onClick={(event) => {
             if (isInputBoxCollapsed) return;
+            // Portal 弹层 DOM 在 body、React 树仍是子孙 → 合成 click 会冒泡抢焦
+            if (shouldSkipComposerShellFocus(event.target)) return;
             focusInput();
           }}
           onDragOver={handleDragOver}
@@ -1852,6 +1868,7 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
               models={models}
               permissionMode={permissionMode}
               currentProvider={currentProvider}
+              currentProviderProfileId={currentProviderProfileId}
               workspaceId={workspaceId}
               providerAvailability={providerAvailability}
               providerVersions={providerVersions}
@@ -1903,6 +1920,7 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
               readinessSurface={readinessSurface}
               panelToggleSurface={panelToggleSurface}
               curatedSkillSurface={curatedSkillIndicator}
+              squadSurface={squadSurface}
               toolSurface={(
                 <ContextBar
                   surface="tool-popover"

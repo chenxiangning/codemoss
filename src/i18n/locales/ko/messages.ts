@@ -20,7 +20,18 @@ const messages = {
       "title_one": "파일 {{count}}개 편집됨",
       "title_other": "파일 {{count}}개 편집됨",
       "showMore_one": "파일 {{count}}개 더 보기",
-      "showMore_other": "파일 {{count}}개 더 보기"
+      "showMore_other": "파일 {{count}}개 더 보기",
+      "revertAll": "모두 실행 취소",
+      "revertFile": "{{path}} 실행 취소",
+      "revertFileAction": "실행 취소",
+      "revertAllConfirmTitle": "모든 변경 실행 취소",
+      "revertAllConfirmBody":
+        "{{count}}개 파일의 로컬 변경을 버리고 마지막 커밋으로 복원합니다. 이 작업은 되돌릴 수 없습니다.",
+      "revertAllConfirmAction": "모두 실행 취소",
+      "revertFileConfirmTitle": "파일 변경 실행 취소",
+      "revertFileConfirmBody":
+        "「{{path}}」의 로컬 변경을 버리고 마지막 커밋으로 복원합니다. 이 작업은 되돌릴 수 없습니다.",
+      "revertFileConfirmAction": "실행 취소"
     },
     "noThinkingContent": "사고 내용 없음",
     "hiddenThinkingContent": "현재 설정에 따라 사고 내용이 숨겨져 있습니다.",
@@ -52,6 +63,7 @@ const messages = {
     "restoringHistory": "대화 창 로드 중…",
     "restoringHistoryHint": "로컬 트랜스크립트와 세션 상태를 불러오는 중입니다.",
     "generatingResponse": "응답 생성 중...",
+    "responding": "응답 중...",
     "codexWaitingForFirstText": "Codex가 실행 중입니다. 첫 번째 텍스트 청크를 기다리는 중...",
     "codexSilentSuspected": "한동안 새로운 Codex 출력이 없습니다. 런타임 활동을 계속 수신 중...",
     "nonStreamingHint": "이 모델은 비스트리밍 출력을 반환하거나 네트워크에 연결할 수 없을 수 있습니다. 기다려 주세요...",
@@ -66,7 +78,7 @@ const messages = {
     "opencodeModelSwitchMessage": "동일한 세션에서 모델 전환이 감지되었습니다. 시간 초과를 방지하기 위해 새 백엔드 세션이 생성되었습니다.",
     "doneIn": "{{duration}} 만에 완료",
     "totalDuration": "소요 시간",
-    "durationSeconds": "{{seconds}}초",
+    "durationSeconds": "{{duration}}",
     "tokenUsage": "입력 {{input}} / 출력 {{output}}",
     "tokenUsageTooltip": "입력 {{input}} token / 출력 {{output}} token",
     "messageActions": "메시지 작업",

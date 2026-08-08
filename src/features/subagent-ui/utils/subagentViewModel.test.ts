@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildSubagentCardFromToolItem,
   buildSubagentCardsFromToolItems,
+  resolveClaudeSubagentSessionFromContext,
   resolveSubagentProgress,
 } from "./subagentViewModel";
 import type { ConversationItem } from "../../../types";
@@ -327,6 +328,50 @@ describe("subagentViewModel", () => {
     });
     expect(cards[0]?.sessionThreadId).toBe(
       "claude:subagent:0dfedf87-33ef-407f-b018-e07168420e16:ad284bfdf0aa8384f",
+    );
+  });
+
+  it("resolves DeepSeek/Shared Claude session from parent items when card output lacks output_file", () => {
+    const parentItems: ConversationItem[] = [
+      {
+        id: "agent-tool-1",
+        kind: "tool",
+        toolType: "agent",
+        title: "Tool: Agent",
+        detail: JSON.stringify({ description: "Greeting agent 1" }),
+        status: "completed",
+        output: [
+          "Async agent launched successfully.",
+          "agentId: af1c547e815ebbbc6",
+          "output_file: /private/tmp/claude-501/ws/0dfedf87-33ef-407f-b018-e07168420e16/tasks/af1c547e815ebbbc6.output",
+        ].join("\n"),
+      },
+    ];
+    // 卡上只有 agentId + 精简 launch 文案（Strip 常见），无 output_file
+    const resolved = resolveClaudeSubagentSessionFromContext({
+      agentId: "af1c547e815ebbbc6",
+      outputText: "Async agent launched successfully.\nagentId: af1c547e815ebbbc6",
+      nativeThreadIds: [],
+      childThreadIds: [],
+      parentItems,
+    });
+    expect(resolved).toBe(
+      "claude:subagent:0dfedf87-33ef-407f-b018-e07168420e16:af1c547e815ebbbc6",
+    );
+  });
+
+  it("resolves Claude subagent from childThreadIds ending with agentId", () => {
+    const resolved = resolveClaudeSubagentSessionFromContext({
+      agentId: "af1c547e815ebbbc6",
+      outputText: "Async agent launched successfully.\nagentId: af1c547e815ebbbc6",
+      nativeThreadIds: [],
+      childThreadIds: [
+        "claude:subagent:owner-session-uuid:af1c547e815ebbbc6",
+      ],
+      parentItems: [],
+    });
+    expect(resolved).toBe(
+      "claude:subagent:owner-session-uuid:af1c547e815ebbbc6",
     );
   });
 

@@ -10,6 +10,15 @@ import {
   upsertItem,
 } from "../../../utils/threadItems";
 import { settlePlanInProgressSteps } from "../utils/threadNormalize";
+import { isMultiAgentHistFoldItemId } from "../../multi-agent/utils/canvasItems";
+import {
+  isCollabWorkerNativeThreadId,
+  rememberCollabWorkerNativeThreadId,
+} from "../../multi-agent/runtime/collabNativeHideRegistry";
+import {
+  isCollabWorkerAgentNumberTitle,
+  isSharedControlPlaneSpawnTitle,
+} from "./useThreadActions.helpers";
 import {
   isIncrementalDerivationEnabled,
   isReducerNoopGuardEnabled,
@@ -474,6 +483,33 @@ export function threadReducer(state: ThreadState, action: ThreadAction): ThreadS
         state.hiddenThreadIdsByWorkspace[action.workspaceId]?.[action.threadId] ??
         false;
       if (hidden) {
+        return state;
+      }
+      // agent-canvas: 仅作 Inspector 流式键，永不进侧栏
+      if (action.threadId.startsWith("agent-canvas:")) {
+        return state;
+      }
+      // 协作 worker native：登记 hide，且禁止 ensure 出侧栏行（防 Agent N 下崽）
+      const ensureParent = parentThreadIdFromEnsureThreadAction(action);
+      if (
+        isCollabWorkerNativeThreadId(action.threadId) ||
+        (typeof ensureParent === "string" &&
+          ensureParent.startsWith("shared:"))
+      ) {
+        rememberCollabWorkerNativeThreadId(action.threadId);
+        const listNow = state.threadsByWorkspace[action.workspaceId] ?? [];
+        const withoutWorker = listNow.filter(
+          (thread) => thread.id !== action.threadId,
+        );
+        if (withoutWorker.length !== listNow.length) {
+          return {
+            ...state,
+            threadsByWorkspace: {
+              ...state.threadsByWorkspace,
+              [action.workspaceId]: withoutWorker,
+            },
+          };
+        }
         return state;
       }
       const list = state.threadsByWorkspace[action.workspaceId] ?? [];
@@ -1875,10 +1911,23 @@ export function threadReducer(state: ThreadState, action: ThreadAction): ThreadS
             "idle",
         },
       );
+      // Multi-Agent fold 卡是 bridge-only 项（后端投影不产出），历史重建时随本地保留，
+      // 否则「对话结束后协作卡丢失」。位置纠偏由幕布 filter 的 relocate 承担。
+      const incomingIds = new Set(mergedItems.map((item) => item.id));
+      const preservedFoldItems = localItems.filter(
+        (item) =>
+          item.kind === "message" &&
+          isMultiAgentHistFoldItemId(item.id) &&
+          !incomingIds.has(item.id),
+      );
+      const mergedWithFolds =
+        preservedFoldItems.length > 0
+          ? [...mergedItems, ...preservedFoldItems]
+          : mergedItems;
       // Cold reload / history path: fill missing final footer meta from local sidecar.
       const itemsWithSidecarMeta = mergeTurnFinalMetaIntoItems(
         action.threadId,
-        mergedItems,
+        mergedWithFolds,
       );
       const preserveMessageTextIds = new Set<string>();
       for (const item of itemsWithSidecarMeta) {
@@ -2477,9 +2526,31 @@ export function threadReducer(state: ThreadState, action: ThreadAction): ThreadS
           ),
         ),
       );
-      const incomingThreads = action.threads.filter(
-        (thread) => !promotedPendingAliases.has(thread.id),
-      );
+      const incomingThreads = action.threads.filter((thread) => {
+        if (promotedPendingAliases.has(thread.id)) return false;
+        // 协作 worker / control-plane 永不进侧栏
+        if (thread.id.startsWith("agent-canvas:")) return false;
+        if (isCollabWorkerNativeThreadId(thread.id)) return false;
+        if (thread.parentThreadId?.startsWith("shared:")) {
+          rememberCollabWorkerNativeThreadId(thread.id);
+          return false;
+        }
+        if (
+          !thread.id.startsWith("shared:") &&
+          isSharedControlPlaneSpawnTitle(thread.name)
+        ) {
+          rememberCollabWorkerNativeThreadId(thread.id);
+          return false;
+        }
+        // Agent N + 已登记协作 worker id（realtime 先登记、catalog 后改名）
+        if (
+          isCollabWorkerAgentNumberTitle(thread.name) &&
+          isCollabWorkerNativeThreadId(thread.id)
+        ) {
+          return false;
+        }
+        return true;
+      });
       const shouldPreserveDegradedCodexFinalizedThreads = incomingThreads.some(
         (thread) => thread.isDegraded,
       );

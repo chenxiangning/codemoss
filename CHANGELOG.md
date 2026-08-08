@@ -2,6 +2,138 @@
 
 ---
 
+### **2026年8月8日（v0.8.4）**
+
+中文：
+
+这一版将应用升到 **0.8.4**，主线是「冷启动编排闭环、协作可解释、Composer 会话控制一体化」：冷启按 first-paint 契约限流重活、遮罩恢复自动关闭，可交互时间从 ~22s 收到 ~4.4s；协作链路补齐注入上下文 Header、上游摘要/全文喂料与批准补充说明；Composer 升级为 Session Control HUD（多供应商实时用量）+ 改文件 pill 对齐 git 统计；自定义模型可按供应商绑定写入 Claude/Codex；本地 HTML 直开内置浏览器。
+
+✨ Features
+- **自定义模型按供应商绑定**：模型管理弹窗前置供应商选择（本地配置 + 三方列表）；选三方双写 provider-owned customModels 与引擎 catalog，Claude/Codex 同一套 UX 与写盘语义；双写失败可见、per-engine 串行队列防并发丢模型
+- **本地 HTML 内置浏览器打开**：HTML/HTM 文件统一走内置 Browser Agent（`file://`），覆盖内容区右键、文件树与 Git Changes 三入口；错误统一映射可读 i18n 文案，禁止原始英文技术串进 UI
+- **Session Control HUD 与实时用量**：Composer 工具菜单改为双栏 HUD（宽度锚定输入框），复用会话概览同源额度链路；覆盖 Codex 官方 rate limit、Claude/Codex 绑定 DeepSeek/MiniMax/智谱 HTTP、Kimi CLI OAuth refresh；无公开额度 API 的供应商给出明确提示
+- **协作上游喂料策略**：模板每环节可配 `upstreamFeedMode: summary | full`（首段默认 full，后续默认 summary）；Inspector 头展示吃全文/吃摘要徽章；修复 stageBindings 投影回放丢 mode 导致后续段永远缺省 summary
+- **协作节点注入上下文 Header**：右侧 Inspector 新增可折叠注入区（折叠态一行摘要，展开态迷你流水线 + 内容清单/上下文溯源切换），分区展示用户任务/批准补充/上游/本环节指令；只读 projection，不伪造完整 worker prompt
+- **批准补充说明**：「批准，后续自动执行」与打回对称，可附 note 写入 `SquadPlanApprovedFact` 并注入后续 stage prompt；统一操作条布局（主操作靠左、停止类靠右）；补齐 10 语言 multiAgent 文案
+- **文件/选区发为输入引用**：FileView「发送到输入」（右键 + Alt+Shift+A）与文件树插入统一产出紧凑 `@path` / `@path#L…` chip（替代粘贴大段围栏代码块），外部写入后自动升格为 file chip
+- **Shared Run Status Strip 数据源合成**：已编辑与子代理 pills 改为主时间线 ∪ agent-canvas ∪ 子会话合成，补 session side-effect ledger 与侧栏 child 保留
+
+🔧 Improvements
+- 将应用版本号提升到 `0.8.4`（`package.json` / `package-lock.json` / `src-tauri/tauri.conf.json`），与本补丁发版元数据对齐
+- **冷启 first-paint 编排闭环**：冷启 ensure 默认 first-paint、禁止首进 full-catalog；gate-ready 仅认 first-paint-complete / home input-ready / force-enter；full-catalog 超时/降级后 60s 禁自动重扫；OpenCode 子源 3s 预算；遮罩恢复自动关闭（late ready + ≥8s 或 20s 顶强制进入）；诊断 dump 固定 firstPaintPresent/gateReadyReason 并支持一键复制；同机实测可交互 ~4.4s（基线假 ready ~22s）
+- **改文件 pill 对齐 git**：行数统计叠加 `git status` 与工具产出，回合中实时更新；同路径多次改写取最新不累加；Revert 后签名级隐藏跨重挂载生效；新增 `@number-flow/react` 滚动数字动画
+- **子代理观察面收敛**：主幕布退役 S10 小队卡片，子代理主表面统一为 Run Status Strip + 右侧 Inspector；subagent 工具行降级为普通 Generic 行保留审计痕迹
+- **协作入口下移**：从发送按钮前移到输入框下方 branch-row 右侧，与上下文指示器对调
+- **run-status 展开悬浮化**：tasks / subagents / plan / edits 详情面板改为绝对定位浮层，展开不再撑高 Strip 挤压消息列表；chat-input 圆角统一 12px
+- **贴底滚动接管重写**：仅在真底部（≤1px）重新跟随，滚轮/键盘/拖拽意图才释放跟随，内容增长不再误判为用户离开；ResizeObserver 替代长定时复查；回合时长标签改紧凑 h/m/s
+
+🐛 Fixes
+- **切换工作区过期扫描放弃**：取消 soft-ignore 后不再继续 titles/shared/分页/多引擎 fan-out 与后台 gemini/kimi/grok 刷新，杜绝陈旧列表回写
+- **误报错误 toast 抑制**：斜杠指令列表 soft-cancel（stale/cancelled）不再弹「命令列表不可用」；Shared 发送目标切走会话或 meta ENOENT 时静默，真失败仍提示
+- **子代理 Strip 与详情链路**：Strip 可见性与 todo/plan/edit 铁律解耦（仅子代理也能挂载）；宽识别对齐 S10 `isSubagentTool` 口径并全引擎 seed；有可解析 sessionThreadId 时优先开幕布；子会话仅 user 时从父线补 assistant；过滤 tool JSON 信封
+- **Shared Claude catalog 串台**：创建走有序 Provider 首项 + profile 权威 catalog（local forceRefresh / managed scoped），打开历史不再 reseed 过期 mapping；文案与图标同源，catalog runtime 优先于陈旧 localStorage；k3 短 id 映射 kimi 图标；空 catalog fail-closed
+- **协作运行时左侧会话状态指示补齐**
+- **注入上下文展开态保底高度**：短文案不再被侧栏 flex 布局挤扁，保留 max 上限与内滚动
+- **Windows 侧栏补齐 Quick Switcher 与隐藏对话入口**（Ctrl+E；macOS 仍走 titlebar 不重复入口）
+- **打包修复**：钉死 `@tauri-apps/plugin-dialog` 2.6.0 对齐 Cargo crate；清理阻塞 mac 打包的 TypeScript 类型错误
+
+English:
+
+This release moves the app to **0.8.4**. The headline is a closed-loop cold-start orchestration, explainable collaboration, and a consolidated Composer session-control surface: cold starts now follow a first-paint contract with throttled heavy work and an auto-dismissing gate (interactive at ~4.4s vs a fake-ready ~22s baseline); the collab chain gains an injection-context header, per-stage summary/full upstream feeding, and approval notes; Composer becomes a Session Control HUD with multi-provider live quota plus a git-aligned edited-files pill; custom models bind per provider into Claude/Codex; local HTML opens in the built-in browser.
+
+✨ Features
+- **Provider-bound custom models**: the model manager dialog now picks a provider first (local config + third-party list); third-party selection dual-writes provider-owned customModels and the engine catalog with one shared UX for Claude/Codex; dual-write failures surface and per-engine serial queues prevent concurrent loss
+- **Open local HTML in the built-in browser**: HTML/HTM files route to the internal Browser Agent (`file://`) across the content context menu, file tree, and Git Changes entries; errors map to readable i18n copy instead of raw technical strings
+- **Session Control HUD with live quota**: the Composer tool menu becomes a two-column HUD anchored to the input width, reusing the session-overview quota pipeline; covers Codex official rate limits, Claude/Codex bound to DeepSeek/MiniMax/Zhipu HTTP, and Kimi CLI OAuth refresh; providers without a public quota API get an explicit notice
+- **Collab upstream feed strategy**: templates configure `upstreamFeedMode: summary | full` per stage (first stage defaults to full, later stages to summary); the Inspector header shows full/summary badges; fixes stageBindings replay dropping the mode so later stages always fell back to summary
+- **Collab node injection-context header**: the right Inspector gains a collapsible injection section (one-line summary collapsed; mini pipeline plus content-list/context-source toggle expanded) with partitions for user task / approval note / upstream / stage instructions; read-only projection, no fabricated worker prompt
+- **Approval with notes**: “approve and continue” is now symmetric with reject—an optional note is written into `SquadPlanApprovedFact` and injected into later stage prompts; unified action-bar layout (primary actions left, stop actions right); full multiAgent copy for all 10 locales
+- **File/selection-to-input references**: FileView “Send to input” (context menu + Alt+Shift+A) and file-tree inserts emit compact `@path` / `@path#L…` chips instead of pasting large fenced code blocks; external writes are promoted to file chips automatically
+- **Shared Run Status Strip synthesis**: edited-files and subagent pills now merge the main timeline ∪ agent-canvas ∪ child sessions, with a session side-effect ledger and sidebar child retention
+
+🔧 Improvements
+- Bump the app version to `0.8.4` across frontend package metadata, the lockfile, and Tauri bundle configuration so this patch ship matches SemVer and packaging metadata
+- **Cold-start first-paint orchestration closed loop**: cold-start ensure defaults to first-paint and never enters full-catalog first; gate-ready only accepts first-paint-complete / home input-ready / force-enter; 60s auto-rescan cooldown after full-catalog timeout/degradation; 3s budget for the OpenCode sub-source; the gate overlay auto-dismisses again (late ready + ≥8s, or force-enter at the 20s ceiling); diagnostic dumps pin firstPaintPresent/gateReadyReason with one-click copy; measured interactive at ~4.4s vs a fake-ready ~22s baseline on the same machine
+- **Git-aligned edit pill**: line counts overlay `git status` with tool-derived paths and update mid-turn; repeated edits to one path keep the latest stats instead of summing; revert hides rows by signature across remounts; adds `@number-flow/react` odometer animation
+- **Subagent surface consolidation**: the main canvas retires the S10 squad cards; the Strip plus right Inspector are now the single subagent surface; subagent tool rows degrade to plain Generic rows to keep audit trails
+- **Collab entry relocation**: moved from beside the send button to the trailing side of the branch-row below the input, swapped with the context indicator
+- **Floating run-status panels**: tasks / subagents / plan / edits detail panels use absolute overlay positioning so expanding them no longer grows the strip or squeezes the message list; chat-input border-radius unified to 12px
+- **Stick-to-bottom rewrite**: follow re-arms only at the true bottom (≤1px) and releases only on wheel/key/drag intent; content growth no longer reads as the user leaving; ResizeObserver replaces long timer rechecks; turn-duration labels switch to compact h/m/s
+
+🐛 Fixes
+- **Abandon stale scans after workspace switch**: after soft-ignore, no more titles/shared/pagination/multi-engine fan-out or background gemini/kimi/grok refreshes, so stale lists never write back
+- **Suppress false error toasts**: slash-command list soft-cancels (stale/cancelled) no longer raise “command list unavailable”; Shared send targets stay silent on thread switch or meta ENOENT while real failures still toast
+- **Subagent Strip and detail chain**: Strip visibility decouples from the todo/plan/edit rule (subagent-only activity mounts it); wide recognition aligns with the S10 `isSubagentTool` contract and seeds all engines; a resolvable sessionThreadId opens the canvas ahead of launch acks; child sessions with only user messages backfill assistant output from the parent; tool JSON envelopes are filtered out
+- **Shared Claude catalog cross-talk**: creation uses the first ordered provider plus the profile-authoritative catalog (local forceRefresh / managed scoped), history opens no longer reseed stale mappings; label and icon resolve from the same source with catalog runtime ahead of stale localStorage; k3 short ids map to the Kimi icon; empty catalogs fail closed
+- **Collab runtime sidebar status indicator restored**
+- **Injection-context minimum height**: short content no longer gets crushed by the sidebar flex layout, keeping the max cap and inner scrolling
+- **Windows sidebar gains Quick Switcher and hidden-conversations entry** (Ctrl+E; macOS keeps the titlebar path without duplication)
+- **Packaging fixes**: pin `@tauri-apps/plugin-dialog` to 2.6.0 to match the Cargo crate; clear the TypeScript type errors that blocked macOS packaging
+
+---
+
+### **2026年8月7日（v0.8.3）**
+
+中文：
+
+这一版将应用升到 **0.8.3**，主线是「Shared 多 CLI 协作可日常用、冷启动不再假死、运行态与恢复出口更清晰」：Shared Session 内按模板串行驱动 plan / implement / review 等多引擎节点；桌面全平台启动门控挡住 hydrate 窗口期误点；Composer 用常驻 run-status 条替代旧状态坞；卡住会话有可完成恢复出口；终端与「在资源管理器中显示」等日常路径一并压实。
+
+✨ Features
+- **Shared 多 CLI 协作编排（阶段交付）**：在 Shared Session 内按模板串行驱动多 CLI 节点（每段可独立 CLI·供应商绑定）；主幕 sticky 编排卡 + 历史轮折叠卡，右栏节点 Inspector 直播/精读；Composer「协作 · 模板」入口，支持内置/自定义模板与页内模板管理；协作中锁定普通发送，强制停止后可恢复对话
+- **协作 Context Fan-in**：图 / skill / 记忆 / 便签进入首段（stages[0]），后续段仅文字接力；修复协作 drive 静默丢图；skill 注入 SKILL.md 正文；智能体 persona 叠入 worker prompt；首段可纯图
+- **节点恢复**：强制停止解锁、整轮重试、单节点重试（`shared_agent_retry_stage`）；livePhase 与归档正文择优；完成态主幕仅短汇总
+- **Composer Run Status 条**：输入框上方常驻 pills（todos / 子代理 / plan / 本轮改文件），可展开详情；默认隐藏旧 status-panel 坞开关；引擎共用同一条路径
+- **改文件面板可确认还原**：`TurnFilesChangedCard` 支持单文件 / 全部 Revert，经 ConfirmDialog 后走 git restore；成功后乐观隐藏，全清则卸载卡片
+
+🔧 Improvements
+- 将应用版本号提升到 `0.8.3`（`package.json` / `package-lock.json` / `src-tauri/tauri.conf.json`），与本补丁发版元数据对齐
+- **启动门控（全桌面 Tauri）**：冷启动 full-catalog hydrate 期间显示全局遮罩，避免点击侧栏/按钮必现假死；自动关闭：`startup-gate-ready`（或 home 仅 input-ready）且至少展示 8s，20s 绝对天花板；约 10s 出现「直接进入」强关；强关/天花板走 force-enter + 取消排队重扫，不 stamp gate-ready
+- **uiScale 冷启动延后**：始终先 apply(1)；任意 `uiScale ≠ 1` 延后到 gate-ready、force-enter+2s 或 12s 天花板；**不改写** `settings.json`
+- 列表 first-paint 轻量出屏、full-catalog 后置；orchestrator 收紧并发并 cancel 旧扫
+- Shared 恢复条改为单行折叠：自动处理 + 跳过本轮 + 详情 + 高级；确认改用应用内 ConfirmDialog（禁止 `window.confirm`）；错误 toast 按动作分流
+- 终端滚动条对齐全局细条：默认隐藏 thumb，hover/focus 再显现，暗色终端不再常亮一条亮轨
+
+🐛 Fixes
+- **冷启动点击假死（Win/Mac 同路径）**：hydrate 占满主线程/IPC 时误点必卡；门控 + force-enter 与 hydrate fallback 认 `stale`/`cancelled`，避免强关后仍 publish/重扫
+- **协作 worker 侧栏泄漏**：隐藏 MOSSX 控制面 / collab worker 下崽（含截断半截 `MOSSX_*`、SUMMARY、管线碎片、改名 Agent N 等）；不单凭 Agent N 误杀用户真会话；realtime hide registry 与 catalog 双闸
+- **右栏 Inspector 串台**：LIVE/settle 按 run+stage+attempt 隔离；空 LIVE 不顶出上一节点；徽章补齐 reasoningEffort
+- 设置菜单与 pin 上的运行时通知恢复 error 图标（idle 勾 / has-error 告警），与 dock 气泡态一致
+- 终端 `refreshTerminal` 不再抢键盘焦点，输入中主题/外观同步不会把焦点拽走
+- 终端同 commit 宿主切换（聊天 ↔ 扩展）时正确 dispose + reattach，避免空白白屏
+- 「在资源管理器/访达中显示」改走原生 `reveal_in_file_manager`（Win Explorer `/select`、macOS `open -R` 等），修复 plugin-opener 在 Windows 上静默失败；Windows 路径强制反斜杠
+- 回合结束后消息列表 stick-to-bottom：清理过期 boundary intent，并观察 scroller 高度收缩（如 status strip 出现）时重新钉底
+
+English:
+
+This release moves the app to **0.8.3**. The headline is multi-CLI collaboration you can actually use daily in Shared sessions, cold starts that stay click-safe, and clearer run-time / recovery surfaces: Shared Session drives plan / implement / review nodes serially from templates; a desktop-wide startup gate blocks mis-clicks during hydrate; Composer shows a persistent run-status strip instead of the old status dock; stuck sessions get a finishable recovery exit; terminal and “Reveal in …” paths get hardened along the way.
+
+✨ Features
+- **Shared multi-CLI collaboration (phase delivery)**: serially drive multi-CLI stages in a Shared Session (per-stage CLI/provider bindings); sticky orchestration card + foldable history on the main canvas, live/read Inspector on the right; Composer “Collaboration · template” entry with built-in/custom templates and in-page template management; lock ordinary send while collaborating, unlock after force-stop
+- **Context Fan-in**: images / skills / memory / notes inject only into stages[0]; later stages relay user-visible text; fix silent image drop on collab drive; inject SKILL.md body; stack persona into worker prompts; pure-image first stage allowed
+- **Node recovery**: force-stop unlock, whole-run retry, single-node retry (`shared_agent_retry_stage`); livePhase merge + prefer longer archived body; main canvas keeps short final summaries only
+- **Composer Run Status strip**: persistent pills above the input (todos / subagents / plan / session file edits) with expandable detail; legacy status-panel toggle hidden by default; engines share one strip path
+- **Confirmable file revert in edited-files panel**: per-file and “Revert all” via ConfirmDialog into existing git restore hooks; optimistic hide on success; card unmounts after full clear
+
+🔧 Improvements
+- Bump the app version to `0.8.3` across frontend package metadata, the lockfile, and Tauri bundle configuration so this patch ship matches SemVer and packaging metadata
+- **Startup gate (all desktop Tauri)**: global overlay during cold-start full-catalog hydrate so sidebar/button clicks do not freeze the UI; auto-dismiss on `startup-gate-ready` (or home input-ready only) after ≥8s shown, 20s hard ceiling; “Enter now” force-enter ~10s; force/ceiling cancel queued rescan without stamping gate-ready
+- **Deferred uiScale**: always apply `1` first; any non-identity scale waits until gate-ready, force-enter+2s, or a 12s ceiling; **never rewrites** `settings.json`
+- Lighter first-paint list fetch with deferred full-catalog; orchestrator tighter concurrency and cancel of stale scans
+- Shared recovery bar collapses to one row: auto-handle + skip turn + details + advanced; in-app ConfirmDialog only (no `window.confirm`); error toasts split by action
+- Terminal scrollbar matches global thin hover-reveal tokens so dark terminals no longer show a permanent bright track
+
+🐛 Fixes
+- **Cold-start click freezes (Windows and macOS)**: mis-clicks during hydrate no longer hard-lock; gate + force-enter treat hydrate fallback as `stale`/`cancelled` so force-enter does not republish or reschedule
+- **Collab worker sidebar leaks**: hide MOSSX control-plane / collab worker spawns (truncated `MOSSX_*`, SUMMARY titles, pipeline fragments, renamed Agent N, etc.); never delete real user threads on Agent N alone; realtime hide registry + catalog dual gates
+- **Inspector cross-talk**: LIVE/settle isolated by run+stage+attempt; empty LIVE does not surface prior node; badges include reasoningEffort
+- Restored runtime-notice error icons on settings menu item and pin (idle check vs has-error alert), aligned with the dock bubble
+- `refreshTerminal` no longer steals keyboard focus during theme/appearance sync
+- Terminal host swap in one React commit (chat ↔ extensions) correctly disposes and reattaches instead of a blank panel
+- “Reveal in Explorer/Finder” goes through native `reveal_in_file_manager` (Explorer `/select`, macOS `open -R`, …), fixing silent Windows failures from plugin-opener; Windows paths force backslashes
+- Stick-to-bottom after turn settle: clear expired boundary intent and re-pin when the scroller height shrinks (e.g. status strip appears) without a scroll event
+
+---
+
 ### **2026年8月6日（v0.8.2）**
 
 中文：

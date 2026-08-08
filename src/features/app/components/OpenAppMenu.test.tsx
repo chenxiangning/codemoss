@@ -7,12 +7,9 @@ const useOpenAppIconsMock = vi.fn<
   (targets: unknown, options?: unknown) => Record<string, string>
 >(() => ({}));
 
-vi.mock("@tauri-apps/plugin-opener", () => ({
-  revealItemInDir: vi.fn(),
-}));
-
 vi.mock("../../../services/tauri", () => ({
   openWorkspaceIn: vi.fn(),
+  revealInFileManager: vi.fn(),
 }));
 
 vi.mock("../../../services/toasts", () => ({

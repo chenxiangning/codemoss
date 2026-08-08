@@ -81,8 +81,6 @@ import {
   resolveVisibleMessageItems,
   type MessageActionTargets,
 } from "../orchestration/presentation/messagesViewModel";
-import { useActiveCanvasSelector } from "../../layout/hooks/activeCanvasStore";
-import { enrichTimelineWithSyntheticSubagentsBeforeCollapse } from "../../subagent-ui";
 import {
   INITIAL_BOTTOM_PIN_BUDGET_MS,
 } from "../constants/messagesConstants";
@@ -90,6 +88,11 @@ import {
   isProgrammaticScrollEcho,
   PROGRAMMATIC_SCROLL_ECHO_TOLERANCE_PX,
 } from "../orchestration/scrolling/messagesScrollEcho";
+import {
+  distanceToBottom,
+  isAtTrueBottom,
+} from "../orchestration/scrolling/scrollAuthorityMachine";
+import { FOLLOW_RELEASE_THRESHOLD_PX } from "../orchestration/scrolling/scrollAuthorityConstants";
 import {
   DEFAULT_RENDER_LOOP_GUARD_BUDGET,
   resolveIdempotentRenderLoopGuard,
@@ -237,6 +240,7 @@ export const MessagesCore = memo(function MessagesCore({
     presentationProfile = null,
     agentTaskScrollRequest = null,
     timelineLeadingNode = null,
+    timelineTrailingNode = null,
     isProviderContinuation = false,
   } = presentation;
   const { t } = useTranslation();
@@ -538,6 +542,8 @@ export const MessagesCore = memo(function MessagesCore({
     hasRecentUserScrollIntent,
     initialBottomPinScopeRef,
     isNearBottom,
+    noteViewportAtTrueBottom,
+    noteViewportLeftBottom,
     programmaticScrollTopEchoRef,
     rearmAutoFollowToBottom,
     recordCurrentScrollGeometry,
@@ -988,46 +994,14 @@ export const MessagesCore = memo(function MessagesCore({
       enableCollaborationBadge,
     });
   }, [activeEngine, enableCollaborationBadge, isThinking, visibleItems]);
-  // 合成子代理卡必须在 process-phase 折叠之前注入，才能进「已处理」hiddenItemIds。
-  const childSubagentThreads = useActiveCanvasSelector(
-    (snapshot) => snapshot.childSubagentThreads,
-  );
-  const canvasThreadId = useActiveCanvasSelector((snapshot) => snapshot.threadId);
-  const threadStatusById = useActiveCanvasSelector(
-    (snapshot) => snapshot.threadStatusById,
-  );
-  const threadItemsByThread = useActiveCanvasSelector(
-    (snapshot) => snapshot.threadItemsByThread,
-  );
-  const timelineSourceItemsWithSubagents = useMemo(
-    () =>
-      enrichTimelineWithSyntheticSubagentsBeforeCollapse({
-        items: timelineSourceItems,
-        ownThreadId: threadId,
-        canvasThreadId,
-        activeEngine,
-        childThreads: childSubagentThreads,
-        statusById: threadStatusById,
-        itemsByThread: threadItemsByThread,
-      }),
-    [
-      activeEngine,
-      canvasThreadId,
-      childSubagentThreads,
-      threadId,
-      threadItemsByThread,
-      threadStatusById,
-      timelineSourceItems,
-    ],
-  );
   const { timelineItems, phases: processPhases } = useMemo(
     () =>
       resolveCollapsedTimelineItems({
         activeEngine,
         expandedPhaseKeys: expandedProcessPhaseKeys,
-        timelineSourceItems: timelineSourceItemsWithSubagents,
+        timelineSourceItems,
       }),
-    [activeEngine, expandedProcessPhaseKeys, timelineSourceItemsWithSubagents],
+    [activeEngine, expandedProcessPhaseKeys, timelineSourceItems],
   );
   const processPhaseChips = useMemo(
     () =>
@@ -1395,54 +1369,82 @@ export const MessagesCore = memo(function MessagesCore({
       tolerancePx: PROGRAMMATIC_SCROLL_ECHO_TOLERANCE_PX,
       now,
     });
+    const metrics = {
+      scrollHeight: container.scrollHeight,
+      clientHeight: container.clientHeight,
+      scrollTop: container.scrollTop,
+    };
+    const atTrueBottom = isAtTrueBottom(metrics);
+    const distancePx = distanceToBottom(metrics);
+    const farFromBottom = distancePx > FOLLOW_RELEASE_THRESHOLD_PX;
+
     if (isEcho) {
       if (activeProgrammaticEdge) {
         autoScrollRef.current = activeProgrammaticEdge === "bottom";
-      } else if (isNearBottom(container)) {
-        // 回声落在底部（含用户主动滚回底部撞中预录的钳位指纹）：视口已在底部，
-        // 武装跟随在两种情形下都正确。
+      } else if (atTrueBottom) {
+        // 回声落在真底：武装跟随正确；中间区不 re-arm（全砍：禁止 120 近底 re-arm）
         autoScrollRef.current = true;
       }
       scheduleAnchorUpdate("scroll");
       return;
     }
-    const nearBottom = isNearBottom(container);
-    // forced/settle 窗口内：尾窗→全量 / virtual remeasure 让 maxScrollTop 暴涨，
-    // scrollTop 仍停在旧底 → 假离底。绝不能解除 autoScroll 或 cancel 收敛，
-    // 否则回合结束瞬间视口停在中上段（用户体感「飞到上面」）。
-    // 用户真上滚会改 scrollTop，假离底判定为 false，走下方正常释放。
+    const geometryForProtect = currentGeometry ?? {
+      maxScrollTop: Math.max(0, container.scrollHeight - container.clientHeight),
+      scrollTop: container.scrollTop,
+    };
+    // 仅 settle/forced 窗内保护「内容长高假离底」。
+    // 全砍：不再对任意 stick 态做宽保护——否则迟到 scroll 回声/旧位置会被当成假离底，
+    // RO 再 pin 把用户从读历史拽回底。
     if (
       !userOwnsScroll &&
-      shouldProtectFollowOnScrollEvent(previousGeometry, currentGeometry ?? {
-        maxScrollTop: Math.max(0, container.scrollHeight - container.clientHeight),
-        scrollTop: container.scrollTop,
-      })
+      shouldProtectFollowOnScrollEvent(previousGeometry, geometryForProtect)
     ) {
       autoScrollRef.current = true;
       scheduleAnchorUpdate("scroll");
       return;
     }
-    // Auto-follow tracks the user's real scroll position: stick to the bottom
-    // only while the viewport is actually near the bottom. Scrolling up cancels
-    // the follow; scrolling back to the bottom re-enables it.
-    if (nearBottom && userOwnsScroll) {
-      // 用户已明确回到底部，输入租约完成；后续同 tick 的 content resize 可立即恢复跟随。
-      clearUserScrollIntent();
-    }
-    autoScrollRef.current = nearBottom;
-    if (!nearBottom) {
+    // 释放规则（修复「工具折叠/MD 开渲卡中部」）：
+    // - 真底 → re-arm
+    // - 用户租约（wheel/key/touch）→ 释放
+    // - scrollTop 相对上帧明显上移 → 用户拖条离底 → 释放
+    // - 禁止仅因 distance>120 释放：那是内容长高假离底，交给 RO 追底
+    const scrollTopMovedUp =
+      previousGeometry !== null &&
+      previousGeometry.scrollTop - geometryForProtect.scrollTop > 8;
+
+    if (atTrueBottom) {
+      // 真底 re-arm；但 wheel 上滚后同帧仍钉在真底时不要立刻吸回。
+      const wasAlreadyAtTrueBottom =
+        previousGeometry !== null &&
+        previousGeometry.maxScrollTop - previousGeometry.scrollTop <= 1;
+      const scrollTopUnchanged =
+        previousGeometry !== null &&
+        Math.abs(previousGeometry.scrollTop - geometryForProtect.scrollTop) <= 1;
+      const wheelStillPinnedAtBottom =
+        userOwnsScroll && wasAlreadyAtTrueBottom && scrollTopUnchanged;
+      if (!wheelStillPinnedAtBottom) {
+        if (userOwnsScroll) {
+          clearUserScrollIntent();
+        }
+        noteViewportAtTrueBottom();
+      }
+    } else if (userOwnsScroll || scrollTopMovedUp) {
+      noteViewportLeftBottom();
       cancelScrollConvergence();
     }
+    // 高度变、scrollTop 未动（工具折叠 / MD 开渲）：保持 armed，RO 追底。
+    // 禁止仅因 farFromBottom 解绑——那是问题二「卡中部、结束才跳回」的主因。
+    void farFromBottom;
     scheduleAnchorUpdate("scroll");
   }, [
     activeProgrammaticScrollEdgeRef,
     activeProgrammaticScrollMotionRef,
-    autoScrollRef,
     cancelScrollConvergence,
     clearUserScrollIntent,
     containerRef,
     hasRecentUserScrollIntent,
-    isNearBottom,
+    noteViewportAtTrueBottom,
+    noteViewportLeftBottom,
     programmaticScrollTopEchoRef,
     recordCurrentScrollGeometry,
     scheduleAnchorUpdate,
@@ -1560,25 +1562,19 @@ export const MessagesCore = memo(function MessagesCore({
 
   useEffect(() => {
     // 焦点跟随 stick-to-bottom 不绑 isWorking/finalizing：消息回填、思考折叠、
-    // settle 后 full markdown 都会改高度；只要开关开着且视口仍停在底部就追底。
+    // settle 后 full markdown 都会改高度；只要开关开着且 authority 仍 stick 就追底。
     if (!liveAutoFollowEnabled) {
       return undefined;
     }
-    const container = containerRef.current;
-    // Follow new content only when the user is parked at the bottom. A manual
-    // scroll up flips autoScrollRef off (see updateAutoScroll) and stops the
-    // pull-to-bottom; scrolling back down re-arms it.
-    const shouldScroll =
-      autoScrollRef.current || (container ? isNearBottom(container) : true);
-    if (!shouldScroll) {
+    // 全砍：只信 autoScroll 武装（由真底 re-arm / 用户 intent 维护），
+    // 禁止用 120 近底启发式在 scrollKey 变化时旁路拉回底。
+    if (!autoScrollRef.current) {
       return undefined;
     }
     requestAutoScroll();
     return undefined;
   }, [
     autoScrollRef,
-    containerRef,
-    isNearBottom,
     liveAutoFollowEnabled,
     requestAutoScroll,
     scrollKey,
@@ -1910,6 +1906,7 @@ export const MessagesCore = memo(function MessagesCore({
         />
         {timelineLeadingNode}
         <MessagesTimeline {...timelineModels} />
+        {timelineTrailingNode}
       </div>
       <ScrollControl
         containerRef={containerRef}

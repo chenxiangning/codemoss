@@ -9,7 +9,19 @@ const files = {
     "openFile": "Ouvrir le fichier",
     "copyPath": "Copier le chemin",
     "revealInFinder": "Afficher dans le Finder",
+    "revealInExplorer": "Afficher dans l’Explorateur",
+    "revealInFileManager": "Afficher dans le gestionnaire de fichiers",
+    "revealFailed": "Impossible d’afficher dans le gestionnaire de fichiers : {{message}}",
     "revealInFileTree": "Afficher dans l’arborescence des fichiers",
+    "openInBrowser": "Ouvrir dans le navigateur",
+    "openInBrowserFailed":
+      "Impossible d'ouvrir ce fichier dans le navigateur intégré",
+    "openInBrowserNoWorkspace":
+      "Sélectionnez un espace de travail avant d'ouvrir un fichier dans le navigateur intégré",
+    "openInBrowserWindowBusy":
+      "La fenêtre du navigateur intégré est déjà ouverte. Basculez vers elle ou fermez-la, puis réessayez",
+    "openInBrowserBlocked":
+      "Ce fichier ne peut pas être ouvert dans le navigateur intégré",
     "deleteItem": "Mettre à la corbeille",
     "deleteFileConfirm": "Voulez-vous vraiment mettre « {{name}} » à la corbeille ?",
     "deleteFolderConfirm": "Voulez-vous vraiment mettre le dossier « {{name}} » et tout son contenu à la corbeille ?",
@@ -187,7 +199,7 @@ const files = {
     "documentPreviewTooLarge": "L'aperçu du document est limité aux fichiers d'au plus {{maxMb}} Mo. Ouvrez-le en externe ou réduisez d'abord le document.",
     "documentPreviewOutlineEmpty": "Aucun plan de titres détecté. Utilisez les styles de titre Word pour exposer une table des matières stable.",
     "clearSelection": "Effacer",
-    "addToChat": "Ajouter au chat",
+    "addToChat": "Envoyer à la saisie",
     "selectionHintShiftClick": "Maj + clic ou glisser + cliquer",
     "selectionHintMultiLine": "pour une sélection multiligne",
     "annotateForAi": "Annoter pour l'IA",

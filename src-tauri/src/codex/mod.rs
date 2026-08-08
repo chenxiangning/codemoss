@@ -2297,11 +2297,9 @@ async fn resolve_codex_session_for_commit_message(
             .unwrap_or(false)
     };
     if is_claude {
-        return Err(
-            "AI commit message generation requires the Codex CLI. \
+        return Err("AI commit message generation requires the Codex CLI. \
              Please install it first: npm install -g @openai/codex"
-                .to_string(),
-        );
+            .to_string());
     }
     Err(
         "Workspace not connected. Please ensure the Codex CLI is installed \

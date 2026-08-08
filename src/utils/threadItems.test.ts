@@ -732,6 +732,74 @@ describe("threadItems", () => {
     ).toBe(true);
   });
 
+  it("inserts multi-agent hist-fold right after its user even when later turns exist", () => {
+    const collabUser: ConversationItem = {
+      id: "squad:run-1:user",
+      kind: "message",
+      role: "user",
+      text: "帮我更新一下文档",
+    };
+    const laterUser: ConversationItem = {
+      id: "u-later",
+      kind: "message",
+      role: "user",
+      text: "1+1",
+    };
+    const laterAssistant: ConversationItem = {
+      id: "a-later",
+      kind: "message",
+      role: "assistant",
+      text: "2",
+    };
+    const fold: ConversationItem = {
+      id: "agent:run-1:hist-fold",
+      kind: "message",
+      role: "assistant",
+      text: "fold anchor",
+    };
+    const next = upsertItem([collabUser, laterUser, laterAssistant], fold);
+    expect(next.map((item) => item.id)).toEqual([
+      "squad:run-1:user",
+      "agent:run-1:hist-fold",
+      "u-later",
+      "a-later",
+    ]);
+  });
+
+  it("relocates existing multi-agent hist-fold when re-upserted after later turns", () => {
+    const collabUser: ConversationItem = {
+      id: "squad:run-1:user",
+      kind: "message",
+      role: "user",
+      text: "帮我更新一下文档",
+    };
+    const laterUser: ConversationItem = {
+      id: "u-later",
+      kind: "message",
+      role: "user",
+      text: "1+1",
+    };
+    const fold: ConversationItem = {
+      id: "agent:run-1:hist-fold",
+      kind: "message",
+      role: "assistant",
+      text: "old",
+    };
+    const list = [collabUser, laterUser, fold];
+    const next = upsertItem(list, {
+      ...fold,
+      text: "updated",
+    });
+    expect(next.map((item) => item.id)).toEqual([
+      "squad:run-1:user",
+      "agent:run-1:hist-fold",
+      "u-later",
+    ]);
+    expect(
+      (next[1] as Extract<ConversationItem, { kind: "message" }>).text,
+    ).toBe("updated");
+  });
+
   it("inserts late tools before trailing final assistant conclusion (not after)", () => {
     const user: ConversationItem = {
       id: "user-1",

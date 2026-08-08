@@ -9,6 +9,9 @@ use crate::backend_budget::PayloadBudgetMetadata;
 #[serde(rename_all = "camelCase")]
 pub(crate) struct SkillInvocation {
     pub(crate) name: String,
+    /// SKILL.md / skill 目录路径；协作首段 client 侧注入用，引擎可忽略。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) path: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) args: Option<std::collections::HashMap<String, String>>,
 }
@@ -2118,6 +2121,9 @@ pub(crate) struct ProviderConfig {
     pub(crate) is_local_provider: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) settings_config: Option<serde_json::Value>,
+    /// Provider-owned custom models (symmetric with CodexProviderConfig).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) custom_models: Option<Vec<CodexCustomModel>>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -2352,8 +2358,7 @@ mod tests {
         let payload = serde_json::json!({
             "disabledCliEngines": ["opencode", "kimi"],
         });
-        let settings: AppSettings =
-            serde_json::from_value(payload).expect("settings deserialize");
+        let settings: AppSettings = serde_json::from_value(payload).expect("settings deserialize");
         assert_eq!(
             settings.disabled_cli_engines,
             vec!["opencode".to_string(), "kimi".to_string()]

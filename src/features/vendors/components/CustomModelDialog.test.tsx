@@ -25,8 +25,18 @@ describe("CustomModelDialog", () => {
         models={[]}
         onModelsChange={onModelsChange}
         onClose={vi.fn()}
+        providerOptions={[
+          { id: "", name: "settings.vendor.modelManager.localProvider" },
+          { id: "provider-a", name: "Provider A" },
+        ]}
+        defaultProviderProfileId="provider-a"
       />,
     );
+
+    expect(
+      (screen.getByTestId("custom-model-provider-select") as HTMLSelectElement)
+        .value,
+    ).toBe("provider-a");
 
     fireEvent.change(
       screen.getByPlaceholderText("settings.vendor.modelManager.modelIdPlaceholder"),
@@ -47,6 +57,50 @@ describe("CustomModelDialog", () => {
         id: "Haiku  4.5",
         label: "Haiku  4.5",
         description: undefined,
+        providerProfileId: "provider-a",
+      },
+    ]);
+  });
+
+  it("saves local-only models without providerProfileId", () => {
+    const onModelsChange = vi.fn();
+
+    render(
+      <CustomModelDialog
+        isOpen
+        initialAddMode
+        modelValidation="model-id"
+        models={[]}
+        onModelsChange={onModelsChange}
+        onClose={vi.fn()}
+        providerOptions={[
+          { id: "", name: "Local" },
+          { id: "provider-a", name: "Provider A" },
+        ]}
+        defaultProviderProfileId=""
+      />,
+    );
+
+    fireEvent.change(
+      screen.getByPlaceholderText("settings.vendor.modelManager.modelIdPlaceholder"),
+      { target: { value: "gpt-local-1" } },
+    );
+    fireEvent.change(
+      screen.getByPlaceholderText("settings.vendor.modelManager.modelLabelPlaceholder"),
+      { target: { value: "Local GPT" } },
+    );
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "settings.vendor.modelManager.addModel",
+      }),
+    );
+
+    expect(onModelsChange).toHaveBeenCalledWith([
+      {
+        id: "gpt-local-1",
+        label: "Local GPT",
+        description: undefined,
+        providerProfileId: undefined,
       },
     ]);
   });
@@ -100,5 +154,108 @@ describe("CustomModelDialog", () => {
     expect(
       addButton.compareDocumentPosition(modelList) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
+  });
+
+  it("does not wipe typed model id when provider options load asynchronously", () => {
+    const { rerender } = render(
+      <CustomModelDialog
+        isOpen
+        initialAddMode
+        modelValidation="model-id"
+        models={[]}
+        onModelsChange={vi.fn()}
+        onClose={vi.fn()}
+        providerOptions={[{ id: "", name: "Local" }]}
+        defaultProviderProfileId=""
+      />,
+    );
+
+    fireEvent.change(
+      screen.getByPlaceholderText("settings.vendor.modelManager.modelIdPlaceholder"),
+      { target: { value: "gpt-keep-me" } },
+    );
+    fireEvent.change(
+      screen.getByPlaceholderText("settings.vendor.modelManager.modelLabelPlaceholder"),
+      { target: { value: "Keep Me" } },
+    );
+
+    rerender(
+      <CustomModelDialog
+        isOpen
+        initialAddMode
+        modelValidation="model-id"
+        models={[]}
+        onModelsChange={vi.fn()}
+        onClose={vi.fn()}
+        providerOptions={[
+          { id: "", name: "Local" },
+          { id: "provider-a", name: "Provider A" },
+        ]}
+        defaultProviderProfileId="provider-a"
+      />,
+    );
+
+    expect(
+      (
+        screen.getByPlaceholderText(
+          "settings.vendor.modelManager.modelIdPlaceholder",
+        ) as HTMLInputElement
+      ).value,
+    ).toBe("gpt-keep-me");
+    expect(
+      (
+        screen.getByPlaceholderText(
+          "settings.vendor.modelManager.modelLabelPlaceholder",
+        ) as HTMLInputElement
+      ).value,
+    ).toBe("Keep Me");
+    // Soft-default may promote to active/preferred provider without clearing fields.
+    expect(
+      (screen.getByTestId("custom-model-provider-select") as HTMLSelectElement)
+        .value,
+    ).toBe("provider-a");
+  });
+
+  it("does not override provider after user manually changes it when options refresh", () => {
+    const { rerender } = render(
+      <CustomModelDialog
+        isOpen
+        initialAddMode
+        models={[]}
+        onModelsChange={vi.fn()}
+        onClose={vi.fn()}
+        providerOptions={[
+          { id: "", name: "Local" },
+          { id: "provider-a", name: "Provider A" },
+          { id: "provider-b", name: "Provider B" },
+        ]}
+        defaultProviderProfileId="provider-a"
+      />,
+    );
+
+    fireEvent.change(screen.getByTestId("custom-model-provider-select"), {
+      target: { value: "provider-b" },
+    });
+
+    rerender(
+      <CustomModelDialog
+        isOpen
+        initialAddMode
+        models={[]}
+        onModelsChange={vi.fn()}
+        onClose={vi.fn()}
+        providerOptions={[
+          { id: "", name: "Local" },
+          { id: "provider-a", name: "Provider A" },
+          { id: "provider-b", name: "Provider B" },
+        ]}
+        defaultProviderProfileId="provider-a"
+      />,
+    );
+
+    expect(
+      (screen.getByTestId("custom-model-provider-select") as HTMLSelectElement)
+        .value,
+    ).toBe("provider-b");
   });
 });

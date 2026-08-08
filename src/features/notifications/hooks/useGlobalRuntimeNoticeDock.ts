@@ -220,7 +220,7 @@ function resolveStartupCommandNoticePayload(
 
 function resolveStartupMilestoneNoticePayload(
   milestone: Extract<StartupTraceEvent, { type: "milestone" }>["milestone"],
-): StartupNoticePayload {
+): StartupNoticePayload | null {
   switch (milestone) {
     case "shell-ready":
       return {
@@ -237,6 +237,9 @@ function resolveStartupMilestoneNoticePayload(
         severity: "info",
         messageKey: "runtimeNotice.startup.activeWorkspaceReady",
       };
+    case "startup-gate-ready":
+      // Internal Windows click-gate signal only — no user-facing notice.
+      return null;
   }
 }
 
@@ -293,6 +296,9 @@ function pushStartupTraceRuntimeNotice(
   }
 
   const noticePayload = resolveStartupMilestoneNoticePayload(event.milestone);
+  if (!noticePayload) {
+    return;
+  }
   pushGlobalRuntimeNotice({
     severity: noticePayload.severity,
     category: "bootstrap",

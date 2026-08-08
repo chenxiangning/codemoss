@@ -140,24 +140,24 @@ function ComposerHarness({
 }
 
 describe("Composer status panel toggle visibility", () => {
-  it("shows status panel toggle on claude engine", () => {
+  it("hides legacy status panel toggle on claude (run-status strip replaces dock)", () => {
     render(<ComposerHarness selectedEngine="claude" />);
     expect(screen.queryByTestId("status-panel")).toBeNull();
     expect(
       screen
         .getByTestId("chat-input-box-adapter")
         .getAttribute("data-show-status-panel-toggle"),
-    ).toBe("true");
+    ).toBe("false");
   });
 
-  it("shows status panel toggle on codex engine", () => {
+  it("hides legacy status panel toggle on codex engine", () => {
     render(<ComposerHarness selectedEngine="codex" />);
     expect(screen.queryByTestId("status-panel")).toBeNull();
     expect(
       screen
         .getByTestId("chat-input-box-adapter")
         .getAttribute("data-show-status-panel-toggle"),
-    ).toBe("true");
+    ).toBe("false");
   });
 
   it("projects Codex plan collaboration mode into readiness mode and read-only impact labels", () => {
@@ -194,14 +194,14 @@ describe("Composer status panel toggle visibility", () => {
     ).toBe("runtime-recovering");
   });
 
-  it("shows status panel toggle on gemini engine", () => {
+  it("hides legacy status panel toggle on gemini engine", () => {
     render(<ComposerHarness selectedEngine="gemini" />);
     expect(screen.queryByTestId("status-panel")).toBeNull();
     expect(
       screen
         .getByTestId("chat-input-box-adapter")
         .getAttribute("data-show-status-panel-toggle"),
-    ).toBe("true");
+    ).toBe("false");
   });
 
   it("hides status panel toggle when explicitly overridden off", () => {

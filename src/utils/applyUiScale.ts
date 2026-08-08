@@ -11,46 +11,31 @@ export type ApplyUiScaleTarget = {
 };
 
 /**
- * Native webview zoom at ≠1 can freeze the renderer — proven on Windows
- * WebView2 SetZoomFactor (docs/analysis/windows-ccgui-startup-hang-2026-08-05.md)
- * and reported in the field for macOS WKWebView setPageZoom. CSS page scale
- * therefore carries uiScale on EVERY platform; native zoom is pinned to 1 once
- * per page session to clear residual ≠1 zoom left by older builds.
+ * Apply uiScale without native WebView zoom ≠1.
  *
- * Why not CSS `zoom` for fill:
- * WebView2 has been observed to honor layout `width/height: 100/scale%` while
- * `zoom` does not re-expand the border box back to the viewport — result is a
- * permanently letterboxed shell (e.g. uiScale 1.3 → ~77% content, black bars).
- * `transform: scale()` always scales paint, including backgrounds / chrome.
+ * Field evidence (Windows WebView2, 2026-08):
+ * 1. setZoom(uiScale≠1) freezes the renderer (multi-GB).
+ * 2. body { transform:scale + width/height:100/scale% } also freezes when
+ *    combined with cold-start list hydration + early pointer input.
  *
- * Target is <body> when `root` is <html>:
- * - position:fixed + top/left 0 so % sizes resolve against the viewport
- * - width/height = 100/scale % (layout box)
- * - transform: scale(scale) + origin 0 0 → visual box fills the window
- * - portals mounted on body (dialogs, menus) scale with the shell
+ * Current strategy: CSS `zoom` only (layout-participating, no expanded
+ * pre-transform surface). Native zoom is pinned to 1 once per session.
  *
- * Shell children must size with a % chain under body (see base.css
- * html/body/#root/.app). 100vh/100vw ignore parent expansion.
+ * Shell: html/body/#root/.app use a % height chain (base.css), not 100vh.
  */
 export function usesCssPageZoom(_platform: RendererPlatform): boolean {
-  // 2026-08-06: unified — every platform takes the CSS path. The
-  // RendererPlatform param stays so callers / tests keep a stable API and
-  // per-platform diagnostics remain possible.
   return true;
 }
 
 /**
- * Layout size so `transform: scale(s)` still fills the viewport.
- * Returns null when scale is 1 (caller must clear width/height).
+ * Transform layout-fill path is retired (WebView2 memory bomb).
+ * Always null so callers clear width/height.
  *
  * @internal exported for unit tests
  */
 export function cssZoomLayoutFillSize(scale: number): string | null {
-  const next = clampUiScale(scale);
-  if (next === 1) {
-    return null;
-  }
-  return `${100 / next}%`;
+  void clampUiScale(scale);
+  return null;
 }
 
 /**
@@ -66,36 +51,6 @@ export function resolveCssZoomLayoutTarget(root: HTMLElement): HTMLElement {
   return root;
 }
 
-function setScaleLayoutStyles(el: HTMLElement, scale: number): void {
-  // Drop any residual CSS zoom from older builds — never combine with transform.
-  el.style.zoom = "";
-
-  const fill = cssZoomLayoutFillSize(scale);
-  if (fill === null) {
-    el.style.transform = "";
-    el.style.transformOrigin = "";
-    el.style.width = "";
-    el.style.height = "";
-    el.style.position = "";
-    el.style.top = "";
-    el.style.left = "";
-    el.style.right = "";
-    el.style.bottom = "";
-    return;
-  }
-
-  // Fixed against the viewport so % is not clipped by a pre-transform parent box.
-  el.style.position = "fixed";
-  el.style.top = "0px";
-  el.style.left = "0px";
-  el.style.right = "auto";
-  el.style.bottom = "auto";
-  el.style.width = fill;
-  el.style.height = fill;
-  el.style.transformOrigin = "0 0";
-  el.style.transform = `scale(${scale})`;
-}
-
 function clearScaleLayoutStyles(el: HTMLElement): void {
   el.style.zoom = "";
   el.style.transform = "";
@@ -109,11 +64,32 @@ function clearScaleLayoutStyles(el: HTMLElement): void {
   el.style.bottom = "";
 }
 
+/**
+ * CSS zoom only. Always strips residual transform/fill from older builds.
+ */
+function setScaleLayoutStyles(el: HTMLElement, scale: number): void {
+  el.style.transform = "";
+  el.style.transformOrigin = "";
+  el.style.width = "";
+  el.style.height = "";
+  el.style.position = "";
+  el.style.top = "";
+  el.style.left = "";
+  el.style.right = "";
+  el.style.bottom = "";
+
+  if (scale === 1) {
+    el.style.zoom = "";
+    return;
+  }
+
+  el.style.zoom = String(scale);
+}
+
 function applyCssPageScaleStyles(root: HTMLElement, scale: number): void {
   root.style.setProperty("--ui-scale", String(scale));
 
   const layout = resolveCssZoomLayoutTarget(root);
-  // Older builds zoomed <html>; clear residual so we never double-scale.
   if (layout !== root) {
     clearScaleLayoutStyles(root);
   }
@@ -158,9 +134,6 @@ export async function applyUiScale(
 ): Promise<void> {
   const next = clampUiScale(scale);
 
-  // Unified CSS page scale (see usesCssPageZoom). Pin native zoom to 1 once
-  // so residual ≠1 zoom from older builds (WebView2 ZoomFactor, WKWebView
-  // pageZoom) is cleared without calling setZoom on every scale change.
   applyCssPageScaleStyles(target.root, next);
   if (target.setNativeZoom && !nativeIdentityPinned) {
     await target.setNativeZoom(1);

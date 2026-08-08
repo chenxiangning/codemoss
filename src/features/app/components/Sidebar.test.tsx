@@ -12,6 +12,8 @@ import {
   listWorkspaceSessionFolders,
   renameWorkspaceSessionFolder,
 } from "../../../services/tauri";
+import { writeClientStoreValue } from "../../../services/clientStorage";
+import { SIDEBAR_SETTINGS_PINNED_ACTIONS_KEY } from "../hooks/useSidebarSettingsPinnedActions";
 import { pushErrorToast } from "../../../services/toasts";
 
 import { Sidebar } from "./Sidebar";
@@ -193,6 +195,90 @@ describe("Sidebar", () => {
     expect(container.querySelector(".sidebar-settings-dropdown")).toBeNull();
   });
 
+  it("switches the runtime notice menu icon to alert when errors exist", async () => {
+    const { container, rerender } = render(
+      <Sidebar
+        {...baseProps}
+        showRuntimeNoticeMenuItem
+        onOpenRuntimeNotice={vi.fn()}
+        runtimeNoticeHasError={false}
+      />,
+    );
+
+    const settingsToggle = container.querySelector(".sidebar-primary-nav-item-bottom");
+    expect(settingsToggle).toBeTruthy();
+    await act(async () => {
+      fireEvent.click(settingsToggle as Element);
+    });
+
+    expect(
+      container.querySelector(".sidebar-settings-runtime-notice-icon.is-idle"),
+    ).toBeTruthy();
+    expect(
+      container.querySelector(".sidebar-settings-runtime-notice-icon.is-has-error"),
+    ).toBeNull();
+
+    await act(async () => {
+      rerender(
+        <Sidebar
+          {...baseProps}
+          showRuntimeNoticeMenuItem
+          onOpenRuntimeNotice={vi.fn()}
+          runtimeNoticeHasError
+        />,
+      );
+    });
+
+    expect(
+      container.querySelector(".sidebar-settings-runtime-notice-icon.is-has-error"),
+    ).toBeTruthy();
+    expect(
+      container.querySelector(".sidebar-settings-runtime-notice-icon.is-idle"),
+    ).toBeNull();
+  });
+
+  it("mirrors runtime notice error state on the pinned settings entry", async () => {
+    writeClientStoreValue("app", SIDEBAR_SETTINGS_PINNED_ACTIONS_KEY, ["runtime-notice"]);
+
+    const { container, rerender } = render(
+      <Sidebar
+        {...baseProps}
+        showRuntimeNoticeMenuItem
+        onOpenRuntimeNotice={vi.fn()}
+        runtimeNoticeHasError={false}
+      />,
+    );
+
+    const pinnedIdle = container.querySelector(
+      '.sidebar-settings-pinned-item[data-runtime-notice-status="idle"]',
+    );
+    expect(pinnedIdle).toBeTruthy();
+    expect(pinnedIdle?.classList.contains("is-runtime-notice-error")).toBe(false);
+    expect(
+      pinnedIdle?.querySelector(".sidebar-settings-runtime-notice-icon.is-idle"),
+    ).toBeTruthy();
+
+    await act(async () => {
+      rerender(
+        <Sidebar
+          {...baseProps}
+          showRuntimeNoticeMenuItem
+          onOpenRuntimeNotice={vi.fn()}
+          runtimeNoticeHasError
+        />,
+      );
+    });
+
+    const pinnedError = container.querySelector(
+      '.sidebar-settings-pinned-item[data-runtime-notice-status="has-error"]',
+    );
+    expect(pinnedError).toBeTruthy();
+    expect(pinnedError?.classList.contains("is-runtime-notice-error")).toBe(true);
+    expect(
+      pinnedError?.querySelector(".sidebar-settings-runtime-notice-icon.is-has-error"),
+    ).toBeTruthy();
+  });
+
   it("pins up to two settings actions beside the gear and blocks a third pin", async () => {
     const onOpenSpecHub = vi.fn();
     const onOpenProjectMemory = vi.fn();
@@ -314,20 +400,54 @@ describe("Sidebar", () => {
       configurable: true,
     });
     try {
-      const { container } = render(<Sidebar {...baseProps} />);
+      const onOpenQuickSwitcher = vi.fn();
+      const { container } = render(
+        <Sidebar {...baseProps} onOpenQuickSwitcher={onOpenQuickSwitcher} />,
+      );
       expect(screen.queryByText("Ctrl+J")).toBeNull();
       expect(screen.getByText("Ctrl+K")).toBeTruthy();
       expect(screen.getByText("Ctrl+O")).toBeTruthy();
-      expect(container.querySelectorAll(".sidebar-primary-nav .sidebar-primary-nav-shortcut")).toHaveLength(2);
+      expect(screen.getByText("Ctrl+E")).toBeTruthy();
+      expect(
+        container.querySelectorAll(
+          ".sidebar-primary-nav .sidebar-primary-nav-shortcut",
+        ),
+      ).toHaveLength(3);
       expect(screen.getByRole("button", { name: "Home" }).getAttribute("title")).toContain("Ctrl+J");
       expect(screen.getByRole("button", { name: "Automation" }).getAttribute("title")).toContain("Ctrl+K");
       expect(screen.getByRole("button", { name: "Search" }).getAttribute("title")).toContain("Ctrl+O");
+      expect(
+        screen.getByRole("button", { name: "Quick Switcher" }).getAttribute("title"),
+      ).toContain("Ctrl+E");
+      fireEvent.click(screen.getByRole("button", { name: "Quick Switcher" }));
+      expect(onOpenQuickSwitcher).toHaveBeenCalledTimes(1);
     } finally {
       Object.defineProperty(window.navigator, "platform", {
         value: originalPlatform,
         configurable: true,
       });
     }
+  });
+
+  it("exposes hide conversation sidebar in settings menu when collapse handler is provided", async () => {
+    const onCollapseSidebar = vi.fn();
+    const { container } = render(
+      <Sidebar {...baseProps} onCollapseSidebar={onCollapseSidebar} />,
+    );
+
+    const settingsToggle = container.querySelector(".sidebar-primary-nav-item-bottom");
+    expect(settingsToggle).toBeTruthy();
+    await act(async () => {
+      fireEvent.click(settingsToggle as Element);
+    });
+
+    const dropdown = container.querySelector(".sidebar-settings-dropdown");
+    expect(dropdown).toBeTruthy();
+    const hideItem = within(dropdown as HTMLElement).getByRole("menuitem", {
+      name: "Hide conversation sidebar",
+    });
+    fireEvent.click(hideItem);
+    expect(onCollapseSidebar).toHaveBeenCalledTimes(1);
   });
 
   it("reflects cleared quick mode shortcuts in button hints", () => {
@@ -375,6 +495,9 @@ describe("Sidebar", () => {
     expect(menu.queryByRole("menuitem", { name: "Home" })).toBeNull();
     expect(menu.queryByRole("menuitem", { name: "Automation" })).toBeNull();
     expect(menu.queryByRole("menuitem", { name: "Skills" })).toBeNull();
+    expect(
+      menu.queryByRole("menuitem", { name: "Hide conversation sidebar" }),
+    ).toBeNull();
     expect(menu.getByRole("menuitem", { name: "Lock" })).toBeTruthy();
     expect(menu.queryByRole("menuitem", { name: "Long-term Memory" })).toBeNull();
     expect(menu.getByRole("menuitem", { name: "Spec Hub" })).toBeTruthy();

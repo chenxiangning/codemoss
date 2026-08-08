@@ -140,7 +140,8 @@ export function sanitizeFastMarkdownHtml(input: string): SanitizeFastMarkdownHtm
   let rejectedUnsafeUrls = 0;
   let rejectedForbiddenTags = 0;
 
-  const purifier = DOMPurify(window);
+  // DOMPurify 与 DOM Window 可能解析到不同 @types/trusted-types 副本（pnpm 双路径）
+  const purifier = DOMPurify(window as Parameters<typeof DOMPurify>[0]);
   const sanitized = purifier.sanitize(input, {
     ALLOWED_TAGS,
     ALLOWED_ATTR,

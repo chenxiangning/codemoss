@@ -59,7 +59,8 @@ function normalizeUrlDraft(value: string): string {
   if (!trimmed) {
     return "";
   }
-  if (/^https?:\/\//i.test(trimmed)) {
+  // Keep absolute schemes as-is (including local file:// HTML previews).
+  if (/^(https?|file):\/\//i.test(trimmed)) {
     return trimmed;
   }
   return `https://${trimmed}`;

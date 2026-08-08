@@ -36,6 +36,11 @@ const composer = {
     onRequest: "按需",
     fullAccess: "完全访问",
     liveUsage: "实时用量",
+    quotaWindow: "配额窗口",
+    quotaUsed: "已用",
+    quotaReset: "重置",
+    quotaProvider: "供应商",
+    quotaExpandHint: "展开详情",
     speed: "Speed",
     speedStandard: "Standard",
     speedFast: "Fast",
@@ -269,6 +274,14 @@ const composer = {
     contextLedgerActionOpenSourceDetail: "查看来源详情",
     contextLedgerDetailDialogTitle: "来源详情",
     contextLedgerDetailDialogClose: "关闭",
+    runStatus: {
+      label: "本轮运行状态",
+      panel: "运行状态详情",
+      edit: "编辑",
+      edited: "已编辑",
+      expandChrome: "展开运行状态",
+      collapseChrome: "收起运行状态",
+    },
   },
 };
 

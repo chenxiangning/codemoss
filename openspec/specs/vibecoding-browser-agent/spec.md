@@ -21,6 +21,22 @@ The system SHALL provide a Browser Dock as a client-owned detached workspace bro
 - **AND** the page SHALL render inside a browser-specific WebView rather than navigating the main application window
 - **AND** the system SHALL show URL, title, loading state, and error state when available
 
+#### Scenario: user opens a local HTML file via file://
+- **WHEN** a Browser Agent session is created or navigated with a `file://` URL whose path ends with `.html` or `.htm` (case-insensitive, ignoring trailing query/fragment)
+- **THEN** the URL validation policy SHALL allow the URL
+- **AND** the Browser Agent renderer SHALL load that local HTML page
+- **AND** relative asset references under the same directory MAY resolve according to normal `file://` browser rules
+
+#### Scenario: non-HTML local file:// URLs remain blocked
+- **WHEN** a Browser Agent URL uses the `file://` scheme but does not end with `.html` or `.htm`
+- **THEN** the URL validation policy SHALL reject the URL with a blocked-file-type diagnostic
+- **AND** the system SHALL NOT create a successful ready session for that URL
+
+#### Scenario: Browser Dock URL draft preserves file://
+- **WHEN** the user or an internal caller supplies a draft URL that already has a `file://` scheme
+- **THEN** Browser Dock URL normalization MUST keep the `file://` scheme
+- **AND** MUST NOT rewrite it to `https://file://...`
+
 #### Scenario: Browser Dock renderer opens at a usable default size
 - **WHEN** the system opens the Browser Agent renderer window
 - **THEN** the window SHALL use a default size large enough for ordinary web pages to render without narrow-viewport deformation

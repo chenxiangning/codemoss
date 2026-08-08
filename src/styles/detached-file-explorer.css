@@ -119,7 +119,7 @@
 }
 
 /* Detached explorer does not support composer mention insertion; hide row "+" action. */
-.detached-file-explorer-window .file-tree-action {
+.detached-file-explorer-window .file-tree-action--mention {
   display: none;
 }
 

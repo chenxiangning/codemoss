@@ -24,6 +24,12 @@ const runtimeNotice = {
       ready: "Client initialization completed.",
       failed: "Client initialization failed. Reload and try again.",
     },
+    startupGate: {
+      title: "Starting",
+      message:
+        "Finishing startup. Please wait — clicking the UI now may freeze the app.",
+      forceDismiss: "Enter now",
+    },
     uiScale: {
       startupGuardReset:
         "The previous launch froze at {{scale}}% interface scale, so scale was temporarily reset to 100% for this session. Your setting was not changed — you can re-apply it in Settings.",

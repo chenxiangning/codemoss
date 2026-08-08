@@ -3,6 +3,7 @@ import { useWindowLabel } from "./features/layout/hooks/useWindowLabel";
 import { isDetachedFileExplorerWindowLabel } from "./features/files/detachedFileExplorer";
 import { isBrowserAgentDockWindowLabel } from "./features/browser-agent/browserAgentDockWindow";
 import { AppShell } from "./app-shell";
+import { StartupGateOverlay } from "./features/app/components/StartupGateOverlay";
 
 const AboutView = lazy(() =>
   import("./features/about/components/AboutView").then((module) => ({
@@ -71,7 +72,13 @@ export function AppRouter() {
       </Suspense>
     );
   }
-  return <AppShell />;
+  return (
+    <>
+      <AppShell />
+      {/* Tauri desktop: block clicks during cold-start hydrate window. */}
+      <StartupGateOverlay />
+    </>
+  );
 }
 
 export default AppRouter;

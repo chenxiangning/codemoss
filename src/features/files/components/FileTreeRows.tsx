@@ -1,8 +1,10 @@
 import type { DragEvent, MouseEvent } from "react";
 import type { TFunction } from "i18next";
 import type { GitRepositorySummary } from "../../../types";
+import Globe from "lucide-react/dist/esm/icons/globe";
 import Plus from "lucide-react/dist/esm/icons/plus";
 import { getFileTreeIconSvg } from "../utils/fileTreeIcons";
+import { isHtmlFilePath } from "../utils/openHtmlInBrowser";
 import {
   gitRepositoryStatusItems,
   gitRepositoryStatusTokens,
@@ -62,6 +64,7 @@ export type FileTreeRowHandlers = {
   rebroadcastCrossWindowTreeDrag: () => void;
   onOpenFile?: (path: string) => void;
   onInsertText?: (text: string) => void;
+  onOpenInBrowser?: (relativePath: string) => void;
 };
 
 export type FileTreeRowRefs = {
@@ -241,8 +244,15 @@ function FileTreeNodeRow({
     handlers.openPreview(node.path, target);
   };
 
+  const canOpenInBrowser =
+    !row.isFolder &&
+    Boolean(handlers.onOpenInBrowser) &&
+    isHtmlFilePath(node.path);
+
   return (
-    <div className="file-tree-row-wrap">
+    <div
+      className={`file-tree-row-wrap${canOpenInBrowser ? " has-browser-action" : ""}`}
+    >
       <button
         type="button"
         data-file-tree-path={node.path}
@@ -309,27 +319,48 @@ function FileTreeNodeRow({
           <GitRepositoryStatus repository={row.repositorySummary} />
         ) : null}
       </button>
-      <button
-        type="button"
-        className={`ghost icon-button file-tree-action${row.isSelected ? " is-visible" : ""}`}
-        onMouseDown={(event) => {
-          event.stopPropagation();
-        }}
-        onClick={(event) => {
-          event.stopPropagation();
-          const absolutePath = handlers.resolvePath(node.path);
-          if (typeof window !== "undefined" && window.handleFilePathFromJava) {
-            window.handleFilePathFromJava(absolutePath);
-            return;
-          }
-          const mentionText = `@${absolutePath}${node.type === "file" ? " " : ""}`;
-          handlers.onInsertText?.(mentionText);
-        }}
-        aria-label={t("files.mentionFile", { name: node.name })}
-        title={t("files.mentionInChat")}
+      <div
+        className={`file-tree-actions${row.isSelected ? " is-visible" : ""}`}
       >
-        <Plus size={10} aria-hidden />
-      </button>
+        {canOpenInBrowser ? (
+          <button
+            type="button"
+            className="ghost icon-button file-tree-action file-tree-action--browser"
+            onMouseDown={(event) => {
+              event.stopPropagation();
+            }}
+            onClick={(event) => {
+              event.stopPropagation();
+              handlers.onOpenInBrowser?.(node.path);
+            }}
+            aria-label={t("files.openInBrowser")}
+            title={t("files.openInBrowser")}
+          >
+            <Globe size={10} aria-hidden />
+          </button>
+        ) : null}
+        <button
+          type="button"
+          className="ghost icon-button file-tree-action file-tree-action--mention"
+          onMouseDown={(event) => {
+            event.stopPropagation();
+          }}
+          onClick={(event) => {
+            event.stopPropagation();
+            const absolutePath = handlers.resolvePath(node.path);
+            if (typeof window !== "undefined" && window.handleFilePathFromJava) {
+              window.handleFilePathFromJava(absolutePath);
+              return;
+            }
+            const mentionText = `@${absolutePath}${node.type === "file" ? " " : ""}`;
+            handlers.onInsertText?.(mentionText);
+          }}
+          aria-label={t("files.mentionFile", { name: node.name })}
+          title={t("files.mentionInChat")}
+        >
+          <Plus size={10} aria-hidden />
+        </button>
+      </div>
     </div>
   );
 }

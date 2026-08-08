@@ -16,8 +16,7 @@ export type GroupedEntry =
   | { kind: 'readGroup'; items: ToolItem[] }
   | { kind: 'editGroup'; items: ToolItem[] }
   | { kind: 'bashGroup'; items: ToolItem[] }
-  | { kind: 'searchGroup'; items: ToolItem[] }
-  | { kind: 'subagentGroup'; items: ToolItem[] };
+  | { kind: 'searchGroup'; items: ToolItem[] };
 
 /**
  * 合并连续 explore items
@@ -54,15 +53,15 @@ function canMergeExploreItems(previous: ExploreItem, next: ExploreItem): boolean
  * 将分类映射到 GroupedEntry 的 kind。
  * `fileEdit` 是场景桶：连续的 edit + fileChange 合并为同一「文件修改」场景。
  * （裸 `edit` 不会进入 buffer——resolveSceneCategory 已归一为 fileEdit。）
+ * subagent 不再分组：幕布降级为普通工具行，展示收敛到 ComposerRunStatusStrip。
  */
-type GroupableCategory = 'read' | 'fileEdit' | 'bash' | 'search' | 'subagent';
+type GroupableCategory = 'read' | 'fileEdit' | 'bash' | 'search';
 
 const CATEGORY_TO_GROUP_KIND: Record<GroupableCategory, GroupedEntry['kind']> = {
   read: 'readGroup',
   fileEdit: 'editGroup',
   bash: 'bashGroup',
   search: 'searchGroup',
-  subagent: 'subagentGroup',
 };
 
 function isGroupableCategory(cat: string): cat is GroupableCategory {
@@ -123,15 +122,12 @@ export function groupToolItems(items: ConversationItem[]): GroupedEntry[] {
       currentCategory === 'search' && toolBuffer.some(shouldUngroupSearchTools);
     // Keep only codex mcp search_query tools line-by-line so each search record can expand.
     // 文件修改场景：edit + fileChange 归并桶，即使 1 个 tool 也走 editGroup。
-    // subAgent：单卡/小队都走 subagentGroup（1 项也分组，便于 persona 卡片渲染）。
     const shouldGroupFileEditScene =
       currentCategory === 'fileEdit' && toolBuffer.length >= 1;
-    const shouldGroupSubagentScene =
-      currentCategory === 'subagent' && toolBuffer.length >= 1;
     if (
       !hasUngroupedSearchTool &&
       isGroupableCategory(currentCategory) &&
-      (shouldGroupFileEditScene || shouldGroupSubagentScene || toolBuffer.length >= 2)
+      (shouldGroupFileEditScene || toolBuffer.length >= 2)
     ) {
       entries.push({
         kind: CATEGORY_TO_GROUP_KIND[currentCategory],

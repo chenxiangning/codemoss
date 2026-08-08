@@ -20,7 +20,18 @@ const messages = {
       "title_one": "Изменён {{count}} файл",
       "title_other": "Изменено файлов: {{count}}",
       "showMore_one": "Показать ещё {{count}} файл",
-      "showMore_other": "Показать ещё файлов: {{count}}"
+      "showMore_other": "Показать ещё файлов: {{count}}",
+      "revertAll": "Отменить всё",
+      "revertFile": "Отменить {{path}}",
+      "revertFileAction": "Отменить",
+      "revertAllConfirmTitle": "Отменить все изменения",
+      "revertAllConfirmBody":
+        "Локальные изменения в {{count}} файлах будут сброшены до последнего коммита. Это действие нельзя отменить.",
+      "revertAllConfirmAction": "Отменить всё",
+      "revertFileConfirmTitle": "Отменить изменения файла",
+      "revertFileConfirmBody":
+        "Локальные изменения в «{{path}}» будут сброшены до последнего коммита. Это действие нельзя отменить.",
+      "revertFileConfirmAction": "Отменить"
     },
     "noThinkingContent": "Нет содержимого размышлений",
     "hiddenThinkingContent": "Содержимое размышлений скрыто текущей настройкой.",
@@ -52,6 +63,7 @@ const messages = {
     "restoringHistory": "Загрузка окна беседы…",
     "restoringHistoryHint": "Загрузка локального транскрипта и состояния сессии.",
     "generatingResponse": "Генерация ответа...",
+    "responding": "Ответ...",
     "codexWaitingForFirstText": "Codex работает. Ожидание первого фрагмента текста...",
     "codexSilentSuspected": "Некоторое время нет нового вывода Codex. Продолжаем слушать активность среды выполнения...",
     "nonStreamingHint": "Эта модель может возвращать нестриминговый вывод, либо сеть недоступна. Пожалуйста, подождите...",
@@ -66,7 +78,7 @@ const messages = {
     "opencodeModelSwitchMessage": "Обнаружено переключение модели в той же сессии. Создана новая серверная сессия во избежание тайм-аутов.",
     "doneIn": "Готово за {{duration}}",
     "totalDuration": "Длительность",
-    "durationSeconds": "{{seconds}}s",
+    "durationSeconds": "{{duration}}",
     "tokenUsage": "Вход {{input}} / Выход {{output}}",
     "tokenUsageTooltip": "Вход {{input}} token / Выход {{output}} token",
     "messageActions": "Действия с сообщением",

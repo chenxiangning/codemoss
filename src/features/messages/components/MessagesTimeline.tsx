@@ -6,7 +6,6 @@ import {
   useRef,
 } from "react";
 import { useTranslation } from "react-i18next";
-import { TurnFilesChangedCard } from "./conversation/TurnFilesChangedCard";
 import { MessagesOutlineFloater } from "./conversation/MessagesOutlineFloater";
 import { parseAgentTaskNotification } from "../../engine-task-output/contracts/agentTaskNotification";
 import { appendRendererDiagnostic } from "../../../services/rendererDiagnostics";
@@ -94,9 +93,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     claudeDockedReasoningItems,
     effectiveItemsCount,
     groupedEntries,
-    hasPendingUserTurn,
     processPhaseChips,
-    sessionFileChangesSummary,
     visibleCollapsedHistoryItemCount,
   } = snapshot;
   const {
@@ -129,7 +126,6 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   const {
     onConversationDetailHydrationRequest,
     onConversationLightweightModeEnable,
-    onPreviewFileDiff,
     onShowAllHistoryItems,
   } = interactions;
   const {
@@ -682,14 +678,6 @@ export const MessagesTimeline = memo(function MessagesTimeline({
           userInputNodePresent={Boolean(userInputNode)}
           virtualTimelineRows={virtualTimelineRows}
         />
-        {sessionFileChangesSummary && !isWorking && !hasPendingUserTurn && (
-          <div className="messages-session-files-changed">
-            <TurnFilesChangedCard
-              summary={sessionFileChangesSummary}
-              onPreviewFileDiff={onPreviewFileDiff}
-            />
-          </div>
-        )}
       </div>
     </div>
   );

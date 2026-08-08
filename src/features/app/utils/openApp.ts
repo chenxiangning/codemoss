@@ -1,15 +1,14 @@
-import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import type { AppSettings, OpenAppTarget } from "../../../types";
 import { DEFAULT_OPEN_APP_ID } from "../constants";
 import { getClientStoreSync } from "../../../services/clientStorage";
-import { openWorkspaceIn } from "../../../services/tauri";
+import { openWorkspaceIn, revealInFileManager } from "../../../services/tauri";
 
 export async function openPathInTarget(
   path: string,
   target: OpenAppTarget,
 ): Promise<void> {
   if (target.kind === "finder") {
-    await revealItemInDir(path);
+    await revealInFileManager(path);
     return;
   }
   if (target.kind === "command") {
