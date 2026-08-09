@@ -3,13 +3,24 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { ScrollControl } from "./ScrollControl";
-import { startConversationScrollConvergence } from "../../orchestration/scrolling/messagesScrollConvergence";
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
     t: (key: string) => key,
   }),
 }));
+
+/** 与 MessagesCore handleScrollControlRequest 同契约：edge 上报后由 owner 落位。 */
+function applyScrollEdge(container: HTMLDivElement, edge: "top" | "bottom") {
+  if (edge === "bottom") {
+    container.scrollTo({
+      top: Math.max(0, container.scrollHeight - container.clientHeight),
+      behavior: "smooth",
+    });
+    return;
+  }
+  container.scrollTo({ top: 0, behavior: "smooth" });
+}
 
 /**
  * 构造一个可控滚动几何的容器（jsdom 默认 scrollHeight/clientHeight 均为 0）。
@@ -44,33 +55,25 @@ function makeContainer({
     },
     configurable: true,
   });
+  // jsdom 无原生 scrollTo；模拟浏览器 clamp + 立即落位（不测动画帧）。
+  container.scrollTo = ((options?: ScrollToOptions | number) => {
+    if (typeof options === "number") {
+      top = Math.max(0, Math.min(options, state.scrollHeight - clientHeight));
+      return;
+    }
+    if (options && typeof options.top === "number") {
+      top = Math.max(0, Math.min(options.top, state.scrollHeight - clientHeight));
+    }
+  }) as typeof container.scrollTo;
 
   return { container, state };
-}
-
-// 等待若干个动画帧，让自驱动滚动推进。
-function nextFrames(count: number) {
-  return new Promise<void>((resolve) => {
-    let remaining = count;
-    const tick = () => {
-      remaining -= 1;
-      if (remaining <= 0) {
-        resolve();
-        return;
-      }
-      requestAnimationFrame(tick);
-    };
-    requestAnimationFrame(tick);
-  });
 }
 
 function renderScrollControl(container: HTMLDivElement) {
   return render(
     <ScrollControl
       containerRef={{ current: container }}
-      onRequestScrollToEdge={(edge) => {
-        startConversationScrollConvergence(container, { edge, motion: "smooth" });
-      }}
+      onRequestScrollToEdge={(edge) => applyScrollEdge(container, edge)}
     />,
   );
 }
@@ -109,22 +112,21 @@ describe("ScrollControl", () => {
     await waitFor(() => expect(container.scrollTop).toBe(0));
   });
 
-  // Regression guard：虚拟列表 / content-visibility 会在滚动途中撑高内容。
-  // 一次性 scrollTo({behavior:"smooth"}) 会停在旧目标(1500)上，这正是「点了只滚一段」。
-  it("keeps chasing the bottom when content grows mid-scroll (virtualized rows landing)", async () => {
-    const { container, state } = makeContainer({ scrollTop: 300 });
+  // 用户主动回底：owner 以 smooth 落位；中途撑高由 finish 后硬钉 + RO 追底。
+  it("requests smooth scroll to the current bottom on click", async () => {
+    const { container } = makeContainer({ scrollTop: 300 });
+    const scrollToSpy = vi.spyOn(container, "scrollTo");
     renderScrollControl(container);
 
     fireEvent.wheel(container, { deltaY: 120 });
     const button = await screen.findByTestId("messages-scroll-control");
     fireEvent.click(button);
 
-    // 动画开跑后，模拟新虚拟行落地把内容撑高。
-    await nextFrames(2);
-    state.scrollHeight = 3000;
-
-    // 必须追到新的真实底部 3000 - 500 = 2500，而不是停在 1500。
-    await waitFor(() => expect(container.scrollTop).toBe(2500));
+    expect(scrollToSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ top: 1500, behavior: "smooth" }),
+    );
+    // 2000 - 500 = 1500
+    await waitFor(() => expect(container.scrollTop).toBe(1500));
   });
 
   it("stays hidden when already near the bottom, even on a downward scroll", async () => {

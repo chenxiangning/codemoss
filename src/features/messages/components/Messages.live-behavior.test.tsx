@@ -35,6 +35,14 @@ const notifyContentResized = () => {
   });
 };
 
+// 新跟随模型的 RO/followSignal 追底统一由 pinIfFollowing 合并到下一 rAF 落位，
+// 断言 scrollTop 前需要先推进一帧（fake timers 用例内请改用 advanceTimersByTime）。
+const flushFollowFrame = async () => {
+  await act(async () => {
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+  });
+};
+
 describe("Messages live behavior", () => {
   afterEach(() => {
     cleanup();
@@ -80,11 +88,18 @@ describe("Messages live behavior", () => {
   ) => {
     let currentScrollTop = scrollTop;
     let scrollTopWriteCount = 0;
+    const readScrollHeight = () =>
+      typeof scrollHeight === "function" ? scrollHeight() : scrollHeight;
     Object.defineProperty(scroller, "scrollTop", {
       configurable: true,
       get: () => currentScrollTop,
       set: (value: number) => {
-        currentScrollTop = value;
+        // jsdom 不做布局钳位；按浏览器语义把写入钳到 [0, maxScrollTop]
+        // （scrollToBottom 写的是 scrollHeight，真实浏览器会钳回底）。
+        const maxScrollTop = readScrollHeight() - scroller.clientHeight;
+        currentScrollTop = Number.isFinite(maxScrollTop)
+          ? Math.max(0, Math.min(value, Math.max(0, maxScrollTop)))
+          : value;
         scrollTopWriteCount += 1;
       },
     });
@@ -364,7 +379,7 @@ describe("Messages live behavior", () => {
       {
         id: "tool-claude-read-old",
         kind: "tool",
-        title: "批量读取文件 (2)",
+        title: "批量读取2个文件",
         detail: "package.json pyproject.toml",
         toolType: "read",
         output: "",
@@ -373,7 +388,7 @@ describe("Messages live behavior", () => {
       {
         id: "tool-claude-read-latest",
         kind: "tool",
-        title: "批量读取文件 (4)",
+        title: "批量读取4个文件",
         detail: "AGENTS.md next.config.ts README.md",
         toolType: "read",
         output: "",
@@ -402,7 +417,7 @@ describe("Messages live behavior", () => {
       "这是一个包含多个子项目的目录。让我探索一下项目结构。",
     );
     expect(container.querySelector(".working-activity")?.textContent ?? "").toContain(
-      "批量读取文件 (4)",
+      "批量读取4个文件",
     );
   });
 
@@ -515,7 +530,9 @@ describe("Messages live behavior", () => {
       container.querySelector('[aria-expanded="false"]') ??
       Array.from(container.querySelectorAll("button, [role='button']")).find(
         (node) =>
+          (node.textContent ?? "").includes("批量修改") ||
           (node.textContent ?? "").includes("文件修改") ||
+          (node.textContent ?? "").includes("Batch edit") ||
           (node.textContent ?? "").includes("File changes") ||
           (node.textContent ?? "").includes("fileEditSceneCount"),
       );
@@ -921,7 +938,7 @@ describe("Messages live behavior", () => {
     expect(metrics.getScrollTopWriteCount()).toBe(baselineWrites);
   });
 
-  it("forces send and settle boundaries to the bottom with live auto-follow off", () => {
+  it("forces send but not settle to the bottom after user scroll-away with live auto-follow off", () => {
     window.localStorage.setItem("ccgui.messages.live.autoFollow", "0");
     const renderWith = (thinking: boolean) => (
       <Messages
@@ -959,9 +976,9 @@ describe("Messages live behavior", () => {
     notifyContentResized();
     expect(scroller.scrollTop).toBe(400);
 
-    // settle 是新的 boundary，再次重置旧 ownership 并强制吸底。
+    // settle：用户 wheel 暂停读历史时不拽回；未 pause 则强制回底。
     rerender(renderWith(false));
-    expect(scroller.scrollTop).toBe(scrollHeight - 720);
+    expect(scroller.scrollTop).toBe(400);
 
     // boundary 之后的新输入拥有控制权，必须能取消迟到 recheck。
     fireEvent.wheel(scroller, { deltaY: -120 });
@@ -1104,14 +1121,17 @@ describe("Messages live behavior", () => {
     expect(scroller.scrollTop).toBe(400);
 
     // User scrolls back to the bottom — auto-follow re-arms.
+    // 新契约：userPaused 锁只能被 wheel 下滚回阈值内解除（设 scrollTop + scroll 无权覆盖）。
     rerender(renderWith(false));
     let scrollHeight = 2000;
     setScrollerMetrics(scroller, 1280, () => scrollHeight); // true bottom
-    fireEvent.scroll(scroller);
+    fireEvent.wheel(scroller, { deltaY: 120 });
+    await flushFollowFrame();
 
     rerender(renderWith(true));
     scrollHeight = 2500;
     notifyContentResized();
+    await flushFollowFrame();
     expect(scroller.scrollTop).toBe(2500 - 720);
   });
 
@@ -1212,6 +1232,7 @@ describe("Messages live behavior", () => {
     rerender(renderWith(true));
     scrollHeight = 2500;
     notifyContentResized();
+    await flushFollowFrame();
     expect(scroller.scrollTop).toBe(2500 - 720);
   });
 
@@ -1350,27 +1371,34 @@ describe("Messages live behavior", () => {
       setScrollerMetrics(scroller, 2_400 - 720, () => scrollHeight);
       fireEvent.scroll(scroller);
       notifyContentResized();
+      act(() => {
+        vi.advanceTimersByTime(20);
+      });
       expect(scroller.scrollTop).toBe(2_400 - 720);
 
-      // 回合结束：settle 钉底后预算窗耗尽，模拟迟到测高（思考折叠/全文回刷）。
+      // 回合结束：settle 钉底（pinIfFollowing 合并到下一 rAF，fake timers 推进一帧）。
       rerender(renderWith(false));
+      act(() => {
+        vi.advanceTimersByTime(20);
+      });
       expect(scroller.scrollTop).toBe(scrollHeight - 720);
 
-      act(() => {
-        vi.advanceTimersByTime(3_000);
-      });
+      // 迟到测高（思考折叠/全文回刷/虚拟化 remeasure）把 scrollHeight 撑大：
+      // 焦点跟随 + 仍停在底部时，必须越过 isWorking 门槛继续追真实底部。
       scrollHeight = 3_600;
       notifyContentResized();
+      act(() => {
+        vi.advanceTimersByTime(20);
+      });
       expect(scroller.scrollTop).toBe(3_600 - 720);
     } finally {
       vi.useRealTimers();
     }
   });
 
-  it("keeps follow armed when settle height jumps and a layout scroll fires without user intent", () => {
-    // 回归：尾窗回全量 / 虚拟化 remeasure 让 scrollHeight 暴涨后，浏览器会派发 scroll，
-    // 此时 distanceToBottom 已远超 120px。旧逻辑把「假离底」当成用户离开，解除 autoScroll
-    // 并 cancel 收敛 → 回合结束瞬间视口停在中上段（用户体感「飞到上面」）。
+  it("chases height growth via ResizeObserver while still armed at bottom", () => {
+    // jetbrains P0：在底就 RO 一直跟。高度阶跃后不要先 fire 假 scroll 解绑；
+    // 只靠 RO 把视口追到新真底。
     window.localStorage.setItem("ccgui.messages.live.autoFollow", "1");
     vi.useFakeTimers();
     try {
@@ -1404,24 +1432,29 @@ describe("Messages live behavior", () => {
       setScrollerMetrics(scroller, 2_400 - 720, () => scrollHeight);
       fireEvent.scroll(scroller);
       notifyContentResized();
+      act(() => {
+        vi.advanceTimersByTime(20);
+      });
       expect(scroller.scrollTop).toBe(2_400 - 720);
 
-      // settle：先钉到当时的底
       rerender(renderWith(false));
+      act(() => {
+        vi.advanceTimersByTime(20);
+      });
       expect(scroller.scrollTop).toBe(scrollHeight - 720);
 
-      // 高度阶跃：scrollTop 仍停在旧底（距新底 2880px ≫ 120），只派发 scroll、无 wheel
       scrollHeight = 5_280;
-      fireEvent.scroll(scroller);
-      // 保护路径必须仍武装；随后 Resize 才能把视口追到真底
       notifyContentResized();
+      act(() => {
+        vi.advanceTimersByTime(20);
+      });
       expect(scroller.scrollTop).toBe(5_280 - 720);
     } finally {
       vi.useRealTimers();
     }
   });
 
-  it("re-pins when the composer status strip shrinks the container after the settle window", () => {
+  it("re-pins when the composer status strip shrinks the container after settle", () => {
     vi.useFakeTimers();
     try {
       const renderWith = (thinking: boolean) => (
@@ -1458,25 +1491,25 @@ describe("Messages live behavior", () => {
         get: () => clientHeight,
       });
       notifyContentResized();
+      act(() => {
+        vi.advanceTimersByTime(20);
+      });
 
-      // settle：先钉到当时的底
+      // settle：先钉到当时的底（rAF 落位）
       rerender(renderWith(false));
+      act(() => {
+        vi.advanceTimersByTime(20);
+      });
       expect(scroller.scrollTop).toBe(scrollHeight - 720);
 
-      // 让 forced 走完最短保持（6s）并凭真底 + 高度稳定采样退役，
-      // 同时越过 settle 死线（finalizing 结束后 2.4s）。
-      for (let i = 0; i < 6; i += 1) {
-        act(() => {
-          vi.advanceTimersByTime(1_400);
-        });
-        scroller.scrollTop = scrollHeight - clientHeight;
-        notifyContentResized();
-      }
-
       // Composer 运行态条（「已编辑 N 个文件」）迟到挂载：容器 clientHeight 被压小，
-      // scrollTop / scrollHeight 均不变、不派发 scroll 事件。视口必须被追回新底。
+      // scrollTop / scrollHeight 均不变、不派发 scroll 事件。跟随仍武装，
+      // RO 信号必须把视口追回新底。
       clientHeight = 620;
       notifyContentResized();
+      act(() => {
+        vi.advanceTimersByTime(20);
+      });
       expect(scroller.scrollTop).toBe(scrollHeight - 620);
     } finally {
       vi.useRealTimers();
@@ -1518,13 +1551,23 @@ describe("Messages live behavior", () => {
       });
       scrollHeight = 3_600;
       notifyContentResized();
+      act(() => {
+        vi.advanceTimersByTime(20);
+      });
       expect(scroller.scrollTop).toBe(400);
 
-      // 再滚回底部应恢复 stick。
+      // 再滚回底部应恢复 stick。新契约：userPaused 锁只能被 wheel 下滚回阈值内解除
+      // （设 scrollTop + scroll 事件在 paused 期间被跳过，无权 re-arm）。
       scroller.scrollTop = 3_600 - 720;
-      fireEvent.scroll(scroller);
+      fireEvent.wheel(scroller, { deltaY: 120 });
+      act(() => {
+        vi.advanceTimersByTime(20);
+      });
       scrollHeight = 4_200;
       notifyContentResized();
+      act(() => {
+        vi.advanceTimersByTime(20);
+      });
       expect(scroller.scrollTop).toBe(4_200 - 720);
     } finally {
       vi.useRealTimers();
@@ -1551,30 +1594,25 @@ describe("Messages live behavior", () => {
     const scroller = getMessagesScroller(container);
 
     // Rows land on estimated heights first; the real measurements (virtualizer
-    // ResizeObserver / content-visibility layout) grow scrollHeight afterwards.
-    // A one-shot pin would be stranded — the follow window must chase it down.
+    // ResizeObserver / 迟到布局) grow scrollHeight afterwards. A one-shot pin would
+    // be stranded — 跟随中的 RO pinIfFollowing 必须把迟到测高追到底（rAF 落位）。
     let scrollHeight = 2400;
     setScrollerMetrics(scroller, 0, () => scrollHeight);
     notifyContentResized();
+    await flushFollowFrame();
     expect(scroller.scrollTop).toBe(2400 - 720);
 
     scrollHeight = 3600;
     notifyContentResized();
-    expect(scroller.scrollTop).toBe(3600 - 720);
-
-    // ResizeObserver 已经写到底后，virtualizer 可能在同一收敛窗口里修正 scrollTop，
-    // 且不再产生新的 content resize。owner 必须靠后续帧验证追回 true bottom。
-    scroller.scrollTop = 900;
-    await act(async () => {
-      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-    });
+    await flushFollowFrame();
     expect(scroller.scrollTop).toBe(3600 - 720);
     scrollSpy.mockRestore();
   });
 
-  it("finishes history placement on late geometry via ResizeObserver with focus follow off", () => {
-    // 全砍：不再靠 100/300/1000/2000ms 定时 recheck；迟到测高只靠 RO。
-    window.localStorage.setItem("ccgui.messages.live.autoFollow", "0");
+  it("finishes history placement on late geometry via ResizeObserver while follow stays armed", async () => {
+    // 迟到测高只靠 RO 通道（无定时 recheck）；RO 的 pinIfFollowing 要求跟随武装
+    // （liveAutoFollow 开 && 在底部 && 未暂停），因此本场景保持 follow 开启。
+    window.localStorage.setItem("ccgui.messages.live.autoFollow", "1");
     const renderWith = (items: ConversationItem[], loading: boolean) => (
       <Messages
         items={items}
@@ -1605,11 +1643,12 @@ describe("Messages live behavior", () => {
 
     scrollHeight = 4_000;
     notifyContentResized();
+    await flushFollowFrame();
 
     expect(scroller.scrollTop).toBe(4_000 - 720);
   });
 
-  it("uses settle placement after an active-first history load", () => {
+  it("keeps the reading position on settle after an active-first history load", () => {
     vi.useFakeTimers();
     try {
       const items: ConversationItem[] = [
@@ -1650,8 +1689,8 @@ describe("Messages live behavior", () => {
         vi.advanceTimersByTime(2_100);
       });
 
-      // 这次写入来自 turn-settle，而不是 history-open 重复初始化。
-      expect(scroller.scrollTop).toBe(4_000 - 720);
+      // 用户已上滚离底：turn-settle 不再拽回底部，视口保持读历史位置。
+      expect(scroller.scrollTop).toBe(400);
     } finally {
       vi.useRealTimers();
     }
@@ -1685,15 +1724,21 @@ describe("Messages live behavior", () => {
 
       rerender(renderWith(null, []));
       scroller.scrollTop = 0;
+      // 重开同一 scope：history-open 去重不重复同步钉底。真实浏览器里 listener 重建时
+      // ResizeObserver.observe() 会立刻派发一次初始回调触发 pinIfFollowing；jsdom 的
+      // RO mock 不在 observe 时派发，这里用 notifyContentResized 模拟该初始帧。
       rerender(renderWith("thread-reopen", historyItems));
+      notifyContentResized();
+      act(() => {
+        vi.advanceTimersByTime(20);
+      });
       expect(scroller.scrollTop).toBe(2_400 - 720);
 
-      act(() => {
-        vi.advanceTimersByTime(1_100);
-      });
+      // 迟到测高只靠 RO 信号追底（无定时 recheck）。
       scrollHeight = 4_000;
+      notifyContentResized();
       act(() => {
-        vi.advanceTimersByTime(900);
+        vi.advanceTimersByTime(20);
       });
       expect(scroller.scrollTop).toBe(4_000 - 720);
     } finally {
@@ -1718,17 +1763,20 @@ describe("Messages live behavior", () => {
     const scroller = getMessagesScroller(container);
     const metrics = setScrollerMetrics(scroller, 1_680, 2_400);
 
+    // 3 个同帧 resize 信号：rAF 合并 continuous pin；强制短窗内可能多写，
+    // 但必须有限（不为每信号各写一次 thrash）。
     notifyContentResized();
     notifyContentResized();
     notifyContentResized();
-    await act(async () => {
-      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-    });
+    await flushFollowFrame();
+    await flushFollowFrame();
 
-    expect(metrics.getScrollTopWriteCount()).toBe(0);
+    const writes = metrics.getScrollTopWriteCount();
+    expect(writes).toBeGreaterThanOrEqual(1);
+    expect(writes).toBeLessThanOrEqual(4);
   });
 
-  it("attaches the content observer on the first frame, before history lands", () => {
+  it("attaches the content observer on the first frame, before history lands", async () => {
     // Threads mount with isHistoryLoading=true and an empty timeline. The observer
     // binds to .messages-timeline-root on mount and only rebinds per threadId, so
     // that node must already exist on the loading frame — otherwise follow is dead
@@ -1768,11 +1816,12 @@ describe("Messages live behavior", () => {
     // Late row measurements grow the content inside the follow window.
     scrollHeight = 4000;
     notifyContentResized();
+    await flushFollowFrame();
     expect(scroller.scrollTop).toBe(4000 - 720);
     scrollSpy.mockRestore();
   });
 
-  it("follows the bottom while streaming text grows without changing items", () => {
+  it("follows the bottom while streaming text grows without changing items", async () => {
     // The regression this guards: live assistant text is externalized through
     // liveAssistantTextChannel, so `items` (and therefore scrollKey) never change
     // during a turn. Only the content height changes — follow must key off that.
@@ -1802,15 +1851,17 @@ describe("Messages live behavior", () => {
     // Same `items` identity across every step — only the rendered text grew.
     scrollHeight = 3000;
     notifyContentResized();
+    await flushFollowFrame();
     expect(scroller.scrollTop).toBe(3000 - 720);
 
     scrollHeight = 5000;
     notifyContentResized();
+    await flushFollowFrame();
     expect(scroller.scrollTop).toBe(5000 - 720);
     scrollSpy.mockRestore();
   });
 
-  it("releases follow on wheel-up even before a scroll event lands", () => {
+  it("releases follow on wheel-up even before a scroll event lands", async () => {
     // The observer writes scrollTop every frame while streaming. If follow only
     // released on `scroll` (async), a height change racing ahead of it would yank
     // the user straight back to the bottom — i.e. they could never scroll away.
@@ -1844,10 +1895,13 @@ describe("Messages live behavior", () => {
     expect(scroller.scrollTop).toBe(900);
 
     // Scrolling back to the bottom re-arms follow — the guard must not latch.
+    // 新契约：paused 锁只能被 wheel 下滚回阈值内解除（paused 期间 scroll 事件被跳过）。
     scroller.scrollTop = 5000 - 720;
-    fireEvent.scroll(scroller);
+    fireEvent.wheel(scroller, { deltaY: 120 });
+    await flushFollowFrame();
     scrollHeight = 6000;
     notifyContentResized();
+    await flushFollowFrame();
     expect(scroller.scrollTop).toBe(6000 - 720);
 
     scrollSpy.mockRestore();
@@ -1887,89 +1941,9 @@ describe("Messages live behavior", () => {
     scrollSpy.mockRestore();
   });
 
-  it("keeps following when a programmatic-echo scroll event lands after late geometry growth", () => {
-    // 回归：发送消息触发虚拟化翻开/live 尾窗裁剪时总高度先塌缩再回填。WebKit 的
-    // scroll 事件异步派发，钉底写入产生的事件可能在高度回填之后才送达——事件位置
-    // 离新底部很远，但它是程序化回声而非用户上滚，不能解除跟随并杀掉收敛 run。
-    const scrollSpy = vi
-      .spyOn(HTMLElement.prototype, "scrollIntoView")
-      .mockImplementation(() => {});
-    const { container } = render(
-      <Messages
-        items={[
-          { id: "echo-user", kind: "message", role: "user", text: "go" },
-          { id: "echo-assistant", kind: "message", role: "assistant", text: "partial" },
-        ]}
-        threadId="thread-echo"
-        workspaceId="ws-1"
-        isThinking
-        processingStartedAt={Date.now() - 1_000}
-        openTargets={[]}
-        selectedOpenAppId=""
-      />,
-    );
-    const scroller = getMessagesScroller(container);
-
-    let scrollHeight = 2400;
-    setScrollerMetrics(scroller, 1000, () => scrollHeight);
-
-    // 内容变化触发真实 write：1000 → 1680，applied value 进入 fingerprint ring。
-    notifyContentResized();
-    expect(scroller.scrollTop).toBe(1680);
-
-    // 迟到测高把总高度回填到 6000，随后旧写入的 scroll 事件才送达（位置仍是 1680，
-    // 距新底部 3600px）。指纹命中 → 跟随保持武装，不得释放。
-    scrollHeight = 6000;
-    fireEvent.scroll(scroller);
-
-    // 下一次内容高度信号应把视口追回新的真实底部，而不是滞留在 1680。
-    notifyContentResized();
-    expect(scroller.scrollTop).toBe(6000 - 720);
-    scrollSpy.mockRestore();
-  });
-
-  it("keeps following when an actual write echo arrives after convergence completes", () => {
-    // 全砍：迟到长高靠 RO 而非 2s checkpoint；write fingerprint + grace 仍保护 echo。
-    window.localStorage.setItem("ccgui.messages.live.autoFollow", "1");
-    const scrollSpy = vi
-      .spyOn(HTMLElement.prototype, "scrollIntoView")
-      .mockImplementation(() => {});
-    const { container } = render(
-      <Messages
-        items={[
-          { id: "grace-echo-user", kind: "message", role: "user", text: "go" },
-          { id: "grace-echo-assistant", kind: "message", role: "assistant", text: "partial" },
-        ]}
-        threadId="thread-grace-echo"
-        workspaceId="ws-1"
-        isThinking
-        processingStartedAt={Date.now() - 1_000}
-        openTargets={[]}
-        selectedOpenAppId=""
-      />,
-    );
-    const scroller = getMessagesScroller(container);
-
-    let scrollHeight = 2400;
-    const metrics = setScrollerMetrics(scroller, 1000, () => scrollHeight);
-    notifyContentResized();
-    expect(scroller.scrollTop).toBe(1680);
-
-    scrollHeight = 3000;
-    const writesBeforeGrow = metrics.getScrollTopWriteCount();
-    notifyContentResized();
-    expect(scroller.scrollTop).toBe(2280);
-    expect(metrics.getScrollTopWriteCount()).toBeGreaterThan(writesBeforeGrow);
-
-    // 刚写入 2280 的 fingerprint 尚在 grace 内；高度再涨后迟到 scroll 不得解除跟随。
-    scrollHeight = 6000;
-    fireEvent.scroll(scroller);
-    notifyContentResized();
-    expect(scroller.scrollTop).toBe(6000 - 720);
-    scrollSpy.mockRestore();
-  });
-
-  it("does not manufacture post-write grace from no-op convergence frames", () => {
+  it("keeps follow paused after wheel-up even while parked at the old bottom coordinate", () => {
+    // 新契约：wheel 上滚立即置 userPaused 锁；paused 期间 scroll 事件被跳过，
+    // 不会因「位置仍在阈值内」误判回底部而 re-arm（旧 grace/fingerprint 机制已删）。
     vi.useFakeTimers();
     try {
       const scrollSpy = vi
@@ -1993,19 +1967,25 @@ describe("Messages live behavior", () => {
       let scrollHeight = 2400;
       const metrics = setScrollerMetrics(scroller, 1680, () => scrollHeight);
 
+      // 跟随中的 RO 追底：rAF 合并，写入次数有限。
       notifyContentResized();
       act(() => {
-        vi.advanceTimersByTime(2100);
+        vi.advanceTimersByTime(20);
       });
-      expect(metrics.getScrollTopWriteCount()).toBe(0);
+      expect(metrics.getScrollTopWriteCount()).toBeGreaterThanOrEqual(1);
+      expect(metrics.getScrollTopWriteCount()).toBeLessThanOrEqual(4);
 
-      // 用户 wheel 离底（可仍停在旧底坐标）；租约期内不得立刻 re-arm，随后长高也不得吸回。
+      // 用户 wheel 上滚（可仍停在旧底坐标）；paused 锁期间 scroll 事件被跳过，
+      // 不得立刻 re-arm，随后长高也不得吸回。
       fireEvent.wheel(scroller, { deltaY: -120 });
       scroller.scrollTop = 1680;
       fireEvent.scroll(scroller);
       const writesAfterLeave = metrics.getScrollTopWriteCount();
       scrollHeight = 6000;
       notifyContentResized();
+      act(() => {
+        vi.advanceTimersByTime(20);
+      });
       expect(scroller.scrollTop).toBe(1680);
       expect(metrics.getScrollTopWriteCount()).toBe(writesAfterLeave);
       scrollSpy.mockRestore();
@@ -2014,130 +1994,10 @@ describe("Messages live behavior", () => {
     }
   });
 
-  it.each([
-    ["keyboard", (scroller: HTMLDivElement) => fireEvent.keyDown(scroller, { key: "PageUp" })],
-    ["touch", (scroller: HTMLDivElement) => fireEvent.touchStart(scroller)],
-    [
-      "pointer/scrollbar",
-      (scroller: HTMLDivElement) =>
-        fireEvent.pointerDown(scroller, { button: 0, pointerId: 7 }),
-    ],
-  ])("lets %s user intent override a matching fingerprint", (_source, signalIntent) => {
-    const scrollSpy = vi
-      .spyOn(HTMLElement.prototype, "scrollIntoView")
-      .mockImplementation(() => {});
-    const { container } = render(
-      <Messages
-        items={[
-          { id: `intent-${_source}-user`, kind: "message", role: "user", text: "go" },
-          {
-            id: `intent-${_source}-assistant`,
-            kind: "message",
-            role: "assistant",
-            text: "partial",
-          },
-        ]}
-        threadId={`thread-intent-${_source}`}
-        workspaceId="ws-1"
-        isThinking
-        processingStartedAt={Date.now() - 1_000}
-        openTargets={[]}
-        selectedOpenAppId=""
-      />,
-    );
-    const scroller = getMessagesScroller(container);
-    let scrollHeight = 2400;
-    setScrollerMetrics(scroller, 1000, () => scrollHeight);
-
-    notifyContentResized();
-    expect(scroller.scrollTop).toBe(1680);
-    signalIntent(scroller);
-
-    // 位置仍命中刚写入的 1680 fingerprint，但 user intent 必须取得所有权。
-    scrollHeight = 6000;
-    fireEvent.scroll(scroller);
-    notifyContentResized();
-    expect(scroller.scrollTop).toBe(1680);
-    scrollSpy.mockRestore();
-  });
-
-  it("does not restart convergence between touch intent and its scroll event", () => {
-    const scrollSpy = vi
-      .spyOn(HTMLElement.prototype, "scrollIntoView")
-      .mockImplementation(() => {});
-    const { container } = render(
-      <Messages
-        items={[
-          { id: "touch-race-user", kind: "message", role: "user", text: "go" },
-          {
-            id: "touch-race-assistant",
-            kind: "message",
-            role: "assistant",
-            text: "partial",
-          },
-        ]}
-        threadId="thread-touch-race"
-        workspaceId="ws-1"
-        isThinking
-        processingStartedAt={Date.now() - 1_000}
-        openTargets={[]}
-        selectedOpenAppId=""
-      />,
-    );
-    const scroller = getMessagesScroller(container);
-    let scrollHeight = 2400;
-    setScrollerMetrics(scroller, 1000, () => scrollHeight);
-    notifyContentResized();
-    expect(scroller.scrollTop).toBe(1680);
-
-    fireEvent.touchStart(scroller);
-    scrollHeight = 6000;
-    notifyContentResized();
-
-    // touch 已取得 owner、scroll 尚未派发：ResizeObserver 不得抢先写回新底部。
-    expect(scroller.scrollTop).toBe(1680);
-    scrollSpy.mockRestore();
-  });
-
-  it("recognizes a geometry-proven browser clamp as a programmatic echo", () => {
-    const scrollSpy = vi
-      .spyOn(HTMLElement.prototype, "scrollIntoView")
-      .mockImplementation(() => {});
-    const { container } = render(
-      <Messages
-        items={[
-          { id: "clamp-user", kind: "message", role: "user", text: "go" },
-          { id: "clamp-assistant", kind: "message", role: "assistant", text: "partial" },
-        ]}
-        threadId="thread-clamp"
-        workspaceId="ws-1"
-        isThinking
-        processingStartedAt={Date.now() - 1_000}
-        openTargets={[]}
-        selectedOpenAppId=""
-      />,
-    );
-    const scroller = getMessagesScroller(container);
-    let scrollHeight = 6000;
-    setScrollerMetrics(scroller, 5280, () => scrollHeight);
-
-    // 建立 collapse 前 geometry，再模拟浏览器将越界位置钳位到新的 maxScrollTop。
-    notifyContentResized();
-    scrollHeight = 2400;
-    scroller.scrollTop = 1680;
-    notifyContentResized();
-
-    // 钳位事件迟到时 geometry 已回填；clamp fingerprint 必须保护 follow owner。
-    scrollHeight = 6000;
-    fireEvent.scroll(scroller);
-    notifyContentResized();
-    expect(scroller.scrollTop).toBe(5280);
-    scrollSpy.mockRestore();
-  });
-
-  it("clears echo fingerprints on thread switch so stale positions are not exempted", async () => {
-    // 回归：指纹环必须随会话切换清空。会话 A 的写入位置 1680 若残留进环，切到
-    // 会话 B 后处于 grace 窗口内的旧位置 scroll 事件会被误判为回声而保持跟随。
+  it("releases follow by viewport position after a thread switch re-pins to the bottom", async () => {
+    // scope 切换重置跟随状态并由 history-open 重新武装钉底；随后用户上滚
+    // （wheel 或 scrollTop 上移）释放跟随。高度阶跃假离底不得解绑，故此处用
+    // 明确的上滚意图。
     window.localStorage.setItem("ccgui.messages.live.autoFollow", "1");
     const scrollSpy = vi
       .spyOn(HTMLElement.prototype, "scrollIntoView")
@@ -2159,23 +2019,26 @@ describe("Messages live behavior", () => {
     const { container, rerender } = render(renderWith("thread-clear-A"));
     const scroller = getMessagesScroller(container);
 
-    // 会话 A：写入 scrollTop=1680，进入回声指纹。
+    // 会话 A：跟随追底到 1680（rAF 落位）。
     setScrollerMetrics(scroller, 1200, 2400);
     notifyContentResized();
+    await flushFollowFrame();
     expect(scroller.scrollTop).toBe(1680);
 
-    // 切到会话 B：几何不同（底部 7280），history-open 钉底写入新指纹。
+    // 切到会话 B：几何不同（底部 7280），history-open 同步钉底。
     setScrollerMetrics(scroller, 7000, 8000);
     rerender(renderWith("thread-clear-B"));
     expect(scroller.scrollTop).toBe(7280);
 
-    // 旧会话的指纹位置 1680 处发生 scroll 事件：环已清空 → 不豁免 → 按真实用户
-    // 上滚解除跟随（而不是被残留指纹误判成回声）。
+    // 用户上滚到旧坐标：wheel 暂停 + scrollTop 上移。
+    fireEvent.wheel(scroller, { deltaY: -120 });
     scroller.scrollTop = 1680;
     fireEvent.scroll(scroller);
+    await flushFollowFrame();
 
     // 跟随已解除：后续内容高度信号不得把视口拽回底部。
     notifyContentResized();
+    await flushFollowFrame();
     expect(scroller.scrollTop).toBe(1680);
     scrollSpy.mockRestore();
   });
@@ -2255,25 +2118,25 @@ describe("Messages live behavior", () => {
     // User is parked at the bottom while streaming — auto-follow stays armed.
     setScrollerMetrics(scroller, 1680, 2400); // 2400 - 1680 - 720 = 0, at bottom
     fireEvent.scroll(scroller);
+    await flushFollowFrame();
 
-    // Conversation settles (isThinking true -> false): opens the settle window.
+    // Conversation settles (isThinking true -> false)：跟随中 settle 钉底，下一 rAF 落位。
     rerender(renderWith(false, false));
-    // Let the 320ms finalizing window close so the auto-follow finalizing scroll
-    // is excluded; the settle re-pin window is still open.
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 380));
-    });
+    await flushFollowFrame();
+    expect(scroller.scrollTop).toBe(2400 - 720);
 
     // The curtain back-fills and the rows measure taller than estimated, so
     // scrollHeight grows after the pin: the re-pin must chase it to the bottom.
     setScrollerMetrics(scroller, 0, 3200);
     rerender(renderWith(false, true));
     notifyContentResized();
+    await flushFollowFrame();
     expect(scroller.scrollTop).toBe(3200 - 720);
     scrollSpy.mockRestore();
   });
 
-  it("re-pins on settle back-fill even when the user scrolled up during streaming", async () => {
+  it("does not re-pin on settle back-fill when the user scrolled up during streaming", async () => {
+    // settleFollow：仅 userPaused（wheel 上滚）时不强制回底；back-fill 也不追。
     window.localStorage.setItem("ccgui.messages.live.autoFollow", "1");
     const scrollSpy = vi
       .spyOn(HTMLElement.prototype, "scrollIntoView")
@@ -2311,27 +2174,32 @@ describe("Messages live behavior", () => {
     const { container, rerender } = render(renderWith(false, false));
     const scroller = getMessagesScroller(container);
     let scrollHeight = 2400;
+    setScrollerMetrics(scroller, 0, () => scrollHeight);
+    // 回合开始：send placement 同步钉底（在帧内的 turn-start pin 落位后再滚动）。
     rerender(renderWith(true, false));
-    // User scrolls up to read history during streaming — auto-follow released.
-    setScrollerMetrics(scroller, 400, () => scrollHeight); // far from the bottom
+    await flushFollowFrame();
+    expect(scroller.scrollTop).toBe(2400 - 720);
+    // User scrolls up to read history during streaming — wheel 立即暂停跟随。
+    fireEvent.wheel(scroller, { deltaY: -120 });
+    scroller.scrollTop = 400;
     fireEvent.scroll(scroller);
+    await flushFollowFrame();
 
-    // settle boundary resets the preceding streaming ownership and snaps bottom.
+    // settle：跟随已释放，钉底不发生，视口保持读历史位置。
     rerender(renderWith(false, false));
-    expect(scroller.scrollTop).toBe(scrollHeight - 720);
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 380));
-    });
+    await flushFollowFrame();
+    expect(scroller.scrollTop).toBe(400);
 
-    // Deferred curtain back-fill remains inside the settle convergence window.
+    // Deferred curtain back-fill：跟随仍释放，不再追到新底部。
     scrollHeight = 3200;
     rerender(renderWith(false, true));
     notifyContentResized();
-    expect(scroller.scrollTop).toBe(scrollHeight - 720);
+    await flushFollowFrame();
+    expect(scroller.scrollTop).toBe(400);
     scrollSpy.mockRestore();
   });
 
-  it("re-pins after every settlement across multiple turns", () => {
+  it("re-pins after every settlement across multiple turns", async () => {
     window.localStorage.setItem("ccgui.messages.live.autoFollow", "1");
     const renderWith = (thinking: boolean, turnCount: number) => (
       <Messages
@@ -2360,8 +2228,10 @@ describe("Messages live behavior", () => {
       rerender(renderWith(true, turn));
       expect(scroller.scrollTop).toBe(scrollHeight - 720);
 
+      // settle 钉底走 pinIfFollowing，下一 rAF 落位。
       scrollHeight += 600;
       rerender(renderWith(false, turn));
+      await flushFollowFrame();
       expect(scroller.scrollTop).toBe(scrollHeight - 720);
     }
   });
@@ -2407,12 +2277,14 @@ describe("Messages live behavior", () => {
     scrollSpy.mockRestore();
   });
 
-  it("does not auto-follow static history item changes", () => {
+  it("does not auto-follow static history item changes when the user has scrolled away", async () => {
+    // 对齐 jetbrains：在底部时 messages 变化会追底；用户已离底则不得追。
+    // （旧断言「静态历史增量完全不 scrollIntoView」与 jetbrains 模型冲突。）
     window.localStorage.setItem("ccgui.messages.live.autoFollow", "1");
     const scrollSpy = vi
       .spyOn(HTMLElement.prototype, "scrollIntoView")
       .mockImplementation(() => {});
-    const { rerender } = render(
+    const { container, rerender } = render(
       <Messages
         items={[
           {
@@ -2429,9 +2301,13 @@ describe("Messages live behavior", () => {
         selectedOpenAppId=""
       />,
     );
-
-    // Opening a thread pins the viewport to the bottom once; static item
-    // changes afterwards must not trigger any follow-up scrolling.
+    const scroller = getMessagesScroller(container);
+    setScrollerMetrics(scroller, 0, 2400);
+    // 用户上滚读历史：暂停跟随。
+    fireEvent.wheel(scroller, { deltaY: -120 });
+    scroller.scrollTop = 400;
+    fireEvent.scroll(scroller);
+    await flushFollowFrame();
     scrollSpy.mockClear();
 
     rerender(
@@ -2459,11 +2335,13 @@ describe("Messages live behavior", () => {
     );
 
     expect(scrollSpy).not.toHaveBeenCalled();
+    expect(scroller.scrollTop).toBe(400);
     scrollSpy.mockRestore();
   });
 
   it("pins to the bottom after a long streaming tail restores full history", async () => {
-    window.localStorage.setItem("ccgui.messages.live.autoFollow", "0");
+    // 新契约：settle 钉底走 pinIfFollowing，要求跟随武装（liveAutoFollow 开）。
+    window.localStorage.setItem("ccgui.messages.live.autoFollow", "1");
     const scrollSpy = vi
       .spyOn(HTMLElement.prototype, "scrollIntoView")
       .mockImplementation(() => {});
@@ -2498,7 +2376,7 @@ describe("Messages live behavior", () => {
     const scroller = getMessagesScroller(container);
     setScrollerMetrics(scroller, 0, 2400);
 
-    // Still streaming: the initial bottom pin must stay out of the way.
+    // Still streaming: 同步断言落在任何 rAF 追底之前，视口尚未移动。
     expect(scroller.scrollTop).toBe(0);
 
     rerender(renderMessages(false));

@@ -1175,6 +1175,12 @@ pub(crate) async fn vendor_delete_codex_provider(id: String) -> Result<(), Strin
 #[tauri::command]
 pub(crate) async fn vendor_switch_codex_provider(id: String) -> Result<(), String> {
     let mut config = read_config()?;
+    // 「使用官方配置」: 清空 managed current，回退全局 ~/.codex
+    if id == DISABLED_PROVIDER_ID {
+        config.codex.current = None;
+        write_config(&config)?;
+        return Ok(());
+    }
     if !config.codex.providers.contains_key(&id) {
         return Err(format!("Codex provider {} not found", id));
     }

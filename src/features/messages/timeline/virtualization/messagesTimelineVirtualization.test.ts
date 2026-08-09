@@ -1,741 +1,138 @@
-import type { Virtualizer } from "@tanstack/react-virtual";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import {
   buildTimelineRenderWeightDiagnosticPayload,
-  classifyTimelineVirtualizerStability,
-  estimateTimelineProjectionRowSize,
   estimateTimelineProjectionRenderWeight,
   getActiveLiveTimelineRowKeys,
-  isEmptyVirtualProjectionRow,
   isTimelineRenderWeightGateEnabled,
-  DEFAULT_TIMELINE_VIRTUALIZER_STABILITY_RECOVERY_BUDGET,
-  summarizeTimelineProjectionRenderWeight,
-  observeTimelineElementOffset,
-  remeasureTimelineVirtualizerRows,
-  resolveTimelineCanvasOverscan,
-  resolveTimelineVirtualizerStabilityRecovery,
-  resolveVirtualizedTimelineRowPlaceholderHeight,
-  resolveVirtualizedTimelineRowVisualHeight,
-  resolveVirtualizedTimelineScopeReset,
   shouldVirtualizeTimelineRows,
+  summarizeTimelineProjectionRenderWeight,
   TIMELINE_ADAPTIVE_RENDERING_ENABLED,
-  TIMELINE_CANVAS_STABLE_OVERSCAN,
-  TIMELINE_CANVAS_STREAMING_OVERSCAN,
-  TIMELINE_LIGHTWEIGHT_ROW_PLACEHOLDER_HEIGHT,
   TIMELINE_RENDER_WEIGHT_BASELINE_FLAG_KEY,
-  TIMELINE_VIRTUAL_ROW_PLACEHOLDER_MAX_HEIGHT,
-  TIMELINE_VIRTUAL_ROW_PLACEHOLDER_MIN_HEIGHT,
-  TIMELINE_VIRTUALIZER_STABILITY_MAX_REMEASURE_COUNT,
   TIMELINE_VIRTUALIZATION_MIN_RENDER_WEIGHT,
   TIMELINE_VIRTUALIZATION_MIN_ROWS,
-  TIMELINE_VIRTUALIZATION_STREAMING_MIN_ROWS,
 } from "./messagesTimelineVirtualization";
 import { createHeavyHistoryFixture } from "../test-support/messagesHeavyHistoryFixture";
 import type { TimelineProjectionRow } from "../projection/messagesTimelineProjection";
-import type { ConversationItem } from "../../../../types";
 
-describe("messagesTimelineVirtualization", () => {
+describe("messagesTimelineVirtualization (virtualization removed)", () => {
   afterEach(() => {
     globalThis.localStorage.removeItem(TIMELINE_RENDER_WEIGHT_BASELINE_FLAG_KEY);
   });
 
-  it("virtualizes idle long timelines but keeps streaming static", () => {
+  it("never virtualizes the conversation timeline", () => {
     expect(TIMELINE_ADAPTIVE_RENDERING_ENABLED).toBe(true);
-    // Idle stable history at/above min rows → virtualize.
     expect(shouldVirtualizeTimelineRows({
       isThinking: false,
-      rowCount: TIMELINE_VIRTUALIZATION_MIN_ROWS,
-    })).toBe(true);
-    // Short idle history stays static.
-    expect(shouldVirtualizeTimelineRows({
-      isThinking: false,
-      rowCount: Math.max(1, TIMELINE_VIRTUALIZATION_MIN_ROWS - 1),
+      rowCount: TIMELINE_VIRTUALIZATION_MIN_ROWS * 10,
+      renderWeight: TIMELINE_VIRTUALIZATION_MIN_RENDER_WEIGHT * 10,
     })).toBe(false);
-    // Streaming / working stay static (STREAMING virtualization off).
-    expect(shouldVirtualizeTimelineRows({
-      isThinking: true,
-      rowCount: TIMELINE_VIRTUALIZATION_STREAMING_MIN_ROWS * 100,
-      renderWeight: TIMELINE_VIRTUALIZATION_MIN_RENDER_WEIGHT * 100,
-    })).toBe(false);
-    expect(shouldVirtualizeTimelineRows({
-      isThinking: false,
-      isWorking: true,
-      rowCount: TIMELINE_VIRTUALIZATION_STREAMING_MIN_ROWS * 100,
-      renderWeight: TIMELINE_VIRTUALIZATION_MIN_RENDER_WEIGHT * 100,
-    })).toBe(false);
-  });
-
-  it("does not virtualize streaming timelines even at extreme row counts", () => {
     expect(shouldVirtualizeTimelineRows({
       isThinking: true,
       rowCount: 1_000,
     })).toBe(false);
-  });
-
-  it("does not virtualize active streaming timelines by render weight alone", () => {
     expect(shouldVirtualizeTimelineRows({
-      isThinking: true,
-      rowCount: 12,
-      renderWeight: TIMELINE_VIRTUALIZATION_MIN_RENDER_WEIGHT,
-    })).toBe(false);
-  });
-
-  it("reduces canvas overscan during active heavy streaming", () => {
-    expect(resolveTimelineCanvasOverscan({
-      isThinking: false,
-      isWorking: false,
-      rowCount: 24,
-      renderWeight: 12,
-    })).toBe(TIMELINE_CANVAS_STABLE_OVERSCAN);
-
-    expect(resolveTimelineCanvasOverscan({
-      isThinking: true,
-      isWorking: false,
-      rowCount: TIMELINE_VIRTUALIZATION_MIN_ROWS,
-      renderWeight: 12,
-    })).toBe(TIMELINE_CANVAS_STREAMING_OVERSCAN);
-
-    expect(resolveTimelineCanvasOverscan({
       isThinking: false,
       isWorking: true,
-      rowCount: 12,
-      renderWeight: TIMELINE_VIRTUALIZATION_MIN_RENDER_WEIGHT,
-    })).toBe(TIMELINE_CANVAS_STREAMING_OVERSCAN);
-  });
-
-  it("clamps virtual row placeholder height for invalid and extreme measurements", () => {
-    expect(resolveVirtualizedTimelineRowPlaceholderHeight(undefined)).toBe(
-      TIMELINE_VIRTUAL_ROW_PLACEHOLDER_MIN_HEIGHT,
-    );
-    expect(resolveVirtualizedTimelineRowPlaceholderHeight(Number.NaN)).toBe(
-      TIMELINE_VIRTUAL_ROW_PLACEHOLDER_MIN_HEIGHT,
-    );
-    expect(resolveVirtualizedTimelineRowPlaceholderHeight(-10)).toBe(
-      TIMELINE_VIRTUAL_ROW_PLACEHOLDER_MIN_HEIGHT,
-    );
-    expect(resolveVirtualizedTimelineRowPlaceholderHeight(10_000)).toBe(
-      TIMELINE_VIRTUAL_ROW_PLACEHOLDER_MAX_HEIGHT,
-    );
-  });
-
-  it("uses compact visual height for lightweight rows instead of stale heavy measurements", () => {
-    expect(resolveVirtualizedTimelineRowVisualHeight({
-      measuredSize: TIMELINE_VIRTUAL_ROW_PLACEHOLDER_MAX_HEIGHT,
-      estimatedSize: 260,
-      lightweight: true,
-    })).toBe(TIMELINE_LIGHTWEIGHT_ROW_PLACEHOLDER_HEIGHT);
-
-    expect(resolveVirtualizedTimelineRowVisualHeight({
-      measuredSize: TIMELINE_VIRTUAL_ROW_PLACEHOLDER_MAX_HEIGHT,
-      estimatedSize: 260,
-      lightweight: false,
-    })).toBe(TIMELINE_VIRTUAL_ROW_PLACEHOLDER_MAX_HEIGHT);
-  });
-
-  it("can restore the baseline eager behavior below the row-count threshold", () => {
-    globalThis.localStorage.setItem(TIMELINE_RENDER_WEIGHT_BASELINE_FLAG_KEY, "1");
-
-    expect(shouldVirtualizeTimelineRows({
-      isThinking: false,
-      rowCount: 12,
-      renderWeight: TIMELINE_VIRTUALIZATION_MIN_RENDER_WEIGHT * 4,
+      rowCount: 500,
     })).toBe(false);
   });
 
-  it("keeps the render-weight gate on when storage is unavailable", () => {
-    const descriptor = Object.getOwnPropertyDescriptor(globalThis, "localStorage");
-    Object.defineProperty(globalThis, "localStorage", {
-      configurable: true,
-      get() {
-        throw new Error("storage unavailable");
-      },
-    });
-
-    try {
-      // Adaptive rendering is on; unavailable storage defaults the weight gate to enabled.
-      expect(isTimelineRenderWeightGateEnabled()).toBe(true);
-      // High density below the row-count floor still virtualizes via weight.
-      expect(shouldVirtualizeTimelineRows({
-        isThinking: false,
-        rowCount: 12,
-        renderWeight: TIMELINE_VIRTUALIZATION_MIN_RENDER_WEIGHT * 4,
-      })).toBe(true);
-    } finally {
-      if (descriptor) {
-        Object.defineProperty(globalThis, "localStorage", descriptor);
-      } else {
-        delete (globalThis as { localStorage?: Storage }).localStorage;
-      }
-    }
+  it("summarizes render weight for heavy fixtures", () => {
+    const { rows } = createHeavyHistoryFixture("heavy");
+    const summary = summarizeTimelineProjectionRenderWeight(rows);
+    expect(summary.rowCount).toBe(rows.length);
+    expect(summary.renderWeight).toBeGreaterThan(rows.length);
+    expect(summary.heavyRowCount).toBeGreaterThan(0);
   });
 
-  it("estimates grouped rows higher than a single item row", () => {
-    const singleRow: TimelineProjectionRow = {
+  it("estimates per-row render weight for markdown tables and fences", () => {
+    const row: TimelineProjectionRow = {
       kind: "entry",
-      key: "item:message:1",
-      entry: {
-        kind: "item",
-        item: { id: "message-1", kind: "message", role: "assistant", text: "hello" },
-      },
-      itemIds: ["message-1"],
+      key: "entry:heavy",
+      itemIds: ["m1"],
       hasActiveUserInputAnchor: false,
-    };
-    const groupRow: TimelineProjectionRow = {
-      kind: "entry",
-      key: "readGroup:1:2:2",
-      entry: {
-        kind: "readGroup",
-        items: [
-          {
-            id: "tool-1",
-            kind: "tool",
-            toolType: "Read",
-            title: "Read",
-            detail: "a.ts",
-            status: "completed",
-          },
-          {
-            id: "tool-2",
-            kind: "tool",
-            toolType: "Read",
-            title: "Read",
-            detail: "b.ts",
-            status: "completed",
-          },
-        ],
-      },
-      itemIds: ["tool-1", "tool-2"],
-      hasActiveUserInputAnchor: false,
-    };
-
-    expect(estimateTimelineProjectionRowSize(groupRow)).toBeGreaterThan(
-      estimateTimelineProjectionRowSize(singleRow),
-    );
-  });
-
-  it("assigns high render weight to image-heavy message rows", () => {
-    const imageRow: TimelineProjectionRow = {
-      kind: "entry",
-      key: "item:message:image",
       entry: {
         kind: "item",
         item: {
-          id: "message-image",
+          id: "m1",
           kind: "message",
-          role: "user",
-          text: "screenshot",
-          images: ["data:image/png;base64,AAA", "data:image/png;base64,BBB"],
+          role: "assistant",
+          text: [
+            "# Title",
+            "| A | B |",
+            "| - | - |",
+            ...Array.from({ length: 20 }, (_, i) => `| ${i} | v |`),
+            "```ts",
+            "const x = 1;",
+            "```",
+          ].join("\n"),
+          isFinal: true,
         },
       },
-      itemIds: ["message-image"],
-      hasActiveUserInputAnchor: false,
     };
-
-    expect(estimateTimelineProjectionRenderWeight(imageRow)).toBeGreaterThan(40);
+    expect(estimateTimelineProjectionRenderWeight(row)).toBeGreaterThan(1);
   });
 
-  it("virtualizes #721-class heavy history by render density when row count is below the floor", () => {
-    const { rows } = createHeavyHistoryFixture("heavy");
-    const summary = summarizeTimelineProjectionRenderWeight(rows);
-
-    expect(summary.rowCount).toBeLessThan(TIMELINE_VIRTUALIZATION_MIN_ROWS);
-    expect(summary.renderWeight).toBeGreaterThanOrEqual(TIMELINE_VIRTUALIZATION_MIN_RENDER_WEIGHT);
-    expect(summary.categoryCounts.markdownTable).toBeGreaterThan(0);
-    expect(summary.categoryCounts.codeFence).toBeGreaterThan(0);
-    expect(summary.categoryCounts.toolRawPayload).toBeGreaterThan(0);
-    expect(summary.categoryCounts.readBatch).toBeGreaterThan(0);
-    expect(summary.categoryCounts.diff).toBeGreaterThan(0);
-    // Dense short histories virtualize via render-weight gate (idle only).
-    expect(shouldVirtualizeTimelineRows({
-      isThinking: false,
-      rowCount: summary.rowCount,
-      renderWeight: summary.renderWeight,
-    })).toBe(true);
-  });
-
-  it("builds content-safe heavy-history baseline diagnostics", () => {
-    const { rows } = createHeavyHistoryFixture("medium");
-    const summary = summarizeTimelineProjectionRenderWeight(rows);
+  it("builds diagnostic payload with shouldVirtualize=false", () => {
+    const summary = {
+      rowCount: 10,
+      renderWeight: 20,
+      heavyRowCount: 1,
+      categoryCounts: {},
+    };
     const payload = buildTimelineRenderWeightDiagnosticPayload({
       summary,
-      shouldVirtualize: true,
-      hydratedHeavyRowCount: 3,
-      localErrorState: "none",
-      threadId: "thread-1",
-      workspaceId: "workspace-1",
+      shouldVirtualize: false,
+      threadId: "t1",
+      workspaceId: "w1",
     });
-    const serializedPayload = JSON.stringify(payload);
-
-    expect(payload).toMatchObject({
-      threadId: "thread-1",
-      workspaceId: "workspace-1",
-      rowCount: summary.rowCount,
-      renderWeight: summary.renderWeight,
-      heavyRowCount: summary.heavyRowCount,
-      hydratedHeavyRowCount: 3,
-      localErrorState: "none",
-      shouldVirtualize: true,
-    });
-    expect(serializedPayload).not.toContain("src/fixture");
-    expect(serializedPayload).not.toContain("secret.ts");
-    expect(serializedPayload).not.toContain("tool_call");
+    expect(payload.shouldVirtualize).toBe(false);
+    expect(payload.thresholdReason).toBe("disabled");
+    expect(payload.threadId).toBe("t1");
   });
 
-  it("finds active live row keys from item and docked reasoning rows", () => {
+  it("resolves active live row keys", () => {
     const rows: TimelineProjectionRow[] = [
       {
         kind: "entry",
-        key: "item:message:assistant-live",
+        key: "entry:a1",
+        itemIds: ["a1"],
+        hasActiveUserInputAnchor: false,
         entry: {
           kind: "item",
           item: {
-            id: "assistant-live",
+            id: "a1",
             kind: "message",
             role: "assistant",
-            text: "streaming",
+            text: "live",
           },
         },
-        itemIds: ["assistant-live"],
-        hasActiveUserInputAnchor: false,
       },
       {
-        kind: "dockedReasoning",
-        key: "claude-live:reasoning-live",
-        itemId: "reasoning-live",
+        kind: "entry",
+        key: "entry:u1",
+        itemIds: ["u1"],
+        hasActiveUserInputAnchor: false,
+        entry: {
+          kind: "item",
+          item: {
+            id: "u1",
+            kind: "message",
+            role: "user",
+            text: "hi",
+          },
+        },
       },
-      { kind: "workingIndicator", key: "working-indicator" },
     ];
-
     expect(getActiveLiveTimelineRowKeys({
       rows,
-      liveAssistantItemId: "assistant-live",
-      liveReasoningItemId: "reasoning-live",
-    })).toEqual(["item:message:assistant-live", "claude-live:reasoning-live"]);
+      liveAssistantItemId: "a1",
+    })).toEqual(["entry:a1"]);
   });
 
-  it("classifies empty virtualizer output as suspicious only when rows can render", () => {
-    expect(classifyTimelineVirtualizerStability({
-      shouldVirtualize: true,
-      rowCount: 8,
-      hasScrollElement: true,
-      virtualItemKeys: [],
-      activeLiveRowKeys: [],
-      streamingActive: false,
-    })).toBe("empty-visible-set");
-
-    expect(classifyTimelineVirtualizerStability({
-      shouldVirtualize: true,
-      rowCount: 8,
-      hasScrollElement: false,
-      virtualItemKeys: [],
-      activeLiveRowKeys: [],
-      streamingActive: false,
-    })).toBe("stable");
-  });
-
-  it("classifies missing active live rows during streaming", () => {
-    expect(classifyTimelineVirtualizerStability({
-      shouldVirtualize: true,
-      rowCount: 8,
-      hasScrollElement: true,
-      virtualItemKeys: ["item:message:older", "working-indicator"],
-      activeLiveRowKeys: ["item:message:assistant-live"],
-      streamingActive: true,
-    })).toBe("active-live-row-missing");
-
-    expect(classifyTimelineVirtualizerStability({
-      shouldVirtualize: true,
-      rowCount: 8,
-      hasScrollElement: true,
-      virtualItemKeys: ["item:message:assistant-live", "working-indicator"],
-      activeLiveRowKeys: ["item:message:assistant-live"],
-      streamingActive: true,
-    })).toBe("stable");
-  });
-
-  it("bounds repeated virtualizer stability remeasure recovery by signature", () => {
-    let budget = DEFAULT_TIMELINE_VIRTUALIZER_STABILITY_RECOVERY_BUDGET;
-
-    for (let attempt = 0; attempt < TIMELINE_VIRTUALIZER_STABILITY_MAX_REMEASURE_COUNT; attempt += 1) {
-      const recovery = resolveTimelineVirtualizerStabilityRecovery({
-        previous: budget,
-        signature: "active-live-row-missing:8",
-        now: (attempt + 1) * 1_000,
-        remeasureCooldownMs: 1,
-        diagnosticCooldownMs: 1,
-      });
-      expect(recovery.shouldRemeasure).toBe(true);
-      budget = recovery.nextBudget;
-    }
-
-    const suppressedRecovery = resolveTimelineVirtualizerStabilityRecovery({
-      previous: budget,
-      signature: "active-live-row-missing:8",
-      now: 10_000,
-      remeasureCooldownMs: 1,
-      diagnosticCooldownMs: 1,
-    });
-
-    expect(suppressedRecovery.shouldRemeasure).toBe(false);
-    expect(suppressedRecovery.remeasureSuppressed).toBe(true);
-    expect(suppressedRecovery.nextBudget.remeasureCount).toBe(
-      TIMELINE_VIRTUALIZER_STABILITY_MAX_REMEASURE_COUNT,
-    );
-  });
-
-  it("resets virtualizer stability recovery budget for a new signature", () => {
-    const exhaustedRecovery = resolveTimelineVirtualizerStabilityRecovery({
-      previous: {
-        signature: "active-live-row-missing:8",
-        remeasureCount: TIMELINE_VIRTUALIZER_STABILITY_MAX_REMEASURE_COUNT,
-        lastRemeasureAt: 1_000,
-        lastDiagnosticAt: 1_000,
-      },
-      signature: "empty-visible-set:8",
-      now: 2_000,
-      remeasureCooldownMs: 1,
-      diagnosticCooldownMs: 1,
-    });
-
-    expect(exhaustedRecovery.shouldRemeasure).toBe(true);
-    expect(exhaustedRecovery.nextBudget.remeasureCount).toBe(1);
-    expect(exhaustedRecovery.remeasureSuppressed).toBe(false);
-  });
-
-  it("measures first stable virtualized history mount without jumping to top", () => {
-    expect(resolveVirtualizedTimelineScopeReset({
-      previousScopeKey: null,
-      nextScopeKey: "ws-1 thread-1 200 120 virtualized",
-      shouldVirtualize: true,
-      stableHistoryView: true,
-      hasPendingJump: false,
-      hasScrollElement: true,
-    })).toEqual({
-      nextScopeKey: "ws-1 thread-1 200 120 virtualized",
-      shouldMeasure: true,
-      shouldPinBottomWhenArmed: true,
-    });
-  });
-
-  it("measures immediately when virtualization flips on mid-turn instead of waiting for stable view", () => {
-    // enabled=false 期间 TanStack 会清空行高缓存；发送消息触发 OFF→ON 翻转时若等
-    // stableHistoryView，估高摆放的重叠会持续到首个 delta 才自愈。
-    expect(resolveVirtualizedTimelineScopeReset({
-      previousScopeKey: null,
-      nextScopeKey: "ws-1 thread-1 20 60 virtualized",
-      shouldVirtualize: true,
-      stableHistoryView: false,
-      hasPendingJump: false,
-      hasScrollElement: true,
-    })).toEqual({
-      nextScopeKey: "ws-1 thread-1 20 60 virtualized",
-      shouldMeasure: true,
-      shouldPinBottomWhenArmed: true,
-    });
-
-    // 滚动元素还没就绪时不消耗首挂载信号，保持 null 让下一次 effect 重试。
-    expect(resolveVirtualizedTimelineScopeReset({
-      previousScopeKey: null,
-      nextScopeKey: "ws-1 thread-1 20 60 virtualized",
-      shouldVirtualize: true,
-      stableHistoryView: false,
-      hasPendingJump: false,
-      hasScrollElement: false,
-    })).toEqual({
-      nextScopeKey: null,
-      shouldMeasure: false,
-      shouldPinBottomWhenArmed: false,
-    });
-  });
-
-  it("requests armed bottom placement when virtualization flips off", () => {
-    // ON→OFF 同样是整体布局重排：估高换回真实高度，parked 在底部的视口会离底。
-    expect(resolveVirtualizedTimelineScopeReset({
-      previousScopeKey: "ws-1\u0000thread-1\u000020\u000060\u0000virtualized",
-      nextScopeKey: "ws-1\u0000thread-1\u000020\u000060\u0000static",
-      shouldVirtualize: false,
-      stableHistoryView: true,
-      hasPendingJump: false,
-      hasScrollElement: true,
-    })).toEqual({
-      nextScopeKey: null,
-      shouldMeasure: false,
-      shouldPinBottomWhenArmed: true,
-    });
-
-    // 尚未虚拟化过（previous=null）时保持 OFF 不产生任何落位请求。
-    expect(resolveVirtualizedTimelineScopeReset({
-      previousScopeKey: null,
-      nextScopeKey: "ws-1\u0000thread-1\u00008\u000020\u0000static",
-      shouldVirtualize: false,
-      stableHistoryView: true,
-      hasPendingJump: false,
-      hasScrollElement: true,
-    })).toEqual({
-      nextScopeKey: null,
-      shouldMeasure: false,
-      shouldPinBottomWhenArmed: false,
-    });
-  });
-
-  it("resets stale scroll scope only for a new stable virtualized history thread", () => {
-    expect(resolveVirtualizedTimelineScopeReset({
-      previousScopeKey: "ws-1\u0000thread-old\u0000200",
-      nextScopeKey: "ws-1\u0000thread-new\u0000200",
-      shouldVirtualize: true,
-      stableHistoryView: true,
-      hasPendingJump: false,
-      hasScrollElement: true,
-    })).toEqual({
-      nextScopeKey: "ws-1\u0000thread-new\u0000200",
-      shouldMeasure: true,
-      shouldPinBottomWhenArmed: true,
-    });
-
-    expect(resolveVirtualizedTimelineScopeReset({
-      previousScopeKey: "ws-1\u0000thread-new\u0000200",
-      nextScopeKey: "ws-1\u0000thread-new\u0000200",
-      shouldVirtualize: true,
-      stableHistoryView: true,
-      hasPendingJump: false,
-      hasScrollElement: true,
-    })).toEqual({
-      nextScopeKey: "ws-1\u0000thread-new\u0000200",
-      shouldMeasure: false,
-      shouldPinBottomWhenArmed: false,
-    });
-  });
-
-  it("remeasures and pins when the same history thread changes weight (deferred backfill)", () => {
-    expect(resolveVirtualizedTimelineScopeReset({
-      previousScopeKey: "ws-1\u0000thread-1\u0000200\u0000120\u0000virtualized",
-      nextScopeKey: "ws-1\u0000thread-1\u0000205\u0000135\u0000virtualized",
-      shouldVirtualize: true,
-      stableHistoryView: true,
-      hasPendingJump: false,
-      hasScrollElement: true,
-    })).toEqual({
-      nextScopeKey: "ws-1\u0000thread-1\u0000205\u0000135\u0000virtualized",
-      shouldMeasure: true,
-      // 同 thread 呈现 scope 变化后必须能再 pin，否则回刷后停在假底
-      shouldPinBottomWhenArmed: true,
-    });
-  });
-
-  it("does not reset virtualized scroll during streaming or jump targeting", () => {
-    expect(resolveVirtualizedTimelineScopeReset({
-      previousScopeKey: "ws-1\u0000thread-old\u0000200",
-      nextScopeKey: "ws-1\u0000thread-new\u0000200",
-      shouldVirtualize: true,
-      stableHistoryView: false,
-      hasPendingJump: false,
-      hasScrollElement: true,
-    }).shouldPinBottomWhenArmed).toBe(false);
-
-    expect(resolveVirtualizedTimelineScopeReset({
-      previousScopeKey: "ws-1\u0000thread-old\u0000200",
-      nextScopeKey: "ws-1\u0000thread-new\u0000200",
-      shouldVirtualize: true,
-      stableHistoryView: true,
-      hasPendingJump: true,
-      hasScrollElement: true,
-    }).shouldPinBottomWhenArmed).toBe(false);
-  });
-
-  it("clears pending scroll-end fallback when virtualizer unmounts", () => {
-    const listeners = new Map<string, EventListener>();
-    const element = {
-      scrollLeft: 0,
-      scrollTop: 240,
-      addEventListener: vi.fn((eventName: string, listener: EventListener) => {
-        listeners.set(eventName, listener);
-      }),
-      removeEventListener: vi.fn(),
-    } as unknown as Element & { scrollLeft: number; scrollTop: number };
-    const setTimeoutSpy = vi.fn(() => 7);
-    const clearTimeoutSpy = vi.fn();
-    const targetWindow = {
-      setTimeout: setTimeoutSpy,
-      clearTimeout: clearTimeoutSpy,
-    } as unknown as Window & typeof globalThis;
-    const instance = {
-      scrollElement: element,
-      targetWindow,
-      options: {
-        horizontal: false,
-        isRtl: false,
-        isScrollingResetDelay: 150,
-        useScrollendEvent: false,
-      },
-    } as Virtualizer<Element, Element>;
-    const callback = vi.fn();
-
-    const cleanup = observeTimelineElementOffset(instance, callback);
-    listeners.get("scroll")?.(new Event("scroll"));
-    cleanup?.();
-
-    expect(callback).toHaveBeenCalledWith(240, true);
-    expect(setTimeoutSpy).toHaveBeenCalled();
-    expect(clearTimeoutSpy).toHaveBeenCalledWith(7);
-  });
-
-  describe("remeasureTimelineVirtualizerRows", () => {
-    const createInstance = (nodes: Array<{ isConnected: boolean }>) => {
-      const measure = vi.fn();
-      const measureElement = vi.fn();
-      const elementsCache = new Map(
-        nodes.map((node, index) => [`row-${index}`, node]),
-      );
-      const instance = {
-        elementsCache,
-        measure,
-        measureElement,
-      } as unknown as Virtualizer<Element, Element>;
-      return { instance, measure, measureElement };
-    };
-
-    it("re-measures mounted rows instead of wiping the size cache", () => {
-      const mountedA = { isConnected: true };
-      const mountedB = { isConnected: true };
-      const { instance, measure, measureElement } = createInstance([
-        mountedA,
-        mountedB,
-      ]);
-
-      remeasureTimelineVirtualizerRows(instance);
-
-      expect(measure).not.toHaveBeenCalled();
-      expect(measureElement).toHaveBeenCalledTimes(2);
-      expect(measureElement).toHaveBeenCalledWith(mountedA);
-      expect(measureElement).toHaveBeenCalledWith(mountedB);
-    });
-
-    it("skips disconnected rows when re-measuring", () => {
-      const mounted = { isConnected: true };
-      const unmounted = { isConnected: false };
-      const { instance, measure, measureElement } = createInstance([
-        unmounted,
-        mounted,
-      ]);
-
-      remeasureTimelineVirtualizerRows(instance);
-
-      expect(measure).not.toHaveBeenCalled();
-      expect(measureElement).toHaveBeenCalledTimes(1);
-      expect(measureElement).toHaveBeenCalledWith(mounted);
-    });
-
-    it("falls back to a full measure reset when nothing is mounted", () => {
-      const { instance, measure, measureElement } = createInstance([
-        { isConnected: false },
-      ]);
-
-      remeasureTimelineVirtualizerRows(instance);
-
-      expect(measure).toHaveBeenCalledTimes(1);
-      expect(measureElement).not.toHaveBeenCalled();
-    });
-  });
-
-  describe("isEmptyVirtualProjectionRow", () => {
-    const baseInput = {
-      activeEngine: "claude" as const,
-      claudeHistoryTranscriptFallbackActive: false,
-      hasTailUserInputNode: false,
-      isWorking: false,
-      lastDurationMs: null,
-      effectiveItemsCount: 3,
-    };
-    const bashTool: Extract<ConversationItem, { kind: "tool" }> = {
-      id: "tool-bash-1",
-      kind: "tool",
-      toolType: "commandExecution",
-      title: "Bash",
-      detail: "ls -la",
-      status: "completed",
-      output: "file.ts",
-    };
-    const messageRow: TimelineProjectionRow = {
-      kind: "entry",
-      key: "entry:message:m1",
-      entry: {
-        kind: "item",
-        item: { id: "m1", kind: "message", role: "assistant", isFinal: true, text: "hi" },
-      },
-      itemIds: ["m1"],
-      hasActiveUserInputAnchor: false,
-    };
-
-    it("treats the bottom anchor as empty so it never reserves placeholder height", () => {
-      expect(
-        isEmptyVirtualProjectionRow({ kind: "bottomAnchor", key: "bottom-anchor" }, baseInput),
-      ).toBe(true);
-    });
-
-    it("collapses the idle working indicator but keeps it when it renders content", () => {
-      const workingIndicatorRow: TimelineProjectionRow = {
-        kind: "workingIndicator",
-        key: "working-indicator",
-      };
-      // 非工作态、无完成提示 → WorkingIndicator 渲染为空。
-      expect(isEmptyVirtualProjectionRow(workingIndicatorRow, baseInput)).toBe(true);
-      // 工作态 → 显示 spinner。
-      expect(
-        isEmptyVirtualProjectionRow(workingIndicatorRow, { ...baseInput, isWorking: true }),
-      ).toBe(false);
-      // 非工作态但有上一轮耗时与内容 → 显示 turn-complete 提示。
-      expect(
-        isEmptyVirtualProjectionRow(workingIndicatorRow, {
-          ...baseInput,
-          lastDurationMs: 1200,
-        }),
-      ).toBe(false);
-    });
-
-    it("collapses the tail user-input row only when there is no node to render", () => {
-      const tailRow: TimelineProjectionRow = { kind: "tailUserInput", key: "user-input-tail" };
-      expect(isEmptyVirtualProjectionRow(tailRow, baseInput)).toBe(true);
-      expect(
-        isEmptyVirtualProjectionRow(tailRow, { ...baseInput, hasTailUserInputNode: true }),
-      ).toBe(false);
-    });
-
-    it("collapses bash groups that Claude history hides but keeps them under transcript fallback", () => {
-      const bashGroupRow: TimelineProjectionRow = {
-        kind: "entry",
-        key: "entry:bashGroup",
-        entry: { kind: "bashGroup", items: [bashTool, { ...bashTool, id: "tool-bash-2" }] },
-        itemIds: ["tool-bash-1", "tool-bash-2"],
-        hasActiveUserInputAnchor: false,
-      };
-      expect(isEmptyVirtualProjectionRow(bashGroupRow, baseInput)).toBe(true);
-      expect(
-        isEmptyVirtualProjectionRow(bashGroupRow, {
-          ...baseInput,
-          claudeHistoryTranscriptFallbackActive: true,
-        }),
-      ).toBe(false);
-      // gemini 引擎不隐藏 bashGroup。
-      expect(
-        isEmptyVirtualProjectionRow(bashGroupRow, { ...baseInput, activeEngine: "gemini" }),
-      ).toBe(false);
-    });
-
-    it("collapses hidden codex canvas command cards", () => {
-      const toolRow: TimelineProjectionRow = {
-        kind: "entry",
-        key: "entry:tool:bash-1",
-        entry: { kind: "item", item: bashTool },
-        itemIds: ["tool-bash-1"],
-        hasActiveUserInputAnchor: false,
-      };
-      expect(
-        isEmptyVirtualProjectionRow(toolRow, { ...baseInput, activeEngine: "codex" }),
-      ).toBe(true);
-    });
-
-    it("never collapses real message rows", () => {
-      expect(isEmptyVirtualProjectionRow(messageRow, baseInput)).toBe(false);
-    });
+  it("honors render-weight baseline gate for diagnostics", () => {
+    expect(isTimelineRenderWeightGateEnabled()).toBe(true);
+    globalThis.localStorage.setItem(TIMELINE_RENDER_WEIGHT_BASELINE_FLAG_KEY, "1");
+    expect(isTimelineRenderWeightGateEnabled()).toBe(false);
   });
 });

@@ -114,6 +114,15 @@ export async function getCurrentKimiConfig(): Promise<VendorKimiCurrentConfig> {
   return invoke<VendorKimiCurrentConfig>("vendor_get_current_kimi_config");
 }
 
+/** Raw `~/.kimi-code/config.toml` (or `$KIMI_CODE_HOME/config.toml`). */
+export async function readKimiConfigToml(): Promise<string> {
+  return invoke<string>("vendor_read_kimi_config_toml");
+}
+
+export async function saveKimiConfigToml(content: string): Promise<void> {
+  return invoke("vendor_save_kimi_config_toml", { content });
+}
+
 export async function addKimiProvider(provider: unknown): Promise<void> {
   return invoke("vendor_add_kimi_provider", { provider });
 }
@@ -153,6 +162,15 @@ export async function getGrokProviders(): Promise<VendorGrokProviderConfig[]> {
 
 export async function getCurrentGrokConfig(): Promise<VendorGrokCurrentConfig> {
   return invoke<VendorGrokCurrentConfig>("vendor_get_current_grok_config");
+}
+
+/** Raw `~/.grok/config.toml` (or `$GROK_HOME/config.toml`). */
+export async function readGrokConfigToml(): Promise<string> {
+  return invoke<string>("vendor_read_grok_config_toml");
+}
+
+export async function saveGrokConfigToml(content: string): Promise<void> {
+  return invoke("vendor_save_grok_config_toml", { content });
 }
 
 export async function addGrokProvider(provider: unknown): Promise<void> {
@@ -200,6 +218,18 @@ export async function getCurrentOpenCodeConfig(): Promise<VendorOpenCodeCurrentC
   return invoke<VendorOpenCodeCurrentConfig>(
     "vendor_get_current_opencode_config",
   );
+}
+
+/**
+ * Raw OpenCode global config (`$OPENCODE_CONFIG` or
+ * `~/.config/opencode/opencode.json` / `.jsonc`).
+ */
+export async function readOpenCodeConfigJson(): Promise<string> {
+  return invoke<string>("vendor_read_opencode_config_json");
+}
+
+export async function saveOpenCodeConfigJson(content: string): Promise<void> {
+  return invoke("vendor_save_opencode_config_json", { content });
 }
 
 export async function addOpenCodeProvider(provider: unknown): Promise<void> {

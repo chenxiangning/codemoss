@@ -40,10 +40,15 @@ describe("ReadToolGroupBlock", () => {
       />,
     );
 
-    expect(screen.getByText("List")).toBeTruthy();
+    const kinds = Array.from(document.querySelectorAll(".explore-inline-kind")).map(
+      (el) => el.textContent,
+    );
+    expect(kinds).toContain("tools.kindList");
+    expect(kinds).toContain("tools.kindRead");
     expect(screen.getByText("messages")).toBeTruthy();
-    expect(screen.getByText("Read")).toBeTruthy();
     expect(screen.getByText("index.ts")).toBeTruthy();
     expect(screen.getByTitle("src/features/messages")).toBeTruthy();
+    // 批量读取行应带文件类型图标（与文件树彩色 icon 同源）
+    expect(document.querySelectorAll(".explore-inline-file-icon").length).toBe(2);
   });
 });

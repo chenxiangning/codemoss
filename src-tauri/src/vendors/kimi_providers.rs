@@ -327,6 +327,63 @@ pub(crate) async fn vendor_get_current_kimi_config() -> Result<KimiCurrentConfig
     })
 }
 
+/// Read raw official Kimi Code CLI config (`$KIMI_CODE_HOME/config.toml` or
+/// `~/.kimi-code/config.toml`). Missing file returns an empty string so the
+/// editor can create one.
+#[tauri::command]
+pub(crate) async fn vendor_read_kimi_config_toml() -> Result<String, String> {
+    let path = kimi_config_toml_path()?;
+    match std::fs::read_to_string(&path) {
+        Ok(content) => Ok(content),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(String::new()),
+        Err(error) => Err(format!(
+            "Failed to read {}: {}",
+            path.display(),
+            error
+        )),
+    }
+}
+
+/// Write official Kimi Code CLI config after validating TOML table syntax.
+#[tauri::command]
+pub(crate) async fn vendor_save_kimi_config_toml(content: String) -> Result<(), String> {
+    let path = kimi_config_toml_path()?;
+    // Allow empty (user clearing / starting fresh) but reject malformed TOML.
+    if !content.trim().is_empty() {
+        toml::from_str::<toml::Table>(&content).map_err(|error| {
+            format!("Invalid TOML in {}: {error}", path.display())
+        })?;
+    }
+    atomic_write_text_file(&path, &content, "toml")
+}
+
+fn atomic_write_text_file(path: &Path, content: &str, tmp_ext: &str) -> Result<(), String> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|error| {
+            format!("Failed to create {}: {error}", parent.display())
+        })?;
+    }
+    let tmp_path = path.with_extension(format!("{tmp_ext}.tmp"));
+    std::fs::write(&tmp_path, content).map_err(|error| {
+        format!("Failed to write temp file {}: {error}", tmp_path.display())
+    })?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(&tmp_path, std::fs::Permissions::from_mode(0o600));
+    }
+    std::fs::rename(&tmp_path, path).map_err(|error| {
+        let _ = std::fs::remove_file(&tmp_path);
+        format!("Failed to replace {}: {error}", path.display())
+    })?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600));
+    }
+    Ok(())
+}
+
 #[tauri::command]
 pub(crate) async fn vendor_add_kimi_provider(provider: KimiProviderConfig) -> Result<(), String> {
     if provider.id == LOCAL_KIMI_PROVIDER_ID {
@@ -414,9 +471,18 @@ pub(crate) async fn vendor_delete_kimi_provider(
     }
 }
 
+/// Pseudo id: clear `kimi.current` so no managed/local provider is active.
+const DISABLED_KIMI_PROVIDER_ID: &str = "__disabled__";
+
 #[tauri::command]
 pub(crate) async fn vendor_switch_kimi_provider(id: String) -> Result<(), String> {
     let mut config = read_config()?;
+    // 「取消使用」: 清空 current，不改 ~/.kimi-code/config.toml
+    if id == DISABLED_KIMI_PROVIDER_ID {
+        config.kimi.current = None;
+        write_config(&config)?;
+        return Ok(());
+    }
     if id == LOCAL_KIMI_PROVIDER_ID {
         config.kimi.current = Some(id);
         write_config(&config)?;
@@ -561,6 +627,18 @@ mod tests {
         assert_eq!(local.id, LOCAL_KIMI_PROVIDER_ID);
         assert!(local.is_active);
         assert_eq!(local.is_local_provider, Some(true));
+    }
+
+    #[test]
+    fn atomic_write_creates_parent_and_round_trips_toml() {
+        let path = config_test_path("atomic").join("nested").join("config.toml");
+        atomic_write_text_file(&path, "default_model = \"demo\"\n", "toml")
+            .expect("write");
+        assert_eq!(
+            std::fs::read_to_string(&path).expect("read"),
+            "default_model = \"demo\"\n"
+        );
+        let _ = std::fs::remove_dir_all(path.parent().unwrap().parent().unwrap());
     }
 
     #[test]

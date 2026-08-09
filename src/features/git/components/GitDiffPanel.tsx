@@ -438,8 +438,16 @@ function DiffTreeSection({
                     treeParentFolderKey={parentKey ?? folder.key}
                     onClick={(event) => onFileClick(event, file.path, section)}
                     onKeySelect={() => onActivateFile?.(file.path, section)}
-                    onOpenInlinePreview={() => onOpenInlinePreview?.(file.path)}
-                    onOpenPreview={() => onOpenFilePreview?.(file, section)}
+                    onOpenInlinePreview={
+                      onOpenInlinePreview
+                        ? () => onOpenInlinePreview(file.path)
+                        : undefined
+                    }
+                    onOpenPreview={
+                      onOpenFilePreview
+                        ? () => onOpenFilePreview(file, section)
+                        : undefined
+                    }
                     onOpenInBrowser={
                       onOpenInBrowser
                         ? () => onOpenInBrowser(file.path)
@@ -614,8 +622,16 @@ function DiffTreeSection({
                       treeParentFolderKey={rootFolderKey}
                       onClick={(event) => onFileClick(event, file.path, section)}
                       onKeySelect={() => onActivateFile?.(file.path, section)}
-                      onOpenInlinePreview={() => onOpenInlinePreview?.(file.path)}
-                      onOpenPreview={() => onOpenFilePreview?.(file, section)}
+                      onOpenInlinePreview={
+                        onOpenInlinePreview
+                          ? () => onOpenInlinePreview(file.path)
+                          : undefined
+                      }
+                      onOpenPreview={
+                        onOpenFilePreview
+                          ? () => onOpenFilePreview(file, section)
+                          : undefined
+                      }
                       onOpenInBrowser={
                         onOpenInBrowser
                           ? () => onOpenInBrowser(file.path)
@@ -662,8 +678,16 @@ function DiffTreeSection({
                   treeDepth={1}
                   onClick={(event) => onFileClick(event, file.path, section)}
                   onKeySelect={() => onActivateFile?.(file.path, section)}
-                  onOpenInlinePreview={() => onOpenInlinePreview?.(file.path)}
-                  onOpenPreview={() => onOpenFilePreview?.(file, section)}
+                  onOpenInlinePreview={
+                    onOpenInlinePreview
+                      ? () => onOpenInlinePreview(file.path)
+                      : undefined
+                  }
+                  onOpenPreview={
+                    onOpenFilePreview
+                      ? () => onOpenFilePreview(file, section)
+                      : undefined
+                  }
                   onOpenInBrowser={
                     onOpenInBrowser
                       ? () => onOpenInBrowser(file.path)
@@ -1324,22 +1348,36 @@ function GitDiffPanelImpl({
       const file = (section === "staged" ? stagedFiles : unstagedFiles).find(
         (candidate) => candidate.path === path,
       );
-      if (file && isDeletedDiffFile(file)) {
+      // Default row activation opens the editable DIFF modal so users can
+      // review and patch changes without hunting for the preview action.
+      if (file) {
         handleOpenFilePreview(file, section);
-      } else if (onOpenFile) {
-        onOpenFile(path);
-      } else {
-        onSelectFile?.(path);
+        return;
       }
+      onSelectFile?.(path);
     },
     [
       handleOpenFilePreview,
-      onOpenFile,
       onSelectFile,
       stagedFiles,
       unstagedFiles,
     ],
   );
+
+  // Row "open file" action (former modal-preview entry): open workspace file
+  // content. Deleted files have no working-tree content, so fall back to DIFF.
+  const handleOpenFileContent = useCallback((
+    file: DiffFile,
+    section: "staged" | "unstaged",
+  ) => {
+    setSelectedFiles(new Set([file.path]));
+    setLastClickedFile(file.path);
+    if (isDeletedDiffFile(file) || !onOpenFile) {
+      handleOpenFilePreview(file, section);
+      return;
+    }
+    onOpenFile(file.path);
+  }, [handleOpenFilePreview, onOpenFile]);
 
   const handleFileClick = useCallback(
     (
@@ -1390,7 +1428,8 @@ function GitDiffPanelImpl({
     ],
   );
 
-  // Clear selection when files change
+  // Clear selection when files change. Keep section/folder collapse prefs —
+  // git watch refreshes often and resetting expand state is disruptive.
   const filesKey = useMemo(
     () => [...stagedFiles, ...unstagedFiles].map((f) => f.path).join(","),
     [stagedFiles, unstagedFiles],
@@ -1403,8 +1442,6 @@ function GitDiffPanelImpl({
     prevFilesKeyRef.current = filesKey;
     setSelectedFiles(new Set());
     setLastClickedFile(null);
-    setCollapsedFolders(new Set());
-    setCollapsedSections(new Set());
     setDiscardDialogTarget(null);
     setDiscardDialogSubmitting(false);
     if (!previewFile) {
@@ -2575,6 +2612,7 @@ function GitDiffPanelImpl({
               onStageAll={onStageRepositoryAll}
               onOpenFile={(repositoryRoot, path) => onOpenFile?.(path, repositoryRoot)}
               onOpenFilePreview={handleOpenRepositoryFilePreview}
+              onOpenFileContent={(repositoryRoot, path) => onOpenFile?.(path, repositoryRoot)}
               onOpenInlinePreview={onSelectFile ? handleOpenRepositoryInlinePreview : undefined}
               onOpenInBrowser={handleOpenRepositoryInBrowser}
               onShowFileMenu={showRepositoryFileMenu}
@@ -2615,8 +2653,8 @@ function GitDiffPanelImpl({
                     isCommitPathLocked={isCommitPathLocked}
                     onSetCommitSelection={setCommitSelection}
                     onFileClick={handleFileClick}
-                    onOpenInlinePreview={handleOpenInlinePreview}
-                    onOpenFilePreview={handleOpenFilePreview}
+                    onOpenInlinePreview={onSelectFile ? handleOpenInlinePreview : undefined}
+                    onOpenFilePreview={onOpenFile ? handleOpenFileContent : undefined}
                     onOpenInBrowser={handleOpenInBrowser}
                     onShowFileMenu={showFileMenu}
                     collapsedFolders={collapsedFolders}
@@ -2645,8 +2683,8 @@ function GitDiffPanelImpl({
                     isCommitPathLocked={isCommitPathLocked}
                     onSetCommitSelection={setCommitSelection}
                     onFileClick={handleFileClick}
-                    onOpenInlinePreview={handleOpenInlinePreview}
-                    onOpenFilePreview={handleOpenFilePreview}
+                    onOpenInlinePreview={onSelectFile ? handleOpenInlinePreview : undefined}
+                    onOpenFilePreview={onOpenFile ? handleOpenFileContent : undefined}
                     onOpenInBrowser={handleOpenInBrowser}
                     onShowFileMenu={showFileMenu}
                   />
@@ -2674,8 +2712,8 @@ function GitDiffPanelImpl({
                     isCommitPathLocked={isCommitPathLocked}
                     onSetCommitSelection={setCommitSelection}
                     onFileClick={handleFileClick}
-                    onOpenInlinePreview={handleOpenInlinePreview}
-                    onOpenFilePreview={handleOpenFilePreview}
+                    onOpenInlinePreview={onSelectFile ? handleOpenInlinePreview : undefined}
+                    onOpenFilePreview={onOpenFile ? handleOpenFileContent : undefined}
                     onOpenInBrowser={handleOpenInBrowser}
                     onShowFileMenu={showFileMenu}
                     collapsedFolders={collapsedFolders}
@@ -2703,8 +2741,8 @@ function GitDiffPanelImpl({
                     isCommitPathLocked={isCommitPathLocked}
                     onSetCommitSelection={setCommitSelection}
                     onFileClick={handleFileClick}
-                    onOpenInlinePreview={handleOpenInlinePreview}
-                    onOpenFilePreview={handleOpenFilePreview}
+                    onOpenInlinePreview={onSelectFile ? handleOpenInlinePreview : undefined}
+                    onOpenFilePreview={onOpenFile ? handleOpenFileContent : undefined}
                     onOpenInBrowser={handleOpenInBrowser}
                     onShowFileMenu={showFileMenu}
                   />

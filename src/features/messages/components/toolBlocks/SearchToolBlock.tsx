@@ -101,11 +101,15 @@ function formatSearchDetailValue(value: string): string {
   }
 }
 
-function resolveSearchKindLabel(item: Extract<ConversationItem, { kind: 'tool' }>, isGlob: boolean): string {
-  if (isGlob) return 'Match';
+function resolveSearchKindLabel(
+  item: Extract<ConversationItem, { kind: 'tool' }>,
+  isGlob: boolean,
+  t: (key: string) => string,
+): string {
+  if (isGlob) return t('tools.kindMatch');
   const name = extractToolName(item.title).toLowerCase();
-  if (name.includes('web') || item.toolType === 'webSearch') return 'Web';
-  return 'Search';
+  if (name.includes('web') || item.toolType === 'webSearch') return t('tools.kindWeb');
+  return t('tools.kindSearch');
 }
 
 /**
@@ -160,11 +164,12 @@ export const SearchToolBlock = memo(function SearchToolBlock({
       resolveSearchInlinePresentation(inlineRaw, args, {
         maxLength: 120,
         pattern,
+        t: (key, options) => t(key, options),
       }),
-    [inlineRaw, args, pattern],
+    [inlineRaw, args, pattern, t],
   );
 
-  const kindLabel = resolveSearchKindLabel(item, isGlob);
+  const kindLabel = resolveSearchKindLabel(item, isGlob, t);
   const primaryLabel = resolvePrimaryLabel(pattern, presentation);
   const matchHint =
     presentation.resultHint &&
@@ -231,7 +236,7 @@ export const SearchToolBlock = memo(function SearchToolBlock({
               ) : null}
               {status === 'failed' ? (
                 <span className="explore-inline-detail" style={{ color: 'var(--destructive, #dc2626)' }}>
-                  failed
+                  {t('tools.failed')}
                 </span>
               ) : null}
               {status === 'processing' ? (
@@ -243,17 +248,17 @@ export const SearchToolBlock = memo(function SearchToolBlock({
         <CollapsibleReveal open={isExpanded && hasExpandedDetails}>
           <div className="explore-inline-list">
             {pattern ? (
-              <DetailField label="query">
+              <DetailField label={t('tools.queryLabel')}>
                 <span style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{pattern}</span>
               </DetailField>
             ) : null}
             {path ? (
-              <DetailField label="path">
+              <DetailField label={t('tools.path')}>
                 <span style={{ wordBreak: 'break-all' }}>{path}</span>
               </DetailField>
             ) : null}
             {shouldShowExpandedOutput ? (
-              <DetailField label="summary">
+              <DetailField label={t('tools.summaryLabel')}>
                 <pre
                   style={{
                     margin: 0,
@@ -269,7 +274,7 @@ export const SearchToolBlock = memo(function SearchToolBlock({
               </DetailField>
             ) : null}
             {shouldShowExpandedDetail ? (
-              <DetailField label="detail">
+              <DetailField label={t('tools.detailLabel')}>
                 <pre
                   style={{
                     margin: 0,

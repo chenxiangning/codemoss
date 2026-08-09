@@ -4,11 +4,10 @@ import {
   fireEvent,
   render,
   screen,
-  within,
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ProviderConfig } from "../types";
-import { DISABLED_PROVIDER_ID, LOCAL_SETTINGS_PROVIDER_ID } from "../types";
+import { LOCAL_SETTINGS_PROVIDER_ID } from "../types";
 import { ClaudeLocalSettingsCard } from "./ClaudeLocalSettingsCard";
 
 vi.mock("react-i18next", () => ({
@@ -32,6 +31,7 @@ function renderCard(
 ) {
   const props = {
     localProvider: provider,
+    inUse: false,
     onSwitch: vi.fn(),
     onEdit: vi.fn(),
     ...overrides,
@@ -51,33 +51,33 @@ describe("ClaudeLocalSettingsCard", () => {
     expect(container.firstChild).toBeNull();
   });
 
-  it("shows the in-use badge and revoke action when authorized", () => {
-    renderCard(localProvider({ isActive: true }));
+  it("shows the in-use badge without revoke when official is effective", () => {
+    renderCard(localProvider(), { inUse: true });
 
     expect(screen.getByText("settings.vendor.officialConfig")).toBeTruthy();
     expect(
-      screen.getByText("settings.vendor.localProviderDescription"),
-    ).toBeTruthy();
+      screen.queryByText("settings.vendor.localProviderDescription"),
+    ).toBeNull();
     expect(screen.getByText("settings.vendor.inUse")).toBeTruthy();
     expect(
-      screen.getByRole("button", {
+      screen.queryByRole("button", {
         name: /settings\.vendor\.revokeAuthorization/,
       }),
-    ).toBeTruthy();
+    ).toBeNull();
     expect(
       screen.queryByRole("button", {
-        name: /settings\.vendor\.authorizeAndEnable/,
+        name: /settings\.vendor\.useOfficialConfig/,
       }),
     ).toBeNull();
   });
 
-  it("shows the authorize action without the in-use badge when not authorized", () => {
-    renderCard(localProvider({ isActive: false }));
+  it("shows Use without in-use when a third-party is active", () => {
+    renderCard(localProvider({ isActive: false }), { inUse: false });
 
     expect(screen.queryByText("settings.vendor.inUse")).toBeNull();
     expect(
       screen.getByRole("button", {
-        name: /settings\.vendor\.authorizeAndEnable/,
+        name: /settings\.vendor\.useOfficialConfig/,
       }),
     ).toBeTruthy();
     expect(
@@ -87,75 +87,36 @@ describe("ClaudeLocalSettingsCard", () => {
     ).toBeNull();
   });
 
-  it("authorizes the local provider through the confirm dialog", () => {
-    const { props } = renderCard(localProvider({ isActive: false }));
+  it("switches to local settings on Use", () => {
+    const { props } = renderCard(localProvider({ isActive: false }), {
+      inUse: false,
+    });
 
     fireEvent.click(
       screen.getByRole("button", {
-        name: /settings\.vendor\.authorizeAndEnable/,
-      }),
-    );
-
-    const dialog = document.querySelector(".vendor-dialog") as HTMLElement;
-    expect(dialog).toBeTruthy();
-    expect(dialog.textContent).toContain(
-      "settings.vendor.localProviderAuthorizeTitle",
-    );
-
-    fireEvent.click(
-      within(dialog).getByRole("button", {
-        name: /settings\.vendor\.authorizeAndEnable/,
+        name: /settings\.vendor\.useOfficialConfig/,
       }),
     );
 
     expect(props.onSwitch).toHaveBeenCalledWith(LOCAL_SETTINGS_PROVIDER_ID);
-    expect(document.querySelector(".vendor-dialog")).toBeNull();
   });
 
-  it("revokes the local provider authorization through the confirm dialog", () => {
-    const { props } = renderCard(localProvider({ isActive: true }));
-
-    fireEvent.click(
-      screen.getByRole("button", {
-        name: /settings\.vendor\.revokeAuthorization/,
-      }),
-    );
-
-    const dialog = document.querySelector(".vendor-dialog") as HTMLElement;
-    expect(dialog.textContent).toContain(
-      "settings.vendor.localProviderDisableTitle",
-    );
-
-    fireEvent.click(
-      within(dialog).getByRole("button", {
-        name: /settings\.vendor\.revokeAuthorization/,
-      }),
-    );
-
-    expect(props.onSwitch).toHaveBeenCalledWith(DISABLED_PROVIDER_ID);
-  });
-
-  it("opens and closes the local provider help dialog", () => {
-    renderCard(localProvider());
+  it("surfaces local provider help in the row popover", async () => {
+    renderCard(localProvider(), { inUse: true });
 
     fireEvent.click(screen.getByTitle("settings.vendor.whatIsThis"));
 
-    const dialog = document.querySelector(".vendor-dialog") as HTMLElement;
-    expect(dialog.textContent).toContain(
-      "settings.vendor.localProviderHelpTitle",
-    );
-    expect(dialog.textContent).toContain(
-      "settings.vendor.localProviderHelpBody",
-    );
-
-    fireEvent.click(
-      within(dialog).getByRole("button", { name: "settings.vendor.gotIt" }),
-    );
+    expect(
+      await screen.findByText("settings.vendor.localProviderDescription"),
+    ).toBeTruthy();
+    expect(
+      screen.getByText("settings.vendor.localProviderHelpBody"),
+    ).toBeTruthy();
     expect(document.querySelector(".vendor-dialog")).toBeNull();
   });
 
   it("forwards the edit action to onEdit", () => {
-    const { props } = renderCard(localProvider());
+    const { props } = renderCard(localProvider(), { inUse: true });
 
     fireEvent.click(screen.getByTitle("settings.vendor.edit"));
 

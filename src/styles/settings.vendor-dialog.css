@@ -35,6 +35,98 @@
   width: min(400px, 90vw);
 }
 
+/* Compact modal for single-purpose forms (e.g. CLI custom path). */
+.vendor-dialog-md {
+  width: min(480px, 92vw);
+}
+
+.vendor-dialog-body-compact {
+  gap: 12px;
+}
+
+/* Drop grey control fills inside compact path dialog — border-only, match card surface. */
+.vendor-dialog-md .settings-input {
+  background: transparent;
+}
+
+.vendor-dialog-md .settings-input:focus {
+  background: transparent;
+}
+
+/*
+ * Path-source tabs: preference-style segmented control.
+ * Subtle track + elevated active pill (clear selection, no flat grey slabs).
+ */
+.vendor-dialog-md .settings-segmented.cli-path-mode-segmented {
+  display: flex;
+  width: 100%;
+  gap: 2px;
+  padding: 3px;
+  overflow: visible;
+  border-radius: 10px;
+  border: 1px solid color-mix(in srgb, var(--border-muted) 88%, transparent);
+  background: color-mix(in srgb, var(--text-primary) 4%, transparent);
+}
+
+.vendor-dialog-md .cli-path-mode-segmented .settings-segmented-btn {
+  flex: 1;
+  min-height: 32px;
+  padding: 6px 12px;
+  border-radius: 7px;
+  text-align: center;
+  font-weight: 500;
+  color: var(--text-muted);
+  transition:
+    color 120ms ease,
+    background-color 120ms ease,
+    box-shadow 120ms ease;
+}
+
+.vendor-dialog-md .cli-path-mode-segmented .settings-segmented-btn:hover:not(:disabled) {
+  color: var(--text-strong);
+  background: color-mix(in srgb, var(--surface-card-strong) 55%, transparent);
+}
+
+.vendor-dialog-md .cli-path-mode-segmented .settings-segmented-btn.active {
+  color: var(--text-strong);
+  font-weight: 600;
+  background: var(--surface-card-strong);
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.06),
+    0 0 0 1px color-mix(in srgb, var(--border-muted) 70%, transparent);
+}
+
+.cli-path-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.cli-path-mode-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 8px;
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border-muted);
+  background: transparent;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-secondary);
+}
+
+.cli-path-mode-status code {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+  background: transparent;
+  border: 1px solid var(--border-muted);
+  border-radius: 4px;
+  padding: 1px 6px;
+}
+
 .vendor-dialog-header {
   display: flex;
   align-items: center;
@@ -320,6 +412,138 @@
   padding: 0;
 }
 
+/* Shared official-config editor (Claude / Codex / Kimi / Grok / OpenCode) */
+.vendor-official-config-dialog-body {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 18px;
+}
+
+.vendor-official-config-dialog-body.is-multi-pane {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+@media (max-width: 720px) {
+  .vendor-official-config-dialog-body.is-multi-pane {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.vendor-official-config-dialog-body .vendor-json-section {
+  min-width: 0;
+}
+
+.vendor-official-config-dialog-body .vendor-official-config-pane {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--border-muted);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--surface-card-strong) 55%, transparent);
+}
+
+.vendor-official-config-pane-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+
+.vendor-official-config-pane-meta {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 8px;
+}
+
+.vendor-official-config-pane-title {
+  flex-shrink: 0;
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.35;
+  white-space: nowrap;
+}
+
+.vendor-official-config-pane-path {
+  display: inline-block;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-tertiary, var(--text-secondary));
+  font-size: 11px;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  padding: 0;
+}
+
+.vendor-official-config-pane-actions {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 6px;
+}
+
+.vendor-official-config-pane-action-btn {
+  border: 1px solid var(--border-muted);
+  border-radius: 7px;
+  background: var(--surface-card-strong);
+  color: var(--text-secondary);
+  padding: 3px 8px;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.vendor-official-config-pane-action-btn:hover:not(:disabled) {
+  color: var(--text-primary);
+  border-color: var(--border-stronger);
+}
+
+.vendor-official-config-pane-action-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.vendor-official-config-pane-open-folder {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+/*
+ * CodeMirror needs a *fixed* height box to enable .cm-scroller overflow.
+ * min-height alone lets the editor grow with content → wheel does nothing.
+ */
+.vendor-official-config-dialog-body .vendor-official-json-editor,
+.vendor-official-config-dialog-body .vendor-official-code-editor {
+  height: clamp(280px, 48vh, 560px);
+  min-height: clamp(280px, 48vh, 560px);
+  max-height: clamp(280px, 48vh, 560px);
+}
+
+.vendor-official-config-dialog-body.is-single-pane .vendor-official-json-editor,
+.vendor-official-config-dialog-body.is-single-pane .vendor-official-code-editor {
+  height: clamp(320px, 52vh, 640px);
+  min-height: clamp(320px, 52vh, 640px);
+  max-height: clamp(320px, 52vh, 640px);
+}
+
+.vendor-official-config-dialog-body > .vendor-json-error {
+  grid-column: 1 / -1;
+}
+
+/* Back-compat aliases (pre-unification class names) */
 .vendor-codex-official-dialog-body {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -331,8 +555,59 @@
   min-width: 0;
 }
 
-.vendor-codex-official-dialog-body .vendor-official-json-editor {
+.vendor-codex-pane-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+
+.vendor-codex-pane-meta {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 8px;
+}
+
+.vendor-codex-pane-title {
+  flex-shrink: 0;
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.35;
+  white-space: nowrap;
+}
+
+.vendor-codex-pane-path {
+  display: inline-block;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-tertiary, var(--text-secondary));
+  font-size: 11px;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  padding: 0;
+}
+
+.vendor-codex-pane-actions {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 6px;
+}
+
+.vendor-codex-official-dialog-body .vendor-official-json-editor,
+.vendor-codex-official-dialog-body .vendor-official-code-editor {
+  height: clamp(280px, 48vh, 560px);
   min-height: clamp(280px, 48vh, 560px);
+  max-height: clamp(280px, 48vh, 560px);
 }
 
 .vendor-codex-official-dialog-body > .vendor-json-error {
@@ -428,10 +703,13 @@
   box-sizing: border-box;
 }
 
-.vendor-official-json-editor {
+.vendor-official-json-editor,
+.vendor-official-code-editor {
+  height: min(52vh, 520px);
   min-height: min(52vh, 520px);
-  padding: 14px 16px;
-  border-color: color-mix(in srgb, var(--border-muted) 86%, transparent);
+  max-height: min(52vh, 520px);
+  padding: 0;
+  border: 1px solid color-mix(in srgb, var(--border-muted) 86%, transparent);
   border-radius: 8px;
   background:
     linear-gradient(
@@ -441,26 +719,90 @@
       transparent 44px
     ),
     var(--surface-card);
-  box-shadow: inset 0 1px 0 color-mix(in srgb, #fff 5%, transparent);
+  box-shadow: none;
   font-family: var(--font-code), ui-monospace, SFMono-Regular, Menlo, Monaco,
     Consolas, "Liberation Mono", "Courier New", monospace;
   font-size: 13px;
   line-height: 1.65;
   tab-size: 2;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  resize: none;
+  box-sizing: border-box;
+  outline: none;
+}
+
+/* Plain-textarea fallback (tests / Suspense) keeps readable padding */
+textarea.vendor-official-json-editor,
+pre.vendor-official-code-editor {
+  padding: 14px 16px;
   white-space: pre-wrap;
   overflow: auto;
 }
 
+/* @uiw/react-codemirror root + cm-editor must fill the fixed host height */
+.vendor-official-code-editor > div {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
+  max-height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.vendor-official-code-editor .cm-editor {
+  flex: 1 1 auto;
+  height: 100% !important;
+  min-height: 0;
+  max-height: 100%;
+  width: 100%;
+  background: transparent;
+  border-radius: inherit;
+  border: none;
+  outline: none;
+  box-shadow: none;
+}
+
+.vendor-official-code-editor .cm-editor.cm-focused {
+  outline: none;
+  border: none;
+  box-shadow: none;
+}
+
+.vendor-official-code-editor .cm-scroller {
+  overflow: auto !important;
+  min-height: 0;
+  height: 100%;
+}
+
+.vendor-official-code-editor .cm-gutters {
+  background: transparent;
+  color: var(--text-tertiary, var(--text-secondary));
+}
+
+.vendor-official-code-editor .cm-activeLineGutter,
+.vendor-official-code-editor .cm-activeLine {
+  background: color-mix(in srgb, var(--text-accent) 6%, transparent);
+}
+
+/* Ordinary vendor textareas keep accent focus; official CodeMirror host does not */
 .vendor-json-editor:focus,
 .vendor-code-editor:focus {
   border-color: var(--text-accent);
 }
 
-.vendor-official-json-editor:focus {
-  border-color: color-mix(in srgb, var(--text-accent) 72%, var(--border-strong));
-  box-shadow:
-    0 0 0 3px color-mix(in srgb, var(--text-accent) 12%, transparent),
-    inset 0 1px 0 color-mix(in srgb, #fff 5%, transparent);
+.vendor-json-editor.vendor-official-json-editor:focus,
+.vendor-json-editor.vendor-official-json-editor:focus-within,
+.vendor-json-editor.vendor-official-code-editor:focus,
+.vendor-json-editor.vendor-official-code-editor:focus-within,
+.vendor-official-json-editor:focus,
+.vendor-official-json-editor:focus-within,
+.vendor-official-code-editor:focus,
+.vendor-official-code-editor:focus-within {
+  border-color: color-mix(in srgb, var(--border-muted) 86%, transparent);
+  box-shadow: none;
+  outline: none;
 }
 
 .vendor-json-error {
@@ -546,7 +888,8 @@
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 12px 14px;
+  padding: 10px 14px;
+  min-height: 44px;
 }
 
 .vendor-official-config-main,
@@ -566,25 +909,131 @@
 }
 
 .vendor-official-config-actions {
-  gap: 10px;
+  gap: 2px;
   flex-shrink: 0;
 }
 
+/* Quiet status: text + green dot, no pill chrome */
 .vendor-official-status {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 3px 10px;
-  border: 1px solid var(--border-muted);
-  border-radius: 999px;
-  color: var(--text-primary);
-  background: var(--surface-card-strong);
+  padding: 0 2px;
+  border: 0;
+  border-radius: 0;
+  color: var(--text-muted);
+  background: transparent;
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 500;
+  white-space: nowrap;
 }
 
-.vendor-codex-runtime-segmented {
+.vendor-official-status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #22c55e;
   flex-shrink: 0;
+}
+
+.vendor-official-actions-divider {
+  width: 1px;
+  height: 14px;
+  margin: 0 4px;
+  background: var(--border-muted);
+  flex-shrink: 0;
+}
+
+/* Text action for cancel / revoke — stay neutral; no warm accent background */
+.vendor-official-text-btn {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--text-muted);
+  padding: 4px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    background 0.12s ease,
+    color 0.12s ease;
+}
+
+.vendor-official-text-btn:hover,
+.vendor-official-text-btn-danger:hover {
+  background: color-mix(in srgb, var(--surface-hover) 80%, transparent);
+  color: var(--text-primary);
+}
+
+.vendor-official-use-btn {
+  appearance: none;
+  border: 0;
+  background: var(--text-primary);
+  color: var(--surface-card, #fff);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 550;
+  height: 24px;
+  padding: 0 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: opacity 0.12s ease;
+}
+
+.vendor-official-use-btn:hover {
+  opacity: 0.88;
+}
+
+/*
+ * Codex unified_exec segmented: preference-style track + elevated active pill.
+ * Avoid flat grey slabs (reads as disabled) and large black selected blocks.
+ */
+.vendor-codex-runtime-segmented.settings-segmented {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  overflow: visible;
+  border-radius: 10px;
+  border: 1px solid color-mix(in srgb, var(--border-muted) 88%, transparent);
+  background: color-mix(in srgb, var(--text-primary) 4%, transparent);
+}
+
+.vendor-codex-runtime-segmented .settings-segmented-btn {
+  min-height: 28px;
+  padding: 4px 11px;
+  border-radius: 7px;
+  font-weight: 500;
+  color: var(--text-muted);
+  background: transparent;
+  transition:
+    color 120ms ease,
+    background-color 120ms ease,
+    box-shadow 120ms ease;
+}
+
+.vendor-codex-runtime-segmented .settings-segmented-btn:hover:not(:disabled) {
+  color: var(--text-strong);
+  background: color-mix(in srgb, var(--surface-card-strong, var(--surface-card)) 55%, transparent);
+}
+
+.vendor-codex-runtime-segmented .settings-segmented-btn.active {
+  color: var(--text-strong);
+  font-weight: 600;
+  background: var(--surface-card-strong, var(--surface-card));
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.06),
+    0 0 0 1px color-mix(in srgb, var(--border-muted) 70%, transparent);
+}
+
+.vendor-codex-runtime-segmented .settings-segmented-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 .vendor-codex-runtime-reload-row {
@@ -618,6 +1067,11 @@
   .vendor-codex-official-editor-heading {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .vendor-official-config-pane-header,
+  .vendor-codex-pane-header {
+    align-items: center;
   }
 
   .vendor-official-config-actions,

@@ -280,6 +280,10 @@ export function useAppShellLayoutNodesSection(
     debugEntries,
     debugOpen,
     deleteThreadPrompt,
+    handleRenamePromptCancel,
+    handleRenamePromptChange,
+    handleRenamePromptConfirm,
+    renamePrompt,
     deletingWorktreeIds,
     dictationError,
     dictationHint,
@@ -1387,9 +1391,11 @@ export function useAppShellLayoutNodesSection(
         const response = await archiveWorkspaceSessions(workspaceId, [
           threadId,
         ]);
-        const mutationResult = response.results.find(
-          (result: any) => result.sessionId === threadId,
-        );
+        // Prefer exact id match; fall back to the only result when backend
+        // normalizes the requested id into a different sessionId field.
+        const mutationResult =
+          response.results.find((result) => result.sessionId === threadId) ??
+          (response.results.length === 1 ? response.results[0] : undefined);
         if (!mutationResult?.ok) {
           throw new Error(
             mutationResult?.error ?? t("workspace.archiveConversationFailed"),
@@ -1401,7 +1407,13 @@ export function useAppShellLayoutNodesSection(
         ) {
           setActiveThreadId(null, workspaceId);
         }
-        ensureWorkspaceThreadListLoaded(workspaceId, { force: true });
+        // Immediately drop the row from local sidebar state via deletedThreadIds.
+        // Without this, success only triggers a full catalog rescan — slow, easy
+        // to race with continuity merge, and looks like "click does nothing".
+        ensureWorkspaceThreadListLoaded(workspaceId, {
+          force: true,
+          deletedThreadIds: [threadId],
+        });
       } catch (error: unknown) {
         alertError(error instanceof Error ? error.message : String(error));
       }
@@ -1999,6 +2011,12 @@ export function useAppShellLayoutNodesSection(
       deleteConfirmBusy: isDeleteThreadPromptBusy,
       onCancelDeleteConfirm: handleDeleteThreadPromptCancel,
       onConfirmDeleteConfirm: handleConfirmDeleteConfirm,
+      renameThreadId: renamePrompt?.threadId ?? null,
+      renameWorkspaceId: renamePrompt?.workspaceId ?? null,
+      renameName: renamePrompt?.name ?? "",
+      onRenameChange: handleRenamePromptChange,
+      onRenameCancel: handleRenamePromptCancel,
+      onRenameConfirm: handleRenamePromptConfirm,
       onSyncThread: handleSyncThread,
       pinThread,
       unpinThread,

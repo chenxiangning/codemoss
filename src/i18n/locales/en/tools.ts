@@ -33,12 +33,12 @@ const tools = {
     webRequest: "Web request",
     batchRun: "Batch run",
     searchMatch: "Search/Match",
-    batchReadFile: "Batch read files",
+    batchReadFile: "Batch read {{count}} files",
     batchSearch: "Batch search",
     batchSearchMatch: "Batch search/match",
     batchEditFile: "Batch edit files",
-    fileEditSceneCount: "File changes ({{count}})",
-    fileEditSceneToggle: "File changes, {{count}} files, toggle details",
+    fileEditSceneCount: "Batch edit {{count}} files",
+    fileEditSceneToggle: "Batch edit {{count}} files, toggle details",
     bashGroupBatchRun: "Batch terminal",
     bashGroupCompleted: "completed",
     bashGroupAllCompleted: "All completed",
@@ -49,6 +49,22 @@ const tools = {
     path: "Path",
     lineRange: "Line {{start}}-{{end}}",
     failedCount: "{{count}} failed",
+    // 行 kind 短标签（explore-inline / ToolMarkerShell 共用）
+    kindRead: "Read",
+    kindList: "List",
+    kindEdit: "Edit",
+    kindSearch: "Search",
+    kindMatch: "Match",
+    kindWeb: "Web",
+    // 搜索匹配计数
+    matchCount: "{{count}} matches",
+    matchCountAtLeast: "≥{{count}} matches",
+    // 搜索展开详情字段
+    queryLabel: "query",
+    summaryLabel: "summary",
+    detailLabel: "detail",
+    failed: "failed",
+    diffTruncated: "Diff truncated…",
   },
 };
 

@@ -8,8 +8,14 @@ import {
   deleteOpenCodeProvider,
   switchOpenCodeProvider,
 } from "../../../services/tauri";
+import { applyOptimisticActiveProvider } from "../applyOptimisticActiveProvider";
 import { VENDOR_ACTIVE_PROVIDER_CHANGED_EVENT } from "../vendorActiveProviderEvents";
 import { notifyProviderTargetCatalogChanged } from "../../composer/components/ChatInputBox/hooks/useProviderTargetCatalogOwners";
+
+/** List load options. `silent` skips list-level loading UI (switch / external events). */
+export type OpenCodeProviderLoadOptions = {
+  silent?: boolean;
+};
 
 export interface OpenCodeProviderDialogState {
   isOpen: boolean;
@@ -35,7 +41,8 @@ export function useOpenCodeProviderManagement() {
   const [openCodeProviders, setOpenCodeProviders] = useState<
     OpenCodeProviderConfig[]
   >([]);
-  const [openCodeLoading, setOpenCodeLoading] = useState(false);
+  // Start true so first paint shows a loading placeholder instead of an empty list.
+  const [openCodeLoading, setOpenCodeLoading] = useState(true);
   const [openCodeProviderError, setOpenCodeProviderError] = useState<
     string | null
   >(null);
@@ -54,38 +61,46 @@ export function useOpenCodeProviderManagement() {
       provider: null,
     });
 
-  const loadOpenCodeProviders = useCallback(async () => {
-    setOpenCodeLoading(true);
-    try {
-      const list = await getOpenCodeProviders();
-      setOpenCodeProviders(list);
-      setOpenCodeProviderError(null);
-    } catch (error) {
-      setOpenCodeProviderError(
-        getErrorMessage(error, "Failed to load OpenCode providers."),
-      );
-    } finally {
-      setOpenCodeLoading(false);
-    }
-    // 当前配置刷新失败不阻塞 provider 列表。
-    try {
-      const config = await getCurrentOpenCodeConfig();
-      setCurrentOpenCodeConfig(config);
-      if (
-        config.configStatus === "malformed" ||
-        config.configStatus === "io-error"
-      ) {
+  const loadOpenCodeProviders = useCallback(
+    async (options?: OpenCodeProviderLoadOptions) => {
+      const silent = Boolean(options?.silent);
+      if (!silent) {
+        setOpenCodeLoading(true);
+      }
+      try {
+        const list = await getOpenCodeProviders();
+        setOpenCodeProviders(list);
+        setOpenCodeProviderError(null);
+      } catch (error) {
         setOpenCodeProviderError(
-          config.diagnostic ?? `OpenCode config is ${config.configStatus}.`,
+          getErrorMessage(error, "Failed to load OpenCode providers."),
+        );
+      } finally {
+        if (!silent) {
+          setOpenCodeLoading(false);
+        }
+      }
+      // 当前配置刷新失败不阻塞 provider 列表。
+      try {
+        const config = await getCurrentOpenCodeConfig();
+        setCurrentOpenCodeConfig(config);
+        if (
+          config.configStatus === "malformed" ||
+          config.configStatus === "io-error"
+        ) {
+          setOpenCodeProviderError(
+            config.diagnostic ?? `OpenCode config is ${config.configStatus}.`,
+          );
+        }
+      } catch (error) {
+        setCurrentOpenCodeConfig(null);
+        setOpenCodeProviderError(
+          getErrorMessage(error, "Failed to inspect OpenCode config."),
         );
       }
-    } catch (error) {
-      setCurrentOpenCodeConfig(null);
-      setOpenCodeProviderError(
-        getErrorMessage(error, "Failed to inspect OpenCode config."),
-      );
-    }
-  }, []);
+    },
+    [],
+  );
 
   useEffect(() => {
     void loadOpenCodeProviders();
@@ -97,7 +112,7 @@ export function useOpenCodeProviderManagement() {
       if (detail?.engine && detail.engine !== "opencode") {
         return;
       }
-      void loadOpenCodeProviders();
+      void loadOpenCodeProviders({ silent: true });
     };
     window.addEventListener(
       VENDOR_ACTIVE_PROVIDER_CHANGED_EVENT,
@@ -151,17 +166,26 @@ export function useOpenCodeProviderManagement() {
 
   const handleSwitchOpenCodeProvider = useCallback(
     async (id: string) => {
+      const previous = openCodeProviders;
+      setOpenCodeProviders(applyOptimisticActiveProvider(previous, id));
       try {
         await switchOpenCodeProvider(id);
+        try {
+          const config = await getCurrentOpenCodeConfig();
+          setCurrentOpenCodeConfig(config);
+        } catch {
+          // Keep optimistic list; current-config inspect failure is non-fatal.
+        }
         setOpenCodeProviderError(null);
-        await loadOpenCodeProviders();
+        notifyProviderTargetCatalogChanged();
       } catch (error) {
+        setOpenCodeProviders(previous);
         setOpenCodeProviderError(
           getErrorMessage(error, "Failed to switch OpenCode provider."),
         );
       }
     },
-    [loadOpenCodeProviders],
+    [openCodeProviders],
   );
 
   const handleDeleteOpenCodeProvider = useCallback(

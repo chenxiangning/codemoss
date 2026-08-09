@@ -7,6 +7,30 @@ import {
 import { asRecord, asString } from "./historyLoaderUtils";
 import { parseClaudeHistoryMessages } from "./claudeHistoryLoader";
 
+/**
+ * CLI-only placeholder Grok injects for image-only sends (see
+ * `GROK_IMAGE_ONLY_FALLBACK_TEXT` in Rust). Must not appear as user-authored
+ * bubble text. Keep in sync with `src-tauri/src/engine/cli_image_input.rs`.
+ */
+const GROK_IMAGE_ONLY_FALLBACK_TEXT = "Please analyze the attached image(s).";
+
+function stripGrokImageOnlyFallbackText(text: string): string {
+  const trimmed = text.trim();
+  if (!trimmed) {
+    return text;
+  }
+  const withoutPeriod = GROK_IMAGE_ONLY_FALLBACK_TEXT.replace(/\.$/, "");
+  const candidates = [
+    GROK_IMAGE_ONLY_FALLBACK_TEXT,
+    withoutPeriod,
+    `${withoutPeriod}.`,
+  ];
+  if (candidates.some((candidate) => trimmed.toLowerCase() === candidate.toLowerCase())) {
+    return "";
+  }
+  return text;
+}
+
 const RESULT_TOOL_SUFFIXES = ["-result", ":result", "_result", ".result", "/result"];
 const COMMAND_TOOL_TYPES = new Set([
   "exec",
@@ -444,8 +468,11 @@ export function parseGrokHistoryMessages(messagesData: unknown): ConversationIte
       const role = asString(message.role ?? "").trim().toLowerCase() === "user"
         ? "user"
         : "assistant";
-      const text = asString(message.text ?? "");
+      const rawText = asString(message.text ?? "");
       const images = extractImageList(message.images);
+      // Image-only CLI fallback must not surface as user-authored bubble text.
+      const text =
+        role === "user" ? stripGrokImageOnlyFallbackText(rawText) : rawText;
       const timestampMs = parseHistoryTimestampMs(
         message.timestamp ?? message.createdAt ?? message.created_at ?? null,
       );

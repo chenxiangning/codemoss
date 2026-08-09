@@ -1,11 +1,21 @@
 ---
 type: plan
-status: implemented
+status: superseded
 ---
 
 <!-- DOC-LIFECYCLE: implemented-architecture-plan -->
 > [!NOTE]
 > **Lifecycle: Implemented architecture plan.** 本文保留设计推演和执行证据；implementation change 已归档。Current contract 以 [OpenSpec main specifications](../../openspec/specs/README.md) 与代码为准，历史 task/checklist 不构成 backlog。
+
+> [!WARNING]
+> **2026-08-08 起本方案（scrollAuthorityMachine 状态机 + convergence + echo 指纹，~3500 行）已整体下线删除。**
+> 替代实现：`src/features/messages/orchestration/hooks/useMessagesCanvasFollow.ts`（~230 行），
+> 移植自 jetbrains-cc-gui `useScrollBehavior` 的极简模型：3 个 boolean ref（userPaused /
+> isUserAtBottom / isAutoScrolling）+ wheel 主信道意图判定 + 瞬时追底 + ResizeObserver 跟随，
+> 并移除消息行 `content-visibility`（占位→真实高度跳变是「视口上跳卡中部」根因，
+> 与 jetbrains-cc-gui 事故记录一致）。下线原因：五方写点（convergence rAF / 同 run nudge /
+> virtual-core resizeItem 补偿 / 浏览器 scroll anchoring / 浏览器钳位）与「用户是否离底」
+> 判定之间的时序竞争无法靠补丁消除，症状反复复发。本文仅作历史决策记录保留。
 
 # 共同幕布滚动所有权与编排架构（Scroll Ownership Architecture）
 
@@ -195,7 +205,7 @@ live 尾窗 / presentation    // 高度塌缩 / 暴涨的主要几何源
 |----|--------------|------------------|
 | `autoScrollRef` | 解除/武装跟随 | 部分 |
 | `live-follow` | 连续钉底 | 与 boundary 分权但不统一状态机 |
-| `turn-send` / `turn-settle` | 强制钉底 + 清 lease | 可覆盖用户位置（产品意图） |
+| `turn-send` / `turn-settle` | 强制钉底 + 清 lease | 可覆盖用户位置（产品意图）；2026-08-08 新模型（useMessagesCanvasFollow）：`turn-send` = `resumeFollowAndPin()` 发送即回底，`turn-settle` = `pinIfFollowing()` 仅跟随中落底（读历史不拽回） |
 | `history-open` 预算窗 | 迟到测高追底 | 与 stick intent 共用 deadline 语义 |
 | echo fingerprint | 豁免 scroll 事件 | 启发式；grace 350ms |
 | ResizeObserver | 同步 flush / nudge | 与 rAF coalesce 两套节奏 |

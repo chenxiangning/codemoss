@@ -94,9 +94,6 @@ export type RenderAppShellFlattenedContext = {
   handleResumeTaskRun: any;
   handleCancelTaskRun: any;
   handleForkTaskRun: any;
-  handleRenamePromptCancel: any;
-  handleRenamePromptChange: any;
-  handleRenamePromptConfirm: any;
   handleRevealActiveWorkspace: any;
   handleSearchPaletteMoveSelection: any;
   handleSelectDiffForPanel: any;
@@ -159,7 +156,6 @@ export type RenderAppShellFlattenedContext = {
   startUpdate: any;
   updaterState: any;
   removeWorkspace: any;
-  renamePrompt: any;
   renameWorkspaceGroup: any;
   retryReleaseNotesLoad: any;
   rightPanelCollapsed: any;

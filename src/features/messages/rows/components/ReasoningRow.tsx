@@ -1,4 +1,4 @@
-import { memo, useDeferredValue, type MouseEvent } from "react";
+import { memo, type MouseEvent } from "react";
 import { useTranslation } from "react-i18next";
 import Brain from "lucide-react/dist/esm/icons/brain";
 import type { ConversationItem } from "../../../../types";
@@ -53,9 +53,8 @@ export const ReasoningRow = memo(function ReasoningRow({
   const thinkingText = shouldPreferRawReasoningContent
     ? item.content
     : bodyText || item.content || item.summary || "";
-  // live reasoning delta 同样走 deferred：紧急渲染复用旧文本，重解析推后台。
-  const deferredThinkingText = useDeferredValue(thinkingText);
-  const renderThinkingText = isLive ? deferredThinkingText : thinkingText;
+  // jetbrains 同帧 stick：live 思考正文不再 deferred，避免折叠/长高与钉底错拍。
+  const renderThinkingText = thinkingText;
   const isEncryptedCodexReasoning =
     activeEngine === "codex" && thinkingText.trim() === "Encrypted reasoning";
   useRenderHotspot(

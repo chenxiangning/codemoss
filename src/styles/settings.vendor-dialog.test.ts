@@ -18,18 +18,37 @@ function getCssRuleBlock(css: string, selector: string): string {
 }
 
 describe("vendor official config dialog layout", () => {
-  it("shows Codex config.toml and auth.json editors as two visible panes on wide screens", () => {
-    const bodyRule = getCssRuleBlock(
+  it("shares multi-pane grid chrome for official config editors", () => {
+    const multiPaneRule = getCssRuleBlock(
       vendorDialogCss,
-      ".vendor-codex-official-dialog-body",
+      ".vendor-official-config-dialog-body.is-multi-pane",
     );
     const editorRule = getCssRuleBlock(
       vendorDialogCss,
-      ".vendor-codex-official-dialog-body .vendor-official-json-editor",
+      ".vendor-official-config-dialog-body .vendor-official-json-editor",
+    );
+    const paneRule = getCssRuleBlock(
+      vendorDialogCss,
+      ".vendor-official-config-dialog-body .vendor-official-config-pane",
+    );
+    const paneMetaRule = getCssRuleBlock(
+      vendorDialogCss,
+      ".vendor-official-config-pane-meta",
+    );
+    const panePathRule = getCssRuleBlock(
+      vendorDialogCss,
+      ".vendor-official-config-pane-path",
     );
 
-    expect(bodyRule).toContain("display: grid;");
-    expect(bodyRule).toContain("grid-template-columns: repeat(2, minmax(0, 1fr));");
+    expect(multiPaneRule).toContain("display: grid;");
+    expect(multiPaneRule).toContain(
+      "grid-template-columns: repeat(2, minmax(0, 1fr));",
+    );
     expect(editorRule).toContain("min-height: clamp(280px, 48vh, 560px);");
+    expect(paneRule).toContain("border-radius: 12px;");
+    expect(paneMetaRule).toContain("align-items: center;");
+    expect(paneMetaRule).not.toContain("flex-direction: column;");
+    expect(panePathRule).toContain("background: transparent;");
+    expect(panePathRule).toContain("white-space: nowrap;");
   });
 });

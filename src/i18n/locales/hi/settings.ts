@@ -1042,6 +1042,8 @@ const settings = {
         "fromCcSwitchUpdate": "cc-switch से आयात/अपडेट करें",
         "fromCcSwitchFile": "आयात के लिए cc-switch.db फ़ाइल चुनें",
       },
+      "engineSettings": "इंजन सेटिंग्स",
+      "providerChannels": "प्रदाता चैनल",
       "allProviders": "सभी प्रदाता",
       "allCodexProviders": "सभी Codex प्रदाता",
       "add": "जोड़ें",

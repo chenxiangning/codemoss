@@ -352,7 +352,8 @@ describe("Messages history loading", () => {
   });
 
   // jsdom drops scrollTop writes on unlaid-out elements, so back the scroller
-  // with a real value and fixed metrics.
+  // with a real value and fixed metrics. scrollTop setter 按浏览器语义 clamp
+  // 到 [0, maxScrollTop]（scrollToBottom 写的是 scrollHeight，真实浏览器会钳回底）。
   const stubScrollerMetrics = (container: HTMLElement, scrollHeight: number) => {
     const scroller = container.querySelector(".messages") as HTMLDivElement;
     expect(scroller).toBeTruthy();
@@ -361,7 +362,7 @@ describe("Messages history loading", () => {
       configurable: true,
       get: () => currentScrollTop,
       set: (value: number) => {
-        currentScrollTop = value;
+        currentScrollTop = Math.max(0, Math.min(value, scrollHeight - 720));
       },
     });
     Object.defineProperty(scroller, "clientHeight", { configurable: true, value: 720 });

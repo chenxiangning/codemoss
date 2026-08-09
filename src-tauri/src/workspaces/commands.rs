@@ -2340,6 +2340,89 @@ pub(crate) async fn open_workspace_in(
     ))
 }
 
+fn expand_user_path(path: &str) -> Result<std::path::PathBuf, String> {
+    let trimmed = path.trim();
+    if trimmed.is_empty() {
+        return Err("Path is empty".to_string());
+    }
+
+    if trimmed == "~" {
+        return dirs::home_dir().ok_or_else(|| "Cannot determine home directory".to_string());
+    }
+
+    if let Some(rest) = trimmed.strip_prefix("~/").or_else(|| trimmed.strip_prefix("~\\")) {
+        let home = dirs::home_dir().ok_or_else(|| "Cannot determine home directory".to_string())?;
+        return Ok(home.join(rest));
+    }
+
+    Ok(std::path::PathBuf::from(trimmed))
+}
+
+/// Resolve the folder that should be opened for a config file path.
+/// - Directory path → that directory
+/// - File path → parent directory
+/// - Missing file → still use parent if present
+fn resolve_containing_folder(path: &str) -> Result<std::path::PathBuf, String> {
+    let expanded = expand_user_path(path)?;
+    let folder = if expanded.is_dir() {
+        expanded
+    } else {
+        expanded
+            .parent()
+            .filter(|parent| !parent.as_os_str().is_empty())
+            .map(std::path::Path::to_path_buf)
+            .ok_or_else(|| format!("Path has no parent directory: {path}"))?
+    };
+
+    if folder.exists() {
+        return dunce::canonicalize(&folder).map_err(|error| {
+            format!(
+                "Failed to resolve folder `{}`: {error}",
+                folder.display()
+            )
+        });
+    }
+
+    Err(format!(
+        "Folder does not exist: {}",
+        folder.display()
+    ))
+}
+
+fn open_directory_in_file_manager(folder: &std::path::Path) -> Result<(), String> {
+    #[cfg(windows)]
+    {
+        // Open the folder itself (no /select — user asked not to open/select the file).
+        let path_str = folder.to_string_lossy().to_string();
+        std::process::Command::new("explorer")
+            .arg(path_str)
+            .spawn()
+            .map_err(|error| format!("Failed to open Explorer: {error}"))?;
+        return Ok(());
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        let status = crate::utils::std_command("open")
+            .arg(folder)
+            .status()
+            .map_err(|error| format!("Failed to open Finder folder: {error}"))?;
+        if status.success() {
+            return Ok(());
+        }
+        return Err(format!(
+            "Failed to open Finder folder ({}).",
+            format_exit_detail(status.code())
+        ));
+    }
+
+    #[cfg(all(unix, not(target_os = "macos")))]
+    {
+        tauri_plugin_opener::open_path(folder, None::<&str>)
+            .map_err(|error| format!("Failed to open file manager folder: {error}"))
+    }
+}
+
 /// Reveal a local path in the OS file manager (Finder / Explorer / file manager).
 ///
 /// Windows uses `explorer /select,...` rather than plugin-opener's
@@ -2353,7 +2436,8 @@ pub(crate) async fn reveal_in_file_manager(path: String) -> Result<(), String> {
         return Err("Path is empty".to_string());
     }
 
-    let canonical = dunce::canonicalize(trimmed).map_err(|error| {
+    let expanded = expand_user_path(trimmed)?;
+    let canonical = dunce::canonicalize(&expanded).map_err(|error| {
         format!("Failed to resolve path `{trimmed}`: {error}")
     })?;
 
@@ -2391,6 +2475,16 @@ pub(crate) async fn reveal_in_file_manager(path: String) -> Result<(), String> {
         tauri_plugin_opener::reveal_item_in_dir(&canonical)
             .map_err(|error| format!("Failed to reveal in file manager: {error}"))
     }
+}
+
+/// Open the containing folder of a path in the OS file manager.
+///
+/// Unlike `reveal_in_file_manager`, this opens the **folder window** and does
+/// not select or open the file itself.
+#[tauri::command]
+pub(crate) async fn open_folder_in_file_manager(path: String) -> Result<(), String> {
+    let folder = resolve_containing_folder(&path)?;
+    open_directory_in_file_manager(&folder)
 }
 
 const DEFAULT_MACOS_APP_NAME: &str = "ccgui";

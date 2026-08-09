@@ -85,28 +85,40 @@ describe("ProviderList", () => {
     expect(cardNames).toEqual(["ProviderA", "ProviderB", "ProviderC"]);
     expect(
       container.querySelector(".vendor-list-title")?.textContent,
-    ).toBe("settings.vendor.allProviders");
+    ).toBe("settings.vendor.providerChannels");
     expect(
       container.querySelectorAll("[title='settings.vendor.dragToReorder']"),
     ).toHaveLength(3);
     expect(container.querySelectorAll(".vendor-card.active")).toHaveLength(1);
   });
 
-  it("switches a provider on via its enable button", () => {
+  it("switches a provider on via its active switch", () => {
     const providerA = provider("a");
     const { props } = renderList([providerA, provider("b", { isActive: true })]);
 
     fireEvent.click(
-      screen.getByRole("button", { name: /settings\.vendor\.enable/ }),
+      screen.getByRole("switch", { name: /settings\.vendor\.enable: Provider A/ }),
     );
 
     expect(props.onSwitch).toHaveBeenCalledWith("a");
     expect(
-      screen.getAllByText("settings.vendor.inUse").length,
-    ).toBeGreaterThan(0);
+      screen
+        .getByRole("switch", { name: /settings\.vendor\.inUse: Provider B/ })
+        .getAttribute("data-state"),
+    ).toBe("checked");
     expect(
-      screen.getAllByRole("button", { name: /settings\.vendor\.enable/ }),
+      screen.getAllByRole("switch", { name: /settings\.vendor\.enable/ }),
     ).toHaveLength(1);
+  });
+
+  it("deactivates the active provider via its switch", () => {
+    const { props } = renderList([provider("b", { isActive: true })]);
+
+    fireEvent.click(
+      screen.getByRole("switch", { name: /settings\.vendor\.inUse: Provider B/ }),
+    );
+
+    expect(props.onSwitch).toHaveBeenCalledWith("__disabled__");
   });
 
   it("wires edit and delete actions on cards", () => {

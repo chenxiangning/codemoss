@@ -95,6 +95,8 @@ vi.mock("react-i18next", () => ({
         "git.previewInlineAction": "Preview diff in center pane",
         "git.previewModal": "Preview in modal",
         "git.previewModalAction": "Open diff preview modal",
+        "git.openFileContent": "Open file",
+        "git.openFileContentAction": "Open file content",
         "git.diffMode": "Diff",
         "git.diffModeDescription": "Inspect file changes",
         "git.logMode": "Git",
@@ -217,8 +219,9 @@ async function openGitFileContextMenu(row: HTMLElement) {
 void [act, cleanup, createEvent, fireEvent, render, screen, waitFor, within, afterEach, describe, expect, it, vi, invoke, resetClientStorageForTests, writeClientStoreValue, mockPreviewSave, mockPreviewDiscard, mockEditableDiffReviewSurface, GitDiffPanel, buildDiffTree, compactDiffTree, resolveBottomCommitMessageMenuPosition, resolveGitDiffFileHistoryTarget, resolveRepositoryWorkspaceFilePath, saveLastCommitMessageConfig, logEntries, baseProps, chooseCodexEnglishCommitMessage, openGitFileContextMenu];
 
 describe("GitDiffPanel", () => {
-  it("opens modal preview from explicit action without triggering row selection", () => {
+  it("opens file content from explicit row action without opening DIFF modal", () => {
       const onSelectFile = vi.fn();
+      const onOpenFile = vi.fn();
       const onCreateCodeAnnotation = vi.fn();
       const codeAnnotations = [
         {
@@ -234,6 +237,7 @@ describe("GitDiffPanel", () => {
           {...baseProps}
           gitDiffListView="flat"
           onSelectFile={onSelectFile}
+          onOpenFile={onOpenFile}
           onCreateCodeAnnotation={onCreateCodeAnnotation}
           codeAnnotations={codeAnnotations}
           unstagedFiles={[
@@ -249,12 +253,54 @@ describe("GitDiffPanel", () => {
         />,
       );
 
-      const modalPreviewButton = document.querySelector<HTMLButtonElement>(
+      const openFileButton = document.querySelector<HTMLButtonElement>(
         '.diff-row[data-path="file.txt"] .diff-row-action--preview-modal',
       );
-      expect(modalPreviewButton).toBeTruthy();
+      expect(openFileButton).toBeTruthy();
 
-      fireEvent.click(modalPreviewButton as HTMLButtonElement);
+      fireEvent.click(openFileButton as HTMLButtonElement);
+      expect(onSelectFile).not.toHaveBeenCalled();
+      expect(onOpenFile).toHaveBeenCalledWith("file.txt");
+      expect(document.querySelector(".git-history-diff-modal")).toBeNull();
+    });
+
+  it("opens DIFF modal with annotations on regular row click", () => {
+      const onSelectFile = vi.fn();
+      const onOpenFile = vi.fn();
+      const onCreateCodeAnnotation = vi.fn();
+      const codeAnnotations = [
+        {
+          id: "annotation-1",
+          path: "file.txt",
+          lineRange: { startLine: 2, endLine: 2 },
+          body: "check this",
+          source: "modal-diff-view" as const,
+        },
+      ];
+      render(
+        <GitDiffPanel
+          {...baseProps}
+          gitDiffListView="flat"
+          onSelectFile={onSelectFile}
+          onOpenFile={onOpenFile}
+          onCreateCodeAnnotation={onCreateCodeAnnotation}
+          codeAnnotations={codeAnnotations}
+          unstagedFiles={[
+            { path: "file.txt", status: "M", additions: 1, deletions: 0 },
+          ]}
+          diffEntries={[
+            {
+              path: "file.txt",
+              status: "M",
+              diff: "diff --git a/file.txt b/file.txt\n@@ -1 +1 @@\n-old\n+new\n",
+            },
+          ]}
+        />,
+      );
+
+      const row = document.querySelector<HTMLElement>('.diff-row[data-path="file.txt"]');
+      fireEvent.click(row as HTMLElement);
+      expect(onOpenFile).not.toHaveBeenCalled();
       expect(onSelectFile).not.toHaveBeenCalled();
       expect(document.querySelector(".git-history-diff-modal")).toBeTruthy();
       expect(mockEditableDiffReviewSurface.mock.lastCall?.[0]).toMatchObject({
@@ -487,7 +533,7 @@ describe("GitDiffPanel", () => {
       );
 
       const fileRow = screen.getByLabelText("file.txt");
-      fireEvent.doubleClick(fileRow);
+      fireEvent.click(fileRow);
 
       const modal = document.querySelector(".git-history-diff-modal");
       expect(modal).toBeTruthy();
@@ -622,7 +668,7 @@ describe("GitDiffPanel", () => {
         />,
       );
 
-      fireEvent.doubleClick(screen.getByLabelText("file.txt"));
+      fireEvent.click(screen.getByLabelText("file.txt"));
 
       await waitFor(() => {
         const latestProps = mockEditableDiffReviewSurface.mock.lastCall?.[0];
@@ -652,7 +698,7 @@ describe("GitDiffPanel", () => {
         />,
       );
 
-      fireEvent.doubleClick(screen.getByLabelText("file.txt"));
+      fireEvent.click(screen.getByLabelText("file.txt"));
       fireEvent.click(screen.getByRole("button", { name: "Mock dirty preview" }));
       fireEvent.click(screen.getByRole("button", { name: "Mock close preview" }));
 

@@ -1,4 +1,4 @@
-import { useDeferredValue, useMemo } from "react";
+import { useMemo } from "react";
 import type { ConversationItem, EngineType } from "../../../../types";
 import { buildSuppressedUserMemoryContextMessageIdSet } from "../../utils/context/messagesMemoryContext";
 import { buildSuppressedUserNoteCardContextMessageIdSet } from "../../utils/context/messagesNoteCardContext";
@@ -98,15 +98,7 @@ export function useMessagesPresentationState({
     isThinking,
     timelineItems,
   ]);
-  const presentationRenderSnapshot = useMemo(
-    () => ({ scopeKey: presentationScopeKey, items: presentationRenderedItems }),
-    [presentationRenderedItems, presentationScopeKey],
-  );
-  const deferredPresentationRenderSnapshot = useDeferredValue(presentationRenderSnapshot);
-  const deferredPresentationRenderedItems =
-    deferredPresentationRenderSnapshot.scopeKey === presentationScopeKey
-      ? deferredPresentationRenderSnapshot.items
-      : presentationRenderedItems;
+  // jetbrains 同帧 stick：不再 useDeferredValue 推迟 presentation DOM。
   const shouldStabilizePresentationItems =
     supportsStreamingReadableWindowRecovery && (isThinking || isAssistantFinalizing);
   const livePresentationOverrideItemIds = useMemo(() => {
@@ -124,19 +116,17 @@ export function useMessagesPresentationState({
       return timelineItems;
     }
     return resolveStreamingPresentationItems(
-      deferredPresentationRenderedItems,
+      presentationRenderedItems,
       presentationRenderedItems,
       shouldStabilizePresentationItems,
       livePresentationOverrideItemIds,
       {
-        deferredScopeKey: deferredPresentationRenderSnapshot.scopeKey,
+        deferredScopeKey: presentationScopeKey,
         currentScopeKey: presentationScopeKey,
       },
     );
   }, [
     claudeHistoryTranscriptFallbackActive,
-    deferredPresentationRenderSnapshot.scopeKey,
-    deferredPresentationRenderedItems,
     livePresentationOverrideItemIds,
     presentationRenderedItems,
     presentationScopeKey,

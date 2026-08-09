@@ -25,7 +25,7 @@ function createEditToolItem(
 
 function sceneHeader() {
   return screen.getByRole("button", {
-    name: /tools\.fileEditSceneToggle|File changes|文件修改/i,
+    name: /tools\.fileEditSceneToggle|Batch edit|File changes|批量修改|文件修改/i,
   });
 }
 
@@ -54,7 +54,7 @@ describe("EditToolGroupBlock", () => {
 
     // i18n in tests returns key or interpolated fallback depending on setup
     expect(
-      screen.getByText(/tools\.fileEditSceneCount|File changes \(2\)|文件修改（2 个）/),
+      screen.getByText(/tools\.fileEditSceneCount|Batch edit 2 files|批量修改2个文件/),
     ).toBeTruthy();
     expect(screen.queryByText("release.yml")).toBeNull();
     expect(screen.queryByText("app.ts")).toBeNull();
@@ -155,7 +155,7 @@ describe("EditToolGroupBlock", () => {
     );
 
     const headers = screen.getAllByRole("button", {
-      name: /tools\.fileEditSceneToggle|File changes|文件修改/i,
+      name: /tools\.fileEditSceneToggle|Batch edit|File changes|批量修改|文件修改/i,
     });
     expect(headers).toHaveLength(2);
 
@@ -210,7 +210,7 @@ describe("EditToolGroupBlock", () => {
     // 单文件不套「文件修改（1 个）」组头，直接露出文件名
     expect(
       screen.queryByRole("button", {
-        name: /tools\.fileEditSceneToggle|File changes|文件修改/i,
+        name: /tools\.fileEditSceneToggle|Batch edit|File changes|批量修改|文件修改/i,
       }),
     ).toBeNull();
     expect(screen.queryByTestId("file-edit-scene-list")).toBeNull();
@@ -281,7 +281,7 @@ describe("EditToolGroupBlock", () => {
     expect(screen.getByText("open.ts")).toBeTruthy();
     expect(
       screen.queryByRole("button", {
-        name: /tools\.fileEditSceneToggle|File changes|文件修改/i,
+        name: /tools\.fileEditSceneToggle|Batch edit|File changes|批量修改|文件修改/i,
       }),
     ).toBeNull();
     expect(view.container.querySelector(".tool-change-inline-diff")).toBeTruthy();
@@ -323,7 +323,7 @@ describe("EditToolGroupBlock", () => {
 
     // 3 个唯一路径
     expect(
-      screen.getByText(/tools\.fileEditSceneCount|File changes \(3\)|文件修改（3 个）/),
+      screen.getByText(/tools\.fileEditSceneCount|Batch edit 3 files|批量修改3个文件/),
     ).toBeTruthy();
 
     fireEvent.click(sceneHeader());

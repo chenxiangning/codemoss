@@ -1,38 +1,11 @@
 // @vitest-environment jsdom
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+/**
+ * 2026-08：消息时间线列表虚拟化已移除。本文件保留长历史 / jump / 重开落底回归，
+ * 断言路径恒为静态全量 DOM（data-timeline-virtualized=false）。
+ */
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ConversationItem } from "../../../types";
-
-const scrollToIndexMock = vi.hoisted(() => vi.fn());
-const measureElementMock = vi.hoisted(() => vi.fn());
-const measureMock = vi.hoisted(() => vi.fn());
-
-vi.mock("@tanstack/react-virtual", () => ({
-  useVirtualizer: (options: {
-    count: number;
-    enabled: boolean;
-    estimateSize: (index: number) => number;
-    getItemKey: (index: number) => string;
-  }) => {
-    const visibleCount = options.enabled ? Math.min(20, options.count) : 0;
-    return {
-      getVirtualItems: () =>
-        Array.from({ length: visibleCount }, (_, index) => ({
-          index,
-          key: options.getItemKey(index),
-          size: options.estimateSize(index),
-          start: index * options.estimateSize(index),
-        })),
-      getTotalSize: () =>
-        Array.from({ length: options.count }, (_, index) => options.estimateSize(index))
-          .reduce((total, size) => total + size, 0),
-      measure: measureMock,
-      measureElement: measureElementMock,
-      resizeItem: vi.fn(),
-      scrollToIndex: scrollToIndexMock,
-    };
-  },
-}));
 
 vi.mock("./Markdown", () => ({
   Markdown: ({ value, className }: { value: string; className?: string }) => (
@@ -41,7 +14,8 @@ vi.mock("./Markdown", () => ({
 }));
 
 import { Messages } from "./Messages";
-describe("Messages virtualized jump behavior", () => {
+
+describe("Messages static timeline (virtualization removed)", () => {
   beforeAll(() => {
     if (!HTMLElement.prototype.scrollIntoView) {
       HTMLElement.prototype.scrollIntoView = vi.fn();
@@ -52,9 +26,6 @@ describe("Messages virtualized jump behavior", () => {
   });
 
   beforeEach(() => {
-    scrollToIndexMock.mockClear();
-    measureElementMock.mockClear();
-    measureMock.mockClear();
     window.localStorage.setItem("ccgui.claude.hideReasoningModule", "0");
     window.localStorage.removeItem("ccgui.messages.live.autoFollow");
     window.localStorage.setItem("ccgui.messages.live.collapseMiddleSteps", "0");
@@ -64,7 +35,7 @@ describe("Messages virtualized jump behavior", () => {
     cleanup();
   });
 
-  it("virtualizes large idle histories and jumps through virtualizer index", async () => {
+  it("keeps large idle histories on the static full-DOM path", () => {
     const items: ConversationItem[] = Array.from({ length: 220 }, (_, index) => ({
       id: `u${index + 1}`,
       kind: "message" as const,
@@ -75,7 +46,7 @@ describe("Messages virtualized jump behavior", () => {
     const { container } = render(
       <Messages
         items={items}
-        threadId="thread-jump-virtualized"
+        threadId="thread-jump-static"
         workspaceId="ws-1"
         isThinking={false}
         activeEngine="claude"
@@ -86,23 +57,12 @@ describe("Messages virtualized jump behavior", () => {
 
     expect(
       container.querySelector(".messages-full")?.getAttribute("data-timeline-virtualized"),
-    ).toBe("true");
-    expect(container.querySelector(".messages-virtualized-canvas")).toBeTruthy();
-
-    act(() => {
-      document.dispatchEvent(
-        new CustomEvent<string>("ccgui:jump-to-message", {
-          detail: "u180",
-        }),
-      );
-    });
-
-    await waitFor(() => {
-      expect(scrollToIndexMock).toHaveBeenCalled();
-    });
+    ).toBe("false");
+    expect(container.querySelector(".messages-virtualized-canvas")).toBeNull();
+    expect(container.querySelector('[data-message-anchor-id="u180"]')).toBeTruthy();
   });
 
-  it("virtualizes dense heavy histories by render weight", async () => {
+  it("keeps dense heavy histories static with full detail", () => {
     const heavyMarkdown = [
       "# Heavy section",
       "| A | B | C |",
@@ -123,7 +83,7 @@ describe("Messages virtualized jump behavior", () => {
     const { container } = render(
       <Messages
         items={items}
-        threadId="thread-heavy-jump"
+        threadId="thread-heavy-static"
         workspaceId="ws-heavy"
         isThinking={false}
         activeEngine="claude"
@@ -134,24 +94,12 @@ describe("Messages virtualized jump behavior", () => {
 
     expect(
       container.querySelector(".messages-full")?.getAttribute("data-timeline-virtualized"),
-    ).toBe("true");
-    expect(container.querySelector(".messages-virtualized-canvas")).toBeTruthy();
-
-    act(() => {
-      document.dispatchEvent(
-        new CustomEvent<string>("ccgui:jump-to-message", {
-          detail: "heavy-u30",
-        }),
-      );
-    });
-
-    await waitFor(() => {
-      expect(scrollToIndexMock).toHaveBeenCalled();
-    });
+    ).toBe("false");
+    expect(container.querySelector(".messages-virtualized-canvas")).toBeNull();
+    expect(container.querySelector('[data-message-anchor-id="heavy-u30"]')).toBeTruthy();
   });
 
   it("keeps short light conversations static with full detail", () => {
-    // Under row-count floor and without dense markdown weight → static full-detail path.
     const items: ConversationItem[] = Array.from({ length: 8 }, (_, index) => ({
       id: `assistant-light-${index + 1}`,
       kind: "message" as const,
@@ -179,21 +127,19 @@ describe("Messages virtualized jump behavior", () => {
     expect(screen.getByText(/canonical assistant payload 8/)).toBeTruthy();
   });
 
-  // A2:VISIBLE_MESSAGE_WINDOW=10000(95bc726a)有意禁用数量折叠,collapsed-indicator/折叠行为当前不启用;恢复折叠策略后去 skip。
-  it.skip("uses static expanded history flow even when lightweight mode is not active", async () => {
-    const items: ConversationItem[] = Array.from({ length: 240 }, (_, index) => ({
-      id: `history-static-expand-${index + 1}`,
+  it("jumps to a history message through the static DOM node map", async () => {
+    const items: ConversationItem[] = Array.from({ length: 40 }, (_, index) => ({
+      id: `jump-u${index + 1}`,
       kind: "message" as const,
-      role: index % 2 === 0 ? "user" as const : "assistant" as const,
-      text: `plain expanded history message ${index + 1}`,
-      isFinal: true,
+      role: "user" as const,
+      text: `message ${index + 1}`,
     }));
 
     const { container } = render(
       <Messages
         items={items}
-        threadId="thread-expand-history-static"
-        workspaceId="ws-heavy"
+        threadId="thread-jump-dom"
+        workspaceId="ws-1"
         isThinking={false}
         activeEngine="claude"
         openTargets={[]}
@@ -201,103 +147,20 @@ describe("Messages virtualized jump behavior", () => {
       />,
     );
 
-    const showEarlierButton = container.querySelector<HTMLButtonElement>(
-      ".messages-collapsed-indicator",
-    );
-    expect(showEarlierButton).toBeTruthy();
+    const scroller = container.querySelector(".messages") as HTMLDivElement;
+    const scrollToSpy = vi.spyOn(scroller, "scrollTo");
 
-    fireEvent.click(showEarlierButton!);
+    act(() => {
+      document.dispatchEvent(
+        new CustomEvent<string>("ccgui:jump-to-message", {
+          detail: "jump-u30",
+        }),
+      );
+    });
 
     await waitFor(() => {
-      expect(
-        container
-          .querySelector(".messages-timeline-root")
-          ?.getAttribute("data-timeline-static-expanded-history"),
-      ).toBe("true");
+      expect(scrollToSpy).toHaveBeenCalled();
     });
-    expect(container.querySelector(".messages-virtualized-canvas")).toBeNull();
-    expect(container.querySelector(".messages-full .messages-lightweight-mode-banner")).toBeTruthy();
-    expect(container.querySelector(".messages-lightweight-row-summary")).toBeNull();
-    expect(screen.getByText("plain expanded history message 1")).toBeTruthy();
-  });
-
-  // A2:VISIBLE_MESSAGE_WINDOW=10000(95bc726a)有意禁用数量折叠,collapsed 演进/scope 切换当前不启用;恢复折叠策略后去 skip。
-  it.skip("changes presentation scope when a collapsed history window is manually expanded", async () => {
-    const items: ConversationItem[] = Array.from({ length: 80 }, (_, index) => ({
-      id: `presentation-history-${index + 1}`,
-      kind: "message" as const,
-      role: index % 2 === 0 ? "user" as const : "assistant" as const,
-      text: `presentation history message ${index + 1}`,
-      isFinal: true,
-    }));
-
-    const { container } = render(
-      <Messages
-        items={items}
-        threadId="thread-presentation-scope"
-        workspaceId="ws-heavy"
-        isThinking={false}
-        activeEngine="claude"
-        openTargets={[]}
-        selectedOpenAppId=""
-      />,
-    );
-
-    const timelineRoot = container.querySelector(".messages-timeline-root");
-    expect(timelineRoot?.getAttribute("data-timeline-presentation-mode"))
-      .toBe("static-collapsed-history");
-    const collapsedScope = timelineRoot?.getAttribute("data-timeline-presentation-scope");
-
-    const showEarlierButton = container.querySelector<HTMLButtonElement>(
-      ".messages-collapsed-indicator",
-    );
-    expect(showEarlierButton).toBeTruthy();
-    fireEvent.click(showEarlierButton!);
-
-    await waitFor(() => {
-      expect(
-        container
-          .querySelector(".messages-timeline-root")
-          ?.getAttribute("data-timeline-presentation-mode"),
-      ).toBe("static-expanded-history-manual");
-    });
-    const expandedScope = container
-      .querySelector(".messages-timeline-root")
-      ?.getAttribute("data-timeline-presentation-scope");
-
-    expect(expandedScope).toBeTruthy();
-    expect(expandedScope).not.toBe(collapsedScope);
-    expect(container.querySelector(".messages-virtualized-canvas")).toBeNull();
-  });
-
-  // A2:VISIBLE_MESSAGE_WINDOW=10000(95bc726a)有意禁用数量折叠,realtime-collapsed-tail 当前不启用;恢复折叠策略后去 skip。
-  it.skip("uses a separate presentation scope for realtime tail windows", () => {
-    const items: ConversationItem[] = Array.from({ length: 80 }, (_, index) => ({
-      id: `presentation-live-${index + 1}`,
-      kind: "message" as const,
-      role: index % 2 === 0 ? "user" as const : "assistant" as const,
-      text: `presentation live message ${index + 1}`,
-      isFinal: index < 79,
-    }));
-
-    const { container } = render(
-      <Messages
-        items={items}
-        threadId="thread-presentation-live-scope"
-        workspaceId="ws-heavy"
-        isThinking={true}
-        activeEngine="claude"
-        openTargets={[]}
-        selectedOpenAppId=""
-      />,
-    );
-
-    const timelineRoot = container.querySelector(".messages-timeline-root");
-    expect(timelineRoot?.getAttribute("data-timeline-presentation-mode"))
-      .toBe("realtime-collapsed-tail");
-    expect(timelineRoot?.getAttribute("data-timeline-presentation-scope"))
-      .toContain("realtime-collapsed-tail");
-    expect(container.querySelector("[data-timeline-virtualized='true']")).toBeNull();
   });
 
   it("does not inject lightweight summary cards while a heavy conversation is streaming", () => {
@@ -336,7 +199,7 @@ describe("Messages virtualized jump behavior", () => {
     expect(screen.getAllByText(/Streaming heavy answer/).length).toBeGreaterThan(0);
   });
 
-  it("pins bottom when reopening dense history that may virtualize", () => {
+  it("pins bottom when reopening dense history", async () => {
     const oversizedMarkdown = [
       "# Oversized section",
       "| A | B | C |",
@@ -378,19 +241,24 @@ describe("Messages virtualized jump behavior", () => {
         configurable: true,
         get: () => scrollTop,
         set: (value: number) => {
-          scrollTop = value;
+          scrollTop = Math.max(0, Math.min(value, 4_000 - 720));
         },
       },
     });
 
     rerender(renderWith(null, []));
     rerender(renderWith("thread-oversized-prompt", items));
+    await act(async () => {
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    });
 
-    // Reopen should re-pin near bottom regardless of virtualized vs static path.
     expect(scroller.scrollTop).toBe(4_000 - 720);
+    expect(
+      container.querySelector(".messages-full")?.getAttribute("data-timeline-virtualized"),
+    ).toBe("false");
   });
 
-  it("does not flip into virtualization during same-frame streaming churn", () => {
+  it("never flips into virtualization during streaming churn", () => {
     const buildItems = (count: number): ConversationItem[] =>
       Array.from({ length: count }, (_, index) => ({
         id: `flip-u${index + 1}`,
@@ -418,7 +286,5 @@ describe("Messages virtualized jump behavior", () => {
     ).toBe("false");
     expect(container.querySelector(".messages-virtualized-canvas")).toBeNull();
     expect(container.querySelector('[data-message-anchor-id="flip-u21"]')).toBeTruthy();
-    expect(measureMock).not.toHaveBeenCalled();
-    expect(measureElementMock).not.toHaveBeenCalled();
   });
 });

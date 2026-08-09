@@ -56,4 +56,87 @@ describe("ReadToolBlock", () => {
     expect(screen.getByText(/const value = 1;/)).toBeTruthy();
     expect(screen.getByText(/console\.log\(value\);/)).toBeTruthy();
   });
+
+  it("shows a file-type icon for the read path", () => {
+    const item = createReadItem("tool-read-icon", { file_path: "src/main.ts" }, "ok");
+    const view = render(<ReadToolBlock item={item} isExpanded={false} onToggle={() => {}} />);
+    expect(view.container.querySelector(".tool-marker-file-type-icon")).toBeTruthy();
+    expect(screen.getByText("main.ts")).toBeTruthy();
+  });
+
+  it("shows monochrome action icon + kind label aligned with batch-read / search rows", () => {
+    const item = createReadItem("tool-read-kind", { file_path: "src/main.ts" }, "ok");
+    const view = render(<ReadToolBlock item={item} isExpanded={false} onToggle={() => {}} />);
+    expect(screen.getByText(/tools\.kindRead|Read|读取/)).toBeTruthy();
+    expect(view.container.querySelector(".explore-inline-kind")).toBeTruthy();
+    // 行首单色动作 icon（FileText）+ 文件名旁彩色类型 icon 并存
+    expect(view.container.querySelector('[data-slot="marker"] svg')).toBeTruthy();
+    expect(view.container.querySelector(".tool-marker-file-type-icon")).toBeTruthy();
+  });
+
+  it("shows folder icon and list kind for list_dir target directories", () => {
+    const item: Extract<ConversationItem, { kind: "tool" }> = {
+      id: "tool-list-dir",
+      kind: "tool",
+      toolType: "list_dir",
+      title: "list_dir",
+      detail: JSON.stringify({ target_directory: "src/features/vendors" }),
+      output: "VendorSettingsPanel.tsx\nindex.ts",
+      status: "completed",
+    };
+
+    const view = render(<ReadToolBlock item={item} isExpanded={false} onToggle={() => {}} />);
+
+    expect(screen.getByText(/tools\.kindList|List|列表/)).toBeTruthy();
+    expect(screen.getByText("vendors")).toBeTruthy();
+    expect(screen.getByText(/tools\.readDirectory|目录|directory/i)).toBeTruthy();
+    // 文件夹图标应渲染（getFileTreeIconSvg isFolder=true）
+    expect(view.container.querySelector(".tool-marker-file-type-icon")).toBeTruthy();
+  });
+
+  it("treats trailing-slash paths as directories", () => {
+    const item = createReadItem("tool-read-dir-slash", { path: "src/features/" }, "ok");
+    render(<ReadToolBlock item={item} isExpanded={false} onToggle={() => {}} />);
+    expect(screen.getByText(/tools\.kindList|List|列表/)).toBeTruthy();
+    expect(screen.getByText("features")).toBeTruthy();
+  });
+
+  it("renders a real image preview for image file reads instead of path-only text", () => {
+    const imagePath =
+      "/Users/zhukunpeng/.grok/sessions/demo/assets/image-0b1d7113-f591-407a-8332-b678fdcc7e96.png";
+    const item = createReadItem(
+      "tool-read-image",
+      { file_path: imagePath },
+      `Read image file: ${imagePath}`,
+    );
+
+    const view = render(
+      <ReadToolBlock item={item} workspaceId="ws-1" isExpanded={false} onToggle={() => {}} />,
+    );
+
+    fireEvent.click(screen.getByText("tools.readFile"));
+
+    const image = screen.getByRole("img", {
+      name: "image-0b1d7113-f591-407a-8332-b678fdcc7e96.png",
+    });
+    expect(image.getAttribute("src")).toContain(imagePath);
+    // 不应再只展示 “Read image file: …” 纯文案路径
+    expect(view.container.textContent).not.toMatch(/Read image file:\s*\//);
+  });
+
+  it("extracts image path from Read image file output when args path is relative", () => {
+    const absolutePath =
+      "/Users/demo/Desktop/assets/screenshot-preview.webp";
+    const item = createReadItem(
+      "tool-read-image-from-output",
+      { path: "screenshot-preview.webp" },
+      `Read image file: ${absolutePath}`,
+    );
+
+    render(<ReadToolBlock item={item} isExpanded={false} onToggle={() => {}} />);
+    fireEvent.click(screen.getByText("tools.readFile"));
+
+    const image = screen.getByRole("img", { name: "screenshot-preview.webp" });
+    expect(image.getAttribute("src")).toContain(absolutePath);
+  });
 });

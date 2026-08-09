@@ -95,6 +95,8 @@ vi.mock("react-i18next", () => ({
         "git.previewInlineAction": "Preview diff in center pane",
         "git.previewModal": "Preview in modal",
         "git.previewModalAction": "Open diff preview modal",
+        "git.openFileContent": "Open file",
+        "git.openFileContentAction": "Open file content",
         "git.diffMode": "Diff",
         "git.diffModeDescription": "Inspect file changes",
         "git.logMode": "Git",
@@ -246,7 +248,7 @@ describe("GitDiffPanel", () => {
         />,
       );
 
-      fireEvent.click(screen.getByRole("button", { name: "Open diff preview modal" }));
+      fireEvent.click(screen.getByRole("button", { name: "pom.xml" }));
       const overlay = document.querySelector<HTMLElement>(".git-history-diff-modal-overlay");
       if (!overlay) {
         throw new Error("Expected repository preview overlay to open");
@@ -291,7 +293,7 @@ describe("GitDiffPanel", () => {
         />,
       );
 
-      fireEvent.click(screen.getByRole("button", { name: "Open diff preview modal" }));
+      fireEvent.click(screen.getByRole("button", { name: "pom.xml" }));
       expect(await screen.findByText("git.diffUnavailable")).toBeTruthy();
       expect(screen.queryByText("common.loading")).toBeNull();
       expect(errorSpy).toHaveBeenCalledWith(
@@ -315,7 +317,7 @@ describe("GitDiffPanel", () => {
       };
       const { rerender } = render(<GitDiffPanel {...previewProps} />);
 
-      fireEvent.doubleClick(screen.getByLabelText("pom.xml"));
+      fireEvent.click(screen.getByLabelText("pom.xml"));
       expect(document.querySelector(".git-history-diff-modal")).toBeTruthy();
 
       rerender(<GitDiffPanel {...previewProps} gitRoot="services/b" />);

@@ -47,6 +47,7 @@ vi.mock("react-i18next", () => ({
           "Are you sure you want to delete this thread?",
         "threads.deleteThreadHint": "This cannot be undone.",
         "threads.delete": "Delete",
+        "threads.renameThread": "Rename thread",
         "common.cancel": "Cancel",
         "common.deleting": "Deleting",
       };
@@ -743,6 +744,52 @@ describe("ThreadList", () => {
 
     view.rerender(<ThreadList {...baseProps} />);
     expect(screen.getByText("Alpha").closest(".thread-row")).toBe(row);
+  });
+
+  it("supports inline thread rename without a modal dialog", () => {
+    const onRenameChange = vi.fn();
+    const onRenameCancel = vi.fn();
+    const onRenameConfirm = vi.fn();
+
+    const view = render(
+      <ThreadList
+        {...baseProps}
+        renameWorkspaceId="ws-1"
+        renameThreadId="thread-1"
+        renameName="Alpha"
+        onRenameChange={onRenameChange}
+        onRenameCancel={onRenameCancel}
+        onRenameConfirm={onRenameConfirm}
+      />,
+    );
+
+    const input = screen.getByRole("textbox", { name: "Rename thread" });
+    expect(input).toBeTruthy();
+    expect((input as HTMLInputElement).value).toBe("Alpha");
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(document.querySelector(".worktree-modal")).toBeNull();
+    expect(document.querySelector(".thread-row.is-renaming")).toBeTruthy();
+
+    fireEvent.change(input, { target: { value: "Beta" } });
+    expect(onRenameChange).toHaveBeenCalledWith("Beta");
+
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(onRenameConfirm).toHaveBeenCalledTimes(1);
+
+    view.rerender(
+      <ThreadList
+        {...baseProps}
+        renameWorkspaceId="ws-1"
+        renameThreadId="thread-1"
+        renameName="Beta"
+        onRenameChange={onRenameChange}
+        onRenameCancel={onRenameCancel}
+        onRenameConfirm={onRenameConfirm}
+      />,
+    );
+    const renameInput = screen.getByRole("textbox", { name: "Rename thread" });
+    fireEvent.keyDown(renameInput, { key: "Escape" });
+    expect(onRenameCancel).toHaveBeenCalledTimes(1);
   });
 
   it("shows auto naming loading badge when thread is auto naming", () => {

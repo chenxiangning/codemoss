@@ -122,7 +122,7 @@ describe("SearchToolBlock", () => {
     fireEvent.click(screen.getByLabelText(/tools\.search/i));
     expect(onToggle).toHaveBeenCalledWith("search-single-4");
 
-    expect(screen.queryByText("summary")).toBeNull();
+    expect(screen.queryByText(/tools\.summaryLabel|^summary$|摘要/)).toBeNull();
 
     cleanup();
 
@@ -146,7 +146,7 @@ describe("SearchToolBlock", () => {
       />,
     );
 
-    expect(screen.getByText("summary")).toBeTruthy();
+    expect(screen.getByText(/tools\.summaryLabel|^summary$|摘要/)).toBeTruthy();
     expect(screen.getByText(/"type": "search"/)).toBeTruthy();
   });
 
@@ -171,7 +171,7 @@ describe("SearchToolBlock", () => {
       />,
     );
 
-    expect(screen.getByText("detail")).toBeTruthy();
+    expect(screen.getByText(/tools\.detailLabel|^detail$|详情/)).toBeTruthy();
     expect(screen.getByText(/find_in_page/)).toBeTruthy();
   });
 
@@ -203,9 +203,13 @@ Found at least 65 matching lines
     );
 
     expect(container.querySelector(".explore-inline")).toBeTruthy();
-    expect(screen.getByText("Search")).toBeTruthy();
+    const kinds = Array.from(container.querySelectorAll(".explore-inline-kind")).map(
+      (el) => el.textContent,
+    );
+    expect(kinds).toContain("tools.kindSearch");
     expect(screen.getByText(pattern)).toBeTruthy();
-    expect(screen.getByText("≥65 matches")).toBeTruthy();
+    // 无 i18n 资源时 formatSearchMatchLabel 回退英文；有资源时用本地化
+    expect(screen.getByText(/≥65 matches|≥65 处匹配/)).toBeTruthy();
     // 不再把整段 header 糊成一长串
     expect(
       screen.queryByText("scroll|Scroll|stick|bottom|pin|jump|anchor · ≥65 matches"),

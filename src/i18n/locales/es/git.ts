@@ -67,6 +67,8 @@ const git = {
     "previewInlineAction": "Ver diff en el panel central",
     "previewModal": "Vista previa en ventana modal",
     "previewModalAction": "Abrir vista previa del diff en ventana modal",
+    "openFileContent": "Open file",
+    "openFileContentAction": "Open file content",
     "semanticDiff": {
       "kicker": "Capa de revisión",
       "title": "Diff semántico",

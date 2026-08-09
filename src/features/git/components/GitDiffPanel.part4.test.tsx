@@ -95,6 +95,8 @@ vi.mock("react-i18next", () => ({
         "git.previewInlineAction": "Preview diff in center pane",
         "git.previewModal": "Preview in modal",
         "git.previewModalAction": "Open diff preview modal",
+        "git.openFileContent": "Open file",
+        "git.openFileContentAction": "Open file content",
         "git.diffMode": "Diff",
         "git.diffModeDescription": "Inspect file changes",
         "git.logMode": "Git",
@@ -465,12 +467,12 @@ describe("GitDiffPanel", () => {
         />,
       );
 
-      const previewButtons = document.querySelectorAll<HTMLButtonElement>(
-        '.diff-row[data-path="pom.xml"] .diff-row-action--preview-modal',
+      const rows = document.querySelectorAll<HTMLElement>(
+        '.diff-row[data-path="pom.xml"]',
       );
-      expect(previewButtons).toHaveLength(2);
-      fireEvent.click(previewButtons[0]);
-      fireEvent.click(previewButtons[1]);
+      expect(rows).toHaveLength(2);
+      fireEvent.click(rows[0] as HTMLElement);
+      fireEvent.click(rows[1] as HTMLElement);
 
       await waitFor(() => {
         expect(mockEditableDiffReviewSurface).toHaveBeenCalled();
@@ -545,7 +547,7 @@ describe("GitDiffPanel", () => {
         />,
       );
 
-      fireEvent.click(screen.getByRole("button", { name: "Open diff preview modal" }));
+      fireEvent.click(screen.getByRole("button", { name: "pom.xml" }));
       expect(document.querySelector(".git-history-diff-modal")).toBeTruthy();
 
       rerender(
@@ -604,7 +606,7 @@ describe("GitDiffPanel", () => {
         />,
       );
 
-      fireEvent.click(screen.getByRole("button", { name: "Open diff preview modal" }));
+      fireEvent.click(screen.getByRole("button", { name: "pom.xml" }));
       await waitFor(() => expect(mockEditableDiffReviewSurface).toHaveBeenCalled());
       expect(vi.mocked(invoke)).toHaveBeenCalledWith("get_git_diffs", {
         workspaceId: "workspace-1",

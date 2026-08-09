@@ -2,10 +2,18 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  openFolderInFileManager,
   writeGlobalCodexAuthJson,
   writeGlobalCodexConfigToml,
 } from "../../../services/tauri";
 import { CurrentCodexGlobalConfigCard } from "./CurrentCodexGlobalConfigCard";
+
+vi.mock("./OfficialConfigCodeEditor", async () => {
+  const { OfficialConfigCodeEditorMock } = await import(
+    "./officialConfigCodeEditorTestMock"
+  );
+  return { OfficialConfigCodeEditor: OfficialConfigCodeEditorMock };
+});
 
 vi.mock("../../../services/tauri", async () => {
   const actual = await vi.importActual<
@@ -15,8 +23,11 @@ vi.mock("../../../services/tauri", async () => {
     ...actual,
     writeGlobalCodexAuthJson: vi.fn(),
     writeGlobalCodexConfigToml: vi.fn(),
+    openFolderInFileManager: vi.fn(),
   };
 });
+
+const openFolderInFileManagerMock = vi.mocked(openFolderInFileManager);
 
 const writeGlobalCodexAuthJsonMock = vi.mocked(writeGlobalCodexAuthJson);
 const writeGlobalCodexConfigTomlMock = vi.mocked(writeGlobalCodexConfigToml);
@@ -57,8 +68,63 @@ describe("CurrentCodexGlobalConfigCard", () => {
     expect(screen.getByText("~/.codex/config.toml")).toBeTruthy();
     expect(screen.getByText("~/.codex/auth.json")).toBeTruthy();
     expect(
-      container.querySelector(".vendor-codex-official-dialog-body"),
+      container.querySelector(".vendor-official-config-dialog-body.is-multi-pane"),
     ).toBeTruthy();
+  });
+
+  it("renders dual editor panes with title/path meta and auth actions", () => {
+    const { container } = renderCard();
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+
+    const panes = container.querySelectorAll(".vendor-official-config-pane");
+    expect(panes).toHaveLength(2);
+
+    const [configPane, authPane] = panes;
+    expect(
+      configPane.querySelector(".vendor-official-config-pane-title")?.textContent,
+    ).toBe("Global Default Codex Config");
+    expect(
+      configPane.querySelector(".vendor-official-config-pane-path")?.textContent,
+    ).toBe("~/.codex/config.toml");
+    expect(
+      configPane.querySelector(".vendor-official-config-pane-actions"),
+    ).toBeTruthy();
+
+    expect(
+      authPane.querySelector(".vendor-official-config-pane-path")?.textContent,
+    ).toBe("~/.codex/auth.json");
+    expect(
+      authPane.querySelector(".vendor-official-config-pane-actions"),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Show Sensitive" }),
+    ).toBeTruthy();
+    expect(screen.getAllByRole("button", { name: "Open file" })).toHaveLength(
+      2,
+    );
+  });
+
+  it("opens the containing folder for each official config file", async () => {
+    openFolderInFileManagerMock.mockResolvedValue(undefined);
+    renderCard();
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+
+    const [configFolder, authFolder] = screen.getAllByRole("button", {
+      name: "Open file",
+    });
+    fireEvent.click(configFolder);
+    await waitFor(() => {
+      expect(openFolderInFileManagerMock).toHaveBeenCalledWith(
+        "~/.codex/config.toml",
+      );
+    });
+
+    fireEvent.click(authFolder);
+    await waitFor(() => {
+      expect(openFolderInFileManagerMock).toHaveBeenCalledWith(
+        "~/.codex/auth.json",
+      );
+    });
   });
 
   it("saves both Codex official files from the edit dialog", async () => {

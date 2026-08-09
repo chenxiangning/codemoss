@@ -1,14 +1,10 @@
-import {
-  useEffect,
-  useState,
-  type KeyboardEvent as ReactKeyboardEvent,
-} from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { Button } from "@/components/ui/button";
 import {
   writeGlobalCodexAuthJson,
   writeGlobalCodexConfigToml,
 } from "../../../services/tauri";
+import { OfficialConfigEditDialog } from "./OfficialConfigEditDialog";
 import { VendorOfficialConfigCard } from "./VendorOfficialConfigCard";
 
 interface CurrentCodexGlobalConfigCardProps {
@@ -22,6 +18,14 @@ interface CurrentCodexGlobalConfigCardProps {
   authContent: string;
   authTruncated: boolean;
   authError: string | null;
+  /** Whether official (global) config is the active source */
+  inUse?: boolean;
+  /** Switch back to official / clear managed provider */
+  onUse?: () => void;
+  /** Leave official active source (clear current when official is active) */
+  onCancel?: () => void;
+  /** Optional row-title help popover content */
+  helpContent?: ReactNode;
   onSaved?: () => void | Promise<void>;
 }
 
@@ -96,6 +100,10 @@ export function CurrentCodexGlobalConfigCard({
   authContent,
   authTruncated,
   authError,
+  inUse = true,
+  onUse,
+  onCancel,
+  helpContent,
   onSaved,
 }: CurrentCodexGlobalConfigCardProps) {
   const { t } = useTranslation();
@@ -116,22 +124,10 @@ export function CurrentCodexGlobalConfigCard({
     setAuthSensitiveVisible(false);
   }, [authContent, configContent, editOpen]);
 
-  useEffect(() => {
-    if (!editOpen) {
-      return;
-    }
-    const handleEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !event.defaultPrevented) {
-        event.preventDefault();
-        setEditOpen(false);
-      }
-    };
-    window.addEventListener("keydown", handleEscape);
-    return () => window.removeEventListener("keydown", handleEscape);
-  }, [editOpen]);
-
   const loading = configLoading || authLoading;
   const truncated = configTruncated || authTruncated;
+  // Healthy summary is shown in the engine-settings help popover; keep only
+  // operational status (loading / error / truncated / empty) inline.
   const firstStatus =
     loading
       ? t("settings.loading")
@@ -152,29 +148,7 @@ export function CurrentCodexGlobalConfigCard({
               ? `${t("settings.vendor.codexGlobalConfigEmpty")} ${t(
                   "settings.vendor.codexAuthConfigEmpty",
                 )}`
-              : `${t("settings.vendor.currentCodexGlobalConfig")} · ${t(
-                  "settings.vendor.currentCodexAuthConfig",
-                )}`;
-
-  const handleEditorKeyDown = (
-    event: ReactKeyboardEvent<HTMLTextAreaElement>,
-  ) => {
-    if (event.key !== "Tab") {
-      return;
-    }
-
-    event.preventDefault();
-    const target = event.currentTarget;
-    const { selectionStart, selectionEnd, value } = target;
-    const nextValue = `${value.slice(0, selectionStart)}  ${value.slice(selectionEnd)}`;
-    const setDraft = target.dataset.codexEditor === "auth" ? setAuthDraft : setConfigDraft;
-    setDraft(nextValue);
-
-    requestAnimationFrame(() => {
-      const cursorPosition = selectionStart + 2;
-      target.setSelectionRange(cursorPosition, cursorPosition);
-    });
-  };
+              : null;
 
   const handleSave = async () => {
     if (authDraft.trim()) {
@@ -243,148 +217,100 @@ export function CurrentCodexGlobalConfigCard({
     }
   };
 
+  const dialogError = (
+    <>
+      {truncated ? (
+        <div>
+          {[
+            configTruncated
+              ? t("settings.vendor.codexGlobalConfigTruncated")
+              : null,
+            authTruncated
+              ? t("settings.vendor.codexAuthConfigTruncated")
+              : null,
+          ]
+            .filter(Boolean)
+            .join(" ")}
+        </div>
+      ) : null}
+      {configError ? (
+        <div>
+          {t("settings.vendor.codexGlobalConfigReadFailed")}: {configError}
+        </div>
+      ) : null}
+      {authError ? (
+        <div>
+          {t("settings.vendor.codexAuthConfigReadFailed")}: {authError}
+        </div>
+      ) : null}
+      {saveError ? <div>{saveError}</div> : null}
+    </>
+  );
+
+  const hasDialogError = Boolean(
+    truncated || configError || authError || saveError,
+  );
+
   return (
     <>
       <VendorOfficialConfigCard
         title={t("settings.vendor.officialConfig")}
         description={firstStatus}
-        inUse
+        inUse={inUse}
+        mode="global"
+        helpContent={helpContent}
+        onUse={onUse}
+        onCancel={onCancel}
         onEdit={() => setEditOpen(true)}
       />
 
-      {editOpen ? (
-        <div className="vendor-dialog-overlay" role="dialog" aria-modal="true">
-          <div className="vendor-dialog vendor-dialog-wide vendor-official-json-dialog">
-            <div className="vendor-dialog-header">
-              <h3>{t("settings.vendor.officialConfig")}</h3>
-              <button
-                type="button"
-                className="vendor-dialog-close"
-                onClick={() => setEditOpen(false)}
-                aria-label={t("common.close")}
-              >
-                ×
-              </button>
-            </div>
-
-            <div className="vendor-dialog-body vendor-codex-official-dialog-body">
-              <div className="vendor-json-section">
-                <div className="vendor-codex-official-editor-heading">
-                  <span className="vendor-current-config-title">
-                    {t("settings.vendor.currentCodexGlobalConfig")}
-                  </span>
-                  <code className="vendor-codex-global-config-path">
-                    {t("settings.vendor.codexGlobalConfigPath")}
-                  </code>
-                </div>
-                <textarea
-                  className="vendor-json-editor vendor-official-json-editor"
-                  aria-label={t("settings.vendor.currentCodexGlobalConfig")}
-                  value={loading ? t("settings.loading") : configDraft}
-                  onChange={(event) => {
-                    setConfigDraft(event.target.value);
-                    setSaveError("");
-                  }}
-                  onKeyDown={handleEditorKeyDown}
-                  rows={10}
-                  disabled={loading || saving}
-                  spellCheck={false}
-                />
-              </div>
-
-              <div className="vendor-json-section">
-                <div className="vendor-codex-official-editor-heading">
-                  <span className="vendor-current-config-title">
-                    {t("settings.vendor.currentCodexAuthConfig")}
-                  </span>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="xs"
-                    onClick={() => setAuthSensitiveVisible((value) => !value)}
-                  >
-                    {authSensitiveVisible
-                      ? t("settings.vendor.codexAuthConfigHideSensitive")
-                      : t("settings.vendor.codexAuthConfigShowSensitive")}
-                  </Button>
-                  <code className="vendor-codex-global-config-path">
-                    {t("settings.vendor.codexAuthConfigPath")}
-                  </code>
-                </div>
-                <textarea
-                  className="vendor-json-editor vendor-official-json-editor"
-                  aria-label={t("settings.vendor.currentCodexAuthConfig")}
-                  data-codex-editor="auth"
-                  value={
-                    loading
-                      ? t("settings.loading")
-                      : authSensitiveVisible
-                        ? authDraft
-                        : redactAuthContent(authDraft)
-                  }
-                  onChange={(event) => {
-                    if (!authSensitiveVisible) {
-                      return;
-                    }
-                    setAuthDraft(event.target.value);
-                    setSaveError("");
-                  }}
-                  onKeyDown={handleEditorKeyDown}
-                  rows={10}
-                  readOnly={!authSensitiveVisible}
-                  disabled={loading || saving}
-                  spellCheck={false}
-                />
-              </div>
-
-              {truncated ? (
-                <div className="vendor-json-error">
-                  {[
-                    configTruncated
-                      ? t("settings.vendor.codexGlobalConfigTruncated")
-                      : null,
-                    authTruncated
-                      ? t("settings.vendor.codexAuthConfigTruncated")
-                      : null,
-                  ]
-                    .filter(Boolean)
-                    .join(" ")}
-                </div>
-              ) : null}
-              {configError ? (
-                <div className="vendor-json-error">
-                  {t("settings.vendor.codexGlobalConfigReadFailed")}: {configError}
-                </div>
-              ) : null}
-              {authError ? (
-                <div className="vendor-json-error">
-                  {t("settings.vendor.codexAuthConfigReadFailed")}: {authError}
-                </div>
-              ) : null}
-              {saveError ? <div className="vendor-json-error">{saveError}</div> : null}
-            </div>
-
-            <div className="vendor-dialog-footer">
-              <button
-                type="button"
-                className="vendor-btn-cancel"
-                onClick={() => setEditOpen(false)}
-                disabled={saving}
-              >
-                {t("settings.vendor.cancel")}
-              </button>
-              <button
-                type="button"
-                className="vendor-btn-save"
-                onClick={handleSave}
-                disabled={loading || saving || truncated}
-              >
-                {t("settings.vendor.dialog.saveChanges")}
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
+      <OfficialConfigEditDialog
+        isOpen={editOpen}
+        title={t("settings.vendor.officialConfig")}
+        onClose={() => setEditOpen(false)}
+        onSave={handleSave}
+        loading={loading}
+        saving={saving}
+        saveDisabled={truncated}
+        error={hasDialogError ? dialogError : null}
+        panes={[
+          {
+            id: "config-toml",
+            title: t("settings.vendor.currentCodexGlobalConfig"),
+            pathLabel: t("settings.vendor.codexGlobalConfigPath"),
+            value: configDraft,
+            onChange: (value) => {
+              setConfigDraft(value);
+              setSaveError("");
+            },
+            ariaLabel: t("settings.vendor.currentCodexGlobalConfig"),
+            format: "toml",
+            dataAttributes: { "codex-editor": "config" },
+          },
+          {
+            id: "auth-json",
+            title: t("settings.vendor.currentCodexAuthConfig"),
+            pathLabel: t("settings.vendor.codexAuthConfigPath"),
+            value: authSensitiveVisible
+              ? authDraft
+              : redactAuthContent(authDraft),
+            onChange: (value) => {
+              if (!authSensitiveVisible) {
+                return;
+              }
+              setAuthDraft(value);
+              setSaveError("");
+            },
+            ariaLabel: t("settings.vendor.currentCodexAuthConfig"),
+            format: "json",
+            dataAttributes: { "codex-editor": "auth" },
+            sensitive: true,
+            sensitiveVisible: authSensitiveVisible,
+            onSensitiveVisibleChange: setAuthSensitiveVisible,
+            readOnly: !authSensitiveVisible,
+          },
+        ]}
+      />
     </>
   );
 }

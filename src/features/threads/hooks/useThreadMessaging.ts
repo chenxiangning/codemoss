@@ -28,6 +28,7 @@ import {
   extractClaudeForkParentSessionId,
   isClaudeForkThreadId,
 } from "../utils/claudeForkThread";
+import { emitMessagesForcePinBottom } from "../../../live-canvas/liveCanvasControls";
 import {
   sendUserMessage as sendUserMessageService,
   startReview as startReviewService,
@@ -758,6 +759,28 @@ export function useThreadMessaging({
         );
         // A：入口只负责点亮 + 异常熄灭；终态/审批/停止由 executor（B）权威收口，
         // 避免 A 晚到的 false 盖掉「停→立刻再开」的新 run。
+        // 纯图/首发：await requestAgentPlan 前先上屏用户气泡，避免 emptyThread 闪屏。
+        if (
+          !options?.suppressUserMessageRender &&
+          (visibleUserText.length > 0 || finalImages.length > 0)
+        ) {
+          dispatch({
+            type: "upsertItem",
+            workspaceId: workspace.id,
+            threadId,
+            item: {
+              id: `optimistic-user-${Date.now()}-${Math.random()
+                .toString(36)
+                .slice(2, 8)}`,
+              kind: "message",
+              role: "user",
+              text: visibleUserText,
+              images: finalImages.length > 0 ? finalImages : undefined,
+            },
+            hasCustomName: Boolean(getCustomName(workspace.id, threadId)),
+          });
+          emitMessagesForcePinBottom();
+        }
         markProcessing(threadId, true);
         safeMessageActivity();
         try {
@@ -794,6 +817,51 @@ export function useThreadMessaging({
         threadId,
         engine: resolvedEngine,
       });
+      // 首页首发 / 纯图：在任何 await 之前立刻上屏用户气泡，否则 pending→session
+      // rebind 期间幕布会长时间保持 emptyThread（「今天想构建什么」），用户以为没发出去。
+      // 气泡用可见原文 + 附图；injection 只影响 model text，不改用户气泡正文。
+      const earlyImages = sanitizeImageAttachmentPaths(images);
+      let optimisticUserItem: Extract<
+        ConversationItem,
+        { kind: "message" }
+      > | null = null;
+      let optimisticGeneratedImageItem: Extract<
+        ConversationItem,
+        { kind: "generatedImage" }
+      > | null = null;
+      if (
+        !options?.suppressUserMessageRender &&
+        !options?.skipOptimisticUserBubble &&
+        (messageText.length > 0 ||
+          earlyImages.length > 0 ||
+          Boolean(options?.browserContextAttachment) ||
+          Boolean(options?.intentCanvasContextAttachments?.length))
+      ) {
+        optimisticUserItem = {
+          id: `optimistic-user-${Date.now()}-${Math.random()
+            .toString(36)
+            .slice(2, 8)}`,
+          kind: "message",
+          role: "user",
+          // 可见原文（纯图为空串）；禁止写 CLI 占位 "Please analyze…"
+          text: messageText,
+          images: earlyImages.length > 0 ? earlyImages : undefined,
+          browserContextAttachment: options?.browserContextAttachment ?? null,
+          intentCanvasContextAttachments:
+            options?.intentCanvasContextAttachments,
+        };
+        dispatch({
+          type: "upsertItem",
+          workspaceId: workspace.id,
+          threadId,
+          item: optimisticUserItem,
+          hasCustomName: Boolean(getCustomName(workspace.id, threadId)),
+        });
+        // 同步亮起 processing，避免 emptyThread + 无「响应中」的空白闪屏
+        markProcessing(threadId, true);
+        safeMessageActivity();
+        emitMessagesForcePinBottom();
+      }
       let finalText = messageText;
       if (!options?.skipPromptExpansion) {
         const promptExpansion = expandCustomPromptText(
@@ -943,6 +1011,8 @@ export function useThreadMessaging({
         safeMessageActivity();
         return;
       }
+      // 通过校验后立刻贴底（含无乐观气泡路径）；乐观气泡处再发一次无害。
+      emitMessagesForcePinBottom();
       let resolvedSelectedAgent =
         resolvedEngine !== "opencode" ? (options?.selectedAgent ?? null) : null;
       if (resolvedSelectedAgent?.source === "builtIn") {
@@ -1326,47 +1396,65 @@ export function useThreadMessaging({
       }
       const wasProcessing =
         (threadStatusById[threadId]?.isProcessing ?? false) && steerEnabled;
-      const shouldAddOptimisticUserBubble =
+      // 若入口已打 early bubble，这里只补 metadata / 便签附图 / codex 出图占位；
+      // 否则（极少路径）再补一次，避免双气泡。
+      const shouldEnrichOrAddOptimisticUserBubble =
         !options?.suppressUserMessageRender &&
         !options?.skipOptimisticUserBubble &&
-        (resolvedEngine === "codex" ||
+        (Boolean(optimisticUserItem) ||
+          resolvedEngine === "codex" ||
           wasProcessing ||
           threadKind === "shared" ||
+          finalImages.length > 0 ||
           Boolean(options?.browserContextAttachment) ||
           Boolean(options?.intentCanvasContextAttachments?.length));
-      let optimisticUserItem: Extract<
-        ConversationItem,
-        { kind: "message" }
-      > | null = null;
-      let optimisticGeneratedImageItem: Extract<
-        ConversationItem,
-        { kind: "generatedImage" }
-      > | null = null;
-      if (shouldAddOptimisticUserBubble) {
+      if (shouldEnrichOrAddOptimisticUserBubble) {
         const optimisticDisplayText = visibleUserText;
-        const optimisticText = finalText;
-        const optimisticImages = finalImages;
+        const optimisticImages =
+          finalImages.length > 0
+            ? finalImages
+            : (optimisticUserItem?.images ?? []);
         if (
           optimisticDisplayText ||
           optimisticImages.length > 0 ||
           options?.browserContextAttachment ||
           options?.intentCanvasContextAttachments?.length
         ) {
-          optimisticUserItem = {
-            id: `optimistic-user-${Date.now()}-${Math.random()
-              .toString(36)
-              .slice(2, 8)}`,
-            kind: "message",
-            role: "user",
-            text: optimisticText,
-            images: optimisticImages.length > 0 ? optimisticImages : undefined,
-            collaborationMode: userCollaborationMode,
-            selectedAgentName,
-            selectedAgentIcon,
-            browserContextAttachment: options?.browserContextAttachment ?? null,
-            intentCanvasContextAttachments:
-              options?.intentCanvasContextAttachments,
-          };
+          if (optimisticUserItem) {
+            // 更新 early bubble：保留 id，补 agent 元数据与更完整附图
+            optimisticUserItem = {
+              ...optimisticUserItem,
+              // 用户可见正文保持原文（纯图仍为空），不写 injection
+              text: optimisticDisplayText,
+              images:
+                optimisticImages.length > 0 ? optimisticImages : undefined,
+              collaborationMode: userCollaborationMode,
+              selectedAgentName,
+              selectedAgentIcon,
+              browserContextAttachment:
+                options?.browserContextAttachment ?? null,
+              intentCanvasContextAttachments:
+                options?.intentCanvasContextAttachments,
+            };
+          } else {
+            optimisticUserItem = {
+              id: `optimistic-user-${Date.now()}-${Math.random()
+                .toString(36)
+                .slice(2, 8)}`,
+              kind: "message",
+              role: "user",
+              text: optimisticDisplayText,
+              images:
+                optimisticImages.length > 0 ? optimisticImages : undefined,
+              collaborationMode: userCollaborationMode,
+              selectedAgentName,
+              selectedAgentIcon,
+              browserContextAttachment:
+                options?.browserContextAttachment ?? null,
+              intentCanvasContextAttachments:
+                options?.intentCanvasContextAttachments,
+            };
+          }
           dispatch({
             type: "upsertItem",
             workspaceId: workspace.id,
@@ -1378,7 +1466,7 @@ export function useThreadMessaging({
             resolvedEngine === "codex"
               ? extractOptimisticGeneratedImagePrompt(optimisticDisplayText)
               : null;
-          if (optimisticGeneratedImagePrompt) {
+          if (optimisticGeneratedImagePrompt && !optimisticGeneratedImageItem) {
             optimisticGeneratedImageItem =
               createOptimisticGeneratedImageProcessingItem({
                 threadId,
@@ -1980,8 +2068,10 @@ export function useThreadMessaging({
               return;
             }
 
-            // Claude/OpenCode: backend only streams assistant/tool events, so add user item locally.
-            if (!options?.suppressUserMessageRender) {
+            // Claude/OpenCode/Grok/…: backend only streams assistant/tool events,
+            // so add user item locally — unless an early optimistic bubble already
+            // covered this turn (image-only / shared / codex paths).
+            if (!options?.suppressUserMessageRender && !optimisticUserItem) {
               const userMessageId = `user-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
               dispatch({
                 type: "upsertItem",
@@ -1993,6 +2083,8 @@ export function useThreadMessaging({
                   role: "user",
                   // Keep user-visible text free of engine-private injection
                   // (e.g. Kimi ReadMediaFile path block is CLI-only).
+                  // Image-only: empty text is intentional — never invent
+                  // "Please analyze the attached image(s)." for the canvas.
                   text: visibleUserText,
                   // Prefer sanitized image list so canvas screenshots (data URLs /
                   // paths) still render as thumbnails, never as wire text.

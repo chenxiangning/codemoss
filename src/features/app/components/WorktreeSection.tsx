@@ -79,6 +79,12 @@ type WorktreeSectionProps = {
   deleteConfirmBusy?: boolean;
   onCancelDeleteConfirm?: () => void;
   onConfirmDeleteConfirm?: () => void;
+  renameThreadId?: string | null;
+  renameWorkspaceId?: string | null;
+  renameName?: string;
+  onRenameChange?: (value: string) => void;
+  onRenameCancel?: () => void;
+  onRenameConfirm?: () => void;
   onShowWorktreeMenu: (event: MouseEvent, workspaceId: string) => void;
   onToggleExpanded: (workspaceId: string) => void;
   onLoadOlderThreads: (workspaceId: string) => void;
@@ -123,6 +129,12 @@ export function WorktreeSection({
   deleteConfirmBusy = false,
   onCancelDeleteConfirm,
   onConfirmDeleteConfirm,
+  renameThreadId = null,
+  renameWorkspaceId = null,
+  renameName = "",
+  onRenameChange,
+  onRenameCancel,
+  onRenameConfirm,
   onShowWorktreeMenu,
   onToggleExpanded,
   onLoadOlderThreads,
@@ -307,6 +319,12 @@ export function WorktreeSection({
                     deleteConfirmBusy={deleteConfirmBusy}
                     onCancelDeleteConfirm={onCancelDeleteConfirm}
                     onConfirmDeleteConfirm={onConfirmDeleteConfirm}
+                    renameThreadId={renameThreadId}
+                    renameWorkspaceId={renameWorkspaceId}
+                    renameName={renameName}
+                    onRenameChange={onRenameChange}
+                    onRenameCancel={onRenameCancel}
+                    onRenameConfirm={onRenameConfirm}
                   />
                 )}
                 {showWorktreeEmptyState ? <ThreadEmptyState nested /> : null}

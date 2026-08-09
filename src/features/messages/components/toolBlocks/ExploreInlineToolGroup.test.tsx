@@ -10,17 +10,24 @@ describe("ExploreInlineToolGroup", () => {
 
   it("renders title and items with shared explore-inline structure", () => {
     const { container } = render(
-      <ExploreInlineToolGroup icon={<span data-testid="icon" />} title="批量读取文件 (2)">
+      <ExploreInlineToolGroup icon={<span data-testid="icon" />} title="批量读取2个文件">
         <ExploreInlineItemRow kind="Read" label="a.ts" />
-        <ExploreInlineItemRow kind="Read" label="b.ts" detail="L1-10" />
+        <ExploreInlineItemRow
+          kind="Read"
+          icon={<span data-testid="file-type-icon" />}
+          label="b.ts"
+          detail="L1-10"
+        />
       </ExploreInlineToolGroup>,
     );
 
     expect(container.querySelector(".explore-inline")).toBeTruthy();
-    expect(screen.getByText("批量读取文件 (2)")).toBeTruthy();
+    expect(screen.getByText("批量读取2个文件")).toBeTruthy();
     expect(screen.getByText("a.ts")).toBeTruthy();
     expect(screen.getByText("b.ts")).toBeTruthy();
     expect(screen.getByText("L1-10")).toBeTruthy();
+    expect(screen.getByTestId("file-type-icon")).toBeTruthy();
+    expect(container.querySelector(".explore-inline-item.has-file-icon")).toBeTruthy();
   });
 
   it("collapses the list when header is toggled", () => {

@@ -444,6 +444,10 @@ fn is_grok_runtime_context_user_text(raw: &str) -> bool {
 /// user text
 /// </user_query>
 /// ```
+///
+/// When mossx injects [`super::cli_image_input::GROK_IMAGE_ONLY_FALLBACK_TEXT`]
+/// for image-only sends, Grok persists that string as `<user_query>…</user_query>`.
+/// The canvas must not show it as user-authored text — strip it here.
 pub(crate) fn parse_grok_user_prompt_for_display(text: &str) -> (String, Vec<String>) {
     let images = extract_grok_image_files_paths(text);
     let display = strip_user_query_wrapper(text);
@@ -458,7 +462,50 @@ pub(crate) fn parse_grok_user_prompt_for_display(text: &str) -> (String, Vec<Str
     } else {
         display
     };
+    let display = strip_grok_image_only_fallback_text(&display, !images.is_empty());
     (display, images)
+}
+
+/// Hide the CLI-only image-only placeholder from user bubbles.
+///
+/// Only strip when it is the **entire** display text (optionally with trailing
+/// punctuation/whitespace). Do not strip when the user typed real content that
+/// happens to contain the same phrase.
+fn strip_grok_image_only_fallback_text(display: &str, has_images: bool) -> String {
+    use super::cli_image_input::GROK_IMAGE_ONLY_FALLBACK_TEXT;
+    let trimmed = display.trim();
+    if trimmed.is_empty() {
+        return display.to_string();
+    }
+    // Exact match (with or without trailing period variants Grok may normalize).
+    let candidates = [
+        GROK_IMAGE_ONLY_FALLBACK_TEXT,
+        GROK_IMAGE_ONLY_FALLBACK_TEXT.trim_end_matches('.'),
+        &format!("{}.", GROK_IMAGE_ONLY_FALLBACK_TEXT.trim_end_matches('.')),
+    ];
+    let is_fallback = candidates
+        .iter()
+        .any(|candidate| trimmed.eq_ignore_ascii_case(candidate));
+    if is_fallback {
+        // Always strip exact fallback — with images this is the image-only path;
+        // without images it is still not user-authored (synthetic injection).
+        return String::new();
+    }
+    // Defense: fallback was the only line of a multi-line block that is otherwise empty.
+    if has_images {
+        let without_fallback = candidates.iter().fold(trimmed.to_string(), |acc, candidate| {
+            acc.lines()
+                .filter(|line| !line.trim().eq_ignore_ascii_case(candidate))
+                .collect::<Vec<_>>()
+                .join("\n")
+                .trim()
+                .to_string()
+        });
+        if without_fallback.is_empty() {
+            return String::new();
+        }
+    }
+    display.to_string()
 }
 
 fn extract_grok_image_files_paths(text: &str) -> Vec<String> {
@@ -1612,6 +1659,69 @@ mod tests {
         assert_eq!(
             images,
             vec!["/Users/me/.grok/sessions/%2Fcode%2Fcontent/abc/assets/image-1.png".to_string()]
+        );
+    }
+
+    #[test]
+    fn strips_image_only_cli_fallback_text_from_display() {
+        use super::super::cli_image_input::GROK_IMAGE_ONLY_FALLBACK_TEXT;
+        let raw = concat!(
+            "<image_files>\n",
+            "The following images were provided by the user and saved to the workspace for future use:\n",
+            "1. /Users/me/.grok/sessions/abc/assets/image-only.png\n",
+            "\n",
+            "These images can be copied for use in other locations.\n",
+            "</image_files>\n",
+            "\n",
+            "<user_query>\n",
+            "Please analyze the attached image(s).\n",
+            "</user_query>",
+        );
+        let (display, images) = parse_grok_user_prompt_for_display(raw);
+        assert_eq!(display, "", "CLI fallback must not appear as user text");
+        assert_eq!(
+            images,
+            vec!["/Users/me/.grok/sessions/abc/assets/image-only.png".to_string()]
+        );
+        // Exact fallback alone (no image_files wrapper) also strips.
+        let (display_plain, images_plain) =
+            parse_grok_user_prompt_for_display(GROK_IMAGE_ONLY_FALLBACK_TEXT);
+        assert_eq!(display_plain, "");
+        assert!(images_plain.is_empty());
+    }
+
+    #[test]
+    fn keeps_user_text_that_mentions_analyze_with_real_content() {
+        let raw = concat!(
+            "<image_files>\n",
+            "1. /tmp/assets/image-a.png\n",
+            "</image_files>\n",
+            "\n",
+            "<user_query>\n",
+            "Please analyze the attached image(s). Focus on the red box.\n",
+            "</user_query>",
+        );
+        let (display, images) = parse_grok_user_prompt_for_display(raw);
+        assert_eq!(
+            display,
+            "Please analyze the attached image(s). Focus on the red box."
+        );
+        assert_eq!(images, vec!["/tmp/assets/image-a.png".to_string()]);
+    }
+
+    #[test]
+    fn history_loader_strips_image_only_fallback_text() {
+        let chat_history = concat!(
+            r#"{"type":"user","content":[{"type":"text","text":"<image_files>\nThe following images were provided by the user and saved to the workspace for future use:\n1. /tmp/assets/image-only.png\n\nThese images can be copied for use in other locations.\n</image_files>\n\n<user_query>\nPlease analyze the attached image(s).\n</user_query>"}],"prompt_index":0}"#,
+            "\n",
+        );
+        let result = parse_messages_from_chat_history(chat_history);
+        assert_eq!(result.messages.len(), 1);
+        assert_eq!(result.messages[0].role, "user");
+        assert_eq!(result.messages[0].text, "");
+        assert_eq!(
+            result.messages[0].images.as_deref(),
+            Some(&["/tmp/assets/image-only.png".to_string()][..])
         );
     }
 

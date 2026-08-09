@@ -291,6 +291,11 @@ export function buildAssistantFinalBoundarySet(items: ConversationItem[]) {
   return ids;
 }
 
+/**
+ * 流式工作集。
+ * visibleWindow<=0：jetbrains 模式——始终全量 items（不裁尾窗），避免结束瞬间高度暴涨。
+ * visibleWindow>0：历史性能路径，仅 isThinking 时裁最近 visibleWindow*2 条。
+ */
 export function buildLiveTailWorkingSet(
   items: ConversationItem[],
   options: {
