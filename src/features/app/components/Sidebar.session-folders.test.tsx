@@ -899,7 +899,10 @@ describe("Sidebar workspace session folders", () => {
 
     const folderRow = await screen.findByRole("treeitem", { name: "Planning" });
     await act(async () => {
-      fireEvent.click(within(folderRow).getByRole("button", { name: "Delete folder" }));
+      fireEvent.click(within(folderRow).getByRole("button", { name: "Folder actions" }));
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("menuitem", { name: "Delete folder" }));
     });
 
     expect(confirmSpy).not.toHaveBeenCalled();

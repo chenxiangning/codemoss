@@ -8,7 +8,10 @@ import {
 } from "../features/startup-orchestration/utils/startupTrace";
 import { resetFullCatalogAutoRetryForTests } from "../features/startup-orchestration/utils/fullCatalogAutoRetry";
 import { resetStartupGateReadyForTests } from "../features/startup-orchestration/utils/startupGateReady";
-import { resetStartupForceEnterForTests } from "../features/startup-orchestration/utils/startupForceEnter";
+import {
+  markStartupForceEnter,
+  resetStartupForceEnterForTests,
+} from "../features/startup-orchestration/utils/startupForceEnter";
 import { useWorkspaceThreadListHydration } from "./useWorkspaceThreadListHydration";
 
 let restoreIdleCallbackForTest: (() => void) | null = null;
@@ -180,6 +183,31 @@ describe("useWorkspaceThreadListHydration", () => {
     );
     expect(taskEvents.some((event) => event.phase === "active-workspace")).toBe(true);
     expect(getStartupTraceSnapshot().milestones["active-workspace-ready"]).toBeTruthy();
+  });
+
+  it("does not swallow a first-paint failure when force-enter blocks idle follow-up", async () => {
+    const workspace = createWorkspace("ws-1");
+    const listThreadsForWorkspace = vi
+      .fn()
+      .mockRejectedValue(new Error("thread list failed"));
+    markStartupForceEnter();
+
+    const { result } = renderHook(() =>
+      useWorkspaceThreadListHydration({
+        activeWorkspaceId: workspace.id,
+        activeWorkspaceProjectionOwnerIds: [workspace.id],
+        listThreadsForWorkspace,
+        threadListLoadingByWorkspace: {},
+        workspaces: [],
+        workspacesById: new Map(),
+      }),
+    );
+
+    await act(async () => {
+      await expect(
+        result.current.listThreadsForWorkspaceTracked(workspace),
+      ).rejects.toThrow("thread list failed");
+    });
   });
 
   it("keeps manual tracked refreshes on full-catalog even for the active workspace", async () => {

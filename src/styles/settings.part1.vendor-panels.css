@@ -403,6 +403,125 @@
   gap: 22px;
 }
 
+/* Dense engine detail: cap content width + tighter vertical rhythm */
+.vendor-tab-content-dense {
+  gap: 14px;
+  max-width: 640px;
+}
+
+.vendor-tab-content-dense .vendor-brand-header {
+  min-height: 0;
+  gap: 12px;
+  padding: 2px 2px 10px;
+}
+
+.vendor-tab-content-dense .vendor-brand-logo {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+}
+
+.vendor-tab-content-dense .vendor-brand-logo .vendor-cli-logo-img {
+  width: 18px;
+  height: 18px;
+}
+
+.vendor-tab-content-dense .vendor-brand-title {
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.vendor-tab-content-dense .vendor-group-card,
+.vendor-tab-content-dense .vendor-provider-list {
+  border-radius: 6px;
+}
+
+/*
+ * Engine settings / provider channels section stack.
+ * Parent dense gap is 14px; each section adds margin-top 14px so the break
+ * above the first section (after brand header) and between sibling sections
+ * both read as ~28px — keeps the two peer blocks from feeling uneven.
+ */
+.vendor-settings-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.vendor-settings-section-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  padding: 0 2px;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--text-secondary);
+  line-height: 1.3;
+}
+
+.vendor-section-label-icon {
+  flex-shrink: 0;
+  width: 15px;
+  height: 15px;
+  color: var(--text-secondary);
+  opacity: 0.9;
+}
+
+/* Quiet help affordance: grayer than .vendor-btn-icon, still readable. */
+.vendor-btn-icon.vendor-settings-row-help {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  color: var(--text-faint);
+}
+
+.vendor-btn-icon.vendor-settings-row-help:hover,
+.vendor-btn-icon.vendor-settings-row-help[data-state="open"] {
+  color: var(--text-muted);
+  background: transparent;
+}
+
+.vendor-btn-icon.vendor-settings-row-help svg {
+  width: 12px;
+  height: 12px;
+}
+
+.vendor-settings-row-help-popover {
+  width: min(320px, calc(100vw - 32px));
+  padding: 12px;
+}
+
+.vendor-settings-row-help-body,
+.vendor-settings-row-help-stack {
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--text-secondary);
+}
+
+.vendor-settings-row-help-stack p {
+  margin: 0;
+}
+
+.vendor-settings-row-help-stack p + p {
+  margin-top: 6px;
+}
+
+.vendor-tab-content-dense > .vendor-settings-section {
+  margin-top: 14px;
+}
+
+/* Provider list title matches the engine section label weight. */
+.vendor-tab-content-dense .vendor-list-title {
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--text-secondary);
+}
+
 .vendor-brand-header {
   display: flex;
   flex-wrap: wrap;
@@ -458,16 +577,30 @@
 }
 
 .vendor-brand-help {
-  width: 18px;
-  height: 18px;
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  border-radius: 999px;
+  gap: 3px;
+  margin-left: 2px;
+  padding: 1px 2px;
+  border-radius: 4px;
   color: var(--text-muted);
-  background: color-mix(in srgb, var(--surface-hover) 70%, transparent);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 400;
+  line-height: 1.2;
+  text-decoration: none;
+  opacity: 0.72;
+  transition: opacity 0.15s ease, color 0.15s ease;
+}
+
+.vendor-brand-help:hover {
+  color: var(--text-secondary, var(--text-muted));
+  opacity: 1;
+}
+
+.vendor-brand-help-icon {
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
 }
 
 .vendor-brand-actions {
@@ -571,16 +704,42 @@
   background: var(--settings-basic-control);
 }
 
-.vendor-plugin-models-manage-btn {
-  padding: 5px 12px;
-  background: var(--settings-basic-control);
-  border: 1px solid var(--settings-basic-control-border);
-  border-radius: 8px;
-  color: var(--text-secondary);
-  font-size: 12px;
+/* Preference-row disclosure: count/meta + chevron (no grey slab buttons). */
+.vendor-group-row-trailing {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+.vendor-group-row-chevron-btn {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  margin: 0;
+  padding: 0;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-faint, var(--text-muted));
   cursor: pointer;
   flex-shrink: 0;
-  transition: all 0.15s;
+  transition:
+    color 120ms ease,
+    background-color 120ms ease;
+}
+
+.vendor-group-row-chevron-btn:hover {
+  color: var(--text-secondary);
+  background: color-mix(in srgb, var(--surface-hover) 70%, transparent);
+}
+
+.vendor-group-row-clickable:hover .vendor-group-row-chevron-btn {
+  color: var(--text-secondary);
 }
 
 .vendor-custom-path-summary {
@@ -588,11 +747,6 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.vendor-plugin-models-manage-btn:hover {
-  background: var(--settings-basic-control-hover);
-  color: var(--text-primary);
 }
 
 .vendor-provider-list {
@@ -633,7 +787,10 @@
 }
 
 .vendor-list-title {
-  font-size: 13px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
   font-weight: 600;
   color: var(--text-primary);
 }
@@ -643,7 +800,7 @@
   background: var(--vendor-button-primary);
   color: var(--vendor-button-primary-fg);
   border: 1px solid var(--vendor-button-primary);
-  border-radius: 8px;
+  border-radius: 4px;
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
@@ -816,7 +973,7 @@
   flex-direction: column;
   gap: 0;
   border: 1px solid var(--settings-basic-border);
-  border-radius: 14px;
+  border-radius: 6px;
   background: var(--settings-basic-surface);
   overflow: hidden;
 }
@@ -838,28 +995,39 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
-  padding: 13px 18px;
+  gap: 12px;
+  padding: 10px 14px;
+  min-height: 44px;
 }
 
 .vendor-group-row-copy {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 1px;
   min-width: 0;
 }
 
 .vendor-group-row-title {
-  font-size: 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 13px;
   font-weight: 600;
   color: var(--text-primary);
+  line-height: 1.3;
+}
+
+.vendor-group-row-title-hint {
+  margin-left: 6px;
+  font-weight: 400;
+  white-space: nowrap;
 }
 
 .vendor-group-row .settings-help {
   margin-top: 0;
   color: var(--text-muted);
-  font-size: 12px;
-  line-height: 1.45;
+  font-size: 11.5px;
+  line-height: 1.35;
 }
 
 .vendor-group-row-clickable {
@@ -883,38 +1051,43 @@
 }
 
 .vendor-group-card .vendor-official-config-row {
-  min-height: 0;
-  padding: 14px 18px;
+  min-height: 44px;
+  padding: 10px 14px;
 }
 
 .vendor-official-config-copy .vendor-current-config-title {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 3px;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.3;
 }
 
-.vendor-official-config-help {
-  width: 20px;
-  height: 20px;
-  color: var(--text-faint);
-}
-
-.vendor-official-config-help:hover {
-  color: var(--text-secondary);
-}
-
-.vendor-official-config-help svg {
-  width: 13px;
-  height: 13px;
+.vendor-official-config-copy .settings-help {
+  margin-top: 1px;
+  font-size: 11.5px;
+  line-height: 1.35;
 }
 
 .vendor-group-card > .settings-toggle-row.vendor-group-row {
-  min-height: 0;
+  min-height: 44px;
   margin: 0;
-  padding: 13px 18px;
-  border: 0;
+  padding: 10px 14px;
+  /* Do not zero border-top — sibling rule draws hairline dividers. */
+  border-left: 0;
+  border-right: 0;
+  border-bottom: 0;
   border-radius: 0;
   background: transparent;
+}
+
+/* Explicit top hairlines so every group-card row has a divider (toggle rows
+ * used to wipe border via `border: 0`). */
+.vendor-group-card > * + .settings-toggle-row.vendor-group-row,
+.vendor-group-card > * + .vendor-group-row,
+.vendor-group-card > * + .vendor-current-config {
+  border-top: 1px solid var(--settings-basic-divider);
 }
 
 .vendor-summary-card {
@@ -1053,6 +1226,13 @@
 
 .vendor-settings-panel [data-slot="button"] {
   border-radius: 8px;
+}
+
+/* 供应商渠道标题旁「导入ccswitch / + 添加」等操作按钮
+ * 导入按钮经 DropdownMenuTrigger asChild 后 data-slot 可能是 dropdown-menu-trigger */
+.vendor-settings-panel .vendor-list-actions [data-slot="button"],
+.vendor-settings-panel .vendor-list-actions [data-slot="dropdown-menu-trigger"] {
+  border-radius: 4px;
 }
 
 .vendor-settings-panel [data-slot="badge"] {
@@ -1231,7 +1411,7 @@
 }
 
 .vendor-current-config-title {
-  font-size: 15px;
+  font-size: 13px;
   font-weight: 600;
   color: var(--text-primary);
 }

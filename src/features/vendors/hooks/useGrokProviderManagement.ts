@@ -8,8 +8,14 @@ import {
   deleteGrokProvider,
   switchGrokProvider,
 } from "../../../services/tauri";
+import { applyOptimisticActiveProvider } from "../applyOptimisticActiveProvider";
 import { VENDOR_ACTIVE_PROVIDER_CHANGED_EVENT } from "../vendorActiveProviderEvents";
 import { notifyProviderTargetCatalogChanged } from "../../composer/components/ChatInputBox/hooks/useProviderTargetCatalogOwners";
+
+/** List load options. `silent` skips list-level loading UI (switch / external events). */
+export type GrokProviderLoadOptions = {
+  silent?: boolean;
+};
 
 export interface GrokProviderDialogState {
   isOpen: boolean;
@@ -33,7 +39,8 @@ function getErrorMessage(error: unknown, fallback: string): string {
 
 export function useGrokProviderManagement() {
   const [grokProviders, setGrokProviders] = useState<GrokProviderConfig[]>([]);
-  const [grokLoading, setGrokLoading] = useState(false);
+  // Start true so first paint shows a loading placeholder instead of an empty list.
+  const [grokLoading, setGrokLoading] = useState(true);
   const [grokProviderError, setGrokProviderError] = useState<string | null>(
     null,
   );
@@ -52,38 +59,46 @@ export function useGrokProviderManagement() {
       provider: null,
     });
 
-  const loadGrokProviders = useCallback(async () => {
-    setGrokLoading(true);
-    try {
-      const list = await getGrokProviders();
-      setGrokProviders(list);
-      setGrokProviderError(null);
-    } catch (error) {
-      setGrokProviderError(
-        getErrorMessage(error, "Failed to load Grok providers."),
-      );
-    } finally {
-      setGrokLoading(false);
-    }
-    // 当前配置刷新失败不阻塞 provider 列表。
-    try {
-      const config = await getCurrentGrokConfig();
-      setCurrentGrokConfig(config);
-      if (
-        config.configStatus === "malformed" ||
-        config.configStatus === "io-error"
-      ) {
+  const loadGrokProviders = useCallback(
+    async (options?: GrokProviderLoadOptions) => {
+      const silent = Boolean(options?.silent);
+      if (!silent) {
+        setGrokLoading(true);
+      }
+      try {
+        const list = await getGrokProviders();
+        setGrokProviders(list);
+        setGrokProviderError(null);
+      } catch (error) {
         setGrokProviderError(
-          config.diagnostic ?? `Grok config is ${config.configStatus}.`,
+          getErrorMessage(error, "Failed to load Grok providers."),
+        );
+      } finally {
+        if (!silent) {
+          setGrokLoading(false);
+        }
+      }
+      // 当前配置刷新失败不阻塞 provider 列表。
+      try {
+        const config = await getCurrentGrokConfig();
+        setCurrentGrokConfig(config);
+        if (
+          config.configStatus === "malformed" ||
+          config.configStatus === "io-error"
+        ) {
+          setGrokProviderError(
+            config.diagnostic ?? `Grok config is ${config.configStatus}.`,
+          );
+        }
+      } catch (error) {
+        setCurrentGrokConfig(null);
+        setGrokProviderError(
+          getErrorMessage(error, "Failed to inspect Grok config."),
         );
       }
-    } catch (error) {
-      setCurrentGrokConfig(null);
-      setGrokProviderError(
-        getErrorMessage(error, "Failed to inspect Grok config."),
-      );
-    }
-  }, []);
+    },
+    [],
+  );
 
   useEffect(() => {
     void loadGrokProviders();
@@ -95,7 +110,7 @@ export function useGrokProviderManagement() {
       if (detail?.engine && detail.engine !== "grok") {
         return;
       }
-      void loadGrokProviders();
+      void loadGrokProviders({ silent: true });
     };
     window.addEventListener(
       VENDOR_ACTIVE_PROVIDER_CHANGED_EVENT,
@@ -150,18 +165,26 @@ export function useGrokProviderManagement() {
 
   const handleSwitchGrokProvider = useCallback(
     async (id: string) => {
+      const previous = grokProviders;
+      setGrokProviders(applyOptimisticActiveProvider(previous, id));
       try {
         await switchGrokProvider(id);
+        try {
+          const config = await getCurrentGrokConfig();
+          setCurrentGrokConfig(config);
+        } catch {
+          // Keep optimistic list; current-config inspect failure is non-fatal.
+        }
         setGrokProviderError(null);
-        await loadGrokProviders();
         notifyProviderTargetCatalogChanged();
       } catch (error) {
+        setGrokProviders(previous);
         setGrokProviderError(
           getErrorMessage(error, "Failed to switch Grok provider."),
         );
       }
     },
-    [loadGrokProviders],
+    [grokProviders],
   );
 
   const handleDeleteGrokProvider = useCallback(

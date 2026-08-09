@@ -14,8 +14,18 @@ import {
   stripCollabInternalPrompt,
 } from "./collabPrompt";
 
-function user(id: string, text: string): ConversationItem {
-  return { id, kind: "message", role: "user", text };
+function user(
+  id: string,
+  text: string,
+  images?: string[],
+): ConversationItem {
+  return {
+    id,
+    kind: "message",
+    role: "user",
+    text,
+    ...(images && images.length > 0 ? { images } : {}),
+  };
 }
 
 function assistant(id: string, text: string): ConversationItem {
@@ -217,6 +227,50 @@ describe("filterMultiAgentCanvasItems", () => {
   it("hides summary request even with partial marker prefix", () => {
     const items: ConversationItem[] = [
       user("u-sum-partial", "[[mossx.collab.summary"),
+    ];
+    expect(filterMultiAgentCanvasItems(items)).toHaveLength(0);
+  });
+
+  it("keeps image-only user bubbles with empty text (cross-engine pure image send)", () => {
+    // 回归：resolveCollapsedTimelineItems 对所有会话都先跑本 filter；
+    // 旧逻辑把 empty text user 整段丢掉 → 纯图发送幕布空白。
+    const items: ConversationItem[] = [
+      user("optimistic-user-1", "", ["/tmp/shot.png"]),
+      assistant("a-1", "图里是表格"),
+    ];
+    const filtered = filterMultiAgentCanvasItems(items);
+    expect(filtered).toHaveLength(2);
+    expect(filtered[0]).toEqual(
+      expect.objectContaining({
+        id: "optimistic-user-1",
+        role: "user",
+        text: "",
+        images: ["/tmp/shot.png"],
+      }),
+    );
+  });
+
+  it("keeps two different image-only user turns without collapsing them", () => {
+    const items: ConversationItem[] = [
+      user("u-img-1", "", ["/tmp/a.png"]),
+      assistant("a-1", "第一张"),
+      user("u-img-2", "", ["/tmp/b.png"]),
+      assistant("a-2", "第二张"),
+    ];
+    const filtered = filterMultiAgentCanvasItems(items);
+    const users = filtered.filter(
+      (item) => item.kind === "message" && item.role === "user",
+    );
+    expect(users).toHaveLength(2);
+    expect(users.map((item) => item.id)).toEqual(["u-img-1", "u-img-2"]);
+  });
+
+  it("still hides pure collab-internal user bubbles without attachments", () => {
+    const items: ConversationItem[] = [
+      user(
+        "u-internal",
+        "[[mossx.collab.summary]]\n【协作调度 · 完成汇总】\n请写汇总",
+      ),
     ];
     expect(filterMultiAgentCanvasItems(items)).toHaveLength(0);
   });

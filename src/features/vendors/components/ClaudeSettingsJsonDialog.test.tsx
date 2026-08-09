@@ -1,22 +1,35 @@
 // @vitest-environment jsdom
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { readClaudeSettingsJson, saveClaudeSettingsJson } from "../../../services/tauri";
+import {
+  openFolderInFileManager,
+  readClaudeSettingsJson,
+  saveClaudeSettingsJson,
+} from "../../../services/tauri";
 import { ClaudeSettingsJsonDialog } from "./ClaudeSettingsJsonDialog";
+
+vi.mock("./OfficialConfigCodeEditor", async () => {
+  const { OfficialConfigCodeEditorMock } = await import(
+    "./officialConfigCodeEditorTestMock"
+  );
+  return { OfficialConfigCodeEditor: OfficialConfigCodeEditorMock };
+});
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
-    t: (key: string) => key,
+    t: (key: string, options?: { defaultValue?: string }) =>
+      options?.defaultValue ?? key,
   }),
 }));
 
 vi.mock("../../../services/tauri", () => ({
   readClaudeSettingsJson: vi.fn(),
   saveClaudeSettingsJson: vi.fn(),
+  openFolderInFileManager: vi.fn(),
 }));
 
 describe("ClaudeSettingsJsonDialog", () => {
-  it("uses an editor-like layout for the official settings JSON", async () => {
+  it("uses the shared official-config pane layout", async () => {
     vi.mocked(readClaudeSettingsJson).mockResolvedValueOnce('{\n  "model": "opus"\n}');
 
     const { container } = render(
@@ -28,17 +41,45 @@ describe("ClaudeSettingsJsonDialog", () => {
     );
 
     const editor = await screen.findByRole("textbox", {
-      name: "settings.vendor.localProviderDescription",
+      name: "settings.vendor.localProviderName",
     });
     expect(editor.classList.contains("vendor-official-json-editor")).toBe(true);
-
-    const heading = container.querySelector(".vendor-official-json-heading");
-    expect(heading?.textContent).toContain(
-      "settings.vendor.localProviderDescription",
-    );
+    expect(container.querySelector(".vendor-official-config-pane")).toBeTruthy();
     expect(
-      heading?.querySelector(".vendor-json-toolbar button")?.textContent,
-    ).toBe("settings.vendor.dialog.formatJson");
+      container.querySelector(".vendor-official-config-pane-path")?.textContent,
+    ).toBe("~/.claude/settings.json");
+    expect(
+      screen.getByRole("button", {
+        name: "settings.vendor.dialog.formatJson",
+      }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("button", {
+        name: "Open file",
+      }),
+    ).toBeTruthy();
+  });
+
+  it("opens the containing folder for ~/.claude/settings.json", async () => {
+    vi.mocked(readClaudeSettingsJson).mockResolvedValueOnce("{}");
+    vi.mocked(openFolderInFileManager).mockResolvedValueOnce(undefined);
+
+    render(
+      <ClaudeSettingsJsonDialog
+        isOpen
+        onClose={vi.fn()}
+        onSaved={vi.fn()}
+      />,
+    );
+
+    await screen.findByRole("textbox");
+    fireEvent.click(screen.getByRole("button", { name: "Open file" }));
+
+    await waitFor(() => {
+      expect(openFolderInFileManager).toHaveBeenCalledWith(
+        "~/.claude/settings.json",
+      );
+    });
   });
 
   it("inserts two-space indentation when Tab is pressed in the editor", async () => {
@@ -54,7 +95,7 @@ describe("ClaudeSettingsJsonDialog", () => {
     );
 
     const editor = await screen.findByRole<HTMLTextAreaElement>("textbox", {
-      name: "settings.vendor.localProviderDescription",
+      name: "settings.vendor.localProviderName",
     });
     fireEvent.change(editor, { target: { value: "{\n}" } });
     editor.setSelectionRange(2, 2);

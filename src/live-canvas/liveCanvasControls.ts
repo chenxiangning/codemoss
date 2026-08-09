@@ -2,6 +2,15 @@ export const MESSAGES_LIVE_AUTO_FOLLOW_FLAG_KEY = "ccgui.messages.live.autoFollo
 export const MESSAGES_LIVE_COLLAPSE_MIDDLE_STEPS_FLAG_KEY =
   "ccgui.messages.live.collapseMiddleSteps";
 export const MESSAGES_LIVE_CONTROLS_UPDATED_EVENT = "ccgui:messages-live-controls-updated";
+/** 发送消息当场强制幕布贴底（对齐 jetbrains useMessageSender 发送路径钉底）。 */
+export const MESSAGES_FORCE_PIN_BOTTOM_EVENT = "ccgui:messages-force-pin-bottom";
+
+export function emitMessagesForcePinBottom(): void {
+  if (typeof document === "undefined") {
+    return;
+  }
+  document.dispatchEvent(new CustomEvent(MESSAGES_FORCE_PIN_BOTTOM_EVENT));
+}
 
 export function readLocalBooleanFlag(storageKey: string, fallbackValue: boolean): boolean {
   if (typeof window === "undefined") {

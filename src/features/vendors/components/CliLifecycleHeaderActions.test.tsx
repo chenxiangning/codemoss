@@ -29,17 +29,21 @@ function renderHeader(
     localVersion: string | null;
     latestVersion: string | null;
     updateAvailable: boolean;
-  },
+    installed?: boolean;
+  } | null,
+  options?: { loading?: boolean },
 ) {
   useCliVersionStatusMock.mockReturnValue({
-    status: {
-      engine: "claude",
-      installed: true,
-      nodeOk: true,
-      details: null,
-      ...status,
-    },
-    loading: false,
+    status: status
+      ? {
+          engine: "claude",
+          installed: status.installed ?? true,
+          nodeOk: true,
+          details: null,
+          ...status,
+        }
+      : null,
+    loading: options?.loading ?? false,
     error: null,
     refresh: vi.fn(),
   });
@@ -88,5 +92,39 @@ describe("CliLifecycleHeaderActions", () => {
     });
 
     expect(screen.getByText("Up to date")).toBeTruthy();
+  });
+
+  it("shows a checking placeholder instead of not-installed while status is cold", () => {
+    renderHeader(null, { loading: true });
+
+    expect(screen.getByText("settings.cliVersionChecking")).toBeTruthy();
+    expect(screen.queryByText("settings.cliVersionNotInstalled")).toBeNull();
+  });
+
+  it("keeps the last known version visible while a soft refresh is in flight", () => {
+    renderHeader(
+      {
+        localVersion: "2.1.226 (Claude Code)",
+        latestVersion: "2.1.226",
+        updateAvailable: false,
+      },
+      { loading: true },
+    );
+
+    // Test i18n mock returns the key; presence of version label means not-checking.
+    expect(screen.getByText("settings.cliVersionLabel")).toBeTruthy();
+    expect(screen.getByText("Up to date")).toBeTruthy();
+    expect(screen.queryByText("settings.cliVersionChecking")).toBeNull();
+  });
+
+  it("shows not-installed only after a definitive status says so", () => {
+    renderHeader({
+      localVersion: null,
+      latestVersion: null,
+      updateAvailable: false,
+      installed: false,
+    });
+
+    expect(screen.getByText("settings.cliVersionNotInstalled")).toBeTruthy();
   });
 });

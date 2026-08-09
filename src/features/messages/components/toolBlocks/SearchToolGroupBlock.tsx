@@ -23,9 +23,11 @@ interface SearchToolGroupBlockProps {
   items: ToolItem[];
 }
 
+type SearchKindKey = 'match' | 'web' | 'search';
+
 interface ParsedSearchItem {
   id: string;
-  kind: string;
+  kindKey: SearchKindKey;
   pattern: string;
   summary: string;
 }
@@ -56,14 +58,23 @@ function renderTextWithLinks(text: string): Array<{ type: 'text' | 'link'; value
   return parts.length > 0 ? parts : [{ type: 'text', value: text }];
 }
 
-function resolveSearchKind(item: ToolItem): string {
+function resolveSearchKindKey(item: ToolItem): SearchKindKey {
   const name = extractToolName(item.title).toLowerCase();
-  if (name.includes('glob') || name.includes('find')) return 'Match';
-  if (name.includes('web') || item.toolType === 'webSearch') return 'Web';
-  return 'Search';
+  if (name.includes('glob') || name.includes('find')) return 'match';
+  if (name.includes('web') || item.toolType === 'webSearch') return 'web';
+  return 'search';
 }
 
-function parseSearchItem(item: ToolItem): ParsedSearchItem {
+const SEARCH_KIND_I18N: Record<SearchKindKey, string> = {
+  match: 'tools.kindMatch',
+  web: 'tools.kindWeb',
+  search: 'tools.kindSearch',
+};
+
+function parseSearchItem(
+  item: ToolItem,
+  t?: (key: string, options?: { count: number }) => string,
+): ParsedSearchItem {
   const args = parseToolArgs(item.detail);
   const pattern = getFirstStringField(args, ['pattern', 'query', 'q', 'search_term', 'searchQuery', 'text']);
   const path = getFirstStringField(args, ['path', 'directory', 'dir']);
@@ -73,6 +84,7 @@ function parseSearchItem(item: ToolItem): ParsedSearchItem {
   const presentation = resolveSearchInlinePresentation(summaryRaw, args, {
     maxLength: 90,
     pattern,
+    t,
   });
 
   let patternDisplay = truncateText(pattern, 50);
@@ -88,7 +100,7 @@ function parseSearchItem(item: ToolItem): ParsedSearchItem {
 
   return {
     id: item.id,
-    kind: resolveSearchKind(item),
+    kindKey: resolveSearchKindKey(item),
     pattern: patternDisplay,
     summary,
   };
@@ -127,7 +139,10 @@ export const SearchToolGroupBlock = memo(function SearchToolGroupBlock({
   const listRef = useRef<HTMLDivElement | null>(null);
   const prevCountRef = useRef(items.length);
 
-  const parsed = useMemo(() => items.map(parseSearchItem), [items]);
+  const parsed = useMemo(
+    () => items.map((item) => parseSearchItem(item, (key, options) => t(key, options))),
+    [items, t],
+  );
 
   useEffect(() => {
     if (items.length > prevCountRef.current && listRef.current) {
@@ -167,7 +182,7 @@ export const SearchToolGroupBlock = memo(function SearchToolGroupBlock({
         return (
           <ExploreInlineItemRow
             key={entry.id}
-            kind={entry.kind}
+            kind={t(SEARCH_KIND_I18N[entry.kindKey])}
             label={label}
             detail={
               detailText ? <SearchDetailWithLinks text={detailText} /> : undefined

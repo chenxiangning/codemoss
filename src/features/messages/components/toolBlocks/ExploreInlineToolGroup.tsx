@@ -45,6 +45,8 @@ export type ExploreInlineToolGroupProps = {
 
 export type ExploreInlineItemRowProps = {
   kind?: string;
+  /** 文件类型图标等前缀节点（插在 kind 与 label 之间） */
+  icon?: ReactNode;
   label: ReactNode;
   detail?: ReactNode;
   title?: string;
@@ -104,14 +106,23 @@ export const ExploreInlineToolGroup = memo(function ExploreInlineToolGroup({
 
 export const ExploreInlineItemRow = memo(function ExploreInlineItemRow({
   kind,
+  icon,
   label,
   detail,
   title,
   className,
 }: ExploreInlineItemRowProps) {
   return (
-    <div className={cn("explore-inline-item", className)} title={title}>
+    <div
+      className={cn("explore-inline-item", icon != null && "has-file-icon", className)}
+      title={title}
+    >
       {kind ? <span className="explore-inline-kind">{kind}</span> : null}
+      {icon != null ? (
+        <span className="explore-inline-file-icon" aria-hidden>
+          {icon}
+        </span>
+      ) : null}
       <span className="explore-inline-label">{label}</span>
       {detail ? <span className="explore-inline-detail">{detail}</span> : null}
     </div>

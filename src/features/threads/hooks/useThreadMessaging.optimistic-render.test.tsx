@@ -193,6 +193,97 @@ describe("useThreadMessaging optimistic render", () => {
     expect(optimisticAction.item?.text).toBe("hello codex");
   });
 
+  it("adds image-only optimistic bubble before send (home first-send / empty text)", async () => {
+    const { result, dispatch } = makeHook("claude", {
+      threadEngineById: { "thread-1": "claude" },
+    });
+    const imagePath = "/tmp/home-first-send.png";
+
+    await act(async () => {
+      await result.current.sendUserMessageToThread(
+        workspace,
+        "thread-1",
+        "",
+        [imagePath],
+      );
+    });
+
+    const optimisticCall = findOptimisticUserCall(dispatch);
+    expect(optimisticCall).toBeDefined();
+    const optimisticAction = optimisticCall?.[0] as {
+      item?: { id?: string; text?: string; images?: string[] };
+    };
+    expect(optimisticAction.item?.id).toMatch(/^optimistic-user-/);
+    // 纯图：气泡正文为空，绝不能出现 CLI 占位文案
+    expect(optimisticAction.item?.text).toBe("");
+    expect(optimisticAction.item?.images).toEqual([imagePath]);
+    expect(optimisticAction.item?.text).not.toContain(
+      "Please analyze the attached image",
+    );
+  });
+
+  it("adds optimistic bubble on brand-new thread (null previous active)", async () => {
+    const startThread = vi.fn(async () => "claude-pending-new");
+    const dispatch = vi.fn();
+    const hook = renderHook(() =>
+      useThreadMessaging({
+        activeWorkspace: workspace,
+        activeThreadId: null,
+        accessMode: "current",
+        model: null,
+        effort: null,
+        collaborationMode: null,
+        steerEnabled: false,
+        customPrompts: [],
+        activeEngine: "claude",
+        threadStatusById: {},
+        itemsByThread: {},
+        activeTurnIdByThread: {},
+        codexAcceptedTurnByThread: {},
+        tokenUsageByThread: {},
+        rateLimitsByWorkspace: {},
+        codexCompactionInFlightByThreadRef: { current: {} },
+        pendingInterruptsRef: { current: new Map<string, Map<string, true>>() },
+        interruptedThreadsRef: { current: new Map<string, Map<string, true>>() },
+        dispatch,
+        getCustomName: () => undefined,
+        getThreadEngine: () => undefined,
+        getThreadKind: () => "native",
+        markProcessing: vi.fn(),
+        markReviewing: vi.fn(),
+        setActiveTurnId: vi.fn(),
+        recordThreadActivity: vi.fn(),
+        safeMessageActivity: vi.fn(),
+        pushThreadErrorMessage: vi.fn(),
+        ensureThreadForActiveWorkspace: async () => null,
+        ensureThreadForWorkspace: async () => "claude-pending-new",
+        refreshThread: async () => null,
+        forkThreadForWorkspace: async () => null,
+        updateThreadParent: vi.fn(),
+        startThreadForWorkspace: startThread,
+        onDebug: vi.fn(),
+      }),
+    );
+
+    await act(async () => {
+      await hook.result.current.sendUserMessage(
+        "",
+        ["/tmp/from-home.png"],
+      );
+    });
+
+    expect(startThread).toHaveBeenCalled();
+    const optimisticCall = findOptimisticUserCall(dispatch);
+    expect(optimisticCall).toBeDefined();
+    const optimisticAction = optimisticCall?.[0] as {
+      threadId?: string;
+      item?: { text?: string; images?: string[] };
+    };
+    expect(optimisticAction.threadId).toBe("claude-pending-new");
+    expect(optimisticAction.item?.text).toBe("");
+    expect(optimisticAction.item?.images).toEqual(["/tmp/from-home.png"]);
+  });
+
   it("adds generated image processing card for direct codex image request text", async () => {
     const { result, dispatch } = makeHook("codex");
 

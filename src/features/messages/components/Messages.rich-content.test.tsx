@@ -1191,7 +1191,7 @@ describe("Messages rich content", () => {
 
     // 场景默认折叠，先展开再断言文件名
     const sceneHeader = screen.getByRole("button", {
-      name: /tools\.fileEditSceneToggle|File changes|文件修改/i,
+      name: /tools\.fileEditSceneToggle|Batch edit|File changes|批量修改|文件修改/i,
     });
     fireEvent.click(sceneHeader);
 

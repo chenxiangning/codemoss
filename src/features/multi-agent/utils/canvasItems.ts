@@ -178,16 +178,63 @@ export function relocateMultiAgentHistFolds(
   return result;
 }
 
+function userMessageHasRenderableAttachment(
+  item: Extract<ConversationItem, { kind: "message" }>,
+): boolean {
+  if (Array.isArray(item.images) && item.images.some((path) => path.trim().length > 0)) {
+    return true;
+  }
+  if (item.browserContextAttachment) {
+    return true;
+  }
+  if (
+    Array.isArray(item.intentCanvasContextAttachments) &&
+    item.intentCanvasContextAttachments.length > 0
+  ) {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * 协作内部提示词从 user 气泡剥离。
+ * - 纯内部提示（无用户原文、无附图）→ null（整段隐藏）
+ * - **纯图 / 仅附件**（正文清理后为空但仍有 images 等）→ 保留，text 置空
+ *   这是跨引擎（Claude/Grok/…）「只发图」幕布可见的关键路径：
+ *   `resolveCollapsedTimelineItems` 对所有会话都先跑 `filterMultiAgentCanvasItems`。
+ */
 function normalizeUserItemText(
   item: Extract<ConversationItem, { kind: "message" }>,
 ): Extract<ConversationItem, { kind: "message" }> | null {
   if (item.role !== "user") return item;
   const cleaned = stripCollabInternalPrompt(item.text);
   if (!cleaned) {
+    // 纯内部提示词：无图则隐藏；有图/附件则保留为空正文气泡
+    if (userMessageHasRenderableAttachment(item)) {
+      return cleaned === item.text ? item : { ...item, text: "" };
+    }
     return null;
   }
   if (cleaned === item.text) return item;
   return { ...item, text: cleaned };
+}
+
+/** 空正文去重不能只靠 text，否则多条纯图会被互相吃掉 */
+function userMessageDedupeKey(
+  item: Extract<ConversationItem, { kind: "message" }>,
+): string {
+  const textKey = item.text.trim();
+  if (textKey.length > 0) {
+    return `t:${textKey}`;
+  }
+  const images = (item.images ?? [])
+    .map((path) => path.trim())
+    .filter((path) => path.length > 0)
+    .join("\0");
+  if (images.length > 0) {
+    return `i:${images}`;
+  }
+  return `id:${item.id}`;
 }
 
 /**
@@ -226,31 +273,31 @@ export function filterMultiAgentCanvasItems(
   }
 
   const formalSquadRunIds = new Set<string>();
-  const formalTexts = new Set<string>();
+  const formalDedupeKeys = new Set<string>();
   for (const item of stripped) {
     if (item.kind !== "message" || item.role !== "user") continue;
     const runId = parseMultiAgentUserRunId(item.id);
     if (runId && item.id.startsWith("squad:")) {
       formalSquadRunIds.add(runId);
-      formalTexts.add(item.text.trim());
+      formalDedupeKeys.add(userMessageDedupeKey(item));
     }
   }
 
   const seenSquadRun = new Set<string>();
   const seenAgentRun = new Set<string>();
-  const seenPendingText = new Set<string>();
+  const seenPendingKeys = new Set<string>();
   const out: ConversationItem[] = [];
 
   for (const item of stripped) {
     if (item.kind === "message" && item.role === "user") {
       const id = item.id;
-      const textKey = item.text.trim();
+      const dedupeKey = userMessageDedupeKey(item);
 
       if (isPendingMultiAgentUserId(id)) {
-        // 已有正式 multi-agent user 同文案 → pending 可丢（避免双气泡）
-        if (formalTexts.has(textKey)) continue;
-        if (seenPendingText.has(textKey)) continue;
-        seenPendingText.add(textKey);
+        // 已有正式 multi-agent user 同文案/同图 → pending 可丢（避免双气泡）
+        if (formalDedupeKeys.has(dedupeKey)) continue;
+        if (seenPendingKeys.has(dedupeKey)) continue;
+        seenPendingKeys.add(dedupeKey);
         out.push(item);
         continue;
       }
@@ -271,8 +318,8 @@ export function filterMultiAgentCanvasItems(
         continue;
       }
 
-      // 普通 user：若与 formal multi-agent user 同文案（多为 briefing 剥离后残留）则丢
-      if (formalTexts.has(textKey)) continue;
+      // 普通 user：若与 formal multi-agent user 同文案/同图（多为 briefing 剥离后残留）则丢
+      if (formalDedupeKeys.has(dedupeKey)) continue;
       out.push(item);
       continue;
     }

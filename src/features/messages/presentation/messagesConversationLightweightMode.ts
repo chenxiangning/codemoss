@@ -22,7 +22,7 @@ export type ConversationLightweightModeState = {
 /**
  * 统一幕布（unify-conversation-canvas）：对话级轻量「摘要墙」已下线。
  * 仍导出阈值常量供诊断/历史测试引用；policy 恒不建议、mode 恒 inactive。
- * 性能靠流式尾窗 + 闲时虚拟化 + 块级「显示详情」（保留）。
+ * 列表虚拟化与流式尾窗均已关闭（性能换丝滑）；块级「显示详情」仍保留。
  */
 export function resolveConversationLightweightPolicy(
   _summary: Pick<TimelineRenderWeightSummary, "rowCount" | "renderWeight" | "heavyRowCount">,

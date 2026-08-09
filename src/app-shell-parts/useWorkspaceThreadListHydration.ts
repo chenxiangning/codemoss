@@ -409,14 +409,13 @@ export function useWorkspaceThreadListHydration({
             setHydrationCycle,
             nextHydrated,
           );
-          if (finishedKind === "first-paint" && isStillActive) {
+          if (
+            finishedKind === "first-paint" &&
+            isStillActive &&
+            !isStartupForceEntered() &&
+            !isFullCatalogAutoRetryBlocked(workspace.id)
+          ) {
             // CRITICAL: do NOT setTimeout(0) full-catalog — wait for real idle.
-            if (
-              isStartupForceEntered() ||
-              isFullCatalogAutoRetryBlocked(workspace.id)
-            ) {
-              return;
-            }
             const cancelIdleFullCatalog = scheduleWhenBrowserIdle(
               () => {
                 if (

@@ -22,8 +22,6 @@ import {
 import {
   buildTimelineRenderWeightDiagnosticPayload,
   getActiveLiveTimelineRowKeys,
-  getTimelineVirtualizationThresholdReason,
-  shouldVirtualizeTimelineRows,
   summarizeTimelineProjectionRenderWeight,
   TIMELINE_ADAPTIVE_RENDERING_ENABLED,
 } from "../timeline/virtualization/messagesTimelineVirtualization";
@@ -33,15 +31,8 @@ import { TimelineProjectionViewport } from "../timeline/components/TimelineProje
 import { TimelineRowRenderer } from "../timeline/components/TimelineRowRenderer";
 import { useMessagesTimelineOutline } from "../timeline/hooks/useMessagesTimelineOutline";
 import { useMessagesTimelineHydration } from "../timeline/hooks/useMessagesTimelineHydration";
-import {
-  useMessagesTimelineVirtualizer,
-  useMessagesTimelineVirtualizerLifecycle,
-} from "../timeline/hooks/useMessagesTimelineVirtualizer";
 
 // ponytail: bottom-right outline floater hidden by product decision (2026-07-03).
-// Flip to true to restore. Gating the outline at both consumers below also
-// disables useMessageOutlineActive's window scroll/resize listener, so no
-// per-scroll setState fires while the floater is hidden.
 const SHOW_OUTLINE_FLOATER = false;
 
 const TIMELINE_RENDER_WEIGHT_DIAGNOSTIC_COOLDOWN_MS = 5_000;
@@ -62,9 +53,7 @@ type TimelineScrollDiagnosticContext = {
   isWorking: boolean;
   renderWeight: number;
   rowCount: number;
-  shouldVirtualizeTimeline: boolean;
   threadId: string | null;
-  virtualItemCount: number;
   workspaceId: string | null;
 };
 
@@ -100,7 +89,6 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     hiddenClaudeReasoningOnly,
     isThinking,
     isWorking,
-    lastDurationMs,
     latestReasoningId,
     liveAssistantItem,
     liveAssistantMessageId,
@@ -109,7 +97,6 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   const {
     activeEngine,
     activeUserInputAnchorItemId,
-    claudeHistoryTranscriptFallbackActive,
     hasVisibleUserInputRequest,
     historyRecoveryFailureReason,
     isHistoryLoading,
@@ -117,10 +104,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     workspaceId,
   } = runtime;
   const {
-    messageNodeByIdRef,
-    onPendingJumpTargetReady,
     pendingJumpMessageId,
-    requestBottomConvergence,
     scrollElementRef,
   } = navigation;
   const {
@@ -241,12 +225,6 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     ],
   );
   const effectiveConversationLightweightMode = conversationLightweightModeState.active;
-  const shouldVirtualizeTimelineByWeight = shouldVirtualizeTimelineRows({
-    isThinking,
-    isWorking,
-    rowCount: timelineProjectionRows.length,
-    renderWeight: timelineRenderWeightSummary.renderWeight,
-  });
   const shouldUseStaticExpandedHistoryFlow =
     historyExpansionActive &&
     !isThinking &&
@@ -256,10 +234,8 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     shouldUseStaticExpandedHistoryFlow &&
     !conversationDetailHydrationRequested &&
     (conversationLightweightPolicy.suggested || effectiveConversationLightweightMode);
-  const shouldVirtualizeTimeline =
-    shouldVirtualizeTimelineByWeight && !shouldUseStaticExpandedHistoryFlow;
-  const shouldDeferHeavyTimelineRows =
-    shouldVirtualizeTimelineByWeight || shouldUseStaticLightweightHistoryFlow;
+  // 轻量历史策略仍可 deferred 诊断；呈现层已不画 lightweight 摘要条。
+  const shouldDeferHeavyTimelineRows = shouldUseStaticLightweightHistoryFlow;
   const activeLiveTimelineRowKeys = useMemo(
     () =>
       getActiveLiveTimelineRowKeys({
@@ -289,34 +265,14 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   const pendingJumpRowKey = pendingJumpRowIndex >= 0
     ? timelineProjectionRows[pendingJumpRowIndex]?.key ?? null
     : null;
-  const {
-    measureTimelineVirtualRowElement,
-    timelineVirtualizer,
-    virtualTimelineRowKeys,
-    virtualTimelineRows,
-  } = useMessagesTimelineVirtualizer({
-    activeEngine,
-    activeLiveRowCount: activeLiveTimelineRowKeys.length,
-    claudeHistoryTranscriptFallbackActive,
-    effectiveItemsCount,
-    hasTailUserInputNode: Boolean(userInputNode),
-    isThinking,
-    isWorking,
-    lastDurationMs,
-    renderWeight: timelineRenderWeightSummary.renderWeight,
-    scrollElementRef,
-    shouldVirtualizeTimeline,
-    timelineProjectionRows,
-  });
+
   const timelineScrollDiagnosticContextRef = useRef<TimelineScrollDiagnosticContext>({
     activeLiveRowCount: activeLiveTimelineRowKeys.length,
     isThinking,
     isWorking,
     renderWeight: timelineRenderWeightSummary.renderWeight,
     rowCount: timelineProjectionRows.length,
-    shouldVirtualizeTimeline,
     threadId,
-    virtualItemCount: virtualTimelineRowKeys.length,
     workspaceId: workspaceId ?? null,
   });
   timelineScrollDiagnosticContextRef.current = {
@@ -325,9 +281,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     isWorking,
     renderWeight: timelineRenderWeightSummary.renderWeight,
     rowCount: timelineProjectionRows.length,
-    shouldVirtualizeTimeline,
     threadId,
-    virtualItemCount: virtualTimelineRowKeys.length,
     workspaceId: workspaceId ?? null,
   };
 
@@ -341,15 +295,15 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       eventKind: "scroll" | "scrollend" | "wheel",
       extra: Record<string, unknown> = {},
     ) => {
-      const snapshot = collectTimelineScrollDiagnosticSnapshot(scrollElement);
+      const snapshotValue = collectTimelineScrollDiagnosticSnapshot(scrollElement);
       const previous = lastTimelineScrollDiagnosticRef.current;
       const now = Date.now();
       const previousSnapshot = previous.snapshot;
       const scrollTopDelta = previousSnapshot
-        ? snapshot.scrollTop - previousSnapshot.scrollTop
+        ? snapshotValue.scrollTop - previousSnapshot.scrollTop
         : 0;
       const distanceFromBottomDelta = previousSnapshot
-        ? snapshot.distanceFromBottom - previousSnapshot.distanceFromBottom
+        ? snapshotValue.distanceFromBottom - previousSnapshot.distanceFromBottom
         : 0;
       const isMeaningfulDelta =
         Math.abs(scrollTopDelta) >= TIMELINE_SCROLL_DIAGNOSTIC_MIN_DELTA_PX ||
@@ -362,7 +316,11 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       ) {
         return;
       }
-      lastTimelineScrollDiagnosticRef.current = { at: now, eventKind, snapshot };
+      lastTimelineScrollDiagnosticRef.current = {
+        at: now,
+        eventKind,
+        snapshot: snapshotValue,
+      };
       const diagnosticContext = timelineScrollDiagnosticContextRef.current;
       appendRendererDiagnostic("messages/timeline-scroll-behavior", {
         component: "MessagesTimeline",
@@ -371,14 +329,14 @@ export const MessagesTimeline = memo(function MessagesTimeline({
         workspaceId: diagnosticContext.workspaceId,
         isThinking: diagnosticContext.isThinking,
         isWorking: diagnosticContext.isWorking,
-        shouldVirtualizeTimeline: diagnosticContext.shouldVirtualizeTimeline,
+        shouldVirtualizeTimeline: false,
         rowCount: diagnosticContext.rowCount,
         renderWeight: diagnosticContext.renderWeight,
-        virtualItemCount: diagnosticContext.virtualItemCount,
+        virtualItemCount: 0,
         activeLiveRowCount: diagnosticContext.activeLiveRowCount,
         scrollTopDelta: Math.round(scrollTopDelta),
         distanceFromBottomDelta: Math.round(distanceFromBottomDelta),
-        ...snapshot,
+        ...snapshotValue,
         ...extra,
       });
     };
@@ -404,22 +362,18 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     };
   }, [scrollElementRef]);
 
-  const visibleTimelineRowKeySet = useMemo(
-    () => new Set(virtualTimelineRowKeys.map(String)),
-    [virtualTimelineRowKeys],
-  );
-  const virtualizedTimelineScopeKey = useMemo(
-    () => [
-      presentationScopeKey,
-      presentationMode,
-      timelineProjectionRows.length,
-      timelineRenderWeightSummary.renderWeight,
-      shouldVirtualizeTimeline ? "virtualized" : "static",
-    ].join("\u0000"),
+  const presentationRetainedScopeKey = useMemo(
+    () =>
+      [
+        presentationScopeKey,
+        presentationMode,
+        timelineProjectionRows.length,
+        timelineRenderWeightSummary.renderWeight,
+        "static",
+      ].join("\u0000"),
     [
       presentationMode,
       presentationScopeKey,
-      shouldVirtualizeTimeline,
       timelineProjectionRows.length,
       timelineRenderWeightSummary.renderWeight,
     ],
@@ -443,31 +397,20 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     shouldRenderLightweightProjectionRow,
     timelineRowHydrationStateByKey,
   } = useMessagesTimelineHydration({
-    activeLiveTimelineRowKeys,
     activeLiveTimelineRowKeySet,
     conversationDetailHydrationRequested,
     effectiveConversationLightweightMode,
     isThinking,
     isWorking,
-    liveAssistantItem,
-    liveReasoningItem,
     pendingJumpRowKey,
     rendererOptionsKey: timelineRendererOptionsKey,
-    retainedScopeKey: `${virtualizedTimelineScopeKey}\u0000${timelineRendererOptionsKey}`,
+    retainedScopeKey: `${presentationRetainedScopeKey}\u0000${timelineRendererOptionsKey}`,
     shouldDeferHeavyTimelineRows,
-    shouldVirtualizeTimeline,
-    threadId,
     timelineProjectionRows,
-    timelineVirtualizer,
-    visibleTimelineRowKeySet,
-    workspaceId: workspaceId ?? null,
   });
+
   useEffect(() => {
-    const thresholdReason = getTimelineVirtualizationThresholdReason({
-      rowCount: timelineRenderWeightSummary.rowCount,
-      renderWeight: timelineRenderWeightSummary.renderWeight,
-    });
-    if (!shouldVirtualizeTimeline || thresholdReason !== "render-weight") {
+    if (!TIMELINE_ADAPTIVE_RENDERING_ENABLED) {
       return;
     }
     const signature = [
@@ -491,7 +434,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       "messages/timeline-render-weight",
       buildTimelineRenderWeightDiagnosticPayload({
         summary: timelineRenderWeightSummary,
-        shouldVirtualize: shouldVirtualizeTimeline,
+        shouldVirtualize: false,
         hydratedHeavyRowCount: hydratedHeavyTimelineRowCount,
         localErrorState: "none",
         threadId,
@@ -500,7 +443,6 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     );
   }, [
     hydratedHeavyTimelineRowCount,
-    shouldVirtualizeTimeline,
     threadId,
     timelineRenderWeightSummary,
     workspaceId,
@@ -556,26 +498,6 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     timelineRenderWeightSummary.rowCount,
     workspaceId,
   ]);
-
-  useMessagesTimelineVirtualizerLifecycle({
-    activeLiveTimelineRowKeys,
-    hydratedHeavyTimelineRowCount,
-    isThinking,
-    isWorking,
-    messageNodeByIdRef,
-    onPendingJumpTargetReady,
-    pendingJumpMessageId,
-    pendingJumpRowIndex,
-    requestBottomConvergence,
-    scrollElementRef,
-    shouldVirtualizeTimeline,
-    threadId,
-    timelineProjectionRowCount: timelineProjectionRows.length,
-    timelineVirtualizer,
-    virtualizedTimelineScopeKey,
-    virtualTimelineRowKeys,
-    workspaceId: workspaceId ?? null,
-  });
 
   const renderProjectionRowWithBoundary = useCallback(
     (row: TimelineProjectionRow | undefined) => {
@@ -639,7 +561,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       <div
         className="messages-full"
         data-timeline-projection-row-count={timelineProjectionRows.length}
-        data-timeline-virtualized={shouldVirtualizeTimeline ? "true" : "false"}
+        data-timeline-virtualized="false"
       >
         <ConversationLightweightPrompt
           active={effectiveConversationLightweightMode}
@@ -661,22 +583,8 @@ export const MessagesTimeline = memo(function MessagesTimeline({
           </div>
         )}
         <TimelineProjectionViewport
-          activeEngine={activeEngine}
-          activeLiveTimelineRowKeySet={activeLiveTimelineRowKeySet}
-          claudeHistoryTranscriptFallbackActive={claudeHistoryTranscriptFallbackActive}
-          effectiveItemsCount={effectiveItemsCount}
-          isThinking={isThinking}
-          isWorking={isWorking}
-          lastDurationMs={lastDurationMs}
-          measureTimelineVirtualRowElement={measureTimelineVirtualRowElement}
           renderProjectionRow={renderProjectionRowWithBoundary}
-          shouldRenderLightweightProjectionRow={shouldRenderLightweightProjectionRow}
-          shouldVirtualizeTimeline={shouldVirtualizeTimeline}
           timelineProjectionRows={timelineProjectionRows}
-          timelineRowHydrationStateByKey={timelineRowHydrationStateByKey}
-          totalSize={timelineVirtualizer.getTotalSize()}
-          userInputNodePresent={Boolean(userInputNode)}
-          virtualTimelineRows={virtualTimelineRows}
         />
       </div>
     </div>

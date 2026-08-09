@@ -72,8 +72,27 @@ export function extractSearchMatchCount(text: string): SearchMatchCount | null {
   return null;
 }
 
-export function formatSearchMatchLabel(match: SearchMatchCount): string {
-  return match.atLeast ? `≥${match.count} matches` : `${match.count} matches`;
+export type SearchMatchLabelTranslate = (
+  key: string,
+  options?: { count: number },
+) => string;
+
+/**
+ * 匹配计数标签。可注入 t；未注入或 t 未加载资源时回退英文，
+ * 避免单测 / 无 i18n 环境显示裸 key。
+ */
+export function formatSearchMatchLabel(
+  match: SearchMatchCount,
+  t?: SearchMatchLabelTranslate,
+): string {
+  const fallback = match.atLeast
+    ? `≥${match.count} matches`
+    : `${match.count} matches`;
+  if (!t) return fallback;
+  const key = match.atLeast ? "tools.matchCountAtLeast" : "tools.matchCount";
+  const translated = t(key, { count: match.count });
+  if (!translated || translated === key) return fallback;
+  return translated;
 }
 
 function stripWorkspaceResultMarkup(text: string): string {
@@ -107,7 +126,11 @@ function looksLikeUrlSummary(text: string): boolean {
  * 非 JSON 时尽量清洗协议噪声；JSON 则优先抽出 query 类字段。
  * 保留对 URL / 短可读文本的兼容。
  */
-export function normalizeSearchSummaryText(raw: string, args: unknown): string {
+export function normalizeSearchSummaryText(
+  raw: string,
+  args: unknown,
+  t?: SearchMatchLabelTranslate,
+): string {
   const trimmedRaw = raw.trim();
   if (trimmedRaw) {
     try {
@@ -121,7 +144,7 @@ export function normalizeSearchSummaryText(raw: string, args: unknown): string {
     if (!(trimmedRaw.startsWith("{") || trimmedRaw.startsWith("["))) {
       if (isProtocolHeavySearchOutput(trimmedRaw)) {
         const match = extractSearchMatchCount(trimmedRaw);
-        if (match) return formatSearchMatchLabel(match);
+        if (match) return formatSearchMatchLabel(match, t);
         // 无计数时不强行从 dump 里抠 token（易得到 "1:" 这类噪声）
         return "";
       }
@@ -161,9 +184,14 @@ function truncateForSummary(text: string, maxLength: number): string {
 export function resolveSearchInlinePresentation(
   raw: string,
   args: unknown,
-  options?: { maxLength?: number; pattern?: string },
+  options?: {
+    maxLength?: number;
+    pattern?: string;
+    t?: SearchMatchLabelTranslate;
+  },
 ): SearchInlinePresentation {
   const maxLength = options?.maxLength ?? 120;
+  const t = options?.t;
   const patternFromOptions = (options?.pattern ?? "").trim();
   const patternFromArgs = extractQueryLikeText(args)?.trim() ?? "";
   const pattern = patternFromOptions || patternFromArgs;
@@ -173,7 +201,7 @@ export function resolveSearchInlinePresentation(
 
   // 1) 有明确匹配计数：优先 pattern · N matches
   if (matchCount) {
-    const hint = formatSearchMatchLabel(matchCount);
+    const hint = formatSearchMatchLabel(matchCount, t);
     return {
       headerSummary: joinPatternAndHint(pattern, hint, maxLength),
       headerTitle: pattern ? `${pattern} · ${hint}` : hint,
@@ -190,7 +218,7 @@ export function resolveSearchInlinePresentation(
         resultHint: "",
       };
     }
-    const cleaned = normalizeSearchSummaryText(trimmedRaw, args);
+    const cleaned = normalizeSearchSummaryText(trimmedRaw, args, t);
     const fallback = truncateForSummary(cleaned || stripWorkspaceResultMarkup(trimmedRaw), maxLength);
     return {
       headerSummary: fallback,
@@ -200,7 +228,7 @@ export function resolveSearchInlinePresentation(
   }
 
   // 3) 常规 normalize（JSON query / URL / 短文本）
-  const normalized = normalizeSearchSummaryText(trimmedRaw, args);
+  const normalized = normalizeSearchSummaryText(trimmedRaw, args, t);
   const collapsed = truncateForSummary(normalized, maxLength);
 
   // URL 类摘要优先展示链接本身（可点击）

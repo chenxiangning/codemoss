@@ -1,16 +1,10 @@
 import { lazy, memo, Suspense, useEffect } from "react";
 import { LoadingProgressDialog } from "../../../components/ui/LoadingProgressDialog";
 import { loadLoadingProgressStyles } from "../../../styles/featureStyleLoaders";
-import { useRenameThreadPrompt } from "../../threads/hooks/useRenameThreadPrompt";
 import { useClonePrompt } from "../../workspaces/hooks/useClonePrompt";
 import { useWorktreePrompt } from "../../workspaces/hooks/useWorktreePrompt";
 import type { useLoadingProgressDialogState } from "../hooks/useLoadingProgressDialogState";
 
-const RenameThreadPrompt = lazy(() =>
-  import("../../threads/components/RenameThreadPrompt").then((module) => ({
-    default: module.RenameThreadPrompt,
-  })),
-);
 const WorktreePrompt = lazy(() =>
   import("../../workspaces/components/WorktreePrompt").then((module) => ({
     default: module.WorktreePrompt,
@@ -27,8 +21,6 @@ const ClonePrompt = lazy(() =>
   })),
 );
 
-type RenamePromptState = ReturnType<typeof useRenameThreadPrompt>["renamePrompt"];
-
 type WorktreePromptState = ReturnType<typeof useWorktreePrompt>["worktreePrompt"];
 type WorktreeCreateResultState = ReturnType<typeof useWorktreePrompt>["worktreeCreateResult"];
 
@@ -39,10 +31,6 @@ type LoadingProgressDialogState =
 type AppModalsProps = {
   loadingProgressDialog: LoadingProgressDialogState;
   onLoadingProgressDialogClose: () => void;
-  renamePrompt: RenamePromptState;
-  onRenamePromptChange: (value: string) => void;
-  onRenamePromptCancel: () => void;
-  onRenamePromptConfirm: () => void;
   worktreePrompt: WorktreePromptState;
   onWorktreePromptChange: (value: string) => void;
   onWorktreePromptBaseRefChange: (value: string) => void;
@@ -64,10 +52,6 @@ type AppModalsProps = {
 export const AppModals = memo(function AppModals({
   loadingProgressDialog,
   onLoadingProgressDialogClose,
-  renamePrompt,
-  onRenamePromptChange,
-  onRenamePromptCancel,
-  onRenamePromptConfirm,
   worktreePrompt,
   onWorktreePromptChange,
   onWorktreePromptBaseRefChange,
@@ -98,17 +82,6 @@ export const AppModals = memo(function AppModals({
           message={loadingProgressDialog.message}
           onClose={onLoadingProgressDialogClose}
         />
-      )}
-      {renamePrompt && (
-        <Suspense fallback={null}>
-          <RenameThreadPrompt
-            currentName={renamePrompt.originalName}
-            name={renamePrompt.name}
-            onChange={onRenamePromptChange}
-            onCancel={onRenamePromptCancel}
-            onConfirm={onRenamePromptConfirm}
-          />
-        </Suspense>
       )}
       {worktreePrompt && (
         <Suspense fallback={null}>

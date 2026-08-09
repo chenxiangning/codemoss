@@ -6,11 +6,10 @@ import {
   Droppable,
   type DropResult,
 } from "@hello-pangea/dnd";
-import Check from "lucide-react/dist/esm/icons/check";
 import Globe from "lucide-react/dist/esm/icons/globe";
 import GripVertical from "lucide-react/dist/esm/icons/grip-vertical";
+import Network from "lucide-react/dist/esm/icons/network";
 import Pencil from "lucide-react/dist/esm/icons/pencil";
-import Play from "lucide-react/dist/esm/icons/play";
 import Trash2 from "lucide-react/dist/esm/icons/trash-2";
 import type { ProviderConfig } from "../types";
 import { LOCAL_SETTINGS_PROVIDER_ID } from "../types";
@@ -20,6 +19,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { renderVendorProviderDisplayName } from "./VendorProviderTable";
+import { VendorProviderActiveSwitch } from "./VendorProviderActiveSwitch";
 
 interface ProviderListProps {
   providers: ProviderConfig[];
@@ -106,11 +106,19 @@ export function ProviderList({
     <div className="vendor-provider-list">
       <div className="vendor-list-header">
         <span className="vendor-list-title">
-          {t("settings.vendor.allProviders")}
+          <Network
+            className="vendor-section-label-icon"
+            size={15}
+            strokeWidth={2}
+            aria-hidden
+          />
+          {t("settings.vendor.providerChannels", {
+            defaultValue: t("settings.vendor.allProviders"),
+          })}
         </span>
         <div className="vendor-list-actions">
           {headerActions}
-          <Button size="sm" onClick={onAdd}>
+          <Button size="xs" className="rounded-[4px]" onClick={onAdd}>
             + {t("settings.vendor.add")}
           </Button>
           {trailingActions}
@@ -190,21 +198,12 @@ export function ProviderList({
                               )}
                             </div>
                             <div className="vendor-card-actions">
-                              {provider.isActive ? (
-                                <span className="vendor-active-badge">
-                                  <Check size={11} aria-hidden />
-                                  {t("settings.vendor.inUse")}
-                                </span>
-                              ) : (
-                                <button
-                                  type="button"
-                                  className="vendor-btn-enable"
-                                  onClick={() => onSwitch(provider.id)}
-                                >
-                                  <Play size={11} aria-hidden />
-                                  {t("settings.vendor.enable")}
-                                </button>
-                              )}
+                              <VendorProviderActiveSwitch
+                                active={Boolean(provider.isActive)}
+                                providerId={provider.id}
+                                providerName={provider.name}
+                                onSwitch={onSwitch}
+                              />
                               <span className="vendor-card-divider" />
                               <Button
                                 variant="ghost"

@@ -67,6 +67,8 @@ const git = {
     "previewInlineAction": "在中央窗格預覽差異",
     "previewModal": "以彈出視窗預覽",
     "previewModalAction": "開啟差異預覽彈出視窗",
+    "openFileContent": "Open file",
+    "openFileContentAction": "Open file content",
     "semanticDiff": {
       "kicker": "檢閱層",
       "title": "語意差異",

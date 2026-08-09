@@ -208,6 +208,12 @@ type SidebarProps = {
   deleteConfirmBusy?: boolean;
   onCancelDeleteConfirm?: () => void;
   onConfirmDeleteConfirm?: () => void;
+  renameThreadId?: string | null;
+  renameWorkspaceId?: string | null;
+  renameName?: string;
+  onRenameChange?: (value: string) => void;
+  onRenameCancel?: () => void;
+  onRenameConfirm?: () => void;
   onSyncThread: (workspaceId: string, threadId: string) => void;
   pinThread: (workspaceId: string, threadId: string) => boolean;
   unpinThread: (workspaceId: string, threadId: string) => void;
@@ -320,6 +326,12 @@ function SidebarImpl({
   deleteConfirmBusy = false,
   onCancelDeleteConfirm,
   onConfirmDeleteConfirm,
+  renameThreadId = null,
+  renameWorkspaceId = null,
+  renameName = "",
+  onRenameChange,
+  onRenameCancel,
+  onRenameConfirm,
   onSyncThread,
   pinThread,
   unpinThread,
@@ -1958,6 +1970,12 @@ function SidebarImpl({
             deleteConfirmBusy={deleteConfirmBusy}
             onCancelDeleteConfirm={onCancelDeleteConfirm}
             onConfirmDeleteConfirm={onConfirmDeleteConfirm}
+            renameThreadId={renameThreadId}
+            renameWorkspaceId={renameWorkspaceId}
+            renameName={renameName}
+            onRenameChange={onRenameChange}
+            onRenameCancel={onRenameCancel}
+            onRenameConfirm={onRenameConfirm}
             onShowWorktreeMenu={showWorktreeMenu}
             onToggleExpanded={handleToggleExpanded}
             onLoadOlderThreads={onLoadOlderThreads}
@@ -2001,6 +2019,12 @@ function SidebarImpl({
               deleteConfirmBusy,
               onCancelDeleteConfirm,
               onConfirmDeleteConfirm,
+              renameThreadId,
+              renameWorkspaceId,
+              renameName,
+              onRenameChange,
+              onRenameCancel,
+              onRenameConfirm,
               nextCursor,
               isPaging,
               showLoadOlder: true,
@@ -2039,6 +2063,12 @@ function SidebarImpl({
             deleteConfirmBusy={deleteConfirmBusy}
             onCancelDeleteConfirm={onCancelDeleteConfirm}
             onConfirmDeleteConfirm={onConfirmDeleteConfirm}
+            renameThreadId={renameThreadId}
+            renameWorkspaceId={renameWorkspaceId}
+            renameName={renameName}
+            onRenameChange={onRenameChange}
+            onRenameCancel={onRenameCancel}
+            onRenameConfirm={onRenameConfirm}
           />
         ) : null}
         {sessionFolderErrorByWorkspaceId[entry.id] ? (
@@ -2058,6 +2088,12 @@ function SidebarImpl({
     deleteConfirmBusy,
     deleteConfirmThreadId,
     deleteConfirmWorkspaceId,
+    renameName,
+    renameThreadId,
+    renameWorkspaceId,
+    onRenameCancel,
+    onRenameChange,
+    onRenameConfirm,
     deletingWorktreeIds,
     expandedWorkspaces,
     getPinTimestamp,
@@ -2257,6 +2293,12 @@ function SidebarImpl({
                   deleteConfirmBusy={deleteConfirmBusy}
                   onCancelDeleteConfirm={onCancelDeleteConfirm}
                   onConfirmDeleteConfirm={onConfirmDeleteConfirm}
+                  renameThreadId={renameThreadId}
+                  renameWorkspaceId={renameWorkspaceId}
+                  renameName={renameName}
+                  onRenameChange={onRenameChange}
+                  onRenameCancel={onRenameCancel}
+                  onRenameConfirm={onRenameConfirm}
                 />
               </div>
             )}

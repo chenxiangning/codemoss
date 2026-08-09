@@ -2,7 +2,8 @@ import { memo, useCallback, useEffect, useRef, useState, type RefObject } from "
 import { useTranslation } from "react-i18next";
 import ArrowUp from "lucide-react/dist/esm/icons/arrow-up";
 import ArrowDown from "lucide-react/dist/esm/icons/arrow-down";
-import type { ConversationScrollEdge } from "../../orchestration/scrolling/messagesScrollConvergence";
+
+export type ConversationScrollEdge = "top" | "bottom";
 
 interface ScrollControlProps {
   containerRef: RefObject<HTMLDivElement | null>;
@@ -23,9 +24,8 @@ const HIDE_DELAY = 1500;
  * 「显示」只由用户主动 wheel 触发，scroll 事件只负责「到底了就藏起来」——
  * 这样程序化的自动跟随滚动不会误触发浮标。
  *
- * 按钮只上报 top/bottom intent；真正回底走 Messages owner 的 pinCanvasToBottom
- * （与 turn-send / turn-settle / history-restore 同一权威通道），避免按钮和自动路径
- * 各自成为 scroll writer。
+ * 按钮只上报 top/bottom intent；真正回底走 Messages 的 resumeFollowAndSmoothPin
+ * （用户主动导航与回顶对称 smooth；send / history-open 仍走瞬时 resumeFollowAndPin）。
  *
  * ponytail: 定位从原项目的 position:fixed + inputAreaRef + getAppViewport()
  * zoom 补偿，简化为相对 .messages-shell(已 position:relative) 的 absolute 固定

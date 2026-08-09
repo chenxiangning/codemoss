@@ -60,6 +60,8 @@ type GitMultiRepositoryChangesProps = {
     file: DiffFile,
     section: "staged" | "unstaged",
   ) => void;
+  /** Row action that opens workspace file content (not the DIFF modal). */
+  onOpenFileContent?: (repositoryRoot: string, path: string) => void;
   onOpenInlinePreview?: (repositoryRoot: string, path: string) => void;
   onOpenInBrowser?: (repositoryRoot: string, path: string) => void;
   onShowFileMenu?: (
@@ -112,6 +114,7 @@ export function GitMultiRepositoryChanges({
   onStageAll,
   onOpenFile,
   onOpenFilePreview,
+  onOpenFileContent,
   onOpenInlinePreview,
   onOpenInBrowser,
   onShowFileMenu,
@@ -228,12 +231,25 @@ export function GitMultiRepositoryChanges({
   ) => {
     const file = (section === "staged" ? status.stagedFiles : status.unstagedFiles)
       .find((candidate) => candidate.path === path);
-    if (file && isDeletedDiffFile(file)) {
+    // Default activation opens editable DIFF modal (same as single-repo).
+    if (file) {
       onOpenFilePreview?.(status.repositoryRoot, file, section);
       return;
     }
     onOpenFile?.(status.repositoryRoot, path);
   }, [onOpenFile, onOpenFilePreview]);
+
+  const openRepositoryFileContent = useCallback((
+    status: RepositoryGitStatus,
+    file: DiffFile,
+    section: RepositorySection,
+  ) => {
+    if (isDeletedDiffFile(file) || !onOpenFileContent) {
+      onOpenFilePreview?.(status.repositoryRoot, file, section);
+      return;
+    }
+    onOpenFileContent(status.repositoryRoot, file.path);
+  }, [onOpenFileContent, onOpenFilePreview]);
 
   const setGroupSelection = (repositoryRoot: string, paths: string[], selected: boolean, stagedPaths: Set<string>) => {
     setSelectionOverrides((previous) => {
@@ -352,11 +368,11 @@ export function GitMultiRepositoryChanges({
               isCommitPathLocked={isCommitPathLocked}
               onSetCommitSelection={(paths, selected) => setGroupSelection(status.repositoryRoot, paths, selected, stagedPaths)}
               onFileClick={(_event, path) => activateRepositoryFile(status, path, "staged")}
-              onOpenFilePreview={(file, section) => onOpenFilePreview?.(
-                status.repositoryRoot,
-                file,
-                section,
-              )}
+              onOpenFilePreview={
+                onOpenFileContent
+                  ? (file, section) => openRepositoryFileContent(status, file, section)
+                  : undefined
+              }
               onOpenInlinePreview={onOpenInlinePreview ? (path) => onOpenInlinePreview(status.repositoryRoot, path) : undefined}
               onOpenInBrowser={
                 onOpenInBrowser
@@ -405,11 +421,11 @@ export function GitMultiRepositoryChanges({
               isCommitPathLocked={isCommitPathLocked}
               onSetCommitSelection={(paths, selected) => setGroupSelection(status.repositoryRoot, paths, selected, stagedPaths)}
               onFileClick={(_event, path) => activateRepositoryFile(status, path, "unstaged")}
-              onOpenFilePreview={(file, section) => onOpenFilePreview?.(
-                status.repositoryRoot,
-                file,
-                section,
-              )}
+              onOpenFilePreview={
+                onOpenFileContent
+                  ? (file, section) => openRepositoryFileContent(status, file, section)
+                  : undefined
+              }
               onOpenInlinePreview={onOpenInlinePreview ? (path) => onOpenInlinePreview(status.repositoryRoot, path) : undefined}
               onOpenInBrowser={
                 onOpenInBrowser

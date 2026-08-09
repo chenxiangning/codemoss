@@ -1042,6 +1042,8 @@ const settings = {
         "fromCcSwitchUpdate": "Импорт/Обновление из cc-switch",
         "fromCcSwitchFile": "Выберите файл cc-switch.db для импорта",
       },
+      "engineSettings": "Настройки движка",
+      "providerChannels": "Каналы провайдеров",
       "allProviders": "Все поставщики",
       "allCodexProviders": "Все поставщики Codex",
       "add": "Добавить",

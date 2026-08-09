@@ -8,8 +8,14 @@ import {
   deleteKimiProvider,
   switchKimiProvider,
 } from "../../../services/tauri";
+import { applyOptimisticActiveProvider } from "../applyOptimisticActiveProvider";
 import { VENDOR_ACTIVE_PROVIDER_CHANGED_EVENT } from "../vendorActiveProviderEvents";
 import { notifyProviderTargetCatalogChanged } from "../../composer/components/ChatInputBox/hooks/useProviderTargetCatalogOwners";
+
+/** List load options. `silent` skips list-level loading UI (switch / external events). */
+export type KimiProviderLoadOptions = {
+  silent?: boolean;
+};
 
 export interface KimiProviderDialogState {
   isOpen: boolean;
@@ -33,7 +39,8 @@ function getErrorMessage(error: unknown, fallback: string): string {
 
 export function useKimiProviderManagement() {
   const [kimiProviders, setKimiProviders] = useState<KimiProviderConfig[]>([]);
-  const [kimiLoading, setKimiLoading] = useState(false);
+  // Start true so first paint shows a loading placeholder instead of an empty list.
+  const [kimiLoading, setKimiLoading] = useState(true);
   const [kimiProviderError, setKimiProviderError] = useState<string | null>(
     null,
   );
@@ -52,38 +59,46 @@ export function useKimiProviderManagement() {
       provider: null,
     });
 
-  const loadKimiProviders = useCallback(async () => {
-    setKimiLoading(true);
-    try {
-      const list = await getKimiProviders();
-      setKimiProviders(list);
-      setKimiProviderError(null);
-    } catch (error) {
-      setKimiProviderError(
-        getErrorMessage(error, "Failed to load Kimi providers."),
-      );
-    } finally {
-      setKimiLoading(false);
-    }
-    // 当前配置刷新失败不阻塞 provider 列表。
-    try {
-      const config = await getCurrentKimiConfig();
-      setCurrentKimiConfig(config);
-      if (
-        config.configStatus === "malformed" ||
-        config.configStatus === "io-error"
-      ) {
+  const loadKimiProviders = useCallback(
+    async (options?: KimiProviderLoadOptions) => {
+      const silent = Boolean(options?.silent);
+      if (!silent) {
+        setKimiLoading(true);
+      }
+      try {
+        const list = await getKimiProviders();
+        setKimiProviders(list);
+        setKimiProviderError(null);
+      } catch (error) {
         setKimiProviderError(
-          config.diagnostic ?? `Kimi config is ${config.configStatus}.`,
+          getErrorMessage(error, "Failed to load Kimi providers."),
+        );
+      } finally {
+        if (!silent) {
+          setKimiLoading(false);
+        }
+      }
+      // 当前配置刷新失败不阻塞 provider 列表。
+      try {
+        const config = await getCurrentKimiConfig();
+        setCurrentKimiConfig(config);
+        if (
+          config.configStatus === "malformed" ||
+          config.configStatus === "io-error"
+        ) {
+          setKimiProviderError(
+            config.diagnostic ?? `Kimi config is ${config.configStatus}.`,
+          );
+        }
+      } catch (error) {
+        setCurrentKimiConfig(null);
+        setKimiProviderError(
+          getErrorMessage(error, "Failed to inspect Kimi config."),
         );
       }
-    } catch (error) {
-      setCurrentKimiConfig(null);
-      setKimiProviderError(
-        getErrorMessage(error, "Failed to inspect Kimi config."),
-      );
-    }
-  }, []);
+    },
+    [],
+  );
 
   useEffect(() => {
     void loadKimiProviders();
@@ -95,7 +110,7 @@ export function useKimiProviderManagement() {
       if (detail?.engine && detail.engine !== "kimi") {
         return;
       }
-      void loadKimiProviders();
+      void loadKimiProviders({ silent: true });
     };
     window.addEventListener(
       VENDOR_ACTIVE_PROVIDER_CHANGED_EVENT,
@@ -150,18 +165,27 @@ export function useKimiProviderManagement() {
 
   const handleSwitchKimiProvider = useCallback(
     async (id: string) => {
+      const previous = kimiProviders;
+      setKimiProviders(applyOptimisticActiveProvider(previous, id));
       try {
         await switchKimiProvider(id);
+        // Soft-reconcile current config without list loading flicker.
+        try {
+          const config = await getCurrentKimiConfig();
+          setCurrentKimiConfig(config);
+        } catch {
+          // Keep optimistic list; current-config inspect failure is non-fatal.
+        }
         setKimiProviderError(null);
-        await loadKimiProviders();
         notifyProviderTargetCatalogChanged();
       } catch (error) {
+        setKimiProviders(previous);
         setKimiProviderError(
           getErrorMessage(error, "Failed to switch Kimi provider."),
         );
       }
     },
-    [loadKimiProviders],
+    [kimiProviders],
   );
 
   const handleDeleteKimiProvider = useCallback(

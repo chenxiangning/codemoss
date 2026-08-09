@@ -18,6 +18,18 @@ const isBackgroundRenderGatingEnabledMock = vi.hoisted(() => vi.fn(() => true));
 const getWorkspaceFilesMock = vi.hoisted(() => vi.fn());
 const readProjectMapRelationshipsMock = vi.hoisted(() => vi.fn());
 const scanProjectMapRelationshipsMock = vi.hoisted(() => vi.fn());
+const useWorkspaceSessionProjectionSummaryMock = vi.hoisted(() =>
+  vi.fn(() => ({ summary: { ownerWorkspaceIds: ["ws-1"] } })),
+);
+const useWorkspaceThreadListHydrationMock = vi.hoisted(() =>
+  vi.fn(() => ({
+    ensureWorkspaceThreadListLoaded: vi.fn(),
+    hydratedThreadListWorkspaceIds: new Set<string>(),
+    hydratedThreadListWorkspaceIdsRef: { current: new Set<string>() },
+    listThreadsForWorkspaceTracked: vi.fn(),
+    prewarmSessionRadarForWorkspace: prewarmSessionRadarForWorkspaceMock,
+  })),
+);
 
 vi.mock("../features/app/hooks/useComposerInsert", () => ({
   useComposerInsert: vi.fn(() => vi.fn()),
@@ -64,18 +76,11 @@ vi.mock("../features/session-activity/hooks/useSessionRadarFeed", () => ({
 }));
 
 vi.mock("../features/workspaces/hooks/useWorkspaceSessionProjectionSummary", () => ({
-  useWorkspaceSessionProjectionSummary: vi.fn(() => ({
-    summary: { ownerWorkspaceIds: ["ws-1"] },
-  })),
+  useWorkspaceSessionProjectionSummary: useWorkspaceSessionProjectionSummaryMock,
 }));
 
 vi.mock("./useWorkspaceThreadListHydration", () => ({
-  useWorkspaceThreadListHydration: vi.fn(() => ({
-    ensureWorkspaceThreadListLoaded: vi.fn(),
-    hydratedThreadListWorkspaceIdsRef: { current: {} },
-    listThreadsForWorkspaceTracked: vi.fn(),
-    prewarmSessionRadarForWorkspace: prewarmSessionRadarForWorkspaceMock,
-  })),
+  useWorkspaceThreadListHydration: useWorkspaceThreadListHydrationMock,
 }));
 
 vi.mock("../services/clientStorage", () => ({
@@ -169,6 +174,51 @@ describe("useAppShellSearchRadarSection", () => {
     scanProjectMapRelationshipsMock.mockReset();
     readProjectMapRelationshipsMock.mockResolvedValue({ apiContracts: null });
     scanProjectMapRelationshipsMock.mockResolvedValue({});
+  });
+
+  it("derives projection owners locally without starting an exhaustive summary scan", () => {
+    const main = createWorkspace("ws-main", "Main");
+    const worktreeB = {
+      ...createWorkspace("ws-worktree-b", "Worktree B"),
+      path: "/tmp/z-worktree",
+      kind: "worktree" as const,
+      parentId: main.id,
+    };
+    const worktreeA = {
+      ...createWorkspace("ws-worktree-a", "Worktree A"),
+      path: "/tmp/a-worktree",
+      kind: "worktree" as const,
+      parentId: main.id,
+    };
+    const unrelated = createWorkspace("ws-other", "Other");
+
+    renderHook(() =>
+      useAppShellSearchRadarSection(
+        createSearchRadarOptions({
+          activeWorkspace: main,
+          activeWorkspaceId: main.id,
+          workspaces: [worktreeB, unrelated, main, worktreeA],
+          workspacesById: new Map(
+            [main, worktreeA, worktreeB, unrelated].map((workspace) => [
+              workspace.id,
+              workspace,
+            ]),
+          ),
+        }),
+      ),
+    );
+
+    expect(useWorkspaceSessionProjectionSummaryMock).not.toHaveBeenCalled();
+    expect(useWorkspaceThreadListHydrationMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        activeWorkspaceId: main.id,
+        activeWorkspaceProjectionOwnerIds: [
+          main.id,
+          worktreeA.id,
+          worktreeB.id,
+        ],
+      }),
+    );
   });
 
   it("keeps recent thread titles aligned with sidebar thread summaries", () => {

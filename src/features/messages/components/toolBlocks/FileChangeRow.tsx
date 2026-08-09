@@ -3,7 +3,7 @@
  * Shared single file-change row. One component behind EditToolBlock、
  * EditToolGroupBlock 与 GenericToolBlock 的 fileChange 分支，确保实时/历史、
  * 单文件/多文件/分组处处像素与行为一致。
- * 口径：ToolMarkerShell（FilePen 描边图标 + 文件名 + 绿/红统计 + 靠右状态 + 折叠 diff 体）。
+ * 口径：ToolMarkerShell（单色 FilePen + kind「修改」+ 彩色文件类型图标 + 文件名 + 绿/红统计 + 靠右状态 + 折叠 diff 体）。
  */
 import { memo, useMemo, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -16,6 +16,7 @@ import {
   ToolStatusIcon,
   TOOL_MARKER_BODY_CLASS,
 } from './ToolMarkerShell';
+import { ToolFileTypeIcon } from './ToolFileTypeIcon';
 
 /** 中性 diff 行表示：各调用方把自己的 diff（computeDiff / parseDiff）归一到此形态 */
 export type FileChangeDiffLine = {
@@ -111,7 +112,10 @@ interface FileChangeRowProps {
   wrapperClassName?: string;
 }
 
-function renderDiffLines(preview: FileChangeDiffPreview): ReactNode {
+function renderDiffLines(
+  preview: FileChangeDiffPreview,
+  truncatedLabel: string,
+): ReactNode {
   // hunk 头（@@ …@@）不在内联预览中展示——去掉顶部噪音区。
   const lines = preview.lines.filter((line) => line.kind !== 'hunk');
   return (
@@ -137,7 +141,7 @@ function renderDiffLines(preview: FileChangeDiffPreview): ReactNode {
         );
       })}
       {preview.truncated && (
-        <div className="tool-change-inline-diff-truncated">Diff truncated…</div>
+        <div className="tool-change-inline-diff-truncated">{truncatedLabel}</div>
       )}
     </div>
   );
@@ -185,12 +189,17 @@ export const FileChangeRow = memo(function FileChangeRow({
 
   const body = canExpand ? (
     <div className={TOOL_MARKER_BODY_CLASS}>
-      {hasDiff && preview ? renderDiffLines(preview) : fallbackBody}
+      {hasDiff && preview
+        ? renderDiffLines(preview, t('tools.diffTruncated'))
+        : fallbackBody}
     </div>
   ) : undefined;
 
+  // 行首用与「批量修改」组头同款的单色动作 icon（FilePen），非彩色文件类型 icon
+  // 彩色文件类型 icon 放在 kind 之后、文件名之前
   return (
     <ToolMarkerShell
+      kind={t('tools.kindEdit')}
       icon={<FilePen size={14} aria-hidden />}
       label={t('tools.editFile')}
       labelHidden
@@ -201,6 +210,11 @@ export const FileChangeRow = memo(function FileChangeRow({
       trailing={<ToolStatusIcon status={status} />}
       body={body}
     >
+      {filePath ? (
+        <span className="tool-marker-file-type-icon inline-flex shrink-0" aria-hidden>
+          <ToolFileTypeIcon filePath={filePath} size={14} />
+        </span>
+      ) : null}
       <span className="min-w-0 truncate" title={filePath}>
         {fileName}
       </span>

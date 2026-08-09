@@ -38,8 +38,13 @@ describe("SearchToolGroupBlock", () => {
     expect(screen.getByText("openclaw")).toBeTruthy();
     expect(screen.getByText("first search output")).toBeTruthy();
     expect(screen.getByText("second search output")).toBeTruthy();
-    // kind 标签与批量读取的 Read/List 同构
-    expect(screen.getAllByText("Web").length).toBeGreaterThanOrEqual(1);
+    // kind 标签与批量读取的 Read/List 同构（webSearch → Web/网页）
+    const webKinds = Array.from(document.querySelectorAll(".explore-inline-kind")).map(
+      (el) => el.textContent,
+    );
+    expect(webKinds.some((k) => k === "tools.kindWeb" || k === "Web" || k === "网页")).toBe(
+      true,
+    );
   });
 
   it("renders grouped url summary as clickable link", () => {
@@ -101,9 +106,12 @@ Found at least 21 matching lines
       />,
     );
 
-    expect(screen.getByText("Search")).toBeTruthy();
+    const kinds = Array.from(document.querySelectorAll(".explore-inline-kind")).map(
+      (el) => el.textContent,
+    );
+    expect(kinds).toContain("tools.kindSearch");
     expect(screen.getByText(pattern)).toBeTruthy();
-    expect(screen.getByText("≥21 matches")).toBeTruthy();
+    expect(screen.getByText(/≥21 matches|≥21 处匹配/)).toBeTruthy();
     expect(screen.queryByText(/workspace_result/)).toBeNull();
   });
 });

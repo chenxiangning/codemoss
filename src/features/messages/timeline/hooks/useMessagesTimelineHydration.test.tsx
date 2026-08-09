@@ -8,24 +8,16 @@ describe("useMessagesTimelineHydration", () => {
   it("never renders row-level lightweight summary strips", () => {
     const { rows } = createHeavyHistoryFixture("heavy");
     const { result } = renderHook(() => useMessagesTimelineHydration({
-      activeLiveTimelineRowKeys: [],
       activeLiveTimelineRowKeySet: new Set(),
       conversationDetailHydrationRequested: false,
       effectiveConversationLightweightMode: true,
       isThinking: false,
       isWorking: false,
-      liveAssistantItem: null,
-      liveReasoningItem: null,
       pendingJumpRowKey: null,
       rendererOptionsKey: "renderer-1",
       retainedScopeKey: "scope-1",
       shouldDeferHeavyTimelineRows: true,
-      shouldVirtualizeTimeline: false,
-      threadId: "thread-1",
       timelineProjectionRows: rows,
-      timelineVirtualizer: null!,
-      visibleTimelineRowKeySet: new Set(),
-      workspaceId: "workspace-1",
     }));
     expect(
       rows.every((row) =>

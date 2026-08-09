@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { STARTUP_GATE_OVERLAY_TEST_FLAG_KEY } from "@/features/startup-orchestration/utils/startupGateOverlayTestFlag";
 import { OtherSection } from "./OtherSection";
 
 const TRANSLATIONS: Record<string, string> = {
@@ -14,9 +15,11 @@ const TRANSLATIONS: Record<string, string> = {
   "settings.streamingScheduleTierDetail.aggressive": "Aggressive detail",
   "settings.performanceFlagsResetButton": "Reset",
   "settings.performanceFlagsResetAlreadyDefault": "Already default",
+  "settings.startupGateOverlayTestTitle": "Startup loading overlay (test)",
 };
 
 vi.mock("react-i18next", () => ({
+  initReactI18next: { type: "3rdParty", init: () => undefined },
   useTranslation: () => ({
     t: (key: string, params?: Record<string, unknown>) => {
       if (typeof params?.count === "number") {
@@ -58,7 +61,7 @@ function renderOtherSection() {
   );
 }
 
-describe("OtherSection performance diagnostics", () => {
+describe("OtherSection", () => {
   afterEach(() => {
     window.localStorage.clear();
     vi.unstubAllGlobals();
@@ -146,5 +149,29 @@ describe("OtherSection performance diagnostics", () => {
     );
 
     expect(screen.getByText("Already default")).toBeTruthy();
+  });
+
+  it("defaults the startup loading test to off and persists explicit changes", () => {
+    window.localStorage.setItem(STARTUP_GATE_OVERLAY_TEST_FLAG_KEY, "true");
+    renderOtherSection();
+
+    const toggle = screen.getByRole("switch", {
+      name: "Startup loading overlay (test)",
+    });
+    expect(toggle.getAttribute("data-state")).toBe("unchecked");
+
+    fireEvent.click(toggle);
+
+    expect(
+      window.localStorage.getItem(STARTUP_GATE_OVERLAY_TEST_FLAG_KEY),
+    ).toBe("1");
+    expect(toggle.getAttribute("data-state")).toBe("checked");
+
+    fireEvent.click(toggle);
+
+    expect(
+      window.localStorage.getItem(STARTUP_GATE_OVERLAY_TEST_FLAG_KEY),
+    ).toBeNull();
+    expect(toggle.getAttribute("data-state")).toBe("unchecked");
   });
 });

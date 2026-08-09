@@ -254,3 +254,69 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 1356: 修复工作区切换全量会话扫描
+
+**Date**: 2026-08-09
+**Task**: 修复工作区切换全量会话扫描
+**Branch**: `cxn-version-0.8.5`
+
+### Summary
+
+移除 AppShell workspace navigation 对 exhaustive session projection summary 的依赖，改为本地 owner topology 推导；补齐回归测试、OpenSpec 与性能分析文档。自动门禁通过，用户手动切换性能验收待完成。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `0f5f6ca76` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 1357: 默认隐藏并按需恢复启动遮罩
+
+**Date**: 2026-08-09
+**Task**: 默认隐藏并按需恢复启动遮罩
+**Branch**: `cxn-version-0.8.5`
+
+### Summary
+
+默认隐藏 StartupGateOverlay，并在其他设置新增默认关闭、下次启动生效的本机测试开关；同步修复 AppShell ownership catalog 与 Sidebar 本地配置测试 drift。Focused tests 101/101、typecheck、target ESLint、diff check、OpenSpec strict validation 通过；按用户明确要求未重跑 full suite。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `本次合并提交` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

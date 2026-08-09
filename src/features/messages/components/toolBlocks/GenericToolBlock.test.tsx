@@ -9,7 +9,7 @@ import { GenericToolBlock } from "./GenericToolBlock";
 function expandFileEditScene(container: HTMLElement = document.body) {
   const header =
     within(container).queryByRole("button", {
-      name: /tools\.fileEditSceneToggle|File changes|文件修改/i,
+      name: /tools\.fileEditSceneToggle|Batch edit|File changes|批量修改|文件修改/i,
     }) ??
     (container.querySelector('[data-slot="marker"][aria-expanded="false"]') as HTMLElement | null);
   expect(header).toBeTruthy();

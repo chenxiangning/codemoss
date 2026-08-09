@@ -45,7 +45,6 @@ import {
   type PersistedRadarRecentEntry,
   resolveLatestUserMessage,
 } from "../features/session-activity/utils/sessionRadarPersistence";
-import { useWorkspaceSessionProjectionSummary } from "../features/workspaces/hooks/useWorkspaceSessionProjectionSummary";
 import {
   getClientStoreSync,
   writeClientStoreValue,
@@ -61,6 +60,7 @@ import type {
   WorkspaceInfo,
 } from "../types";
 import { useWorkspaceThreadListHydration } from "./useWorkspaceThreadListHydration";
+import { resolveWorkspaceProjectionOwnerIds } from "./workspaceThreadListLoadGuard";
 import {
   LOCK_LIVE_SESSION_LIMIT,
   isJankDebugEnabled,
@@ -296,27 +296,10 @@ export function useAppShellSearchRadarSection({
     [activePath, kanbanTasks],
   );
 
-  const activeProjectionSummaryQuery = useMemo(
-    () => ({ status: "active" as const }),
-    [],
+  const activeWorkspaceProjectionOwnerIds = useMemo(
+    () => resolveWorkspaceProjectionOwnerIds(workspaces, activeWorkspaceId),
+    [activeWorkspaceId, workspaces],
   );
-  const { summary: activeWorkspaceProjectionSummary } =
-    useWorkspaceSessionProjectionSummary({
-      workspaceId: activeWorkspaceId,
-      query: activeProjectionSummaryQuery,
-      enabled: Boolean(activeWorkspaceId),
-    });
-  const activeWorkspaceProjectionOwnerIds = useMemo(() => {
-    if (!activeWorkspaceId) {
-      return [] as string[];
-    }
-    const ownerWorkspaceIds =
-      activeWorkspaceProjectionSummary?.ownerWorkspaceIds ?? [];
-    if (ownerWorkspaceIds.length === 0) {
-      return [activeWorkspaceId];
-    }
-    return ownerWorkspaceIds;
-  }, [activeWorkspaceId, activeWorkspaceProjectionSummary?.ownerWorkspaceIds]);
 
   const {
     ensureWorkspaceThreadListLoaded,

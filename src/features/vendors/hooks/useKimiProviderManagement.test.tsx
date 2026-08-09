@@ -108,7 +108,7 @@ describe("useKimiProviderManagement", () => {
     expect(getKimiProviders).toHaveBeenCalledTimes(2);
   });
 
-  it("switches provider and reloads", async () => {
+  it("optimistically switches provider without list loading flicker", async () => {
     const providers = [kimiProvider("a"), kimiProvider("b", { isActive: true })];
     vi.mocked(getKimiProviders).mockResolvedValue(providers);
 
@@ -117,12 +117,27 @@ describe("useKimiProviderManagement", () => {
       expect(result.current.kimiProviders).toEqual(providers);
     });
 
+    const loadsAfterMount = vi.mocked(getKimiProviders).mock.calls.length;
+
     await act(async () => {
       await result.current.handleSwitchKimiProvider("a");
     });
 
     expect(switchKimiProvider).toHaveBeenCalledWith("a");
     expect(result.current.kimiProviderError).toBeNull();
+    expect(vi.mocked(getKimiProviders).mock.calls.length).toEqual(
+      loadsAfterMount,
+    );
+    expect(result.current.kimiLoading).toBe(false);
+    expect(
+      result.current.kimiProviders.map((entry) => [
+        entry.id,
+        Boolean(entry.isActive),
+      ]),
+    ).toEqual([
+      ["a", true],
+      ["b", false],
+    ]);
   });
 
   it("surfaces delete errors while closing the confirm dialog", async () => {

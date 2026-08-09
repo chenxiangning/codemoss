@@ -31,7 +31,7 @@ describe("FileChangeToolContent", () => {
     expect(screen.queryByText("b.ts")).toBeNull();
 
     const header = screen.getByRole("button", {
-      name: /tools\.fileEditSceneToggle|File changes|文件修改/i,
+      name: /tools\.fileEditSceneToggle|Batch edit|File changes|批量修改|文件修改/i,
     });
     expect(header.getAttribute("aria-expanded")).toBe("false");
 
@@ -55,7 +55,7 @@ describe("FileChangeToolContent", () => {
 
     expect(
       screen.queryByRole("button", {
-        name: /tools\.fileEditSceneToggle|File changes|文件修改/i,
+        name: /tools\.fileEditSceneToggle|Batch edit|File changes|批量修改|文件修改/i,
       }),
     ).toBeNull();
     expect(screen.queryByTestId("file-edit-scene-list")).toBeNull();

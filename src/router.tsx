@@ -1,9 +1,10 @@
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, useState } from "react";
 import { useWindowLabel } from "./features/layout/hooks/useWindowLabel";
 import { isDetachedFileExplorerWindowLabel } from "./features/files/detachedFileExplorer";
 import { isBrowserAgentDockWindowLabel } from "./features/browser-agent/browserAgentDockWindow";
 import { AppShell } from "./app-shell";
 import { StartupGateOverlay } from "./features/app/components/StartupGateOverlay";
+import { isStartupGateOverlayTestEnabled } from "./features/startup-orchestration/utils/startupGateOverlayTestFlag";
 
 const AboutView = lazy(() =>
   import("./features/about/components/AboutView").then((module) => ({
@@ -37,6 +38,9 @@ const DetachedBrowserAgentWindow = lazy(() =>
 
 export function AppRouter() {
   const windowLabel = useWindowLabel();
+  const [startupGateOverlayEnabledAtMount] = useState(
+    isStartupGateOverlayTestEnabled,
+  );
   if (windowLabel === "about") {
     return (
       <Suspense fallback={null}>
@@ -75,8 +79,7 @@ export function AppRouter() {
   return (
     <>
       <AppShell />
-      {/* Tauri desktop: block clicks during cold-start hydrate window. */}
-      <StartupGateOverlay />
+      {startupGateOverlayEnabledAtMount ? <StartupGateOverlay /> : null}
     </>
   );
 }

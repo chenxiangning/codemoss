@@ -67,6 +67,8 @@ const git = {
     "previewInlineAction": "中央ペインで差分をプレビュー",
     "previewModal": "モーダルでプレビュー",
     "previewModalAction": "差分プレビューモーダルを開く",
+    "openFileContent": "Open file",
+    "openFileContentAction": "Open file content",
     "semanticDiff": {
       "kicker": "レビューレイヤー",
       "title": "セマンティック差分",

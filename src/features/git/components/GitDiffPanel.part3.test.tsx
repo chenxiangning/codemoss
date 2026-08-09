@@ -95,6 +95,8 @@ vi.mock("react-i18next", () => ({
         "git.previewInlineAction": "Preview diff in center pane",
         "git.previewModal": "Preview in modal",
         "git.previewModalAction": "Open diff preview modal",
+        "git.openFileContent": "Open file",
+        "git.openFileContentAction": "Open file content",
         "git.diffMode": "Diff",
         "git.diffModeDescription": "Inspect file changes",
         "git.logMode": "Git",
@@ -294,7 +296,55 @@ describe("GitDiffPanel", () => {
       expect(composer?.classList.contains("git-commit-composer--top")).toBe(true);
     });
 
-  it("forwards repository identity when a multi-repository file row opens", () => {
+  it("opens repository-scoped DIFF modal when a multi-repository file row is activated", async () => {
+      const onOpenFile = vi.fn();
+      vi.mocked(invoke).mockImplementation((command) => {
+        if (command === "get_git_diffs") {
+          return Promise.resolve([{
+            path: "pom.xml",
+            status: "M",
+            diff: "@@ -1 +1 @@\n-old\n+new",
+          }]);
+        }
+        return Promise.resolve(null);
+      });
+      render(
+        <GitDiffPanel
+          {...baseProps}
+          workspaceId="ws-1"
+          workspacePath="/workspace"
+          multiRepositoryMode
+          repositoryStatuses={[
+            {
+              repositoryRoot: "services/api",
+              displayName: "api",
+              branchName: "main",
+              stagedFiles: [],
+              unstagedFiles: [
+                { path: "pom.xml", status: "M", additions: 1, deletions: 0 },
+              ],
+              totalAdditions: 1,
+              totalDeletions: 0,
+              error: null,
+            },
+          ]}
+          onOpenFile={onOpenFile}
+        />,
+      );
+
+      fireEvent.click(screen.getByRole("button", { name: "pom.xml" }));
+
+      expect(onOpenFile).not.toHaveBeenCalled();
+      await waitFor(() => {
+        expect(mockEditableDiffReviewSurface).toHaveBeenCalled();
+      });
+      expect(vi.mocked(invoke)).toHaveBeenCalledWith("get_git_diffs", {
+        workspaceId: "ws-1",
+        repositoryRoot: "services/api",
+      });
+    });
+
+  it("forwards repository identity when multi-repository open-file action is used", () => {
       const onOpenFile = vi.fn();
       render(
         <GitDiffPanel
@@ -319,7 +369,7 @@ describe("GitDiffPanel", () => {
         />,
       );
 
-      fireEvent.click(screen.getByRole("button", { name: "pom.xml" }));
+      fireEvent.click(screen.getByRole("button", { name: "Open file content" }));
 
       expect(onOpenFile).toHaveBeenCalledWith("pom.xml", "services/api");
     });

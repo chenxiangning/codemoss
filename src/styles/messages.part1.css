@@ -3,48 +3,14 @@
 .message {
   display: flex;
   margin-bottom: 12px;
-  content-visibility: auto;
-  /* 屏外占位兜底。static 全量路径仍依赖此估值；虚拟化 idle 路径用
-     estimateTimelineProjectionRowSize。48px 更贴近短气泡/折叠工具节奏，
-     减少 content-visibility 进视口时高度跳变导致的滚动阻滞。 */
-  contain-intrinsic-block-size: auto 48px;
-}
-
-.message.assistant.is-live-streaming {
-  content-visibility: visible;
-  contain-intrinsic-block-size: auto;
-}
-
-.message:has(.message-image-grid, .message-deferred-image-list, .message-generated-image-card) {
-  content-visibility: visible;
-  contain-intrinsic-block-size: auto;
-}
-
-/* claude-render-safe：仅让「正在流式的那一行」保持 content-visibility:visible（与上方
-   .is-live-streaming 规则一致），已完成的屏外历史行恢复基础规则的 content-visibility:auto，
-   跳过屏外渲染/绘制。原 blanket 规则（对全部 .message 强制 visible）会让 Claude 流式期整条
-   历史每帧都参与 style/layout，是「越聊越卡」的主因之一。
-   ⚠️ 原规则来自 7619db05 桌面渲染守卫；收窄后【必须】在 Windows/macOS 打包版真机回归
-   Messages.windows-render-mitigation 场景，确认未复现白屏/闪烁。若复现，改为对「靠近 live
-   尾部的有限行」保留 visible，而非整条历史全量 visible。 */
-.app.windows-desktop
-  .messages-shell.claude-render-safe
-  .message.assistant.is-live-streaming,
-.app.macos-desktop
-  .messages-shell.claude-render-safe
-  .message.assistant.is-live-streaming {
-  content-visibility: visible;
+  /* 2026-08：禁用 content-visibility（对齐 jetbrains-cc-gui 的事故教训）——
+     屏外占位→真实高度的跳变导致 scrollHeight 骤降、浏览器 clamp、视口上跳卡半屏。
+     长对话性能由虚拟化（idle）与流式尾窗兜底。 */
 }
 
 @media (prefers-reduced-motion: reduce) {
   .working-spinner {
     animation: none;
-  }
-
-  .message,
-  .thinking-block,
-  .item-card {
-    content-visibility: visible;
   }
 }
 
@@ -337,7 +303,7 @@
   display: grid;
   gap: 8px;
   justify-items: stretch;
-  padding-right: 36px;
+  /* 不再固定预留复制入口宽度：短气泡更紧凑，图标 hover 时叠层显示 */
   background: var(--color-message-user-bg, var(--surface-bubble-user));
   color: var(--color-message-user-text, #ffffff);
   border-radius: 12px;
@@ -348,21 +314,37 @@
   );
 }
 
-/* 复制按钮浮动到气泡右下角，脱离 grid 文档流(不再独占一行)，默认隐藏、悬停气泡时淡入 */
+/* 复制按钮浮动到气泡右下角，脱离文档流；默认隐藏，悬停/焦点时淡入并叠在正文上 */
 .message-user-bubble-actions {
   position: absolute;
-  right: 8px;
-  bottom: 6px;
+  right: 6px;
+  bottom: 4px;
   z-index: 2;
   opacity: 0;
   transform: translateY(4px);
   transition: opacity 160ms ease, transform 160ms ease;
+  pointer-events: none;
+  /* 气泡同色衬底 + 柔光，叠在末字上时仍可读 */
+  padding: 3px;
+  border-radius: 8px;
+  background: color-mix(
+    in srgb,
+    var(--color-message-user-bg, var(--surface-bubble-user)) 94%,
+    transparent
+  );
+  box-shadow: 0 0 10px 6px
+    color-mix(
+      in srgb,
+      var(--color-message-user-bg, var(--surface-bubble-user)) 78%,
+      transparent
+    );
 }
 
 .message.user .bubble:hover .message-user-bubble-actions,
 .message-user-bubble-actions:focus-within {
   opacity: 1;
   transform: translateY(0);
+  pointer-events: auto;
 }
 
 .message.user .message-action-button {
@@ -1988,9 +1970,6 @@
   margin-bottom: 12px;
   background: var(--surface-card);
   color: var(--text-stronger);
-  /* review/diff 等卡片屏幕外跳过渲染/绘制；56px 贴近折叠工具/摘要行。 */
-  content-visibility: auto;
-  contain-intrinsic-block-size: auto 56px;
 }
 
 .item-card.review {
@@ -2400,14 +2379,15 @@ svg.explore-inline-icon {
 }
 
 /* 内容：仅在展开时挂载；内边距负责展开态呼吸，不改外层 .explore-inline margin */
-/* 条目缩进对齐到标题文字起始处（图标 14 + gap 6） */
+/* 竖线右移到标题文字左缘（图标 14 + gap 6），与标题形成更清晰的层级分隔 */
+/* 底 margin 2px（原 6px）：展开列表底部不再比折叠 meta 行距更疏 */
 .explore-inline-list {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  margin: 2px 0 6px 0;
-  padding: 0 0 2px 20px;
-  border-left: 2px solid var(--border-subtle);
+  margin: 2px 0 2px 6px;
+  padding: 0 0 0 10px;
+  border-left: 1.5px solid var(--border-subtle);
 }
 
 .explore-inline.is-inline-summary .explore-inline-list,
@@ -2422,6 +2402,29 @@ svg.explore-inline-icon {
   gap: 6px;
   min-width: 0;
   font-size: 12px;
+}
+
+/* 带文件类型图标时垂直居中，避免彩色 badge 与文字基线错位 */
+.explore-inline-item.has-file-icon {
+  align-items: center;
+}
+
+.explore-inline-file-icon {
+  display: inline-flex;
+  flex: 0 0 auto;
+  width: 14px;
+  height: 14px;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.explore-inline-file-icon svg,
+/* ToolMarkerShell / Marker 前置彩色文件图标 */
+.tool-marker-file-type-icon svg {
+  width: 100%;
+  height: 100%;
+  display: block;
 }
 
 .explore-inline-kind {

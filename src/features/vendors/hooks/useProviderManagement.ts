@@ -22,9 +22,15 @@ import {
   migrateModelMappingStorage,
   syncModelMappingFromProviderEnv,
 } from "../../models/constants";
+import { applyOptimisticActiveProvider } from "../applyOptimisticActiveProvider";
 import { VENDOR_ACTIVE_PROVIDER_CHANGED_EVENT } from "../vendorActiveProviderEvents";
 import { notifyProviderTargetCatalogChanged } from "../../composer/components/ChatInputBox/hooks/useProviderTargetCatalogOwners";
 import { normalizeProviderProfileId } from "../customModelProviderBinding";
+
+/** List/config load options. `silent` skips list-level loading UI (switch / external events). */
+export type ProviderLoadOptions = {
+  silent?: boolean;
+};
 
 export interface ProviderDialogState {
   isOpen: boolean;
@@ -186,7 +192,8 @@ export function mergeClaudeProviderCustomModelsIntoStore(
 
 export function useProviderManagement() {
   const [providers, setProviders] = useState<ProviderConfig[]>([]);
-  const [loading, setLoading] = useState(false);
+  // Start true so the first paint shows a loading placeholder instead of an empty list.
+  const [loading, setLoading] = useState(true);
   const [currentConfig, setCurrentConfig] = useState<ClaudeCurrentConfig | null>(
     null,
   );
@@ -236,28 +243,39 @@ export function useProviderManagement() {
     [],
   );
 
-  const loadProviders = useCallback(async () => {
-    setLoading(true);
-    try {
-      const list = await getClaudeProviders();
-      setProviders(list);
-      mergeClaudeProviderCustomModelsIntoStore(list);
-      syncActiveProviderModelMapping(list);
-      return { ok: true } as const;
-    } catch (error) {
-      const actionError =
-        typeof error === "object" && error !== null && "action" in error
-          ? (error as ClaudeProviderActionError)
-          : providerActionError("load", error);
-      setProviderError(actionError);
-      return { ok: false, error: actionError } as const;
-    } finally {
-      setLoading(false);
-    }
-  }, [syncActiveProviderModelMapping]);
+  const loadProviders = useCallback(
+    async (options?: ProviderLoadOptions) => {
+      const silent = Boolean(options?.silent);
+      if (!silent) {
+        setLoading(true);
+      }
+      try {
+        const list = await getClaudeProviders();
+        setProviders(list);
+        mergeClaudeProviderCustomModelsIntoStore(list);
+        syncActiveProviderModelMapping(list);
+        return { ok: true } as const;
+      } catch (error) {
+        const actionError =
+          typeof error === "object" && error !== null && "action" in error
+            ? (error as ClaudeProviderActionError)
+            : providerActionError("load", error);
+        setProviderError(actionError);
+        return { ok: false, error: actionError } as const;
+      } finally {
+        if (!silent) {
+          setLoading(false);
+        }
+      }
+    },
+    [syncActiveProviderModelMapping],
+  );
 
-  const loadCurrentConfig = useCallback(async () => {
-    setCurrentConfigLoading(true);
+  const loadCurrentConfig = useCallback(async (options?: ProviderLoadOptions) => {
+    const silent = Boolean(options?.silent);
+    if (!silent) {
+      setCurrentConfigLoading(true);
+    }
     try {
       const config = await getCurrentClaudeConfig();
       setCurrentConfig(config as ClaudeCurrentConfig);
@@ -268,7 +286,9 @@ export function useProviderManagement() {
       setProviderError(actionError);
       return { ok: false, error: actionError } as const;
     } finally {
-      setCurrentConfigLoading(false);
+      if (!silent) {
+        setCurrentConfigLoading(false);
+      }
     }
   }, []);
 
@@ -282,14 +302,17 @@ export function useProviderManagement() {
     void Promise.all([loadProviders(), loadCurrentConfig()]);
   }, [loadProviders, loadCurrentConfig]);
 
-  // 新建菜单选供应商并 switch 后，刷新「使用中」标记（与设置页点启用一致）
+  // 新建菜单选供应商并 switch 后，静默刷新「使用中」标记（避免设置页 loading 闪烁）
   useEffect(() => {
     const onActiveProviderChanged = (event: Event) => {
       const detail = (event as CustomEvent<{ engine?: string }>).detail;
       if (detail?.engine && detail.engine !== "claude") {
         return;
       }
-      void Promise.all([loadProviders(), loadCurrentConfig()]);
+      void Promise.all([
+        loadProviders({ silent: true }),
+        loadCurrentConfig({ silent: true }),
+      ]);
     };
     window.addEventListener(
       VENDOR_ACTIVE_PROVIDER_CHANGED_EVENT,
@@ -453,22 +476,34 @@ export function useProviderManagement() {
    * L1「启用 / 使用中」：只更新 app 内 claude.current（backend 不再盖写 ~/.claude/settings.json）。
    * managed 会话 env 靠 thread.providerProfileId + launch/--settings；本地 settings 保持用户磁盘原样。
    * 设置页与新建菜单共用此路径；已绑定会话的 L2 binding 不会被改写。
+   *
+   * Optimistic isActive + no list loading flag: avoids the full-list "加载中" flash on switch.
+   * On failure, roll back to the pre-switch snapshot.
    */
   const handleSwitchProvider = useCallback(
     async (id: string) => {
+      const previous = providers;
+      const optimistic = applyOptimisticActiveProvider(previous, id);
+      setProviders(optimistic);
+      syncActiveProviderModelMapping(optimistic);
+
       try {
         await switchClaudeProvider(id);
-        await Promise.all([loadProviders(), loadCurrentConfig()]);
+        // Soft-reconcile current config only; list already reflects exclusive active.
+        // Avoid loadProviders() here — it would toggle loading and replace every row ref.
+        await loadCurrentConfig({ silent: true });
         setProviderError(null);
         notifyProviderTargetCatalogChanged();
         return { ok: true } as const;
       } catch (cause) {
+        setProviders(previous);
+        syncActiveProviderModelMapping(previous);
         const error = providerActionError("switch", cause);
         setProviderError(error);
         return { ok: false, error } as const;
       }
     },
-    [loadProviders, loadCurrentConfig],
+    [providers, loadCurrentConfig, syncActiveProviderModelMapping],
   );
 
   const confirmDeleteProvider = useCallback(async () => {

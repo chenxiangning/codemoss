@@ -306,10 +306,36 @@ describe("messages live window", () => {
     expect(Array.from(boundarySet)).toEqual(["assistant-1b", "assistant-2c"]);
   });
 
-  it("bounds the streaming live tail using STREAMING_VISIBLE_WINDOW while keeping idle history full", () => {
-    // SCALE-1 契约：会话条目数超过流式窗口容量（STREAMING_VISIBLE_WINDOW*2）时，流式期
-    // 裁到 live 尾窗、保留最新用户提问并报告折叠数，把「越聊越卡」压回尾窗；idle 保留全量。
-    const total = STREAMING_VISIBLE_WINDOW * 2 + 40;
+  it("production STREAMING_VISIBLE_WINDOW<=0 keeps full list while streaming (jetbrains smooth mode)", () => {
+    // 2026-08：生产默认 STREAMING_VISIBLE_WINDOW=0，流式/idle 均全量，避免结束瞬间高度暴涨。
+    expect(STREAMING_VISIBLE_WINDOW).toBeLessThanOrEqual(0);
+    const items: ConversationItem[] = [
+      userMessage("user-latest", "最新问题"),
+      ...Array.from({ length: 120 }, (_, index) =>
+        assistantMessage(`assistant-${index}`, `回复 ${index}`),
+      ),
+    ];
+
+    const streaming = buildLiveTailWorkingSet(items, {
+      isThinking: true,
+      showAllHistoryItems: false,
+      visibleWindow: STREAMING_VISIBLE_WINDOW,
+    });
+    expect(streaming.items).toBe(items);
+    expect(streaming.omittedBeforeWorkingSetCount).toBe(0);
+
+    const idle = buildLiveTailWorkingSet(items, {
+      isThinking: false,
+      showAllHistoryItems: false,
+      visibleWindow: STREAMING_VISIBLE_WINDOW,
+    });
+    expect(idle.items).toBe(items);
+    expect(idle.omittedBeforeWorkingSetCount).toBe(0);
+  });
+
+  it("still supports optional tail crop when visibleWindow>0 (legacy performance path)", () => {
+    const windowSize = 30;
+    const total = windowSize * 2 + 40;
     const items: ConversationItem[] = [
       userMessage("user-latest", "最新问题"),
       ...Array.from({ length: total }, (_, index) =>
@@ -320,19 +346,11 @@ describe("messages live window", () => {
     const streaming = buildLiveTailWorkingSet(items, {
       isThinking: true,
       showAllHistoryItems: false,
-      visibleWindow: STREAMING_VISIBLE_WINDOW,
+      visibleWindow: windowSize,
     });
     expect(streaming.items.length).toBeLessThan(items.length);
-    expect(streaming.items.length).toBeLessThanOrEqual(STREAMING_VISIBLE_WINDOW * 2 + 1);
+    expect(streaming.items.length).toBeLessThanOrEqual(windowSize * 2 + 1);
     expect(streaming.items.some((item) => item.id === "user-latest")).toBe(true);
     expect(streaming.omittedBeforeWorkingSetCount).toBeGreaterThan(0);
-
-    const idle = buildLiveTailWorkingSet(items, {
-      isThinking: false,
-      showAllHistoryItems: false,
-      visibleWindow: STREAMING_VISIBLE_WINDOW,
-    });
-    expect(idle.items).toBe(items);
-    expect(idle.omittedBeforeWorkingSetCount).toBe(0);
   });
 });

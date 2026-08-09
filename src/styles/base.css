@@ -79,8 +79,8 @@
  * styled scrollbar must add `.scrollable`. The chat list (`.messages`), the
  * file-tree scroll containers, and the settings sub-panels opt in explicitly;
  * the main settings view scrolls through a Radix `ScrollArea` (its own overlay
- * scrollbar, unaffected). Vendor config dialogs still fall back to the platform
- * scrollbar.
+ * scrollbar, unaffected). Official-config CodeMirror mounts `.scrollable` on
+ * `.cm-scroller` so vendor config editors share the same thin thumb.
  */
 
 /* ── 统一滚动条几何 (Unified scrollbar geometry) ──
