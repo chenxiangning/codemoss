@@ -86,6 +86,10 @@ describe("vendor settings panel compact layout", () => {
       vendorPanelsCss,
       '.vendor-settings-panel [data-slot="button"]',
     );
+    const listActionsButtonRule = getCssRuleBlock(
+      vendorPanelsCss,
+      '.vendor-settings-panel .vendor-list-actions [data-slot="button"],\n.vendor-settings-panel .vendor-list-actions [data-slot="dropdown-menu-trigger"]',
+    );
     const badgeRule = getCssRuleBlock(
       vendorPanelsCss,
       '.vendor-settings-panel [data-slot="badge"]',
@@ -174,6 +178,7 @@ describe("vendor settings panel compact layout", () => {
     expect(emptyAdjacentRule).toContain("border-top: 0;");
     expect(emptyAdjacentRule).toContain("border-top-left-radius: 0;");
     expect(buttonRule).toContain("border-radius: 8px;");
+    expect(listActionsButtonRule).toContain("border-radius: 4px;");
     expect(badgeRule).toContain("border-radius: 8px;");
     expect(iconRule).toContain("width: 28px;");
     expect(iconRule).toContain("height: 28px;");
@@ -210,7 +215,7 @@ describe("vendor settings panel compact layout", () => {
     expect(groupRule).toContain(
       "border: 1px solid var(--settings-basic-border);",
     );
-    expect(groupRule).toContain("border-radius: 14px;");
+    expect(groupRule).toContain("border-radius: 6px;");
     expect(groupRule).toContain("background: var(--settings-basic-surface);");
     expect(cardRule).toContain("background: transparent;");
     expect(activeCardRule).toContain(

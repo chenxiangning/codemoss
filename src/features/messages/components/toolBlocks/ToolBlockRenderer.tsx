@@ -103,10 +103,13 @@ export const ToolBlockRenderer = memo(function ToolBlockRenderer({
   }
 
   // 2. 读取文件工具（Grok/Kimi/OpenCode Read / read_file / list_dir…）
+  // 图片读取在 ReadToolBlock 内展开为真实预览（ImageViewToolContent），
+  // 不再只显示 “Read image file: /path” 文案。
   if (isReadTool(lower)) {
     return (
       <ReadToolBlock
         item={item}
+        workspaceId={workspaceId}
         isExpanded={isExpanded}
         onToggle={onToggle}
       />

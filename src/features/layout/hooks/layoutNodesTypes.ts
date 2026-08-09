@@ -262,6 +262,12 @@ export type LayoutNodesFlatOptions = {
   deleteConfirmBusy?: boolean;
   onCancelDeleteConfirm?: () => void;
   onConfirmDeleteConfirm?: () => void;
+  renameThreadId?: string | null;
+  renameWorkspaceId?: string | null;
+  renameName?: string;
+  onRenameChange?: (value: string) => void;
+  onRenameCancel?: () => void;
+  onRenameConfirm?: () => void;
   onSyncThread: (workspaceId: string, threadId: string) => void;
   pinThread: (workspaceId: string, threadId: string) => boolean;
   unpinThread: (workspaceId: string, threadId: string) => void;
@@ -878,6 +884,12 @@ export type ChromeLayoutNodesOptions = Pick<
   | "deleteConfirmBusy"
   | "onCancelDeleteConfirm"
   | "onConfirmDeleteConfirm"
+  | "renameThreadId"
+  | "renameWorkspaceId"
+  | "renameName"
+  | "onRenameChange"
+  | "onRenameCancel"
+  | "onRenameConfirm"
   | "onSyncThread"
   | "pinThread"
   | "unpinThread"

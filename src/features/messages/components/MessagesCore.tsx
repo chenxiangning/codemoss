@@ -1,7 +1,6 @@
 import {
   memo,
   useCallback,
-  useDeferredValue,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -21,6 +20,7 @@ import { useStreamActivityPhase } from "../../threads/hooks/useStreamActivityPha
 import type { AgentTaskScrollRequest } from "../types";
 import { getVisibleApprovalsForThread } from "../../../utils/approvalBatching";
 import {
+  MESSAGES_FORCE_PIN_BOTTOM_EVENT,
   MESSAGES_LIVE_AUTO_FOLLOW_FLAG_KEY,
   MESSAGES_LIVE_CONTROLS_UPDATED_EVENT,
   readLocalBooleanFlag,
@@ -32,7 +32,7 @@ import {
 import { appendRendererDiagnostic } from "../../../services/rendererDiagnostics";
 import { MessagesTimeline } from "./MessagesTimeline";
 import { MessagesAnchorRail } from "./conversation/MessagesAnchorRail";
-import { ScrollControl } from "./conversation/ScrollControl";
+import { ScrollControl, type ConversationScrollEdge } from "./conversation/ScrollControl";
 import {
   MessagesInlineApproval,
   MessagesInlineUserInput,
@@ -82,18 +82,6 @@ import {
   type MessageActionTargets,
 } from "../orchestration/presentation/messagesViewModel";
 import {
-  INITIAL_BOTTOM_PIN_BUDGET_MS,
-} from "../constants/messagesConstants";
-import {
-  isProgrammaticScrollEcho,
-  PROGRAMMATIC_SCROLL_ECHO_TOLERANCE_PX,
-} from "../orchestration/scrolling/messagesScrollEcho";
-import {
-  distanceToBottom,
-  isAtTrueBottom,
-} from "../orchestration/scrolling/scrollAuthorityMachine";
-import { FOLLOW_RELEASE_THRESHOLD_PX } from "../orchestration/scrolling/scrollAuthorityConstants";
-import {
   DEFAULT_RENDER_LOOP_GUARD_BUDGET,
   resolveIdempotentRenderLoopGuard,
   type RenderLoopGuardBudget,
@@ -109,7 +97,10 @@ import {
   useMessagesHistoryWindow,
 } from "../orchestration/hooks/useMessagesHistoryWindow";
 import { useMessagesPresentationState } from "../orchestration/hooks/useMessagesPresentationState";
-import { useMessagesScrollController } from "../orchestration/hooks/useMessagesScrollController";
+import {
+  isCanvasNearBottom,
+  useMessagesCanvasFollow,
+} from "../orchestration/hooks/useMessagesCanvasFollow";
 import { useMessagesInteractions } from "../orchestration/hooks/useMessagesInteractions";
 import { MessagesLinkedRunBanner } from "../orchestration/components/MessagesLinkedRunBanner";
 
@@ -443,26 +434,15 @@ export const MessagesCore = memo(function MessagesCore({
       buildLiveTailWorkingSet(effectiveItems, {
         isThinking,
         showAllHistoryItems,
-        // 流式期裁到 live 尾窗（buildLiveTailWorkingSet 仅在 isThinking 时裁剪）；
-        // 用户显式 show all 后恢复全量；默认折叠态仍限制每个 token 的 timeline 工作集。
+        // STREAMING_VISIBLE_WINDOW<=0：jetbrains 全量列表，流式不裁尾窗。
         visibleWindow: STREAMING_VISIBLE_WINDOW,
         enableCollaborationBadge,
       }),
     [effectiveItems, enableCollaborationBadge, isThinking, showAllHistoryItems],
   );
+  // jetbrains 同帧：不用 useDeferredValue 推迟时间线 DOM。
+  // deferred 会让「状态已变高、画面仍是旧高度」paint 一帧 → 往上一闪再被 stick 吸回。
   const renderSourceItems = liveTailWorkingSet.items;
-  const renderSourceSnapshot = useMemo(
-    () => ({
-      scopeKey: renderScopeKey,
-      items: renderSourceItems,
-    }),
-    [renderScopeKey, renderSourceItems],
-  );
-  const deferredRenderSourceSnapshot = useDeferredValue(renderSourceSnapshot);
-  const deferredRenderSourceItems =
-    deferredRenderSourceSnapshot.scopeKey === renderScopeKey
-      ? deferredRenderSourceSnapshot.items
-      : renderSourceItems;
   const threadStreamLatencySnapshot = useThreadStreamLatencySnapshot(threadId);
   const activeStreamMitigation = useMemo(
     () => resolveActiveThreadStreamMitigation(threadStreamLatencySnapshot),
@@ -476,7 +456,7 @@ export const MessagesCore = memo(function MessagesCore({
         activeEngine === "gemini" ||
         activeEngine === "grok" ||
         activeEngine === "kimi"),
-    items: deferredRenderSourceItems,
+    items: renderSourceItems,
   });
   const {
     blankingRecoveryActive,
@@ -497,7 +477,8 @@ export const MessagesCore = memo(function MessagesCore({
     activeEngine,
     activeTurnId,
     codexSilentSuspectedAt,
-    deferredRenderSourceItems,
+    // jetbrains 同帧：deferred 与即时同源，不再拆两拍 items。
+    deferredRenderSourceItems: renderSourceItems,
     isContextCompacting,
     isMacDesktop,
     isAgentTaskNotificationText,
@@ -528,41 +509,28 @@ export const MessagesCore = memo(function MessagesCore({
   const activeUserInputAnchorItemId =
     activeUserInputRequest?.params.item_id?.trim() || null;
   const rawScrollKey = buildMessagesScrollKey(effectiveItems, activeUserInputRequestId);
+  // working 边沿并入 followSignal：工具折叠/结算等不改尾条 text 时也触发布局追底。
+  // live 正文外部化走 useMessagesCanvasFollow 内 channel 订阅（无 React 重渲）。
+  const canvasFollowSignal = `${rawScrollKey}|w:${isWorking ? 1 : 0}|liveId:${liveAssistantMessageId ?? ""}`;
   const {
-    activeProgrammaticScrollEdgeRef,
-    activeProgrammaticScrollMotionRef,
-    autoScrollRef,
-    beginTurnBoundaryBottomConvergence,
-    cancelFocusFollowConvergence,
-    cancelScrollConvergence,
-    clearUserScrollIntent,
     containerRef,
     getPendingScrollResourceCount,
-    handleScrollControlRequest,
-    hasRecentUserScrollIntent,
-    initialBottomPinScopeRef,
-    isNearBottom,
-    noteViewportAtTrueBottom,
-    noteViewportLeftBottom,
-    programmaticScrollTopEchoRef,
-    rearmAutoFollowToBottom,
-    recordCurrentScrollGeometry,
-    requestAutoScroll,
-    requestHistoryBottomConvergence,
-    requestTimelineLayoutBottomConvergence,
-    scrollGeometrySnapshotRef,
-    scrollKey,
-    shouldProtectFollowOnScrollEvent,
-    stickToBottomDeadlineRef,
-    stickToBottomIntentRef,
-  } = useMessagesScrollController({
-    clearPendingJumpMessage,
+    messagesEndRef,
+    pauseFollow,
+    pinIfFollowing,
+    resumeFollowAndPin,
+    resumeFollowAndSmoothPin,
+    settleFollow,
+  } = useMessagesCanvasFollow({
+    followSignal: canvasFollowSignal,
     isThinking,
-    isAssistantFinalizing,
+    hasPendingJump: Boolean(pendingJumpMessageId),
     liveAutoFollowEnabledRef,
-    rawScrollKey,
     renderScopeKey,
+    threadId,
   });
+  const scrollKey = rawScrollKey;
+  const historyOpenedScopeRef = useRef<string | null>(null);
   const {
     closeFileLinkMenu,
     closeNoteCaptureMenu,
@@ -621,12 +589,12 @@ export const MessagesCore = memo(function MessagesCore({
     const nodeRect = node.getBoundingClientRect();
     const targetTop =
       container.scrollTop + (nodeRect.top - containerRect.top) - container.clientHeight * 0.22;
-    autoScrollRef.current = false;
+    pauseFollow();
     container.scrollTo({
       top: Math.max(0, targetTop),
       behavior: "smooth",
     });
-  }, [autoScrollRef, containerRef]);
+  }, [containerRef, pauseFollow]);
 
   useEffect(() => {
     const previousThreadId = resourceCleanupThreadIdRef.current;
@@ -643,6 +611,11 @@ export const MessagesCore = memo(function MessagesCore({
         agentTaskNodeByTaskIdRef.current.size + agentTaskNodeByToolUseIdRef.current.size,
     };
     resetInteractionScope();
+    // thread→null→thread 的重开（previous 为 null 的真正「打开」事件）允许 history-open
+    // 重新落底；A→B 直切靠 scope 去重自然重 pin，pending jump 的抑制不被破坏。
+    if (threadChanged && previousThreadId == null && threadId != null) {
+      historyOpenedScopeRef.current = null;
+    }
     // pre-dispatch guard：值未变不得进 dispatch（#185 / Messages scope reset）
     setIsSelectionFrozen((previous) => (previous ? false : previous));
     frozenItemsRef.current = null;
@@ -734,11 +707,11 @@ export const MessagesCore = memo(function MessagesCore({
           setLiveAutoFollowEnabled(nextLiveAutoFollowEnabled);
         }
         if (!nextLiveAutoFollowEnabled) {
-          cancelFocusFollowConvergence();
+          pauseFollow();
         }
         // 重新打开焦点跟随：仅 false→true 边沿 re-arm（流式/闲时均可一键归位）。
         if (!wasLiveAutoFollowEnabled && nextLiveAutoFollowEnabled) {
-          rearmAutoFollowToBottom();
+          resumeFollowAndPin();
         }
       }
     };
@@ -757,39 +730,45 @@ export const MessagesCore = memo(function MessagesCore({
           setLiveAutoFollowEnabled(nextLiveAutoFollowEnabled);
         }
         if (!nextLiveAutoFollowEnabled) {
-          cancelFocusFollowConvergence();
+          pauseFollow();
         } else if (!wasLiveAutoFollowEnabled && nextLiveAutoFollowEnabled) {
           // 与 CustomEvent 一致：只在边沿 re-arm，避免跨 tab 重复 setItem 拽回底部。
-          rearmAutoFollowToBottom();
+          resumeFollowAndPin();
         }
       }
+    };
+    // jetbrains useMessageSender：发送当下清 pause + 钉底，不靠 item 计数晚一拍。
+    const handleForcePinBottom = () => {
+      resumeFollowAndPin();
     };
     window.addEventListener(
       MESSAGES_LIVE_CONTROLS_UPDATED_EVENT,
       handleLiveControlsUpdated as EventListener,
     );
     window.addEventListener("storage", handleStorage);
+    document.addEventListener(MESSAGES_FORCE_PIN_BOTTOM_EVENT, handleForcePinBottom);
     return () => {
       window.removeEventListener(
         MESSAGES_LIVE_CONTROLS_UPDATED_EVENT,
         handleLiveControlsUpdated as EventListener,
       );
       window.removeEventListener("storage", handleStorage);
+      document.removeEventListener(MESSAGES_FORCE_PIN_BOTTOM_EVENT, handleForcePinBottom);
     };
-  }, [cancelFocusFollowConvergence, rearmAutoFollowToBottom]);
+  }, [pauseFollow, resumeFollowAndPin]);
   const reasoningMetaById = useMemo(() => {
     const meta = new Map<string, ReturnType<typeof parseReasoning>>();
-    deferredRenderSourceItems.forEach((item) => {
+    renderSourceItems.forEach((item) => {
       if (item.kind === "reasoning") {
         meta.set(item.id, parseReasoning(item));
       }
     });
     return meta;
-  }, [deferredRenderSourceItems]);
+  }, [renderSourceItems]);
 
   const lastUserMessageIndex = useMemo(
-    () => findLastUserMessageIndex(deferredRenderSourceItems),
-    [deferredRenderSourceItems],
+    () => findLastUserMessageIndex(renderSourceItems),
+    [renderSourceItems],
   );
   const liveSourceLastUserMessageIndex = useMemo(
     () => findLastUserMessageIndex(renderSourceItems),
@@ -799,8 +778,8 @@ export const MessagesCore = memo(function MessagesCore({
     if (lastUserMessageIndex >= 0) {
       return lastUserMessageIndex;
     }
-    return findLastAssistantMessageIndex(deferredRenderSourceItems);
-  }, [deferredRenderSourceItems, lastUserMessageIndex]);
+    return findLastAssistantMessageIndex(renderSourceItems);
+  }, [renderSourceItems, lastUserMessageIndex]);
   const liveReasoningWindowStartIndex = useMemo(() => {
     if (liveSourceLastUserMessageIndex >= 0) {
       return liveSourceLastUserMessageIndex;
@@ -835,11 +814,11 @@ export const MessagesCore = memo(function MessagesCore({
       }
     }
     for (
-      let index = deferredRenderSourceItems.length - 1;
+      let index = renderSourceItems.length - 1;
       index > reasoningWindowStartIndex;
       index -= 1
     ) {
-      const item = deferredRenderSourceItems[index];
+      const item = renderSourceItems[index];
       if (!isReasoningConversationItem(item)) {
         continue;
       }
@@ -850,7 +829,7 @@ export const MessagesCore = memo(function MessagesCore({
     }
     return null;
   }, [
-    deferredRenderSourceItems,
+    renderSourceItems,
     hideClaudeReasoning,
     latestLiveReasoningItem,
     reasoningMetaById,
@@ -859,17 +838,17 @@ export const MessagesCore = memo(function MessagesCore({
 
   const latestDeferredReasoningId = useMemo(() => {
     for (
-      let index = deferredRenderSourceItems.length - 1;
+      let index = renderSourceItems.length - 1;
       index > reasoningWindowStartIndex;
       index -= 1
     ) {
-      const item = deferredRenderSourceItems[index];
+      const item = renderSourceItems[index];
       if (isReasoningConversationItem(item)) {
         return item.id;
       }
     }
     return null;
-  }, [deferredRenderSourceItems, reasoningWindowStartIndex]);
+  }, [renderSourceItems, reasoningWindowStartIndex]);
   const latestReasoningId = latestLiveReasoningItem?.id ?? latestDeferredReasoningId;
   const claudeDockedReasoningItems = useMemo(() => {
     if (!legacyClaudeReasoningDockEnabled) {
@@ -884,10 +863,10 @@ export const MessagesCore = memo(function MessagesCore({
     }> = [];
     for (
       let index = reasoningWindowStartIndex + 1;
-      index < deferredRenderSourceItems.length;
+      index < renderSourceItems.length;
       index += 1
     ) {
-      const item = deferredRenderSourceItems[index];
+      const item = renderSourceItems[index];
       if (!isReasoningConversationItem(item)) {
         continue;
       }
@@ -906,7 +885,7 @@ export const MessagesCore = memo(function MessagesCore({
     }
     return list;
   }, [
-    deferredRenderSourceItems,
+    renderSourceItems,
     legacyClaudeReasoningDockEnabled,
     reasoningMetaById,
     reasoningWindowStartIndex,
@@ -922,8 +901,8 @@ export const MessagesCore = memo(function MessagesCore({
   }, [claudeDockedReasoningItems, collapseExpandedIds, isThinking]);
 
   const latestTitleOnlyReasoningId = useMemo(() => {
-    for (let index = deferredRenderSourceItems.length - 1; index >= 0; index -= 1) {
-      const item = deferredRenderSourceItems[index];
+    for (let index = renderSourceItems.length - 1; index >= 0; index -= 1) {
+      const item = renderSourceItems[index];
       if (!isReasoningConversationItem(item)) {
         continue;
       }
@@ -933,12 +912,12 @@ export const MessagesCore = memo(function MessagesCore({
       }
     }
     return null;
-  }, [deferredRenderSourceItems, reasoningMetaById]);
+  }, [renderSourceItems, reasoningMetaById]);
 
   const latestWorkingActivityLabel = useMemo(() => {
     let lastUserIndex = -1;
-    for (let index = deferredRenderSourceItems.length - 1; index >= 0; index -= 1) {
-      const item = deferredRenderSourceItems[index];
+    for (let index = renderSourceItems.length - 1; index >= 0; index -= 1) {
+      const item = renderSourceItems[index];
       if (isUserMessageConversationItem(item)) {
         lastUserIndex = index;
         break;
@@ -948,11 +927,11 @@ export const MessagesCore = memo(function MessagesCore({
       return null;
     }
     for (
-      let index = deferredRenderSourceItems.length - 1;
+      let index = renderSourceItems.length - 1;
       index > lastUserIndex;
       index -= 1
     ) {
-      const item = deferredRenderSourceItems[index];
+      const item = renderSourceItems[index];
       if (!item) {
         continue;
       }
@@ -965,12 +944,12 @@ export const MessagesCore = memo(function MessagesCore({
       }
     }
     return null;
-  }, [activeEngine, deferredRenderSourceItems, presentationProfile]);
+  }, [activeEngine, renderSourceItems, presentationProfile]);
 
   const visibleItems = useMemo(
     () =>
       resolveVisibleMessageItems({
-        items: deferredRenderSourceItems,
+        items: renderSourceItems,
         activeEngine,
         hideClaudeReasoning,
         latestTitleOnlyReasoningId,
@@ -979,7 +958,7 @@ export const MessagesCore = memo(function MessagesCore({
       }),
     [
       activeEngine,
-      deferredRenderSourceItems,
+      renderSourceItems,
       hideClaudeReasoning,
       latestTitleOnlyReasoningId,
       presentationProfile,
@@ -1130,7 +1109,7 @@ export const MessagesCore = memo(function MessagesCore({
     activeEngine,
     claudeDockedReasoningItemCount: claudeDockedReasoningItems.length,
     collapsedHistoryItemCount: presentationCollapsedHistoryItemCount,
-    deferredRenderSourceItems,
+    deferredRenderSourceItems: renderSourceItems,
     hideClaudeReasoning,
     historyRestoredAtMs: conversationState.meta.historyRestoredAtMs,
     isAssistantFinalizing,
@@ -1279,7 +1258,7 @@ export const MessagesCore = memo(function MessagesCore({
         const container = containerRef.current;
         const latestAnchorId = messageAnchors[messageAnchors.length - 1]?.id ?? null;
         const nextActiveAnchor =
-          container && isNearBottom(container)
+          container && isCanvasNearBottom(container)
             ? latestAnchorId
             : computeActiveAnchor() ?? latestAnchorId;
         const elapsedMs =
@@ -1302,7 +1281,6 @@ export const MessagesCore = memo(function MessagesCore({
       computeActiveAnchor,
       containerRef,
       hasAnchorRail,
-      isNearBottom,
       messageAnchors,
       threadId,
     ],
@@ -1321,136 +1299,48 @@ export const MessagesCore = memo(function MessagesCore({
       return;
     }
     if (pendingExpansionMode === "manual") {
-      autoScrollRef.current = false;
+      pauseFollow();
       container.scrollTop = 0;
     }
     scheduleAnchorUpdate("sync");
   }, [
     consumePendingHistoryExpansionMode,
     discardPendingHistoryExpansion,
-    autoScrollRef,
+    pauseFollow,
     containerRef,
     timelinePresentationItems,
     scheduleAnchorUpdate,
     showAllHistoryItems,
   ]);
-  const updateAutoScroll = useCallback(() => {
-    const container = containerRef.current;
-    if (!container) {
-      return;
-    }
-    const now = performance.now();
-    const userOwnsScroll = hasRecentUserScrollIntent();
-    // 先读上一帧几何，再写入当前快照——用于识别「高度暴涨、scrollTop 未动」的假离底。
-    const previousGeometry = scrollGeometrySnapshotRef.current;
-    recordCurrentScrollGeometry(container);
-    const currentGeometry = scrollGeometrySnapshotRef.current;
-    const activeProgrammaticEdge = activeProgrammaticScrollEdgeRef.current;
-    const activeProgrammaticMotion = activeProgrammaticScrollMotionRef.current;
-    if (
-      !userOwnsScroll &&
-      activeProgrammaticEdge &&
-      activeProgrammaticMotion === "smooth"
-    ) {
-      autoScrollRef.current = activeProgrammaticEdge === "bottom";
-      scheduleAnchorUpdate("scroll");
-      return;
-    }
-    // instant 自动钉底期间或写入后 grace 窗口内，scroll 事件可能是程序化回声：WebKit
-    // 异步派发下，钳位/收敛写入产生的事件常在几何继续变化（迟到测高回填）之后才送达，
-    // 此刻按 near-bottom 判定会把布局噪声误判成用户上滚，解除跟随并杀掉收敛 run（发送
-    // 消息后跳顶滞留的根因）。命中指纹（含 run 结束后 grace 窗口内的迟到回声）才豁免；
-    // 未命中说明是真实用户滚动（拖滚动条/触摸等），走下方正常释放语义。
-    const isEcho = isProgrammaticScrollEcho({
-      hasActiveProgrammaticRun: activeProgrammaticEdge !== null,
-      hasRecentUserScrollIntent: userOwnsScroll,
-      eventScrollTop: container.scrollTop,
-      echoFingerprints: programmaticScrollTopEchoRef.current,
-      tolerancePx: PROGRAMMATIC_SCROLL_ECHO_TOLERANCE_PX,
-      now,
-    });
-    const metrics = {
-      scrollHeight: container.scrollHeight,
-      clientHeight: container.clientHeight,
-      scrollTop: container.scrollTop,
-    };
-    const atTrueBottom = isAtTrueBottom(metrics);
-    const distancePx = distanceToBottom(metrics);
-    const farFromBottom = distancePx > FOLLOW_RELEASE_THRESHOLD_PX;
-
-    if (isEcho) {
-      if (activeProgrammaticEdge) {
-        autoScrollRef.current = activeProgrammaticEdge === "bottom";
-      } else if (atTrueBottom) {
-        // 回声落在真底：武装跟随正确；中间区不 re-arm（全砍：禁止 120 近底 re-arm）
-        autoScrollRef.current = true;
-      }
-      scheduleAnchorUpdate("scroll");
-      return;
-    }
-    const geometryForProtect = currentGeometry ?? {
-      maxScrollTop: Math.max(0, container.scrollHeight - container.clientHeight),
-      scrollTop: container.scrollTop,
-    };
-    // 仅 settle/forced 窗内保护「内容长高假离底」。
-    // 全砍：不再对任意 stick 态做宽保护——否则迟到 scroll 回声/旧位置会被当成假离底，
-    // RO 再 pin 把用户从读历史拽回底。
-    if (
-      !userOwnsScroll &&
-      shouldProtectFollowOnScrollEvent(previousGeometry, geometryForProtect)
-    ) {
-      autoScrollRef.current = true;
-      scheduleAnchorUpdate("scroll");
-      return;
-    }
-    // 释放规则（修复「工具折叠/MD 开渲卡中部」）：
-    // - 真底 → re-arm
-    // - 用户租约（wheel/key/touch）→ 释放
-    // - scrollTop 相对上帧明显上移 → 用户拖条离底 → 释放
-    // - 禁止仅因 distance>120 释放：那是内容长高假离底，交给 RO 追底
-    const scrollTopMovedUp =
-      previousGeometry !== null &&
-      previousGeometry.scrollTop - geometryForProtect.scrollTop > 8;
-
-    if (atTrueBottom) {
-      // 真底 re-arm；但 wheel 上滚后同帧仍钉在真底时不要立刻吸回。
-      const wasAlreadyAtTrueBottom =
-        previousGeometry !== null &&
-        previousGeometry.maxScrollTop - previousGeometry.scrollTop <= 1;
-      const scrollTopUnchanged =
-        previousGeometry !== null &&
-        Math.abs(previousGeometry.scrollTop - geometryForProtect.scrollTop) <= 1;
-      const wheelStillPinnedAtBottom =
-        userOwnsScroll && wasAlreadyAtTrueBottom && scrollTopUnchanged;
-      if (!wheelStillPinnedAtBottom) {
-        if (userOwnsScroll) {
-          clearUserScrollIntent();
-        }
-        noteViewportAtTrueBottom();
-      }
-    } else if (userOwnsScroll || scrollTopMovedUp) {
-      noteViewportLeftBottom();
-      cancelScrollConvergence();
-    }
-    // 高度变、scrollTop 未动（工具折叠 / MD 开渲）：保持 armed，RO 追底。
-    // 禁止仅因 farFromBottom 解绑——那是问题二「卡中部、结束才跳回」的主因。
-    void farFromBottom;
+  // 跟随/释放/re-arm 全部由 useMessagesCanvasFollow 的容器监听自持；
+  // 这里的 onScroll 只驱动锚点轨道高亮。
+  const handleCanvasScroll = useCallback(() => {
     scheduleAnchorUpdate("scroll");
-  }, [
-    activeProgrammaticScrollEdgeRef,
-    activeProgrammaticScrollMotionRef,
-    cancelScrollConvergence,
-    clearUserScrollIntent,
-    containerRef,
-    hasRecentUserScrollIntent,
-    noteViewportAtTrueBottom,
-    noteViewportLeftBottom,
-    programmaticScrollTopEchoRef,
-    recordCurrentScrollGeometry,
-    scheduleAnchorUpdate,
-    scrollGeometrySnapshotRef,
-    shouldProtectFollowOnScrollEvent,
-  ]);
+  }, [scheduleAnchorUpdate]);
+  // ScrollControl 浮标：回顶 / 回底均为用户主动导航，对称 smooth；
+  // 回底结束后再硬钉一次并 re-arm follow。send / history-open 仍走瞬时 resumeFollowAndPin。
+  const handleScrollControlRequest = useCallback(
+    (edge: ConversationScrollEdge) => {
+      const container = containerRef.current;
+      if (!container) {
+        return;
+      }
+      if (edge === "bottom") {
+        clearPendingJumpMessage();
+        resumeFollowAndSmoothPin();
+        return;
+      }
+      pauseFollow();
+      clearPendingJumpMessage();
+      container.scrollTo({ top: 0, behavior: "smooth" });
+    },
+    [
+      clearPendingJumpMessage,
+      containerRef,
+      pauseFollow,
+      resumeFollowAndSmoothPin,
+    ],
+  );
   const clearTransientUiState = useCallback(() => {
     if (anchorUpdateRafRef.current !== null) {
       window.cancelAnimationFrame(anchorUpdateRafRef.current);
@@ -1560,71 +1450,50 @@ export const MessagesCore = memo(function MessagesCore({
     scheduleAnchorUpdate("sync");
   }, [hasAnchorRail, messageAnchors, scheduleAnchorUpdate, scrollKey, threadId]);
 
-  useEffect(() => {
-    // 焦点跟随 stick-to-bottom 不绑 isWorking/finalizing：消息回填、思考折叠、
-    // settle 后 full markdown 都会改高度；只要开关开着且 authority 仍 stick 就追底。
-    if (!liveAutoFollowEnabled) {
-      return undefined;
+  // 关闭会话时清 history-open 去重，保证 null→同 thread 重开仍能落底
+  // （useEffect 清理会晚于本 layout 效应，不能依赖它）。
+  useLayoutEffect(() => {
+    if (threadId == null) {
+      historyOpenedScopeRef.current = null;
     }
-    // 全砍：只信 autoScroll 武装（由真底 re-arm / 用户 intent 维护），
-    // 禁止用 120 近底启发式在 scrollKey 变化时旁路拉回底。
-    if (!autoScrollRef.current) {
-      return undefined;
-    }
-    requestAutoScroll();
-    return undefined;
-  }, [
-    autoScrollRef,
-    liveAutoFollowEnabled,
-    requestAutoScroll,
-    scrollKey,
-  ]);
+  }, [threadId]);
 
   // Opening a thread should land the viewport at the bottom (latest messages),
   // matching chat conventions. Runs once per workspace+thread once history
   // content is actually rendered; live auto-follow and anchor jumps own all
-  // subsequent scrolling.
+  // subsequent scrolling. 迟到测高回填由跟随中的 ResizeObserver 追底覆盖。
   useLayoutEffect(() => {
-    const scope = `${workspaceId ?? ""}\u0000${threadId}`;
-    if (initialBottomPinScopeRef.current === scope) {
+    if (threadId == null) {
+      return undefined;
+    }
+    const scope = `${workspaceId ?? ""} ${threadId}`;
+    if (historyOpenedScopeRef.current === scope) {
       return undefined;
     }
     if (isHistoryLoading || timelinePresentationItems.length === 0) {
       return undefined;
     }
     if (pendingJumpMessageId) {
-      initialBottomPinScopeRef.current = scope;
+      historyOpenedScopeRef.current = scope;
+      // 跳锚优先：暂停 stick，避免 RO 在 jump 完成前把视口拽回底。
+      pauseFollow();
       return undefined;
     }
-    const container = containerRef.current;
-    if (!container) {
-      return;
-    }
-    initialBottomPinScopeRef.current = scope;
-    autoScrollRef.current = true;
-    stickToBottomIntentRef.current = "history-open";
-    stickToBottomDeadlineRef.current = Date.now() + INITIAL_BOTTOM_PIN_BUDGET_MS;
-    requestHistoryBottomConvergence();
-    // 落位只对此刻的高度有效：虚拟化行还是估算高度、content-visibility:auto 的屏外行
-    // 要进视口才真实布局，底部长消息被系统性低估（估高封顶 260px，真实常上千）。
-    // 开一个跟随窗口，让下方的内容高度观察器把迟到的测量一路追到底。
+    historyOpenedScopeRef.current = scope;
+    resumeFollowAndPin();
   }, [
-    autoScrollRef,
-    containerRef,
-    initialBottomPinScopeRef,
     isHistoryLoading,
+    pauseFollow,
     pendingJumpMessageId,
-    requestHistoryBottomConvergence,
-    stickToBottomDeadlineRef,
-    stickToBottomIntentRef,
+    resumeFollowAndPin,
     threadId,
     timelinePresentationItems,
     workspaceId,
   ]);
 
-  // send/settle 是确定性 boundary placement，不属于可中断的 continuous live-follow：
-  // 边沿发生前的滚动 ownership 失效，边沿后的新输入仍可取消后续 convergence。
-  // scope switch 只刷新 baseline，避免把旧会话的 working 状态投射到新会话。
+  // send：强制回底（清暂停 + 多帧追高，对齐 jetbrains useMessageSender）。
+  // settle：用户未 wheel 暂停则强制回底（防高度塌缩钳到顶）；已上滚读历史则不拽回。
+  // scope switch 只刷新 baseline，避免把旧会话 working 状态投射到新会话。
   useLayoutEffect(() => {
     const previous = turnBoundaryStateRef.current;
     if (previous.renderScopeKey !== renderScopeKey) {
@@ -1637,9 +1506,9 @@ export const MessagesCore = memo(function MessagesCore({
       };
       return;
     }
+    // 对齐 jetbrains useMessageSender：任何新用户气泡都强制清暂停并回底。
     const userMessageAdded =
       !previous.isHistoryLoading &&
-      messageActionTargets.hasPendingUserTurn &&
       messageActionTargets.userMessageCount > previous.userMessageCount;
     const enteredWorking = !previous.isWorking && isWorking;
     const exitedWorking = previous.isWorking && !isWorking;
@@ -1647,17 +1516,17 @@ export const MessagesCore = memo(function MessagesCore({
     let sendBoundaryStarted = false;
 
     if (userMessageAdded) {
-      beginTurnBoundaryBottomConvergence("turn-send");
+      resumeFollowAndPin();
       sendBoundaryStarted = true;
       pendingWorkingStartCovered = !isWorking;
     }
     if (enteredWorking) {
       if (!sendBoundaryStarted && !pendingWorkingStartCovered) {
-        beginTurnBoundaryBottomConvergence("turn-send");
+        resumeFollowAndPin();
       }
       pendingWorkingStartCovered = false;
     } else if (exitedWorking) {
-      beginTurnBoundaryBottomConvergence("turn-settle");
+      settleFollow();
       pendingWorkingStartCovered = false;
     }
     if (!messageActionTargets.hasPendingUserTurn && !isWorking) {
@@ -1671,39 +1540,14 @@ export const MessagesCore = memo(function MessagesCore({
       userMessageCount: messageActionTargets.userMessageCount,
     };
   }, [
-    beginTurnBoundaryBottomConvergence,
     isHistoryLoading,
     isWorking,
     messageActionTargets.hasPendingUserTurn,
     messageActionTargets.userMessageCount,
     renderScopeKey,
+    resumeFollowAndPin,
+    settleFollow,
   ]);
-
-  // useDeferredValue 使尾窗→全量在 isThinking 结束后延迟才落到 DOM。
-  // 流式中仅当「焦点跟随开 + autoScroll 武装」才对 item 增长 pin；
-  // 结束后（回刷）走 history-restore 守卫（turn-settle forced / 武装贴底）。
-  const deferredRenderItemCount = deferredRenderSourceItems.length;
-  const previousDeferredRenderItemCountRef = useRef(deferredRenderItemCount);
-  useLayoutEffect(() => {
-    const previousCount = previousDeferredRenderItemCountRef.current;
-    previousDeferredRenderItemCountRef.current = deferredRenderItemCount;
-    if (deferredRenderItemCount <= previousCount) {
-      return;
-    }
-    if (isThinking) {
-      if (!liveAutoFollowEnabled || !autoScrollRef.current) {
-        return;
-      }
-    }
-    requestTimelineLayoutBottomConvergence();
-  }, [
-    autoScrollRef,
-    deferredRenderItemCount,
-    isThinking,
-    liveAutoFollowEnabled,
-    requestTimelineLayoutBottomConvergence,
-  ]);
-
   useEffect(() => {
     if (!isThinking || liveAutoExpandedExploreId !== null) {
       return;
@@ -1766,7 +1610,7 @@ export const MessagesCore = memo(function MessagesCore({
       : 0;
   const { handlePendingJumpTargetReady, requestScrollToAnchor } =
     useMessagesAnchorNavigation({
-      autoScrollRef,
+      pauseFollow,
       clearPendingJumpMessage,
       commitActiveAnchorId,
       containerRef,
@@ -1841,8 +1685,8 @@ export const MessagesCore = memo(function MessagesCore({
       messageNodeByIdRef,
       onPendingJumpTargetReady: handlePendingJumpTargetReady,
       pendingJumpMessageId,
-      requestAutoScroll,
-      requestBottomConvergence: requestTimelineLayoutBottomConvergence,
+      requestAutoScroll: pinIfFollowing,
+      requestBottomConvergence: pinIfFollowing,
       scrollElementRef: containerRef,
     },
     interactions: {
@@ -1896,7 +1740,7 @@ export const MessagesCore = memo(function MessagesCore({
       <div
         className="messages scrollable"
         ref={containerRef}
-        onScroll={updateAutoScroll}
+        onScroll={handleCanvasScroll}
         onContextMenu={handleConversationContextMenu}
       >
         <MessagesLinkedRunBanner
@@ -1907,6 +1751,8 @@ export const MessagesCore = memo(function MessagesCore({
         {timelineLeadingNode}
         <MessagesTimeline {...timelineModels} />
         {timelineTrailingNode}
+        {/* jetbrains messagesEndRef：两步追底的 scrollIntoView 锚点；无视觉高度。 */}
+        <div ref={messagesEndRef} className="messages-end-sentinel" aria-hidden="true" />
       </div>
       <ScrollControl
         containerRef={containerRef}

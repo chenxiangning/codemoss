@@ -20,6 +20,7 @@
 - `delete_workspace_sessions_core(...) -> WorkspaceSessionBatchMutationResponse`
 - `assign_workspace_session_folders_core(...) -> WorkspaceSessionBatchMutationResponse`
 - `useThreadActionsSessionCatalog(...).loadActiveProjectCatalogSessions`
+- `resolveWorkspaceProjectionOwnerIds(workspaces, activeWorkspaceId) -> string[]`
 - `buildWorkspaceSessionSelectionKey(entry)`
 - `parse_codex_session_summary(...) -> Option<LocalUsageSessionSummary>`
 - `scan_codex_session_summaries(...) -> Vec<LocalUsageSessionSummary>`
@@ -38,6 +39,7 @@
 ### 3. Contracts
 
 - Backend catalog active strict projection MUST be the default membership truth for Sidebar and Session Management.
+- AppShell workspace navigation 若只需要 owner topology，MUST 通过 `resolveWorkspaceProjectionOwnerIds` 从已加载 workspace registry 推导：main = self + direct `parentId` children（path/name/id stable order），worktree = self，registry pending = active id fallback。MUST NOT 为 topology 调用 `get_workspace_session_projection_summary` 或等价 exhaustive inventory；session membership 仍由 bounded catalog projection 决定。
 - Session Management may use a larger first-page catalog window than Sidebar. Current Settings catalog hook uses page size `9999` and does not expose user-visible pagination; Sidebar keeps its own startup/load-older catalog page size to avoid broadening startup pressure.
 - Workspace Home MUST NOT derive an independent session membership set from `recentThreads`; if it later displays sessions, it MUST consume the same catalog projection or document an explicit display-window difference.
 - Native engine list APIs such as `listClaudeSessions` MAY provide transcript restore, diagnostics, or continuity seed, but MUST NOT widen or shrink complete catalog membership.
@@ -66,6 +68,7 @@
 
 | 场景 | 必须行为 | 禁止行为 |
 |---|---|---|
+| AppShell 切换 main/worktree，只需 owner ids | 从 workspace registry 同步推导 topology；后续 bounded hydration 决定 membership | 调用 projection summary / `limit=9999` all-engine scan 回答 topology |
 | parent project aggregate includes child Claude row | row keeps child `workspaceId` and stable key | frontend exact-filter drops child row |
 | worktree-only scope | only own worktree sessions appear | parent/sibling rows leak into strict membership |
 | native Claude list empty but catalog has complete row | keep catalog row | native empty clears row |
@@ -106,6 +109,7 @@
   row remains.
 - Rust local/live merge tests MUST combine canonical ids、rollout aliases 与 parent relationship，并 assert `canonicalSessionId` 和 visible `parentSessionId` 同时正确；catalog test MUST assert duplicate child 只计一次 `childrenCount`。
 - Vitest coverage for Sidebar catalog normalization preserving child owner rows, Session Management stable selection keys, native empty not clearing catalog rows, and Workspace Home not deriving session membership from `recentThreads`.
+- Vitest MUST cover navigation topology 的 no-active、main + direct child stable order、worktree isolation、registry-pending fallback，并 assert AppShell navigation 不调用 `useWorkspaceSessionProjectionSummary`。
 - Vitest coverage MUST assert raw Codex `parentSessionId -> ThreadSummary.parentThreadId`，且 parent + child tree 只产生一个 root。
 - Rust tests MUST assert Codex/Claude native rename 分别写入 `nativeTitle`，同时保留 first-message fallback 与 per-home isolation；native/daemon/catalog projection 都 MUST 保留该 optional field。
 - Vitest MUST assert weak-looking `nativeTitle` 覆盖旧 first-message title，且 GUI custom/mapped title 仍有更高 precedence；catalog boundary MUST trim/narrow optional field。
@@ -163,6 +167,27 @@ const visible = response.data.filter(
 
 ```ts
 const visible = response.data.map(normalizeProjectCatalogSession).filter(Boolean);
+```
+
+#### Wrong
+
+```ts
+const { summary } = useWorkspaceSessionProjectionSummary({
+  workspaceId: activeWorkspaceId,
+  query: { status: "active" },
+});
+const ownerIds = summary?.ownerWorkspaceIds ?? [activeWorkspaceId];
+// navigation 只要 topology，却触发 limit=9999 的 all-engine inventory。
+```
+
+#### Correct
+
+```ts
+const ownerIds = resolveWorkspaceProjectionOwnerIds(
+  workspaces,
+  activeWorkspaceId,
+);
+// inventory 仍由 bounded catalog hydration 负责。
 ```
 
 #### Wrong

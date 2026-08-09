@@ -751,6 +751,12 @@ export function useLayoutNodes(input: LayoutNodesOptions): LayoutNodesResult {
         deleteConfirmBusy={options.deleteConfirmBusy}
         onCancelDeleteConfirm={options.onCancelDeleteConfirm}
         onConfirmDeleteConfirm={options.onConfirmDeleteConfirm}
+        renameThreadId={options.renameThreadId}
+        renameWorkspaceId={options.renameWorkspaceId}
+        renameName={options.renameName}
+        onRenameChange={options.onRenameChange}
+        onRenameCancel={options.onRenameCancel}
+        onRenameConfirm={options.onRenameConfirm}
         onSyncThread={options.onSyncThread}
         pinThread={options.pinThread}
         unpinThread={options.unpinThread}

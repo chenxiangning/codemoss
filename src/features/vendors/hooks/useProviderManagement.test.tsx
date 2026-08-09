@@ -7,10 +7,11 @@ import {
   getClaudeProviders,
   getCurrentClaudeConfig,
   reorderClaudeProviders,
+  switchClaudeProvider,
   updateClaudeProvider,
 } from "../../../services/tauri";
 import type { ProviderConfig } from "../types";
-import { LOCAL_SETTINGS_PROVIDER_ID } from "../types";
+import { DISABLED_PROVIDER_ID, LOCAL_SETTINGS_PROVIDER_ID } from "../types";
 import { useProviderManagement } from "./useProviderManagement";
 
 vi.mock("../../../services/tauri", () => ({
@@ -20,6 +21,7 @@ vi.mock("../../../services/tauri", () => ({
   updateClaudeProvider: vi.fn(),
   deleteClaudeProvider: vi.fn(),
   reorderClaudeProviders: vi.fn(),
+  switchClaudeProvider: vi.fn(),
 }));
 
 function provider(
@@ -198,5 +200,85 @@ describe("useProviderManagement reorder", () => {
       action: "delete",
       message: expect.stringContaining("delete failed"),
     });
+  });
+});
+
+describe("useProviderManagement switch", () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    vi.mocked(getCurrentClaudeConfig).mockResolvedValue({
+      apiKey: "",
+      baseUrl: "",
+      authType: "none",
+    });
+    vi.mocked(switchClaudeProvider).mockResolvedValue(undefined);
+  });
+
+  it("optimistically activates the target without toggling list loading", async () => {
+    vi.mocked(getClaudeProviders).mockResolvedValue(initialProviders);
+    const { result } = renderHook(() => useProviderManagement());
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    const loadsAfterMount = vi.mocked(getClaudeProviders).mock.calls.length;
+
+    await act(async () => {
+      await result.current.handleSwitchProvider("a");
+    });
+
+    expect(switchClaudeProvider).toHaveBeenCalledWith("a");
+    // No full list refetch on success: avoids loading-flag flicker.
+    expect(vi.mocked(getClaudeProviders).mock.calls.length).toEqual(
+      loadsAfterMount,
+    );
+    expect(result.current.loading).toBe(false);
+    expect(
+      result.current.providers.map((entry) => [entry.id, Boolean(entry.isActive)]),
+    ).toEqual([
+      [LOCAL_SETTINGS_PROVIDER_ID, false],
+      ["a", true],
+      ["b", false],
+      ["c", false],
+    ]);
+  });
+
+  it("rolls back isActive when switch persistence fails", async () => {
+    vi.mocked(getClaudeProviders).mockResolvedValue(initialProviders);
+    vi.mocked(switchClaudeProvider).mockRejectedValueOnce(
+      new Error("switch failed"),
+    );
+    const { result } = renderHook(() => useProviderManagement());
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    await act(async () => {
+      await result.current.handleSwitchProvider("a");
+    });
+
+    expect(
+      result.current.providers.map((entry) => [entry.id, Boolean(entry.isActive)]),
+    ).toEqual([
+      [LOCAL_SETTINGS_PROVIDER_ID, false],
+      ["a", false],
+      ["b", true],
+      ["c", false],
+    ]);
+    expect(result.current.providerError).toMatchObject({
+      action: "switch",
+      message: expect.stringContaining("switch failed"),
+    });
+  });
+
+  it("clears all actives when switching to DISABLED_PROVIDER_ID", async () => {
+    vi.mocked(getClaudeProviders).mockResolvedValue(initialProviders);
+    const { result } = renderHook(() => useProviderManagement());
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    await act(async () => {
+      await result.current.handleSwitchProvider(DISABLED_PROVIDER_ID);
+    });
+
+    expect(switchClaudeProvider).toHaveBeenCalledWith(DISABLED_PROVIDER_ID);
+    expect(result.current.providers.every((entry) => !entry.isActive)).toBe(
+      true,
+    );
   });
 });

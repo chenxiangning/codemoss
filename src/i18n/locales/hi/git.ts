@@ -67,6 +67,8 @@ const git = {
     "previewInlineAction": "केंद्र फलक में diff पूर्वावलोकन करें",
     "previewModal": "मोडल में पूर्वावलोकन",
     "previewModalAction": "diff पूर्वावलोकन मोडल खोलें",
+    "openFileContent": "Open file",
+    "openFileContentAction": "Open file content",
     "semanticDiff": {
       "kicker": "समीक्षा परत",
       "title": "सिमेंटिक diff",

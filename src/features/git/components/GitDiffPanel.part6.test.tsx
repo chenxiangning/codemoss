@@ -95,6 +95,8 @@ vi.mock("react-i18next", () => ({
         "git.previewInlineAction": "Preview diff in center pane",
         "git.previewModal": "Preview in modal",
         "git.previewModalAction": "Open diff preview modal",
+        "git.openFileContent": "Open file",
+        "git.openFileContentAction": "Open file content",
         "git.diffMode": "Diff",
         "git.diffModeDescription": "Inspect file changes",
         "git.logMode": "Git",
@@ -301,6 +303,52 @@ describe("GitDiffPanel", () => {
       expect(screen.queryByLabelText("src/alpha.ts")).toBeNull();
     });
 
+  it("keeps section collapse preference when git file list refreshes", () => {
+      const { rerender } = render(
+        <GitDiffPanel
+          {...baseProps}
+          gitDiffListView="flat"
+          stagedFiles={[
+            { path: "src/alpha.ts", status: "M", additions: 1, deletions: 0 },
+          ]}
+          unstagedFiles={[
+            { path: "src/beta.ts", status: "M", additions: 2, deletions: 0 },
+          ]}
+        />,
+      );
+
+      const stagedToggle = screen.getByRole("button", { name: "Staged Changes (1)" });
+      fireEvent.click(stagedToggle);
+      expect(stagedToggle.getAttribute("aria-expanded")).toBe("false");
+
+      rerender(
+        <GitDiffPanel
+          {...baseProps}
+          gitDiffListView="flat"
+          stagedFiles={[
+            { path: "src/alpha.ts", status: "M", additions: 1, deletions: 0 },
+            { path: "src/gamma.ts", status: "A", additions: 3, deletions: 0 },
+          ]}
+          unstagedFiles={[
+            { path: "src/beta.ts", status: "M", additions: 2, deletions: 0 },
+            { path: "src/delta.ts", status: "M", additions: 1, deletions: 1 },
+          ]}
+        />,
+      );
+
+      const stagedToggleAfterRefresh = screen.getByRole("button", {
+        name: "Staged Changes (2)",
+      });
+      expect(stagedToggleAfterRefresh.getAttribute("aria-expanded")).toBe("false");
+      expect(screen.queryByLabelText("src/alpha.ts")).toBeNull();
+      expect(screen.queryByLabelText("src/gamma.ts")).toBeNull();
+      // Unstaged stays expanded by default / prior preference
+      expect(
+        screen.getByRole("button", { name: "Changes (2)" }).getAttribute("aria-expanded"),
+      ).toBe("true");
+      expect(screen.getByLabelText("src/beta.ts")).toBeTruthy();
+    });
+
   it("toggles list view via shortcut when panel is focused", () => {
       const onGitDiffListViewChange = vi.fn();
       render(
@@ -448,6 +496,8 @@ describe("GitDiffPanel", () => {
         <GitDiffPanel
           {...baseProps}
           gitDiffListView="flat"
+          onSelectFile={vi.fn()}
+          onOpenFile={vi.fn()}
           onStageFile={vi.fn()}
           unstagedFiles={[
             { path: "file.txt", status: "M", additions: 1, deletions: 0 },
@@ -462,7 +512,7 @@ describe("GitDiffPanel", () => {
       );
       expect(actionLabels).toEqual([
         "Preview diff in center pane",
-        "Open diff preview modal",
+        "Open file content",
         "Stage file",
       ]);
     });
@@ -514,7 +564,38 @@ describe("GitDiffPanel", () => {
       expect(onSelectFile).toHaveBeenCalledWith("src/a.ts");
     });
 
-  it("opens the file editor instead of selecting diff on regular row click", () => {
+  it("opens editable DIFF modal on regular row click instead of file content", () => {
+      const onSelectFile = vi.fn();
+      const onOpenFile = vi.fn();
+      render(
+        <GitDiffPanel
+          {...baseProps}
+          gitDiffListView="flat"
+          onSelectFile={onSelectFile}
+          onOpenFile={onOpenFile}
+          unstagedFiles={[
+            { path: "src/a.ts", status: "M", additions: 1, deletions: 0 },
+          ]}
+          diffEntries={[
+            {
+              path: "src/a.ts",
+              status: "M",
+              diff: "diff --git a/src/a.ts b/src/a.ts\n@@ -1 +1 @@\n-old\n+new\n",
+            },
+          ]}
+        />,
+      );
+
+      const row = document.querySelector<HTMLElement>('.diff-row[data-path="src/a.ts"]');
+      expect(row).toBeTruthy();
+
+      fireEvent.click(row as HTMLElement);
+      expect(onOpenFile).not.toHaveBeenCalled();
+      expect(onSelectFile).not.toHaveBeenCalled();
+      expect(document.querySelector(".git-history-diff-modal")).toBeTruthy();
+    });
+
+  it("opens file content from the former modal-preview row action", () => {
       const onSelectFile = vi.fn();
       const onOpenFile = vi.fn();
       render(
@@ -529,19 +610,22 @@ describe("GitDiffPanel", () => {
         />,
       );
 
-      const row = document.querySelector<HTMLElement>('.diff-row[data-path="src/a.ts"]');
-      expect(row).toBeTruthy();
+      const openFileButton = document.querySelector<HTMLButtonElement>(
+        '.diff-row[data-path="src/a.ts"] .diff-row-action--preview-modal',
+      );
+      expect(openFileButton).toBeTruthy();
 
-      fireEvent.click(row as HTMLElement);
+      fireEvent.click(openFileButton as HTMLButtonElement);
       expect(onOpenFile).toHaveBeenCalledTimes(1);
       expect(onOpenFile).toHaveBeenCalledWith("src/a.ts");
       expect(onSelectFile).not.toHaveBeenCalled();
+      expect(document.querySelector(".git-history-diff-modal")).toBeNull();
     });
 
   it.each([
       ["mouse click", (row: HTMLElement) => fireEvent.click(row), "flat" as const],
       ["Enter", (row: HTMLElement) => fireEvent.keyDown(row, { key: "Enter" }), "tree" as const],
-    ])("opens a renamed destination with %s", (_activation, activate, gitDiffListView) => {
+    ])("opens a renamed destination DIFF modal with %s", (_activation, activate, gitDiffListView) => {
       const onSelectFile = vi.fn();
       const onOpenFile = vi.fn();
       render(
@@ -559,6 +643,13 @@ describe("GitDiffPanel", () => {
               deletions: 0,
             },
           ]}
+          diffEntries={[
+            {
+              path: "archive/spec.md",
+              status: "R",
+              diff: "diff --git a/changes/spec.md b/archive/spec.md\n",
+            },
+          ]}
         />,
       );
 
@@ -568,10 +659,13 @@ describe("GitDiffPanel", () => {
         ) as HTMLElement,
       );
 
-      expect(onOpenFile).toHaveBeenCalledOnce();
-      expect(onOpenFile).toHaveBeenCalledWith("archive/spec.md");
-      expect(onOpenFile).not.toHaveBeenCalledWith("changes/spec.md");
+      expect(onOpenFile).not.toHaveBeenCalled();
       expect(onSelectFile).not.toHaveBeenCalled();
+      expect(document.querySelector(".git-history-diff-modal")).toBeTruthy();
+      const previewProps = mockEditableDiffReviewSurface.mock.lastCall?.[0] as {
+        files?: Array<{ filePath?: string }>;
+      };
+      expect(previewProps.files?.[0]?.filePath).toBe("archive/spec.md");
     });
 
   it.each([

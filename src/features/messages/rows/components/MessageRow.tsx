@@ -1,4 +1,4 @@
-import { memo, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import ChevronDown from "lucide-react/dist/esm/icons/chevron-down";
@@ -290,19 +290,9 @@ export const MessageRow = memo(function MessageRow({
     ? liveAssistantText ?? staticDisplayText
     : staticDisplayText;
   const hasText = displayText.trim().length > 0;
-  const usesLiveAssistantText =
-    canUseLiveAssistantText && liveAssistantText !== null;
-  // liveAssistantTextChannel 已在 store→React 边界按 cadence 发布；这里若再 defer，
-  // 连续输入会反复重启 background render。channel-backed 行给 hook 一个稳定壳文本，
-  // 直接消费 published text；非 channel 路径保留原 deferred 策略。
-  const deferredDisplayText = useDeferredValue(
-    usesLiveAssistantText ? staticDisplayText : displayText,
-  );
-  const streamingDisplayText = usesLiveAssistantText
-    ? displayText
-    : item.role === "assistant" && isStreaming && !streamMitigationProfile
-      ? deferredDisplayText
-      : displayText;
+  // jetbrains 同帧 stick：流式正文不再 useDeferredValue，避免「字先长高、钉底晚一帧」闪一下。
+  // liveAssistantTextChannel 已自带 cadence，直接用 displayText。
+  const streamingDisplayText = displayText;
   useEffect(() => {
     appendMessageRowRenderBudgetDiagnostic({
       threadId,

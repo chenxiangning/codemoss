@@ -5,6 +5,13 @@
 
 use std::path::{Path, PathBuf};
 
+/// CLI-only text block Grok injects when the user attaches images with empty text.
+///
+/// Multimodal `--prompt-file` requires at least one text content block. This
+/// string is **not** user-authored and MUST be stripped from history / canvas
+/// display (see `parse_grok_user_prompt_for_display`).
+pub(crate) const GROK_IMAGE_ONLY_FALLBACK_TEXT: &str = "Please analyze the attached image(s).";
+
 /// Collect trimmed, non-empty, deduped image path entries from send params.
 pub(crate) fn collect_non_empty_image_paths(images: Option<&[String]>) -> Vec<String> {
     let Some(images) = images else {

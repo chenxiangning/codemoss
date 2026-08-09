@@ -67,6 +67,8 @@ const git = {
     "previewInlineAction": "가운데 창에서 diff 미리 보기",
     "previewModal": "모달에서 미리 보기",
     "previewModalAction": "diff 미리 보기 모달 열기",
+    "openFileContent": "Open file",
+    "openFileContentAction": "Open file content",
     "semanticDiff": {
       "kicker": "검토 레이어",
       "title": "시맨틱 diff",

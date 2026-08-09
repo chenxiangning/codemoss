@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { WorkspaceInfo } from "../types";
 import {
   resolveNextWorkspaceThreadListHydrationId,
+  resolveWorkspaceProjectionOwnerIds,
   shouldSkipWorkspaceThreadListLoad,
 } from "./workspaceThreadListLoadGuard";
 
@@ -97,5 +98,78 @@ describe("resolveNextWorkspaceThreadListHydrationId", () => {
         loadingByWorkspace: { "ws-loading": true },
       }),
     ).toBe("ws-ready");
+  });
+});
+
+describe("resolveWorkspaceProjectionOwnerIds", () => {
+  it("returns no owners without an active workspace", () => {
+    expect(resolveWorkspaceProjectionOwnerIds([workspace("ws-main")], null)).toEqual([]);
+  });
+
+  it("projects a main workspace with its direct children in backend order", () => {
+    const main = workspace("ws-main");
+    const worktreeB = {
+      ...workspace("ws-worktree-b"),
+      path: "/tmp/z-worktree",
+      kind: "worktree" as const,
+      parentId: main.id,
+    };
+    const worktreeA = {
+      ...workspace("ws-worktree-a"),
+      path: "/tmp/a-worktree",
+      kind: "worktree" as const,
+      parentId: main.id,
+    };
+    const nestedWorktree = {
+      ...workspace("ws-nested"),
+      kind: "worktree" as const,
+      parentId: worktreeA.id,
+    };
+    const legacyWorktree = {
+      ...workspace("ws-worktree-legacy"),
+      path: "/tmp/m-worktree",
+      parentId: main.id,
+    };
+
+    expect(
+      resolveWorkspaceProjectionOwnerIds(
+        [
+          worktreeB,
+          nestedWorktree,
+          main,
+          workspace("ws-other"),
+          legacyWorktree,
+          worktreeA,
+        ],
+        main.id,
+      ),
+    ).toEqual([main.id, worktreeA.id, legacyWorktree.id, worktreeB.id]);
+  });
+
+  it("keeps an active worktree isolated from its parent and siblings", () => {
+    const main = workspace("ws-main");
+    const activeWorktree = {
+      ...workspace("ws-worktree-active"),
+      kind: "worktree" as const,
+      parentId: main.id,
+    };
+    const sibling = {
+      ...workspace("ws-worktree-sibling"),
+      kind: "worktree" as const,
+      parentId: main.id,
+    };
+
+    expect(
+      resolveWorkspaceProjectionOwnerIds(
+        [main, activeWorktree, sibling],
+        activeWorktree.id,
+      ),
+    ).toEqual([activeWorktree.id]);
+  });
+
+  it("preserves the active id while the workspace registry is still hydrating", () => {
+    expect(resolveWorkspaceProjectionOwnerIds([], "ws-pending")).toEqual([
+      "ws-pending",
+    ]);
   });
 });

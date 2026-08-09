@@ -67,6 +67,11 @@ export function ToolStatusIcon({ status }: { status: ToolStatusTone }) {
 }
 
 interface ToolMarkerShellProps {
+  /**
+   * 行首短动作类型（与 explore-inline 的 kind 同构：读取 / 修改 / 列表…）。
+   * 渲染在 icon 之前，使用 explore-inline-kind 样式。
+   */
+  kind?: ReactNode;
   /** 前置 lucide 描边图标；壳层会强制归一到 14px（与 thinking/explore 一致） */
   icon: ReactNode;
   /** 类型标识：sr-only 时仅作无障碍/测试锚点；可见时作分组/工具标题 */
@@ -101,6 +106,7 @@ interface ToolMarkerShellProps {
  * clickable 时：可聚焦、Enter/Space 切换，并暴露 aria-expanded。
  */
 export function ToolMarkerShell({
+  kind,
   icon,
   label,
   labelHidden = false,
@@ -120,6 +126,7 @@ export function ToolMarkerShell({
   // 仅在未显式指定 role 时默认 button；显式 role="group" 不伪装成 button（避免全站 a11y 拧巴）。
   const resolvedRole = role ?? (clickable ? 'button' : undefined);
   const isButtonLike = clickable && resolvedRole === 'button';
+  const hasKind = kind != null && kind !== '';
 
   return (
     <div className={wrapperClassName}>
@@ -152,9 +159,12 @@ export function ToolMarkerShell({
           className,
         )}
       >
+        {/* 与 SearchToolBlock / explore header 同序：action/file icon → kind → 内容
+            （避免 kind 顶到行首、左侧缺 icon 列而与相邻搜索行割裂） */}
         <MarkerIcon className={cn(META_ICON_CLASS, '[&_svg]:!size-3.5')}>
           {normalizeMetaIcon(icon)}
         </MarkerIcon>
+        {hasKind ? <span className="explore-inline-kind">{kind}</span> : null}
         <span className={labelHidden ? 'sr-only' : 'min-w-0 truncate font-normal'}>
           {label}
         </span>

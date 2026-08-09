@@ -67,6 +67,7 @@ status: active
 ### Performance 与卡顿
 
 - [`perf/README.md`](perf/README.md)
+- [`analysis/workspace-switch-session-catalog-performance-regression-2026-08-08.md`](analysis/workspace-switch-session-catalog-performance-regression-2026-08-08.md) — workspace navigation exhaustive catalog scan 根因、版本归因与闭环修复指南
 - [`perf/render-jank-knife-experiments-2026-07-08.md`](perf/render-jank-knife-experiments-2026-07-08.md)
 - [`perf/streaming-render-stall-design-2026-07-30.md`](perf/streaming-render-stall-design-2026-07-30.md)
 

@@ -53,7 +53,10 @@ function cleanCommand(text: string): string {
   return (cdMatch ? (cdMatch[1] ?? inner) : inner).trim();
 }
 
-function parseBashItem(item: ToolItem): ParsedBashItem {
+function parseBashItem(
+  item: ToolItem,
+  commandFallback: string,
+): ParsedBashItem {
   const args = parseToolArgs(item.detail);
   const nestedInput = asRecord(args?.input);
   const nestedArgs = asRecord(args?.arguments);
@@ -69,7 +72,7 @@ function parseBashItem(item: ToolItem): ParsedBashItem {
     getFirstStringField(args, descriptionKeys) ||
     getFirstStringField(nestedInput, descriptionKeys) ||
     getFirstStringField(nestedArgs, descriptionKeys);
-  const displayText = truncateText(description || command, 60) || 'Command';
+  const displayText = truncateText(description || command, 60) || commandFallback;
   const output = item.output ?? '';
   const status = resolveToolStatus(item.status, Boolean(item.output));
 
@@ -87,7 +90,10 @@ export const BashToolGroupBlock = memo(function BashToolGroupBlock({
   const timelineRef = useRef<HTMLDivElement | null>(null);
   const prevCountRef = useRef(items.length);
 
-  const parsed = useMemo(() => items.map(parseBashItem), [items]);
+  const parsed = useMemo(
+    () => items.map((item) => parseBashItem(item, t('tools.commandLabel'))),
+    [items, t],
+  );
   const totalCount = parsed.length;
 
   const completedCount = parsed.filter((p) => p.status === 'completed').length;

@@ -128,12 +128,21 @@
 
 .messages {
   overflow-y: auto;
+  /* 跟随底部时禁用浏览器 scroll anchoring：视口位置由 useMessagesCanvasFollow
+     单一管理，anchoring 会无指纹改写 scrollTop 与跟随逻辑打架。 */
+  overflow-anchor: none;
   -webkit-app-region: no-drag;
   flex: 1;
   min-height: 0;
   min-width: 0;
   background: var(--surface-messages);
   padding: 0 var(--main-panel-padding);
+}
+
+/* 用户上翻暂停跟随后，把位置稳定交还给浏览器锚定（Chromium 端生效；
+   WKWebView 不支持 overflow-anchor，自动忽略）。由 useMessagesCanvasFollow 切换。 */
+.messages.scroll-anchor-enabled {
+  overflow-anchor: auto;
 }
 
 .messages-full {
@@ -146,36 +155,14 @@
   min-height: 100%;
 }
 
-/* 流式期间时间线走静态流（虚拟化被刻意关闭，防止偏移修正与吸底打架），
-   长对话的全部历史行都在 DOM 里。给离屏行跳过 layout/paint，把每个 token
-   触发的重排压回可视窗口。排除三类直接子元素：sticky 的行内审批/输入槽
-   （layout containment 会让 sticky 相对行盒而非滚动容器定位）与队尾锚点
-   （空元素不能有 intrinsic 占位高度）。auto 关键字让已渲染过的行记住真实
-   高度，减少回滚时的跳动。 */
-.messages-full[data-timeline-virtualized="false"]
-  > *:not(.messages-inline-approval-slot):not(.messages-inline-user-input-slot):not(:last-child) {
-  content-visibility: auto;
-  contain-intrinsic-size: auto 96px;
-}
+/* 流式期间时间线走静态流（虚拟化被刻意关闭）。2026-08 起此处不再使用
+   content-visibility 屏外跳过：占位→真实高度跳变是「视口上跳卡中部」的根因
+   （见 .message 规则注释与 jetbrains-cc-gui 事故记录）。 */
 
-.messages-virtualized-row {
-  contain: layout paint style;
-  box-sizing: border-box;
-  min-width: 0;
-  overflow: visible;
-}
-
-.messages-virtualized-row.is-active-live-row {
-  contain: layout paint;
-  isolation: isolate;
-}
-
-/* 判定为空的虚拟行：彻底塌缩，禁止内层 margin 穿透撑出异常间距。 */
-.messages-virtualized-row.is-empty-virtual-row {
+/* jetbrains messagesEndRef 哨兵：无高度，只作 scrollIntoView 锚点。 */
+.messages-end-sentinel {
+  width: 100%;
   height: 0;
-  min-height: 0;
-  margin: 0;
-  padding: 0;
   overflow: hidden;
   pointer-events: none;
 }

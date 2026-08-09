@@ -49,12 +49,28 @@ describe("useCodexProviderManagement", () => {
       expect(result.current.codexProviders).toEqual(providers);
     });
 
+    const loadsAfterMount = vi.mocked(getCodexProviders).mock.calls.length;
+
     await act(async () => {
       await result.current.handleSwitchCodexProvider("a");
     });
 
     expect(switchCodexProvider).toHaveBeenCalledWith("a");
     expect(reloadCodexRuntimeConfig).not.toHaveBeenCalled();
+    // Optimistic isActive only — no list refetch / loading flicker.
+    expect(vi.mocked(getCodexProviders).mock.calls.length).toEqual(
+      loadsAfterMount,
+    );
+    expect(result.current.codexLoading).toBe(false);
+    expect(
+      result.current.codexProviders.map((entry) => [
+        entry.id,
+        Boolean(entry.isActive),
+      ]),
+    ).toEqual([
+      ["a", true],
+      ["b", false],
+    ]);
   });
 
   it("merges provider custom models into the composer-visible Codex model store", () => {

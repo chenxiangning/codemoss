@@ -7,7 +7,7 @@ import { memo, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import ChevronDown from "lucide-react/dist/esm/icons/chevron-down";
 import ChevronRight from "lucide-react/dist/esm/icons/chevron-right";
-import Expand from "lucide-react/dist/esm/icons/expand";
+import FileText from "lucide-react/dist/esm/icons/file-text";
 import Globe from "lucide-react/dist/esm/icons/globe";
 import Minus from "lucide-react/dist/esm/icons/minus";
 import PanelRightOpen from "lucide-react/dist/esm/icons/panel-right-open";
@@ -348,21 +348,21 @@ export const DiffFileRow = memo(function DiffFileRow({
               <PanelRightOpen size={12} aria-hidden />
             </FloatingTooltipButton>
           ) : null}
-          {onOpenPreview ? (
+          {onOpenPreview && !isDeletedDiffFile(file) ? (
             <FloatingTooltipButton
               type="button"
               className="diff-row-action diff-row-action--preview-modal"
-              tooltipLabel={t("git.previewModal")}
+              tooltipLabel={t("git.openFileContent")}
               tooltipSide="bottom"
               tooltipAlign="end"
               tooltipDelay={180}
-              aria-label={t("git.previewModalAction")}
+              aria-label={t("git.openFileContentAction")}
               onClick={(event) => {
                 event.stopPropagation();
                 onOpenPreview();
               }}
             >
-              <Expand size={12} aria-hidden />
+              <FileText size={12} aria-hidden />
             </FloatingTooltipButton>
           ) : null}
           {showStage && (
@@ -725,8 +725,16 @@ export function DiffSection({
                 )}
                 onClick={(event) => onFileClick(event, file.path, section)}
                 onKeySelect={() => onActivateFile?.(file.path, section)}
-                onOpenInlinePreview={() => onOpenInlinePreview?.(file.path)}
-                onOpenPreview={() => onOpenFilePreview?.(file, section)}
+                onOpenInlinePreview={
+                  onOpenInlinePreview
+                    ? () => onOpenInlinePreview(file.path)
+                    : undefined
+                }
+                onOpenPreview={
+                  onOpenFilePreview
+                    ? () => onOpenFilePreview(file, section)
+                    : undefined
+                }
                 onOpenInBrowser={
                   onOpenInBrowser
                     ? () => onOpenInBrowser(file.path)

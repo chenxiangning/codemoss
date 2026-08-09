@@ -13,8 +13,14 @@ import {
   switchCodexProvider,
   reorderCodexProviders,
 } from "../../../services/tauri";
+import { applyOptimisticActiveProvider } from "../applyOptimisticActiveProvider";
 import { VENDOR_ACTIVE_PROVIDER_CHANGED_EVENT } from "../vendorActiveProviderEvents";
 import { notifyProviderTargetCatalogChanged } from "../../composer/components/ChatInputBox/hooks/useProviderTargetCatalogOwners";
+
+/** List load options. `silent` skips list-level loading UI (switch / external events). */
+export type CodexProviderLoadOptions = {
+  silent?: boolean;
+};
 
 export interface CodexProviderDialogState {
   isOpen: boolean;
@@ -171,7 +177,8 @@ export function useCodexProviderManagement() {
   const [codexProviders, setCodexProviders] = useState<CodexProviderConfig[]>(
     [],
   );
-  const [codexLoading, setCodexLoading] = useState(false);
+  // Start true so first paint shows a loading placeholder instead of an empty list.
+  const [codexLoading, setCodexLoading] = useState(true);
   const [codexProviderError, setCodexProviderError] = useState<string | null>(null);
 
   const [codexProviderDialog, setCodexProviderDialog] =
@@ -186,21 +193,29 @@ export function useCodexProviderManagement() {
       provider: null,
     });
 
-  const loadCodexProviders = useCallback(async () => {
-    setCodexLoading(true);
-    try {
-      const list = await getCodexProviders();
-      setCodexProviders(list);
-      mergeCodexProviderCustomModelsIntoStore(list);
-      setCodexProviderError(null);
-    } catch (error) {
-      setCodexProviderError(
-        getErrorMessage(error, "Failed to load Codex providers."),
-      );
-    } finally {
-      setCodexLoading(false);
-    }
-  }, []);
+  const loadCodexProviders = useCallback(
+    async (options?: CodexProviderLoadOptions) => {
+      const silent = Boolean(options?.silent);
+      if (!silent) {
+        setCodexLoading(true);
+      }
+      try {
+        const list = await getCodexProviders();
+        setCodexProviders(list);
+        mergeCodexProviderCustomModelsIntoStore(list);
+        setCodexProviderError(null);
+      } catch (error) {
+        setCodexProviderError(
+          getErrorMessage(error, "Failed to load Codex providers."),
+        );
+      } finally {
+        if (!silent) {
+          setCodexLoading(false);
+        }
+      }
+    },
+    [],
+  );
 
   useEffect(() => {
     void loadCodexProviders();
@@ -212,7 +227,7 @@ export function useCodexProviderManagement() {
       if (detail?.engine && detail.engine !== "codex") {
         return;
       }
-      void loadCodexProviders();
+      void loadCodexProviders({ silent: true });
     };
     window.addEventListener(
       VENDOR_ACTIVE_PROVIDER_CHANGED_EVENT,
@@ -267,18 +282,21 @@ export function useCodexProviderManagement() {
 
   const handleSwitchCodexProvider = useCallback(
     async (id: string) => {
+      const previous = codexProviders;
+      setCodexProviders(applyOptimisticActiveProvider(previous, id));
       try {
         await switchCodexProvider(id);
+        // Keep optimistic list: avoid loading-flag toggle + full object churn flicker.
         setCodexProviderError(null);
-        await loadCodexProviders();
         notifyProviderTargetCatalogChanged();
       } catch (error) {
+        setCodexProviders(previous);
         setCodexProviderError(
           getErrorMessage(error, "Failed to switch Codex provider."),
         );
       }
     },
-    [loadCodexProviders],
+    [codexProviders],
   );
 
   const handleReorderCodexProviders = useCallback(

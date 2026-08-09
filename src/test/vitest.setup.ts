@@ -989,6 +989,18 @@ const mockTranslate = (key: string, params?: Record<string, unknown>) => {
         "settings.backgroundTerminalOfficialWriteReloadFailed":
           "Official unified_exec was written, but refreshing the current Codex runtime failed: {{message}}",
         "settings.vendor.officialConfig": "Official Config",
+        "settings.vendor.engineSettings": "Engine settings",
+        "settings.vendor.whatIsThis": "What does this do?",
+        "settings.vendor.customPath": "Custom Path",
+        "settings.vendor.customPathUsingSystemPath":
+          "Currently using: system PATH",
+        "settings.vendor.customPathNoArgs": "No extra args",
+        "settings.vendor.pluginModels": "Custom Models",
+        "settings.vendor.pluginModelsDesc": "Add custom models for this CLI",
+        "settings.vendor.customPathDescription":
+          "Configure the executable path for this CLI.",
+        "settings.vendor.customPathDescriptionHint":
+          "Leave empty to resolve via system PATH.",
         "settings.vendor.edit": "Edit",
         "settings.vendor.inUse": "In Use",
         "settings.vendor.cancel": "Cancel",
@@ -1003,6 +1015,8 @@ const mockTranslate = (key: string, params?: Record<string, unknown>) => {
         "settings.vendor.codexAuthConfigWriteFailed":
           "Failed to write global auth.json",
         "settings.vendor.dialog.saveChanges": "Save",
+        "settings.vendor.dialog.openContainingFolder": "Open file",
+        "settings.vendor.dialog.formatJson": "Format",
         "settings.codexRuntimeReloadNoConnectedSessions":
           "No Codex session is currently connected. The config has been updated and will apply on the next connection.",
         "settings.steerMode": "Follow-up fusion",

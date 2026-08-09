@@ -37,3 +37,33 @@
 - **AND** 用户从 workspace A 切到 B
 - **THEN** A 的 in-flight list MUST 仍被 cancel 标记 stale 并协作式放弃
 - **AND** 系统 MUST NOT 要求重新打开启动遮罩才能保持可点
+
+### Requirement: Runtime workspace navigation MUST NOT use exhaustive session projection for owner topology
+
+AppShell 在 workspace navigation 热路径中，仅为计算 Sidebar / Recent / Radar 的 owner workspace ids 时，MUST 从已加载 `workspaces` registry 本地推导 topology；MUST NOT 调用 `get_workspace_session_projection_summary`、`list_workspace_sessions(limit=9999)` 或等价 all-engine exhaustive scan。Session membership 仍由后续 bounded catalog hydration 决定，本地 topology 不得伪造 session rows。
+
+#### Scenario: main workspace uses local direct-worktree scope
+
+- **WHEN** active workspace 是 main workspace
+- **AND** registry 包含该 main 的 direct worktrees、其他 main 或嵌套到别处的 worktrees
+- **THEN** owner ids MUST 为 active main + 以 `parentId` 指向它的 direct child entries（正常形态为 worktrees，兼容 legacy missing-kind row）
+- **AND** direct child entries MUST 按 path / name / id 确定性排序，与 backend `catalog_workspace_scope` 一致
+- **AND** navigation render MUST NOT 因此启动 projection summary IPC
+
+#### Scenario: active worktree remains isolated
+
+- **WHEN** active workspace 是 worktree
+- **THEN** owner ids MUST 只包含该 worktree
+- **AND** parent main 与 sibling worktrees MUST NOT 混入
+
+#### Scenario: workspace registry hydration race preserves active fallback
+
+- **WHEN** `activeWorkspaceId` 已到达但 registry 尚未包含该 workspace
+- **THEN** owner ids MUST 暂时保留 `[activeWorkspaceId]`
+- **AND** MUST NOT 用 exhaustive projection IPC 补这个短暂 topology 缺口
+
+#### Scenario: explicit Session Management may request aggregate counts
+
+- **WHEN** 用户显式打开 Session Management 且 UI 需要 active/archive/folder counts 或 source statuses
+- **THEN** 该 surface MAY 调用 projection summary
+- **AND** 该能力 MUST NOT 被 AppShell workspace navigation 隐式挂载

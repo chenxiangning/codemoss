@@ -70,6 +70,7 @@ type ThreadRowItemProps = {
   isDeleteConfirmOpen: boolean;
   isPendingSubagent: boolean;
   isPinned: boolean;
+  isRenaming: boolean;
   showProviderLabels: boolean;
   isSharedThread: boolean;
   isSubagentParent: boolean;
@@ -78,10 +79,14 @@ type ThreadRowItemProps = {
   nestedWorkspaceId: string;
   onCancelDeleteConfirm?: () => void;
   onConfirmDeleteConfirm?: () => void;
+  onRenameCancel?: () => void;
+  onRenameChange?: (value: string) => void;
+  onRenameConfirm?: () => void;
   onSelectThread: (workspaceId: string, threadId: string) => void;
   onShowThreadMenu: ShowThreadMenuHandler;
   onToggleThreadPin?: (workspaceId: string, threadId: string) => void;
   relativeTime: string | null;
+  renameName: string;
   selectTargetThreadId: string;
   subagentTreeToggleLabel: string;
   systemProxyEnabled: boolean;
@@ -187,6 +192,7 @@ const ThreadRowItem = memo(function ThreadRowItem({
   isDeleteConfirmOpen,
   isPendingSubagent,
   isPinned,
+  isRenaming,
   showProviderLabels,
   isSharedThread,
   isSubagentParent,
@@ -195,10 +201,14 @@ const ThreadRowItem = memo(function ThreadRowItem({
   nestedWorkspaceId,
   onCancelDeleteConfirm,
   onConfirmDeleteConfirm,
+  onRenameCancel,
+  onRenameChange,
+  onRenameConfirm,
   onSelectThread,
   onShowThreadMenu,
   onToggleThreadPin,
   relativeTime,
+  renameName,
   selectTargetThreadId,
   subagentTreeToggleLabel,
   systemProxyEnabled,
@@ -210,9 +220,19 @@ const ThreadRowItem = memo(function ThreadRowItem({
   onThreadRowRender,
 }: ThreadRowItemProps) {
   const { t } = useTranslation();
+  const renameInputRef = useRef<HTMLInputElement | null>(null);
+  const renameSkipBlurRef = useRef(false);
   useEffect(() => {
     onThreadRowRender?.(thread.id);
   });
+  useEffect(() => {
+    if (!isRenaming) {
+      return;
+    }
+    renameSkipBlurRef.current = false;
+    renameInputRef.current?.focus();
+    renameInputRef.current?.select();
+  }, [isRenaming]);
   const status = useThreadRowStatus(thread.id);
   const rowProjection = getThreadRowProjection({
     workspaceId: nestedWorkspaceId,
@@ -262,52 +282,21 @@ const ThreadRowItem = memo(function ThreadRowItem({
   const providerLabel = resolveEngineProviderLabel(thread);
   const isProviderUnavailable = thread.providerAvailability === "unavailable";
   const rowButtonRef = useRef<HTMLButtonElement | null>(null);
-  const rowButton = (
-    <FloatingTooltipButton
-      ref={rowButtonRef}
-      tooltipLabel={thread.name}
-      tooltipSide="top" tooltipAlign="start" tooltipSideOffset={4}
-      tooltipClassName="max-w-[400px] break-words" tooltipDisabled={isDeleteConfirmOpen}
-      tooltipDelay={THREAD_ROW_TOOLTIP_DELAY_MS}
-      type="button"
-      className={`thread-row ${isActiveThread ? "active" : ""}${
-        isDeleteConfirmOpen ? " has-delete-confirm" : ""
-      }${canPin ? " has-pin-toggle" : ""}${hasChildren ? " has-child-threads" : ""}${
-        isSubagentParent ? " is-subagent-parent" : ""
-      }${isActiveSubagentParent ? " is-active-subagent-parent" : ""}${
-        isSubagentThread ? " is-subagent" : ""
-      }${isActiveSubagentGroup ? " is-active-subagent-group" : ""}${
-        isPendingSubagent ? " is-pending-subagent" : ""
-      }${thread.isDegraded ? " is-degraded" : ""}`}
-      style={indentStyle} aria-expanded={isSubagentParent ? !isSubagentParentCollapsed : undefined}
-      onClick={() => onSelectThread(nestedWorkspaceId, selectTargetThreadId)}
-      onContextMenu={(event) => {
-        if (isPendingSubagent) {
-          event.preventDefault();
-          event.stopPropagation();
-          return;
-        }
-        onShowThreadMenu(
-          event,
-          nestedWorkspaceId,
-          thread.id,
-          canPin,
-          thread.sizeBytes,
-          contextMenuMoveFolderTargets,
-          thread.folderId ?? null,
-          canArchive,
-          workspacePath,
-        );
-      }}
-      onKeyDown={(event) => {
-        if (event.key === "Enter" || event.key === " ") {
-          event.preventDefault();
-          onSelectThread(nestedWorkspaceId, selectTargetThreadId);
-        }
-      }}
-    >
+  const rowClassName = `thread-row ${isActiveThread ? "active" : ""}${
+    isDeleteConfirmOpen ? " has-delete-confirm" : ""
+  }${isRenaming ? " is-renaming" : ""}${canPin ? " has-pin-toggle" : ""}${
+    hasChildren ? " has-child-threads" : ""
+  }${isSubagentParent ? " is-subagent-parent" : ""}${
+    isActiveSubagentParent ? " is-active-subagent-parent" : ""
+  }${isSubagentThread ? " is-subagent" : ""}${
+    isActiveSubagentGroup ? " is-active-subagent-group" : ""
+  }${isPendingSubagent ? " is-pending-subagent" : ""}${
+    thread.isDegraded ? " is-degraded" : ""
+  }`;
+  const leadingChrome = (
+    <>
       <span className={`thread-status ${statusClass}`} aria-hidden />
-      {canPin && onToggleThreadPin && (
+      {canPin && onToggleThreadPin && !isRenaming ? (
         <span
           className={`thread-pin-toggle${isPinned ? " is-pinned" : ""}`}
           role="button"
@@ -325,7 +314,7 @@ const ThreadRowItem = memo(function ThreadRowItem({
         >
           <span className="thread-pin-toggle-icon" aria-hidden />
         </span>
-      )}
+      ) : null}
       {thread.originKind === "provider-continuation" && (
         <span
           className="thread-subagent-tag thread-continuation-tag"
@@ -358,10 +347,96 @@ const ThreadRowItem = memo(function ThreadRowItem({
           )}
         </span>
       )}
-        {showProxyBadge && (
-        <ProxyStatusBadge proxyUrl={systemProxyUrl} label={t("threads.proxyBadge")}
-          variant="compact" className="thread-proxy-badge" />
+      {showProxyBadge && (
+        <ProxyStatusBadge
+          proxyUrl={systemProxyUrl}
+          label={t("threads.proxyBadge")}
+          variant="compact"
+          className="thread-proxy-badge"
+        />
       )}
+    </>
+  );
+  if (isRenaming) {
+    return (
+      <div className={rowClassName} style={indentStyle}>
+        {leadingChrome}
+        <input
+          ref={renameInputRef}
+          className="thread-rename-input"
+          value={renameName}
+          aria-label={t("threads.renameThread")}
+          onChange={(event) => onRenameChange?.(event.target.value)}
+          onClick={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+          }}
+          onMouseDown={(event) => {
+            event.stopPropagation();
+          }}
+          onBlur={() => {
+            if (renameSkipBlurRef.current) {
+              renameSkipBlurRef.current = false;
+              return;
+            }
+            onRenameConfirm?.();
+          }}
+          onKeyDown={(event) => {
+            if (event.key === "Escape") {
+              event.preventDefault();
+              event.stopPropagation();
+              renameSkipBlurRef.current = true;
+              onRenameCancel?.();
+              return;
+            }
+            if (event.key === "Enter") {
+              event.preventDefault();
+              event.stopPropagation();
+              renameSkipBlurRef.current = true;
+              onRenameConfirm?.();
+            }
+          }}
+        />
+      </div>
+    );
+  }
+  const rowButton = (
+    <FloatingTooltipButton
+      ref={rowButtonRef}
+      tooltipLabel={thread.name}
+      tooltipSide="top" tooltipAlign="start" tooltipSideOffset={4}
+      tooltipClassName="max-w-[400px] break-words" tooltipDisabled={isDeleteConfirmOpen}
+      tooltipDelay={THREAD_ROW_TOOLTIP_DELAY_MS}
+      type="button"
+      className={rowClassName}
+      style={indentStyle} aria-expanded={isSubagentParent ? !isSubagentParentCollapsed : undefined}
+      onClick={() => onSelectThread(nestedWorkspaceId, selectTargetThreadId)}
+      onContextMenu={(event) => {
+        if (isPendingSubagent) {
+          event.preventDefault();
+          event.stopPropagation();
+          return;
+        }
+        onShowThreadMenu(
+          event,
+          nestedWorkspaceId,
+          thread.id,
+          canPin,
+          thread.sizeBytes,
+          contextMenuMoveFolderTargets,
+          thread.folderId ?? null,
+          canArchive,
+          workspacePath,
+        );
+      }}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          onSelectThread(nestedWorkspaceId, selectTargetThreadId);
+        }
+      }}
+    >
+      {leadingChrome}
       <span className="thread-name">{thread.name}</span>
       <div className="thread-meta">
         {isSubagentParent && (
@@ -452,6 +527,12 @@ export type ThreadListProps = {
   deleteConfirmBusy?: boolean;
   onCancelDeleteConfirm?: () => void;
   onConfirmDeleteConfirm?: () => void;
+  renameThreadId?: string | null;
+  renameWorkspaceId?: string | null;
+  renameName?: string;
+  onRenameChange?: (value: string) => void;
+  onRenameCancel?: () => void;
+  onRenameConfirm?: () => void;
   onThreadRowRender?: (threadId: string) => void;
   listClassName?: string;
 };
@@ -489,6 +570,12 @@ export function ThreadList({
   deleteConfirmBusy = false,
   onCancelDeleteConfirm,
   onConfirmDeleteConfirm,
+  renameThreadId = null,
+  renameWorkspaceId = null,
+  renameName = "",
+  onRenameChange,
+  onRenameCancel,
+  onRenameConfirm,
   onThreadRowRender,
   listClassName,
 }: ThreadListProps) {
@@ -737,6 +824,8 @@ export function ThreadList({
     const isDeleteConfirmOpen =
       deleteConfirmWorkspaceId === workspaceId &&
       deleteConfirmThreadId === thread.id;
+    const isRenaming =
+      renameWorkspaceId === workspaceId && renameThreadId === thread.id;
 
     const rowNode = (
       <ThreadRowItem
@@ -756,6 +845,7 @@ export function ThreadList({
         isDeleteConfirmOpen={isDeleteConfirmOpen}
         isPendingSubagent={isPendingSubagent}
         isPinned={isPinned}
+        isRenaming={isRenaming}
         showProviderLabels={showProviderLabels}
         isSharedThread={isSharedThread}
         isSubagentParent={isSubagentParent}
@@ -764,10 +854,14 @@ export function ThreadList({
         nestedWorkspaceId={workspaceId}
         onCancelDeleteConfirm={onCancelDeleteConfirm}
         onConfirmDeleteConfirm={onConfirmDeleteConfirm}
+        onRenameCancel={onRenameCancel}
+        onRenameChange={onRenameChange}
+        onRenameConfirm={onRenameConfirm}
         onSelectThread={onSelectThread}
         onShowThreadMenu={onShowThreadMenu}
         onToggleThreadPin={onToggleThreadPin}
         relativeTime={relativeTime}
+        renameName={isRenaming ? renameName : ""}
         selectTargetThreadId={selectTargetThreadId}
         subagentTreeToggleLabel={subagentTreeToggleLabel}
         systemProxyEnabled={systemProxyEnabled}

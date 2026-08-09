@@ -64,6 +64,8 @@ const git = {
     previewInlineAction: "Preview diff in center pane",
     previewModal: "Preview in modal",
     previewModalAction: "Open diff preview modal",
+    openFileContent: "Open file",
+    openFileContentAction: "Open file content",
     semanticDiff: {
       kicker: "Review layer",
       title: "Semantic diff",

@@ -57,3 +57,41 @@ export function resolveNextWorkspaceThreadListHydrationId({
 
   return null;
 }
+
+function compareWorkspaceIdentity(
+  left: WorkspaceInfo,
+  right: WorkspaceInfo,
+): number {
+  const leftIdentity = [left.path, left.name, left.id];
+  const rightIdentity = [right.path, right.name, right.id];
+  for (let index = 0; index < leftIdentity.length; index += 1) {
+    if (leftIdentity[index] === rightIdentity[index]) {
+      continue;
+    }
+    return leftIdentity[index] < rightIdentity[index] ? -1 : 1;
+  }
+  return 0;
+}
+
+export function resolveWorkspaceProjectionOwnerIds(
+  workspaces: readonly WorkspaceInfo[],
+  activeWorkspaceId: string | null,
+): string[] {
+  if (!activeWorkspaceId) {
+    return [];
+  }
+
+  const activeWorkspace = workspaces.find(
+    (workspace) => workspace.id === activeWorkspaceId,
+  );
+  if (!activeWorkspace || (activeWorkspace.kind ?? "main") === "worktree") {
+    return [activeWorkspaceId];
+  }
+
+  const childOwnerIds = workspaces
+    .filter((workspace) => workspace.parentId === activeWorkspaceId)
+    .sort(compareWorkspaceIdentity)
+    .map((workspace) => workspace.id);
+
+  return [activeWorkspaceId, ...childOwnerIds];
+}

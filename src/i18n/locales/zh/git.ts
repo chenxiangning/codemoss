@@ -64,6 +64,8 @@ const git = {
     previewInlineAction: "在中间区域预览差异",
     previewModal: "弹窗预览",
     previewModalAction: "打开弹窗预览差异",
+    openFileContent: "打开文件",
+    openFileContentAction: "打开文件内容",
     semanticDiff: {
       kicker: "审查层",
       title: "语义 diff",

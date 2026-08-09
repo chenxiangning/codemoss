@@ -2066,47 +2066,48 @@
   padding: 1px 0 2px;
 }
 
+/* Align folder row geometry with .thread-row / .workspace-header-content:
+   soft fill only, no chip border, same radius & quiet→strong hover. */
 .workspace-session-folder-row {
   display: flex;
   align-items: center;
+  position: relative;
+  gap: 6px;
   min-height: var(--sidebar-row-height-thread);
+  width: calc(100% + var(--workspace-session-folder-depth, 0) * 11px);
+  margin: 0;
+  padding: 2px 6px 2px calc(8px + var(--workspace-session-folder-depth, 0) * 11px);
   border: 0;
   border-radius: var(--sidebar-row-radius);
   background: transparent;
-  color: var(--text-quiet);
+  color: var(--text-muted);
   font-size: var(--sidebar-content-font-size);
   -webkit-app-region: no-drag;
-}
-
-.workspace-session-folder-row {
-  position: relative;
-  gap: 7px;
-  width: calc(100% + var(--workspace-session-folder-depth, 0) * 11px);
-  margin: 1px 0;
-  padding: 2px 8px 2px calc(8px + var(--workspace-session-folder-depth, 0) * 11px);
-  border: 1px solid transparent;
+  transition:
+    background-color 0.16s ease,
+    color 0.16s ease;
 }
 
 .workspace-session-folder-row[aria-expanded] {
   cursor: pointer;
 }
 
-.workspace-session-folder-row:hover {
-  background: color-mix(in srgb, var(--surface-hover) 55%, transparent);
-  border-color: color-mix(in srgb, var(--text-muted) 16%, transparent);
+.workspace-session-folder-row:hover,
+.workspace-session-folder-row:focus-within {
+  background: var(--surface-hover);
   color: var(--text-strong);
 }
 
 .workspace-session-folder-draft {
   display: flex;
   align-items: center;
-  gap: 7px;
+  gap: 6px;
   min-height: var(--sidebar-row-height-thread);
-  margin: 1px 4px 2px 6px;
+  margin: 0 4px 2px 6px;
   padding: 2px 8px;
   border-radius: var(--sidebar-row-radius);
   color: var(--text-muted);
-  background: color-mix(in srgb, #2563eb 8%, transparent);
+  background: color-mix(in srgb, var(--surface-hover) 72%, transparent);
   -webkit-app-region: no-drag;
 }
 
@@ -2131,19 +2132,30 @@
   color: var(--text-muted);
 }
 
+.workspace-session-folder-row:hover .workspace-session-folder-icon,
+.workspace-session-folder-row:focus-within .workspace-session-folder-icon {
+  color: var(--text-strong);
+}
+
+/* Chevron-only collapse — match .workspace-tree-toggle quiet affordance */
 .workspace-session-folder-collapse {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 18px;
-  height: 18px;
+  width: 16px;
+  height: 16px;
+  padding: 0;
   border: 0;
-  border-radius: 5px;
+  border-radius: 4px;
   background: transparent;
-  color: color-mix(in srgb, var(--text-muted) 82%, var(--text-strong));
+  color: inherit;
   cursor: pointer;
-  opacity: 0.9;
-  transition: transform 120ms ease, color 120ms ease, background 120ms ease;
+  opacity: 0.7;
+  flex-shrink: 0;
+  transition:
+    transform 120ms ease,
+    opacity 0.15s ease,
+    color 0.15s ease;
 }
 
 .workspace-session-folder-collapse.is-collapsed {
@@ -2152,18 +2164,17 @@
 
 .workspace-session-folder-collapse:disabled {
   cursor: default;
-  opacity: 0.48;
+  opacity: 0.4;
 }
 
 .workspace-session-folder-collapse:not(:disabled):hover,
 .workspace-session-folder-collapse:not(:disabled):focus-visible {
+  opacity: 1;
   color: var(--text-strong);
-  background: color-mix(in srgb, var(--surface-hover) 70%, transparent);
 }
 
 .workspace-session-folder-row:hover .workspace-session-folder-collapse:not(:disabled),
 .workspace-session-folder-row:focus-within .workspace-session-folder-collapse:not(:disabled) {
-  color: var(--text-strong);
   opacity: 1;
 }
 
@@ -2173,6 +2184,8 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  font-weight: 500;
+  color: var(--text-strong);
 }
 
 .workspace-session-folder-count {
@@ -2180,32 +2193,42 @@
   color: var(--text-faint, var(--text-muted));
   font-size: var(--sidebar-meta-font-size);
   margin-left: auto;
-  transition: opacity 120ms ease;
+  font-variant-numeric: tabular-nums;
 }
 
+/* Collapse to zero while idle so the name + count reclaim the row;
+   expand on hover/focus like .workspace-actions. */
 .workspace-session-folder-actions {
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 4px;
-  width: 66px;
-  margin-left: 4px;
+  gap: 2px;
+  flex: 0 0 auto;
+  max-width: 0;
+  margin-left: 2px;
+  overflow: hidden;
   opacity: 0;
-  transition: opacity 0.2s ease;
+  transition:
+    max-width 0.2s ease,
+    opacity 0.2s ease;
 }
 
 .workspace-session-folder-action {
-  width: 18px;
-  height: 18px;
+  width: 20px;
+  height: 20px;
   padding: 0;
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
   border: 0;
   background: transparent;
   color: var(--text-muted);
-  border-radius: 4px;
+  border-radius: 5px;
   cursor: pointer;
+  flex-shrink: 0;
+  transition:
+    background-color 0.16s ease,
+    color 0.16s ease;
 }
 
 .workspace-session-folder-action svg {
@@ -2215,13 +2238,9 @@
   stroke: currentColor;
 }
 
-.workspace-session-folder-row:hover .workspace-session-folder-count,
-.workspace-session-folder-row:focus-within .workspace-session-folder-count {
-  opacity: 0;
-}
-
 .workspace-session-folder-row:hover .workspace-session-folder-actions,
 .workspace-session-folder-row:focus-within .workspace-session-folder-actions {
+  max-width: 48px;
   opacity: 1;
 }
 
@@ -2231,32 +2250,48 @@
   color: var(--text-strong);
 }
 
-.workspace-session-folder-action-danger:hover,
-.workspace-session-folder-action-danger:focus-visible {
-  color: var(--danger, #ef4444);
+.workspace-session-folder-action:focus-visible {
+  outline: 1px solid color-mix(in srgb, var(--border-accent) 62%, transparent);
+  outline-offset: 1px;
 }
 
+/* Keep children snug under the folder icon (chevron column + gap), not a
+   second full thread-list inset on top of folder indent. */
 .workspace-session-folder-children {
   position: relative;
   display: flex;
   flex-direction: column;
   gap: 2px;
-  margin-left: calc(16px + var(--workspace-session-folder-depth, 0) * 11px);
-  padding-left: 12px;
+  margin-left: calc(12px + var(--workspace-session-folder-depth, 0) * 10px);
+  padding-left: 8px;
 }
 
+/* Quieter guide line — container cue, not file-tree drama */
 .workspace-session-folder-children::before {
   position: absolute;
   top: 0;
   bottom: 4px;
-  left: 3px;
+  left: 2px;
   width: 1px;
-  background: linear-gradient(
-    to bottom,
-    color-mix(in srgb, var(--text-muted) 34%, transparent),
-    color-mix(in srgb, var(--text-muted) 8%, transparent)
-  );
+  background: color-mix(in srgb, var(--text-muted) 14%, transparent);
   content: "";
+}
+
+/* Drop the extra .thread-list left pad inside folders — indent is already
+   owned by .workspace-session-folder-children. */
+.workspace-session-folder-children .thread-list,
+.workspace-session-folder-children .thread-list-nested {
+  padding-left: 0;
+  padding-right: 4px;
+}
+
+.workspace-session-folder-children .thread-row {
+  padding-left: calc(6px + var(--thread-indent, 0px));
+}
+
+.workspace-session-folder-children .thread-row.has-pin-toggle:hover,
+.workspace-session-folder-children .thread-row.has-pin-toggle:focus-within {
+  padding-left: calc(16px + var(--thread-indent, 0px));
 }
 
 .workspace-session-folder-error {
@@ -2648,6 +2683,30 @@
   line-height: 1.3;
   font-weight: 400;
   margin-right: 8px;
+}
+
+.thread-row.is-renaming {
+  cursor: text;
+}
+
+.thread-rename-input {
+  min-width: 0;
+  flex: 1;
+  margin-right: 4px;
+  border: 0;
+  outline: 0;
+  border-radius: 4px;
+  padding: 1px 4px;
+  background: color-mix(in srgb, var(--text-strong) 8%, transparent);
+  color: var(--text-strong);
+  font: inherit;
+  line-height: 1.3;
+  -webkit-app-region: no-drag;
+}
+
+.thread-rename-input:focus {
+  background: color-mix(in srgb, #2563eb 12%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, #2563eb 45%, transparent);
 }
 
 /* Tooltip for truncated thread names */

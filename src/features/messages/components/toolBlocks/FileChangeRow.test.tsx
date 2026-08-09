@@ -35,6 +35,13 @@ describe("FileChangeRow", () => {
     expect(screen.getByText("App.tsx")).toBeTruthy();
     expect(screen.getByText("+1")).toBeTruthy();
     expect(screen.getByText("-1")).toBeTruthy();
+    // 与批量修改同构：单色动作 icon 行首 + kind 短标签 + 彩色文件类型 icon
+    expect(screen.getByText(/tools\.kindEdit|Edit|修改/)).toBeTruthy();
+    expect(view.container.querySelector(".explore-inline-kind")).toBeTruthy();
+    expect(view.container.querySelector(".tool-marker-file-type-icon")).toBeTruthy();
+    // Marker 行首是单色 lucide（FilePen），不是彩色文件类型
+    const marker = view.container.querySelector('[data-slot="marker"]');
+    expect(marker?.querySelector("svg")).toBeTruthy();
     // 折叠态不解析 diff
     expect(loadDiff).not.toHaveBeenCalled();
     expect(view.container.querySelector(".tool-change-inline-diff")).toBeNull();

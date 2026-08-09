@@ -7,7 +7,7 @@ import {
 import { MESSAGE_JUMP_EVENT_NAME } from "../../constants/messagesConstants";
 
 type UseMessagesAnchorNavigationInput = {
-  autoScrollRef: MutableRefObject<boolean>;
+  pauseFollow: () => void;
   clearPendingJumpMessage: () => void;
   commitActiveAnchorId: (messageId: string, mode: "sync") => void;
   containerRef: RefObject<HTMLDivElement | null>;
@@ -20,7 +20,7 @@ type UseMessagesAnchorNavigationInput = {
 };
 
 export function useMessagesAnchorNavigation({
-  autoScrollRef,
+  pauseFollow,
   clearPendingJumpMessage,
   commitActiveAnchorId,
   containerRef,
@@ -41,14 +41,14 @@ export function useMessagesAnchorNavigation({
     const nodeRect = node.getBoundingClientRect();
     const targetTop =
       container.scrollTop + (nodeRect.top - containerRect.top) - container.clientHeight * 0.28;
-    autoScrollRef.current = false;
+    pauseFollow();
     container.scrollTo({
       top: Math.max(0, targetTop),
       behavior: "smooth",
     });
     commitActiveAnchorId(messageId, "sync");
     return true;
-  }, [autoScrollRef, commitActiveAnchorId, containerRef, messageNodeByIdRef]);
+  }, [commitActiveAnchorId, containerRef, messageNodeByIdRef, pauseFollow]);
 
   const requestScrollToAnchor = useCallback((messageId: string) => {
     if (scrollToAnchor(messageId)) {

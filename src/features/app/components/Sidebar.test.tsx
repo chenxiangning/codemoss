@@ -2163,7 +2163,15 @@ describe("Sidebar", () => {
     );
 
     expect(await screen.findByText("Planning")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "New folder in project" }));
+    const planningRow = screen
+      .getByText("Planning")
+      .closest(".workspace-session-folder-row") as HTMLElement | null;
+    expect(planningRow).toBeTruthy();
+    if (!planningRow) {
+      throw new Error("Missing Planning folder row");
+    }
+    fireEvent.click(within(planningRow).getByRole("button", { name: "Folder actions" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "New folder in project" }));
     fireEvent.change(screen.getByLabelText("Folder name"), {
       target: { value: " Follow ups " },
     });
@@ -2176,14 +2184,8 @@ describe("Sidebar", () => {
     );
     expect(await screen.findByText("Follow ups")).toBeTruthy();
 
-    const planningRow = screen
-      .getByText("Planning")
-      .closest(".workspace-session-folder-row") as HTMLElement | null;
-    expect(planningRow).toBeTruthy();
-    if (!planningRow) {
-      throw new Error("Missing Planning folder row");
-    }
-    fireEvent.click(within(planningRow).getByRole("button", { name: "Rename folder" }));
+    fireEvent.click(within(planningRow).getByRole("button", { name: "Folder actions" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Rename folder" }));
     const renameInput = screen.getByDisplayValue("Planning");
     fireEvent.change(renameInput, { target: { value: " Roadmap " } });
     fireEvent.keyDown(renameInput, { key: "Enter" });
@@ -2284,7 +2286,7 @@ describe("Sidebar", () => {
     const codexItem = screen.getByRole("menuitem", { name: /Codex/ });
     fireEvent.mouseEnter(codexItem);
     await act(async () => {
-      fireEvent.click(screen.getByRole("menuitemradio", { name: /codex-tui\/default-config/ }));
+      fireEvent.click(screen.getByRole("menuitemradio", { name: /本地配置/ }));
       fireEvent.click(codexItem);
     });
 
@@ -2928,7 +2930,7 @@ describe("Sidebar", () => {
     const codexItem = screen.getByRole("menuitem", { name: "Codex" });
     fireEvent.mouseEnter(codexItem);
     await act(async () => {
-      fireEvent.click(screen.getByRole("menuitemradio", { name: /codex-tui\/default-config/ }));
+      fireEvent.click(screen.getByRole("menuitemradio", { name: /本地配置/ }));
       fireEvent.click(codexItem);
     });
 

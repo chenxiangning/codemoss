@@ -277,6 +277,105 @@ pub(crate) async fn vendor_get_current_opencode_config() -> Result<OpenCodeCurre
     })
 }
 
+/// Canonical write target for official OpenCode global config when no existing
+/// candidate file is present: `~/.config/opencode/opencode.json` (docs default).
+fn opencode_default_config_path() -> Result<std::path::PathBuf, String> {
+    let home = dirs::home_dir().ok_or_else(|| "Cannot determine home directory".to_string())?;
+    Ok(home.join(".config").join("opencode").join("opencode.json"))
+}
+
+/// Prefer an already-existing candidate (`$OPENCODE_CONFIG`,
+/// `~/.config/opencode/opencode.json(c)`, `~/.opencode/opencode.json(c)`);
+/// otherwise fall back to the documented global path.
+fn opencode_config_write_path() -> Result<std::path::PathBuf, String> {
+    if let Some(existing) = crate::engine::status::opencode_config_candidate_paths()
+        .into_iter()
+        .find(|candidate| candidate.is_file())
+    {
+        return Ok(existing);
+    }
+    opencode_default_config_path()
+}
+
+/// Read raw official OpenCode global config. Missing file returns empty string.
+#[tauri::command]
+pub(crate) async fn vendor_read_opencode_config_json() -> Result<String, String> {
+    let path = match crate::engine::status::opencode_config_candidate_paths()
+        .into_iter()
+        .find(|candidate| candidate.is_file())
+    {
+        Some(path) => path,
+        None => return Ok(String::new()),
+    };
+    std::fs::read_to_string(&path).map_err(|error| {
+        format!("Failed to read {}: {}", path.display(), error)
+    })
+}
+
+/// Write official OpenCode global config.
+///
+/// Validates as a JSON object when the target path ends with `.json`. For
+/// existing `.jsonc` files, content is written as-is after a non-empty check
+/// (JSONC comments are not re-serialized).
+#[tauri::command]
+pub(crate) async fn vendor_save_opencode_config_json(content: String) -> Result<(), String> {
+    let path = opencode_config_write_path()?;
+    let is_jsonc = path
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("jsonc"));
+
+    let to_write = if content.trim().is_empty() {
+        content
+    } else if is_jsonc {
+        // Preserve user JSONC as-is; full JSONC parse is not available in-tree.
+        content
+    } else {
+        let value: serde_json::Value = serde_json::from_str(&content).map_err(|error| {
+            format!("Invalid JSON in {}: {error}", path.display())
+        })?;
+        if !value.is_object() {
+            return Err(format!(
+                "{} must contain a JSON object.",
+                path.display()
+            ));
+        }
+        serde_json::to_string_pretty(&value).map_err(|error| {
+            format!("Failed to serialize {}: {error}", path.display())
+        })?
+    };
+
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|error| {
+            format!("Failed to create {}: {error}", parent.display())
+        })?;
+    }
+    let tmp_path = path.with_extension(format!(
+        "{}.tmp",
+        path.extension()
+            .and_then(|ext| ext.to_str())
+            .unwrap_or("json")
+    ));
+    std::fs::write(&tmp_path, &to_write).map_err(|error| {
+        format!("Failed to write temp file {}: {error}", tmp_path.display())
+    })?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(&tmp_path, std::fs::Permissions::from_mode(0o600));
+    }
+    std::fs::rename(&tmp_path, &path).map_err(|error| {
+        let _ = std::fs::remove_file(&tmp_path);
+        format!("Failed to replace {}: {error}", path.display())
+    })?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600));
+    }
+    Ok(())
+}
+
 #[tauri::command]
 pub(crate) async fn vendor_add_opencode_provider(
     provider: OpenCodeProviderConfig,
@@ -337,9 +436,18 @@ pub(crate) async fn vendor_delete_opencode_provider(id: String) -> Result<(), St
     write_config(&config)
 }
 
+/// Pseudo id: clear `opencode.current` so no managed/local provider is active.
+const DISABLED_OPENCODE_PROVIDER_ID: &str = "__disabled__";
+
 #[tauri::command]
 pub(crate) async fn vendor_switch_opencode_provider(id: String) -> Result<(), String> {
     let mut config = read_config()?;
+    // 「取消使用」: 清空 current，不改用户本地 opencode 配置
+    if id == DISABLED_OPENCODE_PROVIDER_ID {
+        config.opencode.current = None;
+        write_config(&config)?;
+        return Ok(());
+    }
     if id == LOCAL_OPENCODE_PROVIDER_ID {
         config.opencode.current = Some(id);
         write_config(&config)?;

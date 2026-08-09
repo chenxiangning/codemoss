@@ -15,6 +15,8 @@ import { resolveCliLifecycleButtons } from "./cliLifecycleButtons";
 
 type CliLifecycleContextValue = {
   engine: CliInstallEngine;
+  /** Null until the first successful status fetch (or cache hit) for this engine. */
+  hasStatus: boolean;
   installed: boolean;
   localVersion: string | null;
   latestVersion: string | null;
@@ -101,6 +103,7 @@ export function CliLifecycleProvider({
 
   const value: CliLifecycleContextValue = {
     engine,
+    hasStatus: status != null,
     installed,
     localVersion,
     latestVersion,
@@ -108,7 +111,8 @@ export function CliLifecycleProvider({
     loading,
     error,
     details: status?.details ?? null,
-    disableActions: isBusy || loading || !nodeOk,
+    // Keep install/update actions disabled until we have a definitive status.
+    disableActions: isBusy || loading || !status || !nodeOk,
     isBusy,
     showInstall: visibility.showInstall,
     showUpgrade: visibility.showUpgrade,
@@ -137,6 +141,7 @@ export function CliLifecycleProvider({
 export function CliLifecycleHeaderActions() {
   const { t } = useTranslation();
   const {
+    hasStatus,
     installed,
     localVersion,
     latestVersion,
@@ -153,15 +158,21 @@ export function CliLifecycleHeaderActions() {
     refresh,
   } = useCliLifecycleContext();
 
+  // Only treat "not installed" as definitive once we have a status payload.
+  // While loading / cold, show a checking placeholder — never a wrong state.
+  const showChecking = !hasStatus || (loading && !localVersion && !installed);
+  const showInstalled = hasStatus && installed && Boolean(localVersion);
+  const showNotInstalled = hasStatus && !installed && !loading;
+
   return (
     <>
       <div
         className="vendor-cli-version"
         title={error ?? details ?? undefined}
       >
-        {loading && !localVersion && !installed ? (
+        {showChecking ? (
           <Badge variant="outline">{t("settings.cliVersionChecking")}</Badge>
-        ) : installed && localVersion ? (
+        ) : showInstalled ? (
           <div className="flex flex-wrap items-center gap-1.5">
             <Badge variant="secondary">
               {t("settings.cliVersionLabel", { version: localVersion })}
@@ -176,8 +187,10 @@ export function CliLifecycleHeaderActions() {
               </Badge>
             ) : null}
           </div>
-        ) : (
+        ) : showNotInstalled ? (
           <Badge variant="outline">{t("settings.cliVersionNotInstalled")}</Badge>
+        ) : (
+          <Badge variant="outline">{t("settings.cliVersionChecking")}</Badge>
         )}
       </div>
       <div className="vendor-cli-lifecycle-buttons">

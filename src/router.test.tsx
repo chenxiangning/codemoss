@@ -3,6 +3,7 @@ import { act, render, screen } from "@testing-library/react";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 let windowLabel = "main";
+let startupGateOverlayTestEnabled = false;
 
 vi.mock("./features/layout/hooks/useWindowLabel", () => ({
   useWindowLabel: () => windowLabel,
@@ -11,6 +12,19 @@ vi.mock("./features/layout/hooks/useWindowLabel", () => ({
 vi.mock("./app-shell", () => ({
   AppShell: () => <div>main-shell</div>,
 }));
+
+vi.mock("./features/app/components/StartupGateOverlay", () => ({
+  StartupGateOverlay: () => (
+    <div data-testid="startup-gate-overlay-sentinel" />
+  ),
+}));
+
+vi.mock(
+  "./features/startup-orchestration/utils/startupGateOverlayTestFlag",
+  () => ({
+    isStartupGateOverlayTestEnabled: () => startupGateOverlayTestEnabled,
+  }),
+);
 
 vi.mock("./features/about/components/AboutView", () => ({
   AboutView: () => <div>about-view</div>,
@@ -31,10 +45,15 @@ vi.mock("./features/client-documentation/components/ClientDocumentationWindow", 
 import { AppRouter } from "./router";
 
 async function renderAppRouter() {
+  let rendered: ReturnType<typeof render> | undefined;
   await act(async () => {
-    render(<AppRouter />);
+    rendered = render(<AppRouter />);
     await Promise.resolve();
   });
+  if (!rendered) {
+    throw new Error("AppRouter test render did not initialize");
+  }
+  return rendered;
 }
 
 describe("AppRouter", () => {
@@ -49,11 +68,47 @@ describe("AppRouter", () => {
 
   beforeEach(() => {
     windowLabel = "main";
+    startupGateOverlayTestEnabled = false;
   });
 
   it("renders the main shell for the main window", async () => {
     await renderAppRouter();
     expect(screen.getByText("main-shell")).not.toBeNull();
+    expect(
+      screen.queryByTestId("startup-gate-overlay-sentinel"),
+    ).toBeNull();
+  });
+
+  it("mounts the startup gate for an explicitly enabled main-window test", async () => {
+    startupGateOverlayTestEnabled = true;
+    await renderAppRouter();
+
+    expect(screen.getByText("main-shell")).not.toBeNull();
+    expect(
+      screen.getByTestId("startup-gate-overlay-sentinel"),
+    ).not.toBeNull();
+  });
+
+  it("keeps the startup gate setting fixed for the current router mount", async () => {
+    const rendered = await renderAppRouter();
+    startupGateOverlayTestEnabled = true;
+
+    rendered.rerender(<AppRouter />);
+
+    expect(
+      screen.queryByTestId("startup-gate-overlay-sentinel"),
+    ).toBeNull();
+  });
+
+  it("does not mount the startup gate in detached windows", async () => {
+    windowLabel = "about";
+    startupGateOverlayTestEnabled = true;
+    await renderAppRouter();
+
+    expect(await screen.findByText("about-view")).not.toBeNull();
+    expect(
+      screen.queryByTestId("startup-gate-overlay-sentinel"),
+    ).toBeNull();
   });
 
   it("renders the about view for the about window", async () => {

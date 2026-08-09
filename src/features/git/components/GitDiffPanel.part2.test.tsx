@@ -95,6 +95,8 @@ vi.mock("react-i18next", () => ({
         "git.previewInlineAction": "Preview diff in center pane",
         "git.previewModal": "Preview in modal",
         "git.previewModalAction": "Open diff preview modal",
+        "git.openFileContent": "Open file",
+        "git.openFileContentAction": "Open file content",
         "git.diffMode": "Diff",
         "git.diffModeDescription": "Inspect file changes",
         "git.logMode": "Git",

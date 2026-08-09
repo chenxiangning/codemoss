@@ -180,9 +180,6 @@ export function renderAppShell(ctx: RenderAppShellContext) {
     handleMoveWorkspace,
     handleOpenMailSession,
     handleOpenTaskConversation,
-    handleRenamePromptCancel,
-    handleRenamePromptChange,
-    handleRenamePromptConfirm,
     handleOpenSearchPalette,
     handleOpenQuickSwitcher,
     handleQuickSwitcherNavigate,
@@ -244,7 +241,6 @@ export function renderAppShell(ctx: RenderAppShellContext) {
     releaseNotesLoading,
     releaseNotesOpen,
     removeWorkspace,
-    renamePrompt,
     renameWorkspaceGroup,
     retryReleaseNotesLoad,
     rightPanelCollapsed,
@@ -771,10 +767,6 @@ export function renderAppShell(ctx: RenderAppShellContext) {
       <AppModals
         loadingProgressDialog={loadingProgressDialog}
         onLoadingProgressDialogClose={dismissLoadingProgressDialog}
-        renamePrompt={renamePrompt}
-        onRenamePromptChange={handleRenamePromptChange}
-        onRenamePromptCancel={handleRenamePromptCancel}
-        onRenamePromptConfirm={handleRenamePromptConfirm}
         worktreePrompt={worktreePrompt}
         onWorktreePromptChange={updateWorktreeBranch}
         onWorktreePromptBaseRefChange={updateWorktreeBaseRef}

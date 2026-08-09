@@ -74,7 +74,9 @@ describe("Messages transient timer cleanup on threadId change", () => {
   });
 
   it("clears transient timers and emits a cleanup diagnostic when active threadId changes", () => {
-    const clearSpy = vi.spyOn(window, "clearTimeout");
+    // 新跟随模型：scroll 资源从 setTimeout throttle 改为 rAF（pin/scroll/wheel），
+    // scope 切换时经 cancelAnimationFrame 清理（pin rAF 在挂载后即 pending）。
+    const cancelRafSpy = vi.spyOn(window, "cancelAnimationFrame");
     const rafSpy = vi.spyOn(window, "requestAnimationFrame");
 
     try {
@@ -88,7 +90,7 @@ describe("Messages transient timer cleanup on threadId change", () => {
       rerender(
         <Messages {...baseProps} threadId="thread-B" isThinking={false} />,
       );
-      expect(clearSpy).toHaveBeenCalled();
+      expect(cancelRafSpy).toHaveBeenCalled();
       expect(appendRendererDiagnosticMock).toHaveBeenCalledWith(
         "messages/render-resource-cleanup",
         expect.objectContaining({
@@ -105,7 +107,7 @@ describe("Messages transient timer cleanup on threadId change", () => {
       );
     } finally {
       rafSpy.mockRestore();
-      clearSpy.mockRestore();
+      cancelRafSpy.mockRestore();
     }
   });
 });

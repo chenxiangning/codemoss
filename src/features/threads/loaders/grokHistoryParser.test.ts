@@ -45,6 +45,48 @@ describe("parseGrokHistoryMessages", () => {
     );
   });
 
+  it("strips image-only CLI fallback text and keeps images", () => {
+    const items = parseGrokHistoryMessages([
+      {
+        id: "grok-user-image-only",
+        kind: "message",
+        role: "user",
+        text: "Please analyze the attached image(s).",
+        images: ["/tmp/only.png"],
+      },
+    ]);
+
+    expect(items).toHaveLength(1);
+    expect(items[0]).toEqual(
+      expect.objectContaining({
+        id: "grok-user-image-only",
+        kind: "message",
+        role: "user",
+        text: "",
+        images: ["/tmp/only.png"],
+      }),
+    );
+  });
+
+  it("keeps real user text that includes the analyze phrase", () => {
+    const items = parseGrokHistoryMessages([
+      {
+        id: "grok-user-real",
+        kind: "message",
+        role: "user",
+        text: "Please analyze the attached image(s). Focus on the red box.",
+        images: ["/tmp/a.png"],
+      },
+    ]);
+
+    expect(items[0]).toEqual(
+      expect.objectContaining({
+        text: "Please analyze the attached image(s). Focus on the red box.",
+        images: ["/tmp/a.png"],
+      }),
+    );
+  });
+
   it("maps reasoning rows and merges adjacent reasoning text", () => {
     const items = parseGrokHistoryMessages([
       {

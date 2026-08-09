@@ -95,6 +95,8 @@ vi.mock("react-i18next", () => ({
         "git.previewInlineAction": "Preview diff in center pane",
         "git.previewModal": "Preview in modal",
         "git.previewModalAction": "Open diff preview modal",
+        "git.openFileContent": "Open file",
+        "git.openFileContentAction": "Open file content",
         "git.diffMode": "Diff",
         "git.diffModeDescription": "Inspect file changes",
         "git.logMode": "Git",
@@ -230,7 +232,7 @@ describe("GitDiffPanel", () => {
       };
       const { rerender } = render(<GitDiffPanel {...initialProps} />);
 
-      fireEvent.doubleClick(screen.getByLabelText("file.txt"));
+      fireEvent.click(screen.getByLabelText("file.txt"));
       fireEvent.click(screen.getByRole("button", { name: "Mock dirty preview" }));
       rerender(
         <GitDiffPanel
@@ -263,7 +265,7 @@ describe("GitDiffPanel", () => {
         />,
       );
 
-      fireEvent.doubleClick(screen.getByLabelText("file.txt"));
+      fireEvent.click(screen.getByLabelText("file.txt"));
       fireEvent.click(screen.getByRole("button", { name: "Mock dirty preview" }));
       fireEvent.click(screen.getByRole("button", { name: "Mock close preview" }));
       mockPreviewSave.mockResolvedValueOnce(false);

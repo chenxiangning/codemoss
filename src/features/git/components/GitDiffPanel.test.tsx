@@ -95,6 +95,8 @@ vi.mock("react-i18next", () => ({
         "git.previewInlineAction": "Preview diff in center pane",
         "git.previewModal": "Preview in modal",
         "git.previewModalAction": "Open diff preview modal",
+        "git.openFileContent": "Open file",
+        "git.openFileContentAction": "Open file content",
         "git.diffMode": "Diff",
         "git.diffModeDescription": "Inspect file changes",
         "git.logMode": "Git",
@@ -438,6 +440,7 @@ describe("GitDiffPanel", () => {
               mutationDisabled: true,
             },
           ]}
+          onSelectFile={vi.fn()}
           onStageFile={vi.fn()}
           onRevertFile={vi.fn()}
           onGenerateCommitMessage={vi.fn()}
@@ -608,8 +611,9 @@ describe("GitDiffPanel", () => {
       ]);
     });
 
-  it("supports tree keyboard navigation and Enter-to-open", () => {
+  it("supports tree keyboard navigation and Enter-to-open DIFF modal", () => {
       const onSelectFile = vi.fn();
+      const onOpenFile = vi.fn();
       render(
         <GitDiffPanel
           {...baseProps}
@@ -618,7 +622,15 @@ describe("GitDiffPanel", () => {
             { path: "a.ts", status: "M", additions: 1, deletions: 0 },
             { path: "b.ts", status: "M", additions: 1, deletions: 0 },
           ]}
+          diffEntries={[
+            {
+              path: "b.ts",
+              status: "M",
+              diff: "diff --git a/b.ts b/b.ts\n@@ -1 +1 @@\n-old\n+new\n",
+            },
+          ]}
           onSelectFile={onSelectFile}
+          onOpenFile={onOpenFile}
         />,
       );
 
@@ -630,6 +642,8 @@ describe("GitDiffPanel", () => {
       fireEvent.keyDown(firstRow as HTMLElement, { key: "ArrowDown" });
       expect(document.activeElement).toBe(secondRow);
       fireEvent.keyDown(secondRow as HTMLElement, { key: "Enter" });
-      expect(onSelectFile).toHaveBeenCalledWith("b.ts");
+      expect(onSelectFile).not.toHaveBeenCalled();
+      expect(onOpenFile).not.toHaveBeenCalled();
+      expect(document.querySelector(".git-history-diff-modal")).toBeTruthy();
     });
 });

@@ -37,7 +37,9 @@ use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::{Child, Command};
 use tokio::sync::{broadcast, Mutex, RwLock};
 
-use super::cli_image_input::{collect_non_empty_image_paths, normalize_local_image_path};
+use super::cli_image_input::{
+    collect_non_empty_image_paths, normalize_local_image_path, GROK_IMAGE_ONLY_FALLBACK_TEXT,
+};
 use super::events::EngineEvent;
 use super::grok_history::{
     poll_chat_history_tool_signals, resolve_chat_history_path, GrokHistoryToolSignal,
@@ -141,6 +143,8 @@ pub(crate) fn build_grok_prompt_json(
 
     // Grok requires at least one content block; if the user only attached images
     // with empty text, keep a minimal text block so the payload stays valid.
+    // Display layer strips GROK_IMAGE_ONLY_FALLBACK_TEXT so the canvas never
+    // shows this as a user-authored bubble.
     if blocks
         .iter()
         .all(|block| block.get("type").and_then(Value::as_str) != Some("text"))
@@ -149,7 +153,7 @@ pub(crate) fn build_grok_prompt_json(
             0,
             json!({
                 "type": "text",
-                "text": "Please analyze the attached image(s).",
+                "text": GROK_IMAGE_ONLY_FALLBACK_TEXT,
             }),
         );
     }
@@ -1253,6 +1257,7 @@ mod tests {
             .expect("expected prompt-json");
         let blocks: Vec<Value> = serde_json::from_str(&encoded).unwrap();
         assert_eq!(blocks[0]["type"], "text");
+        assert_eq!(blocks[0]["text"], GROK_IMAGE_ONLY_FALLBACK_TEXT);
         assert_eq!(blocks[1]["type"], "image");
         assert_eq!(blocks[1]["mimeType"], "image/png");
     }

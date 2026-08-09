@@ -3,17 +3,19 @@ import {
   PopoverAnchor,
   PopoverContent,
 } from "@/components/ui/popover";
+import { clampRendererContextMenuPosition } from "@/components/ui/RendererContextMenu";
 import Folder from "lucide-react/dist/esm/icons/folder";
 import FolderPlus from "lucide-react/dist/esm/icons/folder-plus";
-import FolderTree from "lucide-react/dist/esm/icons/folder-tree";
 import MessageSquarePlus from "lucide-react/dist/esm/icons/message-square-plus";
+import Ellipsis from "lucide-react/dist/esm/icons/ellipsis";
 import Pencil from "lucide-react/dist/esm/icons/pencil";
 import Trash2 from "lucide-react/dist/esm/icons/trash-2";
 import ChevronDown from "lucide-react/dist/esm/icons/chevron-down";
 import type { KeyboardEvent } from "react";
 import type { MouseEvent } from "react";
 import type { CSSProperties } from "react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 
 import type { WorkspaceSessionFolderNode, WorkspaceSessionThreadRow } from "../utils/workspaceSessionFolders";
@@ -21,6 +23,11 @@ import type { ThreadMoveFolderTarget } from "../hooks/useSidebarMenus";
 import { ThreadDeleteConfirmBubble } from "../../threads/components/ThreadDeleteConfirmBubble";
 import { ThreadList } from "./ThreadList";
 import type { ThreadListProps } from "./ThreadList";
+
+/** Match .workspace-session-folder-menu min-width; refined after measure. */
+const FOLDER_MENU_ESTIMATED_WIDTH = 220;
+const FOLDER_MENU_ESTIMATED_HEIGHT = 220;
+const FOLDER_MENU_VIEWPORT_PADDING = 12;
 
 type WorkspaceSessionFolderTreeProps = {
   workspaceId: string;
@@ -74,6 +81,9 @@ export function WorkspaceSessionFolderTree({
     workspaceId: string;
     folderId: string;
     folderName: string;
+    /** Raw click/button anchor used for re-clamp after measure. */
+    anchorX: number;
+    anchorY: number;
     x: number;
     y: number;
   } | null>(null);
@@ -83,6 +93,7 @@ export function WorkspaceSessionFolderTree({
   } | null>(null);
   const draftInputRef = useRef<HTMLInputElement>(null);
   const renameInputRef = useRef<HTMLInputElement>(null);
+  const folderMenuRef = useRef<HTMLDivElement>(null);
   const lastRootDraftRequestKeyRef = useRef(rootDraftRequestKey);
 
   useEffect(() => {
@@ -111,6 +122,32 @@ export function WorkspaceSessionFolderTree({
     setDraftTarget({ parentId: null });
     setDraftName("");
   }, [rootDraftRequestKey]);
+
+  // Re-clamp after paint so a full-width menu never sits half off-screen
+  // (⋯ sits on the right edge of a narrow sidebar).
+  useLayoutEffect(() => {
+    if (!folderMenu || !folderMenuRef.current || typeof window === "undefined") {
+      return;
+    }
+    const rect = folderMenuRef.current.getBoundingClientRect();
+    const next = clampRendererContextMenuPosition(folderMenu.anchorX, folderMenu.anchorY, {
+      width: rect.width || FOLDER_MENU_ESTIMATED_WIDTH,
+      height: rect.height || FOLDER_MENU_ESTIMATED_HEIGHT,
+      padding: FOLDER_MENU_VIEWPORT_PADDING,
+    });
+    if (next.x === folderMenu.x && next.y === folderMenu.y) {
+      return;
+    }
+    setFolderMenu((current) =>
+      current
+        ? {
+            ...current,
+            x: next.x,
+            y: next.y,
+          }
+        : current,
+    );
+  }, [folderMenu]);
 
   const openFolderDraft = (event: MouseEvent, parentId: string | null) => {
     event.preventDefault();
@@ -176,6 +213,44 @@ export function WorkspaceSessionFolderTree({
   };
 
   const closeFolderMenu = () => setFolderMenu(null);
+  const closeDeleteConfirm = () => setDeleteConfirmTarget(null);
+
+  const openFolderMenuAtPoint = (
+    workspaceIdForMenu: string,
+    folderId: string,
+    folderName: string,
+    anchorX: number,
+    anchorY: number,
+  ) => {
+    closeDeleteConfirm();
+    const clamped = clampRendererContextMenuPosition(anchorX, anchorY, {
+      width: FOLDER_MENU_ESTIMATED_WIDTH,
+      height: FOLDER_MENU_ESTIMATED_HEIGHT,
+      padding: FOLDER_MENU_VIEWPORT_PADDING,
+    });
+    setFolderMenu({
+      workspaceId: workspaceIdForMenu,
+      folderId,
+      folderName,
+      anchorX,
+      anchorY,
+      x: clamped.x,
+      y: clamped.y,
+    });
+  };
+
+  const openFolderMenuFromButton = (
+    event: MouseEvent<HTMLButtonElement>,
+    folderId: string,
+    folderName: string,
+  ) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const rect = event.currentTarget.getBoundingClientRect();
+    // Anchor on the button's right edge so clamp flips the menu leftward
+    // into the sidebar instead of opening off-screen to the right.
+    openFolderMenuAtPoint(workspaceId, folderId, folderName, rect.right, rect.bottom);
+  };
 
   const openDeleteConfirm = (event: MouseEvent, folderId: string, name: string) => {
     event.preventDefault();
@@ -183,8 +258,6 @@ export function WorkspaceSessionFolderTree({
     closeFolderMenu();
     setDeleteConfirmTarget({ folderId, name });
   };
-
-  const closeDeleteConfirm = () => setDeleteConfirmTarget(null);
 
   const toggleFolderCollapsed = (folderId: string) => {
     onToggleFolderCollapsed(workspaceId, folderId);
@@ -263,13 +336,13 @@ export function WorkspaceSessionFolderTree({
     const handleFolderContextMenu = (event: MouseEvent<HTMLDivElement>) => {
       event.preventDefault();
       event.stopPropagation();
-      setFolderMenu({
+      openFolderMenuAtPoint(
         workspaceId,
-        folderId: node.folder.id,
-        folderName: node.folder.name,
-        x: event.clientX,
-        y: event.clientY,
-      });
+        node.folder.id,
+        node.folder.name,
+        event.clientX,
+        event.clientY,
+      );
     };
     const groupStyle = { "--workspace-session-folder-depth": depth } as CSSProperties;
     return (
@@ -363,7 +436,7 @@ export function WorkspaceSessionFolderTree({
           >
             {sessionCount}
           </span>
-          <div className="workspace-session-folder-actions" aria-hidden={false}>
+          <div className="workspace-session-folder-actions">
             <button
               type="button"
               className="workspace-session-folder-action"
@@ -372,24 +445,6 @@ export function WorkspaceSessionFolderTree({
               onClick={(event) => onNewSessionInFolder(event, workspaceId, node.folder.id)}
             >
               <MessageSquarePlus size={12} aria-hidden />
-            </button>
-            <button
-              type="button"
-              className="workspace-session-folder-action"
-              aria-label={t("sidebar.newSessionFolderIn", { name: node.folder.name })}
-              title={t("sidebar.newSessionFolderIn", { name: node.folder.name })}
-              onClick={(event) => openFolderDraft(event, node.folder.id)}
-            >
-              <FolderTree size={12} aria-hidden />
-            </button>
-            <button
-              type="button"
-              className="workspace-session-folder-action"
-              aria-label={t("sidebar.renameSessionFolder", { name: node.folder.name })}
-              title={t("sidebar.renameSessionFolder", { name: node.folder.name })}
-              onClick={(event) => openFolderRename(event, node.folder.id, node.folder.name)}
-            >
-              <Pencil size={12} aria-hidden />
             </button>
             <Popover
               open={deleteConfirmTarget?.folderId === node.folder.id}
@@ -402,12 +457,19 @@ export function WorkspaceSessionFolderTree({
               <PopoverAnchor asChild>
                 <button
                   type="button"
-                  className="workspace-session-folder-action workspace-session-folder-action-danger"
-                  aria-label={t("sidebar.deleteSessionFolder", { name: node.folder.name })}
-                  title={t("sidebar.deleteSessionFolder", { name: node.folder.name })}
-                  onClick={(event) => openDeleteConfirm(event, node.folder.id, node.folder.name)}
+                  className="workspace-session-folder-action"
+                  aria-label={t("sidebar.sessionFolderActions", { name: node.folder.name })}
+                  title={t("sidebar.sessionFolderActions", { name: node.folder.name })}
+                  aria-haspopup="menu"
+                  aria-expanded={
+                    folderMenu?.folderId === node.folder.id ||
+                    deleteConfirmTarget?.folderId === node.folder.id
+                  }
+                  onClick={(event) =>
+                    openFolderMenuFromButton(event, node.folder.id, node.folder.name)
+                  }
                 >
-                  <Trash2 size={12} aria-hidden />
+                  <Ellipsis size={12} aria-hidden />
                 </button>
               </PopoverAnchor>
               {deleteConfirmTarget?.folderId === node.folder.id ? (
@@ -546,112 +608,116 @@ export function WorkspaceSessionFolderTree({
           showLoadOlder={threadListProps.showLoadOlder}
         />
       ) : null}
-      {folderMenu ? (
-        <div
-          className="sidebar-workspace-menu-backdrop workspace-session-folder-menu-backdrop"
-          onClick={closeFolderMenu}
-          onContextMenu={(event) => {
-            event.preventDefault();
-            closeFolderMenu();
-          }}
-        >
-          <div
-            className="sidebar-workspace-menu workspace-session-folder-menu"
-            role="menu"
-            aria-label={t("sidebar.sessionFolderActions", {
-              name: folderMenu.folderName,
-            })}
-            style={{
-              left: folderMenu.x,
-              top: folderMenu.y,
-            }}
-            onMouseDown={(event) => event.stopPropagation()}
-            onPointerDown={(event) => event.stopPropagation()}
-            onClick={(event) => event.stopPropagation()}
-            onContextMenu={(event) => event.preventDefault()}
-          >
-            <div className="sidebar-workspace-menu-group">
-              <div className="sidebar-workspace-menu-group-title">
-                {folderMenu.folderName}
+      {folderMenu && typeof document !== "undefined"
+        ? createPortal(
+            <div
+              className="sidebar-workspace-menu-backdrop workspace-session-folder-menu-backdrop"
+              onClick={closeFolderMenu}
+              onContextMenu={(event) => {
+                event.preventDefault();
+                closeFolderMenu();
+              }}
+            >
+              <div
+                ref={folderMenuRef}
+                className="sidebar-workspace-menu workspace-session-folder-menu"
+                role="menu"
+                aria-label={t("sidebar.sessionFolderActions", {
+                  name: folderMenu.folderName,
+                })}
+                style={{
+                  left: folderMenu.x,
+                  top: folderMenu.y,
+                }}
+                onMouseDown={(event) => event.stopPropagation()}
+                onPointerDown={(event) => event.stopPropagation()}
+                onClick={(event) => event.stopPropagation()}
+                onContextMenu={(event) => event.preventDefault()}
+              >
+                <div className="sidebar-workspace-menu-group">
+                  <div className="sidebar-workspace-menu-group-title">
+                    {folderMenu.folderName}
+                  </div>
+                  <div className="sidebar-workspace-menu-item-row">
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className="sidebar-workspace-menu-item"
+                      onClick={(event) => {
+                        const menuFolderId = folderMenu.folderId;
+                        closeFolderMenu();
+                        onNewSessionInFolder(event, folderMenu.workspaceId, menuFolderId);
+                      }}
+                    >
+                      <span className="sidebar-workspace-menu-item-icon" aria-hidden>
+                        <MessageSquarePlus size={14} />
+                      </span>
+                      <span className="sidebar-workspace-menu-item-label">
+                        {t("sidebar.newSessionInFolder", { name: folderMenu.folderName })}
+                      </span>
+                    </button>
+                  </div>
+                  <div className="sidebar-workspace-menu-item-row">
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className="sidebar-workspace-menu-item"
+                      onClick={(event) => {
+                        closeFolderMenu();
+                        openFolderRename(event, folderMenu.folderId, folderMenu.folderName);
+                      }}
+                    >
+                      <span className="sidebar-workspace-menu-item-icon" aria-hidden>
+                        <Pencil size={14} />
+                      </span>
+                      <span className="sidebar-workspace-menu-item-label">
+                        {t("sidebar.renameSessionFolder", { name: folderMenu.folderName })}
+                      </span>
+                    </button>
+                  </div>
+                  <div className="sidebar-workspace-menu-item-row">
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className="sidebar-workspace-menu-item"
+                      onClick={(event) => {
+                        const menuFolderId = folderMenu.folderId;
+                        closeFolderMenu();
+                        openFolderDraft(event, menuFolderId);
+                      }}
+                    >
+                      <span className="sidebar-workspace-menu-item-icon" aria-hidden>
+                        <FolderPlus size={14} />
+                      </span>
+                      <span className="sidebar-workspace-menu-item-label">
+                        {t("sidebar.newSessionFolderIn", { name: folderMenu.folderName })}
+                      </span>
+                    </button>
+                  </div>
+                  <div className="sidebar-workspace-menu-divider" aria-hidden />
+                  <div className="sidebar-workspace-menu-item-row">
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className="sidebar-workspace-menu-item is-danger"
+                      onClick={(event) => {
+                        openDeleteConfirm(event, folderMenu.folderId, folderMenu.folderName);
+                      }}
+                    >
+                      <span className="sidebar-workspace-menu-item-icon" aria-hidden>
+                        <Trash2 size={14} />
+                      </span>
+                      <span className="sidebar-workspace-menu-item-label">
+                        {t("sidebar.deleteSessionFolder", { name: folderMenu.folderName })}
+                      </span>
+                    </button>
+                  </div>
+                </div>
               </div>
-              <div className="sidebar-workspace-menu-item-row">
-                <button
-                  type="button"
-                  role="menuitem"
-                  className="sidebar-workspace-menu-item"
-                  onClick={(event) => {
-                    const menuFolderId = folderMenu.folderId;
-                    closeFolderMenu();
-                    onNewSessionInFolder(event, folderMenu.workspaceId, menuFolderId);
-                  }}
-                >
-                  <span className="sidebar-workspace-menu-item-icon" aria-hidden>
-                    <MessageSquarePlus size={14} />
-                  </span>
-                  <span className="sidebar-workspace-menu-item-label">
-                    {t("sidebar.newSessionInFolder", { name: folderMenu.folderName })}
-                  </span>
-                </button>
-              </div>
-              <div className="sidebar-workspace-menu-item-row">
-                <button
-                  type="button"
-                  role="menuitem"
-                  className="sidebar-workspace-menu-item"
-                  onClick={(event) => {
-                    closeFolderMenu();
-                    openFolderRename(event, folderMenu.folderId, folderMenu.folderName);
-                  }}
-                >
-                  <span className="sidebar-workspace-menu-item-icon" aria-hidden>
-                    <Pencil size={14} />
-                  </span>
-                  <span className="sidebar-workspace-menu-item-label">
-                    {t("sidebar.renameSessionFolder", { name: folderMenu.folderName })}
-                  </span>
-                </button>
-              </div>
-              <div className="sidebar-workspace-menu-item-row">
-                <button
-                  type="button"
-                  role="menuitem"
-                  className="sidebar-workspace-menu-item"
-                  onClick={(event) => {
-                    const menuFolderId = folderMenu.folderId;
-                    closeFolderMenu();
-                    openFolderDraft(event, menuFolderId);
-                  }}
-                >
-                  <span className="sidebar-workspace-menu-item-icon" aria-hidden>
-                    <FolderPlus size={14} />
-                  </span>
-                  <span className="sidebar-workspace-menu-item-label">
-                    {t("sidebar.newSessionFolderIn", { name: folderMenu.folderName })}
-                  </span>
-                </button>
-              </div>
-              <div className="sidebar-workspace-menu-divider" aria-hidden />
-              <div className="sidebar-workspace-menu-item-row">
-                <button
-                  type="button"
-                  role="menuitem"
-                  className="sidebar-workspace-menu-item is-danger"
-                  onClick={(event) => {
-                    openDeleteConfirm(event, folderMenu.folderId, folderMenu.folderName);
-                  }}
-                >
-                  <span className="sidebar-workspace-menu-item-icon" aria-hidden>
-                    <Trash2 size={14} />
-                  </span>
-                  <span className="sidebar-workspace-menu-item-label">
-                    {t("sidebar.deleteSessionFolder", { name: folderMenu.folderName })}
-                  </span>
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      ) : null}
+            </div>,
+            document.body,
+          )
+        : null}
     </div>
   );
 }

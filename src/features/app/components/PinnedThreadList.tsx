@@ -56,6 +56,12 @@ type PinnedThreadListProps = {
   deleteConfirmBusy?: boolean;
   onCancelDeleteConfirm?: () => void;
   onConfirmDeleteConfirm?: () => void;
+  renameThreadId?: string | null;
+  renameWorkspaceId?: string | null;
+  renameName?: string;
+  onRenameChange?: (value: string) => void;
+  onRenameCancel?: () => void;
+  onRenameConfirm?: () => void;
   onPinnedThreadRowRender?: (threadId: string) => void;
 };
 
@@ -111,6 +117,12 @@ export function PinnedThreadList({
   deleteConfirmBusy = false,
   onCancelDeleteConfirm,
   onConfirmDeleteConfirm,
+  renameThreadId = null,
+  renameWorkspaceId = null,
+  renameName = "",
+  onRenameChange,
+  onRenameCancel,
+  onRenameConfirm,
   onPinnedThreadRowRender,
 }: PinnedThreadListProps) {
   const groups = useMemo(() => groupPinnedThreadRows(rows), [rows]);
@@ -151,6 +163,12 @@ export function PinnedThreadList({
           deleteConfirmBusy={deleteConfirmBusy}
           onCancelDeleteConfirm={onCancelDeleteConfirm}
           onConfirmDeleteConfirm={onConfirmDeleteConfirm}
+          renameThreadId={renameThreadId}
+          renameWorkspaceId={renameWorkspaceId}
+          renameName={renameName}
+          onRenameChange={onRenameChange}
+          onRenameCancel={onRenameCancel}
+          onRenameConfirm={onRenameConfirm}
           onThreadRowRender={onPinnedThreadRowRender}
         />
       ))}

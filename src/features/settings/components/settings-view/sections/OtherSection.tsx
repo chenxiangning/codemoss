@@ -33,6 +33,10 @@ import {
   isSharedProjectionDataSourceEnabled,
   setSharedProjectionTestOverrideEnabled,
 } from "../../../../messages/presentation/sharedProjection/dataSource";
+import {
+  isStartupGateOverlayTestEnabled,
+  setStartupGateOverlayTestEnabled,
+} from "@/features/startup-orchestration/utils/startupGateOverlayTestFlag";
 
 type OtherSectionProps = {
   title: string | null;
@@ -65,6 +69,8 @@ export function OtherSection({
     useState<boolean>(() => isPerfDiagnosticsFlagEnabled());
   const [sharedProjectionTestEnabled, setSharedProjectionTestEnabled] =
     useState<boolean>(() => isSharedProjectionDataSourceEnabled());
+  const [startupGateOverlayTestEnabled, setStartupGateOverlayTestEnabledState] =
+    useState<boolean>(() => isStartupGateOverlayTestEnabled());
   const [copyReportMessage, setCopyReportMessage] = useState<string | null>(
     null,
   );
@@ -85,6 +91,13 @@ export function OtherSection({
     if (changed) {
       globalThis.location.reload();
     }
+  };
+
+  const handleStartupGateOverlayTestToggle = (checked: boolean) => {
+    setStartupGateOverlayTestEnabled(checked);
+    setStartupGateOverlayTestEnabledState(
+      isStartupGateOverlayTestEnabled(),
+    );
   };
 
   const handleCopyPerfReport = async () => {
@@ -281,6 +294,25 @@ export function OtherSection({
         entries={sessionRadarRecentCompletedSessions}
         onDeleteEntries={onDeleteSessionRadarHistory}
       />
+      <Separator className="my-4" />
+      <div className="settings-toggle-row">
+        <div>
+          <div className="settings-toggle-title">
+            {t("settings.startupGateOverlayTestTitle")}
+          </div>
+          <div className="settings-toggle-subtitle">
+            {t("settings.startupGateOverlayTestDescription")}
+          </div>
+          <div className="settings-help">
+            {t("settings.startupGateOverlayTestDetail")}
+          </div>
+        </div>
+        <Switch
+          aria-label={t("settings.startupGateOverlayTestTitle")}
+          checked={startupGateOverlayTestEnabled}
+          onCheckedChange={handleStartupGateOverlayTestToggle}
+        />
+      </div>
     </section>
   );
 }

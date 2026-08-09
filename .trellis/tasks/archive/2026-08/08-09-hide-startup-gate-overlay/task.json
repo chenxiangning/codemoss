@@ -1,0 +1,53 @@
+{
+  "id": "hide-startup-gate-overlay",
+  "name": "hide-startup-gate-overlay",
+  "title": "默认隐藏并按需恢复启动门控遮罩 [OpenSpec: hide-startup-gate-overlay]",
+  "description": "关联 OpenSpec change: hide-startup-gate-overlay；默认隐藏 StartupGateOverlay，并通过其他设置中的本机测试开关在下次启动恢复。",
+  "status": "completed",
+  "dev_type": "frontend",
+  "scope": null,
+  "package": null,
+  "priority": "P0",
+  "creator": "chenxiangning",
+  "assignee": "chenxiangning",
+  "createdAt": "2026-08-09",
+  "completedAt": "2026-08-09",
+  "branch": null,
+  "base_branch": "cxn-version-0.8.5",
+  "worktree_path": null,
+  "current_phase": 0,
+  "next_action": [
+    {
+      "phase": 1,
+      "action": "brainstorm"
+    },
+    {
+      "phase": 2,
+      "action": "research"
+    },
+    {
+      "phase": 3,
+      "action": "implement"
+    },
+    {
+      "phase": 4,
+      "action": "check"
+    },
+    {
+      "phase": 5,
+      "action": "update-spec"
+    },
+    {
+      "phase": 6,
+      "action": "record-session"
+    }
+  ],
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {}
+}
