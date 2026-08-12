@@ -1,0 +1,662 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>浏览器 Dock — 10 个 UI 设计变体 R2（紧凑向）</title>
+<style>
+/* ===== mossx design tokens (dark) fallback — 见 design-tokens.md 第 7 节 ===== */
+:root {
+  --ui-font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+  --code-font-family: "SF Mono", "SFMono-Regular", Menlo, Monaco, "Sarasa Mono SC", monospace;
+  --text-primary: #e6e7ea; --text-strong: #fff; --text-quiet: #bfbfbf;
+  --text-muted: #b3b3b3; --text-subtle: #999; --text-faint: #808080; --text-dim: #595959;
+  --text-accent: #7a9dcc;
+  --surface-messages: oklch(0.141 0.005 285.823);
+  --surface-sidebar: oklch(0.165 0.004 286);
+  --surface-topbar: oklch(0.16 0.005 286);
+  --surface-popover: oklch(0.18 0.005 286);
+  --surface-item: oklch(0.195 0.006 286);
+  --surface-card: oklch(0.21 0.006 285.885);
+  --surface-card-muted: oklch(0.235 0.006 286);
+  --surface-control: oklch(0.274 0.006 286.033);
+  --surface-control-hover: oklch(0.32 0.006 286);
+  --surface-card-strong: oklch(0.3 0.006 286);
+  --surface-hover: oklch(0.215 0.006 286);
+  --surface-active: oklch(0.305 0.006 286);
+  --border-muted: oklch(0.225 0.005 286);
+  --border-subtle: oklch(0.245 0.005 286);
+  --border-strong: oklch(0.32 0.006 286);
+  --border-stronger: oklch(0.35 0.006 286);
+  --status-success: #78ebbe; --status-warning: #ffaf55; --status-error: #ff6e6e;
+  --radius: 10px; --radius-md: 8px; --radius-sm: 6px;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--surface-messages); color: var(--text-primary);
+  font: 13px/1.5 var(--ui-font-family);
+  -webkit-font-smoothing: antialiased;
+}
+button {
+  border: none; border-radius: var(--radius); padding: 8px 14px;
+  font-size: 13px; font-weight: 600; cursor: pointer;
+  background: transparent; color: var(--text-primary); font-family: inherit;
+}
+.primary { background: var(--text-primary); color: oklch(0.205 0.005 286); }
+
+/* ===== 画廊壳层 ===== */
+.gallery-head { padding: 40px 48px 8px; max-width: 1080px; margin: 0 auto; }
+.gallery-head h1 { font-size: 22px; color: var(--text-strong); margin: 0 0 6px; }
+.gallery-head p { color: var(--text-muted); margin: 0; font-size: 13px; }
+.variant { max-width: 1080px; margin: 36px auto; padding: 0 48px; }
+.variant-meta { display: flex; align-items: baseline; gap: 12px; margin-bottom: 6px; }
+.variant-no {
+  font: 600 11px/1 var(--code-font-family); color: var(--text-accent);
+  border: 1px solid var(--border-strong); border-radius: 999px; padding: 4px 10px;
+}
+.variant-meta h2 { font-size: 15px; color: var(--text-strong); margin: 0; }
+.variant-desc { color: var(--text-subtle); font-size: 12px; margin: 0 0 16px; }
+.stage {
+  border: 1px solid var(--border-subtle); border-radius: var(--radius);
+  background: var(--surface-sidebar); overflow: hidden; position: relative;
+}
+.mock-webview {
+  display: flex; align-items: center; justify-content: center;
+  color: var(--text-dim); font-size: 12px; min-height: 120px;
+  border-top: 1px solid var(--border-muted);
+}
+.kbd {
+  font: 10px var(--code-font-family); color: var(--text-faint);
+  border: 1px solid var(--border-subtle); border-bottom-width: 2px;
+  border-radius: var(--radius-sm); padding: 1px 5px; white-space: nowrap;
+}
+.dot-ok { width: 6px; height: 6px; border-radius: 999px; background: var(--status-success); flex: none; }
+
+/* ================================================================
+   V1 · 磁吸胶囊岛 Floating Island
+   控件收成一颗胶囊，悬浮在 webview 上方居中，毛玻璃
+================================================================ */
+.v1 { background: var(--surface-messages); min-height: 220px; position: relative; }
+.v1-island {
+  position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
+  display: flex; align-items: center; gap: 2px;
+  background: color-mix(in oklch, var(--surface-popover) 82%, transparent);
+  -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px);
+  border: 1px solid var(--border-strong); border-radius: 999px;
+  padding: 4px; box-shadow: 0 14px 34px rgba(0,0,0,.3), inset 0 1px 0 var(--border-subtle);
+}
+.v1-island .cell {
+  display: flex; align-items: center; gap: 6px; padding: 4px 10px;
+  border-radius: 999px; font-size: 12px; color: var(--text-quiet); white-space: nowrap;
+}
+.v1-island .cell.tab { background: var(--surface-active); color: var(--text-primary); }
+.v1-island .cell.tab .x { color: var(--text-faint); font-size: 10px; margin-left: 2px; }
+.v1-island .cell.url {
+  background: var(--surface-control); color: var(--text-primary);
+  font-family: var(--code-font-family); font-size: 11px; min-width: 220px;
+}
+.v1-island .cell .go { color: var(--text-accent); font-weight: 600; font-family: var(--ui-font-family); }
+.v1-island .ic { color: var(--text-muted); padding: 5px 8px; font-size: 12px; }
+.v1-content { padding: 90px 0 40px; text-align: center; color: var(--text-dim); font-size: 12px; }
+
+/* ================================================================
+   V2 · 精密仪表行 Instrument Deck
+   发丝线分隔的读数格，mono 遥测数据，控制台面感
+================================================================ */
+.v2 { background: var(--surface-topbar); }
+.v2-deck {
+  display: flex; align-items: stretch; height: 40px;
+  border-bottom: 1px solid var(--border-muted);
+}
+.v2-cell {
+  display: flex; align-items: center; gap: 8px; padding: 0 12px;
+  border-right: 1px solid var(--border-muted); font-size: 12px; color: var(--text-quiet);
+  white-space: nowrap;
+}
+.v2-cell .lab {
+  font: 9px var(--code-font-family); letter-spacing: .12em;
+  color: var(--text-dim); text-transform: uppercase;
+}
+.v2-cell .val { font-family: var(--code-font-family); font-size: 11px; color: var(--text-primary); }
+.v2-cell .val.ok { color: var(--status-success); }
+.v2-cell.tab { background: var(--surface-hover); color: var(--text-primary); box-shadow: inset 0 -2px 0 var(--text-accent); }
+.v2-cell.grow { flex: 1; border-right: none; }
+.v2-cell.grow input {
+  flex: 1; background: none; border: none; outline: none; min-width: 0;
+  color: var(--text-primary); font: 12px var(--code-font-family);
+}
+.v2-cell button { font-size: 11px; padding: 4px 12px; }
+.v2-tick { height: 3px; background: repeating-linear-gradient(90deg, var(--border-strong) 0 1px, transparent 1px 8px); opacity: .5; }
+
+/* ================================================================
+   V3 · 编辑器标签 VSCode Tabs
+   文件标签与内容无缝相接，面包屑 URL，脏点式关闭
+================================================================ */
+.v3 { background: var(--surface-messages); }
+.v3-tabstrip { display: flex; align-items: flex-end; background: var(--surface-sidebar); padding: 6px 8px 0; gap: 1px; }
+.v3-tab {
+  display: flex; align-items: center; gap: 8px; padding: 7px 12px 8px;
+  font-size: 12px; color: var(--text-muted);
+  border-radius: var(--radius-md) var(--radius-md) 0 0;
+  border: 1px solid transparent; border-bottom: none;
+}
+.v3-tab.is-active {
+  background: var(--surface-messages); color: var(--text-primary);
+  border-color: var(--border-muted); position: relative;
+}
+.v3-tab.is-active::before {
+  content: ""; position: absolute; top: 0; left: 0; right: 0; height: 2px;
+  background: var(--text-accent); border-radius: 2px 2px 0 0;
+}
+.v3-tab .fav {
+  width: 14px; height: 14px; border-radius: 4px; background: var(--surface-control);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 9px; color: var(--text-subtle); flex: none;
+}
+.v3-tab .close-dot { width: 8px; height: 8px; border-radius: 999px; background: var(--text-dim); flex: none; }
+.v3-tab.is-active .close-dot { background: var(--status-success); }
+.v3-tab.new { color: var(--text-faint); padding: 7px 10px 8px; }
+.v3-strip-actions { margin-left: auto; display: flex; gap: 2px; padding-bottom: 4px; }
+.v3-strip-actions button { font-size: 11px; color: var(--text-muted); padding: 3px 8px; font-weight: 500; }
+.v3-crumbs {
+  display: flex; align-items: center; gap: 6px; padding: 7px 14px;
+  font: 11px var(--code-font-family); color: var(--text-faint);
+  border-bottom: 1px solid var(--border-muted);
+}
+.v3-crumbs .seg { color: var(--text-subtle); }
+.v3-crumbs .seg.host { color: var(--text-primary); }
+.v3-crumbs .sep { color: var(--text-dim); }
+.v3-crumbs .sp { flex: 1; }
+
+/* ================================================================
+   V4 · Powerline 状态行
+   底部状态条，斜切分段，tmux/vim 气质
+================================================================ */
+.v4 { background: var(--surface-messages); display: flex; flex-direction: column; min-height: 200px; }
+.v4-content { flex: 1; display: flex; align-items: center; justify-content: center; color: var(--text-dim); font-size: 12px; }
+.v4-line { display: flex; align-items: stretch; height: 30px; font: 11px var(--code-font-family); }
+.v4-seg { display: flex; align-items: center; gap: 6px; padding: 0 12px; position: relative; white-space: nowrap; }
+.v4-seg.a { background: var(--surface-bubble-user, #005fb8); color: #fff; font-weight: 600; }
+.v4-seg.b { background: var(--surface-card-strong); color: var(--text-primary); }
+.v4-seg.c { background: var(--surface-card); color: var(--text-quiet); }
+.v4-seg.d { background: var(--surface-item); color: var(--text-muted); }
+.v4-seg::after {
+  content: ""; position: absolute; right: -8px; top: 0; z-index: 1;
+  border-left: 8px solid; border-top: 15px solid transparent; border-bottom: 15px solid transparent;
+}
+.v4-seg.a::after { border-left-color: #005fb8; }
+.v4-seg.b::after { border-left-color: var(--surface-card-strong); }
+.v4-seg.c::after { border-left-color: var(--surface-card); }
+.v4-seg.d::after { border-left-color: var(--surface-item); }
+.v4-rest {
+  flex: 1; display: flex; align-items: center; gap: 10px; padding: 0 12px 0 20px;
+  background: var(--surface-topbar); color: var(--text-subtle); min-width: 0;
+}
+.v4-rest input {
+  flex: 1; background: none; border: none; outline: none; min-width: 0;
+  color: var(--text-primary); font: 11px var(--code-font-family);
+}
+.v4-rest .ok { color: var(--status-success); }
+.v4-rest .act { color: var(--text-accent); cursor: pointer; }
+
+/* ================================================================
+   V5 · 命令面板 Command Palette
+   全局居中浮层，行内动作以 ⌘ 提示收尾
+================================================================ */
+.v5 { background: var(--surface-messages); min-height: 220px; position: relative; }
+.v5-veil { position: absolute; inset: 0; background: rgba(0,0,0,.35); }
+.v5-palette {
+  position: absolute; top: 28px; left: 50%; transform: translateX(-50%);
+  width: min(600px, 88%);
+  background: var(--surface-popover); border: 1px solid var(--border-strong);
+  border-radius: var(--radius); box-shadow: 0 14px 34px rgba(0,0,0,.3);
+  overflow: hidden;
+}
+.v5-input-row {
+  display: flex; align-items: center; gap: 10px; padding: 12px 14px;
+  border-bottom: 1px solid var(--border-muted);
+}
+.v5-input-row input {
+  flex: 1; background: none; border: none; outline: none;
+  color: var(--text-primary); font-size: 14px; font-family: inherit;
+}
+.v5-list { padding: 6px; }
+.v5-item {
+  display: flex; align-items: center; gap: 10px; padding: 7px 10px;
+  border-radius: var(--radius-md); font-size: 12px; color: var(--text-quiet);
+}
+.v5-item.sel { background: var(--surface-hover); color: var(--text-primary); }
+.v5-item .ic { width: 16px; text-align: center; color: var(--text-subtle); flex: none; }
+.v5-item .sp { flex: 1; }
+.v5-item .tag { font-size: 10px; color: var(--text-dim); font-family: var(--code-font-family); }
+.v5-foot {
+  display: flex; gap: 14px; padding: 8px 14px; border-top: 1px solid var(--border-muted);
+  font-size: 10px; color: var(--text-faint);
+}
+.v5-content { padding: 150px 0 40px; text-align: center; color: var(--text-dim); font-size: 12px; }
+
+/* ================================================================
+   V6 · 毛玻璃浮条 Glass Overlay
+   webview 全出血，顶部一条半透明控制条盖在内容上
+================================================================ */
+.v6 { position: relative; background: var(--surface-messages); min-height: 200px; }
+.v6-content { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--text-dim); font-size: 12px; padding-top: 36px; }
+.v6-bar {
+  position: absolute; top: 0; left: 0; right: 0; height: 36px;
+  display: flex; align-items: center; gap: 8px; padding: 0 10px;
+  background: color-mix(in oklch, var(--surface-topbar) 68%, transparent);
+  -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px);
+  border-bottom: 1px solid var(--border-muted);
+}
+.v6-tab {
+  display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--text-primary);
+  background: var(--surface-active); border-radius: 999px; padding: 3px 10px;
+}
+.v6-tab .x { color: var(--text-faint); font-size: 10px; }
+.v6-plus { color: var(--text-faint); font-size: 12px; padding: 2px 6px; }
+.v6-url {
+  flex: 1; display: flex; align-items: center; gap: 8px; min-width: 0;
+  background: color-mix(in oklch, var(--surface-control) 75%, transparent);
+  border: 1px solid var(--border-subtle); border-radius: 999px; padding: 3px 12px;
+  font: 11px var(--code-font-family); color: var(--text-primary);
+}
+.v6-url .go { color: var(--text-accent); font-family: var(--ui-font-family); font-weight: 600; }
+.v6-ic { color: var(--text-muted); font-size: 12px; padding: 4px 6px; }
+
+/* ================================================================
+   V7 · 域名即标题 Host-as-Title
+   干掉 URL 框：大号域名是标题也是入口，路径以 mono 尾随
+================================================================ */
+.v7 { background: var(--surface-topbar); padding: 16px 20px 14px; border-bottom: 1px solid var(--border-muted); }
+.v7-row { display: flex; align-items: center; gap: 14px; }
+.v7-fav {
+  width: 38px; height: 38px; border-radius: var(--radius); flex: none;
+  background: linear-gradient(145deg, var(--surface-card-strong), var(--surface-control));
+  border: 1px solid var(--border-strong);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 15px; font-weight: 600; color: var(--text-primary);
+  box-shadow: inset 0 1px 0 var(--border-subtle);
+}
+.v7-host { min-width: 0; flex: 1; }
+.v7-host .h { font-size: 15px; font-weight: 600; color: var(--text-strong); letter-spacing: -.01em; }
+.v7-host .h .proto { color: var(--text-dim); font-weight: 500; }
+.v7-host .p { font: 10px var(--code-font-family); color: var(--text-faint); margin-top: 1px; }
+.v7-host .p .ok { color: var(--status-success); }
+.v7-actions { display: flex; align-items: center; gap: 6px; flex: none; }
+.v7-actions .pill { font-size: 11px; padding: 5px 12px; }
+.v7-tabs { display: flex; gap: 2px; margin-top: 12px; }
+.v7-tabs span {
+  font-size: 11px; color: var(--text-muted); padding: 4px 10px;
+  border-radius: var(--radius-sm);
+}
+.v7-tabs span.on { color: var(--text-primary); background: var(--surface-hover); }
+.v7-tabs span.add { color: var(--text-faint); }
+
+/* ================================================================
+   V8 · 蓝图标注 Blueprint
+   工程图纸风：mono 大写标注、刻度线、虚线引线、尺寸注释
+================================================================ */
+.v8 { background: var(--surface-messages); padding: 14px 16px 16px; }
+.v8-head {
+  display: flex; align-items: baseline; gap: 12px; margin-bottom: 10px;
+  font: 10px var(--code-font-family); letter-spacing: .14em; text-transform: uppercase; color: var(--text-dim);
+}
+.v8-head .t { color: var(--text-subtle); }
+.v8-head .sp { flex: 1; }
+.v8-frame { border: 1px solid var(--border-strong); border-radius: 2px; position: relative; }
+.v8-frame::before, .v8-frame::after {
+  content: ""; position: absolute; width: 8px; height: 8px;
+  border: 1px solid var(--text-accent);
+}
+.v8-frame::before { top: -4px; left: -4px; border-right: none; border-bottom: none; }
+.v8-frame::after { bottom: -4px; right: -4px; border-left: none; border-top: none; }
+.v8-row { display: flex; align-items: center; }
+.v8-row + .v8-row { border-top: 1px dashed var(--border-muted); }
+.v8-lab {
+  width: 86px; flex: none; padding: 10px 12px;
+  font: 9px var(--code-font-family); letter-spacing: .14em; text-transform: uppercase;
+  color: var(--text-dim); border-right: 1px dashed var(--border-muted);
+}
+.v8-body { flex: 1; display: flex; align-items: center; gap: 8px; padding: 8px 12px; min-width: 0; }
+.v8-body .tab {
+  font: 11px var(--code-font-family); color: var(--text-primary);
+  border: 1px solid var(--border-strong); padding: 3px 10px; border-radius: 2px;
+  background: var(--surface-item);
+}
+.v8-body .tab.off { color: var(--text-faint); border-color: var(--border-subtle); background: none; }
+.v8-body input {
+  flex: 1; background: none; border: none; outline: none; min-width: 0;
+  color: var(--text-primary); font: 12px var(--code-font-family);
+  border-bottom: 1px solid var(--border-strong); padding: 3px 2px;
+}
+.v8-body .run { font: 10px var(--code-font-family); color: var(--text-accent); letter-spacing: .1em; }
+.v8-note { font: 9px var(--code-font-family); color: var(--text-dim); letter-spacing: .1em; }
+.v8-dim { margin-top: 8px; display: flex; align-items: center; gap: 8px; font: 9px var(--code-font-family); color: var(--text-dim); letter-spacing: .1em; }
+.v8-dim .rule { flex: 1; height: 5px; border-left: 1px solid var(--border-strong); border-right: 1px solid var(--border-strong); border-bottom: 1px solid var(--border-strong); }
+
+/* ================================================================
+   V9 · 状态呼吸灯 Status Beacon
+   极简行 + 状态灯带呼吸光晕（token 状态色），暗色系点睛
+================================================================ */
+.v9 { background: var(--surface-topbar); border-bottom: 1px solid var(--border-muted); }
+.v9-row { display: flex; align-items: center; gap: 10px; height: 42px; padding: 0 12px; }
+.v9-beacon { position: relative; width: 8px; height: 8px; flex: none; }
+.v9-beacon::before {
+  content: ""; position: absolute; inset: 0; border-radius: 999px; background: var(--status-success);
+}
+.v9-beacon::after {
+  content: ""; position: absolute; inset: -5px; border-radius: 999px;
+  border: 1px solid var(--status-success); opacity: .45;
+}
+.v9-tabname { font-size: 12px; color: var(--text-primary); font-weight: 600; }
+.v9-tabname .x { color: var(--text-faint); font-weight: 400; font-size: 11px; margin-left: 6px; }
+.v9-plus { color: var(--text-faint); font-size: 13px; padding: 2px 6px; }
+.v9-url {
+  flex: 1; display: flex; align-items: center; gap: 8px; min-width: 0;
+  background: var(--surface-control); border-radius: 999px; padding: 5px 6px 5px 14px;
+  border: 1px solid var(--border-subtle);
+  box-shadow: inset 0 1px 2px rgba(0,0,0,.25);
+}
+.v9-url input {
+  flex: 1; background: none; border: none; outline: none; min-width: 0;
+  color: var(--text-primary); font-size: 12px; font-family: inherit;
+}
+.v9-url .go { padding: 3px 14px; font-size: 11px; border-radius: 999px; }
+.v9-link { font-size: 11px; color: var(--text-accent); padding: 4px 8px; font-weight: 500; }
+.v9-ic { color: var(--text-muted); font-size: 12px; padding: 5px 7px; }
+.v9-glowline { height: 1px; background: linear-gradient(90deg, transparent, var(--text-accent), transparent); opacity: .5; }
+
+/* ================================================================
+   V10 · 双态微条 Idle/Focus Morph
+   静态展示「聚焦态」：闲置时 28px 细条，聚焦时 URL 展开（图示两态叠加标注）
+================================================================ */
+.v10 { background: var(--surface-messages); }
+.v10-idle {
+  display: flex; align-items: center; gap: 8px; height: 28px; padding: 0 10px;
+  background: var(--surface-topbar); border-bottom: 1px solid var(--border-muted);
+  font-size: 11px; color: var(--text-muted);
+}
+.v10-idle .crumb { font-family: var(--code-font-family); font-size: 10px; color: var(--text-subtle); }
+.v10-idle .sp { flex: 1; }
+.v10-idle .mini { color: var(--text-dim); font-size: 10px; }
+.v10-focus {
+  display: flex; align-items: center; gap: 8px; padding: 8px 10px;
+  background: var(--surface-topbar); border-bottom: 1px solid var(--border-muted);
+  box-shadow: inset 0 -1px 0 var(--border-subtle);
+}
+.v10-focus .url {
+  flex: 1; display: flex; align-items: center; gap: 8px;
+  background: var(--surface-control); border: 1px solid var(--text-accent);
+  border-radius: var(--radius-md); padding: 6px 6px 6px 12px;
+}
+.v10-focus .url input {
+  flex: 1; background: none; border: none; outline: none;
+  color: var(--text-primary); font-size: 12px; font-family: inherit;
+}
+.v10-focus .url .go { padding: 4px 14px; font-size: 11px; }
+.v10-focus .ic { color: var(--text-muted); font-size: 12px; padding: 5px 7px; }
+.v10-anno {
+  display: flex; gap: 16px; padding: 6px 12px;
+  font: 9px var(--code-font-family); letter-spacing: .12em; text-transform: uppercase; color: var(--text-dim);
+  border-bottom: 1px dashed var(--border-muted); background: var(--surface-sidebar);
+}
+</style>
+</head>
+<body>
+
+<header class="gallery-head">
+  <h1>浏览器 Dock — 10 个变体 R2 · 紧凑向</h1>
+  <p>以「紧凑单行」为主轴做质感分层：发丝线、内高光、mono 微标注、毛玻璃、状态光晕。功能集不变：标签 / URL / 打开 / 定位 / 关闭 / 关联上下文。</p>
+</header>
+
+<!-- ============ V1 磁吸胶囊岛 ============ -->
+<section class="variant">
+  <div class="variant-meta"><span class="variant-no">01</span><h2>磁吸胶囊岛</h2></div>
+  <p class="variant-desc">所有控件收成一颗胶囊悬浮在内容上方，毛玻璃 + 内高光。不用时视觉零占地，像 Dynamic Island。</p>
+  <div class="stage">
+    <div class="v1">
+      <div class="v1-island">
+        <span class="cell tab"><span class="dot-ok"></span>example.com <span class="x">×</span></span>
+        <button class="ic">+</button>
+        <span class="cell url">https://example.com/ <span class="go">打开 ↵</span></span>
+        <button class="ic" title="定位">◎</button>
+        <button class="ic" title="更多">⋯</button>
+      </div>
+      <div class="v1-content">webview 区域（胶囊浮于其上，不挤压内容）</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ V2 精密仪表行 ============ -->
+<section class="variant">
+  <div class="variant-meta"><span class="variant-no">02</span><h2>精密仪表行</h2></div>
+  <p class="variant-desc">发丝线切分的读数格：TAB / STATUS / LATENCY 全部 mono 遥测化，底部刻度尺收尾。控制台面气质。</p>
+  <div class="stage">
+    <div class="v2">
+      <div class="v2-deck">
+        <div class="v2-cell tab"><span class="dot-ok"></span>example.com</div>
+        <div class="v2-cell"><span class="lab">Tab</span><span class="val">1/2</span></div>
+        <div class="v2-cell"><span class="lab">Status</span><span class="val ok">LINKED</span></div>
+        <div class="v2-cell"><span class="lab">RTT</span><span class="val">312ms</span></div>
+        <div class="v2-cell grow"><input value="https://example.com/" readonly></div>
+        <div class="v2-cell" style="border-right:none"><button class="primary">打开</button></div>
+        <div class="v2-cell" style="border-right:none;gap:2px"><button style="color:var(--text-muted)">◎</button><button style="color:var(--text-muted)">✕</button></div>
+      </div>
+      <div class="v2-tick"></div>
+    </div>
+    <div class="mock-webview">webview 区域</div>
+  </div>
+</section>
+
+<!-- ============ V3 编辑器标签 ============ -->
+<section class="variant">
+  <div class="variant-meta"><span class="variant-no">03</span><h2>编辑器标签</h2></div>
+  <p class="variant-desc">VSCode 文件标签与内容无缝相接，URL 降级为面包屑。给「浏览器只是另一个编辑器 tab」的心智。</p>
+  <div class="stage">
+    <div class="v3">
+      <div class="v3-tabstrip">
+        <div class="v3-tab is-active"><span class="fav">E</span>example.com<span class="close-dot"></span></div>
+        <div class="v3-tab"><span class="fav">M</span>mozilla.org<span class="close-dot"></span></div>
+        <div class="v3-tab new">+</div>
+        <div class="v3-strip-actions">
+          <button>关联上下文</button><button>◎</button><button>✕</button>
+        </div>
+      </div>
+      <div class="v3-crumbs">
+        <span class="seg">https:</span><span class="sep">//</span><span class="seg host">example.com</span><span class="sep">/</span>
+        <span class="sp"></span>
+        <span style="color:var(--status-success)">● 可读取</span>
+        <span class="kbd">⌘L 打开网址</span>
+      </div>
+    </div>
+    <div class="mock-webview">webview 区域（与 tab 同色相接）</div>
+  </div>
+</section>
+
+<!-- ============ V4 Powerline 状态行 ============ -->
+<section class="variant">
+  <div class="variant-meta"><span class="variant-no">04</span><h2>Powerline 状态行</h2></div>
+  <p class="variant-desc">斜切分段的状态条钉在底部，tmux/vim 气质。内容区 100% 让位，控制信息一眼扫读。</p>
+  <div class="stage">
+    <div class="v4">
+      <div class="v4-content">webview 区域（全出血）</div>
+      <div class="v4-line">
+        <span class="v4-seg a">● LINKED</span>
+        <span class="v4-seg b">example.com</span>
+        <span class="v4-seg c">tab 1/2</span>
+        <span class="v4-rest">
+          <input value="https://example.com/" readonly>
+          <span class="ok">200 · 312ms</span>
+          <span class="act">[open]</span><span class="act">[locate]</span><span class="act">[✕]</span>
+        </span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ V5 命令面板 ============ -->
+<section class="variant">
+  <div class="variant-meta"><span class="variant-no">05</span><h2>命令面板</h2></div>
+  <p class="variant-desc">⌘K 唤出居中浮层：输入即搜索网址，回车打开；标签/关联/关闭都是列表项。Dock 常态只是一条细缝。</p>
+  <div class="stage">
+    <div class="v5">
+      <div class="v5-veil"></div>
+      <div class="v5-palette">
+        <div class="v5-input-row">
+          <span style="color:var(--text-faint)">⌕</span>
+          <input value="https://example.com/" readonly>
+          <span class="kbd">esc</span>
+        </div>
+        <div class="v5-list">
+          <div class="v5-item sel"><span class="ic">↵</span>打开 example.com<span class="sp"></span><span class="tag">ENTER</span></div>
+          <div class="v5-item"><span class="ic">◫</span>切换到 mozilla.org<span class="sp"></span><span class="tag">TAB 2</span></div>
+          <div class="v5-item"><span class="ic">＋</span>新建标签页<span class="sp"></span><span class="tag">⌘T</span></div>
+          <div class="v5-item"><span class="ic">◎</span>定位 webview<span class="sp"></span><span class="tag">⌃L</span></div>
+          <div class="v5-item"><span class="ic">⚡</span>关联浏览器上下文<span class="sp"></span><span class="tag">ACTION</span></div>
+        </div>
+        <div class="v5-foot"><span>● 可读取网页信息</span><span>session 3ea9e445</span></div>
+      </div>
+      <div class="v5-content">webview 区域（常态仅 28px 细缝，面板按需唤出）</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ V6 毛玻璃浮条 ============ -->
+<section class="variant">
+  <div class="variant-meta"><span class="variant-no">06</span><h2>毛玻璃浮条</h2></div>
+  <p class="variant-desc">36px 半透明条盖在内容上缘，backdrop blur。Safari 紧凑标签页的现代演绎。</p>
+  <div class="stage">
+    <div class="v6">
+      <div class="v6-content">webview 区域（内容透到控制条下缘）</div>
+      <div class="v6-bar">
+        <span class="v6-tab"><span class="dot-ok"></span>example.com <span class="x">×</span></span>
+        <button class="v6-plus">+</button>
+        <span class="v6-url">https://example.com/ <span class="go">打开</span></span>
+        <button class="v6-ic">◎</button>
+        <button class="v6-ic">✕</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ V7 域名即标题 ============ -->
+<section class="variant">
+  <div class="variant-meta"><span class="variant-no">07</span><h2>域名即标题</h2></div>
+  <p class="variant-desc">干掉 URL 框：渐变 favicon 方块 + 大号域名做标题，协议/路径/状态缩成 mono 副行。点击标题即编辑。</p>
+  <div class="stage">
+    <div class="v7">
+      <div class="v7-row">
+        <span class="v7-fav">E</span>
+        <div class="v7-host">
+          <div class="h"><span class="proto">https://</span>example.com</div>
+          <div class="p">/ · <span class="ok">● LINKED</span> · 312ms · 3ea9e445</div>
+        </div>
+        <div class="v7-actions">
+          <button class="ghost pill">关联上下文</button>
+          <button class="primary pill">打开</button>
+          <button class="ghost pill" style="padding:5px 9px">◎</button>
+          <button class="ghost pill" style="padding:5px 9px">✕</button>
+        </div>
+      </div>
+      <div class="v7-tabs">
+        <span class="on">example.com</span><span>mozilla.org</span><span class="add">+ 新标签</span>
+      </div>
+    </div>
+    <div class="mock-webview">webview 区域</div>
+  </div>
+</section>
+
+<!-- ============ V8 蓝图标注 ============ -->
+<section class="variant">
+  <div class="variant-meta"><span class="variant-no">08</span><h2>蓝图标注</h2></div>
+  <p class="variant-desc">工程图纸风：mono 大写侧标、虚线分隔、角部对位标记、底部尺寸标尺。硬核工具感，差异度最高。</p>
+  <div class="stage">
+    <div class="v8">
+      <div class="v8-head"><span class="t">BROWSER-DOCK</span><span>FIG.01</span><span class="sp"></span><span>SESSION 3EA9E445</span></div>
+      <div class="v8-frame">
+        <div class="v8-row">
+          <span class="v8-lab">Tabs</span>
+          <div class="v8-body">
+            <span class="v8-tab">[1] EXAMPLE.COM</span>
+            <span class="v8-tab off">[2] MOZILLA.ORG</span>
+            <span class="v8-note">[+]</span>
+            <span style="flex:1"></span>
+            <span class="v8-note">● LINKED / READABLE</span>
+          </div>
+        </div>
+        <div class="v8-row">
+          <span class="v8-lab">URL</span>
+          <div class="v8-body">
+            <input value="https://example.com/" readonly>
+            <span class="run">[OPEN]</span><span class="run" style="color:var(--text-faint)">[LOCATE]</span><span class="run" style="color:var(--text-faint)">[CLOSE]</span>
+          </div>
+        </div>
+        <div class="v8-row">
+          <span class="v8-lab">Context</span>
+          <div class="v8-body"><span class="v8-note">ATTACH BROWSER CONTEXT →</span><span style="flex:1"></span><span class="v8-note">RTT 312MS</span></div>
+        </div>
+      </div>
+      <div class="v8-dim"><span>0</span><span class="rule"></span><span>W 100%</span></div>
+    </div>
+    <div class="mock-webview">webview 区域</div>
+  </div>
+</section>
+
+<!-- ============ V9 状态呼吸灯 ============ -->
+<section class="variant">
+  <div class="variant-meta"><span class="variant-no">09</span><h2>状态呼吸灯</h2></div>
+  <p class="variant-desc">紧凑单行 + 双环呼吸状态灯做唯一装饰，URL 槽带内凹阴影，底部一条渐隐光带。暗色系点睛。</p>
+  <div class="stage">
+    <div class="v9">
+      <div class="v9-row">
+        <span class="v9-beacon"></span>
+        <span class="v9-tabname">example.com<span class="x">×</span></span>
+        <button class="v9-plus">+</button>
+        <span class="v9-url">
+          <input value="https://example.com/" readonly>
+          <button class="primary go">打开</button>
+        </span>
+        <button class="v9-link">关联上下文</button>
+        <button class="v9-ic">◎</button>
+        <button class="v9-ic">✕</button>
+      </div>
+      <div class="v9-glowline"></div>
+    </div>
+    <div class="mock-webview">webview 区域</div>
+  </div>
+</section>
+
+<!-- ============ V10 双态微条 ============ -->
+<section class="variant">
+  <div class="variant-meta"><span class="variant-no">10</span><h2>双态微条</h2></div>
+  <p class="variant-desc">闲置时收成 28px 状态细条；⌘L 或点击后展开成完整 URL 行（聚焦态描边高亮）。下图并列展示两态。</p>
+  <div class="stage">
+    <div class="v10">
+      <div class="v10-anno"><span>State A · Idle（闲置态）</span></div>
+      <div class="v10-idle">
+        <span class="dot-ok"></span>
+        <span>example.com</span>
+        <span class="crumb">https://example.com/</span>
+        <span class="sp"></span>
+        <span class="mini">● 可读取</span>
+        <span class="mini">tab 1/2</span>
+        <span class="kbd">⌘L</span>
+      </div>
+      <div class="v10-anno"><span>State B · Focus（⌘L 后展开）</span></div>
+      <div class="v10-focus">
+        <span class="dot-ok"></span>
+        <span class="url">
+          <input value="https://example.com/" readonly>
+          <button class="primary go">打开</button>
+        </span>
+        <button class="v9-link" style="font-size:11px;color:var(--text-accent)">关联</button>
+        <button class="ic">◎</button>
+        <button class="ic">✕</button>
+      </div>
+    </div>
+    <div class="mock-webview">webview 区域</div>
+  </div>
+</section>
+
+</body>
+</html>

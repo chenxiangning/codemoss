@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>网页摘录 · 折叠发送 8 套</title>
+<style>
+:root {
+  --ui: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", system-ui, sans-serif;
+  --mono: "SF Mono", "Sarasa Mono SC", Menlo, monospace;
+  --text: #1f2328;
+  --text-2: #4b5563;
+  --text-3: #6b7280;
+  --line: #e6e8ee;
+  --line-2: #d7dbe3;
+  --paper: #f7f8fa;
+  --accent: #2563eb;
+  --user: #2b2f36;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: #eceef2; color: var(--text); font: 13px/1.45 var(--ui); }
+button, input { font: inherit; }
+.page { max-width: 920px; margin: 0 auto; padding: 28px 20px 72px; }
+h1 { margin: 0 0 8px; font-size: 22px; letter-spacing: -.03em; }
+.lead { margin: 0 0 14px; color: var(--text-2); max-width: 760px; }
+.diff {
+  background: #fff; border: 1px solid var(--line-2); border-radius: 12px; padding: 12px 14px; margin-bottom: 18px;
+}
+.diff b { color: var(--accent); }
+.diff p { margin: 4px 0 0; color: var(--text-2); font-size: 12.5px; }
+.toc { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 22px; }
+.toc a {
+  text-decoration: none; color: var(--text-3); background: #fff; border: 1px solid var(--line-2);
+  border-radius: 999px; padding: 3px 9px; font-size: 11px; font-weight: 650;
+}
+.block { margin: 0 0 32px; }
+.meta { display: flex; gap: 8px; align-items: baseline; margin-bottom: 4px; }
+.tag {
+  font: 650 10px/1 var(--mono); color: var(--accent);
+  border: 1px solid color-mix(in srgb, var(--accent) 32%, var(--line));
+  border-radius: 999px; padding: 3px 8px; background: #fff;
+}
+.meta h2 { margin: 0; font-size: 15px; }
+.why { margin: 0 0 10px; color: var(--text-3); font-size: 12px; }
+
+.frame {
+  background: var(--paper); border: 1px solid var(--line-2); border-radius: 14px; overflow: hidden;
+  min-height: 420px; display: flex; flex-direction: column;
+}
+.curtain { flex: 1; padding: 18px 18px 8px; overflow: auto; }
+.stack { display: grid; gap: 8px; width: 100%; justify-items: stretch; }
+.bubble {
+  justify-self: end; max-width: min(85%, 420px);
+  background: var(--user); color: #fff; border-radius: 12px; padding: 8px 12px;
+}
+.bot {
+  justify-self: start; max-width: min(92%, 640px);
+  background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 8px 12px; color: var(--text-2);
+}
+.hidden { display: none !important; }
+.composer { background: #fff; border-top: 1px solid var(--line); padding: 10px 12px 12px; }
+.box { border: 1px solid var(--line-2); border-radius: 16px; background: #fff; padding: 8px 10px; }
+.attach { margin-bottom: 6px; color: var(--text-2); font-size: 12px; }
+.field { display: flex; align-items: flex-end; gap: 8px; }
+.field input { flex: 1; border: 0; outline: 0; padding: 6px 4px; background: transparent; }
+.send { width: 32px; height: 32px; border: 0; border-radius: 999px; background: #e8eaef; color: #6b7280; cursor: pointer; }
+.send:hover { background: var(--accent); color: #fff; }
+.reset { margin-left: 8px; border: 0; background: 0; color: var(--text-3); cursor: pointer; font-size: 11px; }
+
+.inject { width: 100%; }
+.inject-toggle {
+  display: flex; align-items: center; gap: 8px; width: 100%; border: 0; background: 0;
+  padding: 6px 0; cursor: pointer; color: var(--text-2); text-align: left;
+}
+.chev { width: 12px; color: var(--text-3); transition: transform .18s; }
+.open .chev { transform: rotate(90deg); }
+.rule { flex: 1; border-top: 1px solid var(--line); }
+.inject-body { display: none; padding: 2px 0 4px; }
+.open .inject-body { display: block; }
+.rec { display: flex; align-items: flex-start; gap: 8px; padding: 6px 0; border-top: 1px solid color-mix(in srgb, var(--line) 80%, transparent); }
+.rec-i { color: #9aa1ad; font-size: 11px; width: 16px; padding-top: 1px; }
+.rec-t { flex: 1; min-width: 0; font-size: 13px; }
+.rec-t.clip { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rec-k { color: var(--text-3); font-size: 12px; flex: none; }
+.rec.btn { width: 100%; border: 0; background: 0; text-align: left; cursor: pointer; }
+.rec.btn:hover .rec-t { text-decoration: underline; }
+.more { display: none; margin-top: 4px; color: var(--text-2); font-size: 12px; line-height: 1.5; }
+.rec.on .more { display: block; }
+.rec.on .clip { white-space: normal; }
+
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
+.chip {
+  display: inline-flex; align-items: center; gap: 5px; border: 1px solid var(--line-2);
+  background: #f4f6fa; border-radius: 999px; padding: 3px 8px; font-size: 12px; color: var(--text-2);
+}
+.chip button { border: 0; background: 0; color: #9aa1ad; cursor: pointer; padding: 0; }
+
+.fold { width: 100%; border: 1px solid var(--line-2); border-radius: 10px; background: #fff; overflow: hidden; }
+.fold-h {
+  display: flex; align-items: center; gap: 8px; width: 100%; border: 0; background: #f6f7f9;
+  padding: 7px 10px; cursor: pointer; text-align: left;
+}
+.fold-h:hover { background: #eef0f4; }
+.fold-b { display: none; padding: 8px 10px 10px; border-top: 1px solid var(--line); }
+.fold.open .fold-b { display: block; }
+
+.narrow { max-width: min(85%, 420px); justify-self: end; }
+
+.dlg-mask { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.42); z-index: 20; place-items: center; padding: 24px; }
+.dlg-mask.on { display: grid; }
+.dlg { width: min(680px, calc(100vw - 32px)); background: #fff; border-radius: 14px; border: 1px solid var(--line); overflow: hidden; }
+.dlg-h { display: flex; justify-content: space-between; align-items: center; padding: 12px 14px; border-bottom: 1px solid var(--line); }
+.dlg-b { padding: 12px 14px 16px; }
+.link { border: 0; background: 0; color: var(--accent); cursor: pointer; font-weight: 700; font-size: 12px; }
+.toast { position: fixed; right: 16px; bottom: 16px; background: var(--user); color: #fff; border-radius: 8px; padding: 6px 10px; font-size: 12px; display: none; }
+.toast.on { display: block; }
+</style>
+</head>
+<body>
+<div class="page">
+  <h1>网页摘录 · 折叠发送 8 套</h1>
+  <div class="diff">
+    <b>上一版 V1 和 V10 几乎没差。</b>
+    <p><b>V1</b> 只画「发送后幕布长什么样」——细线折叠条。<b>V10</b> 多画了发送前对话框里那一行 token，发送后还是同一条折叠。所以看起来像重复。</p>
+    <p>下面 8 套都走同一条主路径：<b>对话框先挂摘录 → 点发送 → 用户气泡 + 折叠条落幕布</b>。差的是折叠形态、展开时机、token 能不能拆、发完后对话怎么接。</p>
+  </div>
+  <nav class="toc">
+    <a href="#v1">V1 收起</a>
+    <a href="#v2">V2 即展开</a>
+    <a href="#v3">V3 点行看全文</a>
+    <a href="#v4">V4 可拆 token</a>
+    <a href="#v5">V5 接上回复</a>
+    <a href="#v6">V6 文件修改盒</a>
+    <a href="#v7">V7 右贴气泡宽</a>
+    <a href="#v8">V8 折叠弹层</a>
+  </nav>
+
+  <!-- V1 -->
+  <section class="block" id="v1">
+    <div class="meta"><span class="tag">V1</span><h2>收起折叠 · 基线</h2></div>
+    <p class="why">发送后默认收起。幕布只多一行「网页摘录 3」，和记忆注入同一套细线。</p>
+    <div class="frame" data-demo="v1">
+      <div class="curtain"><div class="stack">
+        <div class="bubble hidden" data-user>这是啥</div>
+        <div class="inject hidden" data-card>
+          <button class="inject-toggle" type="button" data-open><span class="chev">▶</span><strong>网页摘录 3</strong><span class="rec-k">Preview Atlas</span><span class="rule"></span></button>
+          <div class="inject-body" data-list></div>
+        </div>
+      </div></div>
+      <div class="composer">
+        <div class="box">
+          <div class="attach" data-pre>◎ 已摘 3 段 · 01-preview-atlas.html</div>
+          <div class="field"><input value="这是啥" readonly><button class="send" type="button" data-send>↑</button></div>
+        </div>
+        <button class="reset" type="button" data-reset>重置</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- V2 -->
+  <section class="block" id="v2">
+    <div class="meta"><span class="tag">V2</span><h2>发送即展开</h2></div>
+    <p class="why">同一条细线，但发送后自动打开，先看见 3 段再决定收不收。</p>
+    <div class="frame" data-demo="v2" data-auto-open>
+      <div class="curtain"><div class="stack">
+        <div class="bubble hidden" data-user>这是啥</div>
+        <div class="inject hidden" data-card>
+          <button class="inject-toggle" type="button" data-open><span class="chev">▶</span><strong>网页摘录 3</strong><span class="rec-k">Preview Atlas</span><span class="rule"></span></button>
+          <div class="inject-body" data-list></div>
+        </div>
+      </div></div>
+      <div class="composer">
+        <div class="box">
+          <div class="attach" data-pre>◎ 已摘 3 段 · 01-preview-atlas.html</div>
+          <div class="field"><input value="这是啥" readonly><button class="send" type="button" data-send>↑</button></div>
+        </div>
+        <button class="reset" type="button" data-reset>重置</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- V3 -->
+  <section class="block" id="v3">
+    <div class="meta"><span class="tag">V3</span><h2>点行看全文</h2></div>
+    <p class="why">展开后每行可再点。默认一行标题，点开才出完整句子，避免 3 段把幕布撑满。</p>
+    <div class="frame" data-demo="v3" data-auto-open data-expand-row>
+      <div class="curtain"><div class="stack">
+        <div class="bubble hidden" data-user>这是啥</div>
+        <div class="inject hidden" data-card>
+          <button class="inject-toggle" type="button" data-open><span class="chev">▶</span><strong>网页摘录 3</strong><span class="rec-k">Preview Atlas</span><span class="rule"></span></button>
+          <div class="inject-body" data-list></div>
+        </div>
+      </div></div>
+      <div class="composer">
+        <div class="box">
+          <div class="attach" data-pre>◎ 已摘 3 段 · 01-preview-atlas.html</div>
+          <div class="field"><input value="这是啥" readonly><button class="send" type="button" data-send>↑</button></div>
+        </div>
+        <button class="reset" type="button" data-reset>重置</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- V4 -->
+  <section class="block" id="v4">
+    <div class="meta"><span class="tag">V4</span><h2>对话框可拆 token</h2></div>
+    <p class="why">发送前每段一枚 chip，可单删。发送后，剩下的段变成折叠条。</p>
+    <div class="frame" data-demo="v4" data-chips>
+      <div class="curtain"><div class="stack">
+        <div class="bubble hidden" data-user>这是啥</div>
+        <div class="inject hidden" data-card>
+          <button class="inject-toggle" type="button" data-open><span class="chev">▶</span><strong data-count-label>网页摘录 3</strong><span class="rec-k">Preview Atlas</span><span class="rule"></span></button>
+          <div class="inject-body" data-list></div>
+        </div>
+      </div></div>
+      <div class="composer">
+        <div class="box">
+          <div class="chips" data-pre data-chip-host></div>
+          <div class="field"><input value="这是啥" readonly><button class="send" type="button" data-send>↑</button></div>
+        </div>
+        <button class="reset" type="button" data-reset>重置</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- V5 -->
+  <section class="block" id="v5">
+    <div class="meta"><span class="tag">V5</span><h2>折叠后接上回复</h2></div>
+    <p class="why">发送后不只落卡：用户气泡 → 摘录折叠 → 助手开始答。看它在对话流里占不占道。</p>
+    <div class="frame" data-demo="v5" data-reply>
+      <div class="curtain"><div class="stack">
+        <div class="bubble hidden" data-user>这是啥</div>
+        <div class="inject hidden" data-card>
+          <button class="inject-toggle" type="button" data-open><span class="chev">▶</span><strong>网页摘录 3</strong><span class="rec-k">Preview Atlas</span><span class="rule"></span></button>
+          <div class="inject-body" data-list></div>
+        </div>
+        <div class="bot hidden" data-bot>这 3 段都来自 Preview Atlas。「40 节点」是画廊里的一张卡标题，不是代码节点数。</div>
+      </div></div>
+      <div class="composer">
+        <div class="box">
+          <div class="attach" data-pre>◎ 已摘 3 段 · 01-preview-atlas.html</div>
+          <div class="field"><input value="这是啥" readonly><button class="send" type="button" data-send>↑</button></div>
+        </div>
+        <button class="reset" type="button" data-reset>重置</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- V6 -->
+  <section class="block" id="v6">
+    <div class="meta"><span class="tag">V6</span><h2>文件修改盒</h2></div>
+    <p class="why">发送路径不变，折叠改成幕布「文件修改 (N)」那种盒：浅底条 + 展开列表。</p>
+    <div class="frame" data-demo="v6" data-boxed>
+      <div class="curtain"><div class="stack">
+        <div class="bubble hidden" data-user>这是啥</div>
+        <div class="fold hidden" data-card>
+          <button class="fold-h" type="button" data-open><span class="chev">▶</span><strong>网页摘录 (3)</strong><span class="rec-k">01-preview-atlas.html</span><span style="margin-left:auto;color:var(--text-3);font-size:11px">点开看原文</span></button>
+          <div class="fold-b" data-list></div>
+        </div>
+      </div></div>
+      <div class="composer">
+        <div class="box">
+          <div class="attach" data-pre>◎ 已摘 3 段 · 01-preview-atlas.html</div>
+          <div class="field"><input value="这是啥" readonly><button class="send" type="button" data-send>↑</button></div>
+        </div>
+        <button class="reset" type="button" data-reset>重置</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- V7 -->
+  <section class="block" id="v7">
+    <div class="meta"><span class="tag">V7</span><h2>右贴 · 跟气泡同宽</h2></div>
+    <p class="why">折叠不再铺满幕布列，而是跟用户气泡右对齐、同宽。上下文贴着那句话，不抢整列。</p>
+    <div class="frame" data-demo="v7">
+      <div class="curtain"><div class="stack">
+        <div class="bubble hidden" data-user>这是啥</div>
+        <div class="inject narrow hidden" data-card>
+          <button class="inject-toggle" type="button" data-open><span class="chev">▶</span><strong>网页摘录 3</strong><span class="rule"></span></button>
+          <div class="inject-body" data-list></div>
+        </div>
+      </div></div>
+      <div class="composer">
+        <div class="box">
+          <div class="attach" data-pre>◎ 已摘 3 段 · 01-preview-atlas.html</div>
+          <div class="field"><input value="这是啥" readonly><button class="send" type="button" data-send>↑</button></div>
+        </div>
+        <button class="reset" type="button" data-reset>重置</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- V8 -->
+  <section class="block" id="v8">
+    <div class="meta"><span class="tag">V8</span><h2>折叠条 + 弹层看全文</h2></div>
+    <p class="why">幕布永远一行。点某一行，全文进居中弹层，折叠条自己不长高。</p>
+    <div class="frame" data-demo="v8" data-auto-open data-dialog-row>
+      <div class="curtain"><div class="stack">
+        <div class="bubble hidden" data-user>这是啥</div>
+        <div class="inject hidden" data-card>
+          <button class="inject-toggle" type="button" data-open><span class="chev">▶</span><strong>网页摘录 3</strong><span class="rec-k">Preview Atlas</span><span class="rule"></span></button>
+          <div class="inject-body" data-list></div>
+        </div>
+      </div></div>
+      <div class="composer">
+        <div class="box">
+          <div class="attach" data-pre>◎ 已摘 3 段 · 01-preview-atlas.html</div>
+          <div class="field"><input value="这是啥" readonly><button class="send" type="button" data-send>↑</button></div>
+        </div>
+        <button class="reset" type="button" data-reset>重置</button>
+      </div>
+    </div>
+  </section>
+</div>
+
+<div class="dlg-mask" id="dlg">
+  <div class="dlg">
+    <div class="dlg-h"><strong id="dlgTitle">摘录</strong><button class="link" type="button" id="dlgClose">关闭</button></div>
+    <div class="dlg-b" id="dlgBody"></div>
+  </div>
+</div>
+<div class="toast" id="toast">已更新</div>
+
+<script>
+const ITEMS = [
+  { kind: "段落", title: "40 节点", body: "40 节点" },
+  { kind: "段落", title: "ARCHITECT 文件关系图 · OspOrder", body: "ARCHITECT 文件关系图 · OspOrder 以 OspOrderWebController.java 为中心，导入 80 条直接文件关系。" },
+  { kind: "段落", title: "SPOTLIGHT 支付回调失败路径", body: "SPOTLIGHT 支付回调失败路径 从 notifyPayResult 向下追踪 3 层 callee。" },
+];
+
+function renderList(host, items, { expandRow, dialogRow, boxed } = {}) {
+  host.innerHTML = "";
+  items.forEach((item, index) => {
+    const row = document.createElement(expandRow || dialogRow ? "button" : "div");
+    row.className = boxed ? "rec btn" : "rec btn";
+    row.type = expandRow || dialogRow ? "button" : undefined;
+    row.innerHTML = boxed
+      ? `<span class="rec-i">${index + 1}</span><span class="rec-t">${item.body}</span>`
+      : `<span class="rec-i">${index + 1}</span><span class="rec-t clip">${item.title}</span><span class="rec-k">${item.kind}</span><div class="more">${item.body}</div>`;
+    if (expandRow) {
+      row.addEventListener("click", () => row.classList.toggle("on"));
+    }
+    if (dialogRow) {
+      row.addEventListener("click", () => {
+        document.getElementById("dlgTitle").textContent = item.title;
+        document.getElementById("dlgBody").textContent = item.body;
+        document.getElementById("dlg").classList.add("on");
+      });
+    }
+    host.appendChild(row);
+  });
+}
+
+function renderChips(host, items, onChange) {
+  host.innerHTML = "";
+  items.forEach((item, index) => {
+    const chip = document.createElement("span");
+    chip.className = "chip";
+    chip.innerHTML = `◎ ${item.title}<button type="button" aria-label="移除">×</button>`;
+    chip.querySelector("button").addEventListener("click", () => {
+      items.splice(index, 1);
+      onChange();
+    });
+    host.appendChild(chip);
+  });
+}
+
+document.querySelectorAll("[data-demo]").forEach((frame) => {
+  const items = ITEMS.map((item) => ({ ...item }));
+  const user = frame.querySelector("[data-user]");
+  const card = frame.querySelector("[data-card]");
+  const list = frame.querySelector("[data-list]");
+  const pre = frame.querySelector("[data-pre]");
+  const bot = frame.querySelector("[data-bot]");
+  const countLabel = frame.querySelector("[data-count-label]");
+  const chipHost = frame.querySelector("[data-chip-host]");
+  const boxed = frame.hasAttribute("data-boxed");
+  const expandRow = frame.hasAttribute("data-expand-row");
+  const dialogRow = frame.hasAttribute("data-dialog-row");
+
+  const paint = () => {
+    if (chipHost) renderChips(chipHost, items, paint);
+    if (countLabel) countLabel.textContent = `网页摘录 ${items.length}`;
+    if (list) renderList(list, items, { expandRow, dialogRow, boxed });
+    const send = frame.querySelector("[data-send]");
+    if (send) send.disabled = items.length === 0;
+  };
+
+  const land = () => {
+    if (items.length === 0) return;
+    user.classList.remove("hidden");
+    card.classList.remove("hidden");
+    if (frame.hasAttribute("data-auto-open")) card.classList.add("open");
+    if (bot) bot.classList.remove("hidden");
+    if (pre) pre.classList.add("hidden");
+    if (list) renderList(list, items, { expandRow, dialogRow, boxed });
+    if (countLabel) countLabel.textContent = `网页摘录 ${items.length}`;
+  };
+  const clear = () => {
+    user.classList.add("hidden");
+    card.classList.add("hidden");
+    card.classList.remove("open");
+    if (bot) bot.classList.add("hidden");
+    if (pre) pre.classList.remove("hidden");
+    items.splice(0, items.length, ...ITEMS.map((item) => ({ ...item })));
+    paint();
+  };
+
+  frame.querySelector("[data-send]").addEventListener("click", land);
+  frame.querySelector("[data-reset]").addEventListener("click", clear);
+  frame.querySelector("[data-open]")?.addEventListener("click", () => card.classList.toggle("open"));
+  paint();
+});
+
+document.getElementById("dlgClose").addEventListener("click", () => document.getElementById("dlg").classList.remove("on"));
+document.getElementById("dlg").addEventListener("click", (event) => {
+  if (event.target.id === "dlg") event.currentTarget.classList.remove("on");
+});
+</script>
+</body>
+</html>
