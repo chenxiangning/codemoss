@@ -8,6 +8,7 @@ import {
   KIMI_LOCAL_PROVIDER_PROFILE_ID,
   LOCAL_PROVIDER_PROFILE_DISPLAY_NAME,
   OPENCODE_LOCAL_PROVIDER_PROFILE_ID,
+  PI_LOCAL_PROVIDER_PROFILE_ID,
 } from "../../threads/constants/codexProviderProfiles";
 
 /**
@@ -26,6 +27,7 @@ const LOCAL_PROFILE_IDS: Partial<Record<EngineType, string>> = {
   kimi: KIMI_LOCAL_PROVIDER_PROFILE_ID,
   grok: GROK_LOCAL_PROVIDER_PROFILE_ID,
   opencode: OPENCODE_LOCAL_PROVIDER_PROFILE_ID,
+  pi: PI_LOCAL_PROVIDER_PROFILE_ID,
 };
 
 function resolveRuntimeModel(model: CreationTargetModelLike): string {

@@ -708,6 +708,7 @@ describe("useEngineController", () => {
       "grok",
       "kimi",
       "opencode",
+      "pi",
     ]);
     expect(result.current.activeEngine).toBe("opencode");
   });

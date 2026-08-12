@@ -8,7 +8,7 @@ import {
 } from "./engineRuntimeIdentity";
 
 describe("engineRuntimeIdentity", () => {
-  it.each(["claude", "codex", "gemini", "grok", "kimi", "opencode"] as const)(
+  it.each(["claude", "codex", "gemini", "grok", "kimi", "opencode", "pi"] as const)(
     "decodes native and pending %s legacy ids at one compatibility boundary",
     (engine) => {
       expect(parseLegacyThreadIdentity(`${engine}:native-1`)).toMatchObject({

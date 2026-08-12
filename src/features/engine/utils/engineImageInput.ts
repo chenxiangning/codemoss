@@ -8,6 +8,7 @@ const ENGINE_IMAGE_LABEL: Record<EngineType, string> = {
   grok: "Grok CLI",
   kimi: "Kimi CLI",
   opencode: "OpenCode",
+  pi: "PI CLI",
 };
 
 /**

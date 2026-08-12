@@ -240,8 +240,8 @@ export type ThreadSummary = {
   sizeBytes?: number;
   /** 会话 transcript / history 在磁盘上的物理路径（catalog 有则填充）。 */
   physicalPath?: string;
-  engineSource?: "codex" | "claude" | "gemini" | "grok" | "kimi" | "opencode";
-  selectedEngine?: "codex" | "claude" | "gemini" | "grok" | "kimi" | "opencode";
+  engineSource?: "codex" | "claude" | "gemini" | "grok" | "kimi" | "opencode" | "pi";
+  selectedEngine?: "codex" | "claude" | "gemini" | "grok" | "kimi" | "opencode" | "pi";
   source?: string;
   provider?: string;
   sourceLabel?: string;

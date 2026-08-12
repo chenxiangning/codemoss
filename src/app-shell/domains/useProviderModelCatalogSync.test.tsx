@@ -9,7 +9,7 @@ const activateMock = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
 vi.mock("../../features/vendors/activateEngineProviderProfile", () => ({
   activateEngineProviderProfileAndNotify: activateMock,
   isActivatableProviderEngine: (engine: string) =>
-    ["claude", "codex", "kimi", "grok", "opencode"].includes(engine),
+    ["claude", "codex", "kimi", "grok", "opencode", "pi"].includes(engine),
 }));
 
 describe("useProviderModelCatalogSync", () => {

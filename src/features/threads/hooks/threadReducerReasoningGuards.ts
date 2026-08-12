@@ -18,6 +18,8 @@ export function isLocalCliReasoningThread(threadId: string) {
     threadId.startsWith("grok-pending-") ||
     threadId.startsWith("kimi:") ||
     threadId.startsWith("kimi-pending-") ||
+    threadId.startsWith("pi:") ||
+    threadId.startsWith("pi-pending-") ||
     threadId.startsWith("opencode:") ||
     threadId.startsWith("opencode-pending-")
   );
@@ -35,6 +37,10 @@ export function isKimiReasoningThread(threadId: string) {
   return threadId.startsWith("kimi:") || threadId.startsWith("kimi-pending-");
 }
 
+export function isPiReasoningThread(threadId: string) {
+  return threadId.startsWith("pi:") || threadId.startsWith("pi-pending-");
+}
+
 export function isClaudeReasoningThread(threadId: string) {
   return threadId.startsWith("claude:") || threadId.startsWith("claude-pending-");
 }
@@ -50,7 +56,8 @@ export function shouldAcceptReasoningDelta(
   if (
     isGeminiReasoningThread(threadId) ||
     isGrokReasoningThread(threadId) ||
-    isKimiReasoningThread(threadId)
+    isKimiReasoningThread(threadId) ||
+    isPiReasoningThread(threadId)
   ) {
     return true;
   }

@@ -72,10 +72,10 @@ export function StageTargetPicker({
   onChange,
 }: StageTargetPickerProps) {
   const providerId = (
-    ["claude", "codex", "kimi", "grok", "opencode"].includes(value.engine)
+    ["claude", "codex", "kimi", "grok", "opencode", "pi"].includes(value.engine)
       ? value.engine
       : "claude"
-  ) as "claude" | "codex" | "kimi" | "grok" | "opencode";
+  ) as "claude" | "codex" | "kimi" | "grok" | "opencode" | "pi";
 
   const catalog = useAtomicProviderTargetCatalog({
     enabled: true,

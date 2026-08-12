@@ -69,6 +69,7 @@ const workspace = {
     engineCodex: "Codex",
     engineGemini: "Gemini",
     engineKimi: "Kimi CLI",
+    enginePi: "PI CLI",
     engineGrok: "Grok CLI",
     engineOpenCode: "OpenCode",
     engineStatusLoading: "Checking...",

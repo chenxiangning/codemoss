@@ -736,6 +736,9 @@ export function SessionManagementSection({
       claude: t("settings.projectSessionEngineClaude"),
       gemini: t("settings.projectSessionEngineGemini"),
       opencode: t("settings.projectSessionEngineOpencode"),
+      kimi: t("settings.projectSessionEngineKimi"),
+      grok: t("settings.projectSessionEngineGrok"),
+      pi: t("settings.projectSessionEnginePi"),
       shared: t("settings.projectSessionEngineShared"),
     }),
     [t],
@@ -2036,6 +2039,15 @@ export function SessionManagementSection({
                         </SelectItem>
                         <SelectItem value="opencode">
                           {engineFilterLabel.opencode}
+                        </SelectItem>
+                        <SelectItem value="kimi">
+                          {engineFilterLabel.kimi}
+                        </SelectItem>
+                        <SelectItem value="grok">
+                          {engineFilterLabel.grok}
+                        </SelectItem>
+                        <SelectItem value="pi">
+                          {engineFilterLabel.pi}
                         </SelectItem>
                         <SelectItem value="shared">
                           {engineFilterLabel.shared}

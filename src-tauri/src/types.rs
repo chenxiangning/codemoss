@@ -924,6 +924,8 @@ pub(crate) struct AppSettings {
     pub(crate) claude_bin: Option<String>,
     #[serde(default, rename = "kimiBin")]
     pub(crate) kimi_bin: Option<String>,
+    #[serde(default, rename = "piBin")]
+    pub(crate) pi_bin: Option<String>,
     #[serde(default, rename = "grokBin")]
     pub(crate) grok_bin: Option<String>,
     #[serde(default, rename = "opencodeBin")]
@@ -1953,6 +1955,7 @@ impl Default for AppSettings {
             codex_bin: None,
             claude_bin: None,
             kimi_bin: None,
+            pi_bin: None,
             grok_bin: None,
             opencode_bin: None,
             codex_args: None,

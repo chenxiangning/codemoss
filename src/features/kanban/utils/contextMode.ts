@@ -1,5 +1,5 @@
 export type KanbanContextMode = "new" | "inherit";
-export type KanbanTaskEngine = "claude" | "codex" | "gemini" | "grok" | "kimi" | "opencode";
+export type KanbanTaskEngine = "claude" | "codex" | "gemini" | "grok" | "kimi" | "opencode" | "pi";
 
 type ResolveKanbanThreadCreationStrategyInput = {
   mode: KanbanContextMode;

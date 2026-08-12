@@ -38,7 +38,7 @@ export const VISIBLE_MESSAGE_WINDOW = 10000;
 // buildLiveTailWorkingSet 在 visibleWindow<=0 时恒返回全量 items。
 export const STREAMING_VISIBLE_WINDOW = 0;
 
-export type MessagesEngine = "claude" | "codex" | "gemini" | "grok" | "kimi" | "opencode";
+export type MessagesEngine = "claude" | "codex" | "gemini" | "grok" | "kimi" | "opencode" | "pi";
 
 export function isSelectionInsideNode(selection: Selection | null, node: HTMLElement | null) {
   if (!selection || selection.rangeCount === 0 || selection.isCollapsed || !node) {
@@ -154,7 +154,7 @@ export function resolveAgentTaskDisplaySummary(summary: string | null | undefine
 }
 
 export function toConversationEngine(engine: MessagesEngine): ConversationEngine {
-  if (engine === "claude" || engine === "gemini" || engine === "grok" || engine === "kimi" || engine === "opencode") {
+  if (engine === "claude" || engine === "gemini" || engine === "grok" || engine === "kimi" || engine === "opencode" || engine === "pi") {
     return engine;
   }
   return "codex";

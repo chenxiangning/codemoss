@@ -9,6 +9,7 @@ import {
   runGrokDoctor,
   runKimiDoctor,
   runOpenCodeDoctor,
+  runPiDoctor,
   takeSettingsRecoveryNotice,
   updateAppSettings,
 } from "../../../services/tauri";
@@ -216,6 +217,7 @@ const defaultSettings: AppSettings = {
   kimiBin: null,
   grokBin: null,
   opencodeBin: null,
+  piBin: null,
   codexBin: null,
   codexArgs: null,
   terminalShellPath: null,
@@ -411,6 +413,7 @@ function normalizeAppSettings(
     opencodeBin: settings.opencodeBin?.trim()
       ? settings.opencodeBin.trim()
       : null,
+    piBin: settings.piBin?.trim() ? settings.piBin.trim() : null,
     codexBin: settings.codexBin?.trim() ? settings.codexBin.trim() : null,
     codexArgs: settings.codexArgs?.trim() ? settings.codexArgs.trim() : null,
     terminalShellPath: settings.terminalShellPath?.trim()
@@ -744,6 +747,10 @@ export function useAppSettings() {
     return runOpenCodeDoctor(opencodeBin);
   }, []);
 
+  const piDoctor = useCallback(async (piBin: string | null) => {
+    return runPiDoctor(piBin);
+  }, []);
+
   return {
     settings,
     setSettings,
@@ -753,6 +760,7 @@ export function useAppSettings() {
     kimiDoctor,
     grokDoctor,
     opencodeDoctor,
+    piDoctor,
     isLoading,
   };
 }

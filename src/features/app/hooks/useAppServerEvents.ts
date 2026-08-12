@@ -108,7 +108,7 @@ export type AppServerEventHandlers = {
     workspaceId: string,
     threadId: string,
     sessionId: string,
-    engine?: "claude" | "opencode" | "codex" | "gemini" | "grok" | "kimi" | null,
+    engine?: "claude" | "opencode" | "codex" | "gemini" | "grok" | "kimi" | "pi" | null,
     turnId?: string | null,
   ) => void;
   onBackgroundThreadAction?: (
@@ -219,14 +219,14 @@ export type AppServerEventHandlers = {
     threadId: string,
     itemId: string,
     delta: string,
-    engineHint?: "gemini" | "grok" | "kimi" | null,
+    engineHint?: "gemini" | "grok" | "kimi" | "pi" | null,
     turnId?: string | null,
   ) => void;
   onReasoningSummaryBoundary?: (
     workspaceId: string,
     threadId: string,
     itemId: string,
-    engineHint?: "gemini" | "grok" | "kimi" | null,
+    engineHint?: "gemini" | "grok" | "kimi" | "pi" | null,
     turnId?: string | null,
   ) => void;
   onReasoningTextDelta?: (
@@ -234,7 +234,7 @@ export type AppServerEventHandlers = {
     threadId: string,
     itemId: string,
     delta: string,
-    engineHint?: "gemini" | "grok" | "kimi" | null,
+    engineHint?: "gemini" | "grok" | "kimi" | "pi" | null,
     turnId?: string | null,
   ) => void;
   onCommandOutputDelta?: (
@@ -714,9 +714,11 @@ function isGeminiThreadId(threadId: string): boolean {
 }
 
 function isKimiThreadId(threadId: string): boolean {
-  return (
-    threadId.startsWith("kimi:") || threadId.startsWith("kimi-pending-")
-  );
+  return threadId.startsWith("kimi:") || threadId.startsWith("kimi-pending-");
+}
+
+function isPiThreadId(threadId: string): boolean {
+  return threadId.startsWith("pi:") || threadId.startsWith("pi-pending-");
 }
 
 function isGrokThreadId(threadId: string): boolean {
@@ -727,7 +729,7 @@ function isGrokThreadId(threadId: string): boolean {
 
 function inferGeminiReasoningHintFromThreadId(
   threadId: string,
-): "gemini" | "grok" | "kimi" | null {
+): "gemini" | "grok" | "kimi" | "pi" | null {
   if (!threadId) {
     return null;
   }
@@ -737,12 +739,15 @@ function inferGeminiReasoningHintFromThreadId(
   if (isKimiThreadId(threadId)) {
     return "kimi";
   }
+  if (isPiThreadId(threadId)) {
+    return "pi";
+  }
   return isGeminiThreadId(threadId) ? "gemini" : null;
 }
 
 function inferRawMethodEngine(
   method: string,
-): "claude" | "codex" | "gemini" | "grok" | "kimi" | "opencode" | undefined {
+): "claude" | "codex" | "gemini" | "grok" | "kimi" | "opencode" | "pi" | undefined {
   switch (method) {
     case "claude/raw":
       return "claude";
@@ -797,7 +802,7 @@ function isCodexRawGeneratedImageEvent(
 }
 
 function shouldRebindSharedNativeThreadOnStartedEvent(
-  engine: "claude" | "opencode" | "codex" | "gemini" | "grok" | "kimi",
+  engine: "claude" | "opencode" | "codex" | "gemini" | "grok" | "kimi" | "pi",
 ): boolean {
   // Claude 与 local CLIs 在 thread/started 上可能从 pending 占位收敛到
   // `engine:{sessionId}`；Codex 使用 raw thread id，不在此路径做前缀 rebind。
@@ -993,7 +998,7 @@ function emitReasoningSummaryDelta(
   threadId: string,
   itemId: string,
   delta: string,
-  engineHint: "gemini" | "grok" | "kimi" | null,
+  engineHint: "gemini" | "grok" | "kimi" | "pi" | null,
   turnId: string | null,
 ): void {
   if (turnId) {
@@ -1025,7 +1030,7 @@ function emitReasoningSummaryBoundary(
   workspaceId: string,
   threadId: string,
   itemId: string,
-  engineHint: "gemini" | "grok" | "kimi" | null,
+  engineHint: "gemini" | "grok" | "kimi" | "pi" | null,
   turnId: string | null,
 ): void {
   if (turnId) {
@@ -1056,7 +1061,7 @@ function emitReasoningTextDelta(
   threadId: string,
   itemId: string,
   delta: string,
-  engineHint: "gemini" | "grok" | "kimi" | null,
+  engineHint: "gemini" | "grok" | "kimi" | "pi" | null,
   turnId: string | null,
 ): void {
   if (turnId) {
@@ -1453,7 +1458,7 @@ function tryRouteNormalizedRealtimeEvent({
   handlers: AppServerEventHandlers;
   workspaceId: string;
   message: Record<string, unknown>;
-  engineOverride?: "claude" | "codex" | "gemini" | "grok" | "kimi" | "opencode";
+  engineOverride?: "claude" | "codex" | "gemini" | "grok" | "kimi" | "opencode" | "pi";
   threadIdOverride?: string;
   sharedBinding?: SharedSessionNativeBinding | null;
   threadAgentDeltaSeenRef: MutableRefObject<Record<string, true>>;

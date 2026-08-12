@@ -53,6 +53,8 @@ function resolveEngineLabel(engine: EngineType): string {
       return "Grok CLI";
     case "opencode":
       return "OpenCode";
+    case "pi":
+      return "PI CLI";
   }
 }
 

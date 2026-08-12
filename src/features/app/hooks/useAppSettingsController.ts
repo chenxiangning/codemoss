@@ -14,6 +14,7 @@ export function useAppSettingsController() {
     kimiDoctor,
     grokDoctor,
     opencodeDoctor,
+    piDoctor,
     isLoading: appSettingsLoading,
   } = useAppSettings();
 
@@ -56,6 +57,7 @@ export function useAppSettingsController() {
     kimiDoctor,
     grokDoctor,
     opencodeDoctor,
+    piDoctor,
     appSettingsLoading,
     reduceTransparency,
     setReduceTransparency,

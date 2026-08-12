@@ -5,6 +5,7 @@ import { geminiRealtimeAdapter } from "./geminiRealtimeAdapter";
 import { grokRealtimeAdapter } from "./grokRealtimeAdapter";
 import { kimiRealtimeAdapter } from "./kimiRealtimeAdapter";
 import { opencodeRealtimeAdapter } from "./opencodeRealtimeAdapter";
+import { piRealtimeAdapter } from "./piRealtimeAdapter";
 import { inferEngineFromThreadId } from "./sharedRealtimeAdapter";
 
 const ADAPTERS: Record<ConversationEngine, RealtimeAdapter> = {
@@ -14,6 +15,7 @@ const ADAPTERS: Record<ConversationEngine, RealtimeAdapter> = {
   grok: grokRealtimeAdapter,
   kimi: kimiRealtimeAdapter,
   opencode: opencodeRealtimeAdapter,
+  pi: piRealtimeAdapter,
 };
 
 export function getRealtimeAdapterByEngine(engine: ConversationEngine): RealtimeAdapter {

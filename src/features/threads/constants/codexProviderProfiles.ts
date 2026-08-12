@@ -10,6 +10,8 @@ export const GROK_LOCAL_PROVIDER_PROFILE_ID = "__local_config_toml__";
 export const GROK_LOCAL_PROVIDER_PROFILE_NAME = LOCAL_PROVIDER_PROFILE_DISPLAY_NAME;
 export const OPENCODE_LOCAL_PROVIDER_PROFILE_ID = "__local_opencode_json__";
 export const OPENCODE_LOCAL_PROVIDER_PROFILE_NAME = LOCAL_PROVIDER_PROFILE_DISPLAY_NAME;
+export const PI_LOCAL_PROVIDER_PROFILE_ID = "__local_pi__";
+export const PI_LOCAL_PROVIDER_PROFILE_NAME = LOCAL_PROVIDER_PROFILE_DISPLAY_NAME;
 
 export type EngineProviderProfileOption = {
   id: string;

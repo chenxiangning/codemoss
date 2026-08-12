@@ -10,7 +10,7 @@ import type { ConversationEngine } from "../contracts/conversationCurtainContrac
 
 describe("realtime adapters", () => {
   it("keeps unknown realtime methods non-fatal for every governance engine", () => {
-    const engines: ConversationEngine[] = ["claude", "codex", "gemini", "grok", "kimi", "opencode"];
+    const engines: ConversationEngine[] = ["claude", "codex", "gemini", "grok", "kimi", "opencode", "pi"];
 
     for (const engine of engines) {
       const event = getRealtimeAdapterByEngine(engine).mapEvent({

@@ -21,6 +21,8 @@ import {
   KIMI_LOCAL_PROVIDER_PROFILE_NAME,
   OPENCODE_LOCAL_PROVIDER_PROFILE_ID,
   OPENCODE_LOCAL_PROVIDER_PROFILE_NAME,
+  PI_LOCAL_PROVIDER_PROFILE_ID,
+  PI_LOCAL_PROVIDER_PROFILE_NAME,
   type EngineProviderProfileOption,
 } from "../../../../threads/constants/codexProviderProfiles";
 import type { ModelInfo, ProviderId } from "../types";
@@ -52,7 +54,7 @@ export type ProviderTargetGroup = {
 
 type ProfileCatalog = Partial<
   Record<
-    "claude" | "codex" | "kimi" | "grok" | "opencode",
+    "claude" | "codex" | "kimi" | "grok" | "opencode" | "pi",
     EngineProviderProfileOption[]
   >
 >;
@@ -65,6 +67,7 @@ const PROVIDER_PROFILE_ENGINES: readonly ProviderProfileEngine[] = [
   "grok",
   "kimi",
   "opencode",
+  "pi",
 ];
 
 export function isProviderProfileEngine(
@@ -109,6 +112,13 @@ const DEFAULT_PROFILES: ProfileCatalog = {
       source: "disk",
     },
   ],
+  pi: [
+    {
+      id: PI_LOCAL_PROVIDER_PROFILE_ID,
+      name: PI_LOCAL_PROVIDER_PROFILE_NAME,
+      source: "disk",
+    },
+  ],
 };
 
 let profileCatalogCache: ProfileCatalog | null = null;
@@ -143,7 +153,7 @@ type AtomicProviderTargetCatalogOptions =
   };
 
 function normalizeProfiles(
-  engine: "claude" | "codex" | "kimi" | "grok" | "opencode",
+  engine: "claude" | "codex" | "kimi" | "grok" | "opencode" | "pi",
   providers: Array<{
     id: string;
     name: string;
@@ -224,6 +234,8 @@ async function loadProfileCatalog(): Promise<ProfileCatalog> {
             opencode.status === "fulfilled"
               ? normalizeProfiles("opencode", opencode.value)
               : DEFAULT_PROFILES.opencode,
+          // PI has no multi-provider store; always surface native ~/.pi profile.
+          pi: DEFAULT_PROFILES.pi,
         };
         return profileCatalogCache;
       })
@@ -253,6 +265,8 @@ function isLocalProviderProfile(
       return providerProfileId === GROK_LOCAL_PROVIDER_PROFILE_ID;
     case "opencode":
       return providerProfileId === OPENCODE_LOCAL_PROVIDER_PROFILE_ID;
+    case "pi":
+      return providerProfileId === PI_LOCAL_PROVIDER_PROFILE_ID;
     default:
       return false;
   }
@@ -477,7 +491,7 @@ function useProviderTargetCatalogOwner({
     ): Promise<ModelInfo[]> => {
       if (
         !enabled ||
-        !["claude", "codex", "kimi", "grok", "opencode"].includes(engine)
+        !["claude", "codex", "kimi", "grok", "opencode", "pi"].includes(engine)
       ) {
         return [];
       }

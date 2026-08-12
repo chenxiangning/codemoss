@@ -4,6 +4,7 @@ import {
   loadGeminiSession as loadGeminiSessionService,
   loadGrokSession as loadGrokSessionService,
   loadKimiSession as loadKimiSessionService,
+  loadPiSession as loadPiSessionService,
   resumeThread as resumeThreadService,
 } from "../../../services/tauri";
 import { createClaudeHistoryLoader } from "../loaders/claudeHistoryLoader";
@@ -12,6 +13,7 @@ import { createGeminiHistoryLoader } from "../loaders/geminiHistoryLoader";
 import { createGrokHistoryLoader } from "../loaders/grokHistoryLoader";
 import { createKimiHistoryLoader } from "../loaders/kimiHistoryLoader";
 import { createOpenCodeHistoryLoader } from "../loaders/opencodeHistoryLoader";
+import { createPiHistoryLoader } from "../loaders/piHistoryLoader";
 import { createSharedHistoryLoader } from "../loaders/sharedHistoryLoader";
 import {
   loadSharedProjection as loadSharedProjectionService,
@@ -78,6 +80,13 @@ export function createThreadHistoryLoaderForThread({
       workspaceId,
       workspacePath,
       loadKimiSession: loadKimiSessionService,
+    });
+  }
+  if (targetThreadId.startsWith("pi:")) {
+    return createPiHistoryLoader({
+      workspaceId,
+      workspacePath,
+      loadPiSession: loadPiSessionService,
     });
   }
   if (targetThreadId.startsWith("opencode:")) {

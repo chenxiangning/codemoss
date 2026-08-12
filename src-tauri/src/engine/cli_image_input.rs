@@ -233,6 +233,38 @@ pub(crate) fn split_kimi_prompt_for_display(text: &str) -> (String, Vec<String>)
     (text.to_string(), Vec::new())
 }
 
+/// Stable marker separating user-visible text from PI CLI-only image injection.
+pub(crate) const PI_IMAGE_INJECTION_MARKER: &str = "\n\n<!-- mossx:pi-image-attachments -->\n";
+
+/// Build a PI headless prompt that makes attached images reachable via Read tools.
+pub(crate) fn build_pi_prompt_with_images(text: &str, image_paths: &[PathBuf]) -> String {
+    if image_paths.is_empty() {
+        return text.to_string();
+    }
+
+    let mut out = text.trim_end().to_string();
+    out.push_str(PI_IMAGE_INJECTION_MARKER);
+    out.push_str("The user attached the following image file(s). ");
+    out.push_str(
+        "You MUST call the read tool on each absolute path below before answering questions about visual content.\n",
+    );
+    for (index, path) in image_paths.iter().enumerate() {
+        let display = path.display();
+        out.push_str(&format!("{}. {}\n", index + 1, display));
+    }
+    out
+}
+
+/// Split a PI wire prompt into user-visible text + image paths for UI/history.
+pub(crate) fn split_pi_prompt_for_display(text: &str) -> (String, Vec<String>) {
+    if let Some(split_at) = text.find(PI_IMAGE_INJECTION_MARKER) {
+        let visible = text[..split_at].trim_end().to_string();
+        let injection = &text[split_at + PI_IMAGE_INJECTION_MARKER.len()..];
+        return (visible, extract_image_paths_from_injection(injection));
+    }
+    (text.to_string(), Vec::new())
+}
+
 fn extract_image_paths_from_injection(injection: &str) -> Vec<String> {
     let mut paths = Vec::new();
     // Prefer structured tags: <image path="..."></image>

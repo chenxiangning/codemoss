@@ -74,6 +74,7 @@ const NEW_SESSION_ENGINE_ACTION_IDS: Readonly<Record<string, EngineType>> = {
   "new-session-gemini": "gemini",
   "new-session-kimi": "kimi",
   "new-session-grok": "grok",
+  "new-session-pi": "pi",
 };
 
 const LAST_PROVIDER_PROFILE_KEYS = {
@@ -197,6 +198,7 @@ export type WorkspaceMenuIconKind =
   | "engine-gemini"
   | "engine-kimi"
   | "engine-grok"
+  | "engine-pi"
   | "new-shared"
   | "alias"
   | "assign-group"
@@ -1734,6 +1736,16 @@ export function useSidebarMenus({
               );
             },
           })),
+        },
+        {
+          id: "new-session-pi",
+          label: t("workspace.enginePi"),
+          iconKind: "engine-pi",
+          ...resolveEngineActionMeta(workspace, "pi"),
+          onSelect: async () => {
+            const threadId = await runAddAgent("pi");
+            await handleCreatedSession(threadId);
+          },
         },
         {
           id: "new-session-grok",

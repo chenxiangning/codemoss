@@ -172,6 +172,8 @@ export function useWorkspaceActions({
           return t("workspace.engineKimi");
         case "opencode":
           return t("workspace.engineOpenCode");
+        case "pi":
+          return t("workspace.enginePi");
         case "claude":
         default:
           return t("workspace.engineClaudeCode");

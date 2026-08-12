@@ -207,6 +207,7 @@ impl EngineAdapterRegistry {
             EngineType::Grok,
             EngineType::Kimi,
             EngineType::OpenCode,
+            EngineType::Pi,
         ] {
             let protocol = BuiltinEngineProtocol::new(engine);
             let adapter = BuiltinEngineAdapter::new(engine);
@@ -281,6 +282,7 @@ pub fn engine_id(engine: EngineType) -> &'static str {
         EngineType::Grok => "grok",
         EngineType::Kimi => "kimi",
         EngineType::OpenCode => "opencode",
+        EngineType::Pi => "pi",
     }
 }
 
@@ -291,7 +293,7 @@ mod tests {
     #[test]
     fn builtins_cover_one_shot_and_persistent_protocol_models() {
         let registry = EngineAdapterRegistry::with_builtins();
-        assert_eq!(registry.len(), 6);
+        assert_eq!(registry.len(), 7);
         assert_eq!(
             registry
                 .get(&EngineId::builtin(EngineType::Kimi))

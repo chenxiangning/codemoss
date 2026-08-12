@@ -940,6 +940,7 @@ describe("Provider target catalog owners", () => {
         "claude",
         "codex",
         "kimi",
+        "pi",
       ]);
     });
 
@@ -963,6 +964,7 @@ describe("Provider target catalog owners", () => {
         "grok",
         "kimi",
         "opencode",
+        "pi",
       ]);
     });
 
@@ -978,7 +980,7 @@ describe("Provider target catalog owners", () => {
         }),
       );
 
-      expect(result.current.groups).toHaveLength(5);
+      expect(result.current.groups).toHaveLength(6);
 
       act(() => {
         seedCliEngineVisibility(["opencode"]);
@@ -989,6 +991,7 @@ describe("Provider target catalog owners", () => {
         "codex",
         "grok",
         "kimi",
+        "pi",
       ]);
     });
   });

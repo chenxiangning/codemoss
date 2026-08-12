@@ -7,6 +7,7 @@
  */
 
 import type { EngineType } from "../../../types/engine";
+import { isEngineExecutionEnabled } from "../../../utils/engineExecutionPolicy";
 import {
   isSharedSessionSupportedEngine,
   type SharedSessionSupportedEngine,
@@ -110,15 +111,21 @@ export function normalizePersistedExecutionTarget(
 }
 
 /**
- * 新 V2 Turn 的 executable contract。
+ * Atomic / create-session picker 的可执行选择：字段完整即可，不要求 Shared 引擎集合。
+ * PI 等「仅 Native、不进 Shared」的引擎走此校验；Shared 另用 isResolvedExecutionTarget。
  *
  * `providerProfileId = null` 只有在 selection source 明确为 `disk` 时才表示
  * intentional local/default；legacy engine-only target 缺少该证据，必须 fail closed。
  */
-export function isResolvedExecutionTarget(
+export function isAtomicExecutionTarget(
   target: ExecutionTarget | null | undefined,
-): target is ResolvedExecutionTarget {
-  if (!target || !isSharedSessionSupportedEngine(target.engine)) {
+): target is ExecutionTarget & {
+  modelCatalogEntryId: string;
+  model: string;
+  providerProfileNameSnapshot: string;
+  providerProfileSource: ProviderSelectionSource;
+} {
+  if (!target || !isEngineExecutionEnabled(target.engine)) {
     return false;
   }
   const providerProfileId = target.providerProfileId?.trim() || null;
@@ -131,6 +138,18 @@ export function isResolvedExecutionTarget(
   return providerProfileId
     ? target.providerProfileSource === "managed"
     : target.providerProfileSource === "disk";
+}
+
+/**
+ * Shared Session V2 Turn 的 executable contract（Shared 引擎子集 + Atomic 字段完整）。
+ */
+export function isResolvedExecutionTarget(
+  target: ExecutionTarget | null | undefined,
+): target is ResolvedExecutionTarget {
+  return (
+    isAtomicExecutionTarget(target) &&
+    isSharedSessionSupportedEngine(target.engine)
+  );
 }
 
 function selectedTargetFromBackendResponse(response: unknown): unknown {

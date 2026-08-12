@@ -32,7 +32,7 @@ use self::args::resolve_workspace_codex_args;
 use self::commit_message::{build_commit_message_prompt, combine_repository_diff_sections};
 pub(crate) use self::doctor::{
     run_claude_doctor_with_settings, run_codex_doctor_with_settings, run_grok_doctor_with_settings,
-    run_kimi_doctor_with_settings, run_opencode_doctor_with_settings,
+    run_kimi_doctor_with_settings, run_opencode_doctor_with_settings, run_pi_doctor_with_settings,
 };
 pub(crate) use self::home::{resolve_default_codex_home, resolve_workspace_codex_home};
 pub(crate) use self::installer::{
@@ -524,6 +524,15 @@ pub(crate) fn remote_claude_doctor_request(claude_bin: Option<String>) -> (&'sta
     )
 }
 
+pub(crate) fn remote_pi_doctor_request(pi_bin: Option<String>) -> (&'static str, Value) {
+    (
+        "pi_doctor",
+        json!({
+            "piBin": pi_bin.map(remote_backend::normalize_path_for_remote),
+        }),
+    )
+}
+
 pub(crate) fn remote_kimi_doctor_request(kimi_bin: Option<String>) -> (&'static str, Value) {
     (
         "kimi_doctor",
@@ -566,6 +575,21 @@ pub(crate) async fn opencode_doctor(
 
     let settings = state.app_settings.lock().await.clone();
     run_opencode_doctor_with_settings(opencode_bin, &settings).await
+}
+
+#[tauri::command]
+pub(crate) async fn pi_doctor(
+    pi_bin: Option<String>,
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<Value, String> {
+    if remote_backend::is_remote_mode(&*state).await {
+        let (method, params) = remote_pi_doctor_request(pi_bin);
+        return remote_backend::call_remote(&*state, app, method, params).await;
+    }
+
+    let settings = state.app_settings.lock().await.clone();
+    run_pi_doctor_with_settings(pi_bin, &settings).await
 }
 
 #[tauri::command]

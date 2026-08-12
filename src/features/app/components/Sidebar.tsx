@@ -1119,6 +1119,8 @@ function SidebarImpl({
         return <EngineIcon engine="kimi" size={14} />;
       case "engine-grok":
         return <EngineIcon engine="grok" size={14} />;
+      case "engine-pi":
+        return <EngineIcon engine="pi" size={14} />;
       case "reload":
         return <RefreshCw size={13} />;
       case "activate":

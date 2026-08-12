@@ -17,4 +17,9 @@ describe("sharedSessionEngines", () => {
     expect(isSharedSessionSupportedEngine("gemini")).toBe(false);
     expect(normalizeSharedSessionEngine("gemini")).toBe("claude");
   });
+
+  it("keeps pi as a native-only engine outside Shared Session", () => {
+    expect(isSharedSessionSupportedEngine("pi")).toBe(false);
+    expect(normalizeSharedSessionEngine("pi")).toBe("claude");
+  });
 });

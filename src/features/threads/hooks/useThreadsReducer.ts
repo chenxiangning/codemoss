@@ -620,6 +620,8 @@ export function threadReducer(state: ThreadState, action: ThreadAction): ThreadS
           ? "grok"
         : action.threadId.startsWith("kimi:")
           ? "kimi"
+        : action.threadId.startsWith("pi:")
+          ? "pi"
         : action.threadId.startsWith("opencode:")
           ? "opencode"
           : null;

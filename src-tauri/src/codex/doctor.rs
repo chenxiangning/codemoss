@@ -330,6 +330,59 @@ pub(crate) async fn run_kimi_doctor_with_settings(
     }))
 }
 
+
+pub(crate) async fn run_pi_doctor_with_settings(
+    pi_bin: Option<String>,
+    settings: &AppSettings,
+) -> Result<Value, String> {
+    let default_bin = settings.pi_bin.clone();
+    let resolved = pi_bin
+        .clone()
+        .filter(|value| !value.trim().is_empty())
+        .or(default_bin);
+    let requested_bin = resolved
+        .clone()
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| "pi".to_string());
+    let path_env = build_codex_path_env(Some(requested_bin.as_str()));
+    let debug_info = get_cli_debug_info(Some(requested_bin.as_str()));
+    let version_result = check_cli_binary(&requested_bin, path_env.clone()).await;
+    let (version, cli_error, fallback_retried) = match version_result {
+        Ok(Some(version)) => (Some(version), None, false),
+        Ok(None) => (Some("unknown".to_string()), None, true),
+        Err(error) => (None, Some(error), false),
+    };
+    let launch_context = resolve_codex_launch_context(Some(requested_bin.as_str()));
+    let (node_ok, node_version, node_details) = probe_node_runtime(path_env.as_ref()).await;
+    let environment_diagnosis =
+        build_engine_environment_diagnosis("pi", Some(requested_bin.as_str()), &debug_info);
+    let home = dirs::home_dir().map(|h| h.join(".pi").join("agent"));
+    let home_exists = home.as_ref().map(|p| p.is_dir()).unwrap_or(false);
+    Ok(json!({
+        "ok": version.is_some(),
+        "codexBin": resolved,
+        "version": version,
+        "appServerOk": false,
+        "details": cli_error,
+        "path": path_env,
+        "nodeOk": node_ok,
+        "nodeVersion": node_version,
+        "nodeDetails": node_details,
+        "resolvedBinaryPath": launch_context.resolved_bin,
+        "wrapperKind": launch_context.wrapper_kind,
+        "pathEnvUsed": launch_context.path_env,
+        "proxyEnvSnapshot": debug_info.get("proxyEnvSnapshot").cloned().unwrap_or(Value::Null),
+        "appServerProbeStatus": Value::Null,
+        "fallbackRetried": fallback_retried,
+        "environmentDiagnosis": environment_diagnosis,
+        "proxyDiagnosis": debug_info.get("proxyDiagnosis").cloned().unwrap_or(Value::Null),
+        "networkDiagnosis": Value::Null,
+        "piHomeExists": home_exists,
+        "piHome": home.map(|p| p.to_string_lossy().to_string()),
+        "debug": debug_info,
+    }))
+}
+
 /// Run `grok doctor` (terminal/config self-check, exit 0 = healthy) best-effort.
 async fn probe_grok_cli_doctor(binary: &str, path_env: Option<&String>) -> Value {
     let mut command = crate::utils::async_command(binary);

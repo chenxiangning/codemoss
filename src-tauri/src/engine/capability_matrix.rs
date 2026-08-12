@@ -28,6 +28,7 @@ pub fn capability_state(engine_type: EngineType, capability: &str) -> &'static s
         EngineType::Grok => EngineFeatures::grok(),
         EngineType::OpenCode => EngineFeatures::opencode(),
         EngineType::Kimi => EngineFeatures::kimi(),
+        EngineType::Pi => EngineFeatures::pi(),
     };
 
     match capability {

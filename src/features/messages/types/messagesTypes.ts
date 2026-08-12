@@ -76,7 +76,7 @@ export type MessagesProps = {
   ) => void;
   onApprovalBatchAccept?: (requests: ApprovalRequest[]) => void;
   onApprovalRemember?: (request: ApprovalRequest, command: string[]) => void;
-  activeEngine?: "claude" | "codex" | "gemini" | "grok" | "kimi" | "opencode";
+  activeEngine?: "claude" | "codex" | "gemini" | "grok" | "kimi" | "opencode" | "pi";
   claudeThinkingVisible?: boolean;
   activeCollaborationModeId?: string | null;
   plan?: TurnPlan | null;

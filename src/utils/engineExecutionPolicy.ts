@@ -13,7 +13,8 @@ export function isEngineExecutionEnabled(
     engine === "claude" ||
     engine === "grok" ||
     engine === "kimi" ||
-    engine === "opencode"
+    engine === "opencode" ||
+    engine === "pi"
   );
 }
 

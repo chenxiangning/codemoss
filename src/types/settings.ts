@@ -95,6 +95,7 @@ export type AppSettings = {
   kimiBin: string | null;
   grokBin: string | null;
   opencodeBin: string | null;
+  piBin: string | null;
   codexBin: string | null;
   codexArgs: string | null;
   terminalShellPath: string | null;

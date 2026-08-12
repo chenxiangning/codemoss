@@ -52,3 +52,9 @@ export async function previewCodexLaunchProfile({
     useWorkspaceDraft,
   });
 }
+
+export async function runPiDoctor(
+  piBin: string | null,
+): Promise<import("../../types").CodexDoctorResult> {
+  return invoke<import("../../types").CodexDoctorResult>("pi_doctor", { piBin });
+}

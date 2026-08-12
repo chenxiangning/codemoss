@@ -22,6 +22,9 @@ const providers = {
     },
     "opencode": {
       "label": "OpenCode"
+    },
+    "pi": {
+      "label": "PI CLI"
     }
   }
 };

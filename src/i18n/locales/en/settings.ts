@@ -965,6 +965,10 @@ const settings = {
     projectSessionEngineClaude: "Claude",
     projectSessionEngineGemini: "Gemini",
     projectSessionEngineOpencode: "OpenCode",
+    projectSessionEngineKimi: "Kimi CLI",
+    projectSessionEngineGrok: "Grok CLI",
+    projectSessionEnginePi: "PI CLI",
+
     projectSessionEngineShared: "Shared CLI",
     sessionManagementDescription:
       "Manage real session history per project with paged loading, filtering, batch archive, unarchive, and deletion.",
@@ -1691,6 +1695,7 @@ const settings = {
     cliValidationTabGeminiCli: "Gemini CLI",
     cliValidationTabOpenCodeCli: "OpenCode CLI",
     cliValidationTabKimiCli: "Kimi CLI",
+    cliValidationTabPiCli: "PI CLI",
     cliValidationTabGrokCli: "Grok CLI",
     cliEngineEnabledLabel: "Engine enabled",
     geminiCliDisableDescription:
@@ -1938,6 +1943,12 @@ const settings = {
     runOpenCodeDoctor: "Run OpenCode Doctor",
     openCodeLooksGood: "OpenCode CLI looks good",
     openCodeIssueDetected: "OpenCode CLI issue detected",
+    runPiDoctor: "Run PI Doctor",
+    piLooksGood: "PI CLI looks good",
+    piIssueDetected: "PI CLI issue detected",
+    piCliLifecycleHint: "Install, update, or uninstall the local PI CLI via npm package @earendil-works/pi-coding-agent. Auth and models stay in ~/.pi.",
+    piDescription: "Install and configure the PI CLI used by ccgui. Auth and models stay in ~/.pi.",
+
     cliInstallLatest: "Install",
     cliUpdateLatest: "Update",
     cliUninstall: "Uninstall",

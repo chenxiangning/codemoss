@@ -361,7 +361,7 @@ export function useThreadActionsSessionRuntime({
       workspaceId: string,
       options?: {
         activate?: boolean;
-        engine?: "claude" | "codex" | "gemini" | "grok" | "kimi" | "opencode";
+        engine?: "claude" | "codex" | "gemini" | "grok" | "kimi" | "opencode" | "pi";
         folderId?: string | null;
         autoSession?: AutoSessionMetadata | null;
         providerProfileId?: string | null;
@@ -406,7 +406,7 @@ export function useThreadActionsSessionRuntime({
         selectedProviderBinding,
       });
 
-      if (engine === "claude" || engine === "grok" || engine === "kimi" || engine === "opencode") {
+      if (engine === "claude" || engine === "grok" || engine === "kimi" || engine === "opencode" || engine === "pi") {
         const prefix = engine;
         const threadId = `${prefix}-pending-${Date.now()}-${Math.random()
           .toString(36)

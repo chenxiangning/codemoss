@@ -27,7 +27,7 @@ interface ToolBlockRendererProps {
   onToggle: (id: string) => void;
   onRequestAutoScroll?: () => void;
   activeCollaborationModeId?: string | null;
-  activeEngine?: "claude" | "codex" | "gemini" | "grok" | "kimi" | "opencode";
+  activeEngine?: "claude" | "codex" | "gemini" | "grok" | "kimi" | "opencode" | "pi";
   hasPendingUserInputRequest?: boolean;
   onOpenFilePath?: (path: string) => void;
   onOpenDiffPath?: (path: string) => void;

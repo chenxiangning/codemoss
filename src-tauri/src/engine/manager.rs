@@ -14,10 +14,11 @@ use super::claude::{ClaudeSession, ClaudeSessionManager};
 use super::gemini::GeminiSession;
 use super::grok::GrokSession;
 use super::kimi::KimiSession;
+use super::pi::PiSession;
 use super::opencode::OpenCodeSession;
 use super::status::{
     detect_all_engines, detect_claude_status, detect_codex_status, detect_grok_status,
-    detect_kimi_status, detect_opencode_status,
+    detect_kimi_status, detect_opencode_status, detect_pi_status,
 };
 use super::{disabled_engine_status, EngineConfig, EngineStatus, EngineType};
 
@@ -48,6 +49,9 @@ pub struct EngineManager {
     /// Grok sessions per workspace/provider runtime.
     grok_sessions: Mutex<HashMap<String, GrokSessionEntry>>,
 
+    /// PI sessions per workspace/provider runtime.
+    pi_sessions: Mutex<HashMap<String, PiSessionEntry>>,
+
     /// Engine configurations
     engine_configs: RwLock<HashMap<EngineType, EngineConfig>>,
 }
@@ -75,7 +79,23 @@ struct OpenCodeSessionEntry {
     session: Arc<OpenCodeSession>,
 }
 
+struct PiSessionEntry {
+    workspace_id: String,
+    session: Arc<PiSession>,
+}
+
 fn kimi_engine_config_with_home(
+    mut config: Option<EngineConfig>,
+    home_dir: Option<&Path>,
+) -> Option<EngineConfig> {
+    if let Some(home_dir) = home_dir {
+        config.get_or_insert_with(EngineConfig::default).home_dir =
+            Some(home_dir.to_string_lossy().to_string());
+    }
+    config
+}
+
+fn pi_engine_config_with_home(
     mut config: Option<EngineConfig>,
     home_dir: Option<&Path>,
 ) -> Option<EngineConfig> {
@@ -110,6 +130,7 @@ impl EngineManager {
             gemini_sessions: Mutex::new(GeminiSessionRegistry::default()),
             kimi_sessions: Mutex::new(HashMap::new()),
             grok_sessions: Mutex::new(HashMap::new()),
+            pi_sessions: Mutex::new(HashMap::new()),
             engine_configs: RwLock::new(HashMap::new()),
         }
     }
@@ -192,6 +213,7 @@ impl EngineManager {
             EngineType::OpenCode => detect_opencode_status(bin).await,
             EngineType::Kimi => detect_kimi_status(bin).await,
             EngineType::Grok => detect_grok_status(bin).await,
+            EngineType::Pi => detect_pi_status(bin).await,
         };
 
         // Cache the result
@@ -213,7 +235,7 @@ impl EngineManager {
 
     pub async fn detect_engines_with_gates(&self, gemini_enabled: bool) -> Vec<EngineStatus> {
         let gemini_enabled = gemini_enabled && crate::engine_policy::GEMINI_RUNTIME_ENABLED;
-        let (claude_bin, codex_bin, gemini_bin, opencode_bin, kimi_bin, grok_bin) = {
+        let (claude_bin, codex_bin, gemini_bin, opencode_bin, kimi_bin, grok_bin, pi_bin) = {
             let configs = self.engine_configs.read().await;
             (
                 configs
@@ -234,6 +256,9 @@ impl EngineManager {
                 configs
                     .get(&EngineType::Grok)
                     .and_then(|c| c.bin_path.clone()),
+                configs
+                    .get(&EngineType::Pi)
+                    .and_then(|c| c.bin_path.clone()),
             )
         };
 
@@ -244,6 +269,7 @@ impl EngineManager {
             opencode_bin.as_deref(),
             kimi_bin.as_deref(),
             grok_bin.as_deref(),
+            pi_bin.as_deref(),
             gemini_enabled,
         )
         .await;
@@ -785,6 +811,174 @@ impl EngineManager {
         let mut errors = Vec::new();
         for workspace_id in workspace_ids {
             if let Err(error) = self.remove_kimi_session(&workspace_id).await {
+                errors.push(error);
+            }
+        }
+        if errors.is_empty() {
+            Ok(())
+        } else {
+            Err(errors.join("; "))
+        }
+    }
+
+
+    // ==================== PI Session Management ====================
+
+    pub async fn get_or_create_pi_session(
+        &self,
+        workspace_id: &str,
+        workspace_path: &Path,
+    ) -> Arc<PiSession> {
+        self.get_or_create_pi_session_for_runtime(
+            workspace_id,
+            workspace_path,
+            workspace_id,
+            None,
+        )
+        .await
+    }
+
+    pub async fn get_or_create_pi_session_for_runtime(
+        &self,
+        workspace_id: &str,
+        workspace_path: &Path,
+        runtime_key: &str,
+        home_dir: Option<&Path>,
+    ) -> Arc<PiSession> {
+        {
+            let sessions = self.pi_sessions.lock().await;
+            if let Some(entry) = sessions.get(runtime_key) {
+                return entry.session.clone();
+            }
+        }
+
+        let config =
+            pi_engine_config_with_home(self.get_engine_config(EngineType::Pi).await, home_dir);
+        let session = Arc::new(PiSession::new(
+            workspace_id.to_string(),
+            workspace_path.to_path_buf(),
+            config,
+        ));
+        let mut sessions = self.pi_sessions.lock().await;
+        if let Some(entry) = sessions.get(runtime_key) {
+            return entry.session.clone();
+        }
+        sessions.insert(
+            runtime_key.to_string(),
+            PiSessionEntry {
+                workspace_id: workspace_id.to_string(),
+                session: session.clone(),
+            },
+        );
+        session
+    }
+
+    pub async fn get_pi_session(&self, workspace_id: &str) -> Option<Arc<PiSession>> {
+        let sessions = self.pi_sessions.lock().await;
+        sessions
+            .values()
+            .find(|entry| entry.workspace_id == workspace_id)
+            .map(|entry| entry.session.clone())
+    }
+
+    pub async fn get_pi_session_for_runtime(
+        &self,
+        runtime_key: &str,
+    ) -> Option<Arc<PiSession>> {
+        self.pi_sessions
+            .lock()
+            .await
+            .get(runtime_key)
+            .map(|entry| entry.session.clone())
+    }
+
+    pub async fn get_pi_sessions(&self, workspace_id: &str) -> Vec<Arc<PiSession>> {
+        let sessions = self.pi_sessions.lock().await;
+        sessions
+            .values()
+            .filter(|entry| entry.workspace_id == workspace_id)
+            .map(|entry| entry.session.clone())
+            .collect()
+    }
+
+    pub async fn interrupt_pi_sessions(
+        &self,
+        workspace_id: &str,
+        turn_id: Option<&str>,
+    ) -> Result<(), String> {
+        let sessions = self.get_pi_sessions(workspace_id).await;
+        let mut errors = Vec::new();
+        for session in sessions {
+            let result = match turn_id {
+                Some(turn_id) => session.interrupt_turn(turn_id).await,
+                None => session.interrupt().await,
+            };
+            if let Err(error) = result {
+                errors.push(error);
+            }
+        }
+        if errors.is_empty() {
+            Ok(())
+        } else {
+            Err(format!(
+                "failed to interrupt {} PI runtime(s): {}",
+                errors.len(),
+                errors.join("; ")
+            ))
+        }
+    }
+
+    pub async fn list_pi_sessions(&self) -> Vec<(String, Arc<PiSession>)> {
+        let sessions = self.pi_sessions.lock().await;
+        sessions
+            .values()
+            .map(|entry| (entry.workspace_id.clone(), entry.session.clone()))
+            .collect()
+    }
+
+    pub async fn remove_pi_session(&self, workspace_id: &str) -> Result<(), String> {
+        let candidates = {
+            let sessions = self.pi_sessions.lock().await;
+            sessions
+                .iter()
+                .filter(|(_, entry)| entry.workspace_id == workspace_id)
+                .map(|(runtime_key, entry)| (runtime_key.clone(), entry.session.clone()))
+                .collect::<Vec<_>>()
+        };
+        let mut completed = Vec::new();
+        let mut errors = Vec::new();
+        for (runtime_key, session) in candidates {
+            match session.interrupt().await {
+                Ok(()) => completed.push(runtime_key),
+                Err(error) => errors.push(error),
+            }
+        }
+        let mut sessions = self.pi_sessions.lock().await;
+        for runtime_key in completed {
+            sessions.remove(&runtime_key);
+        }
+        if errors.is_empty() {
+            Ok(())
+        } else {
+            Err(format!(
+                "failed to close {} PI runtime(s): {}",
+                errors.len(),
+                errors.join("; ")
+            ))
+        }
+    }
+
+    pub async fn shutdown_pi_sessions(&self) -> Result<(), String> {
+        let workspace_ids = {
+            let sessions = self.pi_sessions.lock().await;
+            sessions
+                .values()
+                .map(|entry| entry.workspace_id.clone())
+                .collect::<HashSet<_>>()
+        };
+        let mut errors = Vec::new();
+        for workspace_id in workspace_ids {
+            if let Err(error) = self.remove_pi_session(&workspace_id).await {
                 errors.push(error);
             }
         }

@@ -9,7 +9,7 @@ const artifactPath = path.join(
 const artifact = JSON.parse(fs.readFileSync(artifactPath, "utf8"));
 const failures = [];
 
-for (const engine of ["codex", "gemini", "grok", "kimi", "opencode"]) {
+for (const engine of ["codex", "gemini", "grok", "kimi", "opencode", "pi"]) {
   const entries = artifact.engines?.[engine];
   if (!Array.isArray(entries) || entries.length === 0) {
     failures.push(`${engine} fallback roster is empty`);
@@ -54,5 +54,5 @@ if (failures.length > 0) {
   process.exit(1);
 }
 console.log(
-  `model provider catalog valid: codex=${artifact.engines.codex.length}, gemini=${artifact.engines.gemini.length}, grok=${artifact.engines.grok.length}, kimi=${artifact.engines.kimi.length}, opencode=${artifact.engines.opencode.length}`,
+  `model provider catalog valid: codex=${artifact.engines.codex.length}, gemini=${artifact.engines.gemini.length}, grok=${artifact.engines.grok.length}, kimi=${artifact.engines.kimi.length}, opencode=${artifact.engines.opencode.length}, pi=${artifact.engines.pi?.length ?? 0}`,
 );

@@ -3,7 +3,7 @@
 /**
  * Supported AI coding CLI engine types
  */
-export type EngineType = "claude" | "codex" | "gemini" | "grok" | "kimi" | "opencode";
+export type EngineType = "claude" | "codex" | "gemini" | "grok" | "kimi" | "opencode" | "pi";
 
 /**
  * Feature capabilities for each engine

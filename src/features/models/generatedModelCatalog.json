@@ -1,6 +1,6 @@
 {
   "schemaVersion": "1.0",
-  "lastVerifiedAt": "2026-07-27",
+  "lastVerifiedAt": "2026-08-12",
   "engines": {
     "codex": [
       {
@@ -13,12 +13,30 @@
         "default": true,
         "defaultReasoningEffort": "low",
         "supportedReasoningEfforts": [
-          { "reasoningEffort": "low", "description": "Fast responses with lighter reasoning" },
-          { "reasoningEffort": "medium", "description": "Balances speed and reasoning depth for everyday tasks" },
-          { "reasoningEffort": "high", "description": "Greater reasoning depth for complex problems" },
-          { "reasoningEffort": "xhigh", "description": "Extra high reasoning depth for complex problems" },
-          { "reasoningEffort": "max", "description": "Maximum reasoning depth for the hardest problems" },
-          { "reasoningEffort": "ultra", "description": "Maximum reasoning with automatic task delegation" }
+          {
+            "reasoningEffort": "low",
+            "description": "Fast responses with lighter reasoning"
+          },
+          {
+            "reasoningEffort": "medium",
+            "description": "Balances speed and reasoning depth for everyday tasks"
+          },
+          {
+            "reasoningEffort": "high",
+            "description": "Greater reasoning depth for complex problems"
+          },
+          {
+            "reasoningEffort": "xhigh",
+            "description": "Extra high reasoning depth for complex problems"
+          },
+          {
+            "reasoningEffort": "max",
+            "description": "Maximum reasoning depth for the hardest problems"
+          },
+          {
+            "reasoningEffort": "ultra",
+            "description": "Maximum reasoning with automatic task delegation"
+          }
         ]
       },
       {
@@ -30,12 +48,30 @@
         "lifecycle": "fallback",
         "defaultReasoningEffort": "medium",
         "supportedReasoningEfforts": [
-          { "reasoningEffort": "low", "description": "Fast responses with lighter reasoning" },
-          { "reasoningEffort": "medium", "description": "Balances speed and reasoning depth for everyday tasks" },
-          { "reasoningEffort": "high", "description": "Greater reasoning depth for complex problems" },
-          { "reasoningEffort": "xhigh", "description": "Extra high reasoning depth for complex problems" },
-          { "reasoningEffort": "max", "description": "Maximum reasoning depth for the hardest problems" },
-          { "reasoningEffort": "ultra", "description": "Maximum reasoning with automatic task delegation" }
+          {
+            "reasoningEffort": "low",
+            "description": "Fast responses with lighter reasoning"
+          },
+          {
+            "reasoningEffort": "medium",
+            "description": "Balances speed and reasoning depth for everyday tasks"
+          },
+          {
+            "reasoningEffort": "high",
+            "description": "Greater reasoning depth for complex problems"
+          },
+          {
+            "reasoningEffort": "xhigh",
+            "description": "Extra high reasoning depth for complex problems"
+          },
+          {
+            "reasoningEffort": "max",
+            "description": "Maximum reasoning depth for the hardest problems"
+          },
+          {
+            "reasoningEffort": "ultra",
+            "description": "Maximum reasoning with automatic task delegation"
+          }
         ]
       },
       {
@@ -47,11 +83,26 @@
         "lifecycle": "fallback",
         "defaultReasoningEffort": "medium",
         "supportedReasoningEfforts": [
-          { "reasoningEffort": "low", "description": "Fast responses with lighter reasoning" },
-          { "reasoningEffort": "medium", "description": "Balances speed and reasoning depth for everyday tasks" },
-          { "reasoningEffort": "high", "description": "Greater reasoning depth for complex problems" },
-          { "reasoningEffort": "xhigh", "description": "Extra high reasoning depth for complex problems" },
-          { "reasoningEffort": "max", "description": "Maximum reasoning depth for the hardest problems" }
+          {
+            "reasoningEffort": "low",
+            "description": "Fast responses with lighter reasoning"
+          },
+          {
+            "reasoningEffort": "medium",
+            "description": "Balances speed and reasoning depth for everyday tasks"
+          },
+          {
+            "reasoningEffort": "high",
+            "description": "Greater reasoning depth for complex problems"
+          },
+          {
+            "reasoningEffort": "xhigh",
+            "description": "Extra high reasoning depth for complex problems"
+          },
+          {
+            "reasoningEffort": "max",
+            "description": "Maximum reasoning depth for the hardest problems"
+          }
         ]
       },
       {
@@ -63,10 +114,22 @@
         "lifecycle": "fallback",
         "defaultReasoningEffort": "medium",
         "supportedReasoningEfforts": [
-          { "reasoningEffort": "low", "description": "Fast responses with lighter reasoning" },
-          { "reasoningEffort": "medium", "description": "Balances speed and reasoning depth for everyday tasks" },
-          { "reasoningEffort": "high", "description": "Greater reasoning depth for complex problems" },
-          { "reasoningEffort": "xhigh", "description": "Extra high reasoning depth for complex problems" }
+          {
+            "reasoningEffort": "low",
+            "description": "Fast responses with lighter reasoning"
+          },
+          {
+            "reasoningEffort": "medium",
+            "description": "Balances speed and reasoning depth for everyday tasks"
+          },
+          {
+            "reasoningEffort": "high",
+            "description": "Greater reasoning depth for complex problems"
+          },
+          {
+            "reasoningEffort": "xhigh",
+            "description": "Extra high reasoning depth for complex problems"
+          }
         ]
       }
     ],
@@ -99,13 +162,29 @@
     ],
     "grok": [
       {
+        "id": "grok-4.6",
+        "label": "Grok 4.6",
+        "description": "Flagship model for code, agentic tool calling, and general work.",
+        "provider": "grok",
+        "protocol": "grok",
+        "lifecycle": "fallback",
+        "default": true
+      },
+      {
+        "id": "grok-4.5",
+        "label": "Grok 4.5",
+        "description": "Previous flagship model for coding and agentic tasks.",
+        "provider": "grok",
+        "protocol": "grok",
+        "lifecycle": "fallback"
+      },
+      {
         "id": "grok-build",
         "label": "Grok Build",
         "description": "",
         "provider": "grok",
         "protocol": "grok",
-        "lifecycle": "fallback",
-        "default": true
+        "lifecycle": "fallback"
       }
     ],
     "kimi": [
@@ -272,6 +351,17 @@
         "provider": "anthropic",
         "protocol": "opencode",
         "lifecycle": "fallback"
+      }
+    ],
+    "pi": [
+      {
+        "id": "auto",
+        "label": "PI Auto",
+        "description": "Use PI CLI default model",
+        "provider": "pi",
+        "protocol": "pi",
+        "lifecycle": "stable",
+        "default": true
       }
     ]
   }

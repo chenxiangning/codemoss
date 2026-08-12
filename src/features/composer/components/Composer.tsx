@@ -41,6 +41,7 @@ import {
 } from "../../shared-session/target/targetStore";
 import {
   freezeTurnSnapshot,
+  isAtomicExecutionTarget,
   isResolvedExecutionTarget,
   resolveBackendAuthoritativeExecutionTarget,
   type ExecutionTarget,
@@ -1078,7 +1079,7 @@ function ComposerImpl({
     }
     if (
       createSessionTargetPicker &&
-      isResolvedExecutionTarget(effectiveCreationTarget)
+      isAtomicExecutionTarget(effectiveCreationTarget)
     ) {
       return effectiveCreationTarget.engine;
     }
@@ -1331,7 +1332,9 @@ function ComposerImpl({
   );
   const handleCreationTargetChange = useCallback(
     (target: ExecutionTarget) => {
-      if (!createSessionTargetPicker || !isResolvedExecutionTarget(target)) {
+      // create-session 必须用 Atomic 校验（含 PI 等非 Shared 引擎）；
+      // isResolvedExecutionTarget 仅 Shared 子集，会静默丢掉 PI 点击。
+      if (!createSessionTargetPicker || !isAtomicExecutionTarget(target)) {
         return;
       }
       // 首页 engine 选择必须同步全局 activeEngine + client store，否则重启后首页
@@ -2569,7 +2572,7 @@ function ComposerImpl({
       const hasBrowserContextAttachment = Boolean(browserContextAttachment);
       const createSessionTarget =
         createSessionTargetPicker &&
-        isResolvedExecutionTarget(effectiveCreationTarget)
+        isAtomicExecutionTarget(effectiveCreationTarget)
           ? {
               engine: effectiveCreationTarget.engine,
               providerProfileId:
@@ -3560,7 +3563,7 @@ function ComposerImpl({
                           reasoning: effort ? { effort } : null,
                         })
                     : createSessionTargetPicker &&
-                        isResolvedExecutionTarget(effectiveCreationTarget)
+                        isAtomicExecutionTarget(effectiveCreationTarget)
                       ? (effort) =>
                           setSelectedCreationTarget({
                             ...effectiveCreationTarget,

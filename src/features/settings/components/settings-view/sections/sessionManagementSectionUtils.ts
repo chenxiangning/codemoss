@@ -293,7 +293,8 @@ export function normalizeEngineType(engine: string): EngineType {
     normalized === "gemini" ||
     normalized === "opencode" ||
     normalized === "grok" ||
-    normalized === "kimi"
+    normalized === "kimi" ||
+    normalized === "pi"
   ) {
     return normalized;
   }
@@ -319,7 +320,8 @@ export function resolveCatalogEntryEngineIcon(
       sourceEngine === "gemini" ||
       sourceEngine === "grok" ||
       sourceEngine === "kimi" ||
-      sourceEngine === "opencode"
+      sourceEngine === "opencode" ||
+      sourceEngine === "pi"
     ) {
       return sourceEngine;
     }

@@ -42,6 +42,7 @@ const DEFAULT_ENGINE_LABEL_BY_TYPE: Record<EngineType, string> = {
   gemini: "Gemini",
   grok: "Grok",
   kimi: "Kimi",
+  pi: "PI CLI",
 };
 
 export function createEmptyTopbarSessionWindows(): TopbarSessionWindows {

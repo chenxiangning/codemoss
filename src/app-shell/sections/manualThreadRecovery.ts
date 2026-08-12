@@ -1,6 +1,6 @@
 import { isEngineExecutionEnabled } from "../../utils/engineExecutionPolicy";
 
-type ManualRecoveryEngine = "claude" | "codex" | "gemini" | "grok" | "kimi" | "opencode";
+type ManualRecoveryEngine = "claude" | "codex" | "gemini" | "grok" | "kimi" | "opencode" | "pi";
 type ManualRecoveryWorkspace = {
   id: string;
   connected: boolean;

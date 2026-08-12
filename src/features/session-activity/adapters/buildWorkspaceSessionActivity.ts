@@ -665,6 +665,9 @@ function inferReasoningPresentationEngine(threadId: string) {
   if (threadId.startsWith("kimi:") || threadId.startsWith("kimi-pending-")) {
     return "kimi";
   }
+  if (threadId.startsWith("pi:") || threadId.startsWith("pi-pending-")) {
+    return "pi";
+  }
   return "codex";
 }
 
@@ -679,14 +682,26 @@ function normalizeReasoningItemsForTimeline(threadId: string, items: Conversatio
     return parsed.hasBody || Boolean(parsed.workingLabel);
   });
   const engine = inferReasoningPresentationEngine(threadId);
-  const appendReasoningRuns = engine === "claude" || engine === "codex" || engine === "gemini" || engine === "grok" || engine === "kimi";
+  const appendReasoningRuns =
+    engine === "claude" ||
+    engine === "codex" ||
+    engine === "gemini" ||
+    engine === "grok" ||
+    engine === "kimi" ||
+    engine === "pi";
   const deduped = dedupeAdjacentReasoningItems(
     filtered,
     sourceReasoningMetaById,
     appendReasoningRuns,
   );
   const collapseReasoningRuns =
-    engine === "claude" || engine === "codex" || engine === "opencode" || engine === "gemini" || engine === "grok" || engine === "kimi";
+    engine === "claude" ||
+    engine === "codex" ||
+    engine === "opencode" ||
+    engine === "gemini" ||
+    engine === "grok" ||
+    engine === "kimi" ||
+    engine === "pi";
   const normalized = collapseConsecutiveReasoningRuns(
     deduped,
     collapseReasoningRuns,

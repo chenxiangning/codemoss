@@ -118,7 +118,9 @@ export function isSessionCatalogNotReadyError(error: unknown): boolean {
   );
 }
 
-export function resolveEnginePrefix(threadId: string): "claude" | "gemini" | "kimi" | "grok" | "opencode" | "codex" {
+export function resolveEnginePrefix(
+  threadId: string,
+): "claude" | "gemini" | "kimi" | "grok" | "opencode" | "pi" | "codex" {
   if (threadId.startsWith("claude:") || threadId.startsWith("claude-pending-")) {
     return "claude";
   }
@@ -127,6 +129,9 @@ export function resolveEnginePrefix(threadId: string): "claude" | "gemini" | "ki
   }
   if (threadId.startsWith("kimi:") || threadId.startsWith("kimi-pending-")) {
     return "kimi";
+  }
+  if (threadId.startsWith("pi:") || threadId.startsWith("pi-pending-")) {
+    return "pi";
   }
   if (threadId.startsWith("grok:") || threadId.startsWith("grok-pending-")) {
     return "grok";

@@ -904,6 +904,10 @@ const settings = {
     projectSessionEngineClaude: "Claude",
     projectSessionEngineGemini: "Gemini",
     projectSessionEngineOpencode: "OpenCode",
+    projectSessionEngineKimi: "Kimi CLI",
+    projectSessionEngineGrok: "Grok CLI",
+    projectSessionEnginePi: "PI CLI",
+
     projectSessionEngineShared: "Shared CLI",
     sessionManagementDescription:
       "按项目统一管理真实会话历史，支持分页读取、筛选、批量归档、取消归档与删除。",
@@ -1603,6 +1607,7 @@ const settings = {
     cliValidationTabGeminiCli: "Gemini CLI",
     cliValidationTabOpenCodeCli: "OpenCode CLI",
     cliValidationTabKimiCli: "Kimi CLI",
+    cliValidationTabPiCli: "PI CLI",
     cliValidationTabGrokCli: "Grok CLI",
     cliEngineEnabledLabel: "引擎启用",
     geminiCliDisableDescription:
@@ -1841,6 +1846,11 @@ const settings = {
     runOpenCodeDoctor: "运行 OpenCode Doctor",
     openCodeLooksGood: "OpenCode CLI 良好",
     openCodeIssueDetected: "检测到 OpenCode CLI 问题",
+    runPiDoctor: "运行 PI Doctor",
+    piLooksGood: "PI CLI 状态正常",
+    piIssueDetected: "PI CLI 检测到问题",
+    piCliLifecycleHint: "通过 npm 包 @earendil-works/pi-coding-agent 安装 / 更新 / 卸载本机 PI CLI。认证与模型配置仍使用 ~/.pi。",
+    piDescription: "安装并配置 ccgui 使用的 PI CLI。认证与模型配置仍使用 ~/.pi。",
     cliInstallLatest: "安装",
     cliUpdateLatest: "更新",
     cliUninstall: "卸载",

@@ -235,7 +235,7 @@ export function WorkspaceSessionRadarPanel({
     });
   };
 
-  const resolveEngine = (entry: SessionRadarEntry): "codex" | "claude" | "gemini" | "grok" | "kimi" | "opencode" => {
+  const resolveEngine = (entry: SessionRadarEntry): "codex" | "claude" | "gemini" | "grok" | "kimi" | "opencode" | "pi" => {
     const normalizedEngine = entry.engine.toUpperCase();
     if (normalizedEngine === "CLAUDE") {
       return "claude";

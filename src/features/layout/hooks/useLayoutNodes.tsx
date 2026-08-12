@@ -186,7 +186,7 @@ const EMPTY_PROJECT_MAP_IMPACT_INPUT: ProjectMapImpactInput = {
 function toConversationEngine(
   engine: EngineType | undefined,
 ): ConversationEngine {
-  if (engine === "claude" || engine === "gemini" || engine === "grok" || engine === "kimi" || engine === "opencode") {
+  if (engine === "claude" || engine === "gemini" || engine === "grok" || engine === "kimi" || engine === "opencode" || engine === "pi") {
     return engine;
   }
   return "codex";

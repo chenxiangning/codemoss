@@ -5826,6 +5826,7 @@ mod shared_interrupt_owner_tests {
                 EngineType::Grok => "ccgui/grok-4.5".to_string(),
                 EngineType::OpenCode => "ccgui/opencode-model".to_string(),
                 EngineType::Gemini => "unsupported".to_string(),
+                EngineType::Pi => "auto".to_string(),
             }),
             reasoning_effort: Some("medium".to_string()),
             provider_profile_name_snapshot: Some(provider.to_string()),
@@ -5891,7 +5892,11 @@ mod shared_interrupt_owner_tests {
         // 与 SharedRuntimeCoordinator::normalize_native_session_identity 对齐：
         // Claude/Kimi/Grok/OpenCode 使用 engine: 前缀；Codex 保持 raw。
         let expected_native_thread_id = match engine {
-            EngineType::Claude | EngineType::Kimi | EngineType::Grok | EngineType::OpenCode => {
+            EngineType::Claude
+            | EngineType::Kimi
+            | EngineType::Grok
+            | EngineType::OpenCode
+            | EngineType::Pi => {
                 format!("{}:native-{provider}", engine.icon())
             }
             EngineType::Codex | EngineType::Gemini => format!("native-{provider}"),

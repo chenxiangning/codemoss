@@ -198,6 +198,7 @@ const baseSettings: AppSettings = {
   kimiBin: null,
   grokBin: null,
   opencodeBin: null,
+  piBin: null,
   codexBin: null,
   codexArgs: null,
   terminalShellPath: null,

@@ -128,5 +128,23 @@ pub fn spec_capability_state(engine_type: EngineType, capability: &str) -> &'sta
             "rpc.server" => "unsupported",
             _ => "unknown",
         },
+        EngineType::Pi => match capability {
+            "streaming.text" => "supported",
+            "streaming.reasoning" => "supported",
+            "streaming.tool-output" => "supported",
+            "tool.use" => "supported",
+            "tool.mcp" => "unsupported",
+            "reasoning.effort" => "supported",
+            "collaboration.mode" => "unsupported",
+            "session.continuation" => "supported",
+            "image.input" => "compat-input",
+            "input.mid-turn" => "unsupported",
+            "session.resume" => "supported",
+            "session.fork" => "unknown",
+            "session.switch" => "unknown",
+            "session.tree" => "unknown",
+            "rpc.server" => "unsupported",
+            _ => "unknown",
+        },
     }
 }

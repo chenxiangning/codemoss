@@ -271,7 +271,7 @@ export interface GeminiVendorDraft {
   model: string;
 }
 
-export type VendorTab = "claude" | "codex" | "kimi" | "grok" | "opencode";
+export type VendorTab = "claude" | "codex" | "kimi" | "grok" | "opencode" | "pi";
 
 export interface ClaudeProviderPreset {
   id: string;

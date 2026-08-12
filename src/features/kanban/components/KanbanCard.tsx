@@ -51,6 +51,7 @@ const ENGINE_NAMES: Record<EngineType, string> = {
   grok: "Grok CLI",
   kimi: "Kimi",
   opencode: "OpenCode",
+  pi: "PI CLI",
 };
 
 function formatElapsed(ms: number): string {
