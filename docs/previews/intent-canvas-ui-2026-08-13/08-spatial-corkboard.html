@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>08 · 空间画板 Corkboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700&family=Syne:wght@600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --ink: #1b1914;
+      --muted: #6d675b;
+      --line: #d4ccbb;
+      --card: #fffaf1;
+      --blue: #1d4ed8;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; overflow: hidden; }
+    body { font-family: Syne, "Noto Sans SC", sans-serif; color: var(--ink); }
+    .board {
+      height: 100%;
+      background:
+        radial-gradient(circle, #cfc6b4 1.1px, transparent 1.2px) 0 0 / 22px 22px,
+        #efe8d8;
+      position: relative;
+    }
+    .top {
+      position: absolute; left: 20px; right: 20px; top: 16px;
+      display: flex; justify-content: space-between; align-items: start;
+      pointer-events: none;
+    }
+    .top > * { pointer-events: auto; }
+    h1 { margin: 0; font-size: 34px; letter-spacing: -.05em; }
+    h1 small { display: block; font-size: 12px; color: var(--muted); letter-spacing: 0; font-weight: 600; }
+    .tools { display: flex; gap: 8px; }
+    button {
+      height: 34px; border: 1px solid var(--ink); background: var(--card);
+      padding: 0 12px; font: 700 12px/1 Syne, "Noto Sans SC", sans-serif; cursor: pointer;
+    }
+    button.primary { background: var(--ink); color: #fffaf1; }
+    .card {
+      position: absolute; width: 320px; background: var(--card);
+      border: 1.5px solid var(--ink); box-shadow: 8px 10px 0 rgba(27,25,20,.08);
+      cursor: grab; user-select: none;
+    }
+    .card:active { cursor: grabbing; }
+    .card .preview {
+      height: 140px;
+      background:
+        linear-gradient(#e6decc 1px, transparent 1px) 0 0 / 16px 16px,
+        linear-gradient(90deg, #e6decc 1px, transparent 1px) 0 0 / 16px 16px,
+        #f4eedf;
+    }
+    .card .preview svg { width: 100%; height: 100%; }
+    .card .pad { padding: 12px 14px 14px; }
+    .mode { font-size: 10px; letter-spacing: .14em; text-transform: uppercase; color: var(--blue); }
+    .card h2 { margin: 4px 0 6px; font-size: 18px; }
+    .card p { margin: 0; color: var(--muted); font-size: 12px; font-family: "Noto Sans SC", sans-serif; }
+    .hint {
+      position: absolute; left: 50%; bottom: 22px; transform: translateX(-50%);
+      color: var(--muted); font-size: 12px; background: rgba(239,232,216,.85); padding: 6px 10px;
+    }
+    .back { position: fixed; left: 16px; bottom: 14px; font-size: 11px; color: var(--muted); text-decoration: none; font-family: "Noto Sans SC", sans-serif; }
+  </style>
+</head>
+<body>
+  <div class="board" id="board">
+    <div class="top">
+      <h1>意图画布 <small>08 · 空白就是画板，把卡片拖到你想放的地方</small></h1>
+      <div class="tools">
+        <button>搜索</button>
+        <button>项目知识地图</button>
+        <button class="primary">钉一张新图</button>
+      </div>
+    </div>
+
+    <article class="card" style="left:90px;top:120px" data-drag>
+      <div class="preview">
+        <svg viewBox="0 0 320 140" aria-hidden="true">
+          <path d="M40 70H120M120 70H200M120 70V30H200M120 70V110H200" fill="none" stroke="#1d4ed8"/>
+          <rect x="16" y="54" width="44" height="32" fill="#1d4ed8"/>
+          <rect x="100" y="56" width="48" height="28" fill="#fffaf1" stroke="#1b1914"/>
+          <rect x="188" y="16" width="54" height="24" fill="#fffaf1" stroke="#0f766e"/>
+          <rect x="188" y="56" width="54" height="24" fill="#fffaf1" stroke="#b45309"/>
+          <rect x="188" y="96" width="54" height="24" fill="#fffaf1" stroke="#1b1914"/>
+        </svg>
+      </div>
+      <div class="pad">
+        <div class="mode">Architect · 166 / 40 / 40</div>
+        <h2>文件关系图 · OspOrder</h2>
+        <p>以 OspOrderWebController.java 为中心导入 80 条直接文件关系。</p>
+      </div>
+    </article>
+
+    <article class="card" style="left:460px;top:280px" data-drag>
+      <div class="preview">
+        <svg viewBox="0 0 320 140" aria-hidden="true">
+          <path d="M30 70H290" stroke="#b45309" fill="none"/>
+          <circle cx="50" cy="70" r="12" fill="#b45309"/>
+          <circle cx="140" cy="70" r="11" fill="#fffaf1" stroke="#1b1914"/>
+          <circle cx="220" cy="70" r="11" fill="#fffaf1" stroke="#b45309"/>
+          <circle cx="290" cy="70" r="11" fill="#1b1914"/>
+        </svg>
+      </div>
+      <div class="pad">
+        <div class="mode">Spotlight · 48 / 12 / 18</div>
+        <h2>支付回调失败路径</h2>
+        <p>从 notifyPayResult 向下 3 层 callee。</p>
+      </div>
+    </article>
+    <div class="hint">拖动卡片 · 空白不是缺陷，是工作面</div>
+  </div>
+  <a class="back" href="index.html">← 返回方向墙</a>
+  <script>
+    document.querySelectorAll("[data-drag]").forEach((card) => {
+      let ox = 0, oy = 0, dragging = false;
+      card.addEventListener("pointerdown", (event) => {
+        dragging = true;
+        card.setPointerCapture(event.pointerId);
+        ox = event.clientX - card.offsetLeft;
+        oy = event.clientY - card.offsetTop;
+      });
+      card.addEventListener("pointermove", (event) => {
+        if (!dragging) return;
+        card.style.left = `${event.clientX - ox}px`;
+        card.style.top = `${event.clientY - oy}px`;
+      });
+      card.addEventListener("pointerup", () => { dragging = false; });
+    });
+  </script>
+</body>
+</html>

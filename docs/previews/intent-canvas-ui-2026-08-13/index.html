@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>意图画布 · 10 个 UI 方向</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --ink: #161411;
+      --paper: #f3efe6;
+      --card: #fffdf8;
+      --muted: #6d675c;
+      --line: #d9d2c4;
+      --accent: #1d4ed8;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; background: var(--paper); color: var(--ink); }
+    body {
+      font-family: "Noto Sans SC", "PingFang SC", sans-serif;
+      min-height: 100vh;
+      padding: 48px 56px 80px;
+    }
+    .kicker {
+      font-family: "Bricolage Grotesque", sans-serif;
+      font-size: 12px;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--accent);
+    }
+    h1 {
+      font-family: "Bricolage Grotesque", sans-serif;
+      font-size: clamp(36px, 5vw, 64px);
+      line-height: 0.95;
+      letter-spacing: -0.045em;
+      margin: 10px 0 16px;
+      max-width: 16ch;
+    }
+    .lede {
+      max-width: 62ch;
+      color: var(--muted);
+      font-size: 15px;
+      line-height: 1.7;
+      margin: 0 0 36px;
+    }
+    .diag {
+      display: grid;
+      grid-template-columns: 1.2fr 1fr 1fr;
+      gap: 12px;
+      margin-bottom: 40px;
+    }
+    .diag article {
+      background: var(--card);
+      border: 1px solid var(--line);
+      padding: 16px 18px;
+    }
+    .diag b { display: block; font-size: 13px; margin-bottom: 6px; }
+    .diag p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.55; }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+    }
+    a.card {
+      display: grid;
+      grid-template-columns: 72px 1fr auto;
+      gap: 16px;
+      align-items: start;
+      text-decoration: none;
+      color: inherit;
+      background: var(--card);
+      border: 1px solid var(--line);
+      padding: 18px 20px;
+      min-height: 132px;
+      transition: transform 160ms ease, border-color 160ms ease;
+    }
+    a.card:hover {
+      transform: translateY(-2px);
+      border-color: var(--ink);
+    }
+    .no {
+      font-family: "Bricolage Grotesque", sans-serif;
+      font-size: 28px;
+      letter-spacing: -0.06em;
+      color: var(--accent);
+    }
+    a.card h3 {
+      margin: 0 0 6px;
+      font-size: 18px;
+      letter-spacing: -0.03em;
+    }
+    a.card p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.55; }
+    .meta {
+      font-size: 11px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--muted);
+      text-align: right;
+      white-space: nowrap;
+    }
+    footer {
+      margin-top: 42px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+    @media (max-width: 900px) {
+      body { padding: 28px 20px 60px; }
+      .diag, .grid { grid-template-columns: 1fr; }
+      a.card { grid-template-columns: 48px 1fr; }
+      .meta { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="kicker">Mossx · Intent Canvas · Review Board</div>
+  <h1>十个方向，专门治那片空白。</h1>
+  <p class="lede">
+    现在的列表页把一张 280px 卡片扔进整屏浅色径向渐变里。功能都在，画面却像没装完。
+    下面 10 个 HTML 都按真实产品信息架构来：Architect / Spotlight / File、元素/文件/节点、挂会话、项目知识地图。
+    双击即可打开，用来拍板「下一版长什么样」。
+  </p>
+
+  <section class="diag">
+    <article>
+      <b>现况病根</b>
+      <p>网格 `auto-fill 280px` + 无缩略图 + 无第二视觉层。一张卡时，80% 视口是空的。</p>
+    </article>
+    <article>
+      <b>不要做的</b>
+      <p>不要再给卡片加彩虹顶条、emoji、紫渐变。空要用构图填，不是再堆一排统计数字。</p>
+    </article>
+    <article>
+      <b>怎么选</b>
+      <p>1 张画布也成立 → 03 / 04 / 05 / 08。库长大了还好看 → 01 / 02 / 07。气质重选 → 06 / 10。</p>
+    </article>
+  </section>
+
+  <nav class="grid">
+    <a class="card" href="01-preview-atlas.html">
+      <div class="no">01</div>
+      <div>
+        <h3>预览画廊 Preview Atlas</h3>
+        <p>FigJam 首页逻辑：每张卡先给关系图缩略，再给标题。空被图吃掉，不再靠三块灰 stat。</p>
+      </div>
+      <div class="meta">推荐落地<br>浅色 / 网格</div>
+    </a>
+    <a class="card" href="02-linear-ledger.html">
+      <div class="no">02</div>
+      <div>
+        <h3>账本目录 Linear Ledger</h3>
+        <p>左密表、右检查器。一张画布时右侧预览仍撑满，列表永远不会显得寒酸。</p>
+      </div>
+      <div class="meta">信息密度<br>主从</div>
+    </a>
+    <a class="card" href="03-featured-studio.html">
+      <div class="no">03</div>
+      <div>
+        <h3>特写工坊 Featured Studio</h3>
+        <p>最近一张画布占整屏舞台。一张卡漂左边的问题，直接用「特写」反过来当优点。</p>
+      </div>
+      <div class="meta">1 张也成立<br>杂志</div>
+    </a>
+    <a class="card" href="04-split-atlas.html">
+      <div class="no">04</div>
+      <div>
+        <h3>对分地图 Split Atlas</h3>
+        <p>左窄列表，右是活的关系图。打开意图画布的第一眼就该看到图，不是统计盒。</p>
+      </div>
+      <div class="meta">主路径<br>可交互</div>
+    </a>
+    <a class="card" href="05-template-workbench.html">
+      <div class="no">05</div>
+      <div>
+        <h3>模板工作台 Workbench</h3>
+        <p>空处改成「从这里开始」：代码选区、文件关系、Spotlight、空白。解决冷启动。</p>
+      </div>
+      <div class="meta">冷启动<br>1 张+模板</div>
+    </a>
+    <a class="card" href="06-dark-atelier.html">
+      <div class="no">06</div>
+      <div>
+        <h3>暗色工坊 Dark Atelier</h3>
+        <p>暖炭黑 + 赭石，不是 GitHub 蓝黑。画布像胶片条，夜间编码更贴工作台。</p>
+      </div>
+      <div class="meta">气质<br>深色</div>
+    </a>
+    <a class="card" href="07-swiss-index.html">
+      <div class="no">07</div>
+      <div>
+        <h3>瑞士目录 Swiss Index</h3>
+        <p>不要卡片。编号、细线、巨型标题。把「文件关系图」当成目录条目，而不是 SaaS tile。</p>
+      </div>
+      <div class="meta">排印<br>极简</div>
+    </a>
+    <a class="card" href="08-spatial-corkboard.html">
+      <div class="no">08</div>
+      <div>
+        <h3>空间画板 Corkboard</h3>
+        <p>空白就是画板。点阵底 + 可拖卡片。空不再是 bug，是产品隐喻。</p>
+      </div>
+      <div class="meta">隐喻<br>可拖</div>
+    </a>
+    <a class="card" href="09-command-dashboard.html">
+      <div class="no">09</div>
+      <div>
+        <h3>指挥台 Command</h3>
+        <p>继续想 / 最近活动 / 证据摘要。把 166 个元素变成「下一步」，不是三个灰盒子。</p>
+      </div>
+      <div class="meta">行动导向<br>仪表</div>
+    </a>
+    <a class="card" href="10-ink-map.html">
+      <div class="no">10</div>
+      <div>
+        <h3>水墨图志 Ink Map</h3>
+        <p>纸色、墨线、一方印。给中文工程图一个不像 Notion 模板的东方阅读感。</p>
+      </div>
+      <div class="meta">气质<br>纸本</div>
+    </a>
+  </nav>
+
+  <footer>
+    真实样本沿用截图：以 <code>OspOrderWebController.java</code> 为中心的 Architect 文件关系图 · 166 元素 / 40 文件 / 40 节点。
+    这些是设计方向，不是生产代码。选中 1–2 个后再进实现。
+  </footer>
+</body>
+</html>
