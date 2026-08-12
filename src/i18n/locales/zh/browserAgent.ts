@@ -31,6 +31,12 @@ const browserAgent = {
       close: "关闭 Browser Agent 会话",
       info: "查看 Browser Agent 说明",
       footnote: "MVP 不存储 raw DOM、cookies、headers 或页面密文。",
+      collapseDock: "收起浏览器控制条",
+      expandDock: "展开浏览器控制条",
+      attachContext: "关联浏览器上下文",
+      selectElement: "选择网页元素加入聊天",
+      cancelSelectElement: "取消选择网页元素",
+      popOutWindow: "弹出为独立窗体",
     },
     composer: {
       attach: "关联浏览器上下文",

@@ -1,5 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useEventCallback } from "../../../utils/useEventCallback";
+import {
+  getClientStoreSync,
+  writeClientStoreValue,
+} from "../../../services/clientStorage";
 import { ask } from "@tauri-apps/plugin-dialog";
 import { useLayoutNodes } from "../../../features/layout/hooks/useLayoutNodes";
 import { useMainHeaderActionItems } from "../../../features/app/components/MainHeaderActions";
@@ -947,23 +951,24 @@ export function useAppShellLayoutNodesSection(
       sidebarToggleProps.rightPanelAvailable &&
       clientUiVisibility.isControlVisible("topTool.rightPanel"),
   };
-  const browserDockOpen = false;
-  const openBrowserAgentDock = useCallback(() => {
-    // Dynamic import keeps browser-agent dock out of AppShell first-hop mapDeps (P0-3).
-    void import("../../../features/browser-agent/browserAgentDockWindow")
-      .then(({ openOrFocusBrowserAgentDockWindow }) =>
-        openOrFocusBrowserAgentDockWindow({
-          workspaceId: activeWorkspaceId,
-          workspaceName: activeWorkspace?.name ?? null,
-        }),
-      )
-      .catch((error) => {
-        alertError(error instanceof Error ? error.message : String(error));
-      });
-  }, [activeWorkspace?.name, activeWorkspaceId, alertError]);
+  // 内嵌 dock 开关：center split 由 DesktopLayout 既有 is-browser-dock-split 脚手架承载；
+  // detached 浮动窗能力保留在岛内「弹出独立窗体」按钮（openBrowserAgentWindow）。
+  const [browserDockOpen, setBrowserDockOpen] = useState<boolean>(
+    () => getClientStoreSync<boolean>("layout", "browserDockOpen") === true,
+  );
+  useEffect(() => {
+    writeClientStoreValue("layout", "browserDockOpen", browserDockOpen);
+  }, [browserDockOpen]);
+  // 与文件编辑器互斥：打开 dock 时强制回到 chat 模式，否则 browserDockNode
+  // 因 centerMode 门控不渲染，视觉上像被编辑器层"遮盖"。
   const handleToggleBrowserDock = useCallback(() => {
-    openBrowserAgentDock();
-  }, [openBrowserAgentDock]);
+    setBrowserDockOpen((current) => {
+      if (!current) {
+        setCenterMode("chat");
+      }
+      return !current;
+    });
+  }, [setCenterMode]);
   const mainHeaderActions = useMainHeaderActionItems({
     isCompact,
     rightPanelCollapsed,
@@ -993,7 +998,7 @@ export function useAppShellLayoutNodesSection(
     onOpenFileCompare: handleOpenScratchFileCompare,
   });
   const handleCloseBrowserDock = useCallback(() => {
-    // Browser Agent now lives in its own tool window.
+    setBrowserDockOpen(false);
   }, []);
 
   const handleOpenIntentCanvas = useCallback(
@@ -1105,10 +1110,11 @@ export function useAppShellLayoutNodesSection(
 
   useEffect(() => {
     const handleExternalToggle = () => {
-      openBrowserAgentDock();
+      handleToggleBrowserDock();
     };
     const handleExternalOpen = () => {
-      openBrowserAgentDock();
+      setCenterMode("chat");
+      setBrowserDockOpen(true);
     };
 
     window.addEventListener("browser-agent:toggle-dock", handleExternalToggle);
@@ -1120,7 +1126,7 @@ export function useAppShellLayoutNodesSection(
       );
       window.removeEventListener("browser-agent:open-dock", handleExternalOpen);
     };
-  }, [openBrowserAgentDock]);
+  }, [handleToggleBrowserDock, setCenterMode]);
 
   // Stabilized handler/prop references for the useLayoutNodes options object.
   // Each was previously an inline arrow/object literal recreated every render,

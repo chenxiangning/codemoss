@@ -33,7 +33,13 @@ const browserAgent = {
       "closePanel": "Cerrar el panel del navegador",
       "close": "Cerrar la sesión de Browser Agent",
       "info": "Mostrar los detalles de Browser Agent",
-      "footnote": "El MVP no almacena el DOM en bruto, cookies, cabeceras ni secretos de la página."
+      "footnote": "El MVP no almacena el DOM en bruto, cookies, cabeceras ni secretos de la página.",
+      "collapseDock": "Contraer controles del navegador",
+      "expandDock": "Expandir controles del navegador",
+      "attachContext": "Vincular contexto del navegador",
+      "selectElement": "Seleccionar elemento de la página para el chat",
+      "cancelSelectElement": "Cancelar la selección de elemento de la página",
+      "popOutWindow": "Abrir en ventana independiente",
     },
     "composer": {
       "attach": "Adjuntar contexto del navegador",

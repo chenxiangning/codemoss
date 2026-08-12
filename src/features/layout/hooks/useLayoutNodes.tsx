@@ -152,6 +152,11 @@ const FileViewPanel = lazy(() =>
     default: m.FileViewPanel,
   })),
 );
+const BrowserDock = lazy(() =>
+  import("../../browser-agent/components/BrowserDock").then((m) => ({
+    default: m.BrowserDock,
+  })),
+);
 const ProjectMapPanel = lazy(() =>
   import("../../project-map/components/ProjectMapPanel").then((m) => ({
     default: m.ProjectMapPanel,
@@ -2979,7 +2984,22 @@ export function useLayoutNodes(input: LayoutNodesOptions): LayoutNodesResult {
     diffLabel: t("workspace.diff"),
     onBackFromDiff: options.onBackFromDiff,
   });
-  const browserDockNode = null;
+  // 内嵌浏览器 dock：独立容器层（.content-layer--browser-dock，与 editor 层分离），
+  // 仅在 chat 模式下与对话幕布左右排列；离开 chat 即卸载（native 子 webview 由
+  // BrowserDock 的 embedded hook cleanup 显式 hide，杜绝浮层残留）。
+  const browserDockNode =
+    options.browserDockOpen &&
+    options.centerMode === "chat" &&
+    options.activeWorkspaceId ? (
+      <Suspense fallback={<HeavyPanelFallback />}>
+        <BrowserDock
+          workspaceId={options.activeWorkspaceId}
+          ownerSurface="main-split-browser-dock"
+          displayMode="embedded"
+          className="browser-agent-center-panel-dock"
+        />
+      </Suspense>
+    ) : null;
 
   return {
     codeAnnotationBridgeProps,

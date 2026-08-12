@@ -465,6 +465,12 @@ const mockTranslate = (key: string, params?: Record<string, unknown>) => {
         "browserAgent.dock.closePanel": "Close Browser Dock",
         "browserAgent.dock.close": "Close Browser Agent session",
         "browserAgent.dock.info": "Show Browser Agent details",
+        "browserAgent.dock.collapseDock": "Collapse browser controls",
+        "browserAgent.dock.expandDock": "Expand browser controls",
+        "browserAgent.dock.attachContext": "Attach browser context",
+        "browserAgent.dock.selectElement": "Select page element for chat",
+        "browserAgent.dock.cancelSelectElement": "Cancel page element selection",
+        "browserAgent.dock.popOutWindow": "Pop out to a separate window",
         "browserAgent.dock.footnote":
           "MVP does not store raw DOM, cookies, headers, or page secrets.",
         "browserAgent.composer.attach": "Attach browser context",

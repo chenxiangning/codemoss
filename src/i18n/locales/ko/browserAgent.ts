@@ -33,7 +33,13 @@ const browserAgent = {
       "closePanel": "브라우저 독 닫기",
       "close": "Browser Agent 세션 닫기",
       "info": "Browser Agent 세부 정보 표시",
-      "footnote": "MVP는 원시 DOM, 쿠키, 헤더 또는 페이지 시크릿을 저장하지 않습니다."
+      "footnote": "MVP는 원시 DOM, 쿠키, 헤더 또는 페이지 시크릿을 저장하지 않습니다.",
+      "collapseDock": "브라우저 컨트롤 접기",
+      "expandDock": "브라우저 컨트롤 펼치기",
+      "attachContext": "브라우저 컨텍스트 연결",
+      "selectElement": "채팅에 추가할 페이지 요소 선택",
+      "cancelSelectElement": "페이지 요소 선택 취소",
+      "popOutWindow": "별도 창으로 열기",
     },
     "composer": {
       "attach": "브라우저 컨텍스트 첨부",

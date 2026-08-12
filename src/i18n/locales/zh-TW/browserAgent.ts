@@ -33,7 +33,13 @@ const browserAgent = {
       "closePanel": "關閉瀏覽器 Dock",
       "close": "關閉 Browser Agent 工作階段",
       "info": "顯示 Browser Agent 詳細資訊",
-      "footnote": "MVP 不會儲存原始 DOM、cookie、標頭或頁面機密。"
+      "footnote": "MVP 不會儲存原始 DOM、cookie、標頭或頁面機密。",
+      "collapseDock": "收合瀏覽器控制條",
+      "expandDock": "展開瀏覽器控制條",
+      "attachContext": "關聯瀏覽器上下文",
+      "selectElement": "選擇網頁元素加入聊天",
+      "cancelSelectElement": "取消選擇網頁元素",
+      "popOutWindow": "彈出為獨立窗體",
     },
     "composer": {
       "attach": "附加瀏覽器情境",

@@ -33,7 +33,13 @@ const browserAgent = {
       "closePanel": "Fermer le Dock du navigateur",
       "close": "Fermer la session de Browser Agent",
       "info": "Afficher les détails de Browser Agent",
-      "footnote": "Le MVP ne stocke pas le DOM brut, les cookies, les en-têtes ni les secrets de page."
+      "footnote": "Le MVP ne stocke pas le DOM brut, les cookies, les en-têtes ni les secrets de page.",
+      "collapseDock": "Réduire les contrôles du navigateur",
+      "expandDock": "Développer les contrôles du navigateur",
+      "attachContext": "Associer le contexte du navigateur",
+      "selectElement": "Sélectionner un élément de la page pour le chat",
+      "cancelSelectElement": "Annuler la sélection d'élément de page",
+      "popOutWindow": "Ouvrir dans une fenêtre séparée",
     },
     "composer": {
       "attach": "Attacher le contexte du navigateur",

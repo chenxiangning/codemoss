@@ -33,7 +33,13 @@ const browserAgent = {
       "closePanel": "Закрыть панель браузера",
       "close": "Закрыть сессию Browser Agent",
       "info": "Показать детали Browser Agent",
-      "footnote": "MVP не хранит необработанный DOM, cookie, заголовки или секреты страниц."
+      "footnote": "MVP не хранит необработанный DOM, cookie, заголовки или секреты страниц.",
+      "collapseDock": "Свернуть элементы браузера",
+      "expandDock": "Развернуть элементы браузера",
+      "attachContext": "Привязать контекст браузера",
+      "selectElement": "Выбрать элемент страницы для чата",
+      "cancelSelectElement": "Отменить выбор элемента страницы",
+      "popOutWindow": "Открыть в отдельном окне",
     },
     "composer": {
       "attach": "Прикрепить контекст браузера",

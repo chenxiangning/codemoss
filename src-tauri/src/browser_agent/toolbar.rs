@@ -14,6 +14,7 @@ use super::{
 const BROWSER_TOOLBAR_BRIDGE_HOST: &str = "browser-agent-toolbar.invalid";
 const BROWSER_TOOLBAR_BRIDGE_PATH: &str = "/__ccgui_toolbar__";
 const BROWSER_CONTEXT_ATTACHMENT_REQUEST_EVENT: &str = "browser-agent://attach-current-context";
+const BROWSER_ELEMENT_SELECT_ENDED_EVENT: &str = "browser-agent://element-select-ended";
 
 struct BrowserToolbarLabels {
     locale: &'static str,
@@ -24,6 +25,8 @@ struct BrowserToolbarLabels {
     open: &'static str,
     new_tab: &'static str,
     close: &'static str,
+    collapse: &'static str,
+    expand: &'static str,
 }
 
 fn browser_toolbar_labels(locale: Option<&str>) -> BrowserToolbarLabels {
@@ -38,6 +41,8 @@ fn browser_toolbar_labels(locale: Option<&str>) -> BrowserToolbarLabels {
             open: "Open",
             new_tab: "New browser tab",
             close: "Close",
+            collapse: "Collapse toolbar",
+            expand: "Expand toolbar",
         };
     }
     BrowserToolbarLabels {
@@ -49,6 +54,8 @@ fn browser_toolbar_labels(locale: Option<&str>) -> BrowserToolbarLabels {
         open: "打开",
         new_tab: "新建浏览器标签页",
         close: "关闭",
+        collapse: "收起工具条",
+        expand: "展开工具条",
     }
 }
 
@@ -124,13 +131,24 @@ fn browser_agent_toolbar_script(
     script.push_str(&escape_js_string(labels.close));
     script.push_str(
         r#",
+    collapse: "#,
+    );
+    script.push_str(&escape_js_string(labels.collapse));
+    script.push_str(
+        r#",
+    expand: "#,
+    );
+    script.push_str(&escape_js_string(labels.expand));
+    script.push_str(
+        r#",
   };
   const tabs = "#,
     );
     script.push_str(tabs_json);
     script.push_str(
         r#";
-  const toolbarHeight = 126;
+  const EXPANDED_HEIGHT = 64;
+  const COLLAPSED_HEIGHT = 30;
   const hostId = "ccgui-browser-agent-toolbar";
   const bridgeBase = "https://browser-agent-toolbar.invalid/__ccgui_toolbar__";
   const escapeHtml = (value) => String(value || "")
@@ -145,6 +163,10 @@ fn browser_agent_toolbar_script(
     return /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
   };
   let nextOpenCreatesTab = false;
+  let collapsed = false;
+  try {
+    collapsed = window.localStorage.getItem("ccgui.browserAgent.toolbarCollapsed") === "1";
+  } catch (storageReadError) {}
   const sendBridgeAction = (action, extraParams = {}) => {
     const params = new URLSearchParams({
       action,
@@ -161,22 +183,38 @@ fn browser_agent_toolbar_script(
   host.style.top = "0";
   host.style.left = "0";
   host.style.right = "0";
-  host.style.height = `${toolbarHeight}px`;
   host.style.zIndex = "2147483647";
   host.style.pointerEvents = "auto";
   if (!host.parentNode) {
     (document.documentElement || document.body).appendChild(host);
   }
   const body = document.body;
-  if (body) {
+  const applyChromeHeight = () => {
+    const height = collapsed ? COLLAPSED_HEIGHT : EXPANDED_HEIGHT;
+    host.style.height = `${height}px`;
+    host.style.top = collapsed ? "auto" : "0";
+    host.style.bottom = collapsed ? "0" : "auto";
+    if (!body) return;
     if (body.dataset.mossxBrowserToolbarPaddingTop === undefined) {
       body.dataset.mossxBrowserToolbarPaddingTop = body.style.paddingTop || "";
     }
+    if (body.dataset.mossxBrowserToolbarPaddingBottom === undefined) {
+      body.dataset.mossxBrowserToolbarPaddingBottom = body.style.paddingBottom || "";
+    }
     const originalPaddingTop = body.dataset.mossxBrowserToolbarPaddingTop || "";
-    body.style.paddingTop = originalPaddingTop.trim()
-      ? `calc(${originalPaddingTop} + ${toolbarHeight}px)`
-      : `${toolbarHeight}px`;
-  }
+    const originalPaddingBottom = body.dataset.mossxBrowserToolbarPaddingBottom || "";
+    body.style.paddingTop = collapsed
+      ? originalPaddingTop
+      : originalPaddingTop.trim()
+        ? `calc(${originalPaddingTop} + ${height}px)`
+        : `${height}px`;
+    body.style.paddingBottom = collapsed
+      ? originalPaddingBottom.trim()
+        ? `calc(${originalPaddingBottom} + ${height}px)`
+        : `${height}px`
+      : originalPaddingBottom;
+  };
+  applyChromeHeight();
   const shadow = host.shadowRoot || host.attachShadow({ mode: "open" });
   const displayUrl = currentUrl || window.location.href || "";
   const tabLabel = pageTitle || document.title || displayUrl || labels.brand;
@@ -193,163 +231,149 @@ fn browser_agent_toolbar_script(
     <style>
       :host { all: initial; }
       * { box-sizing: border-box; }
-      .dock {
-        height: ${toolbarHeight}px;
-        display: flex;
-        flex-direction: column;
-        gap: 10px;
-        padding: 12px 16px 14px;
-        border-bottom: 1px solid rgba(148, 163, 184, 0.35);
-        background: rgba(248, 250, 252, 0.96);
-        color: #111827;
-        font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-        box-shadow: 0 14px 34px rgba(15, 23, 42, 0.14);
-        backdrop-filter: blur(16px);
-      }
-      .topline {
+      .chrome {
+        height: 100%;
         display: flex;
         align-items: center;
-        justify-content: space-between;
-        gap: 12px;
-        min-width: 0;
+        justify-content: center;
+        pointer-events: none;
+        font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       }
-      .brand {
+      .island {
+        pointer-events: auto;
         display: flex;
-        flex-direction: column;
-        min-width: 0;
-        font-weight: 800;
-        letter-spacing: 0.01em;
+        align-items: center;
+        gap: 5px;
+        max-width: calc(100vw - 24px);
+        padding: 5px 6px;
+        border: 1px solid rgba(15, 23, 42, 0.14);
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.82);
+        backdrop-filter: blur(18px);
+        -webkit-backdrop-filter: blur(18px);
+        box-shadow: 0 12px 32px rgba(15, 23, 42, 0.16), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+        color: #1f2937;
       }
-      .workspace {
-        margin-top: 2px;
-        color: #64748b;
-        font-size: 12px;
-        font-weight: 700;
-      }
-      .attach {
-        border: 1px solid #93b4ff;
-        border-radius: 12px;
-        background: #f8fbff;
-        color: #2563eb;
-        cursor: pointer;
-        font-size: 14px;
-        font-weight: 800;
-        padding: 8px 14px;
-      }
-      .tabrow {
-        display: flex;
-        align-items: stretch;
-        gap: 8px;
-        min-width: 0;
+      .dot {
+        width: 7px;
+        height: 7px;
+        margin: 0 2px 0 8px;
+        border-radius: 999px;
+        background: #16a34a;
+        flex: none;
       }
       .tablist {
         display: flex;
-        align-items: stretch;
+        align-items: center;
+        gap: 2px;
         flex: 0 1 auto;
-        max-width: min(48vw, 680px);
+        max-width: min(38vw, 520px);
         min-width: 0;
         overflow-x: auto;
+        scrollbar-width: none;
       }
+      .tablist::-webkit-scrollbar { display: none; }
       .tab {
         display: inline-flex;
         align-items: center;
-        max-width: 320px;
-        min-width: 160px;
-        height: 30px;
-        padding: 0 10px;
-        border: 1px solid rgba(148, 163, 184, 0.35);
-        border-bottom: 2px solid #60a5fa;
-        background: rgba(255, 255, 255, 0.78);
-        color: #1f2937;
+        max-width: 200px;
+        height: 26px;
+        padding: 0 12px;
+        border: 0;
+        border-radius: 999px;
+        background: transparent;
+        color: #6b7280;
         cursor: pointer;
         font-size: 12px;
-        font-weight: 800;
+        font-weight: 600;
+        white-space: nowrap;
       }
-      .tab.is-active {
-        background: rgba(255, 255, 255, 0.96);
-        border-bottom-color: #2563eb;
-      }
+      .tab:hover { background: rgba(15, 23, 42, 0.06); color: #111827; }
+      .tab.is-active { background: rgba(15, 23, 42, 0.1); color: #111827; }
       .tab span {
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
       }
       .plus {
-        width: 34px;
+        width: 26px;
+        height: 26px;
         border: 0;
+        border-radius: 999px;
         background: transparent;
-        color: #111827;
+        color: #6b7280;
         cursor: pointer;
-        font-size: 28px;
+        font-size: 18px;
         line-height: 1;
+        flex: none;
       }
+      .plus:hover { background: rgba(15, 23, 42, 0.06); color: #111827; }
       .status {
-        display: inline-flex;
-        align-items: center;
-        height: 30px;
-        padding: 0 10px;
-        border-radius: 8px;
-        background: #6d8fc7;
-        color: white;
-        font-size: 12px;
-        font-weight: 800;
+        flex: none;
+        padding: 3px 10px;
+        border-radius: 999px;
+        background: rgba(37, 99, 235, 0.12);
+        color: #1d4ed8;
+        font-size: 11px;
+        font-weight: 700;
+        white-space: nowrap;
       }
       form {
         display: flex;
-        flex: 1 1 auto;
+        align-items: center;
+        flex: 0 1 auto;
         min-width: 0;
-        gap: 10px;
+        gap: 4px;
+        border: 1px solid rgba(15, 23, 42, 0.12);
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.75);
+        padding: 2px 2px 2px 12px;
       }
       input {
-        flex: 1 1 auto;
-        min-width: 0;
-        height: 36px;
-        border: 1px solid rgba(148, 163, 184, 0.45);
-        border-radius: 11px;
-        background: white;
-        color: #111827;
-        font: 500 14px ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-        outline: none;
-        padding: 0 12px;
-      }
-      input:focus {
-        border-color: #60a5fa;
-        box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.24);
-      }
-      .open, .select, .close {
-        height: 36px;
+        width: 220px;
+        min-width: 80px;
+        height: 26px;
         border: 0;
-        border-radius: 11px;
-        cursor: pointer;
-        font-size: 14px;
-        font-weight: 900;
-        padding: 0 18px;
+        background: transparent;
+        color: #111827;
+        font: 500 12px ui-monospace, "SF Mono", Menlo, monospace;
+        outline: none;
+        padding: 0;
       }
       .open {
-        background: white;
-        color: #111827;
+        height: 26px;
+        border: 0;
+        border-radius: 999px;
+        background: #1f2937;
+        color: #fff;
+        cursor: pointer;
+        font-size: 12px;
+        font-weight: 700;
+        padding: 0 14px;
+        flex: none;
       }
-      .select {
-        width: 46px;
-        padding: 0;
+      .open:hover { background: #111827; }
+      .select, .close, .min {
+        width: 28px;
+        height: 28px;
+        border: 0;
+        border-radius: 999px;
+        background: transparent;
+        color: #4b5563;
+        cursor: pointer;
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        border: 1px solid rgba(15, 23, 42, 0.08);
-        background: rgba(15, 23, 42, 0.08);
-        color: #172033;
+        font-size: 16px;
+        flex: none;
       }
-      .select:hover {
-        border-color: rgba(37, 99, 235, 0.34);
-        background: rgba(37, 99, 235, 0.12);
-        color: #1d4ed8;
-      }
+      .select:hover, .close:hover, .min:hover { background: rgba(15, 23, 42, 0.06); color: #111827; }
       .select-icon {
         position: relative;
         display: inline-block;
-        width: 20px;
-        height: 20px;
-        border: 1.8px solid currentColor;
+        width: 14px;
+        height: 14px;
+        border: 1.6px solid currentColor;
         border-radius: 999px;
       }
       .select-icon::before,
@@ -360,42 +384,108 @@ fn browser_agent_toolbar_script(
         background: currentColor;
         transform: translate(-50%, -50%);
       }
-      .select-icon::before {
-        width: 28px;
-        height: 1.8px;
-      }
-      .select-icon::after {
-        width: 1.8px;
+      .select-icon::before { width: 20px; height: 1.6px; }
+      .select-icon::after { width: 1.6px; height: 20px; }
+      .attach {
+        flex: none;
         height: 28px;
+        border: 1px solid rgba(37, 99, 235, 0.4);
+        border-radius: 999px;
+        background: rgba(37, 99, 235, 0.08);
+        color: #1d4ed8;
+        cursor: pointer;
+        font-size: 12px;
+        font-weight: 700;
+        padding: 0 12px;
+        white-space: nowrap;
       }
-      .close {
-        width: 44px;
+      .attach:hover { background: rgba(37, 99, 235, 0.14); }
+      .min {
+        width: 30px;
+        border-left: 1px solid rgba(15, 23, 42, 0.1);
+        border-radius: 0 999px 999px 0;
+      }
+      .restore { display: none; }
+      .chrome.is-collapsed { display: block; }
+      .chrome.is-collapsed .island { display: none; }
+      .chrome.is-collapsed .restore {
+        pointer-events: auto;
+        display: flex;
+        align-items: stretch;
+        width: 100%;
+        height: 100%;
+        border: 0;
+        border-top: 1px solid rgba(15, 23, 42, 0.1);
+        background: rgba(248, 250, 252, 0.92);
+        backdrop-filter: blur(14px);
+        -webkit-backdrop-filter: blur(14px);
+        cursor: pointer;
         padding: 0;
-        background: rgba(255, 255, 255, 0.7);
-        color: #111827;
-        font-size: 24px;
-        line-height: 1;
+        text-align: left;
+        font: 11px ui-monospace, "SF Mono", Menlo, monospace;
+        color: #64748b;
       }
+      .seg {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 0 14px;
+        position: relative;
+        white-space: nowrap;
+      }
+      .seg::after {
+        content: "";
+        position: absolute;
+        right: -8px;
+        top: 0;
+        z-index: 1;
+        border-left: 8px solid transparent;
+        border-top: 15px solid transparent;
+        border-bottom: 15px solid transparent;
+      }
+      .seg-status { background: #2563eb; color: #fff; font-weight: 700; }
+      .seg-status::after { border-left-color: #2563eb; }
+      .seg-host {
+        background: #e2e8f0;
+        color: #1f2937;
+        max-width: 320px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .seg-host::after { border-left-color: #e2e8f0; }
+      .rest {
+        flex: 1;
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 14px;
+        padding: 0 14px 0 22px;
+        min-width: 0;
+      }
+      .rest .ws { color: #94a3b8; overflow: hidden; text-overflow: ellipsis; }
+      .rest .up { color: #2563eb; font-weight: 700; }
+      .restore:hover .up { text-decoration: underline; }
     </style>
-    <div class="dock">
-      <div class="topline">
-        <div class="brand">
-          <span>${escapeHtml(labels.brand)}</span>
-          <span class="workspace">${escapeHtml(workspaceId || "workspace")}</span>
-        </div>
-        <button class="attach" type="button" data-action="attach">${escapeHtml(labels.attach)}</button>
-      </div>
-      <div class="tabrow">
+    <div class="chrome${collapsed ? " is-collapsed" : ""}">
+      <div class="island">
+        <span class="dot" aria-hidden="true"></span>
         <div class="tablist">${tabMarkup}</div>
         <button class="plus" type="button" data-action="new" aria-label="${escapeHtml(labels.newTab)}">+</button>
         <span class="status">${escapeHtml(labels.statusReady)}</span>
         <form data-open-form>
           <input data-url-input value="${escapeHtml(displayUrl)}" spellcheck="false" autocomplete="off" />
           <button class="open" type="submit">${escapeHtml(labels.open)}</button>
-          <button class="select" type="button" data-action="select" title="${escapeHtml(labels.select)}" aria-label="${escapeHtml(labels.select)}"><span class="select-icon" aria-hidden="true"></span></button>
-          <button class="close" type="button" data-action="close" aria-label="${escapeHtml(labels.close)}">×</button>
         </form>
+        <button class="select" type="button" data-action="select" title="${escapeHtml(labels.select)}" aria-label="${escapeHtml(labels.select)}"><span class="select-icon" aria-hidden="true"></span></button>
+        <button class="attach" type="button" data-action="attach">${escapeHtml(labels.attach)}</button>
+        <button class="close" type="button" data-action="close" aria-label="${escapeHtml(labels.close)}">×</button>
+        <button class="min" type="button" data-action="collapse" title="${escapeHtml(labels.collapse)}" aria-label="${escapeHtml(labels.collapse)}">—</button>
       </div>
+      <button class="restore" type="button" data-action="expand" aria-label="${escapeHtml(labels.expand)}" title="${escapeHtml(labels.expand)}">
+        <span class="seg seg-status"><span class="dot" style="margin:0" aria-hidden="true"></span>${escapeHtml(labels.statusReady)}</span>
+        <span class="seg seg-host">${escapeHtml(tabLabel)}</span>
+        <span class="rest"><span class="ws">${escapeHtml(workspaceId || "")}</span><span class="up">${escapeHtml(labels.expand)} ▴</span></span>
+      </button>
     </div>
   `;
   const form = shadow.querySelector("[data-open-form]");
@@ -433,12 +523,26 @@ fn browser_agent_toolbar_script(
   attachButton?.addEventListener("click", () => sendBridgeAction("attach"));
   selectButton?.addEventListener("click", () => sendBridgeAction("select"));
   closeButton?.addEventListener("click", () => sendBridgeAction("close"));
+  const chrome = shadow.querySelector(".chrome");
+  const setCollapsed = (next) => {
+    collapsed = Boolean(next);
+    chrome?.classList.toggle("is-collapsed", collapsed);
+    applyChromeHeight();
+    try {
+      window.localStorage.setItem("ccgui.browserAgent.toolbarCollapsed", collapsed ? "1" : "0");
+    } catch (storageWriteError) {}
+  };
+  shadow.querySelector('[data-action="collapse"]')?.addEventListener("click", () => setCollapsed(true));
+  shadow.querySelector('[data-action="expand"]')?.addEventListener("click", () => setCollapsed(false));
 })();"#,
     );
     script
 }
 
-fn browser_element_selector_script(browser_session_id: &str, workspace_id: &str) -> String {
+pub(crate) fn browser_element_selector_script(
+    browser_session_id: &str,
+    workspace_id: &str,
+) -> String {
     let mut script = String::from(
         r#"(function () {
   const sessionId = "#,
@@ -826,6 +930,12 @@ fn browser_element_selector_script(browser_session_id: &str, workspace_id: &str)
     if (event.key === "Escape") {
       event.preventDefault();
       cleanup();
+      const params = new URLSearchParams({
+        action: "cancelSelect",
+        sessionId,
+        workspaceId,
+      });
+      window.location.href = `${bridgeBase}?${params.toString()}`;
     }
   }
   window[cleanupKey] = cleanup;
@@ -835,6 +945,15 @@ fn browser_element_selector_script(browser_session_id: &str, workspace_id: &str)
 })();"##,
     );
     script
+}
+
+pub(crate) fn browser_element_selector_stop_script() -> String {
+    String::from(
+        r#"(function () {
+  const cleanup = window.__ccguiBrowserElementSelectorCleanup;
+  if (typeof cleanup === "function") cleanup();
+})();"#,
+    )
 }
 
 async fn inject_browser_agent_toolbar_from_state(
@@ -1224,6 +1343,15 @@ pub(super) fn handle_browser_toolbar_navigation(
                 }
             }
         }
+        "cancelSelect" => {
+            let _ = app.emit_to(
+                "main",
+                BROWSER_ELEMENT_SELECT_ENDED_EVENT,
+                serde_json::json!({
+                    "browserSessionId": toolbar_browser_session_id.as_str(),
+                }),
+            );
+        }
         "close" => {
             let app_for_action = app.clone();
             let browser_session_id = toolbar_browser_session_id.clone();
@@ -1263,8 +1391,8 @@ fn parse_toolbar_boolean(value: Option<&String>) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        browser_element_selector_script, normalize_toolbar_query_value, parse_toolbar_boolean,
-        selected_element_attachment_request,
+        browser_element_selector_script, browser_element_selector_stop_script,
+        normalize_toolbar_query_value, parse_toolbar_boolean, selected_element_attachment_request,
     };
 
     #[test]
@@ -1318,7 +1446,16 @@ mod tests {
         assert!(script.contains("if (eventTouchesToolbarChrome(event))"));
         assert!(script.contains("sendSelection(candidate);"));
         assert!(script.contains("showOverlay(candidate);"));
+        assert!(script.contains(r#"action: "cancelSelect""#));
         assert!(!script.contains("updateOverlay(event.target)"));
         assert!(!script.contains("cleanup();\n    if (candidate)"));
+    }
+
+    #[test]
+    fn selector_stop_script_only_invokes_existing_cleanup() {
+        let script = browser_element_selector_stop_script();
+        assert!(script.contains("__ccguiBrowserElementSelectorCleanup"));
+        assert!(script.contains("if (typeof cleanup === \"function\") cleanup()"));
+        assert!(!script.contains("sendSelection"));
     }
 }
