@@ -173,6 +173,7 @@ import {
   BrowserContextPreview,
   useBrowserContextAttachment,
 } from "../../browser-agent";
+import { requestBrowserDockOpenUrl } from "../../browser-agent/state/dockEvents";
 import { IntentCanvasAttachmentCard } from "../../intent-canvas/components/IntentCanvasAttachmentCard";
 import type { IntentCanvasDocument } from "../../intent-canvas/types";
 import { resolveBrowserNavigationUrl } from "../utils/browserNavigation";
@@ -490,9 +491,6 @@ const EMPTY_ITEMS: ConversationItem[] = [];
 const COMPOSER_MIN_HEIGHT = 20;
 const COMPOSER_EXPAND_HEIGHT = 80;
 const COMPOSER_INPUT_INTERACTION_IDLE_MS = 320;
-const BROWSER_OPEN_DOCK_EVENT = "browser-agent:open-dock";
-const BROWSER_OPEN_URL_EVENT = "browser-agent:open-url";
-const PENDING_BROWSER_URL_KEY = "ccgui.browserAgent.pendingUrl";
 /** ActiveCanvas 下灌的热字段：轻量/空闲时忽略，避免历史 hydrate 打爆 Composer 重渲 */
 const COMPOSER_CANVAS_ONLY_PROPS = new Set<keyof ComposerProps>([
   "items",
@@ -2503,16 +2501,7 @@ function ComposerImpl({
           ? resolveBrowserNavigationUrl(trimmed)
           : null;
       if (browserNavigationUrl && activeWorkspaceId) {
-        window.sessionStorage.setItem(
-          PENDING_BROWSER_URL_KEY,
-          browserNavigationUrl,
-        );
-        window.dispatchEvent(new CustomEvent(BROWSER_OPEN_DOCK_EVENT));
-        window.dispatchEvent(
-          new CustomEvent(BROWSER_OPEN_URL_EVENT, {
-            detail: { url: browserNavigationUrl },
-          }),
-        );
+        requestBrowserDockOpenUrl(browserNavigationUrl);
         clearComposerContextSelections();
         setComposerText("");
         return;

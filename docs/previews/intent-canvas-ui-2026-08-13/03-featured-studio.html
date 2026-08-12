@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>03 · 特写工坊 Featured Studio</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,500;6..72,650&family=Noto+Sans+SC:wght@400;500;700&family=Sora:wght@500;600&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #ece7dc;
+      --ink: #211e18;
+      --muted: #6c6558;
+      --paper: #f7f3ea;
+      --blue: #1d4ed8;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; }
+    body {
+      font-family: "Noto Sans SC", "PingFang SC", sans-serif;
+      background: var(--bg); color: var(--ink);
+    }
+    .app { height: 100%; display: grid; grid-template-rows: 64px 1fr; }
+    header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 28px;
+    }
+    .brand { font-family: Sora, sans-serif; font-size: 12px; letter-spacing: .16em; text-transform: uppercase; color: var(--muted); }
+    .tools { display: flex; gap: 8px; }
+    button {
+      height: 34px; border: 1px solid #cfc6b4; background: var(--paper);
+      padding: 0 12px; font: 600 12px/1 "Noto Sans SC", sans-serif; cursor: pointer;
+    }
+    button.primary { background: var(--ink); color: #f7f3ea; border-color: var(--ink); }
+    .stage { display: grid; grid-template-columns: 1fr 300px; min-height: 0; padding: 0 28px 28px; gap: 18px; }
+    .hero {
+      background: var(--paper);
+      border: 1px solid #d8d0c0;
+      display: grid; grid-template-rows: 1fr auto;
+      min-height: 0;
+    }
+    .map {
+      position: relative; overflow: hidden;
+      background:
+        radial-gradient(circle at 18% 30%, rgba(29,78,216,.12), transparent 28%),
+        linear-gradient(#e4ddd0 1px, transparent 1px) 0 0 / 22px 22px,
+        linear-gradient(90deg, #e4ddd0 1px, transparent 1px) 0 0 / 22px 22px,
+        #f3eee3;
+    }
+    .map svg { width: 100%; height: 100%; }
+    .caption { padding: 22px 26px 24px; display: grid; grid-template-columns: 1fr auto; gap: 16px; align-items: end; }
+    .kicker { font-family: Sora, sans-serif; font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: var(--blue); }
+    h1 {
+      margin: 6px 0 8px;
+      font-family: Newsreader, "Noto Serif SC", serif;
+      font-size: clamp(32px, 4vw, 52px);
+      letter-spacing: -.04em;
+      line-height: .95;
+    }
+    .lede { margin: 0; max-width: 58ch; color: var(--muted); font-size: 14px; line-height: 1.6; }
+    .metrics { display: flex; gap: 22px; }
+    .metrics b { display: block; font-family: Newsreader, serif; font-size: 28px; line-height: 1; }
+    .metrics span { color: var(--muted); font-size: 11px; }
+    .rail { display: flex; flex-direction: column; gap: 10px; }
+    .rail h3 { margin: 4px 0 2px; font-size: 12px; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
+    .mini {
+      background: var(--paper); border: 1px solid #d8d0c0; padding: 12px 13px; cursor: pointer;
+    }
+    .mini:hover { border-color: var(--ink); }
+    .mini strong { display: block; font-size: 13px; margin-bottom: 4px; }
+    .mini p { margin: 0; color: var(--muted); font-size: 11px; }
+    .back { position: fixed; left: 16px; bottom: 14px; font-size: 11px; color: var(--muted); text-decoration: none; }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header>
+      <div class="brand">03 · Featured Studio · 1 个画布</div>
+      <div class="tools">
+        <button>搜索</button>
+        <button>项目知识地图</button>
+        <button class="primary">新建画布</button>
+      </div>
+    </header>
+    <section class="stage">
+      <article class="hero">
+        <div class="map">
+          <svg viewBox="0 0 900 420" aria-hidden="true">
+            <g fill="none" stroke="#1d4ed8" stroke-width="1.6">
+              <path d="M180 210H330M330 210H500M330 210V110H500M330 210V310H500M500 110H660M500 210H700M500 310H660"/>
+            </g>
+            <rect x="70" y="176" width="110" height="68" rx="5" fill="#1d4ed8"/>
+            <rect x="292" y="182" width="110" height="56" rx="5" fill="#f7f3ea" stroke="#211e18"/>
+            <rect x="478" y="82" width="120" height="52" rx="5" fill="#f7f3ea" stroke="#0f766e"/>
+            <rect x="478" y="182" width="120" height="52" rx="5" fill="#f7f3ea" stroke="#b45309"/>
+            <rect x="478" y="282" width="120" height="52" rx="5" fill="#f7f3ea" stroke="#211e18"/>
+            <rect x="648" y="88" width="140" height="40" rx="4" fill="#ece7dc" stroke="#6c6558"/>
+            <rect x="688" y="188" width="140" height="40" rx="4" fill="#ece7dc" stroke="#6c6558"/>
+            <rect x="648" y="288" width="140" height="40" rx="4" fill="#ece7dc" stroke="#6c6558"/>
+            <text x="86" y="216" fill="#fff" font-size="13">WebController</text>
+          </svg>
+        </div>
+        <div class="caption">
+          <div>
+            <div class="kicker">Architect · 更新于 6月7日 02:21</div>
+            <h1>文件关系图 · OspOrder</h1>
+            <p class="lede">以 OspOrderWebController.java 为中心导入 80 条直接文件关系。文件：hnms-facade-osp。点击舞台直接进入编辑。</p>
+          </div>
+          <div class="metrics">
+            <div><b>166</b><span>元素</span></div>
+            <div><b>40</b><span>文件</span></div>
+            <div><b>40</b><span>节点</span></div>
+          </div>
+        </div>
+      </article>
+      <aside class="rail">
+        <h3>继续</h3>
+        <div class="mini">
+          <strong>打开并挂到当前会话</strong>
+          <p>把这张图作为下一轮编码的上下文</p>
+        </div>
+        <div class="mini">
+          <strong>刷新项目知识地图</strong>
+          <p>对照 40 个已导入节点是否过期</p>
+        </div>
+        <h3>从这里长出下一张</h3>
+        <div class="mini">
+          <strong>Spotlight 一条失败路径</strong>
+          <p>从当前中心节点向下钻 3 层</p>
+        </div>
+        <div class="mini">
+          <strong>复制为时序图</strong>
+          <p>保留文件节点，改成调用时序</p>
+        </div>
+      </aside>
+    </section>
+  </div>
+  <a class="back" href="index.html">← 返回方向墙</a>
+</body>
+</html>

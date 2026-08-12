@@ -33,7 +33,13 @@ const browserAgent = {
       "closePanel": "ब्राउज़र डॉक बंद करें",
       "close": "Browser Agent सत्र बंद करें",
       "info": "Browser Agent विवरण दिखाएं",
-      "footnote": "MVP कच्चा DOM, cookies, headers, या पेज सीक्रेट संग्रहीत नहीं करता।"
+      "footnote": "MVP कच्चा DOM, cookies, headers, या पेज सीक्रेट संग्रहीत नहीं करता।",
+      "collapseDock": "ब्राउज़र नियंत्रण समेटें",
+      "expandDock": "ब्राउज़र नियंत्रण फैलाएँ",
+      "attachContext": "ब्राउज़र संदर्भ जोड़ें",
+      "selectElement": "चैट के लिए पेज तत्व चुनें",
+      "cancelSelectElement": "पेज तत्व चयन रद्द करें",
+      "popOutWindow": "अलग विंडो में खोलें",
     },
     "composer": {
       "attach": "ब्राउज़र संदर्भ संलग्न करें",

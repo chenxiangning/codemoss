@@ -121,6 +121,24 @@ export async function hideBrowserAgentWebview(
   return invoke<void>("hide_browser_agent_webview", { browserSessionId });
 }
 
+/** 在内嵌子 webview 中启动元素选择器（选中结果经 bridge 回传主窗口 attach 流程）。 */
+export async function startBrowserAgentElementSelect(
+  browserSessionId: string,
+): Promise<void> {
+  return invoke<void>("start_browser_agent_element_select", {
+    browserSessionId,
+  });
+}
+
+/** 退出内嵌元素选择器，不重新注入脚本。 */
+export async function stopBrowserAgentElementSelect(
+  browserSessionId: string,
+): Promise<void> {
+  return invoke<void>("stop_browser_agent_element_select", {
+    browserSessionId,
+  });
+}
+
 export async function listBrowserAgentEvidence(
   workspaceId?: string | null,
 ): Promise<BrowserEvidenceRecord[]> {

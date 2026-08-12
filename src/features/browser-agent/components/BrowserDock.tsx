@@ -2,8 +2,10 @@ import { listen } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import AlertCircle from "lucide-react/dist/esm/icons/alert-circle";
+import ChevronUp from "lucide-react/dist/esm/icons/chevron-up";
 import Globe from "lucide-react/dist/esm/icons/globe";
 import Info from "lucide-react/dist/esm/icons/info";
+import Minus from "lucide-react/dist/esm/icons/minus";
 import Plus from "lucide-react/dist/esm/icons/plus";
 import X from "lucide-react/dist/esm/icons/x";
 import { Badge } from "@/components/ui/badge";
@@ -20,6 +22,20 @@ import {
   setActiveBrowserContextSession,
 } from "../state/activeBrowserContext";
 import {
+  BROWSER_OPEN_URL_EVENT,
+  PENDING_BROWSER_URL_KEY,
+} from "../state/dockEvents";
+import {
+  measureEmbeddedWebviewContainer,
+  showEmbeddedBrowserWebview,
+  unmountEmbeddedBrowserWebview,
+  useEmbeddedBrowserWebview,
+} from "../hooks/useEmbeddedBrowserWebview";
+import {
+  BrowserDockEditorChrome,
+  type BrowserDockNotice,
+} from "./BrowserDockEditorChrome";
+import {
   closeBrowserAgentSession,
   createBrowserAgentSession,
   getAppSettings,
@@ -32,20 +48,18 @@ import {
 } from "@/services/tauri";
 
 const BROWSER_WEBVIEW_EVENT = "browser-agent://webview-event";
-const BROWSER_OPEN_URL_EVENT = "browser-agent:open-url";
-const PENDING_BROWSER_URL_KEY = "ccgui.browserAgent.pendingUrl";
 
 type BrowserDockProps = {
   workspaceId: string;
   ownerSurface?: string;
+  /**
+   * floating（默认）：会话内容开在独立浮动窗（既有行为）。
+   * embedded：会话内容作为主窗口子 webview 内嵌到 dock 容器矩形。
+   */
+  displayMode?: "floating" | "embedded";
   enabled?: boolean;
   className?: string;
   onSessionChange?: (session: BrowserSession | null) => void;
-};
-
-type BrowserDockNotice = {
-  kind: "info" | "warning" | "error";
-  message: string;
 };
 
 type TauriInternalsWindow = Window & {
@@ -95,6 +109,7 @@ function hasTauriEventBridge(): boolean {
 export function BrowserDock({
   workspaceId,
   ownerSurface = "vibecoding",
+  displayMode = "floating",
   enabled,
   className,
   onSessionChange,
@@ -110,8 +125,13 @@ export function BrowserDock({
   const [notice, setNotice] = useState<BrowserDockNotice | null>(null);
   const [busy, setBusy] = useState(false);
   const [infoOpen, setInfoOpen] = useState(false);
+  // 岛 ⇄ 状态行形变：纯展示态，不影响会话逻辑
+  const [docked, setDocked] = useState(false);
   const activeSessionRef = useRef<BrowserSession | null>(null);
   const onSessionChangeRef = useRef(onSessionChange);
+  const isEmbedded = displayMode === "embedded";
+  // 内嵌模式：native 子 webview 对齐此容器矩形（岛下方 webview-frame 区域）
+  const webviewContainerRef = useRef<HTMLDivElement | null>(null);
 
   const openSessions = useMemo(
     () => sessions.filter((session) => session.status !== "closed"),
@@ -134,6 +154,13 @@ export function BrowserDock({
   const infoMessage = notice?.message
     ? `${notice.message}\n${t("browserAgent.dock.footnote")}`
     : t("browserAgent.dock.footnote");
+
+  // 内嵌显隐纪律：切会话/关 dock/离开 chat（组件卸载）时显式 hide，bounds 随容器同步。
+  useEmbeddedBrowserWebview({
+    containerRef: webviewContainerRef,
+    activeSession,
+    active: isEmbedded && resolvedEnabled,
+  });
 
   useEffect(() => {
     if (enabled !== undefined) {
@@ -269,7 +296,21 @@ export function BrowserDock({
     };
   }, []);
 
-  const openSessionWindow = useCallback(async (session: BrowserSession) => {
+  const openSessionWindow = useCallback(async (session: BrowserSession, forceRemount = false) => {
+    if (isEmbedded) {
+      // 内嵌：子 webview 挂到容器矩形。bounds 为 null（首个会话 frame 尚未渲染）时
+      // 由 useEmbeddedBrowserWebview 的 effect 在渲染后兜底 mount。
+      const bounds = measureEmbeddedWebviewContainer(webviewContainerRef.current);
+      if (bounds) {
+        await showEmbeddedBrowserWebview(
+          session.browserSessionId,
+          bounds,
+          forceRemount,
+        );
+      }
+      setActiveBrowserContextSession(session, { rendererBound: true });
+      return session;
+    }
     try {
       const openedSession = await openBrowserAgentWindow(session.browserSessionId, i18n.language);
       setActiveBrowserContextSession(openedSession, { rendererBound: true });
@@ -285,7 +326,7 @@ export function BrowserDock({
       setActiveBrowserContextSession(failedSession, { rendererBound: false });
       throw error;
     }
-  }, [i18n.language]);
+  }, [i18n.language, isEmbedded]);
 
   const handleOpen = useCallback(async (nextUrl?: string) => {
     if (!resolvedEnabled || busy) {
@@ -318,7 +359,7 @@ export function BrowserDock({
           diagnosticMessage: null,
           errorCode: null,
         });
-        const openedSession = await openSessionWindow(preparedSession);
+        const openedSession = await openSessionWindow(preparedSession, true);
         setActiveSessionId(openedSession.browserSessionId);
         setUrlDraft(validation.normalizedUrl);
         setSessions((current) =>
@@ -459,6 +500,10 @@ export function BrowserDock({
     try {
       const closed = await closeBrowserAgentSession(sessionId);
       clearActiveBrowserContextSession(sessionId);
+      if (isEmbedded) {
+        // 注销内嵌子 webview 记录（Rust 侧 close 已按 renderer 绑定 hide，此处再兜底并清集合）
+        unmountEmbeddedBrowserWebview(sessionId);
+      }
       setSessions((current) =>
         current.map((session) =>
           session.browserSessionId === closed.browserSessionId ? closed : session,
@@ -509,7 +554,7 @@ export function BrowserDock({
     } finally {
       setBusy(false);
     }
-  }, [activeSessionId, busy, openSessionWindow, openSessions, t]);
+  }, [activeSessionId, busy, isEmbedded, openSessionWindow, openSessions, t]);
 
   const handleCloseActiveSession = useCallback(async () => {
     if (!activeSession) {
@@ -518,98 +563,192 @@ export function BrowserDock({
     await handleCloseSession(activeSession.browserSessionId);
   }, [activeSession, handleCloseSession]);
 
+  // 弹出独立窗体：hide 内嵌子 webview 并注销挂载记录，当前会话移交浮动窗（含注入工具条）
+  const handlePopOut = useCallback(async () => {
+    if (!activeSession || busy) {
+      return;
+    }
+    setBusy(true);
+    setNotice(null);
+    try {
+      unmountEmbeddedBrowserWebview(activeSession.browserSessionId);
+      const openedSession = await openBrowserAgentWindow(
+        activeSession.browserSessionId,
+        i18n.language,
+      );
+      setActiveBrowserContextSession(openedSession, { rendererBound: true });
+      setNotice({ kind: "info", message: t("browserAgent.dock.opened") });
+    } catch (error) {
+      setNotice({
+        kind: "error",
+        message: error instanceof Error ? error.message : String(error),
+      });
+    } finally {
+      setBusy(false);
+    }
+  }, [activeSession, busy, i18n.language, t]);
+
   return (
     <Card className={className} data-browser-agent-dock="true">
-      <CardContent className="browser-agent-dock-content">
-        <div className="browser-agent-tab-strip" role="tablist" aria-label={t("browserAgent.dock.tabs")}>
-          <div className="browser-agent-tab-track">
-            {openSessions.map((session) => (
-            <div
-              key={session.browserSessionId}
-              className={`browser-agent-tab${session.browserSessionId === activeSessionId ? " is-active" : ""}`}
-              role="presentation"
-            >
-              <button
-                type="button"
-                role="tab"
-                aria-selected={session.browserSessionId === activeSessionId}
-                className="browser-agent-tab-main"
-                onClick={() => handleActivateSession(session)}
-                title={session.title || session.normalizedUrl}
-              >
-                <span className="browser-agent-tab-main-content">
-                  <Globe size={12} aria-hidden />
-                  <span className="browser-agent-tab-label">
-                    {session.title || session.normalizedUrl}
-                  </span>
-                </span>
-              </button>
-              <button
-                type="button"
-                className="browser-agent-tab-close"
-                aria-label={t("browserAgent.dock.close")}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  void handleCloseSession(session.browserSessionId);
-                }}
-                disabled={busy}
-              >
-                <X size={11} aria-hidden />
-              </button>
-            </div>
-            ))}
-          </div>
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            className="browser-agent-tab-new"
-            onClick={() => {
+      <CardContent
+        className={`browser-agent-dock-content${docked ? " is-docked" : ""}${resolvedEnabled ? "" : " is-disabled"}${isEmbedded ? " is-embedded p-0" : ""}`}
+      >
+        {docked ? null : isEmbedded ? (
+          <BrowserDockEditorChrome
+            workspaceId={workspaceId}
+            openSessions={openSessions}
+            activeSession={activeSession}
+            activeSessionId={activeSessionId}
+            busy={busy}
+            resolvedEnabled={resolvedEnabled}
+            notice={notice}
+            urlDraft={urlDraft}
+            onUrlDraftChange={setUrlDraft}
+            onOpen={() => void handleOpen()}
+            onActivateSession={handleActivateSession}
+            onCloseSession={(sessionId) => void handleCloseSession(sessionId)}
+            onNewTab={() => {
               setActiveSessionId(null);
               setUrlDraft("");
               onSessionChange?.(null);
             }}
-            aria-label={t("browserAgent.dock.newTab")}
-          >
-            <Plus size={14} aria-hidden />
-              </Button>
-          <Badge className="browser-agent-dock-status" variant={resolvedEnabled ? "default" : "outline"}>
-            {resolvedEnabled ? statusLabel : t("browserAgent.dock.disabled")}
-          </Badge>
-        </div>
-        <div className="browser-agent-dock-url-row">
-          {!resolvedEnabled ? (
-            <Button type="button" onClick={() => void handleEnableBrowserAgent()} disabled={busy}>
-              {busy ? t("browserAgent.dock.busy") : t("browserAgent.dock.enable")}
-            </Button>
-          ) : null}
-          <Input
-            value={urlDraft}
-            onChange={(event) => setUrlDraft(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter") {
-                void handleOpen();
-              }
-            }}
-            placeholder="https://example.com"
-            disabled={!resolvedEnabled || busy}
-            aria-label="Browser Agent URL"
+            onPopOut={() => void handlePopOut()}
+            onEnable={() => void handleEnableBrowserAgent()}
+            onMinimize={() => setDocked(true)}
+            setBusy={setBusy}
+            setNotice={setNotice}
           />
-          <Button type="button" onClick={() => void handleOpen()} disabled={!resolvedEnabled || busy}>
-            {busy ? t("browserAgent.dock.busy") : t("browserAgent.dock.open")}
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => void handleCloseActiveSession()}
-            disabled={!activeSession || busy}
-            aria-label={t("browserAgent.dock.close")}
-          >
-            <X size={14} aria-hidden />
-          </Button>
-        </div>
+        ) : (
+          <div className="browser-agent-dock-island">
+            <span className="browser-agent-dock-dot" aria-hidden />
+            <div className="browser-agent-tab-track" role="tablist" aria-label={t("browserAgent.dock.tabs")}>
+              {openSessions.map((session) => (
+                <div
+                  key={session.browserSessionId}
+                  className={`browser-agent-tab${session.browserSessionId === activeSessionId ? " is-active" : ""}`}
+                  role="presentation"
+                >
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={session.browserSessionId === activeSessionId}
+                    className="browser-agent-tab-main"
+                    onClick={() => handleActivateSession(session)}
+                    title={session.title || session.normalizedUrl}
+                  >
+                    <span className="browser-agent-tab-main-content">
+                      <Globe size={12} aria-hidden />
+                      <span className="browser-agent-tab-label">
+                        {session.title || session.normalizedUrl}
+                      </span>
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    className="browser-agent-tab-close"
+                    aria-label={t("browserAgent.dock.close")}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      void handleCloseSession(session.browserSessionId);
+                    }}
+                    disabled={busy}
+                  >
+                    <X size={11} aria-hidden />
+                  </button>
+                </div>
+              ))}
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="browser-agent-tab-new"
+                onClick={() => {
+                  setActiveSessionId(null);
+                  setUrlDraft("");
+                  onSessionChange?.(null);
+                }}
+                aria-label={t("browserAgent.dock.newTab")}
+              >
+                <Plus size={14} aria-hidden />
+              </Button>
+            </div>
+            {!resolvedEnabled ? (
+              <Button type="button" className="browser-agent-dock-enable" onClick={() => void handleEnableBrowserAgent()} disabled={busy}>
+                {busy ? t("browserAgent.dock.busy") : t("browserAgent.dock.enable")}
+              </Button>
+            ) : (
+              <div className="browser-agent-dock-url-pill">
+                <Input
+                  className="browser-agent-dock-url-input"
+                  value={urlDraft}
+                  onChange={(event) => setUrlDraft(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      void handleOpen();
+                    }
+                  }}
+                  placeholder="https://example.com"
+                  disabled={!resolvedEnabled || busy}
+                  aria-label="Browser Agent URL"
+                />
+                <Button
+                  type="button"
+                  className="browser-agent-dock-open"
+                  onClick={() => void handleOpen()}
+                  disabled={!resolvedEnabled || busy}
+                >
+                  {busy ? t("browserAgent.dock.busy") : t("browserAgent.dock.open")}
+                </Button>
+              </div>
+            )}
+            <Badge className="browser-agent-dock-status" variant={resolvedEnabled ? "default" : "outline"}>
+              {resolvedEnabled ? statusLabel : t("browserAgent.dock.disabled")}
+            </Badge>
+            <Button
+              type="button"
+              variant="outline"
+              className="browser-agent-dock-icon"
+              onClick={() => void handleCloseActiveSession()}
+              disabled={!activeSession || busy}
+              aria-label={t("browserAgent.dock.close")}
+            >
+              <X size={14} aria-hidden />
+            </Button>
+            <span className="browser-agent-dock-info-wrap">
+              <button
+                type="button"
+                className={`browser-agent-dock-info${notice ? ` is-${notice.kind}` : ""}`}
+                aria-label={t("browserAgent.dock.info")}
+                aria-expanded={infoOpen}
+                onClick={() => setInfoOpen((current) => !current)}
+              >
+                {notice ? <AlertCircle size={14} aria-hidden /> : <Info size={14} aria-hidden />}
+              </button>
+              {infoOpen ? (
+                <div className={`browser-agent-dock-popover${notice ? ` is-${notice.kind}` : ""}`} role="status">
+                  {infoMessage.split("\n").map((line, index) => (
+                    <p key={`${index}-${line}`}>{line}</p>
+                  ))}
+                </div>
+              ) : null}
+            </span>
+            <button
+              type="button"
+              className="browser-agent-dock-icon browser-agent-dock-minimize"
+              onClick={() => setDocked(true)}
+              aria-label={t("browserAgent.dock.collapseDock")}
+              title={t("browserAgent.dock.collapseDock")}
+            >
+              <Minus size={14} aria-hidden />
+            </button>
+          </div>
+        )}
         {activeSession && resolvedEnabled ? (
-          <div className="browser-agent-webview-frame" data-browser-agent-window-status="true">
+          <div
+            className="browser-agent-webview-frame"
+            data-browser-agent-window-status="true"
+            ref={webviewContainerRef}
+          >
             <div className="browser-agent-webview-placeholder">
               <Globe size={18} aria-hidden />
               <span>{t("browserAgent.dock.windowOpened")}</span>
@@ -620,24 +759,33 @@ export function BrowserDock({
             {t("browserAgent.dock.noPage")}
           </div>
         )}
-        <div className="browser-agent-dock-footer">
+        {docked ? (
           <button
             type="button"
-            className={`browser-agent-dock-info${notice ? ` is-${notice.kind}` : ""}`}
-            aria-label={t("browserAgent.dock.info")}
-            aria-expanded={infoOpen}
-            onClick={() => setInfoOpen((current) => !current)}
+            className="browser-agent-dock-restore"
+            onClick={() => setDocked(false)}
+            aria-label={t("browserAgent.dock.expandDock")}
+            title={t("browserAgent.dock.expandDock")}
           >
-            {notice ? <AlertCircle size={14} aria-hidden /> : <Info size={14} aria-hidden />}
+            <span
+              className="browser-agent-dock-restore-seg is-status"
+              title={resolvedEnabled ? statusLabel : t("browserAgent.dock.disabled")}
+            >
+              <span className="browser-agent-dock-dot" aria-hidden />
+            </span>
+            <span className="browser-agent-dock-restore-seg is-host">
+              {activeSession?.title || activeSession?.normalizedUrl || t("browserAgent.dock.noPage")}
+            </span>
+            <span className="browser-agent-dock-restore-rest">
+              <span className="browser-agent-dock-restore-count">
+                {openSessions.length}
+              </span>
+              <span className="browser-agent-dock-restore-up">
+                <ChevronUp size={12} aria-hidden />
+              </span>
+            </span>
           </button>
-          {infoOpen ? (
-            <div className={`browser-agent-dock-popover${notice ? ` is-${notice.kind}` : ""}`} role="status">
-              {infoMessage.split("\n").map((line, index) => (
-                <p key={`${index}-${line}`}>{line}</p>
-              ))}
-            </div>
-          ) : null}
-        </div>
+        ) : null}
       </CardContent>
     </Card>
   );

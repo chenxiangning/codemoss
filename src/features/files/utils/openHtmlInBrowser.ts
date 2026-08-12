@@ -1,14 +1,9 @@
-import {
-  createBrowserAgentSession,
-  openBrowserAgentWindow,
-} from "../../../services/tauri";
+import { requestBrowserDockOpenUrl } from "../../browser-agent/state/dockEvents";
 
 const HTML_FILE_EXTENSION_PATTERN = /\.(html|htm)$/i;
 
 export type OpenHtmlInBrowserOptions = {
   workspaceId: string;
-  locale?: string | null;
-  ownerSurface?: string;
 };
 
 /** 打开失败的用户可读分类（对应 i18n，不直接展示后端英文）。 */
@@ -106,7 +101,9 @@ export function formatOpenHtmlInBrowserError(
 
 /**
  * 用应用内置 Browser Agent 打开本地 HTML（file://）。
- * 失败时 reject，由调用方用 formatOpenHtmlInBrowserError + 全局 toast 提示。
+ * 走内嵌 dock 事件链路（与 Composer 网址导航一致）：打开中心分屏 dock 并投递 URL，
+ * 会话创建/挂载由 BrowserDock 接管；校验失败在岛内 notice 呈现。
+ * 无工作区等前置失败仍 reject，由调用方用 formatOpenHtmlInBrowserError + 全局 toast 提示。
  */
 export async function openHtmlInBrowser(
   absolutePath: string,
@@ -118,10 +115,5 @@ export async function openHtmlInBrowser(
   }
 
   const fileUrl = buildLocalFileUrl(absolutePath);
-  const session = await createBrowserAgentSession({
-    workspaceId,
-    url: fileUrl,
-    ownerSurface: options.ownerSurface?.trim() || "file-view",
-  });
-  await openBrowserAgentWindow(session.browserSessionId, options.locale ?? null);
+  requestBrowserDockOpenUrl(fileUrl);
 }

@@ -13,12 +13,40 @@ import {
   openBrowserAgentWindow,
   readWorkspaceFile,
 } from "../../../services/tauri";
+import {
+  BROWSER_OPEN_DOCK_EVENT,
+  BROWSER_OPEN_URL_EVENT,
+} from "../../browser-agent/state/dockEvents";
 import { FileViewPanel } from "./FileViewPanel";
 import { clearFileDocumentSessionCacheForTests } from "../hooks/useFileDocumentState";
 import { mockPushErrorToast } from "./FileViewPanel.test-utils";
 
 const createSessionMock = vi.mocked(createBrowserAgentSession);
 const openWindowMock = vi.mocked(openBrowserAgentWindow);
+
+type DockEventRecord = { type: string; url?: string };
+
+/** 记录内嵌 dock 事件链路的派发顺序与载荷。 */
+function recordDockEvents(): { events: DockEventRecord[]; dispose: () => void } {
+  const events: DockEventRecord[] = [];
+  const record = (type: string) => (event: Event) => {
+    events.push({
+      type,
+      url: (event as CustomEvent<{ url?: string }>).detail?.url,
+    });
+  };
+  const recordOpenDock = record(BROWSER_OPEN_DOCK_EVENT);
+  const recordOpenUrl = record(BROWSER_OPEN_URL_EVENT);
+  window.addEventListener(BROWSER_OPEN_DOCK_EVENT, recordOpenDock);
+  window.addEventListener(BROWSER_OPEN_URL_EVENT, recordOpenUrl);
+  return {
+    events,
+    dispose: () => {
+      window.removeEventListener(BROWSER_OPEN_DOCK_EVENT, recordOpenDock);
+      window.removeEventListener(BROWSER_OPEN_URL_EVENT, recordOpenUrl);
+    },
+  };
+}
 
 function renderFileView(
   filePath: string,
@@ -75,28 +103,34 @@ describe("FileViewPanel open in browser", () => {
     vi.clearAllMocks();
   });
 
-  it("shows Open in Browser for .html files and opens built-in browser", async () => {
+  it("shows Open in Browser for .html files and routes to the embedded dock", async () => {
     vi.mocked(readWorkspaceFile).mockResolvedValue({
       content: "<html><body>hello</body></html>",
       truncated: false,
     });
-    const { container } = renderFileView("docs/demo.html");
-    await screen.findByTestId("mock-codemirror");
-    await openContentContextMenu(container);
+    const { events, dispose } = recordDockEvents();
+    try {
+      const { container } = renderFileView("docs/demo.html");
+      await screen.findByTestId("mock-codemirror");
+      await openContentContextMenu(container);
 
-    const menuItem = screen.getByRole("menuitem", {
-      name: "files.openInBrowser",
-    });
-    fireEvent.click(menuItem);
-
-    await waitFor(() => {
-      expect(createSessionMock).toHaveBeenCalledWith({
-        workspaceId: "workspace-open-in-browser",
-        url: "file:///repo/docs/demo.html",
-        ownerSurface: "file-view",
+      const menuItem = screen.getByRole("menuitem", {
+        name: "files.openInBrowser",
       });
-      expect(openWindowMock).toHaveBeenCalledWith("browser-session-1", null);
-    });
+      fireEvent.click(menuItem);
+
+      await waitFor(() => {
+        expect(events).toEqual([
+          { type: BROWSER_OPEN_DOCK_EVENT, url: undefined },
+          { type: BROWSER_OPEN_URL_EVENT, url: "file:///repo/docs/demo.html" },
+        ]);
+      });
+      // 内嵌改道后不再直接创建会话或浮动窗，由 BrowserDock 接管
+      expect(createSessionMock).not.toHaveBeenCalled();
+      expect(openWindowMock).not.toHaveBeenCalled();
+    } finally {
+      dispose();
+    }
   });
 
   it("shows Open in Browser for .htm and works in preview mode", async () => {
@@ -122,48 +156,24 @@ describe("FileViewPanel open in browser", () => {
     ).toBeTruthy();
   });
 
-  it("hides Open in Browser for non-html files", async () => {
+  it("does not dispatch dock events for non-html files", async () => {
     vi.mocked(readWorkspaceFile).mockResolvedValue({
       content: "const x = 1;",
       truncated: false,
     });
-    const { container } = renderFileView("src/value.ts");
-    await screen.findByTestId("mock-codemirror");
-    await openContentContextMenu(container);
+    const { events, dispose } = recordDockEvents();
+    try {
+      const { container } = renderFileView("src/value.ts");
+      await screen.findByTestId("mock-codemirror");
+      await openContentContextMenu(container);
 
-    expect(
-      screen.queryByRole("menuitem", { name: "files.openInBrowser" }),
-    ).toBeNull();
-    expect(createSessionMock).not.toHaveBeenCalled();
-  });
-
-  it("surfaces a non-blocking global toast with i18n message when Browser Agent fails", async () => {
-    createSessionMock.mockRejectedValue(
-      new Error(
-        "Failed to open Browser Agent window: a webview with label `browser-agent-window` already exists",
-      ),
-    );
-    vi.mocked(readWorkspaceFile).mockResolvedValue({
-      content: "<html></html>",
-      truncated: false,
-    });
-    const { container } = renderFileView("index.html");
-    await screen.findByTestId("mock-codemirror");
-    await openContentContextMenu(container);
-    fireEvent.click(
-      screen.getByRole("menuitem", { name: "files.openInBrowser" }),
-    );
-
-    await waitFor(() => {
-      expect(mockPushErrorToast).toHaveBeenCalledWith(
-        expect.objectContaining({
-          title: "files.openInBrowser",
-          message: "files.openInBrowserWindowBusy",
-        }),
-      );
-    });
-    expect(mockPushErrorToast.mock.calls[0]?.[0]?.message).not.toMatch(
-      /already exists|browser-agent-window/i,
-    );
+      expect(
+        screen.queryByRole("menuitem", { name: "files.openInBrowser" }),
+      ).toBeNull();
+      expect(events).toEqual([]);
+      expect(createSessionMock).not.toHaveBeenCalled();
+    } finally {
+      dispose();
+    }
   });
 });

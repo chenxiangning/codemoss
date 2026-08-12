@@ -18,7 +18,10 @@ use tauri::{
 
 use crate::state::AppState;
 
-use toolbar::{handle_browser_toolbar_navigation, spawn_browser_toolbar_injection};
+use toolbar::{
+    browser_element_selector_script, browser_element_selector_stop_script,
+    handle_browser_toolbar_navigation, spawn_browser_toolbar_injection,
+};
 pub(crate) use types::*;
 
 const BROWSER_WEBVIEW_EVENT: &str = "browser-agent://webview-event";
@@ -1145,6 +1148,15 @@ fn create_browser_child_webview(
 
     let webview_builder = WebviewBuilder::new(label, WebviewUrl::External(url))
         .on_navigation(move |target_url| {
+            // 元素选择器完成时通过 bridge URL 回传选中元素证据（与浮动窗同一通道）
+            if handle_browser_toolbar_navigation(
+                &app_for_navigation,
+                target_url.as_str(),
+                session_id_for_navigation.as_str(),
+                workspace_id_for_navigation.as_str(),
+            ) {
+                return false;
+            }
             if handle_browser_capture_navigation(target_url.as_str()) {
                 return false;
             }
@@ -1831,6 +1843,49 @@ pub(crate) async fn hide_browser_agent_webview(
         webview.hide().map_err(|error| error.to_string())?;
     }
     Ok(())
+}
+
+/// 在内嵌子 webview 中启动元素选择器（浮动窗由注入工具条自行 eval，内嵌无注入工具条）。
+/// 选中结果经 bridge URL 由子 webview 的 on_navigation 拦截后回传主窗口。
+#[tauri::command]
+pub(crate) async fn start_browser_agent_element_select(
+    browser_session_id: String,
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let session = {
+        let sessions = state.browser_sessions.lock().await;
+        sessions
+            .get(browser_session_id.as_str())
+            .cloned()
+            .ok_or_else(|| format!("Browser session not found: {browser_session_id}"))?
+    };
+    let webview = app
+        .get_webview(browser_webview_label(browser_session_id.as_str()).as_str())
+        .ok_or_else(|| {
+            format!("Browser Agent WebView is not embedded: {browser_session_id}")
+        })?;
+    let script = browser_element_selector_script(
+        session.browser_session_id.as_str(),
+        session.workspace_id.as_str(),
+    );
+    webview.eval(&script).map_err(|error| error.to_string())
+}
+
+/// 退出内嵌元素选择器：只跑页面内 cleanup，不再重新注入选择脚本。
+#[tauri::command]
+pub(crate) async fn stop_browser_agent_element_select(
+    browser_session_id: String,
+    app: AppHandle,
+) -> Result<(), String> {
+    let webview = app
+        .get_webview(browser_webview_label(browser_session_id.as_str()).as_str())
+        .ok_or_else(|| {
+            format!("Browser Agent WebView is not embedded: {browser_session_id}")
+        })?;
+    webview
+        .eval(&browser_element_selector_stop_script())
+        .map_err(|error| error.to_string())
 }
 
 #[tauri::command]

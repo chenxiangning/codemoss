@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>02 · 账本目录 Linear Ledger</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #f4f3ef;
+      --panel: #fbfaf6;
+      --ink: #1c1b18;
+      --muted: #6b675d;
+      --line: #dcd7cb;
+      --blue: #155eef;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; }
+    body {
+      font-family: "IBM Plex Sans", "Noto Sans SC", sans-serif;
+      background: var(--bg); color: var(--ink);
+    }
+    .app { height: 100%; display: grid; grid-template-rows: 56px 1fr; }
+    header {
+      display: flex; align-items: center; gap: 16px;
+      padding: 0 18px; border-bottom: 1px solid var(--line); background: var(--panel);
+    }
+    h1 { margin: 0; font-size: 16px; font-weight: 600; letter-spacing: -.02em; }
+    h1 small { color: var(--muted); font-weight: 400; margin-left: 8px; }
+    .search { flex: 1; max-width: 360px; }
+    .search input {
+      width: 100%; height: 32px; border: 1px solid var(--line); background: #fff;
+      padding: 0 10px; font: 13px/1 "IBM Plex Sans", "Noto Sans SC", sans-serif;
+    }
+    .spacer { flex: 1; }
+    button {
+      height: 30px; border: 1px solid var(--line); background: #fff;
+      padding: 0 10px; font: 500 12px/1 "IBM Plex Sans", "Noto Sans SC", sans-serif;
+      cursor: pointer;
+    }
+    button.primary { background: var(--blue); color: #fff; border-color: var(--blue); }
+    .split { min-height: 0; display: grid; grid-template-columns: minmax(0, 1.15fr) 380px; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th, td { text-align: left; padding: 12px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
+    th { color: var(--muted); font-size: 11px; font-weight: 500; letter-spacing: .06em; text-transform: uppercase; }
+    tbody tr { cursor: pointer; }
+    tbody tr:hover { background: #eeeae0; }
+    tbody tr.active { background: #e8eefc; }
+    .title { font-weight: 600; }
+    .sum { color: var(--muted); font-size: 12px; margin-top: 3px; }
+    .mode { font-family: "IBM Plex Mono", monospace; font-size: 11px; color: var(--blue); }
+    .num { font-family: "IBM Plex Mono", monospace; font-size: 12px; }
+    aside {
+      border-left: 1px solid var(--line);
+      background: var(--panel);
+      display: flex; flex-direction: column; min-height: 0;
+    }
+    .preview {
+      height: 230px;
+      background:
+        linear-gradient(#e6e1d5 1px, transparent 1px) 0 0 / 16px 16px,
+        linear-gradient(90deg, #e6e1d5 1px, transparent 1px) 0 0 / 16px 16px,
+        #f0ece2;
+    }
+    .preview svg { width: 100%; height: 100%; }
+    .inspect { padding: 18px 18px 24px; overflow: auto; }
+    .inspect h2 { margin: 0 0 6px; font-size: 20px; letter-spacing: -.03em; }
+    .inspect p { margin: 0 0 16px; color: var(--muted); font-size: 13px; line-height: 1.6; }
+    dl { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 14px; margin: 0 0 18px; }
+    dt { color: var(--muted); font-size: 11px; }
+    dd { margin: 2px 0 0; font-family: "IBM Plex Mono", monospace; font-size: 16px; }
+    .row-actions { display: flex; gap: 8px; }
+    .back { position: fixed; left: 16px; bottom: 14px; font-size: 11px; color: var(--muted); text-decoration: none; }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header>
+      <h1>意图画布 <small>02 · Ledger</small></h1>
+      <label class="search"><input placeholder="搜索标题、摘要或文件路径" /></label>
+      <div class="spacer"></div>
+      <button>全选</button>
+      <button>刷新</button>
+      <button>项目知识地图</button>
+      <button class="primary">新建</button>
+    </header>
+    <div class="split">
+      <main>
+        <table>
+          <thead>
+            <tr>
+              <th style="width:36px"></th>
+              <th>画布</th>
+              <th>模式</th>
+              <th>元素</th>
+              <th>文件</th>
+              <th>更新</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr class="active">
+              <td><input type="checkbox" checked /></td>
+              <td>
+                <div class="title">文件关系图 · OspOrder</div>
+                <div class="sum">以 OspOrderWebController.java 为中心导入 80 条直接文件关系</div>
+              </td>
+              <td class="mode">ARCHITECT</td>
+              <td class="num">166</td>
+              <td class="num">40</td>
+              <td class="num">06-07 02:21</td>
+            </tr>
+            <tr>
+              <td><input type="checkbox" /></td>
+              <td>
+                <div class="title">支付回调失败路径</div>
+                <div class="sum">notifyPayResult 向下 3 层，超时与幂等缺口</div>
+              </td>
+              <td class="mode">SPOTLIGHT</td>
+              <td class="num">48</td>
+              <td class="num">12</td>
+              <td class="num">06-06 21:04</td>
+            </tr>
+            <tr>
+              <td><input type="checkbox" /></td>
+              <td>
+                <div class="title">订单聚合根边界</div>
+                <div class="sum">OspOrder / Item / PayRecord 写入边界</div>
+              </td>
+              <td class="mode">FILE</td>
+              <td class="num">72</td>
+              <td class="num">9</td>
+              <td class="num">06-05 18:30</td>
+            </tr>
+            <tr>
+              <td><input type="checkbox" /></td>
+              <td>
+                <div class="title">库存扣减时序</div>
+                <div class="sum">下单 → 锁库存 → 支付 → 回滚</div>
+              </td>
+              <td class="mode">ARCHITECT</td>
+              <td class="num">91</td>
+              <td class="num">16</td>
+              <td class="num">06-04 11:12</td>
+            </tr>
+          </tbody>
+        </table>
+      </main>
+      <aside>
+        <div class="preview">
+          <svg viewBox="0 0 380 230" aria-hidden="true">
+            <g fill="none" stroke="#155eef" stroke-width="1.3">
+              <path d="M70 115H150M150 115H230M150 115V60H230M150 115V170H230"/>
+            </g>
+            <rect x="28" y="96" width="54" height="38" fill="#155eef"/>
+            <rect x="132" y="98" width="56" height="34" fill="#fbfaf6" stroke="#1c1b18"/>
+            <rect x="220" y="42" width="62" height="32" fill="#fbfaf6" stroke="#1c1b18"/>
+            <rect x="220" y="98" width="62" height="32" fill="#fbfaf6" stroke="#1c1b18"/>
+            <rect x="220" y="154" width="62" height="32" fill="#fbfaf6" stroke="#1c1b18"/>
+            <text x="34" y="119" fill="#fff" font-size="8" font-family="IBM Plex Mono">Ctrl</text>
+          </svg>
+        </div>
+        <div class="inspect">
+          <div class="mode">ARCHITECT · hnms-facade-osp</div>
+          <h2>文件关系图 · OspOrder</h2>
+          <p>以 OspOrderWebController.java 为中心导入 80 条直接文件关系。40 个节点已接到项目知识地图。</p>
+          <dl>
+            <div><dt>元素</dt><dd>166</dd></div>
+            <div><dt>文件</dt><dd>40</dd></div>
+            <div><dt>节点</dt><dd>40</dd></div>
+            <div><dt>会话</dt><dd>1</dd></div>
+          </dl>
+          <div class="row-actions">
+            <button class="primary">打开画布</button>
+            <button>挂到会话</button>
+            <button>复制</button>
+          </div>
+        </div>
+      </aside>
+    </div>
+  </div>
+  <a class="back" href="index.html">← 返回方向墙</a>
+</body>
+</html>

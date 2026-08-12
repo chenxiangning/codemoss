@@ -1,4 +1,5 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+// @vitest-environment jsdom
+import { beforeEach, describe, expect, it } from "vitest";
 import {
   buildLocalFileUrl,
   formatOpenHtmlInBrowserError,
@@ -6,16 +7,11 @@ import {
   openHtmlInBrowser,
   resolveOpenHtmlInBrowserErrorKind,
 } from "./openHtmlInBrowser";
-
-const createBrowserAgentSessionMock = vi.fn();
-const openBrowserAgentWindowMock = vi.fn();
-
-vi.mock("../../../services/tauri", () => ({
-  createBrowserAgentSession: (...args: unknown[]) =>
-    createBrowserAgentSessionMock(...args),
-  openBrowserAgentWindow: (...args: unknown[]) =>
-    openBrowserAgentWindowMock(...args),
-}));
+import {
+  BROWSER_OPEN_DOCK_EVENT,
+  BROWSER_OPEN_URL_EVENT,
+  PENDING_BROWSER_URL_KEY,
+} from "../../browser-agent/state/dockEvents";
 
 describe("isHtmlFilePath", () => {
   it("accepts .html and .htm regardless of case", () => {
@@ -57,41 +53,43 @@ describe("buildLocalFileUrl", () => {
 
 describe("openHtmlInBrowser", () => {
   beforeEach(() => {
-    createBrowserAgentSessionMock.mockReset();
-    openBrowserAgentWindowMock.mockReset();
-    createBrowserAgentSessionMock.mockResolvedValue({
-      browserSessionId: "session-1",
-    });
-    openBrowserAgentWindowMock.mockResolvedValue({
-      browserSessionId: "session-1",
-    });
+    window.sessionStorage.clear();
   });
 
-  it("opens the encoded file:// URL via built-in Browser Agent", async () => {
-    await openHtmlInBrowser("/repo/docs/demo.html", {
-      workspaceId: "ws-1",
-      ownerSurface: "file-view",
-    });
-    expect(createBrowserAgentSessionMock).toHaveBeenCalledWith({
-      workspaceId: "ws-1",
-      url: "file:///repo/docs/demo.html",
-      ownerSurface: "file-view",
-    });
-    expect(openBrowserAgentWindowMock).toHaveBeenCalledWith("session-1", null);
+  it("routes the encoded file:// URL to the embedded dock event chain", async () => {
+    const events: Array<{ type: string; url?: string }> = [];
+    const record = (type: string) => (event: Event) => {
+      events.push({
+        type,
+        url: (event as CustomEvent<{ url?: string }>).detail?.url,
+      });
+    };
+    const recordOpenDock = record(BROWSER_OPEN_DOCK_EVENT);
+    const recordOpenUrl = record(BROWSER_OPEN_URL_EVENT);
+    window.addEventListener(BROWSER_OPEN_DOCK_EVENT, recordOpenDock);
+    window.addEventListener(BROWSER_OPEN_URL_EVENT, recordOpenUrl);
+    try {
+      await openHtmlInBrowser("/repo/docs/demo.html", { workspaceId: "ws-1" });
+    } finally {
+      window.removeEventListener(BROWSER_OPEN_DOCK_EVENT, recordOpenDock);
+      window.removeEventListener(BROWSER_OPEN_URL_EVENT, recordOpenUrl);
+    }
+
+    expect(events).toEqual([
+      { type: BROWSER_OPEN_DOCK_EVENT, url: undefined },
+      { type: BROWSER_OPEN_URL_EVENT, url: "file:///repo/docs/demo.html" },
+    ]);
+    // 兜底：dock 尚未挂载时由 BrowserDock 挂载后消费 pending URL
+    expect(window.sessionStorage.getItem(PENDING_BROWSER_URL_KEY)).toBe(
+      "file:///repo/docs/demo.html",
+    );
   });
 
   it("requires workspaceId", async () => {
     await expect(
       openHtmlInBrowser("/repo/a.html", { workspaceId: "  " }),
     ).rejects.toThrow(/workspaceId is required/);
-    expect(createBrowserAgentSessionMock).not.toHaveBeenCalled();
-  });
-
-  it("propagates Browser Agent failures", async () => {
-    createBrowserAgentSessionMock.mockRejectedValue(new Error("blocked"));
-    await expect(
-      openHtmlInBrowser("/repo/a.html", { workspaceId: "ws-1" }),
-    ).rejects.toThrow("blocked");
+    expect(window.sessionStorage.getItem(PENDING_BROWSER_URL_KEY)).toBeNull();
   });
 });
 

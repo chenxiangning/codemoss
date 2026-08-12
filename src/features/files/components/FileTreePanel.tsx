@@ -1460,7 +1460,6 @@ export function FileTreePanel({
       }
       void openHtmlInBrowser(resolvePath(relativePath), {
         workspaceId,
-        ownerSurface: "file-tree",
       }).catch((error) => {
         console.warn("[file-tree] openHtmlInBrowser failed", error);
         pushErrorToast({

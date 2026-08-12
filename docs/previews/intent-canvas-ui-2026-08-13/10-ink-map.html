@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>10 · 水墨图志 Ink Map</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700&family=Noto+Serif+SC:wght@500;700&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --paper: #f3eadc;
+      --ink: #1a1814;
+      --muted: #6d6456;
+      --seal: #9b2c2c;
+      --wash: #e6d8c2;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; }
+    body {
+      font-family: "Noto Sans SC", "Songti SC", serif;
+      background:
+        radial-gradient(ellipse at 20% 0%, rgba(155,44,44,.05), transparent 36%),
+        repeating-linear-gradient(0deg, transparent, transparent 27px, rgba(26,24,20,.035) 28px),
+        var(--paper);
+      color: var(--ink);
+    }
+    .app { height: 100%; display: grid; grid-template-rows: auto 1fr; }
+    header {
+      display: flex; justify-content: space-between; align-items: end;
+      padding: 22px 36px 12px;
+    }
+    .title-block h1 {
+      margin: 0;
+      font-family: "Noto Serif SC", serif;
+      font-size: 40px;
+      letter-spacing: .12em;
+    }
+    .title-block small {
+      display: block; margin-bottom: 6px; letter-spacing: .28em;
+      font-size: 11px; color: var(--seal);
+    }
+    .tools { display: flex; gap: 18px; font-size: 13px; }
+    .tools a { color: var(--ink); text-decoration: none; }
+    .tools a.seal { color: var(--seal); }
+    .sheet {
+      margin: 0 36px 28px;
+      border: 1px solid rgba(26,24,20,.18);
+      background: rgba(255,250,241,.55);
+      display: grid; grid-template-columns: 280px 1fr;
+      min-height: 0;
+    }
+    nav { border-right: 1px solid rgba(26,24,20,.12); padding: 18px 0; }
+    .item { padding: 12px 18px; cursor: pointer; }
+    .item.active { background: rgba(155,44,44,.06); }
+    .item .idx { font-family: "Noto Serif SC", serif; color: var(--seal); font-size: 13px; }
+    .item b { display: block; margin: 2px 0; font-family: "Noto Serif SC", serif; font-size: 16px; font-weight: 500; }
+    .item p { margin: 0; color: var(--muted); font-size: 12px; }
+    .map { position: relative; min-height: 0; }
+    .map svg { width: 100%; height: 100%; }
+    .colophon {
+      position: absolute; right: 24px; bottom: 20px; text-align: right;
+    }
+    .colophon h2 { margin: 0 0 6px; font-family: "Noto Serif SC", serif; font-size: 22px; font-weight: 500; }
+    .colophon p { margin: 0; color: var(--muted); font-size: 12px; }
+    .stamp {
+      margin-left: auto; margin-top: 10px; width: 46px; height: 46px;
+      border: 2px solid var(--seal); color: var(--seal);
+      display: grid; place-items: center; font-family: "Noto Serif SC", serif; font-size: 13px;
+      transform: rotate(-8deg);
+    }
+    .back { position: fixed; left: 16px; bottom: 14px; font-size: 11px; color: var(--muted); text-decoration: none; }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header>
+      <div class="title-block">
+        <small>10 · INK MAP</small>
+        <h1>意图画布</h1>
+      </div>
+      <div class="tools">
+        <a href="#">检索</a>
+        <a href="#">知识地图</a>
+        <a class="seal" href="#">新开一纸</a>
+      </div>
+    </header>
+    <section class="sheet">
+      <nav>
+        <div class="item active">
+          <div class="idx">其一</div>
+          <b>订单文件关系</b>
+          <p>OspOrderWebController · 八十线</p>
+        </div>
+        <div class="item">
+          <div class="idx">其二</div>
+          <b>支付回调败径</b>
+          <p>三层向下 · 超时 / 幂等</p>
+        </div>
+        <div class="item">
+          <div class="idx">其三</div>
+          <b>聚合根边界</b>
+          <p>Order / Item / PayRecord</p>
+        </div>
+        <div class="item">
+          <div class="idx">其四</div>
+          <b>库存扣减时序</b>
+          <p>锁 · 付 · 回滚</p>
+        </div>
+      </nav>
+      <div class="map">
+        <svg viewBox="0 0 760 560" aria-hidden="true">
+          <g fill="none" stroke="#1a1814" stroke-width="1.15" opacity=".85">
+            <path d="M180 280H310M310 280H450M310 280V160H450M310 280V400H450M450 160H590M450 280H620M450 400H590"/>
+          </g>
+          <rect x="78" y="248" width="104" height="64" fill="#1a1814"/>
+          <rect x="268" y="254" width="108" height="52" fill="none" stroke="#1a1814"/>
+          <rect x="418" y="134" width="118" height="48" fill="none" stroke="#1a1814"/>
+          <rect x="418" y="254" width="118" height="48" fill="none" stroke="#9b2c2c"/>
+          <rect x="418" y="374" width="118" height="48" fill="none" stroke="#1a1814"/>
+          <rect x="574" y="142" width="120" height="34" fill="#e6d8c2" stroke="#1a1814"/>
+          <rect x="608" y="262" width="120" height="34" fill="#e6d8c2" stroke="#1a1814"/>
+          <rect x="574" y="382" width="120" height="34" fill="#e6d8c2" stroke="#1a1814"/>
+          <text x="92" y="286" fill="#f3eadc" font-size="13">中心类</text>
+        </svg>
+        <div class="colophon">
+          <h2>文件关系图 · OspOrder</h2>
+          <p>一百六十六元素 · 四十文件 · 四十节点</p>
+          <p>更新于六月七日丑时</p>
+          <div class="stamp">意图</div>
+        </div>
+      </div>
+    </section>
+  </div>
+  <a class="back" href="index.html">← 返回方向墙</a>
+</body>
+</html>

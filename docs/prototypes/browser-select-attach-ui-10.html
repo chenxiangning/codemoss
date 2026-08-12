@@ -1,0 +1,604 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>网页摘录关联 · 10 套 UI 变体</title>
+<style>
+:root {
+  --ui-font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", system-ui, sans-serif;
+  --mono: "SF Mono", "Sarasa Mono SC", Menlo, monospace;
+  --ink: #1c1d21;
+  --ink-soft: #3d4048;
+  --muted: #6b7080;
+  --faint: #8b90a0;
+  --line: #e6e7ec;
+  --line-strong: #d5d7de;
+  --paper: #f6f7f9;
+  --white: #fff;
+  --accent: #2563eb;
+  --accent-soft: color-mix(in srgb, #2563eb 12%, #fff);
+  --ok: #15803d;
+  --ok-soft: #dcfce7;
+  --chip: #eef0f4;
+  --user-bubble: #2563eb;
+  --shadow: 0 10px 28px rgba(16, 24, 40, 0.08);
+  --r: 12px;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: #eef0f4; color: var(--ink); font: 13px/1.5 var(--ui-font); }
+button { font: inherit; cursor: pointer; }
+code { font-family: var(--mono); }
+
+.page { max-width: 1180px; margin: 0 auto; padding: 36px 28px 80px; }
+.hero h1 { margin: 0 0 8px; font-size: 26px; letter-spacing: -0.03em; }
+.hero p { margin: 0 0 18px; color: var(--muted); max-width: 720px; }
+.nav { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 28px; }
+.nav a {
+  color: var(--muted); text-decoration: none; border: 1px solid var(--line-strong);
+  border-radius: 999px; padding: 4px 10px; font-size: 11px; font-weight: 600;
+  background: var(--white);
+}
+.nav a:hover { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 40%, var(--line)); }
+
+.anti {
+  border: 1px dashed #c4c8d2; border-radius: 14px; padding: 14px 16px; margin-bottom: 36px;
+  background: repeating-linear-gradient(-45deg, #fff, #fff 8px, #f8f8fa 8px, #f8f8fa 16px);
+}
+.anti b { font-size: 11px; letter-spacing: .08em; color: #9a3412; }
+.anti p { margin: 6px 0 0; color: var(--muted); font-size: 12px; }
+
+.block { margin: 0 0 42px; }
+.meta { display: flex; align-items: baseline; gap: 10px; margin-bottom: 6px; }
+.no {
+  font: 600 11px/1 var(--mono); color: var(--accent);
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--line));
+  border-radius: 999px; padding: 4px 9px; background: #fff;
+}
+.meta h2 { margin: 0; font-size: 16px; }
+.why { margin: 0 0 12px; color: var(--muted); font-size: 12.5px; }
+
+.stage {
+  display: grid; grid-template-columns: 1.15fr .85fr; min-height: 430px;
+  border: 1px solid var(--line-strong); border-radius: 16px; overflow: hidden; background: var(--white);
+  box-shadow: var(--shadow);
+}
+.chat {
+  display: flex; flex-direction: column; min-width: 0; background: #fbfbfc; border-right: 1px solid var(--line);
+}
+.thread { flex: 1; padding: 16px 16px 10px; overflow: auto; }
+.msg { max-width: 92%; margin: 0 0 10px; }
+.msg.user { margin-left: auto; background: var(--user-bubble); color: #fff; border-radius: 14px 14px 4px 14px; padding: 8px 11px; }
+.msg.bot { background: #fff; border: 1px solid var(--line); border-radius: 14px 14px 14px 4px; padding: 8px 11px; color: var(--ink-soft); }
+.composer {
+  border-top: 1px solid var(--line); background: #fff; padding: 8px 10px 10px;
+}
+.input {
+  border: 1px solid var(--line-strong); border-radius: 14px; min-height: 44px; padding: 10px 12px;
+  color: var(--faint); background: #fff;
+}
+.browser {
+  background: #f3f4f6; display: flex; flex-direction: column; min-width: 0;
+}
+.browser-bar {
+  height: 32px; display: flex; align-items: center; gap: 6px; padding: 0 10px;
+  border-bottom: 1px solid var(--line); background: #fff; color: var(--faint); font: 11px var(--mono);
+}
+.page-mock { padding: 18px 20px; color: var(--ink-soft); }
+.page-mock h3 { margin: 0 0 8px; font-size: 16px; }
+.page-mock p { margin: 0 0 10px; font-size: 12.5px; }
+.mark { outline: 2px solid var(--accent); background: color-mix(in srgb, var(--accent) 8%, #fff); border-radius: 3px; }
+
+/* shared atoms */
+.fold {
+  border: 1px solid var(--line-strong); border-radius: 10px; background: #fff; overflow: hidden;
+}
+.fold-head {
+  display: flex; align-items: center; gap: 8px; width: 100%; text-align: left;
+  background: #f7f8fa; border: 0; padding: 7px 10px; color: var(--ink);
+}
+.fold-head:hover { background: #eef1f6; }
+.chev { width: 14px; color: var(--muted); transition: transform .15s; }
+.fold.open .chev { transform: rotate(90deg); }
+.fold-body { display: none; padding: 8px 10px 10px; border-top: 1px solid var(--line); }
+.fold.open .fold-body { display: block; }
+.row { display: flex; gap: 8px; align-items: flex-start; padding: 6px 0; border-bottom: 1px dashed var(--line); }
+.row:last-child { border-bottom: 0; }
+.idx { flex: none; width: 18px; height: 18px; border-radius: 5px; background: var(--chip); color: var(--muted); font: 600 10px/18px var(--mono); text-align: center; }
+.kind { flex: none; font-size: 10px; color: var(--muted); background: var(--chip); border-radius: 999px; padding: 1px 6px; }
+.excerpt { min-width: 0; color: var(--ink); font-size: 12px; }
+.ico {
+  width: 22px; height: 22px; border: 1px solid var(--line-strong); border-radius: 999px; background: #fff; color: var(--muted);
+  display: inline-flex; align-items: center; justify-content: center; padding: 0;
+}
+.ico:hover { color: var(--ink); }
+.badge { font-size: 10px; font-weight: 700; background: var(--ok-soft); color: var(--ok); border-radius: 999px; padding: 2px 6px; }
+.kicker { font-size: 10.5px; font-weight: 700; color: var(--muted); }
+.now { display: none; }
+.now.on { display: block; }
+
+/* V1 curtain fold */
+.v1-fold { margin: 8px 0 2px; }
+
+/* V2 quote */
+.quote {
+  display: flex; gap: 8px; align-items: stretch; margin: 0 0 8px;
+  border: 1px solid var(--line); border-radius: 10px; background: #fafbfd;
+}
+.quote-bar { width: 3px; background: var(--accent); border-radius: 3px 0 0 3px; }
+.quote-body { flex: 1; min-width: 0; padding: 7px 8px 7px 0; }
+.quote-text { font-size: 12px; color: var(--ink-soft); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.quote.open .more { display: block; }
+.quote .more { display: none; margin-top: 6px; }
+
+/* V3 chips */
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 8px; }
+.chip {
+  border: 1px solid var(--line-strong); background: #f4f6fa; border-radius: 999px;
+  padding: 3px 8px 3px 6px; display: inline-flex; align-items: center; gap: 5px; color: var(--ink-soft); font-size: 11.5px;
+}
+.chip.on { border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); background: var(--accent-soft); color: #1e3a8a; }
+.chip .x { border: 0; background: transparent; color: var(--faint); padding: 0; line-height: 1; }
+.chip-preview { display: none; margin: 0 0 8px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; background: #fff; font-size: 12px; }
+.chip-preview.on { display: block; }
+
+/* V4 token + curtain card */
+.token {
+  display: inline-flex; align-items: center; gap: 6px; margin: 0 0 8px;
+  border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--line));
+  background: var(--accent-soft); color: #1e3a8a; border-radius: 8px; padding: 4px 8px; font-size: 12px; font-weight: 650;
+}
+.ev-card { margin: 8px 0; border: 1px solid var(--line); border-radius: 12px; background: #fff; overflow: hidden; }
+.ev-head { display: flex; justify-content: space-between; align-items: center; padding: 8px 10px; background: #f7f8fb; border-bottom: 1px solid var(--line); }
+.ev-list { padding: 4px 10px 8px; }
+
+/* V5 drawer */
+.drawer-stage { position: relative; }
+.one-line {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  margin: 0 0 8px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 10px; background: #f8f9fb;
+}
+.mask { display: none; position: absolute; inset: 0; background: rgba(16,24,40,.18); }
+.drawer {
+  display: none; position: absolute; top: 0; right: 0; bottom: 0; width: 58%;
+  background: #fff; border-left: 1px solid var(--line-strong); box-shadow: -12px 0 30px rgba(16,24,40,.08);
+  padding: 12px;
+}
+.drawer-stage.open .mask, .drawer-stage.open .drawer { display: block; }
+
+/* V6 bubble */
+.pin { display: none; }
+.pin.on { display: flex; align-items: center; gap: 6px; margin: 0 0 8px; font-size: 11px; color: var(--muted); }
+.ann {
+  margin: 8px 0 10px; border-left: 3px solid var(--accent); padding: 6px 10px;
+  background: color-mix(in srgb, var(--accent) 6%, #fff); border-radius: 0 10px 10px 0;
+}
+
+/* V8 tabs */
+.tabs { display: flex; gap: 0; margin: 0 0 8px; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.tab { flex: 1; border: 0; background: #f6f7f9; padding: 6px; font-weight: 650; color: var(--muted); }
+.tab.on { background: #fff; color: var(--ink); box-shadow: inset 0 -2px 0 var(--accent); }
+.pane { display: none; margin: 0 0 8px; }
+.pane.on { display: block; }
+
+/* V9 pop */
+.popwrap { position: relative; margin: 0 0 8px; }
+.slim {
+  width: 100%; text-align: left; border: 1px solid var(--line); border-radius: 10px; background: #fff; padding: 7px 10px;
+}
+.pop {
+  display: none; position: absolute; left: 0; right: 0; bottom: calc(100% + 6px);
+  background: #fff; border: 1px solid var(--line-strong); border-radius: 12px; box-shadow: var(--shadow); padding: 8px 10px;
+}
+.popwrap.open .pop { display: block; }
+
+/* V10 interlayer */
+.inter { margin: 10px 0; }
+
+.note { margin-top: 8px; color: var(--faint); font-size: 11px; }
+</style>
+</head>
+<body>
+<div class="page">
+  <header class="hero">
+    <h1>网页摘录关联 · 10 套 UI</h1>
+    <p>
+      现状把采集卡做成了调试面板：bounds、selector、observation 全摊在对话框上方。
+      下面 10 套都吃同一份事实（3 段摘录 + 来源页），但分别把重量放在<strong>幕布折叠</strong>或<strong>对话框附件</strong>上。
+      点卡片可展开 / 切换。
+    </p>
+    <nav class="nav">
+      <a href="#v1">V1 幕布折叠</a>
+      <a href="#v2">V2 引用条</a>
+      <a href="#v3">V3 芯片串</a>
+      <a href="#v4">V4 双栖</a>
+      <a href="#v5">V5 抽屉</a>
+      <a href="#v6">V6 幕布批注</a>
+      <a href="#v7">V7 编号清单</a>
+      <a href="#v8">V8 摘录/来源</a>
+      <a href="#v9">V9 一行弹出</a>
+      <a href="#v10">V10 幕布夹层</a>
+    </nav>
+  </header>
+
+  <section class="anti">
+    <b>现状 · 反例</b>
+    <p>大蓝卡 + 「可用」徽标 + 技术 chip（role / bounds / selector）+ 展开后的 observation dump。它既不像幕布里的「文件修改 (N)」，也不像对话框里的附件 token。</p>
+  </section>
+
+  <!-- V1 -->
+  <section class="block" id="v1">
+    <div class="meta"><span class="no">V1</span><h2>幕布折叠条</h2></div>
+    <p class="why">推荐默认。语法直接借「文件修改 (3 个)」：正文之间一条折叠，默认只留标题和数量。对话框不再占一块蓝卡。</p>
+    <div class="stage">
+      <div class="chat">
+        <div class="thread">
+          <div class="msg user">把这页关键句摘进上下文。</div>
+          <div class="msg bot">可以。我先读你圈的 3 段，再按幕布卡片语法收敛。</div>
+          <div class="fold v1-fold" data-fold>
+            <button class="fold-head" type="button">
+              <span class="chev">▶</span>
+              <strong>网页摘录 (3)</strong>
+              <span class="kicker">file-edit-collapse-variants.html</span>
+              <span style="margin-left:auto;color:var(--faint);font-size:11px">点开看原文</span>
+            </button>
+            <div class="fold-body">
+              <div class="row"><span class="idx">1</span><span class="kind">段落</span><div class="excerpt">你可以把这个版本直接套进你的幕布卡片：去掉所有边框，保留仅有文本与极细图标。</div></div>
+              <div class="row"><span class="idx">2</span><span class="kind">段落</span><div class="excerpt">折叠态只有这一句，右侧文案可改成「共 N 个文件」。</div></div>
+              <div class="row"><span class="idx">3</span><span class="kind">列表</span><div class="excerpt">docs/intro.md · 修改</div></div>
+            </div>
+          </div>
+        </div>
+        <div class="composer">
+          <div class="input">输入消息，摘录已在上方幕布里…</div>
+        </div>
+      </div>
+      <div class="browser">
+        <div class="browser-bar">file-edit-collapse-variants.html</div>
+        <div class="page-mock">
+          <h3>极简无边框折叠示例</h3>
+          <p class="mark">你可以把这个版本直接套进你的幕布卡片：去掉所有边框…</p>
+          <p>折叠态只有这一句，右侧文案可改成「共 N 个文件」。</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- V2 -->
+  <section class="block" id="v2">
+    <div class="meta"><span class="no">V2</span><h2>对话框引用条</h2></div>
+    <p class="why">重量放在对话框：像引用即将发送的话。默认一行摘录 + 数量，展开才出清单。幕布保持干净。</p>
+    <div class="stage">
+      <div class="chat">
+        <div class="thread">
+          <div class="msg user">把这页关键句摘进上下文。</div>
+          <div class="msg bot">圈选完成后会出现在输入框上方，像一条引用。</div>
+        </div>
+        <div class="composer">
+          <div class="quote" data-quote>
+            <div class="quote-bar"></div>
+            <div class="quote-body">
+              <div class="kicker">引用网页 · 3 段 <span class="badge">可用</span></div>
+              <div class="quote-text">你可以把这个版本直接套进你的幕布卡片：去掉所有边框…</div>
+              <div class="more">
+                <div class="row"><span class="idx">1</span><div class="excerpt">去掉所有边框，保留仅有文本与极细图标。</div></div>
+                <div class="row"><span class="idx">2</span><div class="excerpt">折叠态只有这一句，右侧文案可改成「共 N 个文件」。</div></div>
+                <div class="row"><span class="idx">3</span><div class="excerpt">docs/intro.md · 修改</div></div>
+              </div>
+              <button type="button" class="kicker" style="margin-top:6px;border:0;background:0;color:var(--accent)" data-toggle-quote>展开 3 段</button>
+            </div>
+            <div style="padding:8px 8px 0 0;display:flex;flex-direction:column;gap:4px">
+              <button class="ico" type="button" title="移除">×</button>
+            </div>
+          </div>
+          <div class="input">继续写你的问题…</div>
+        </div>
+      </div>
+      <div class="browser">
+        <div class="browser-bar">file-edit-collapse-variants.html</div>
+        <div class="page-mock"><h3>极简无边框折叠示例</h3><p class="mark">折叠态只有这一句…</p></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- V3 -->
+  <section class="block" id="v3">
+    <div class="meta"><span class="no">V3</span><h2>对话框芯片串</h2></div>
+    <p class="why">对齐附件 token：每段一个 chip，可单独删。点 chip 才预览全文。技术字段永不出现。</p>
+    <div class="stage">
+      <div class="chat">
+        <div class="thread">
+          <div class="msg bot">3 段已变成输入框上的小筹码，像贴图附件。</div>
+        </div>
+        <div class="composer">
+          <div class="chips" id="chips">
+            <button class="chip on" type="button" data-chip="0">◎ 段落 1 <span class="x">×</span></button>
+            <button class="chip" type="button" data-chip="1">◎ 段落 2 <span class="x">×</span></button>
+            <button class="chip" type="button" data-chip="2">◎ 列表 3 <span class="x">×</span></button>
+          </div>
+          <div class="chip-preview on" id="chipPreview">你可以把这个版本直接套进你的幕布卡片：去掉所有边框，保留仅有文本与极细图标，最不占用视觉空间。</div>
+          <div class="input">输入消息…</div>
+        </div>
+      </div>
+      <div class="browser">
+        <div class="browser-bar">file-edit-collapse-variants.html</div>
+        <div class="page-mock"><h3>极简无边框折叠示例</h3><p class="mark">你可以把这个版本直接套进你的幕布卡片…</p></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- V4 -->
+  <section class="block" id="v4">
+    <div class="meta"><span class="no">V4</span><h2>双栖：对话框 token + 幕布证据</h2></div>
+    <p class="why">发送前对话框只留一枚 token。发送后，摘录落成幕布证据卡，和用户话分开，不再堵输入框。</p>
+    <div class="stage">
+      <div class="chat">
+        <div class="thread">
+          <div class="ev-card">
+            <div class="ev-head"><span class="kicker">网页摘录 · 3</span><span class="badge">已带入本轮</span></div>
+            <div class="ev-list">
+              <div class="row"><span class="idx">1</span><div class="excerpt">去掉所有边框，保留仅有文本与极细图标。</div></div>
+              <div class="row"><span class="idx">2</span><div class="excerpt">折叠态只有这一句，右侧文案可改成「共 N 个文件」。</div></div>
+              <div class="row"><span class="idx">3</span><div class="excerpt">docs/intro.md · 修改</div></div>
+            </div>
+          </div>
+          <div class="msg user">按这个语法改幕布卡片。</div>
+          <div class="msg bot">收到。我按这 3 段来改，不再回看 bounds。</div>
+        </div>
+        <div class="composer">
+          <div class="token">◎ 网页 ×3 · 已发送</div>
+          <div class="input">下一句…</div>
+        </div>
+      </div>
+      <div class="browser">
+        <div class="browser-bar">file-edit-collapse-variants.html</div>
+        <div class="page-mock"><h3>来源页仍在右侧</h3><p>对话框只留 token，证据住在幕布。</p></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- V5 -->
+  <section class="block" id="v5">
+    <div class="meta"><span class="no">V5</span><h2>一行摘要 + 右侧抽屉</h2></div>
+    <p class="why">对话框永远一行。要点「查看」才从右侧滑出检视，不把 dump 撑开输入区。</p>
+    <div class="stage drawer-stage" id="drawerStage">
+      <div class="chat">
+        <div class="thread">
+          <div class="msg bot">详情不要内嵌展开。打开抽屉看清单。</div>
+        </div>
+        <div class="composer">
+          <div class="one-line">
+            <span><strong>已摘 3 段</strong> · 文件修改折叠示例</span>
+            <span>
+              <button type="button" class="kicker" style="border:0;background:0;color:var(--accent)" id="openDrawer">查看</button>
+              <button class="ico" type="button">×</button>
+            </span>
+          </div>
+          <div class="input">输入消息…</div>
+        </div>
+      </div>
+      <div class="browser">
+        <div class="browser-bar">file-edit-collapse-variants.html</div>
+        <div class="page-mock"><h3>极简无边框折叠示例</h3><p class="mark">你可以把这个版本直接套进你的幕布卡片…</p></div>
+      </div>
+      <div class="mask" id="closeDrawer"></div>
+      <aside class="drawer">
+        <div class="meta"><span class="kicker">网页摘录</span></div>
+        <h3 style="margin:6px 0 10px;font-size:15px">文件修改折叠示例</h3>
+        <div class="row"><span class="idx">1</span><span class="kind">段落</span><div class="excerpt">去掉所有边框，保留仅有文本与极细图标。</div></div>
+        <div class="row"><span class="idx">2</span><span class="kind">段落</span><div class="excerpt">折叠态只有这一句，右侧文案可改成「共 N 个文件」。</div></div>
+        <div class="row"><span class="idx">3</span><span class="kind">列表</span><div class="excerpt">docs/intro.md · 修改</div></div>
+        <p class="note">来源只保留文件名。不展示 bounds / selector。</p>
+      </aside>
+    </div>
+  </section>
+
+  <!-- V6 -->
+  <section class="block" id="v6">
+    <div class="meta"><span class="no">V6</span><h2>幕布批注气泡</h2></div>
+    <p class="why">摘录直接变成幕布里的批注块（左蓝条），像引用别人的话。对话框只留一枚「已钉住」。</p>
+    <div class="stage">
+      <div class="chat">
+        <div class="thread">
+          <div class="ann">
+            <div class="kicker">从网页钉住 · 3 段</div>
+            <div class="excerpt" style="margin-top:4px">「你可以把这个版本直接套进你的幕布卡片：去掉所有边框，保留仅有文本与极细图标。」</div>
+            <div class="excerpt" style="margin-top:4px;color:var(--muted)">另 2 段已折叠进这条批注。</div>
+          </div>
+          <div class="msg user">按这个批注改。</div>
+        </div>
+        <div class="composer">
+          <div class="pin on">◎ 已钉住 3 段网页摘录</div>
+          <div class="input">输入消息…</div>
+        </div>
+      </div>
+      <div class="browser">
+        <div class="browser-bar">file-edit-collapse-variants.html</div>
+        <div class="page-mock"><h3>圈选即落幕布</h3><p class="mark">批注块和用户气泡分开，输入框不被占。</p></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- V7 -->
+  <section class="block" id="v7">
+    <div class="meta"><span class="no">V7</span><h2>编号清单</h2></div>
+    <p class="why">对话框里就是一张克制清单：序号 + 类型 + 一句原文。没有 kicker、没有可用徽标、没有技术 chip。</p>
+    <div class="stage">
+      <div class="chat">
+        <div class="thread">
+          <div class="msg bot">如果必须放在输入框上，至少长得像清单，不像调试器。</div>
+        </div>
+        <div class="composer">
+          <div class="fold open" style="margin-bottom:8px">
+            <div class="fold-head" style="cursor:default">
+              <strong>3 段网页原文</strong>
+              <span class="kicker">来自折叠示例</span>
+              <span style="margin-left:auto"><button class="ico" type="button">×</button></span>
+            </div>
+            <div class="fold-body" style="display:block">
+              <div class="row"><span class="idx">1</span><span class="kind">段落</span><div class="excerpt">去掉所有边框，保留仅有文本与极细图标，最不占用视觉空间。</div></div>
+              <div class="row"><span class="idx">2</span><span class="kind">段落</span><div class="excerpt">折叠态只有这一句，右侧文案可改成「共 N 个文件」。</div></div>
+              <div class="row"><span class="idx">3</span><span class="kind">列表</span><div class="excerpt">docs/intro.md · 修改</div></div>
+            </div>
+          </div>
+          <div class="input">输入消息…</div>
+        </div>
+      </div>
+      <div class="browser">
+        <div class="browser-bar">file-edit-collapse-variants.html</div>
+        <div class="page-mock"><h3>极简无边框折叠示例</h3><p class="mark">docs/intro.md 修改</p></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- V8 -->
+  <section class="block" id="v8">
+    <div class="meta"><span class="no">V8</span><h2>摘录 / 来源 两个页签</h2></div>
+    <p class="why">把「人要读的句子」和「从哪来」拆开。默认摘录。来源只给标题和文件名，不给 observation。</p>
+    <div class="stage">
+      <div class="chat">
+        <div class="thread">
+          <div class="msg bot">用户点开「来源」才看文件名。默认永远是句子。</div>
+        </div>
+        <div class="composer">
+          <div class="tabs">
+            <button class="tab on" type="button" data-tab="ex">摘录 3</button>
+            <button class="tab" type="button" data-tab="src">来源</button>
+          </div>
+          <div class="pane on" data-pane="ex">
+            <div class="row"><span class="idx">1</span><div class="excerpt">去掉所有边框，保留仅有文本与极细图标。</div></div>
+            <div class="row"><span class="idx">2</span><div class="excerpt">折叠态只有这一句，右侧文案可改成「共 N 个文件」。</div></div>
+            <div class="row"><span class="idx">3</span><div class="excerpt">docs/intro.md · 修改</div></div>
+          </div>
+          <div class="pane" data-pane="src">
+            <div class="kicker">本地预览</div>
+            <div style="margin-top:4px;font-weight:700">文件修改折叠示例（极简无边框版）</div>
+            <div class="note">file-edit-collapse-variants.html</div>
+          </div>
+          <div class="input">输入消息…</div>
+        </div>
+      </div>
+      <div class="browser">
+        <div class="browser-bar">file-edit-collapse-variants.html</div>
+        <div class="page-mock"><h3>来源页签只回答「从哪来」</h3><p>不回答 selector / bounds。</p></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- V9 -->
+  <section class="block" id="v9">
+    <div class="meta"><span class="no">V9</span><h2>一行摘要 + 上浮列表</h2></div>
+    <p class="why">对话框高度恒定。点那一行，列表从输入框上方浮出，像命令面板，不撑开 Composer。</p>
+    <div class="stage">
+      <div class="chat">
+        <div class="thread">
+          <div class="msg bot">适合摘录很多、又不想永久占高的时候。</div>
+        </div>
+        <div class="composer">
+          <div class="popwrap" id="popwrap">
+            <div class="pop">
+              <div class="row"><span class="idx">1</span><div class="excerpt">去掉所有边框，保留仅有文本与极细图标。</div></div>
+              <div class="row"><span class="idx">2</span><div class="excerpt">折叠态只有这一句，右侧文案可改成「共 N 个文件」。</div></div>
+              <div class="row"><span class="idx">3</span><div class="excerpt">docs/intro.md · 修改</div></div>
+            </div>
+            <button class="slim" type="button" id="togglePop">◎ 已选 3 段 · 「你可以把这个版本直接套进你的幕布卡片…」</button>
+          </div>
+          <div class="input">输入消息…</div>
+        </div>
+      </div>
+      <div class="browser">
+        <div class="browser-bar">file-edit-collapse-variants.html</div>
+        <div class="page-mock"><h3>极简无边框折叠示例</h3><p class="mark">你可以把这个版本直接套进你的幕布卡片…</p></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- V10 -->
+  <section class="block" id="v10">
+    <div class="meta"><span class="no">V10</span><h2>幕布夹层 · 与文件修改同构</h2></div>
+    <p class="why">最「幕布」。摘录夹在助手正文中间，外观和「文件修改 (N)」同一套：折叠条、展开列表、不进对话框。</p>
+    <div class="stage">
+      <div class="chat">
+        <div class="thread">
+          <div class="msg bot" style="margin-bottom:8px">这段正文 A：先记下产品文案两次迭代之间的变更。</div>
+          <div class="fold inter open" data-fold>
+            <button class="fold-head" type="button">
+              <span class="chev">▶</span>
+              <strong>网页摘录 (3)</strong>
+              <span style="margin-left:auto;color:var(--faint);font-size:11px">点开看原文</span>
+            </button>
+            <div class="fold-body">
+              <div class="row"><span class="idx">1</span><span class="kind">段落</span><div class="excerpt">去掉所有边框，保留仅有文本与极细图标。</div></div>
+              <div class="row"><span class="idx">2</span><span class="kind">段落</span><div class="excerpt">折叠态只有这一句，右侧文案可改成「共 N 个文件」。</div></div>
+              <div class="row"><span class="idx">3</span><span class="kind">列表</span><div class="excerpt">docs/intro.md · 修改</div></div>
+            </div>
+          </div>
+          <div class="msg bot" style="margin-top:8px">这段正文 B：折叠后只留「网页摘录 (3)」，正文继续聚焦。</div>
+        </div>
+        <div class="composer">
+          <div class="input">对话框保持干净。</div>
+        </div>
+      </div>
+      <div class="browser">
+        <div class="browser-bar">file-edit-collapse-variants.html</div>
+        <div class="page-mock">
+          <h3>和文件修改同一套幕布语法</h3>
+          <p>用户已经熟悉「点开看明细」。网页摘录不该另起一种蓝卡。</p>
+        </div>
+      </div>
+    </div>
+    <p class="note">若只能落地一套：V1 或 V10 做幕布主表面，V3 / V9 做发送前对话框过渡。</p>
+  </section>
+</div>
+
+<script>
+const texts = [
+  "你可以把这个版本直接套进你的幕布卡片：去掉所有边框，保留仅有文本与极细图标，最不占用视觉空间。",
+  "折叠态只有这一句，右侧文案可改成「共 N 个文件」。",
+  "docs/intro.md · 修改",
+];
+
+document.querySelectorAll("[data-fold]").forEach((el) => {
+  el.querySelector(".fold-head")?.addEventListener("click", () => el.classList.toggle("open"));
+});
+
+document.querySelectorAll("[data-toggle-quote]").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    const quote = btn.closest(".quote");
+    quote.classList.toggle("open");
+    btn.textContent = quote.classList.contains("open") ? "收起" : "展开 3 段";
+  });
+});
+
+document.querySelectorAll("[data-chip]").forEach((chip) => {
+  chip.addEventListener("click", (event) => {
+    if (event.target.classList.contains("x")) {
+      chip.remove();
+      return;
+    }
+    document.querySelectorAll("[data-chip]").forEach((c) => c.classList.remove("on"));
+    chip.classList.add("on");
+    const preview = document.getElementById("chipPreview");
+    preview.textContent = texts[Number(chip.dataset.chip)] || "";
+    preview.classList.add("on");
+  });
+});
+
+const drawerStage = document.getElementById("drawerStage");
+document.getElementById("openDrawer")?.addEventListener("click", () => drawerStage.classList.add("open"));
+document.getElementById("closeDrawer")?.addEventListener("click", () => drawerStage.classList.remove("open"));
+
+document.querySelectorAll("[data-tab]").forEach((tab) => {
+  tab.addEventListener("click", () => {
+    const root = tab.closest(".composer");
+    root.querySelectorAll("[data-tab]").forEach((t) => t.classList.toggle("on", t === tab));
+    root.querySelectorAll("[data-pane]").forEach((p) => p.classList.toggle("on", p.dataset.pane === tab.dataset.tab));
+  });
+});
+
+document.getElementById("togglePop")?.addEventListener("click", () => {
+  document.getElementById("popwrap").classList.toggle("open");
+});
+</script>
+</body>
+</html>

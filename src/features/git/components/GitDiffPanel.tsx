@@ -1071,7 +1071,6 @@ function GitDiffPanelImpl({
       );
       void openHtmlInBrowser(absolutePath, {
         workspaceId,
-        ownerSurface: "git-diff-file-list",
       }).catch((error) => {
         console.warn("[git-diff] openHtmlInBrowser failed", error);
         pushErrorToast({

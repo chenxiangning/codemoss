@@ -252,6 +252,8 @@ export {
   refreshBrowserAgentSnapshot,
   routeBrowserAgentProvider,
   runBrowserAgentAction,
+  startBrowserAgentElementSelect,
+  stopBrowserAgentElementSelect,
   syncBrowserAgentWebviewBounds,
   updateBrowserAgentSession,
   validateBrowserAgentUrl,

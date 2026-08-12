@@ -35,6 +35,12 @@ const browserAgent = {
       info: "Show Browser Agent details",
       footnote:
         "MVP does not store raw DOM, cookies, headers, or page secrets.",
+      collapseDock: "Collapse browser controls",
+      expandDock: "Expand browser controls",
+      attachContext: "Attach browser context",
+      selectElement: "Select page element for chat",
+      cancelSelectElement: "Cancel page element selection",
+      popOutWindow: "Pop out to separate window",
     },
     composer: {
       attach: "Attach browser context",

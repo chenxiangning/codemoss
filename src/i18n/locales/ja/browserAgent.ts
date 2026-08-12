@@ -33,7 +33,13 @@ const browserAgent = {
       "closePanel": "ブラウザドックを閉じる",
       "close": "Browser Agent セッションを閉じる",
       "info": "Browser Agent の詳細を表示",
-      "footnote": "MVP では生の DOM、Cookie、ヘッダー、ページのシークレットを保存しません。"
+      "footnote": "MVP では生の DOM、Cookie、ヘッダー、ページのシークレットを保存しません。",
+      "collapseDock": "ブラウザコントロールを折りたたむ",
+      "expandDock": "ブラウザコントロールを展開",
+      "attachContext": "ブラウザコンテキストを関連付け",
+      "selectElement": "ページ要素を選択してチャットへ",
+      "cancelSelectElement": "ページ要素の選択を解除",
+      "popOutWindow": "独立ウィンドウで開く",
     },
     "composer": {
       "attach": "ブラウザコンテキストを添付",
