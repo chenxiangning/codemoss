@@ -1,10 +1,4 @@
-# workspace-sidebar-session-loading Specification
-
-## Purpose
-
-定义 workspace sidebar session hydration 的 foreground priority、idle prewarm、request deduplication、stale-result rejection 与 interaction responsiveness contract。
-
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: Workspace Sidebar Hydration MUST Be Staged And Deduplicated
 
@@ -16,16 +10,17 @@ Visibility 读取 MUST 使用独立只读路径，MUST NOT 通过 `SharedEventWr
 
 #### Scenario: active workspace hydrates before idle workspaces
 
-- **WHEN** 应用恢复多个 workspaces
-- **THEN** active workspace MUST 先进入 hydration
-- **AND** inactive workspaces MUST 通过 bounded idle scheduling 预热
-- **AND** inactive hydration MUST NOT block the active-workspace ready milestone
+- **WHEN** AppShell 对多个 workspace 发起 sidebar hydration
+- **THEN** 当前 active workspace 的 session 请求优先执行
+- **AND** idle workspace 的 hydration 在 scheduler 允许时延后执行
+- **AND** idle workspace 失败不得阻塞 active workspace 的已缓存 session 展示
 
 #### Scenario: duplicate hydration request reuses current work
 
-- **WHEN** 同一 workspace 在 loading 或 in-flight 状态再次收到等价 hydration 请求
-- **THEN** 系统 MUST skip or reuse the current work
-- **AND** MUST NOT issue a duplicate full-catalog request
+- **WHEN** 同一 workspace 在同一 query generation 内再次请求 hydration
+- **THEN** 系统 MUST 复用进行中的请求或其结果
+- **AND** 不得启动重复的 provider/session loading pipeline
+- **AND** query generation 变化后旧请求结果不得覆盖新请求结果
 
 #### Scenario: first Session Index projection carries Shared visibility facts
 
@@ -55,26 +50,3 @@ Visibility 读取 MUST 使用独立只读路径，MUST NOT 通过 `SharedEventWr
 - **THEN** it MUST NOT fall back to exhaustive native catalog enumeration, transcript loading, or an unbounded history scan on the foreground path
 - **AND** it MUST NOT block first-paint on the Shared EventWriter actor
 - **AND** normal native rows with no Shared ownership evidence MUST remain eligible for the bounded Session Index path when the projection is available
-
-### Requirement: Workspace Sidebar Hydration MUST Reject Stale Results
-
-系统 MUST 使用 request sequence 或等价 query identity 识别旧 hydration 结果。
-
-#### Scenario: older request finishes after a newer refresh
-
-- **WHEN** 较旧请求在较新 workspace/query refresh 之后完成
-- **THEN** 旧结果 MUST NOT overwrite the newer projection
-- **AND** discarded work MUST NOT mark the workspace fully hydrated
-
-### Requirement: Background Hydration MUST Preserve Foreground Responsiveness
-
-后台 session hydration MUST NOT introduce high-frequency root polling or block
-thread selection, Composer input, or visible sidebar interaction.
-
-#### Scenario: user switches thread during background hydration
-
-- **WHEN** inactive or related workspace catalog hydration is running
-- **AND** 用户切换当前 thread 或继续输入
-- **THEN** foreground interaction MUST remain available
-- **AND** existing visible rows MAY remain during refresh
-- **AND** loading/degraded state MUST be represented separately from row membership

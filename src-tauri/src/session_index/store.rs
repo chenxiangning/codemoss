@@ -81,6 +81,8 @@ pub struct SessionIndexListPage {
     pub engines: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub partial_source: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub visibility: Option<super::shared_visibility::SharedNativeVisibilityProjection>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

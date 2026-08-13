@@ -91,4 +91,51 @@ describe("sessionIndexThreadSummaries", () => {
     expect(byId.get("claude:s1")?.name).toBe("Live name");
     expect(byId.get("c1")?.engineSource).toBe("codex");
   });
+
+  it("hides Shared-owned and protocol-hidden index rows before first paint", () => {
+    const rows = sessionIndexRowsToThreadSummaries(
+      [
+        {
+          engine: "claude",
+          sessionId: "owned-1",
+          title: "Claude Session",
+          updatedAt: 10,
+        },
+        {
+          engine: "claude",
+          sessionId: "user-1",
+          title: "Claude Session",
+          updatedAt: 9,
+        },
+      ],
+      {
+        workspaceId: "ws",
+        mappedTitles: {},
+        getCustomName: () => "",
+        hiddenSharedBindingIds: new Set(["claude:owned-1", "owned-1"]),
+      },
+    );
+    expect(rows.map((row) => row.id)).toEqual(["claude:user-1"]);
+  });
+
+  it("never hides a shared canonical row via the owner predicate", () => {
+    const rows = sessionIndexRowsToThreadSummaries(
+      [
+        {
+          engine: "claude",
+          sessionId: "shared:s1",
+          title: "Shared Session",
+          updatedAt: 3,
+        },
+      ],
+      {
+        workspaceId: "ws",
+        mappedTitles: {},
+        getCustomName: () => "",
+        hiddenSharedBindingIds: new Set(["shared:s1"]),
+      },
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.id).toBe("shared:s1");
+  });
 });

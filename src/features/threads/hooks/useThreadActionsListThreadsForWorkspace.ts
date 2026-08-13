@@ -18,6 +18,17 @@ import {
   listSessionIndexForWorkspace as listSessionIndexForWorkspaceService,
 } from "../../../services/tauri";
 import { sessionIndexRowsToThreadSummaries } from "./sessionIndexThreadSummaries";
+import {
+  expandVisibilityHideSet,
+  isFullyVerifiedSharedNativeVisibility,
+  isUsableSharedNativeVisibility,
+  hasVerifiedSharedHide,
+  lastVerifiedSharedHide,
+  mergePreservedSharedThreadsForIndexFirstPaint,
+  rememberVerifiedSharedHideIfComplete,
+  strengthenVerifiedSharedHide,
+  unionHideSets,
+} from "./sharedNativeVisibility";
 import { getThreadTimestamp, previewThreadName } from "../../../utils/threadItems";
 import { listSharedSessions as listSharedSessionsService } from "../../shared-session/services/sharedSessions";
 import {
@@ -367,21 +378,39 @@ export function useListThreadsForWorkspace({
         }
         // Progressive paint: replace stale snapshot ASAP with index rows.
         // Urgent dispatch (not startTransition) so WebView paints before heavy work.
+        // Never paint ordinary native Index rows with an empty/unverified hide set.
         let earlyIndexPaintApplied = false;
+        const indexVisibility = sessionIndexPage?.visibility ?? null;
+        const visibilityHideSet = expandVisibilityHideSet(indexVisibility);
+        const verifiedHideSet = lastVerifiedSharedHide(workspace.id);
+        const canProjectIndexNatives =
+          isUsableSharedNativeVisibility(indexVisibility) ||
+          hasVerifiedSharedHide(workspace.id);
+        const earlyPaintHideSet = unionHideSets(visibilityHideSet, verifiedHideSet);
+        rememberVerifiedSharedHideIfComplete(
+          workspace.id,
+          indexVisibility,
+          earlyPaintHideSet,
+        );
         if (
           isFirstPaintHydration &&
           sessionIndexPage &&
           Array.isArray(sessionIndexPage.data) &&
-          sessionIndexPage.data.length > 0
+          sessionIndexPage.data.length > 0 &&
+          canProjectIndexNatives
         ) {
-          const earlyIndexSummaries = sessionIndexRowsToThreadSummaries(
-            sessionIndexPage.data,
-            {
-              workspaceId: workspace.id,
-              mappedTitles: {},
-              getCustomName,
-              hiddenSharedBindingIds: new Set(),
-            },
+          const earlyIndexSummaries = mergePreservedSharedThreadsForIndexFirstPaint(
+            sessionIndexRowsToThreadSummaries(
+              sessionIndexPage.data,
+              {
+                workspaceId: workspace.id,
+                mappedTitles: {},
+                getCustomName,
+                hiddenSharedBindingIds: earlyPaintHideSet,
+              },
+            ),
+            threadsByWorkspace[workspace.id],
+            getLastGoodThreadSummariesWithoutDeleted(),
           );
           if (earlyIndexSummaries.length > 0 && isLatestThreadListRequest()) {
             dispatch({
@@ -402,9 +431,29 @@ export function useListThreadsForWorkspace({
                 source: sessionIndexPage.source,
                 syncMs: sessionIndexPage.syncMs ?? null,
                 engines: sessionIndexPage.engines,
+                visibilityAvailable: Boolean(indexVisibility?.available),
+                hiddenCount: earlyPaintHideSet.size,
               },
             });
           }
+        } else if (
+          isFirstPaintHydration &&
+          sessionIndexPage &&
+          Array.isArray(sessionIndexPage.data) &&
+          sessionIndexPage.data.length > 0 &&
+          !canProjectIndexNatives
+        ) {
+          rememberPartialSource("shared-visibility-unavailable");
+          onDebug?.({
+            id: `${Date.now()}-client-session-index-visibility-pending`,
+            timestamp: Date.now(),
+            source: "client",
+            label: "thread/list session-index visibility pending",
+            payload: {
+              workspaceId: workspace.id,
+              reason: indexVisibility?.reason ?? "visibility-unavailable",
+            },
+          });
         } else if (sessionIndexPage === null) {
           rememberPartialSource("session-index-timeout");
         }
@@ -457,11 +506,24 @@ export function useListThreadsForWorkspace({
         const sharedSessions = normalizeSharedSessionSummaries(
           sharedSessionsResult ?? [],
         );
-        const hiddenSharedBindingIds = expandHiddenSharedBindingIds([
-          ...sharedSessions.flatMap((session) => session.nativeThreadIds),
-          // 协作 worker realtime 登记的 native id（改名 Agent N 后仍能 strip）
-          ...getCollabWorkerNativeHideIds(),
-        ]);
+        const hiddenSharedBindingIds = unionHideSets(
+          expandHiddenSharedBindingIds([
+            ...sharedSessions.flatMap((session) => session.nativeThreadIds),
+            // 协作 worker realtime 登记的 native id（改名 Agent N 后仍能 strip）
+            ...getCollabWorkerNativeHideIds(),
+          ]),
+          visibilityHideSet,
+          verifiedHideSet,
+        );
+        if (isFullyVerifiedSharedNativeVisibility(indexVisibility)) {
+          rememberVerifiedSharedHideIfComplete(
+            workspace.id,
+            indexVisibility,
+            hiddenSharedBindingIds,
+          );
+        } else {
+          strengthenVerifiedSharedHide(workspace.id, hiddenSharedBindingIds);
+        }
         const nativeOwnerToSharedThreadId =
           buildNativeOwnerToSharedThreadMap(sharedSessions);
         const existingThreads = filterDeletedSummaries(
@@ -840,6 +902,17 @@ export function useListThreadsForWorkspace({
         }
         if (sessionIndexPage) {
           rememberPartialSource(sessionIndexPage.partialSource);
+          const canMergeIndexNatives =
+            isUsableSharedNativeVisibility(indexVisibility) ||
+            hasVerifiedSharedHide(workspace.id);
+          if (!canMergeIndexNatives) {
+            rememberPartialSource("shared-visibility-unavailable");
+            getLastGoodThreadSummariesWithoutDeleted().forEach((summary) => {
+              if (!mergedById.has(summary.id)) {
+                mergedById.set(summary.id, summary);
+              }
+            });
+          } else {
           const indexSummaries = sessionIndexRowsToThreadSummaries(
             sessionIndexPage.data ?? [],
             {
@@ -873,6 +946,7 @@ export function useListThreadsForWorkspace({
               });
             }
           });
+          }
           if (!earlyIndexPaintApplied) {
             onDebug?.({
               id: `${Date.now()}-client-session-index`,

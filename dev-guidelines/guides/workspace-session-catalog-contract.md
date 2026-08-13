@@ -72,7 +72,7 @@ Session Management 默认 Bounded；「扫描全部」必须二次确认。启�
 
 ### 3. Contracts
 
-- **Sidebar cold path (first-paint / ordinary refresh)** MUST prefer Session Index (`list_session_index_for_workspace` → `~/.ccgui/session-index.sqlite3`) for list-level rows (title/time/engine/path). Session Index is **not** archive/folder/usage authority.
+- **Sidebar cold path (first-paint / ordinary refresh)** MUST prefer Session Index (`list_session_index_for_workspace` → `~/.ccgui/session-index.sqlite3`) for list-level rows (title/time/engine/path). Session Index is **not** archive/folder/usage authority. `list_session_index_for_workspace` MUST return a `SharedNativeVisibilityProjection` in the same response. First-paint complete means Index rows **plus** a usable visibility fact (or last-verified hide). An empty hide set is valid only when the projection is available.
 - Backend catalog active strict projection MUST remain the membership truth for **Session Management**, load-older convergence, and explicit force full-catalog — not the default cold-start sidebar owner.
 - Automatic post-first-paint exhaustive full-catalog is forbidden once Session Index seeds multi-engine first-paint; force refresh / Session Management MAY still call catalog.
 - AppShell workspace navigation 若只需要 owner topology，MUST 通过 `resolveWorkspaceProjectionOwnerIds` 从已加载 workspace registry 推导：main = self + direct `parentId` children（path/name/id stable order），worktree = self，registry pending = active id fallback。MUST NOT 为 topology 调用 `get_workspace_session_projection_summary` 或等价 exhaustive inventory；session membership 仍由 bounded catalog projection 决定。
@@ -80,8 +80,16 @@ Session Management 默认 Bounded；「扫描全部」必须二次确认。启�
 - Workspace Home MUST NOT derive an independent session membership set from `recentThreads`; if it later displays sessions, it MUST consume the same catalog projection or document an explicit display-window difference.
 - Native engine list APIs such as `listClaudeSessions` MAY provide transcript restore, diagnostics, or continuity seed, but MUST NOT widen or shrink complete catalog membership.
 - Shared Hidden Native Binding MUST be excluded from ordinary Native catalog projection. The
-  exclusion identity MUST come from the union of legacy Shared metadata and canonical V2
-  `shared_binding_state.native_session_id`; frontend dispatch memory alone is not durable evidence.
+  exclusion identity MUST come from the union of legacy Shared metadata, canonical V2
+  `shared_binding_state.native_session_id`, `provisioning_json.archivedNativeSessionId`, and
+  bounded historical native ids on binding facts; frontend dispatch memory alone is not durable
+  evidence. Session Index first-paint MUST apply this union before the first ordinary native
+  `setThreads`. If the projection is unavailable, the client MUST keep last-verified / pending
+  and MUST NOT paint or remember unfiltered Index rows.
+- Visibility reads for Session Index MUST use a short-timeout read-only SQLite path and MUST NOT
+  wait on the `SharedEventWriter` actor. Generic titles such as `Claude Session` or `Agent N`
+  MUST NOT prove Shared ownership. Exact MOSSX program tokens on unsanitized Index title fields
+  MAY hide historical control-plane containers.
 - `list_shared_sessions` MUST expose every non-empty V2 Hidden Binding native identity through
   `SharedSessionSummary.nativeThreadIds`, sorted and deduplicated. V0 `bindings_by_engine` is
   compatibility input only and MUST NOT be the sole authority after V2 activation.

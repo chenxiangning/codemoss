@@ -28,6 +28,7 @@ import {
 } from "../../../services/tauri";
 import { mergeThreadItems, previewThreadName } from "../../../utils/threadItems";
 import { loadSidebarSnapshot } from "../utils/sidebarSnapshot";
+import { resetSharedNativeVisibilityMemory } from "./sharedNativeVisibility";
 
 vi.mock("../../../services/tauri", () => ({
   startThread: vi.fn(),
@@ -96,6 +97,7 @@ vi.mock("../../../services/globalRuntimeNotices", async () => {
 });
 
 export function resetUseThreadActionsTestMocks() {
+  resetSharedNativeVisibilityMemory();
   vi.clearAllMocks();
   vi.useRealTimers();
   vi.mocked(listThreadTitles).mockResolvedValue({});
@@ -108,6 +110,7 @@ export function resetUseThreadActionsTestMocks() {
     source: "session-index",
     synced: false,
     engines: [],
+    visibility: { available: true, freshness: "verified", hiddenNativeIds: [] },
   });
   vi.mocked(getOpenCodeSessionList).mockResolvedValue([]);
   vi.mocked(listWorkspaceSessions).mockResolvedValue({

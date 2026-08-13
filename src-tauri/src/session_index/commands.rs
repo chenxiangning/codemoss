@@ -451,6 +451,16 @@ pub async fn list_session_index_for_workspace(
         }
     }
 
+    let event_log_path = state
+        .storage_path
+        .parent()
+        .map(|parent| parent.join("shared-event-log-v2.sqlite3"));
+    let visibility = super::shared_visibility::load_shared_native_visibility_projection(
+        &workspace_id,
+        event_log_path.as_deref(),
+        &data,
+    );
+
     Ok(SessionIndexListPage {
         data,
         source: if synced {
@@ -462,6 +472,7 @@ pub async fn list_session_index_for_workspace(
         sync_ms: sync_ms.or_else(|| Some(started.elapsed().as_millis() as u64)),
         engines,
         partial_source,
+        visibility: Some(visibility),
     })
 }
 

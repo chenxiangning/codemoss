@@ -111,7 +111,7 @@ pub(crate) fn sync_claude_for_workspace(
             let workspace_key = normalize_path_key(&workspace_path.to_string_lossy());
             rows.push(SessionIndexRow {
                 engine: "claude".into(),
-                session_id,
+                session_id: session_id.clone(),
                 title: title.clone(),
                 native_title: title_from_history,
                 updated_at,
@@ -119,7 +119,9 @@ pub(crate) fn sync_claude_for_workspace(
                 cwd: Some(workspace_key.clone()),
                 workspace_path: Some(workspace_key),
                 physical_path: Some(path.to_string_lossy().to_string()),
-                parent_session_id: None,
+                parent_session_id: super::shared_visibility::extract_claude_parent_session_id(
+                    &session_id,
+                ),
                 size_bytes,
             });
             if rows.len() >= limit {

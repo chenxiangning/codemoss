@@ -2,6 +2,7 @@ import type { ThreadSummary } from "../../../types";
 import type { SessionIndexRow } from "../../../services/tauri";
 import { previewThreadName } from "../../../utils/threadItems";
 import { sanitizeNativeSessionTitle } from "../utils/sessionDisplayProjection";
+import { shouldExcludeOrdinaryNativeRow } from "./sharedNativeVisibility";
 
 const ENGINE_PREFIX: Record<string, string> = {
   claude: "claude:",
@@ -61,7 +62,10 @@ export function sessionIndexRowsToThreadSummaries(
     if (!engine || !id) {
       continue;
     }
-    if (hidden.has(id) || hidden.has(row.sessionId)) {
+    if (
+      shouldExcludeOrdinaryNativeRow(id, hidden) ||
+      shouldExcludeOrdinaryNativeRow(row.sessionId, hidden)
+    ) {
       continue;
     }
     const nativeTitle = sanitizeNativeSessionTitle(

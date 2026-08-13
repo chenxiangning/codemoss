@@ -23,6 +23,14 @@ export type SessionIndexRow = {
   sizeBytes?: number | null;
 };
 
+export type SharedNativeVisibilityProjection = {
+  available: boolean;
+  freshness?: string | null;
+  hiddenNativeIds?: string[] | null;
+  protocolHiddenNativeIds?: string[] | null;
+  reason?: string | null;
+};
+
 export type SessionIndexListPage = {
   data: SessionIndexRow[];
   source: string;
@@ -30,6 +38,7 @@ export type SessionIndexListPage = {
   syncMs?: number | null;
   engines: string[];
   partialSource?: string | null;
+  visibility?: SharedNativeVisibilityProjection | null;
 };
 
 export type SessionIndexSyncReport = {

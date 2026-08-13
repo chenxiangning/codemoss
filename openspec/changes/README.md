@@ -2,7 +2,7 @@
 
 本页是 `mossx` OpenSpec proposal 的当前入口。它只维护 active change 的执行状态，并把 archived change 路由到完整历史索引；详细治理快照仍以 [`../project.md`](../project.md) 为准。
 
-- Updated At: `2026-08-08`
+- Updated At: `2026-08-13`
 - Active proposals: `5+`（以磁盘 `openspec/changes/*` 为准）
 - Archived proposals: `848+`
 - Main capability specs: `492`
@@ -43,6 +43,7 @@
 
 ## Active backlog notes（2026-08-08）
 
+- **已归档** `harden-shared-cli-session-index-visibility` → `archive/2026-08-13-harden-shared-cli-session-index-visibility`：Session Index 同 IPC durable Shared hide + fail-closed + 保留 `shared:*`；主 specs 已同步。
 - **新增并落地** `fix-native-parallel-provider-model-isolation`（2026-08-12）：并行 Native 不同供应商后历史会话 residual model（MiniMax-M3 打 DeepSeek）→ 扩展 `claudeManagedRuntimeModel` residual；vitest 24+73 绿；Shared 零改；待手测、不 commit。
 - **验收通过** `fix-askuserquestion-settlement-tombstone`（2026-08-12）：幽灵重弹/skip 卡死/双已提交卡 + 幕布扁平 UI；用户手测通过；能力矩阵见 `docs/reference/conversation/user-input-elicitation-capability-matrix.md`。
 - **新增** `open-with-cross-platform-ux`（2026-08-12）：设置「打开方式」跨平台 UX；预设网格 + Browse + 懒 probe；P0/P1 已实现，待手测 Win/mac。

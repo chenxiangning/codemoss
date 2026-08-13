@@ -2,6 +2,18 @@
 
 ---
 
+### **2026年8月13日**
+
+中文：
+
+- **Shared Session Index 可见性**：侧栏 Session Index 首屏与 refresh 同 IPC 携带 durable Shared hide（V0 ∪ 当前 V2 ∪ archived/历史 binding id ∪ 精确 MOSSX hint）；V2 读失败 fail-closed；early-paint 保留 `shared:*`，禁止空 hide 把 Shared owner 闪成 `Claude Session`。OpenSpec：`harden-shared-cli-session-index-visibility`
+
+English:
+
+- **Shared Session Index visibility**: sidebar Session Index first-paint/refresh carries a same-IPC durable Shared hide set (legacy V0 ∪ current V2 ∪ archived/historical binding ids ∪ exact MOSSX hints); V2 read failure fail-closes; early-paint keeps `shared:*` and must not flash Shared owners as `Claude Session`. OpenSpec: `harden-shared-cli-session-index-visibility`
+
+---
+
 ### **2026年8月12日（v0.8.8）**
 
 中文：

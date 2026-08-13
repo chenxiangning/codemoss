@@ -2,13 +2,17 @@
 
 本页为 `mossx` 已归档 OpenSpec proposal 的完整可点击索引。目录名中的日期是 archive date，不代表 proposal 首次创建时间。
 
-- Updated At: `2026-08-08`
+- Updated At: `2026-08-13`
 - Indexed proposals: `849+`
 - Source of truth: `openspec/changes/archive/<archive-date>-<change-id>/proposal.md`
 - Back to current changes: [`../README.md`](../README.md)
 - Back to workspace overview: [`../../project.md`](../../project.md)
 
 ## 2026-08
+
+### 2026-08-13
+
+- [`2026-08-13-harden-shared-cli-session-index-visibility`](2026-08-13-harden-shared-cli-session-index-visibility/proposal.md) — verified implementation，已同步 `shared-session-thread`、`workspace-sidebar-session-loading`；Session Index 首屏同 IPC durable Shared hide，V2 失败 fail-closed，early-paint 保留 `shared:*`
 
 ### 2026-08-08
 
