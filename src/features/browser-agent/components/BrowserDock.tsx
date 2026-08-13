@@ -12,6 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { RendererContextMenu } from "@/components/ui/RendererContextMenu";
 import { loadBrowserAgentStyles } from "../../../styles/featureStyleLoaders";
 import type {
   BrowserSession,
@@ -31,6 +32,7 @@ import {
   unmountEmbeddedBrowserWebview,
   useEmbeddedBrowserWebview,
 } from "../hooks/useEmbeddedBrowserWebview";
+import { useBrowserTabContextMenu } from "../hooks/useBrowserTabContextMenu";
 import {
   BrowserDockEditorChrome,
   type BrowserDockNotice,
@@ -127,6 +129,8 @@ export function BrowserDock({
   const [infoOpen, setInfoOpen] = useState(false);
   // 岛 ⇄ 状态行形变：纯展示态，不影响会话逻辑
   const [docked, setDocked] = useState(false);
+  // 右键菜单是 HTML，盖不过内嵌 native 子 webview；菜单打开时按既有 hide 纪律让层
+  const [tabMenuOpen, setTabMenuOpen] = useState(false);
   const activeSessionRef = useRef<BrowserSession | null>(null);
   const onSessionChangeRef = useRef(onSessionChange);
   const isEmbedded = displayMode === "embedded";
@@ -156,10 +160,11 @@ export function BrowserDock({
     : t("browserAgent.dock.footnote");
 
   // 内嵌显隐纪律：切会话/关 dock/离开 chat（组件卸载）时显式 hide，bounds 随容器同步。
+  // tab 右键菜单打开时 active=false：只 hide，不注销 mounted 记录，关闭后 sync 恢复，不整页刷新。
   useEmbeddedBrowserWebview({
     containerRef: webviewContainerRef,
     activeSession,
-    active: isEmbedded && resolvedEnabled,
+    active: isEmbedded && resolvedEnabled && !tabMenuOpen,
   });
 
   useEffect(() => {
@@ -492,31 +497,57 @@ export function BrowserDock({
     [openSessionWindow, resolvedEnabled],
   );
 
-  const handleCloseSession = useCallback(async (sessionId: string) => {
+  const handleCloseSessions = useCallback(async (
+    sessionIds: string[],
+    options?: { preferActiveId?: string },
+  ) => {
     if (busy) {
       return;
     }
+    const uniqueIds = [...new Set(sessionIds)].filter((sessionId) =>
+      openSessions.some((session) => session.browserSessionId === sessionId),
+    );
+    if (uniqueIds.length === 0) {
+      return;
+    }
+
     setBusy(true);
     try {
-      const closed = await closeBrowserAgentSession(sessionId);
-      clearActiveBrowserContextSession(sessionId);
-      if (isEmbedded) {
-        // 注销内嵌子 webview 记录（Rust 侧 close 已按 renderer 绑定 hide，此处再兜底并清集合）
-        unmountEmbeddedBrowserWebview(sessionId);
-      }
-      setSessions((current) =>
-        current.map((session) =>
-          session.browserSessionId === closed.browserSessionId ? closed : session,
-        ),
-      );
-      const nextActive = openSessions.find(
-        (session) => session.browserSessionId !== sessionId,
-      ) ?? null;
-      const shouldOpenNextSession = activeSessionId === sessionId && nextActive !== null;
-      setActiveSessionId((current) => {
-        if (current !== sessionId) {
-          return current;
+      const closedById = new Map<string, BrowserSession>();
+      let firstError: unknown = null;
+      for (const sessionId of uniqueIds) {
+        try {
+          const closed = await closeBrowserAgentSession(sessionId);
+          clearActiveBrowserContextSession(sessionId);
+          if (isEmbedded) {
+            // 注销内嵌子 webview 记录（Rust 侧 close 已按 renderer 绑定 hide，此处再兜底并清集合）
+            unmountEmbeddedBrowserWebview(sessionId);
+          }
+          closedById.set(sessionId, closed);
+        } catch (error) {
+          firstError ??= error;
         }
+      }
+
+      if (closedById.size === 0) {
+        throw firstError;
+      }
+
+      const closedIdSet = new Set(closedById.keys());
+      setSessions((current) =>
+        current.map((session) => closedById.get(session.browserSessionId) ?? session),
+      );
+
+      const remaining = openSessions.filter(
+        (session) => !closedIdSet.has(session.browserSessionId),
+      );
+      const closedActive = Boolean(activeSessionId && closedIdSet.has(activeSessionId));
+      if (closedActive) {
+        const preferred = options?.preferActiveId
+          ? remaining.find((session) => session.browserSessionId === options.preferActiveId)
+          : undefined;
+        const nextActive = preferred ?? remaining[0] ?? null;
+        setActiveSessionId(nextActive?.browserSessionId ?? null);
         setUrlDraft(nextActive?.normalizedUrl ?? "");
         if (nextActive) {
           setActiveBrowserContextSession(nextActive, {
@@ -524,28 +555,35 @@ export function BrowserDock({
           });
         }
         onSessionChangeRef.current?.(nextActive);
-        return nextActive?.browserSessionId ?? null;
-      });
-      if (shouldOpenNextSession) {
-        void openSessionWindow(nextActive)
-          .then((openedSession) => {
-            setSessions((current) =>
-              current.map((session) =>
-                session.browserSessionId === openedSession.browserSessionId
-                  ? openedSession
-                  : session,
-              ),
-            );
-            onSessionChangeRef.current?.(openedSession);
-          })
-          .catch((error) => {
-            setNotice({
-              kind: "error",
-              message: error instanceof Error ? error.message : String(error),
+        if (nextActive) {
+          void openSessionWindow(nextActive)
+            .then((openedSession) => {
+              setSessions((current) =>
+                current.map((session) =>
+                  session.browserSessionId === openedSession.browserSessionId
+                    ? openedSession
+                    : session,
+                ),
+              );
+              onSessionChangeRef.current?.(openedSession);
+            })
+            .catch((error) => {
+              setNotice({
+                kind: "error",
+                message: error instanceof Error ? error.message : String(error),
+              });
             });
-          });
+        }
       }
-      setNotice({ kind: "info", message: t("browserAgent.dock.closed") });
+
+      if (firstError) {
+        setNotice({
+          kind: "error",
+          message: firstError instanceof Error ? firstError.message : String(firstError),
+        });
+      } else {
+        setNotice({ kind: "info", message: t("browserAgent.dock.closed") });
+      }
     } catch (error) {
       setNotice({
         kind: "error",
@@ -556,12 +594,32 @@ export function BrowserDock({
     }
   }, [activeSessionId, busy, isEmbedded, openSessionWindow, openSessions, t]);
 
+  const handleCloseSession = useCallback(async (sessionId: string) => {
+    await handleCloseSessions([sessionId]);
+  }, [handleCloseSessions]);
+
   const handleCloseActiveSession = useCallback(async () => {
     if (!activeSession) {
       return;
     }
     await handleCloseSession(activeSession.browserSessionId);
   }, [activeSession, handleCloseSession]);
+
+  const islandSessionIds = useMemo(
+    () => openSessions.map((session) => session.browserSessionId),
+    [openSessions],
+  );
+  const {
+    menu: islandTabContextMenu,
+    openMenu: openIslandTabContextMenu,
+    closeMenu: closeIslandTabContextMenu,
+  } = useBrowserTabContextMenu({
+    sessionIds: islandSessionIds,
+    busy,
+    onCloseSessions: (sessionIds, options) => {
+      void handleCloseSessions(sessionIds, options);
+    },
+  });
 
   // 弹出独立窗体：hide 内嵌子 webview 并注销挂载记录，当前会话移交浮动窗（含注入工具条）
   const handlePopOut = useCallback(async () => {
@@ -607,6 +665,10 @@ export function BrowserDock({
             onOpen={() => void handleOpen()}
             onActivateSession={handleActivateSession}
             onCloseSession={(sessionId) => void handleCloseSession(sessionId)}
+            onCloseSessions={(sessionIds, options) => {
+              void handleCloseSessions(sessionIds, options);
+            }}
+            onTabMenuOpenChange={setTabMenuOpen}
             onNewTab={() => {
               setActiveSessionId(null);
               setUrlDraft("");
@@ -627,6 +689,9 @@ export function BrowserDock({
                   key={session.browserSessionId}
                   className={`browser-agent-tab${session.browserSessionId === activeSessionId ? " is-active" : ""}`}
                   role="presentation"
+                  onContextMenu={(event) =>
+                    openIslandTabContextMenu(event, session.browserSessionId)
+                  }
                 >
                   <button
                     type="button"
@@ -785,6 +850,13 @@ export function BrowserDock({
               </span>
             </span>
           </button>
+        ) : null}
+        {islandTabContextMenu && !isEmbedded ? (
+          <RendererContextMenu
+            menu={islandTabContextMenu}
+            onClose={closeIslandTabContextMenu}
+            className="renderer-context-menu"
+          />
         ) : null}
       </CardContent>
     </Card>

@@ -1,5 +1,5 @@
 import { listen } from "@tauri-apps/api/event";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import ArrowRight from "lucide-react/dist/esm/icons/arrow-right";
 import Crosshair from "lucide-react/dist/esm/icons/crosshair";
@@ -11,11 +11,16 @@ import Plus from "lucide-react/dist/esm/icons/plus";
 import X from "lucide-react/dist/esm/icons/x";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { RendererContextMenu } from "@/components/ui/RendererContextMenu";
 import {
   startBrowserAgentElementSelect,
   stopBrowserAgentElementSelect,
 } from "@/services/tauri";
 import type { BrowserSession } from "../types";
+import {
+  useBrowserTabContextMenu,
+  type BrowserTabCloseSessionsHandler,
+} from "../hooks/useBrowserTabContextMenu";
 import { requestBrowserContextAttachment } from "../state/browserContextAttachmentCommands";
 
 const BROWSER_ELEMENT_SELECT_ENDED_EVENT = "browser-agent://element-select-ended";
@@ -75,6 +80,8 @@ type BrowserDockEditorChromeProps = {
   onOpen: () => void;
   onActivateSession: (session: BrowserSession) => void;
   onCloseSession: (sessionId: string) => void;
+  onCloseSessions: BrowserTabCloseSessionsHandler;
+  onTabMenuOpenChange?: (open: boolean) => void;
   onNewTab: () => void;
   onPopOut: () => void;
   onEnable: () => void;
@@ -100,6 +107,8 @@ export function BrowserDockEditorChrome({
   onOpen,
   onActivateSession,
   onCloseSession,
+  onCloseSessions,
+  onTabMenuOpenChange,
   onNewTab,
   onPopOut,
   onEnable,
@@ -110,6 +119,26 @@ export function BrowserDockEditorChrome({
   const { t } = useTranslation();
   const urlInputRef = useRef<HTMLInputElement | null>(null);
   const [elementSelectArmed, setElementSelectArmed] = useState(false);
+  const sessionIds = useMemo(
+    () => openSessions.map((session) => session.browserSessionId),
+    [openSessions],
+  );
+  const { menu: tabContextMenu, openMenu: openTabContextMenu, closeMenu: closeTabContextMenu } =
+    useBrowserTabContextMenu({
+      sessionIds,
+      busy,
+      onCloseSessions,
+    });
+
+  useEffect(() => {
+    onTabMenuOpenChange?.(Boolean(tabContextMenu));
+  }, [onTabMenuOpenChange, tabContextMenu]);
+
+  useEffect(() => {
+    return () => {
+      onTabMenuOpenChange?.(false);
+    };
+  }, [onTabMenuOpenChange]);
 
   // ⌘L / Ctrl+L 聚焦地址栏（浏览器肌肉记忆；组件仅在内嵌展开态挂载）
   useEffect(() => {
@@ -205,6 +234,7 @@ export function BrowserDockEditorChrome({
               key={session.browserSessionId}
               className={`browser-agent-tab browser-agent-editor-tab${session.browserSessionId === activeSessionId ? " is-active" : ""}`}
               role="presentation"
+              onContextMenu={(event) => openTabContextMenu(event, session.browserSessionId)}
             >
               <button
                 type="button"
@@ -341,6 +371,13 @@ export function BrowserDockEditorChrome({
           </button>
         </div>
       </div>
+      {tabContextMenu ? (
+        <RendererContextMenu
+          menu={tabContextMenu}
+          onClose={closeTabContextMenu}
+          className="renderer-context-menu"
+        />
+      ) : null}
     </>
   );
 }

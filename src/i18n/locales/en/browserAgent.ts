@@ -32,6 +32,11 @@ const browserAgent = {
       windowOpened: "The page is open in a separate Browser Agent window.",
       closePanel: "Close Browser Dock",
       close: "Close Browser Agent session",
+      tabContextMenu: "Browser tab actions",
+      closeTab: "Close tab",
+      closeOtherTabs: "Close other tabs",
+      closeTabsToTheRight: "Close tabs to the right",
+      closeAllTabs: "Close all tabs",
       info: "Show Browser Agent details",
       footnote:
         "MVP does not store raw DOM, cookies, headers, or page secrets.",
