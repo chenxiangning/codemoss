@@ -9,6 +9,7 @@ import {
   workspaceScopedDelete,
   workspaceScopedHas,
 } from "./workspaceScopedMap";
+import { drainLiveAssistantTextTail } from "../utils/liveAssistantTextChannel";
 import type {
   AppServerEvent,
   CollaborationModeBlockedRequest,
@@ -122,6 +123,10 @@ export function useThreadEventHandlers({
   const flushDeferredTurnCompletionRef = useRef<
     ((threadId: string, source: DeferredCompletionFlushSource) => void) | null
   >(null);
+  // `flushPendingRealtimeEvents` is destructured from `useThreadItemEvents`
+  // below, after the gate-settlement callback is defined, so it can only be
+  // reached through a ref (same pattern as flushDeferredTurnCompletionRef).
+  const flushPendingRealtimeEventsRef = useRef<(() => void) | null>(null);
   const assistantSnapshotIngressLengthRef = useRef<Map<string, number>>(new Map());
   const quarantinedCodexTurnsRef = useRef<Map<string, CodexQuarantinedTurn>>(new Map());
   const cleanupThreadTransientRefs = useCallback(
@@ -1133,9 +1138,34 @@ export function useThreadEventHandlers({
     resolveClaudeContinuationThreadId,
   });
   const settleThreadWaitingForUserChoice = useCallback(
-    (threadId: string) => {
+    (threadId: string, workspaceId?: string | null) => {
       if (!threadId) {
         return;
+      }
+      // A4 live-text 外部化：gate 结算前把尚未落入 reducer 的尾段回灌到同一
+      // assistant item。否则 isStreaming 关闭后只能读到建壳首段，gate 前的
+      // 正文永久丢失（AskUserQuestion 属于完成态转换，需遵守与 terminal
+      // settlement / incrementAgentSegment 相同的 drain-before-boundary 约定）。
+      if (workspaceId) {
+        // Converge anything still sitting in the batched realtime delta queue
+        // first. Agent-text deltas are buffered (non-urgent for native Claude
+        // threads), so draining without this can dispatch the tail before the
+        // assistant item exists - and appendAgentDelta would then create a
+        // second item, putting the tail after the ask card. Every sibling
+        // boundary (turn completed / error / stalled, durable shared
+        // settlement) flushes first for the same reason.
+        flushPendingRealtimeEventsRef.current?.();
+        const liveTextTail = drainLiveAssistantTextTail(threadId);
+        if (liveTextTail) {
+          dispatch({
+            type: "appendAgentDelta",
+            workspaceId,
+            threadId,
+            itemId: liveTextTail.itemId,
+            delta: liveTextTail.tailDelta,
+            hasCustomName: true,
+          });
+        }
       }
       // User-choice gates are no longer normal foreground processing.
       markProcessingTracked(threadId, false);
@@ -1162,7 +1192,7 @@ export function useThreadEventHandlers({
       if (!threadId) {
         return;
       }
-      settleThreadWaitingForUserChoice(threadId);
+      settleThreadWaitingForUserChoice(threadId, request.workspace_id);
     },
     [
       enqueueUserInputRequest,
@@ -1193,7 +1223,7 @@ export function useThreadEventHandlers({
         });
       }
       if (requestUserInputBlocked) {
-        settleThreadWaitingForUserChoice(threadId);
+        settleThreadWaitingForUserChoice(threadId, event.workspace_id);
       }
       const reason =
         event.params.reason.trim() ||
@@ -2434,6 +2464,7 @@ export function useThreadEventHandlers({
     [emitTurnDiagnostic, getThreadLifecycleSnapshot, settleCompletedTurn],
   );
   flushDeferredTurnCompletionRef.current = flushDeferredTurnCompletionIfReady;
+  flushPendingRealtimeEventsRef.current = flushPendingRealtimeEvents;
 
   const onTurnCompletedTracked = useCallback(
     (workspaceId: string, threadId: string, turnId: string) => {

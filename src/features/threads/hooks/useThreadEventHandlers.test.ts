@@ -6,6 +6,10 @@ import {
   workspaceScopedSet,
 } from "./workspaceScopedMap";
 import {
+  appendLiveAssistantText,
+  resetLiveAssistantTextChannelForTests,
+} from "../utils/liveAssistantTextChannel";
+import {
   CODEX_EXECUTION_ACTIVE_NO_PROGRESS_STALL_MS,
   CODEX_TURN_NO_PROGRESS_STALL_MS,
   useThreadEventHandlers,
@@ -551,6 +555,74 @@ describe("useThreadEventHandlers diagnostics", () => {
       }),
       hasCustomName: false,
     });
+  });
+
+  it("drains the live-text tail before settling an AskUserQuestion gate", () => {
+    resetLiveAssistantTextChannelForTests();
+    const options = makeOptions();
+    const { result } = renderHook(() => useThreadEventHandlers(options));
+
+    act(() => {
+      result.current.onTurnStarted("ws-1", "thread-1", "turn-1");
+    });
+
+    // Pre-gate streamed text: the shell delta already reached the reducer via
+    // its own dispatch (not asserted here), the second delta only landed in
+    // the live-text channel while isStreaming was still true.
+    appendLiveAssistantText("thread-1", "item-1", "Let me check that first.");
+    appendLiveAssistantText("thread-1", "item-1", " One more thing before I ask:");
+
+    options.dispatch.mockClear();
+
+    act(() => {
+      result.current.onRequestUserInput({
+        workspace_id: "ws-1",
+        request_id: "ask-1",
+        params: {
+          thread_id: "thread-1",
+          turn_id: "turn-1",
+          item_id: "ask-item-1",
+          questions: [{ id: "q-1", header: "", question: "Proceed?" }],
+        },
+      });
+    });
+
+    expect(options.dispatch).toHaveBeenCalledWith({
+      type: "appendAgentDelta",
+      workspaceId: "ws-1",
+      threadId: "thread-1",
+      itemId: "item-1",
+      delta: " One more thing before I ask:",
+      hasCustomName: true,
+    });
+    expect(options.markProcessing).toHaveBeenCalledWith("thread-1", false);
+
+    // Ordering is the actual contract, not just that both happened: the tail
+    // must reach the reducer while the item is still streaming. Once
+    // markProcessing(false) lands, isStreaming is off and the drain is too
+    // late to be reconciled onto the same assistant item.
+    const drainCall = options.dispatch.mock.calls.findIndex(
+      ([action]) => action?.type === "appendAgentDelta",
+    );
+    const settleCall = options.markProcessing.mock.calls.findIndex(
+      ([, processing]) => processing === false,
+    );
+    expect(drainCall).toBeGreaterThanOrEqual(0);
+    expect(settleCall).toBeGreaterThanOrEqual(0);
+    expect(
+      options.dispatch.mock.invocationCallOrder[drainCall],
+    ).toBeLessThan(options.markProcessing.mock.invocationCallOrder[settleCall]);
+
+    // The batched realtime queue must be flushed before the drain, matching the
+    // other settlement boundaries. Without it the shell delta can still be
+    // queued when the tail is dispatched, and appendAgentDelta would create a
+    // second assistant item for it instead of appending to the existing one.
+    const flushPendingRealtimeEvents =
+      itemHookFactory.getFlushPendingRealtimeEvents();
+    expect(flushPendingRealtimeEvents).toHaveBeenCalledTimes(1);
+    expect(
+      flushPendingRealtimeEvents.mock.invocationCallOrder[0],
+    ).toBeLessThan(options.dispatch.mock.invocationCallOrder[drainCall]);
   });
 
   it("marks codex foreground turns as suspected after the bounded no-progress window", () => {
