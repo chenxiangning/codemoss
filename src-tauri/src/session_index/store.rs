@@ -149,7 +149,10 @@ pub(crate) fn paths_equivalent(left: &str, right: &str) -> bool {
     }
 }
 
-pub(crate) fn upsert_rows(connection: &Connection, rows: &[SessionIndexRow]) -> Result<usize, String> {
+pub(crate) fn upsert_rows(
+    connection: &Connection,
+    rows: &[SessionIndexRow],
+) -> Result<usize, String> {
     if rows.is_empty() {
         return Ok(0);
     }
@@ -378,9 +381,13 @@ fn map_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<SessionIndexRow> {
         workspace_path: row.get(7)?,
         physical_path: row.get(8)?,
         parent_session_id: row.get(9)?,
-        size_bytes: row
-            .get::<_, Option<i64>>(10)?
-            .and_then(|value| if value >= 0 { Some(value as u64) } else { None }),
+        size_bytes: row.get::<_, Option<i64>>(10)?.and_then(|value| {
+            if value >= 0 {
+                Some(value as u64)
+            } else {
+                None
+            }
+        }),
     })
 }
 

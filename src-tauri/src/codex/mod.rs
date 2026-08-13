@@ -3060,7 +3060,7 @@ Task:\n{cleaned_prompt}"
 ///   must not be reclassified.
 /// - the `ask-` prefix: only AskUserQuestion ids are minted with it, so local
 ///   Codex prompts (`ccgui-plan-blocker:` and similar) are excluded.
-pub(crate) fn expired_claude_ask_request_id(
+fn expired_claude_ask_request_id(
     request_id: &Value,
     has_claude_session: bool,
     is_user_input_response: bool,

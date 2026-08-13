@@ -456,9 +456,7 @@ async fn respond_to_user_input_delivers_mcp_answer_even_without_pending_entry() 
         .await
         .expect("orphan MCP waiter must accept skip");
 
-    let answer = rx
-        .await
-        .expect("orphan MCP waiter must receive skip text");
+    let answer = rx.await.expect("orphan MCP waiter must receive skip text");
     assert!(
         answer.to_ascii_lowercase().contains("skipped"),
         "skip text expected, got: {answer}"

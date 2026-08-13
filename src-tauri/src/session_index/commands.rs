@@ -109,11 +109,7 @@ async fn sync_disk_engines(
     .map_err(|error| error.to_string())?
 }
 
-async fn sync_gemini_engine(
-    workspace_path: PathBuf,
-    limit: usize,
-    force: bool,
-) -> WriterResult {
+async fn sync_gemini_engine(workspace_path: PathBuf, limit: usize, force: bool) -> WriterResult {
     let fingerprint = gemini_home_fingerprint();
     let skip = !force
         && tokio::task::spawn_blocking({
@@ -144,7 +140,10 @@ async fn sync_gemini_engine(
 
     let (rows, partial) = match list_result {
         Ok(Ok(sessions)) => (rows_from_gemini_summaries(&workspace_path, &sessions), None),
-        Ok(Err(error)) => (Vec::new(), Some(format!("gemini-sync-error:{}", truncate_error(&error)))),
+        Ok(Err(error)) => (
+            Vec::new(),
+            Some(format!("gemini-sync-error:{}", truncate_error(&error))),
+        ),
         Err(_) => (Vec::new(), Some("gemini-sync-timeout".into())),
     };
 
@@ -201,7 +200,10 @@ async fn sync_grok_engine(workspace_path: PathBuf, limit: usize, force: bool) ->
 
     let (rows, partial) = match list_result {
         Ok(Ok(sessions)) => (rows_from_grok_summaries(&workspace_path, &sessions), None),
-        Ok(Err(error)) => (Vec::new(), Some(format!("grok-sync-error:{}", truncate_error(&error)))),
+        Ok(Err(error)) => (
+            Vec::new(),
+            Some(format!("grok-sync-error:{}", truncate_error(&error))),
+        ),
         Err(_) => (Vec::new(), Some("grok-sync-timeout".into())),
     };
 
@@ -269,10 +271,7 @@ async fn sync_opencode_engine(
     let (rows, partial) = match list_result {
         Ok(Ok(mut entries)) => {
             entries.truncate(limit);
-            (
-                rows_from_opencode_entries(&workspace_path, &entries),
-                None,
-            )
+            (rows_from_opencode_entries(&workspace_path, &entries), None)
         }
         Ok(Err(error)) => {
             // Missing CLI / disabled engine is soft-empty, not hard failure.
@@ -329,13 +328,8 @@ async fn sync_session_index_core(
     };
 
     // Disk-bound engines first (blocking pool), then bounded async engine lists.
-    let mut aggregated = sync_disk_engines(
-        workspace_path.clone(),
-        sessions_roots,
-        limit,
-        force,
-    )
-    .await?;
+    let mut aggregated =
+        sync_disk_engines(workspace_path.clone(), sessions_roots, limit, force).await?;
 
     let gemini = sync_gemini_engine(workspace_path.clone(), limit, force).await;
     merge_writer(&mut aggregated, gemini);

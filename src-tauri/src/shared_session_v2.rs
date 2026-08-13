@@ -2319,8 +2319,7 @@ pub fn rebuild_binding_core(
     // Main durable path still requires key == engine:provider to prevent identity mix-ups.
     let is_squad_binding = binding_key.starts_with("squad:");
     if !is_squad_binding {
-        let durable_binding_key =
-            shared_target_binding_key(engine, provider_profile_id.as_deref());
+        let durable_binding_key = shared_target_binding_key(engine, provider_profile_id.as_deref());
         if durable_binding_key != binding_key {
             return Err(format!(
                 "binding owner mismatch: key '{binding_key}' does not match durable owner '{durable_binding_key}'"
@@ -6533,8 +6532,7 @@ mod shared_interrupt_owner_tests {
             Some("squad-worker-binding-recovery-required"),
         )
         .expect("mark squad recovery");
-        let rebuilt =
-            rebuild_binding_core(&writer, session_id, &squad_key).expect("rebuild squad");
+        let rebuilt = rebuild_binding_core(&writer, session_id, &squad_key).expect("rebuild squad");
         assert!(rebuilt.replaced_attempt_ids.is_empty());
         let binding = writer
             .binding_state(session_id, &squad_key)

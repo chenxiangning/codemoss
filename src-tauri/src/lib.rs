@@ -118,6 +118,7 @@ mod drag_drop_bridge_tests {
 }
 
 mod agent_catalog;
+pub mod agent_orchestration;
 mod agents;
 mod app_paths;
 mod backend;
@@ -178,7 +179,6 @@ mod shared_sessions;
 mod skills;
 mod skills_hub;
 mod snapshot_throttle;
-pub mod agent_orchestration;
 mod startup_guard;
 mod state;
 mod storage;

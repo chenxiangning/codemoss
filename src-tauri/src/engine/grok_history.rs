@@ -594,7 +594,9 @@ fn budget_tool_text(text: &str) -> String {
     format!(
         "{}\n\n…[truncated {} chars for history load]",
         truncated,
-        text.chars().count().saturating_sub(GROK_TOOL_OUTPUT_CHAR_BUDGET)
+        text.chars()
+            .count()
+            .saturating_sub(GROK_TOOL_OUTPUT_CHAR_BUDGET)
     )
 }
 
@@ -893,14 +895,16 @@ fn strip_grok_image_only_fallback_text(display: &str, has_images: bool) -> Strin
     }
     // Defense: fallback was the only line of a multi-line block that is otherwise empty.
     if has_images {
-        let without_fallback = candidates.iter().fold(trimmed.to_string(), |acc, candidate| {
-            acc.lines()
-                .filter(|line| !line.trim().eq_ignore_ascii_case(candidate))
-                .collect::<Vec<_>>()
-                .join("\n")
-                .trim()
-                .to_string()
-        });
+        let without_fallback = candidates
+            .iter()
+            .fold(trimmed.to_string(), |acc, candidate| {
+                acc.lines()
+                    .filter(|line| !line.trim().eq_ignore_ascii_case(candidate))
+                    .collect::<Vec<_>>()
+                    .join("\n")
+                    .trim()
+                    .to_string()
+            });
         if without_fallback.is_empty() {
             return String::new();
         }
@@ -1825,10 +1829,10 @@ mod tests {
     use super::{
         file_mtime_millis, first_user_prompt_from_line, first_user_prompt_text,
         is_grok_runtime_context_user_text, matches_workspace_path,
-        parse_grok_user_prompt_for_display, parse_messages_from_chat_history, parse_timestamp_millis,
-        prepare_grok_history_line_for_parse, resolve_session_activity_millis,
-        strip_user_query_wrapper, url_decode_dir_name, url_encode_dir_name,
-        GROK_OMITTED_PAYLOAD_SENTINEL, GROK_TOOL_OUTPUT_CHAR_BUDGET,
+        parse_grok_user_prompt_for_display, parse_messages_from_chat_history,
+        parse_timestamp_millis, prepare_grok_history_line_for_parse,
+        resolve_session_activity_millis, strip_user_query_wrapper, url_decode_dir_name,
+        url_encode_dir_name, GROK_OMITTED_PAYLOAD_SENTINEL, GROK_TOOL_OUTPUT_CHAR_BUDGET,
     };
     use std::path::Path;
 
@@ -2599,13 +2603,10 @@ mod tests {
         assert_eq!(loaded.messages.len(), 2);
         assert_eq!(loaded.messages[0].text, "direct path");
 
-        let listed = super::list_grok_sessions(
-            &workspace,
-            None,
-            Some(grok_home.to_string_lossy().as_ref()),
-        )
-        .await
-        .expect("list");
+        let listed =
+            super::list_grok_sessions(&workspace, None, Some(grok_home.to_string_lossy().as_ref()))
+                .await
+                .expect("list");
         assert_eq!(listed.len(), 1);
         assert_eq!(listed[0].first_message, "direct path");
 

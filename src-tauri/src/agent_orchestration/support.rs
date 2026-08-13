@@ -8,12 +8,12 @@ use crate::shared_event_log::canonical::types::{
     TurnCommittedFact,
 };
 use crate::shared_event_log::{SharedEventWriter, StoredEvent};
+use crate::shared_session_v2::EngineType;
 use crate::shared_session_v2::{
     begin_squad_worker_turn_core, require_writer, BeginTurnOutcome, BeginTurnStatus,
     ExecutionTargetInput,
 };
 use crate::shared_sessions::{now_millis, parse_shared_session_id};
-use crate::shared_session_v2::EngineType;
 use crate::state::AppState;
 
 use super::projection::{active_agent_run, project_agent_runs};
@@ -184,14 +184,17 @@ pub(super) fn implement_prompt(request_text: &str, plan: &AgentPlanDraftV1) -> S
 要求：
 - 在工作区内完成必要实现
 - 禁止 commit / push / deploy
-- 结束时用简短 Markdown 说明改了什么、如何验证（控制在 20 行内）"#
-        ,
+- 结束时用简短 Markdown 说明改了什么、如何验证（控制在 20 行内）"#,
         summary = plan.summary,
         markdown = plan.markdown,
     )
 }
 
-pub(super) fn review_prompt(request_text: &str, plan: &AgentPlanDraftV1, implement_note: &str) -> String {
+pub(super) fn review_prompt(
+    request_text: &str,
+    plan: &AgentPlanDraftV1,
+    implement_note: &str,
+) -> String {
     format!(
         r#"你是多 Agent 协作管线中的【审查/汇总】环节。
 
@@ -208,8 +211,7 @@ pub(super) fn review_prompt(request_text: &str, plan: &AgentPlanDraftV1, impleme
 1. 只输出「给用户看的短汇总」，全文不超过 12 行
 2. 结构：完成了什么 / 关键改动 / 如何验证 / 剩余风险（如有）
 3. 不要复述长分析，不要贴大段代码，不要再开工具扫全仓
-4. 禁止调用会改文件的工具"#
-        ,
+4. 禁止调用会改文件的工具"#,
         summary = plan.summary,
         implement_note = implement_note,
     )
@@ -256,7 +258,9 @@ pub(super) fn build_stage_prompt(
     plan: Option<&AgentPlanDraftV1>,
     upstream_notes: &str,
 ) -> String {
-    let base = if stage_index == 0 && (requires_approval || AgentStageId::parse(stage_id) == Some(AgentStageId::Plan)) {
+    let base = if stage_index == 0
+        && (requires_approval || AgentStageId::parse(stage_id) == Some(AgentStageId::Plan))
+    {
         plan_prompt(request_text)
     } else if stage_index + 1 >= stage_count
         || AgentStageId::parse(stage_id) == Some(AgentStageId::Review)

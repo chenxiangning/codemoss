@@ -2480,10 +2480,8 @@ pub async fn engine_send_message(
                         // fusion (onAgentMessageCompleted) runs even after TextDelta.
                         // Use text-lane id so the frontend upserts the streamed bubble.
                         if !completed_text.trim().is_empty() {
-                            let completion_item_id = gemini_agent_completion_item_id(
-                                &render_state,
-                                &item_id_clone,
-                            );
+                            let completion_item_id =
+                                gemini_agent_completion_item_id(&render_state, &item_id_clone);
                             let synthetic = AppServerEvent {
                                 workspace_id: event.workspace_id().to_string(),
                                 message: json!({
@@ -2746,10 +2744,8 @@ pub async fn engine_send_message(
                         // fusion runs after normal TextDelta streaming (Claude-parity).
                         // Use text-lane id so the frontend upserts the streamed bubble.
                         if !completed_text.trim().is_empty() {
-                            let completion_item_id = gemini_agent_completion_item_id(
-                                &render_state,
-                                &item_id_clone,
-                            );
+                            let completion_item_id =
+                                gemini_agent_completion_item_id(&render_state, &item_id_clone);
                             let synthetic = AppServerEvent {
                                 workspace_id: event.workspace_id().to_string(),
                                 message: json!({
@@ -3014,10 +3010,8 @@ pub async fn engine_send_message(
                         // fusion runs after normal TextDelta streaming (Claude-parity).
                         // Use text-lane id so the frontend upserts the streamed bubble.
                         if !completed_text.trim().is_empty() {
-                            let completion_item_id = gemini_agent_completion_item_id(
-                                &render_state,
-                                &item_id_clone,
-                            );
+                            let completion_item_id =
+                                gemini_agent_completion_item_id(&render_state, &item_id_clone);
                             let synthetic = AppServerEvent {
                                 workspace_id: event.workspace_id().to_string(),
                                 message: json!({

@@ -60,13 +60,23 @@ pub(crate) fn sync_claude_for_workspace(
     let project_dir = projects_dir.join(&encoded);
     let history_path = claude_home.join("history.jsonl");
 
-    let source_key = format!("claude:{}", normalize_path_key(&workspace_path.to_string_lossy()));
+    let source_key = format!(
+        "claude:{}",
+        normalize_path_key(&workspace_path.to_string_lossy())
+    );
     let fingerprint = format!(
         "{}|{}",
         mtime_fingerprint(&project_dir),
         mtime_fingerprint(&history_path)
     );
-    if !force && source_is_fresh(connection, &source_key, &fingerprint, SOURCE_FRESH_MAX_AGE_MS)? {
+    if !force
+        && source_is_fresh(
+            connection,
+            &source_key,
+            &fingerprint,
+            SOURCE_FRESH_MAX_AGE_MS,
+        )?
+    {
         return Ok(WriterResult {
             skipped_fresh: true,
             engines: vec!["claude".into()],
@@ -185,10 +195,7 @@ fn read_claude_history_titles(
         let Some(display) = display else {
             continue;
         };
-        let timestamp = value
-            .get("timestamp")
-            .and_then(Value::as_i64)
-            .unwrap_or(0);
+        let timestamp = value.get("timestamp").and_then(Value::as_i64).unwrap_or(0);
         let entry = titles
             .entry(session_id.to_string())
             .or_insert((timestamp, display.to_string()));
@@ -274,7 +281,10 @@ fn truncate_title(value: &str, max_chars: usize) -> String {
     if trimmed.chars().count() <= max_chars {
         return trimmed.to_string();
     }
-    let mut out = trimmed.chars().take(max_chars.saturating_sub(1)).collect::<String>();
+    let mut out = trimmed
+        .chars()
+        .take(max_chars.saturating_sub(1))
+        .collect::<String>();
     out.push('…');
     out
 }
@@ -288,7 +298,10 @@ pub(crate) fn sync_codex_for_workspace(
     force: bool,
 ) -> Result<WriterResult, String> {
     let limit = limit.clamp(1, 500);
-    let source_key = format!("codex:{}", normalize_path_key(&workspace_path.to_string_lossy()));
+    let source_key = format!(
+        "codex:{}",
+        normalize_path_key(&workspace_path.to_string_lossy())
+    );
     let fingerprint = sessions_roots
         .iter()
         .map(|root| mtime_fingerprint(root))
@@ -303,7 +316,14 @@ pub(crate) fn sync_codex_for_workspace(
             fingerprint.push_str(&mtime_fingerprint(&index));
         }
     }
-    if !force && source_is_fresh(connection, &source_key, &fingerprint, SOURCE_FRESH_MAX_AGE_MS)? {
+    if !force
+        && source_is_fresh(
+            connection,
+            &source_key,
+            &fingerprint,
+            SOURCE_FRESH_MAX_AGE_MS,
+        )?
+    {
         return Ok(WriterResult {
             skipped_fresh: true,
             engines: vec!["codex".into()],
@@ -378,9 +398,19 @@ pub(crate) fn sync_kimi_for_workspace(
         })
         .unwrap_or(home);
     let index_path = home.join("session_index.jsonl");
-    let source_key = format!("kimi:{}", normalize_path_key(&workspace_path.to_string_lossy()));
+    let source_key = format!(
+        "kimi:{}",
+        normalize_path_key(&workspace_path.to_string_lossy())
+    );
     let fingerprint = mtime_fingerprint(&index_path);
-    if !force && source_is_fresh(connection, &source_key, &fingerprint, SOURCE_FRESH_MAX_AGE_MS)? {
+    if !force
+        && source_is_fresh(
+            connection,
+            &source_key,
+            &fingerprint,
+            SOURCE_FRESH_MAX_AGE_MS,
+        )?
+    {
         return Ok(WriterResult {
             skipped_fresh: true,
             engines: vec!["kimi".into()],
@@ -519,7 +549,12 @@ pub(crate) fn engine_source_is_fresh(
         engine.trim().to_ascii_lowercase(),
         normalize_path_key(&workspace_path.to_string_lossy())
     );
-    source_is_fresh(connection, &source_key, fingerprint, SOURCE_FRESH_MAX_AGE_MS)
+    source_is_fresh(
+        connection,
+        &source_key,
+        fingerprint,
+        SOURCE_FRESH_MAX_AGE_MS,
+    )
 }
 
 pub(crate) fn gemini_home_fingerprint() -> String {

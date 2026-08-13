@@ -5,8 +5,8 @@ use super::thread_listing::{
 };
 use super::{
     codex_provider_binding_lookup_keys, create_session_runtime_recovering_error,
-    expired_claude_ask_request_id,
-    resolve_shared_control_response_route, run_start_thread_with_hook_safe_fallback,
+    expired_claude_ask_request_id, resolve_shared_control_response_route,
+    run_start_thread_with_hook_safe_fallback,
     run_start_thread_with_hook_safe_fallback_and_recovery_probe, run_start_thread_with_retry,
     run_start_thread_with_retry_and_recovery_probe,
 };
@@ -1433,6 +1433,14 @@ fn expired_claude_ask_ignores_non_askuserquestion_request_ids() {
     // reclassified even with an ask-shaped id.
     assert_eq!(
         expired_claude_ask_request_id(&json!("ask-0123456789abcdef"), true, false),
+        None,
+    );
+    // JSON-RPC ids are frequently numeric; a non-string id must fall through
+    // rather than panic or match.
+    assert_eq!(expired_claude_ask_request_id(&json!(42), true, true), None);
+    // The prefix is a prefix, not a substring.
+    assert_eq!(
+        expired_claude_ask_request_id(&json!("task-ask-1"), true, true),
         None,
     );
 }
