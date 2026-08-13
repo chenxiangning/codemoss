@@ -36,6 +36,7 @@ type UseMessagesInteractionsInput = {
   renderSourceItems: ConversationItem[];
   selectedOpenAppId: MessagesCoreProps["presentation"]["selectedOpenAppId"];
   threadId: string | null;
+  workspaceId: string | null;
   workspacePath: string | null;
 };
 
@@ -52,6 +53,7 @@ export function useMessagesInteractions({
   renderSourceItems,
   selectedOpenAppId,
   threadId,
+  workspaceId,
   workspacePath,
 }: UseMessagesInteractionsInput) {
   const [expandedItems, setExpandedItems] = useState<Set<string>>(() => new Set());
@@ -62,13 +64,19 @@ export function useMessagesInteractions({
   const copyTimeoutRef = useRef<number | null>(null);
   const lastAutoExpandedIdRef = useRef<string | null>(null);
 
-  const { openFileLink, showFileLinkMenu, fileLinkMenu, closeFileLinkMenu } =
-    useFileLinkOpener(
-      workspacePath,
-      openTargets,
-      selectedOpenAppId,
-      onOpenWorkspaceFile,
-    );
+  const {
+    openFileLink,
+    openHtmlFileInBrowser,
+    showFileLinkMenu,
+    fileLinkMenu,
+    closeFileLinkMenu,
+  } = useFileLinkOpener(
+    workspacePath,
+    openTargets,
+    selectedOpenAppId,
+    onOpenWorkspaceFile,
+    workspaceId,
+  );
   const {
     menu: noteCaptureMenu,
     closeMenu: closeNoteCaptureMenu,
@@ -212,6 +220,7 @@ export function useMessagesInteractions({
     handleExitPlanModeExecuteForItem,
     noteCaptureMenu,
     openFileLink,
+    openHtmlFileInBrowser,
     resetInteractionScope,
     selectedExitPlanExecutionByItemKey,
     showFileLinkMenu,

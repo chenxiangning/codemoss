@@ -62,6 +62,28 @@ describe("Markdown fenced block rendering", () => {
     );
   });
 
+  it("preserves html browser actions inside rendered markdown code blocks", async () => {
+    const onOpenHtmlInBrowser = vi.fn();
+    const value = [
+      "```markdown",
+      "`_temp/demo.html`",
+      "```",
+    ].join("\n");
+
+    render(
+      <Markdown
+        value={value}
+        className="markdown"
+        codeBlockStyle="message"
+        onOpenFileLink={vi.fn()}
+        onOpenHtmlInBrowser={onOpenHtmlInBrowser}
+      />,
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: "files.openInBrowser" }));
+    expect(onOpenHtmlInBrowser).toHaveBeenCalledWith("_temp/demo.html");
+  });
+
   it("keeps nested markdown fences as literal code examples", async () => {
     const value = [
       "示例：",

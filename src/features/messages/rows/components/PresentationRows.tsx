@@ -14,6 +14,7 @@ type ReviewRowProps = {
   workspaceId?: string | null;
   onOpenFileLink?: (path: string) => void;
   onOpenFileLinkMenu?: (event: React.MouseEvent, path: string) => void;
+  onOpenHtmlInBrowser?: (path: string) => void;
 };
 
 type DiffRowProps = {
@@ -157,6 +158,7 @@ export const ReviewRow = memo(function ReviewRow({
   workspaceId = null,
   onOpenFileLink,
   onOpenFileLinkMenu,
+  onOpenHtmlInBrowser,
 }: ReviewRowProps) {
   const title = item.state === "started" ? "Review started" : "Review completed";
   return (
@@ -174,6 +176,7 @@ export const ReviewRow = memo(function ReviewRow({
           workspaceId={workspaceId}
           onOpenFileLink={onOpenFileLink}
           onOpenFileLinkMenu={onOpenFileLinkMenu}
+          onOpenHtmlInBrowser={onOpenHtmlInBrowser}
         />
       )}
     </div>

@@ -1,5 +1,6 @@
 import { useCallback, useRef, useState } from "react";
 import type { MouseEvent } from "react";
+import { useTranslation } from "react-i18next";
 import { openPath } from "@tauri-apps/plugin-opener";
 import { openWorkspaceIn, revealInFileManager } from "../../../services/tauri";
 import { pushErrorToast } from "../../../services/toasts";
@@ -10,6 +11,11 @@ import {
   type RendererContextMenuItem,
   type RendererContextMenuState,
 } from "../../../components/ui/RendererContextMenu";
+import {
+  formatOpenHtmlInBrowserError,
+  isHtmlFilePath,
+  openHtmlInBrowser,
+} from "../../files/utils/openHtmlInBrowser";
 
 type OpenTarget = {
   id: string;
@@ -31,6 +37,7 @@ const DEFAULT_OPEN_TARGET: OpenTarget = {
 
 type FileLinkOpenerConfig = {
   workspacePath: string | null;
+  workspaceId: string | null;
   openTargets: OpenAppTarget[];
   selectedOpenAppId: string;
   onOpenWorkspaceFile?: ((path: string) => void) | null;
@@ -117,6 +124,11 @@ function resolveFilePath(path: string, workspacePath?: string | null) {
   return `${base}/${trimmed}`;
 }
 
+function isAbsoluteLocalFilePath(path: string) {
+  const trimmed = normalizeLocalFilePath(path);
+  return trimmed.startsWith("/") || isWindowsAbsolutePath(trimmed);
+}
+
 function stripLineSuffix(path: string) {
   const withoutHashLine = path.replace(/#L?\d+(?:C\d+)?$/i, "");
   const match = withoutHashLine.match(/^(.*?)(?::\d+(?::\d+)?)?$/);
@@ -142,15 +154,19 @@ export function useFileLinkOpener(
   openTargets: OpenAppTarget[],
   selectedOpenAppId: string,
   onOpenWorkspaceFile?: ((path: string) => void) | null,
+  workspaceId?: string | null,
 ) {
+  const { t } = useTranslation();
   const configRef = useRef<FileLinkOpenerConfig>({
     workspacePath,
+    workspaceId: workspaceId ?? null,
     openTargets,
     selectedOpenAppId,
     onOpenWorkspaceFile,
   });
   configRef.current = {
     workspacePath,
+    workspaceId: workspaceId ?? null,
     openTargets,
     selectedOpenAppId,
     onOpenWorkspaceFile,
@@ -363,5 +379,52 @@ export function useFileLinkOpener(
     [openFileLink, openFileLinkInConfiguredTarget, reportOpenError],
   );
 
-  return { openFileLink, showFileLinkMenu, fileLinkMenu, closeFileLinkMenu };
+  const openHtmlFileInBrowser = useCallback(
+    (rawPath: string) => {
+      const {
+        workspacePath: currentWorkspacePath,
+        workspaceId: currentWorkspaceId,
+      } = configRef.current;
+      const resolvedWorkspaceId = currentWorkspaceId?.trim() ?? "";
+      if (!resolvedWorkspaceId) {
+        pushErrorToast({
+          title: t("files.openInBrowser"),
+          message: t("files.openInBrowserNoWorkspace"),
+        });
+        return;
+      }
+      const resolvedPath = resolveFilePath(
+        stripLineSuffix(rawPath),
+        currentWorkspacePath,
+      );
+      if (!isHtmlFilePath(resolvedPath)) {
+        return;
+      }
+      if (!isAbsoluteLocalFilePath(resolvedPath)) {
+        pushErrorToast({
+          title: t("files.openInBrowser"),
+          message: t("files.openInBrowserNoWorkspace"),
+        });
+        return;
+      }
+      void openHtmlInBrowser(resolvedPath, {
+        workspaceId: resolvedWorkspaceId,
+      }).catch((error) => {
+        console.warn("[file-link] openHtmlInBrowser failed", error);
+        pushErrorToast({
+          title: t("files.openInBrowser"),
+          message: formatOpenHtmlInBrowserError(error, t),
+        });
+      });
+    },
+    [t],
+  );
+
+  return {
+    openFileLink,
+    openHtmlFileInBrowser,
+    showFileLinkMenu,
+    fileLinkMenu,
+    closeFileLinkMenu,
+  };
 }

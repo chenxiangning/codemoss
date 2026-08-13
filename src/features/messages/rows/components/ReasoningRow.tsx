@@ -23,6 +23,7 @@ type ReasoningRowProps = {
   onToggle: (id: string) => void;
   onOpenFileLink?: (path: string) => void;
   onOpenFileLinkMenu?: (event: MouseEvent, path: string) => void;
+  onOpenHtmlInBrowser?: (path: string) => void;
   presentationProfile?: PresentationProfile | null;
   streamMitigationProfile?: StreamMitigationProfile | null;
 };
@@ -37,6 +38,7 @@ export const ReasoningRow = memo(function ReasoningRow({
   onToggle,
   onOpenFileLink,
   onOpenFileLinkMenu,
+  onOpenHtmlInBrowser,
   presentationProfile = null,
   streamMitigationProfile = null,
 }: ReasoningRowProps) {
@@ -107,6 +109,7 @@ export const ReasoningRow = memo(function ReasoningRow({
               liveRenderMode={isLive ? "lightweight" : "full"}
               onOpenFileLink={onOpenFileLink}
               onOpenFileLinkMenu={onOpenFileLinkMenu}
+              onOpenHtmlInBrowser={onOpenHtmlInBrowser}
             />
           </div>
         ) : (

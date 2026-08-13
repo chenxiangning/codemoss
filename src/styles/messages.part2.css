@@ -1109,6 +1109,35 @@
   color: var(--md-link-color);
 }
 
+.markdown-file-link {
+  display: inline;
+}
+
+.markdown-file-link-browser {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: 0.28em;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--md-link-color);
+  cursor: pointer;
+  opacity: 0.72;
+  vertical-align: -0.14em;
+}
+
+.markdown-file-link-browser:hover,
+.markdown-file-link-browser:focus-visible {
+  opacity: 1;
+}
+
+.markdown-file-link-browser:focus-visible {
+  outline: 1px solid currentColor;
+  outline-offset: 1px;
+}
+
 @media (prefers-color-scheme: light) {
   :root:not([data-theme]) {
     --md-link-color: #107c10;

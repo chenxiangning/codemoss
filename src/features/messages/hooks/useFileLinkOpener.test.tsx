@@ -11,7 +11,18 @@ const openerMocks = vi.hoisted(() => ({
   openWorkspaceIn: vi.fn(),
   pushErrorToast: vi.fn(),
   clipboardWriteText: vi.fn(),
+  openHtmlInBrowser: vi.fn(),
 }));
+
+vi.mock("../../files/utils/openHtmlInBrowser", async () => {
+  const actual = await vi.importActual<
+    typeof import("../../files/utils/openHtmlInBrowser")
+  >("../../files/utils/openHtmlInBrowser");
+  return {
+    ...actual,
+    openHtmlInBrowser: openerMocks.openHtmlInBrowser,
+  };
+});
 
 vi.mock("@tauri-apps/plugin-opener", () => ({
   openPath: openerMocks.openPath,
@@ -47,6 +58,7 @@ describe("useFileLinkOpener", () => {
     openerMocks.openWorkspaceIn.mockReset();
     openerMocks.pushErrorToast.mockReset();
     openerMocks.clipboardWriteText.mockReset();
+    openerMocks.openHtmlInBrowser.mockReset();
     Object.defineProperty(navigator, "clipboard", {
       configurable: true,
       value: {
@@ -306,5 +318,95 @@ describe("useFileLinkOpener", () => {
         ? configuredTargetAction.label
         : null,
     ).toBe("Open in Cursor");
+  });
+
+  it("opens relative html file links in the built-in browser", async () => {
+    openerMocks.openHtmlInBrowser.mockResolvedValue(undefined);
+    const { result } = renderHook(() =>
+      useFileLinkOpener(
+        "/repo",
+        [makeOpenTarget("vscode", "VS Code")],
+        "vscode",
+        null,
+        "ws-1",
+      ),
+    );
+
+    await act(async () => {
+      result.current.openHtmlFileInBrowser(
+        "_temp/sidebar-session-group-variants.html",
+      );
+    });
+
+    expect(openerMocks.openHtmlInBrowser).toHaveBeenCalledWith(
+      "/repo/_temp/sidebar-session-group-variants.html",
+      { workspaceId: "ws-1" },
+    );
+  });
+
+  it("toasts when a relative html path has no workspace path", async () => {
+    const { result } = renderHook(() =>
+      useFileLinkOpener(
+        null,
+        [makeOpenTarget("vscode", "VS Code")],
+        "vscode",
+        null,
+        "ws-1",
+      ),
+    );
+
+    await act(async () => {
+      result.current.openHtmlFileInBrowser("_temp/demo.html");
+    });
+
+    expect(openerMocks.openHtmlInBrowser).not.toHaveBeenCalled();
+    expect(openerMocks.pushErrorToast).toHaveBeenCalledWith({
+      title: "files.openInBrowser",
+      message: "files.openInBrowserNoWorkspace",
+    });
+  });
+
+  it("opens an absolute html path even without a workspace path", async () => {
+    openerMocks.openHtmlInBrowser.mockResolvedValue(undefined);
+    const { result } = renderHook(() =>
+      useFileLinkOpener(
+        null,
+        [makeOpenTarget("vscode", "VS Code")],
+        "vscode",
+        null,
+        "ws-1",
+      ),
+    );
+
+    await act(async () => {
+      result.current.openHtmlFileInBrowser("/tmp/preview.html#L12");
+    });
+
+    expect(openerMocks.openHtmlInBrowser).toHaveBeenCalledWith(
+      "/tmp/preview.html",
+      { workspaceId: "ws-1" },
+    );
+  });
+
+  it("toasts when opening html without a workspace id", async () => {
+    const { result } = renderHook(() =>
+      useFileLinkOpener(
+        "/repo",
+        [makeOpenTarget("vscode", "VS Code")],
+        "vscode",
+        null,
+        "  ",
+      ),
+    );
+
+    await act(async () => {
+      result.current.openHtmlFileInBrowser("_temp/demo.html");
+    });
+
+    expect(openerMocks.openHtmlInBrowser).not.toHaveBeenCalled();
+    expect(openerMocks.pushErrorToast).toHaveBeenCalledWith({
+      title: "files.openInBrowser",
+      message: "files.openInBrowserNoWorkspace",
+    });
   });
 });

@@ -593,6 +593,7 @@ export const MessagesCore = memo(function MessagesCore({
     handleExitPlanModeExecuteForItem,
     noteCaptureMenu,
     openFileLink,
+    openHtmlFileInBrowser,
     resetInteractionScope,
     selectedExitPlanExecutionByItemKey,
     showFileLinkMenu,
@@ -611,6 +612,7 @@ export const MessagesCore = memo(function MessagesCore({
     renderSourceItems,
     selectedOpenAppId,
     threadId,
+    workspaceId,
     workspacePath,
   });
 
@@ -1759,6 +1761,7 @@ export const MessagesCore = memo(function MessagesCore({
       onThreadRecoveryFork,
       onToggleProcessPhaseExpanded: handleToggleProcessPhaseExpanded,
       openFileLink,
+      openHtmlFileInBrowser,
       showFileLinkMenu,
       toggleExpanded,
     },

@@ -35,12 +35,14 @@ export const NoteCardContextSummaryCard = memo(function NoteCardContextSummaryCa
   codeBlockCopyUseModifier,
   onOpenFileLink,
   onOpenFileLinkMenu,
+  onOpenHtmlInBrowser,
 }: {
   summary: NoteCardContextSummary;
   workspaceId?: string | null;
   codeBlockCopyUseModifier?: boolean;
   onOpenFileLink?: (path: string) => void;
   onOpenFileLinkMenu?: (event: React.MouseEvent, path: string) => void;
+  onOpenHtmlInBrowser?: (path: string) => void;
 }) {
   const { t } = useTranslation();
   const [isExpanded, setIsExpanded] = useState(false);
@@ -145,6 +147,7 @@ export const NoteCardContextSummaryCard = memo(function NoteCardContextSummaryCa
                       codeBlockCopyUseModifier={codeBlockCopyUseModifier}
                       onOpenFileLink={onOpenFileLink}
                       onOpenFileLinkMenu={onOpenFileLinkMenu}
+                      onOpenHtmlInBrowser={onOpenHtmlInBrowser}
                     />
                   ) : null
                 ) : bodyPreview ? (

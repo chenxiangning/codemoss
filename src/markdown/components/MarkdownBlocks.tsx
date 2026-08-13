@@ -24,6 +24,7 @@ export type PreProps = {
   workspaceId: string | null;
   onOpenFileLink?: (path: string) => void;
   onOpenFileLinkMenu?: (event: React.MouseEvent, path: string) => void;
+  onOpenHtmlInBrowser?: (path: string) => void;
 };
 
 type LinkBlockProps = {
@@ -155,7 +156,8 @@ function MarkdownBlock({
   workspaceId,
   onOpenFileLink,
   onOpenFileLinkMenu,
-}: CodeBlockProps & Pick<PreProps, "workspaceId" | "onOpenFileLink" | "onOpenFileLinkMenu">) {
+  onOpenHtmlInBrowser,
+}: CodeBlockProps & Pick<PreProps, "workspaceId" | "onOpenFileLink" | "onOpenFileLinkMenu" | "onOpenHtmlInBrowser">) {
   const languageTag = extractLanguageTag(className);
   const languageLabel = (languageTag ?? "markdown").toUpperCase();
   const fencedValue = `\`\`\`${languageTag ?? "markdown"}\n${value}\n\`\`\``;
@@ -182,6 +184,7 @@ function MarkdownBlock({
           streamingThrottleMs={0}
           onOpenFileLink={onOpenFileLink}
           onOpenFileLinkMenu={onOpenFileLinkMenu}
+          onOpenHtmlInBrowser={onOpenHtmlInBrowser}
         />
       </div>
     </div>
@@ -330,6 +333,7 @@ export function PreBlock({
   workspaceId,
   onOpenFileLink,
   onOpenFileLinkMenu,
+  onOpenHtmlInBrowser,
 }: PreProps) {
   const { className, value } = extractCodeFromPre(node);
   if (!className && !value && children) {
@@ -350,6 +354,7 @@ export function PreBlock({
         workspaceId={workspaceId}
         onOpenFileLink={onOpenFileLink}
         onOpenFileLinkMenu={onOpenFileLinkMenu}
+        onOpenHtmlInBrowser={onOpenHtmlInBrowser}
       />
     );
   }

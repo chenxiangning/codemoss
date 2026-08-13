@@ -399,6 +399,89 @@ describe("Markdown file links", () => {
     expect(onOpenFileLink).toHaveBeenCalledWith("C:\\Users\\test\\repo\\demo.ts#L3");
   });
 
+  it("adds a browser action after html file links and keeps path clicks unchanged", () => {
+    const onOpenFileLink = vi.fn();
+    const onOpenHtmlInBrowser = vi.fn();
+
+    render(
+      <Markdown
+        value={"打开这个文件：`_temp/sidebar-session-group-variants.html`"}
+        onOpenFileLink={onOpenFileLink}
+        onOpenHtmlInBrowser={onOpenHtmlInBrowser}
+      />,
+    );
+
+    fireEvent.click(
+      screen.getByRole("link", {
+        name: "_temp/sidebar-session-group-variants.html",
+      }),
+    );
+    expect(onOpenFileLink).toHaveBeenCalledWith(
+      "_temp/sidebar-session-group-variants.html",
+    );
+    expect(onOpenHtmlInBrowser).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "files.openInBrowser" }));
+    expect(onOpenHtmlInBrowser).toHaveBeenCalledWith(
+      "_temp/sidebar-session-group-variants.html",
+    );
+    expect(onOpenFileLink).toHaveBeenCalledTimes(1);
+    expect(document.querySelector(".markdown-file-link")).toBeTruthy();
+  });
+
+  it("keeps a browser action for html file links that include a line suffix", () => {
+    const onOpenHtmlInBrowser = vi.fn();
+    render(
+      <Markdown
+        value={"见 [preview](/Users/test/demo.html#L12)"}
+        onOpenFileLink={vi.fn()}
+        onOpenHtmlInBrowser={onOpenHtmlInBrowser}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "files.openInBrowser" }));
+    expect(onOpenHtmlInBrowser).toHaveBeenCalledWith("/Users/test/demo.html#L12");
+  });
+
+  it("adds a browser action for markdown html file links", () => {
+    const onOpenHtmlInBrowser = vi.fn();
+    render(
+      <Markdown
+        value={"打开 [preview](_temp/demo.html)"}
+        onOpenFileLink={vi.fn()}
+        onOpenHtmlInBrowser={onOpenHtmlInBrowser}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "files.openInBrowser" }));
+    expect(onOpenHtmlInBrowser).toHaveBeenCalledWith("_temp/demo.html");
+  });
+
+  it("does not wrap non-html file links with the browser action shell", () => {
+    const { container } = render(
+      <Markdown
+        value={"见 `src/index.ts`"}
+        onOpenFileLink={vi.fn()}
+        onOpenHtmlInBrowser={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByRole("button", { name: "files.openInBrowser" })).toBeNull();
+    expect(container.querySelector(".markdown-file-link")).toBeNull();
+    expect(screen.getByRole("link", { name: "src/index.ts" })).toBeTruthy();
+  });
+
+  it("hides the browser action when the html opener is not provided", () => {
+    render(
+      <Markdown
+        value={"见 `_temp/demo.html`"}
+        onOpenFileLink={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByRole("button", { name: "files.openInBrowser" })).toBeNull();
+  });
+
   it("falls back to safe progressive reveal defaults for non-finite inputs", () => {
     vi.useFakeTimers();
     const onRenderedValueChange = vi.fn();

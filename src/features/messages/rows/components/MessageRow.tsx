@@ -210,6 +210,7 @@ export const MessageRow = memo(function MessageRow({
   codeBlockCopyUseModifier,
   onOpenFileLink,
   onOpenFileLinkMenu,
+  onOpenHtmlInBrowser,
   streamMitigationProfile = null,
   onAssistantVisibleTextRender,
   suppressMemorySummaryCard = false,
@@ -786,6 +787,7 @@ export const MessageRow = memo(function MessageRow({
             )}
             onOpenFileLink={onOpenFileLink}
             onOpenFileLinkMenu={onOpenFileLinkMenu}
+            onOpenHtmlInBrowser={onOpenHtmlInBrowser}
             liveRenderMode={useLightweightStreamingMarkdown ? "lightweight" : "full"}
             progressiveReveal={
               useLightweightStreamingMarkdown && streamingMarkdownComplexity.isMedium
@@ -817,6 +819,7 @@ export const MessageRow = memo(function MessageRow({
       codeBlockCopyUseModifier={codeBlockCopyUseModifier}
       onOpenFileLink={onOpenFileLink}
       onOpenFileLinkMenu={onOpenFileLinkMenu}
+      onOpenHtmlInBrowser={onOpenHtmlInBrowser}
     />
   ) : null;
   const browserContextSummaryNode = browserContextSummary ? (
@@ -937,6 +940,7 @@ export const MessageRow = memo(function MessageRow({
                         codeBlockCopyUseModifier={codeBlockCopyUseModifier}
                         onOpenFileLink={onOpenFileLink}
                         onOpenFileLinkMenu={onOpenFileLinkMenu}
+                        onOpenHtmlInBrowser={onOpenHtmlInBrowser}
                       />
                     </section>
                   ))}
@@ -950,6 +954,7 @@ export const MessageRow = memo(function MessageRow({
                   codeBlockCopyUseModifier={codeBlockCopyUseModifier}
                   onOpenFileLink={onOpenFileLink}
                   onOpenFileLinkMenu={onOpenFileLinkMenu}
+                  onOpenHtmlInBrowser={onOpenHtmlInBrowser}
                 />
               )}
               <details className="memory-context-payload-raw">
@@ -1031,6 +1036,7 @@ export const MessageRow = memo(function MessageRow({
                     codeBlockCopyUseModifier={codeBlockCopyUseModifier}
                     onOpenFileLink={onOpenFileLink}
                     onOpenFileLinkMenu={onOpenFileLinkMenu}
+                    onOpenHtmlInBrowser={onOpenHtmlInBrowser}
                   />
                 )}
               </div>
@@ -1341,6 +1347,7 @@ export const MessageRow = memo(function MessageRow({
                   codeBlockCopyUseModifier={codeBlockCopyUseModifier}
                   onOpenFileLink={onOpenFileLink}
                   onOpenFileLinkMenu={onOpenFileLinkMenu}
+                  onOpenHtmlInBrowser={onOpenHtmlInBrowser}
                 />
               )}
               {memorySummaryRawPayload ? (
