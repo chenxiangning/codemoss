@@ -306,6 +306,18 @@ const CLAUDE_STREAM_FIRST_EVENT_TIMEOUT: Duration = Duration::from_secs(90);
 #[cfg(test)]
 const CLAUDE_STREAM_FIRST_EVENT_TIMEOUT: Duration = Duration::from_secs(10);
 const CLAUDE_STREAM_DIAGNOSTIC_SAMPLE_LIMIT: usize = 800;
+/// How long we wait for a user to answer an AskUserQuestion, both via the
+/// native plan-mode resume path and the in-process MCP bridge. Single source
+/// of truth so the two wait sites and the CLI's own fetch timeout (which
+/// needs a margin over this, not an exact match) can't silently drift apart -
+/// this repo has already had that drift once (300s -> 1800s, only some sites
+/// updated). Must stay in sync with the frontend's USER_INPUT_TIMEOUT_SECONDS.
+const ASK_USER_QUESTION_TIMEOUT_SECS: u64 = 1800;
+/// Margin the CLI's own MCP tool-call fetch timeout gets over
+/// `ASK_USER_QUESTION_TIMEOUT_SECS`, so our graceful "timed out" MCP
+/// tool_result has time to reach the CLI before its fetch abandons the call
+/// at the exact same instant our server-side wait gives up.
+const ASK_USER_QUESTION_CLI_TIMEOUT_MARGIN_SECS: u64 = 30;
 // After Claude emits its final `result` event the turn is logically done. We
 // still wait for the CLI process to exit (post-turn usage probe / Stop hooks)
 // before emitting TurnCompleted, but that wait must be bounded: if MCP child
@@ -1183,12 +1195,17 @@ impl ClaudeSession {
                 cmd.arg(crate::engine::claude::AskUserMcpServer::allowed_tool_name());
                 // The CLI's per-request MCP tool-call fetch timeout defaults to 60s
                 // for remote HTTP servers. Our AskUserQuestion server blocks up to
-                // 1800s waiting for the user, so without this the CLI abandons the
-                // call early. Raise it to match our server bound (ms). Only set when
-                // our MCP ask is actually wired; the user can still override via env.
-                // Keep ≥ frontend USER_INPUT_TIMEOUT_SECONDS (30 min).
+                // ASK_USER_QUESTION_TIMEOUT_SECS waiting for the user, so without
+                // this the CLI abandons the call early. Raise it past our own
+                // server bound (not just equal to it) so a graceful "timed out"
+                // MCP response has time to reach the CLI instead of racing its
+                // fetch abandonment at the exact same instant. Only set when our
+                // MCP ask is actually wired; the user can still override via env.
                 if std::env::var_os("MCP_TOOL_TIMEOUT").is_none() {
-                    cmd.env("MCP_TOOL_TIMEOUT", "1800000");
+                    let timeout_ms = (ASK_USER_QUESTION_TIMEOUT_SECS
+                        + ASK_USER_QUESTION_CLI_TIMEOUT_MARGIN_SECS)
+                        * 1000;
+                    cmd.env("MCP_TOOL_TIMEOUT", timeout_ms.to_string());
                 }
             } else {
                 log::warn!(
