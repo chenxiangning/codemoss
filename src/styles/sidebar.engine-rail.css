@@ -70,3 +70,23 @@
 .sidebar-engine-rail-row .thread-engine-badge {
   display: none;
 }
+
+/* 会话行向 engine rail 靠拢：rail 已承担 engine 标识（行内 badge 隐藏），
+   行内左侧留白归零（原 10px）；hover 让位与 pin 定位同步左移。 */
+.sidebar-engine-rail-row .thread-row {
+  padding-left: var(--thread-indent, 0px);
+}
+
+.sidebar-engine-rail-row .thread-row.has-pin-toggle:hover,
+.sidebar-engine-rail-row .thread-row.has-pin-toggle:focus-within {
+  padding-left: calc(14px + var(--thread-indent, 0px));
+}
+
+.sidebar-engine-rail-row .thread-pin-toggle {
+  left: var(--thread-indent, 0px);
+}
+
+/* Subagent 行与父行保持原有层级差（24px → 14px，delta 不变）。 */
+.sidebar-engine-rail-row .thread-row.is-subagent {
+  padding-left: calc(14px + var(--thread-indent, 0px));
+}
