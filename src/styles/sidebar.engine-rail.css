@@ -1,0 +1,72 @@
+.sidebar-engine-rail-row {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  align-items: stretch;
+  min-width: 0;
+  /* Match .workspace-row (4px) + .workspace-header-content (6px) + 18px folder. */
+  margin-left: 4px;
+  margin-right: 4px;
+  padding-left: 6px;
+}
+
+.sidebar-engine-rail {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 1px 0 2px;
+}
+
+.sidebar-engine-rail__btn {
+  width: 18px;
+  height: var(--sidebar-row-height-thread, 30px);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--text-muted, var(--text-secondary, #8b93a2));
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  padding: 0;
+  box-shadow: none;
+  outline: none;
+}
+
+.sidebar-engine-rail__btn:hover,
+.sidebar-engine-rail__btn:focus,
+.sidebar-engine-rail__btn:focus-visible {
+  background: transparent;
+  box-shadow: none;
+  outline: none;
+  color: var(--text-strong, var(--text-primary, #1b1f24));
+}
+
+.sidebar-engine-rail__btn svg,
+.sidebar-engine-rail__btn img {
+  width: 14px;
+  height: 14px;
+  display: block;
+  opacity: 0.42;
+  filter: grayscale(1);
+}
+
+.sidebar-engine-rail__btn img[alt="PI CLI"] {
+  width: 11px;
+  height: 11px;
+}
+
+.sidebar-engine-rail__btn.is-selected {
+  background: transparent;
+  color: var(--text-strong, var(--text-primary, #eceff4));
+}
+
+.sidebar-engine-rail__btn.is-selected svg,
+.sidebar-engine-rail__btn.is-selected img {
+  opacity: 1;
+  filter: none;
+}
+
+/* Rail already names the engine — hide per-row engine badges. */
+.sidebar-engine-rail-row .thread-engine-badge {
+  display: none;
+}

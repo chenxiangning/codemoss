@@ -1499,7 +1499,13 @@ export function useAppShellLayoutNodesSection(
             ]
           : [workspace];
       await Promise.allSettled(
-        targets.map((target) => listThreadsForWorkspaceTracked(target)),
+        targets.map((target) =>
+          listThreadsForWorkspaceTracked(target, {
+            preserveState: true,
+            startupHydrationMode: "first-paint",
+            forceSessionIndexSync: false,
+          }),
+        ),
       );
     },
   );

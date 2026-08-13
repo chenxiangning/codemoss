@@ -417,6 +417,8 @@ pub(crate) fn invoke_handler(
         crate::session_index::commands::list_session_index_for_workspace,
         crate::session_index::commands::sync_session_index_for_workspace,
         crate::session_index::commands::invalidate_session_index_for_workspace,
+        crate::session_index::commands::tombstone_session_index_rows,
+        crate::session_index::commands::upsert_session_index_rows,
         crate::session_management::list_workspace_sessions,
         crate::session_management::list_global_codex_sessions,
         crate::session_management::list_project_related_codex_sessions,

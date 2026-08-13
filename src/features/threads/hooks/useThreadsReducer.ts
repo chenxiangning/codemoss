@@ -2695,6 +2695,27 @@ export function threadReducer(state: ThreadState, action: ThreadAction): ThreadS
         )
         .filter((thread) => !isHiddenAutomaticThread(thread));
 
+      // Sidebar list is append/update only unless first-paint SQLite replace.
+      // A later partial catalog paint must not delete engines already on screen.
+      if (action.mode !== "replace") {
+      existingThreads.forEach((thread) => {
+        if (newThreadIds.has(thread.id)) {
+          return;
+        }
+        if (hidden[thread.id] || isHiddenAutomaticThread(thread)) {
+          return;
+        }
+        if (
+          thread.id.startsWith("agent-canvas:") ||
+          isCollabWorkerNativeThreadId(thread.id)
+        ) {
+          return;
+        }
+        visibleThreads.push(thread);
+        newThreadIds.add(thread.id);
+      });
+      }
+
       // BUG FIX: Also preserve threads that are currently active but not in the new list
       // (e.g., newly created Claude threads that haven't been synced to the backend yet)
       const activeThreadId = state.activeThreadIdByWorkspace[action.workspaceId];

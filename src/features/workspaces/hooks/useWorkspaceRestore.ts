@@ -19,6 +19,7 @@ type WorkspaceRestoreOptions = {
   hasLoaded: boolean;
   activeWorkspaceId: string | null;
   restoreThreadsOnlyOnLaunch: boolean;
+  isWorkspaceHydrated?: (workspaceId: string) => boolean;
   listThreadsForWorkspace: (
     workspace: WorkspaceInfo,
     options?: {
@@ -43,6 +44,7 @@ export function useWorkspaceRestore({
   hasLoaded,
   activeWorkspaceId,
   restoreThreadsOnlyOnLaunch,
+  isWorkspaceHydrated,
   listThreadsForWorkspace,
 }: WorkspaceRestoreOptions) {
   const restoredWorkspaces = useRef(new Set<string>());
@@ -65,6 +67,9 @@ export function useWorkspaceRestore({
         return false;
       }
       if (!activeWorkspaceId) {
+        return false;
+      }
+      if (isWorkspaceHydrated?.(workspace.id)) {
         return false;
       }
       return workspace.id === activeWorkspaceId;
@@ -136,6 +141,7 @@ export function useWorkspaceRestore({
   }, [
     activeWorkspaceId,
     hasLoaded,
+    isWorkspaceHydrated,
     listThreadsForWorkspace,
     restoreThreadsOnlyOnLaunch,
     workspaces,

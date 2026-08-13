@@ -5,7 +5,9 @@ use tauri::State;
 use tokio::time::timeout;
 
 use super::store::{
-    list_for_workspace_path, open_connection, SessionIndexListPage, SessionIndexSyncReport,
+    list_for_workspace_path, open_connection, tombstone_session_ids, upsert_rows,
+    workspace_index_sources_invalidated, SessionIndexListPage, SessionIndexRow,
+    SessionIndexSyncReport,
 };
 use super::writers::{
     commit_engine_rows, engine_source_is_fresh, gemini_home_fingerprint, grok_home_fingerprint,
@@ -450,6 +452,33 @@ pub async fn invalidate_session_index_for_workspace(
     Ok(changed as u32)
 }
 
+/// Mark Session Index rows deleted so sidebar hydrate cannot resurrect them.
+#[tauri::command]
+pub async fn tombstone_session_index_rows(session_ids: Vec<String>) -> Result<u32, String> {
+    let changed = tokio::task::spawn_blocking(move || {
+        let connection = open_connection()?;
+        tombstone_session_ids(&connection, &session_ids)
+    })
+    .await
+    .map_err(|error| error.to_string())??;
+    Ok(changed as u32)
+}
+
+/// Client-created sessions write the sidebar Index directly. No disk scan.
+#[tauri::command]
+pub async fn upsert_session_index_rows(rows: Vec<SessionIndexRow>) -> Result<u32, String> {
+    if rows.is_empty() {
+        return Ok(0);
+    }
+    let changed = tokio::task::spawn_blocking(move || {
+        let connection = open_connection()?;
+        upsert_rows(&connection, &rows)
+    })
+    .await
+    .map_err(|error| error.to_string())??;
+    Ok(changed as u32)
+}
+
 /// List sidebar sessions from SQLite. Optionally sync first when stale/empty.
 #[tauri::command]
 pub async fn list_session_index_for_workspace(
@@ -479,14 +508,15 @@ pub async fn list_session_index_for_workspace(
             || tokio::task::spawn_blocking(move || {
                 let connection = open_connection()?;
                 let existing = list_for_workspace_path(&connection, &path_for_check, 1)?;
-                Ok::<bool, String>(existing.is_empty())
+                if existing.is_empty() {
+                    return Ok(true);
+                }
+                workspace_index_sources_invalidated(&connection, &path_for_check)
             })
             .await
             .map_err(|error| error.to_string())??;
-        // Warm first-paint must hit SQLite in milliseconds. Do not block the
-        // list on PI/Gemini/Grok rescan — that exceeds the 2.5s first-paint
-        // timeout and the sidebar keeps last-good without native PI rows.
-        // Incremental rescan belongs to forceSessionIndexSync.
+        // Return SQLite first. Writer rescan is forceSync / empty-index only.
+        // Blocking first-process sync made restart wait on disk.
         if force_sync || index_empty {
             let report = sync_session_index_core(&state, &workspace_id, limit, force_sync).await?;
             synced = !report.skipped_fresh || index_empty;

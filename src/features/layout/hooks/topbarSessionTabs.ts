@@ -88,15 +88,38 @@ function truncateSessionLabel(label: string): string {
   return `${units.slice(0, TOPBAR_SESSION_TAB_LABEL_CHAR_LIMIT).join("")}...`;
 }
 
-function resolveEngineType(engineSource: ThreadSummary["engineSource"] | undefined): EngineType {
+export function resolveEngineType(
+  engineSource: ThreadSummary["engineSource"] | undefined,
+  threadId?: string,
+): EngineType {
   if (
     engineSource === "claude" ||
     engineSource === "gemini" ||
     engineSource === "grok" ||
     engineSource === "kimi" ||
-    engineSource === "opencode"
+    engineSource === "opencode" ||
+    engineSource === "pi"
   ) {
     return engineSource;
+  }
+  const id = String(threadId ?? "").trim().toLowerCase();
+  if (id.startsWith("pi:")) {
+    return "pi";
+  }
+  if (id.startsWith("claude:")) {
+    return "claude";
+  }
+  if (id.startsWith("gemini:")) {
+    return "gemini";
+  }
+  if (id.startsWith("grok:")) {
+    return "grok";
+  }
+  if (id.startsWith("kimi:")) {
+    return "kimi";
+  }
+  if (id.startsWith("opencode:")) {
+    return "opencode";
   }
   return "codex";
 }
@@ -414,7 +437,7 @@ export function buildTopbarSessionTabItems(
       continue;
     }
     const label = resolveTopbarSessionTabLabel(thread, untitledLabel);
-    const engineType = resolveEngineType(thread.engineSource);
+    const engineType = resolveEngineType(thread.engineSource, thread.id);
     const baseEngineLabel =
       engineLabelByType[engineType] ?? DEFAULT_ENGINE_LABEL_BY_TYPE[engineType];
     // id-first：与侧栏 ThreadList 一致，kind 投影丢失时仍显示 Shared 图标/标签

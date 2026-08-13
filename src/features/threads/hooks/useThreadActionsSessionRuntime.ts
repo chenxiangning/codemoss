@@ -22,6 +22,7 @@ import {
   rewindCodexThread as rewindCodexThreadService,
   setThreadTitle as setThreadTitleService,
   startThread as startThreadService,
+  writeClientCreatedSessionIndex,
 } from "../../../services/tauri";
 import { parseClaudeHistoryMessagesWithShadowRecovery } from "../loaders/claudeHistoryLoader";
 import {
@@ -427,6 +428,11 @@ export function useThreadActionsSessionRuntime({
           ...autoSessionPayload,
           ...selectedProviderBinding,
         });
+        writeClientCreatedSessionIndex({
+          engine,
+          sessionId: threadId,
+          workspacePath: workspacePathsByIdRef.current[workspaceId] ?? "",
+        });
         if (shouldActivate) {
           dispatch({ type: "setActiveThreadId", workspaceId, threadId });
         }
@@ -460,6 +466,11 @@ export function useThreadActionsSessionRuntime({
           engine: "codex",
           ...(folderId ? { folderId } : {}),
           ...selectedProviderBinding,
+        });
+        writeClientCreatedSessionIndex({
+          engine: "codex",
+          sessionId: threadId,
+          workspacePath: workspacePathsByIdRef.current[workspaceId] ?? "",
         });
         // Mirrors createSessionLifecycleThreadStarter so the pending thread
         // survives background thread-list refreshes like a real codex thread.
@@ -497,7 +508,15 @@ export function useThreadActionsSessionRuntime({
             label: "thread/start response",
             payload: response,
           });
-          return resolveStartedThread(response);
+          const startedId = resolveStartedThread(response);
+          if (startedId) {
+            writeClientCreatedSessionIndex({
+              engine: "codex",
+              sessionId: startedId,
+              workspacePath: workspacePathsByIdRef.current[workspaceId] ?? "",
+            });
+          }
+          return startedId;
         } catch (error) {
           if (isWorkspaceNotConnectedError(error)) {
             try {

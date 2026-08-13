@@ -96,6 +96,7 @@ const sidebar = {
     workspaceAliasBadgeTitle: "Workspace alias. Original name: {{name}}",
     emptyWorkspaceSessions: "No sessions yet.",
     loadingWorkspaceSessions: "Loading…",
+    syncingWorkspaceSessions: "Syncing sessions…",
     newSessionFolder: "New folder",
     newSessionFolderIn: "New folder in {{name}}",
     renameSessionFolder: "Rename {{name}}",

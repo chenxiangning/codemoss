@@ -20,6 +20,7 @@ import {
 } from "../../../services/tauri";
 import {
   filterSessionIndexRowsByEngine,
+  mergeSummariesForMissingEngines,
   sessionIndexRowsToThreadSummaries,
 } from "./sessionIndexThreadSummaries";
 import {
@@ -375,7 +376,7 @@ export function useListThreadsForWorkspace({
             listSessionIndexForWorkspaceService(workspace.id, {
               limit: sessionIndexLimit,
               // Warm SQLite should answer without rescan; force only soft re-sync.
-              syncIfNeeded: true,
+              syncIfNeeded: !isFirstPaintHydration,
               forceSync: forceIndexSync,
             })
               .then((page) => page ?? null)
@@ -426,18 +427,24 @@ export function useListThreadsForWorkspace({
           sessionIndexPage.data.length > 0 &&
           canProjectIndexNatives
         ) {
-          const earlyIndexSummaries = mergePreservedSharedThreadsForIndexFirstPaint(
-            sessionIndexRowsToThreadSummaries(
-              sessionIndexPage.data,
-              {
-                workspaceId: workspace.id,
-                mappedTitles: {},
-                getCustomName,
-                hiddenSharedBindingIds: earlyPaintHideSet,
-              },
+          const earlyIndexSummaries = mergeSummariesForMissingEngines(
+            mergePreservedSharedThreadsForIndexFirstPaint(
+              sessionIndexRowsToThreadSummaries(
+                sessionIndexPage.data,
+                {
+                  workspaceId: workspace.id,
+                  mappedTitles: {},
+                  getCustomName,
+                  hiddenSharedBindingIds: earlyPaintHideSet,
+                },
+              ),
+              threadsByWorkspace[workspace.id],
+              getLastGoodThreadSummariesWithoutDeleted(),
             ),
-            threadsByWorkspace[workspace.id],
-            getLastGoodThreadSummariesWithoutDeleted(),
+            [
+              ...(threadsByWorkspace[workspace.id] ?? []),
+              ...getLastGoodThreadSummariesWithoutDeleted(),
+            ],
           );
           if (earlyIndexSummaries.length > 0 && isLatestThreadListRequest()) {
             dispatch({
@@ -575,6 +582,42 @@ export function useListThreadsForWorkspace({
         } else {
           strengthenVerifiedSharedHide(workspace.id, hiddenSharedBindingIds);
         }
+        if (isFirstPaintHydration) {
+          const indexRows = sessionIndexPage?.data ?? [];
+          const nativeByEngine = (
+            ["claude", "codex", "gemini", "grok", "kimi", "opencode", "pi"] as const
+          ).flatMap((engine) =>
+            sessionIndexRowsToThreadSummaries(
+              filterSessionIndexRowsByEngine(indexRows, engine),
+              {
+                workspaceId: workspace.id,
+                mappedTitles,
+                getCustomName,
+                hiddenSharedBindingIds,
+              },
+            ),
+          );
+          const archivedSessionMap = await archivedSessionMapPromise.catch(
+            () => new Map(),
+          );
+          const sqliteSummaries = applySessionArchiveState(
+            filterDeletedSummaries([
+              ...sharedSessions.map(toSharedThreadSummary),
+              ...nativeByEngine,
+            ]),
+            archivedSessionMap,
+          );
+          if (isLatestThreadListRequest()) {
+            dispatch({
+              type: "setThreads",
+              workspaceId: workspace.id,
+              threads: sqliteSummaries,
+              mode: "replace",
+            });
+            appliedThreadListUpdate = true;
+          }
+          return { applied: appliedThreadListUpdate };
+        }
         const nativeOwnerToSharedThreadId =
           buildNativeOwnerToSharedThreadMap(sharedSessions);
         const existingThreads = filterDeletedSummaries(
@@ -657,7 +700,8 @@ export function useListThreadsForWorkspace({
         let pagesFetched = 0;
         const fetchStartedAt = Date.now();
         let cursor: string | null = null;
-        do {
+        const shouldPageLiveCodexMembership = !isFirstPaintHydration;
+        if (shouldPageLiveCodexMembership) do {
           {
             const abandoned = abandonIfStale();
             if (abandoned) {
@@ -1652,6 +1696,25 @@ export function useListThreadsForWorkspace({
           filterRootVisibleAutomaticSummaries(
             filterHiddenAutomaticThreadSummaries(
               filterDeletedSummaries(visibleSummaries),
+              hiddenAutomaticSessionIds,
+            ),
+          ),
+          archivedSessionMap,
+        );
+        visibleSummaries = applySessionArchiveState(
+          filterRootVisibleAutomaticSummaries(
+            filterHiddenAutomaticThreadSummaries(
+              filterDeletedSummaries(
+                mergeSummariesForMissingEngines(visibleSummaries, [
+                  ...existingThreads,
+                  ...(["claude", "codex", "gemini", "grok", "kimi", "opencode", "pi"] as const)
+                    .flatMap((engine) =>
+                      getLastGoodThreadSummariesForEngineWithoutDeleted(
+                        engine,
+                      ),
+                    ),
+                ]),
+              ),
               hiddenAutomaticSessionIds,
             ),
           ),

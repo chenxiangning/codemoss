@@ -256,7 +256,12 @@ export type ThreadAction =
   | { type: "appendReasoningContent"; threadId: string; itemId: string; delta: string }
   | { type: "dropReasoningItems"; threadId: string }
   | { type: "appendToolOutput"; threadId: string; itemId: string; delta: string }
-  | { type: "setThreads"; workspaceId: string; threads: ThreadSummary[] }
+  | {
+      type: "setThreads";
+      workspaceId: string;
+      threads: ThreadSummary[];
+      mode?: "replace" | "merge";
+    }
   | {
       type: "setThreadListLoading";
       workspaceId: string;

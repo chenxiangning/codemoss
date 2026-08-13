@@ -17,6 +17,7 @@ import {
   listKimiSessions,
   listPiSessions,
   listThreadTitles,
+  listSessionIndexForWorkspace,
   listThreads,
   listWorkspaceSessions,
   listWorkspaceSessionArchiveEvidence,
@@ -248,19 +249,20 @@ describe("useThreadActions list stale abandon (runtime workspace switch)", () =>
   it("still applies setThreads when isStale stays false", async () => {
     vi.mocked(listThreadTitles).mockResolvedValue({});
     vi.mocked(listSharedSessions).mockResolvedValue([]);
-    vi.mocked(listThreads).mockResolvedValue({
-      result: {
-        data: [
-          {
-            id: "thread-keep",
-            cwd: workspace.path,
-            updated_at: 1000,
-            preview: "hello",
-          },
-        ],
-        nextCursor: null,
-      },
-    } as never);
+    vi.mocked(listSessionIndexForWorkspace).mockResolvedValue({
+      data: [
+        {
+          engine: "codex",
+          sessionId: "thread-keep",
+          title: "hello",
+          updatedAt: 1000,
+        },
+      ],
+      source: "session-index",
+      synced: false,
+      engines: ["codex"],
+      visibility: { available: true, freshness: "verified", hiddenNativeIds: [] },
+    });
 
     const { result, dispatch } = renderActions();
     const outcome = await act(async () =>
@@ -275,7 +277,7 @@ describe("useThreadActions list stale abandon (runtime workspace switch)", () =>
     expect(outcome === undefined || (outcome as { applied?: boolean }).applied !== false).toBe(
       true,
     );
-    expect(listThreads).toHaveBeenCalled();
+    expect(listThreads).not.toHaveBeenCalled();
     // setThreads is startTransition; flush microtasks/macrotasks
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 0));
@@ -299,6 +301,7 @@ describe("useThreadActions list stale abandon (runtime workspace switch)", () =>
     expect(listClaudeSessions).not.toHaveBeenCalled();
     expect(getOpenCodeSessionList).not.toHaveBeenCalled();
     expect(listWorkspaceSessions).not.toHaveBeenCalled();
+    expect(listThreads).not.toHaveBeenCalled();
   });
 
   it("default listThreadsForWorkspace does not call Gemini/Grok/Kimi disk lists", async () => {

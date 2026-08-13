@@ -1502,6 +1502,8 @@ export function useAppShellRootComposition() {
     activeWorkspaceId,
     restoreThreadsOnlyOnLaunch:
       appSettings.runtimeRestoreThreadsOnlyOnLaunch !== false,
+    isWorkspaceHydrated: (workspaceId) =>
+      hydratedThreadListWorkspaceIds.has(workspaceId),
     listThreadsForWorkspace: listThreadsForWorkspaceTracked,
   });
   useWorkspaceRefreshOnFocus({

@@ -3,9 +3,10 @@ import { useTranslation } from "react-i18next";
 
 type ThreadLoadingStateProps = {
   nested?: boolean;
+  label?: string;
 };
 
-export function ThreadLoadingState({ nested = false }: ThreadLoadingStateProps) {
+export function ThreadLoadingState({ nested = false, label }: ThreadLoadingStateProps) {
   const { t } = useTranslation();
 
   return (
@@ -15,7 +16,7 @@ export function ThreadLoadingState({ nested = false }: ThreadLoadingStateProps) 
       aria-live="polite"
     >
       <LoaderCircle className="animate-spin" size={13} aria-hidden="true" />
-      <span>{t("sidebar.loadingWorkspaceSessions")}</span>
+      <span>{label ?? t("sidebar.loadingWorkspaceSessions")}</span>
     </div>
   );
 }

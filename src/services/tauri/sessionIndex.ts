@@ -87,3 +87,55 @@ export async function invalidateSessionIndexForWorkspace(
     workspaceId,
   });
 }
+
+/** Hide Index rows so sidebar hydrate cannot resurrect a deleted session. */
+export function writeClientCreatedSessionIndex(input: {
+  engine: string;
+  sessionId: string;
+  workspacePath: string;
+  title?: string;
+}): void {
+  const engine = input.engine.trim().toLowerCase();
+  const rawId = input.sessionId.trim();
+  const workspacePath = input.workspacePath.trim();
+  if (!engine || engine === "shared" || !rawId || !workspacePath) {
+    return;
+  }
+  const sessionId = rawId.includes(":")
+    ? rawId.slice(rawId.indexOf(":") + 1).trim()
+    : rawId;
+  if (!sessionId) {
+    return;
+  }
+  void upsertSessionIndexRows([
+    {
+      engine,
+      sessionId,
+      title: input.title?.trim() || `${engine} session`,
+      updatedAt: Date.now(),
+      workspacePath,
+      cwd: workspacePath,
+    },
+  ]).catch(() => 0);
+}
+
+export async function upsertSessionIndexRows(
+  rows: SessionIndexRow[],
+): Promise<number> {
+  if (rows.length === 0) {
+    return 0;
+  }
+  return invoke<number>("upsert_session_index_rows", { rows });
+}
+
+export async function tombstoneSessionIndexRows(
+  sessionIds: string[],
+): Promise<number> {
+  const ids = sessionIds.map((id) => id.trim()).filter(Boolean);
+  if (ids.length === 0) {
+    return 0;
+  }
+  return invoke<number>("tombstone_session_index_rows", {
+    sessionIds: ids,
+  });
+}

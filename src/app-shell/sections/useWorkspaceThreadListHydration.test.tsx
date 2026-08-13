@@ -130,7 +130,7 @@ describe("useWorkspaceThreadListHydration", () => {
       workspaces.map((workspace) => [workspace.id, workspace]),
     );
 
-    const { rerender } = renderHook(
+    const { rerender, result } = renderHook(
       ({ activeId }: { activeId: string }) =>
         useWorkspaceThreadListHydration({
           activeWorkspaceId: activeId,
@@ -151,15 +151,16 @@ describe("useWorkspaceThreadListHydration", () => {
       workspaces[0],
       expect.objectContaining({ startupHydrationMode: "first-paint" }),
     );
-    listThreadsForWorkspace.mockClear();
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(result.current.hydratedThreadListWorkspaceIds.has("ws-a")).toBe(true);
     cancelSpy.mockClear();
 
     rerender({ activeId: "ws-b" });
 
     expect(cancelSpy).toHaveBeenCalledWith("ws-a", "stale");
-    // Intent path uses short timer; not yet fired on same tick when delay>0.
-    // In test mode delay is 0 → still a macrotask.
-    expect(listThreadsForWorkspace).not.toHaveBeenCalled();
 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(
@@ -171,6 +172,19 @@ describe("useWorkspaceThreadListHydration", () => {
     expect(listThreadsForWorkspace).toHaveBeenCalledWith(
       workspaces[1],
       expect.objectContaining({ startupHydrationMode: "first-paint" }),
+    );
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(
+        POST_FIRST_PAINT_FULL_CATALOG_MAX_WAIT_MS + 1,
+      );
+      await Promise.resolve();
+    });
+    expect(listThreadsForWorkspace).not.toHaveBeenCalledWith(
+      workspaces[0],
+      expect.objectContaining({
+        forceSessionIndexSync: true,
+      }),
     );
     cancelSpy.mockRestore();
     vi.useRealTimers();
@@ -210,7 +224,12 @@ describe("useWorkspaceThreadListHydration", () => {
       await vi.advanceTimersByTimeAsync(10_000);
     });
 
-    expect(listThreadsForWorkspace).not.toHaveBeenCalled();
+    expect(listThreadsForWorkspace).toHaveBeenCalled();
+    expect(
+      listThreadsForWorkspace.mock.calls.every(
+        (call) => call[1]?.startupHydrationMode === "first-paint" || call[1] === undefined,
+      ),
+    ).toBe(true);
     restoreIdleCallback();
     vi.useRealTimers();
   });
@@ -559,9 +578,11 @@ describe("useWorkspaceThreadListHydration", () => {
     await new Promise((resolve) => setTimeout(resolve, 30));
     expect(
       listThreadsForWorkspace.mock.calls.some(
-        (call) => call[0]?.id === "ws-bg",
+        (call) =>
+          call[0]?.id === "ws-bg" &&
+          call[1]?.startupHydrationMode === "first-paint",
       ),
-    ).toBe(false);
+    ).toBe(true);
     expect(
       listThreadsForWorkspace.mock.calls.some(
         (call) => call[1]?.startupHydrationMode === "full-catalog",
@@ -617,9 +638,11 @@ describe("useWorkspaceThreadListHydration", () => {
     });
     expect(
       listThreadsForWorkspace.mock.calls.some(
-        (call) => call[0]?.id === "ws-older",
+        (call) =>
+          call[0]?.id === "ws-older" &&
+          call[1]?.startupHydrationMode === "first-paint",
       ),
-    ).toBe(false);
+    ).toBe(true);
     restoreIdleCallback();
     vi.useRealTimers();
   });
@@ -642,10 +665,9 @@ describe("useWorkspaceThreadListHydration", () => {
     await act(async () => {
       await result.current.listThreadsForWorkspaceTracked(workspaces[0]!);
     });
-    // Side workspace skipped (stale no-op) before gate.
     expect(
       listThreadsForWorkspace.mock.calls.some((call) => call[0]?.id === "ws-side"),
-    ).toBe(false);
+    ).toBe(true);
   });
 
   it("cancels previous workspace hydration when active workspace switches", async () => {

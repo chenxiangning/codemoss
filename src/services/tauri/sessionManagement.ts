@@ -351,6 +351,8 @@ export async function deleteWorkspaceSessions(
   workspaceId: string,
   sessionIds: string[],
 ): Promise<WorkspaceSessionBatchMutationResponse> {
+  const { tombstoneSessionIndexRows } = await import("./sessionIndex");
+  await tombstoneSessionIndexRows(sessionIds).catch(() => 0);
   return invoke<WorkspaceSessionBatchMutationResponse>(
     "delete_workspace_sessions",
     {

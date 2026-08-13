@@ -178,3 +178,49 @@ export function mergeSessionIndexRowsIntoSummaries(
   }
   return Array.from(byId.values()).sort((a, b) => b.updatedAt - a.updatedAt);
 }
+
+function summaryEngineKey(summary: ThreadSummary): string {
+  const id = String(summary.id ?? "").trim();
+  if (summary.threadKind === "shared" || id.startsWith("shared:")) {
+    return "shared";
+  }
+  const engine = String(summary.engineSource ?? "")
+    .trim()
+    .toLowerCase();
+  if (engine) {
+    return engine;
+  }
+  const prefix = id.split(":")[0]?.toLowerCase() ?? "";
+  return prefix || "codex";
+}
+
+/**
+ * Index-only first-paint can return a partial engine set. Keep last-good /
+ * snapshot rows for engines the Index page did not include so the rail still
+ * shows every native type the workspace already knew about.
+ */
+export function mergeSummariesForMissingEngines(
+  incoming: ThreadSummary[],
+  continuity: ThreadSummary[],
+): ThreadSummary[] {
+  if (continuity.length === 0) {
+    return incoming;
+  }
+  const present = new Set(incoming.map(summaryEngineKey));
+  const incomingIds = new Set(incoming.map((row) => row.id));
+  const extras = continuity.filter((row) => {
+    if (!row.id || incomingIds.has(row.id)) {
+      return false;
+    }
+    return !present.has(summaryEngineKey(row));
+  });
+  if (extras.length === 0) {
+    return incoming;
+  }
+  return [...incoming, ...extras].sort((left, right) => {
+    if (right.updatedAt !== left.updatedAt) {
+      return right.updatedAt - left.updatedAt;
+    }
+    return left.id.localeCompare(right.id);
+  });
+}

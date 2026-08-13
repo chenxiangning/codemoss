@@ -269,6 +269,56 @@ describe("topbarSessionTabs", () => {
     expect(items[0]?.engineLabel).toBe("Kimi");
   });
 
+  it("uses PI engine metadata for topbar tab icon and label", () => {
+    const items = buildTopbarSessionTabItems(
+      "w1",
+      "pi:session-1",
+      {
+        w1: [
+          {
+            id: "pi:session-1",
+            name: "你好",
+            updatedAt: Date.now(),
+            engineSource: "pi",
+          },
+        ],
+      },
+      {
+        tabs: [{ workspaceId: "w1", threadId: "pi:session-1" }],
+        activationOrdinalByTabKey: { "w1::pi:session-1": 1 },
+        nextActivationOrdinal: 1,
+      },
+      "Untitled",
+    );
+
+    expect(items[0]?.engineType).toBe("pi");
+    expect(items[0]?.engineLabel).toBe("PI CLI");
+  });
+
+  it("infers PI from thread id when engineSource is missing", () => {
+    const items = buildTopbarSessionTabItems(
+      "w1",
+      "pi:session-2",
+      {
+        w1: [
+          {
+            id: "pi:session-2",
+            name: "你好",
+            updatedAt: Date.now(),
+          },
+        ],
+      },
+      {
+        tabs: [{ workspaceId: "w1", threadId: "pi:session-2" }],
+        activationOrdinalByTabKey: { "w1::pi:session-2": 1 },
+        nextActivationOrdinal: 1,
+      },
+      "Untitled",
+    );
+
+    expect(items[0]?.engineType).toBe("pi");
+  });
+
   it("marks shared: tabs as shared even when threadKind projection is lost or native", () => {
     const items = buildTopbarSessionTabItems(
       "w1",

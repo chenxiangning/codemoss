@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   filterSessionIndexRowsByEngine,
   mergeSessionIndexRowsIntoSummaries,
+  mergeSummariesForMissingEngines,
   sessionIndexRowToThreadId,
   sessionIndexRowsToThreadSummaries,
 } from "./sessionIndexThreadSummaries";
@@ -168,5 +169,46 @@ describe("sessionIndexThreadSummaries", () => {
     );
     expect(rows).toHaveLength(1);
     expect(rows[0]?.id).toBe("shared:s1");
+  });
+
+  it("keeps last-good claude rows when index only returned shared and codex", () => {
+    const merged = mergeSummariesForMissingEngines(
+      [
+        {
+          id: "shared:1",
+          name: "Shared",
+          updatedAt: 30,
+          threadKind: "shared",
+        },
+        {
+          id: "codex-1",
+          name: "Codex",
+          updatedAt: 20,
+          engineSource: "codex",
+          threadKind: "native",
+        },
+      ],
+      [
+        {
+          id: "claude:old",
+          name: "Claude history",
+          updatedAt: 10,
+          engineSource: "claude",
+          threadKind: "native",
+        },
+        {
+          id: "codex-older",
+          name: "Should stay out",
+          updatedAt: 5,
+          engineSource: "codex",
+          threadKind: "native",
+        },
+      ],
+    );
+    expect(merged.map((row) => row.id)).toEqual([
+      "shared:1",
+      "codex-1",
+      "claude:old",
+    ]);
   });
 });

@@ -44,9 +44,9 @@
 
 | 层 | 职责 | 自动入口 |
 |----|------|----------|
-| **Session Index** | 侧栏、冷启动、soft 刷新：只要 id / title / mtime | `list_session_index_for_workspace` |
+| **Session Index** | 侧栏唯一 membership：按 workspace × engine 查 SQLite。客户端创建必须 `upsert_session_index_rows`。外部 CLI 导入不走加载路径 | `list_session_index_for_workspace` |
 | **Session Catalog** | 会话管理、归档、归属；默认 **Bounded** | `list_workspace_sessions` |
-| **Transcript Loader** | 打开某一个对话 | `load_*_session` |
+| **Transcript Loader** | 打开某一个对话才读磁盘全文 | `load_*_session` |
 
 **三问（每个 PR 自检）**
 
@@ -64,15 +64,17 @@ await Promise.all([
   listGrokSessions(path),
 ]);
 
-// GOOD: 冷路径只问 Index
-await listSessionIndexForWorkspace(workspaceId, { syncIfNeeded: true });
+// GOOD: 冷路径只问 Index，且 first-paint 禁止 writer/disk fan-out
+await listSessionIndexForWorkspace(workspaceId, { syncIfNeeded: false });
 ```
 
 Session Management 默认 Bounded；「扫描全部」必须二次确认。启动 / focus / 侧栏 hydrate 禁止 `scanMode=exhaustive`。
 
+侧栏 first-paint MUST：按已注册引擎循环读取 Index + Shared 列表 → **一次** `setThreads({ mode: "replace" })` → return。MUST NOT 再跑 titles 之后的 catalog / `list_*_sessions` / Codex live 翻页。后续非 replace 的 `setThreads` MUST 按 id 合并，不得删掉已在侧栏的引擎行（删除走 tombstone）。外部 CLI 会话导入是独立守护进程，不在本路径。
+
 ### 3. Contracts
 
-- **Sidebar cold path (first-paint / ordinary refresh)** MUST prefer Session Index (`list_session_index_for_workspace` → `~/.ccgui/session-index.sqlite3`) for list-level rows (title/time/engine/path). Session Index is **not** archive/folder/usage authority. `list_session_index_for_workspace` MUST return a `SharedNativeVisibilityProjection` in the same response. First-paint complete means Index rows **plus** a usable visibility fact (or last-verified hide). An empty hide set is valid only when the projection is available.
+- **Sidebar cold path (first-paint / ordinary refresh)** MUST read only Session Index (`list_session_index_for_workspace` → `~/.ccgui/session-index.sqlite3`) plus Shared list. MUST query per engine (Index SQL budget is per-engine). MUST NOT scan disk JSONL or call `list_*_sessions` / `list_workspace_sessions`. Session Index is **not** archive/folder/usage authority; first-paint still applies archive overlay. `list_session_index_for_workspace` MUST return a `SharedNativeVisibilityProjection` in the same response. First-paint complete means Index rows **plus** Shared rows **plus** a usable visibility fact (or last-verified hide). An empty hide set is valid only when the projection is available. Client-created native sessions MUST upsert Index before the next restart.
 - Backend catalog active strict projection MUST remain the membership truth for **Session Management**, load-older convergence, and explicit force full-catalog — not the default cold-start sidebar owner.
 - Automatic post-first-paint exhaustive full-catalog is forbidden once Session Index seeds multi-engine first-paint; force refresh / Session Management MAY still call catalog.
 - AppShell workspace navigation 若只需要 owner topology，MUST 通过 `resolveWorkspaceProjectionOwnerIds` 从已加载 workspace registry 推导：main = self + direct `parentId` children（path/name/id stable order），worktree = self，registry pending = active id fallback。MUST NOT 为 topology 调用 `get_workspace_session_projection_summary` 或等价 exhaustive inventory；session membership 仍由 bounded catalog projection 决定。

@@ -20,6 +20,7 @@ CREATE TABLE IF NOT EXISTS session_index (
   size_bytes INTEGER,
   source_fingerprint TEXT,
   indexed_at INTEGER NOT NULL,
+  tombstoned_at INTEGER,
   PRIMARY KEY (engine, session_id)
 );
 
@@ -117,6 +118,10 @@ pub(crate) fn open_connection() -> Result<Connection, String> {
     connection
         .execute_batch(DDL)
         .map_err(|error| error.to_string())?;
+    let _ = connection.execute(
+        "ALTER TABLE session_index ADD COLUMN tombstoned_at INTEGER",
+        [],
+    );
     Ok(connection)
 }
 
@@ -186,7 +191,8 @@ pub(crate) fn upsert_rows(connection: &Connection, rows: &[SessionIndexRow]) -> 
                     parent_session_id = COALESCE(excluded.parent_session_id, session_index.parent_session_id),
                     size_bytes = COALESCE(excluded.size_bytes, session_index.size_bytes),
                     source_fingerprint = excluded.source_fingerprint,
-                    indexed_at = excluded.indexed_at",
+                    indexed_at = excluded.indexed_at
+                 WHERE session_index.tombstoned_at IS NULL",
             )
             .map_err(|error| error.to_string())?;
         for row in rows {
@@ -326,6 +332,58 @@ pub(crate) fn engine_source_needs_incremental_sync(
     Ok(stored_fp != fingerprint)
 }
 
+/// True when a send/create marked this workspace's Index sources stale.
+/// Restart first-paint must rescan writers even if some rows already exist.
+pub(crate) fn workspace_index_sources_invalidated(
+    connection: &Connection,
+    workspace_path: &str,
+) -> Result<bool, String> {
+    let key = normalize_path_key(workspace_path);
+    if key.is_empty() {
+        return Ok(false);
+    }
+    let count: i64 = connection
+        .query_row(
+            "SELECT COUNT(*) FROM session_index_sources
+             WHERE last_sync_ms <= 0
+               AND (source_key LIKE ?1 OR source_key LIKE ?2)",
+            rusqlite::params![format!("%:{}", key), format!("%{}", key)],
+            |row| row.get(0),
+        )
+        .map_err(|error| error.to_string())?;
+    Ok(count > 0)
+}
+
+const INDEX_LIST_ENGINES: &[&str] = &[
+    "claude", "codex", "gemini", "grok", "kimi", "opencode", "pi",
+];
+
+fn list_slice_for_workspace_engine(
+    connection: &Connection,
+    workspace_key: &str,
+    engine: &str,
+    limit: usize,
+) -> Result<Vec<SessionIndexRow>, String> {
+    let mut statement = connection
+        .prepare(
+            "SELECT engine, session_id, title, native_title, updated_at, created_at,
+                    cwd, workspace_path, physical_path, parent_session_id, size_bytes
+             FROM session_index
+             WHERE (workspace_path = ?1 OR cwd = ?1)
+               AND engine = ?2
+               AND tombstoned_at IS NULL
+             ORDER BY updated_at DESC, session_id ASC
+             LIMIT ?3",
+        )
+        .map_err(|error| error.to_string())?;
+    let rows = statement
+        .query_map(params![workspace_key, engine, limit as i64], map_row)
+        .map_err(|error| error.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| error.to_string())?;
+    Ok(rows)
+}
+
 pub(crate) fn list_for_workspace_path(
     connection: &Connection,
     workspace_path: &str,
@@ -336,49 +394,42 @@ pub(crate) fn list_for_workspace_path(
     if key.is_empty() {
         return Ok(Vec::new());
     }
-    // Prefer exact workspace_path / cwd match in SQL; post-filter with
-    // paths_equivalent for Windows case folding edge cases.
-    let mut statement = connection
-        .prepare(
-            "SELECT engine, session_id, title, native_title, updated_at, created_at,
-                    cwd, workspace_path, physical_path, parent_session_id, size_bytes
-             FROM session_index
-             WHERE workspace_path = ?1 OR cwd = ?1
-             ORDER BY updated_at DESC, session_id ASC
-             LIMIT ?2",
-        )
-        .map_err(|error| error.to_string())?;
-    let mut rows = statement
-        .query_map(params![key, limit as i64], map_row)
-        .map_err(|error| error.to_string())?
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|error| error.to_string())?;
+    // Per-engine budget: a global LIMIT would let recent Claude/Shared rows
+    // starve Codex (and the rail would look empty).
+    let mut rows = Vec::new();
+    let mut existing = std::collections::HashSet::<(String, String)>::new();
+    for engine in INDEX_LIST_ENGINES {
+        for row in list_slice_for_workspace_engine(connection, &key, engine, limit)? {
+            let identity = (row.engine.clone(), row.session_id.clone());
+            if existing.insert(identity) {
+                rows.push(row);
+            }
+        }
+    }
 
-    if rows.len() < limit {
+    if rows.is_empty() {
         // Fallback: scan a larger recent window and path-equivalent filter.
-        // Handles path normalization mismatches (trailing slash, case).
         let mut fallback = connection
             .prepare(
                 "SELECT engine, session_id, title, native_title, updated_at, created_at,
                         cwd, workspace_path, physical_path, parent_session_id, size_bytes
                  FROM session_index
+                 WHERE tombstoned_at IS NULL
                  ORDER BY updated_at DESC, session_id ASC
                  LIMIT ?1",
             )
             .map_err(|error| error.to_string())?;
         let recent = fallback
-            .query_map(params![(limit.saturating_mul(20).max(100)) as i64], map_row)
+            .query_map(
+                params![(limit.saturating_mul(20).max(100)) as i64],
+                map_row,
+            )
             .map_err(|error| error.to_string())?
             .collect::<Result<Vec<_>, _>>()
             .map_err(|error| error.to_string())?;
-        let existing: std::collections::HashSet<(String, String)> = rows
-            .iter()
-            .map(|row| (row.engine.clone(), row.session_id.clone()))
-            .collect();
+        let mut per_engine: std::collections::HashMap<String, usize> =
+            std::collections::HashMap::new();
         for row in recent {
-            if rows.len() >= limit {
-                break;
-            }
             let matches = row
                 .workspace_path
                 .as_deref()
@@ -392,21 +443,63 @@ pub(crate) fn list_for_workspace_path(
             if !matches {
                 continue;
             }
-            if existing.contains(&(row.engine.clone(), row.session_id.clone())) {
+            let identity = (row.engine.clone(), row.session_id.clone());
+            if !existing.insert(identity) {
                 continue;
             }
+            let count = per_engine.entry(row.engine.clone()).or_insert(0);
+            if *count >= limit {
+                continue;
+            }
+            *count += 1;
             rows.push(row);
         }
-        rows.sort_by(|left, right| {
-            right
-                .updated_at
-                .cmp(&left.updated_at)
-                .then_with(|| left.session_id.cmp(&right.session_id))
-        });
-        rows.truncate(limit);
     }
+    rows.sort_by(|left, right| {
+        right
+            .updated_at
+            .cmp(&left.updated_at)
+            .then_with(|| left.session_id.cmp(&right.session_id))
+    });
     Ok(rows)
 }
+
+pub(crate) fn tombstone_session_ids(
+    connection: &Connection,
+    session_ids: &[String],
+) -> Result<usize, String> {
+    if session_ids.is_empty() {
+        return Ok(0);
+    }
+    let marked_at = now_ms();
+    let mut updated = 0usize;
+    let mut statement = connection
+        .prepare(
+            "UPDATE session_index
+             SET tombstoned_at = COALESCE(tombstoned_at, ?1)
+             WHERE session_id = ?2
+                OR session_id = ?3
+                OR (engine || ':' || session_id) = ?2",
+        )
+        .map_err(|error| error.to_string())?;
+    for raw in session_ids {
+        let full = raw.trim();
+        if full.is_empty() {
+            continue;
+        }
+        let bare = full
+            .split_once(':')
+            .map(|(_, rest)| rest.trim())
+            .filter(|value| !value.is_empty())
+            .unwrap_or(full);
+        updated += statement
+            .execute(params![marked_at, full, bare])
+            .map_err(|error| error.to_string())? as usize;
+    }
+    Ok(updated)
+}
+
+
 
 #[derive(Debug, Clone)]
 pub(crate) struct SessionIndexFileCursor {
@@ -509,5 +602,91 @@ mod tests {
         let rows = list_for_workspace_path(&connection, "/Users/me/proj/", 10).expect("list");
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].session_id, "s1");
+    }
+
+    fn index_row(engine: &str, session_id: &str, updated_at: i64) -> SessionIndexRow {
+        SessionIndexRow {
+            engine: engine.into(),
+            session_id: session_id.into(),
+            title: session_id.into(),
+            native_title: None,
+            updated_at,
+            created_at: None,
+            cwd: Some("/tmp/proj".into()),
+            workspace_path: Some("/tmp/proj".into()),
+            physical_path: None,
+            parent_session_id: None,
+            size_bytes: None,
+        }
+    }
+
+    #[test]
+    fn list_keeps_per_engine_budget_so_codex_is_not_starved() {
+        let connection = Connection::open_in_memory().expect("open");
+        connection.execute_batch(DDL).expect("ddl");
+        let mut rows = Vec::new();
+        for index in 0..8 {
+            rows.push(index_row("claude", &format!("claude-{index}"), 1000 + index));
+        }
+        rows.push(index_row("codex", "codex-old", 1));
+        upsert_rows(&connection, &rows).expect("upsert");
+        let listed = list_for_workspace_path(&connection, "/tmp/proj", 2).expect("list");
+        let claude = listed
+            .iter()
+            .filter(|row| row.engine == "claude")
+            .count();
+        let codex = listed
+            .iter()
+            .filter(|row| row.engine == "codex")
+            .count();
+        assert_eq!(claude, 2);
+        assert_eq!(codex, 1);
+        assert!(listed.iter().any(|row| row.session_id == "codex-old"));
+    }
+
+    #[test]
+    fn tombstone_hides_row_and_blocks_upsert_resurrection() {
+        let connection = Connection::open_in_memory().expect("open");
+        connection.execute_batch(DDL).expect("ddl");
+        upsert_rows(
+            &connection,
+            &[SessionIndexRow {
+                engine: "codex".into(),
+                session_id: "dead".into(),
+                title: "Gone".into(),
+                native_title: None,
+                updated_at: 200,
+                created_at: None,
+                cwd: Some("/tmp/proj".into()),
+                workspace_path: Some("/tmp/proj".into()),
+                physical_path: None,
+                parent_session_id: None,
+                size_bytes: None,
+            }],
+        )
+        .expect("upsert");
+        let marked = tombstone_session_ids(&connection, &["codex:dead".into()]).expect("tombstone");
+        assert!(marked >= 1);
+        let hidden = list_for_workspace_path(&connection, "/tmp/proj", 10).expect("list");
+        assert!(hidden.is_empty());
+        upsert_rows(
+            &connection,
+            &[SessionIndexRow {
+                engine: "codex".into(),
+                session_id: "dead".into(),
+                title: "Resurrected".into(),
+                native_title: None,
+                updated_at: 400,
+                created_at: None,
+                cwd: Some("/tmp/proj".into()),
+                workspace_path: Some("/tmp/proj".into()),
+                physical_path: None,
+                parent_session_id: None,
+                size_bytes: None,
+            }],
+        )
+        .expect("upsert again");
+        let still_hidden = list_for_workspace_path(&connection, "/tmp/proj", 10).expect("list");
+        assert!(still_hidden.is_empty());
     }
 }

@@ -91,6 +91,7 @@ const sidebar = {
     workspaceAliasBadgeTitle: "这是工作区别名，原名：{{name}}",
     emptyWorkspaceSessions: "暂无会话",
     loadingWorkspaceSessions: "加载中…",
+    syncingWorkspaceSessions: "正在同步会话…",
     newSessionFolder: "新建文件夹",
     newSessionFolderIn: "在 {{name}} 中新建文件夹",
     renameSessionFolder: "重命名 {{name}}",

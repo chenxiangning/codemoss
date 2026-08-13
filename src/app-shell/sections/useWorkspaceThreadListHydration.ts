@@ -86,6 +86,8 @@ type ListThreadsForWorkspace = (
     recoverySource?: string;
     /** Quiet post-first-paint index re-scan (writers), not cold first paint. */
     forceSessionIndexSync?: boolean;
+    /** Expand/reload: allow Claude/Gemini/Grok/Kimi/OpenCode disk lists. */
+    includeEngineDiskLists?: boolean;
     /** When true mid-flight, list apply must no-op (workspace cancelled/switched). */
     isStale?: () => boolean;
   },
@@ -152,7 +154,7 @@ export const WORKSPACE_SWITCH_INPUT_QUIET_MS = IS_VITEST ? 0 : 300;
  * leaves stale snapshot / Codex-only rows without competing with first clicks.
  * @internal exported for tests
  */
-export const POST_FIRST_PAINT_FULL_CATALOG_MIN_DELAY_MS = IS_VITEST ? 0 : 800;
+export const POST_FIRST_PAINT_FULL_CATALOG_MIN_DELAY_MS = IS_VITEST ? 0 : 160;
 export const POST_FIRST_PAINT_FULL_CATALOG_QUIET_MS = IS_VITEST ? 0 : 600;
 export const POST_FIRST_PAINT_FULL_CATALOG_MAX_WAIT_MS = IS_VITEST ? 0 : 8_000;
 
@@ -289,6 +291,7 @@ export function useWorkspaceThreadListHydration({
   activeWorkspaceProjectionOwnerIds,
   listThreadsForWorkspace,
   threadListLoadingByWorkspace,
+  workspaces,
   workspacesById,
 }: UseWorkspaceThreadListHydrationOptions): UseWorkspaceThreadListHydrationResult {
   const hydratedThreadListWorkspaceIdsRef = useRef(new Set<string>());
@@ -319,12 +322,11 @@ export function useWorkspaceThreadListHydration({
       ) => void)
     | null
   >(null);
-  /** Quiet idle full-catalog after active first-paint (or force-enter re-arm). */
-  const pendingPostFirstPaintFullCatalogCleanupRef = useRef<(() => void) | null>(
-    null,
+  /** Quiet Index forceSync after each workspace first-paint (not exclusive). */
+  const pendingIndexSyncCleanupByWorkspaceIdRef = useRef(
+    new Map<string, () => void>(),
   );
-  const postFirstPaintFullCatalogTargetIdRef = useRef<string | null>(null);
-  /** Workspaces that already had a post-first-paint full-catalog attempt scheduled. */
+  /** Workspaces that already had a post-first-paint index sync scheduled. */
   const postFirstPaintFullCatalogArmedIdsRef = useRef(new Set<string>());
   const idleHydrationCleanupByWorkspaceIdRef = useRef(
     new Map<string, () => void>(),
@@ -356,10 +358,14 @@ export function useWorkspaceThreadListHydration({
     [renderScheduler],
   );
 
-  const cancelPendingPostFirstPaintFullCatalog = useCallback(() => {
-    pendingPostFirstPaintFullCatalogCleanupRef.current?.();
-    pendingPostFirstPaintFullCatalogCleanupRef.current = null;
-    postFirstPaintFullCatalogTargetIdRef.current = null;
+  const cancelPendingIndexSync = useCallback((workspaceId?: string) => {
+    if (workspaceId) {
+      pendingIndexSyncCleanupByWorkspaceIdRef.current.get(workspaceId)?.();
+      pendingIndexSyncCleanupByWorkspaceIdRef.current.delete(workspaceId);
+      return;
+    }
+    pendingIndexSyncCleanupByWorkspaceIdRef.current.forEach((cleanup) => cleanup());
+    pendingIndexSyncCleanupByWorkspaceIdRef.current.clear();
   }, []);
 
   /**
@@ -380,37 +386,20 @@ export function useWorkspaceThreadListHydration({
         return;
       }
 
-      cancelPendingPostFirstPaintFullCatalog();
+      pendingIndexSyncCleanupByWorkspaceIdRef.current.get(id)?.();
       postFirstPaintFullCatalogArmedIdsRef.current.add(id);
-      postFirstPaintFullCatalogTargetIdRef.current = id;
 
       let unregisterForceCancel: (() => void) | null = null;
       const detachSchedule = () => {
         unregisterForceCancel?.();
         unregisterForceCancel = null;
-        if (postFirstPaintFullCatalogTargetIdRef.current === id) {
-          postFirstPaintFullCatalogTargetIdRef.current = null;
-        }
-        pendingPostFirstPaintFullCatalogCleanupRef.current = null;
+        pendingIndexSyncCleanupByWorkspaceIdRef.current.delete(id);
       };
 
       const runIndexSoftRefresh = () => {
         detachSchedule();
-        if (activeWorkspaceIdRef.current !== id) {
-          return;
-        }
-        // Soft path: first-paint again with preserveState so Session Index can
-        // re-sync (fingerprint window / force) without OpenCode full fan-out.
-        const workspace = workspacesById.get(id);
-        if (!workspace) {
-          return;
-        }
-        void listThreadsForWorkspace(workspace, {
-          preserveState: true,
-          startupHydrationMode: "first-paint",
-          allowRuntimeReconnect: false,
-          forceSessionIndexSync: true,
-        });
+        // Sidebar list is SQLite-only. Do not kick a disk writer pass after
+        // first-paint; that second setThreads was wiping engines (Claude).
       };
 
       const quietCleanup = scheduleWhenInteractiveQuiet(runIndexSoftRefresh, {
@@ -426,9 +415,9 @@ export function useWorkspaceThreadListHydration({
         quietCleanup();
         detachSchedule();
       };
-      pendingPostFirstPaintFullCatalogCleanupRef.current = combinedCleanup;
+      pendingIndexSyncCleanupByWorkspaceIdRef.current.set(id, combinedCleanup);
     },
-    [cancelPendingPostFirstPaintFullCatalog, listThreadsForWorkspace, workspacesById],
+    [listThreadsForWorkspace, workspacesById],
   );
 
   const listThreadsForWorkspaceTracked = useCallback<ListThreadsForWorkspace>(
@@ -436,6 +425,7 @@ export function useWorkspaceThreadListHydration({
       // Cold-start: restore/focus/reload must not dual-scan non-active workspaces
       // (dump: two workspaces first-painted on-demand together at t≈1.7s).
       if (
+        options?.startupHydrationMode === "full-catalog" &&
         shouldSkipWorkspaceDuringColdStart(
           workspace.id,
           activeWorkspaceIdRef.current,
@@ -541,13 +531,14 @@ export function useWorkspaceThreadListHydration({
               markFullCatalogFresh(workspace.id);
             }
             // MUST NOT stamp startup-gate-ready from full-catalog settle.
-          } else if (isStillActive) {
-            // Only active first-paint opens the click gate (not a side workspace).
-            stampStartupGateReady("first-paint-complete");
-            // Session Index seeds multi-engine rows. Mark settled for soft
-            // focus-refresh, then quiet-schedule one index soft re-sync so
-            // CLI-created Gemini/Grok/OpenCode sessions appear without
-            // exhaustive full-catalog.
+          } else {
+            if (isStillActive) {
+              // Only active first-paint opens the click gate (not a side workspace).
+              stampStartupGateReady("first-paint-complete");
+            }
+            // Every first-painted workspace gets one Index forceSync. Warm
+            // SQLite can return a partial engine set; other projects used to
+            // stay incomplete after the user left the first active workspace.
             publishHydratedWorkspaceId(
               fullyHydratedThreadListWorkspaceIdsRef,
               workspace.id,
@@ -609,6 +600,7 @@ export function useWorkspaceThreadListHydration({
       // force still restricted to active to avoid dual-scan storms.
       if (
         !force &&
+        kind !== "first-paint" &&
         shouldSkipWorkspaceDuringColdStart(workspaceId, activeWorkspaceId)
       ) {
         return;
@@ -667,6 +659,9 @@ export function useWorkspaceThreadListHydration({
         deletedThreadIds: options?.deletedThreadIds,
         startupHydrationMode:
           kind === "first-paint" ? "first-paint" : "full-catalog",
+        // After the first workspace is clickable, later projects must force
+        // Index writers. Warm SQLite otherwise returns a partial engine set.
+        forceSessionIndexSync: false,
       });
     },
     [
@@ -753,13 +748,8 @@ export function useWorkspaceThreadListHydration({
       // Drop scheduled auto first-paint for the previous target.
       pendingAutoFirstPaintCleanupRef.current?.();
       pendingAutoFirstPaintCleanupRef.current = null;
-      // Drop pending full-catalog for the workspace the user already left.
-      if (
-        postFirstPaintFullCatalogTargetIdRef.current ===
-        previousActiveWorkspaceId
-      ) {
-        cancelPendingPostFirstPaintFullCatalog();
-      }
+      // Keep that workspace's Index forceSync armed — switching away used to
+      // cancel it and leave other projects missing engines.
       if (autoHydratedActiveWorkspaceIdRef.current === previousActiveWorkspaceId) {
         autoHydratedActiveWorkspaceIdRef.current = null;
       }
@@ -866,7 +856,6 @@ export function useWorkspaceThreadListHydration({
     };
   }, [
     activeWorkspaceId,
-    cancelPendingPostFirstPaintFullCatalog,
     ensureWorkspaceThreadListLoaded,
     workspacesById,
   ]);
@@ -923,6 +912,21 @@ export function useWorkspaceThreadListHydration({
   }, []);
 
   useEffect(() => {
+    const timer = window.setTimeout(() => {
+      workspaces.forEach((workspace) => {
+        if (workspace.settings.sidebarCollapsed) {
+          return;
+        }
+        if (hydratedThreadListWorkspaceIdsRef.current.has(workspace.id)) {
+          return;
+        }
+        ensureWorkspaceThreadListLoaded(workspace.id, { preserveState: true });
+      });
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [ensureWorkspaceThreadListLoaded, workspaces]);
+
+  useEffect(() => {
     if (!activeWorkspaceId || activeWorkspaceProjectionOwnerIds.length <= 1) {
       return;
     }
@@ -954,9 +958,9 @@ export function useWorkspaceThreadListHydration({
     return () => {
       cleanupByWorkspaceId.forEach((cleanup) => cleanup());
       cleanupByWorkspaceId.clear();
-      cancelPendingPostFirstPaintFullCatalog();
+      cancelPendingIndexSync();
     };
-  }, [cancelPendingPostFirstPaintFullCatalog]);
+  }, [cancelPendingIndexSync]);
 
   return {
     ensureWorkspaceThreadListLoaded,

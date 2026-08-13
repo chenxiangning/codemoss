@@ -61,6 +61,27 @@ describe("useWorkspaceRestore", () => {
     ).toEqual(["ws-active"]);
   });
 
+  it("已 hydrate 的 active workspace 不再二次 list", async () => {
+    const activeWorkspace = createWorkspace({ id: "ws-active" });
+    const listThreadsForWorkspace = vi.fn().mockResolvedValue(undefined);
+
+    renderHook(() =>
+      useWorkspaceRestore({
+        workspaces: [activeWorkspace],
+        hasLoaded: true,
+        activeWorkspaceId: activeWorkspace.id,
+        restoreThreadsOnlyOnLaunch: false,
+        isWorkspaceHydrated: (workspaceId) => workspaceId === "ws-active",
+        listThreadsForWorkspace,
+      }),
+    );
+
+    await new Promise((resolve) => {
+      window.setTimeout(resolve, 20);
+    });
+    expect(listThreadsForWorkspace).not.toHaveBeenCalled();
+  });
+
   it("开启线程恢复模式时不会在启动阶段批量连接 runtime", async () => {
     const activeWorkspace = createWorkspace({
       id: "ws-active",

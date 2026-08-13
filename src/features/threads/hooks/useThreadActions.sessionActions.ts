@@ -11,6 +11,7 @@ import {
   deleteCodexSession as deleteCodexSessionService,
   renameThreadTitleKey as renameThreadTitleKeyService,
   setThreadTitle as setThreadTitleService,
+  tombstoneSessionIndexRows as tombstoneSessionIndexRowsService,
 } from "../../../services/tauri";
 import { asNumber, asString } from "../utils/threadNormalize";
 import {
@@ -180,6 +181,7 @@ export function createDeleteThreadForWorkspaceAction(params: {
     if (threadId.includes("-pending-")) {
       return;
     }
+    await tombstoneSessionIndexRowsService([threadId]).catch(() => 0);
     const thread = (threadsByWorkspace[workspaceId] ?? []).find((entry) => entry.id === threadId);
     if (thread?.threadKind === "shared" || threadId.startsWith("shared:")) {
       await deleteSharedSessionService(workspaceId, threadId);
