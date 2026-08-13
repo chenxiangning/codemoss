@@ -12,7 +12,7 @@ status: active
 > 初始日期：2026-07-27
 > 内容类型：How-to + conceptual integration contract + 全量注册点核对矩阵
 > 生命周期：accepted；流程有效，注册点已按 2026-08-04 代码校准
-> 最近校准：2026-08-04 · mossx `0.7.16` · HEAD `e0f8c0aa77`
+> 最近校准：2026-08-13 · F 组补 PI Shared + 协作 host/stage 与 Shared 同集（F8–F10）；HEAD 以当前 `sharedSessionEngines.ts` / `validate_agent_target` 为准
 > 上游契约：[`mossx-multi-cli-provider-session-foundation-design.md`](./mossx-multi-cli-provider-session-foundation-design.md)（下称**基石设计**）
 > 适用读者：要为 mossx 接入新 Agent CLI（如 Auggie、未来任意 CLI）的工程师
 > 核心结论：接入一个新 CLI = **一次 Capability Spike + 按 §0 核对矩阵逐层勾选 + 15 项 Contract Tests**。矩阵中标注 ⚠ 的点**不会编译报错、不会测试失败，只会静默缺功能**——历史接入事故（幕布缺 streaming 态、provider 图标错位、Shared 目标被静默改写）全部出自这组点。
@@ -100,15 +100,18 @@ status: active
 
 | # | 文件 | 职责 | 漏掉的后果 |
 |---|------|------|------------|
-| F1 ⚠ | `src/features/shared-session/utils/sharedSessionEngines.ts` **↔** `src-tauri/src/shared_sessions.rs` | `SHARED_SESSION_SUPPORTED_ENGINES` Set ↔ `is_supported_shared_session_engine()` **双集合手工同步**（当前均为 claude/codex/kimi/grok/opencode，排除 gemini） | 前端漏加 → `normalizeSharedSessionEngine()` **把新引擎静默改写成 claude**；后端漏加 → Shared 发送报 Unsupported |
+| F1 ⚠ | `src/features/shared-session/utils/sharedSessionEngines.ts` **↔** `src-tauri/src/shared_sessions.rs` | `SHARED_SESSION_SUPPORTED_ENGINES` Set ↔ `is_supported_shared_session_engine()` **双集合手工同步**（当前均为 claude/codex/kimi/grok/opencode/**pi**，排除 gemini） | 前端漏加 → `normalizeSharedSessionEngine()` **把新引擎静默改写成 claude**；后端漏加 → Shared 发送报 Unsupported |
 | F2 ⚠ | `src-tauri/src/shared_session_v2.rs` | `context_capabilities()` / `engine_runtime_key()` / native session id 恢复三处 per-engine match | Shared V2 对新引擎落到 `_` fallback 或直接缺能力画像 |
 | F3 ⚠ | `src-tauri/src/shared_runtime_coordinator.rs` | `shared_pending_id` normalize match + engine→字符串 match | pending-id 归属错乱 |
 | F4 ⚠ | `src-tauri/src/shared_projection/commands.rs` | 投影能力 match + 支持引擎数组 | Shared 投影对新引擎不可用 |
 | F5 ⚠ | `src-tauri/src/shared_sessions.rs` | pending-id 前缀（`<engine>-pending-shared-`）+ 发送 dispatch match | pending 状态无法识别 |
 | F6 🔵 | `src-tauri/src/native_continuation/commands.rs` + `src-tauri/src/native_history/types.rs` | Native 续写/history 读取门 | 仅 L3 档位接入 |
 | F7 — | `src/features/shared-session/runtime/sendSharedSessionTurnV2.ts` | **通常免改**：engine 经 target 透传，前提是 F1 集合已含新引擎 | — |
+| F8 ⚠ | `src/features/multi-agent/components/ComposerToggle.tsx` | `isMultiAgentTargetSupported()` 必须委托 `isSharedSessionSupportedEngine()`，**禁止再抄一份引擎名单** | 漏了 → Shared 能选新引擎，协作 pill 永远 disabled，文案却显示「协作 · 未开启」 |
+| F9 ⚠ | `src-tauri/src/agent_orchestration/support.rs::validate_agent_target` | 必须走 `ensure_supported_shared_session_engine()`，与 F1 同集；错误前缀保持 `agent-target-unavailable:` | 只改 F8 不改这里 → 点得开协作，启动 run 仍报 unsupported |
+| F10 🔵 | `src/features/multi-agent/components/StageTargetPicker.tsx` `LOCAL_PROFILE` | 新引擎 local sentinel（如 `__local_pi__`）必须进模板编辑器，否则节点配不齐 | 模板管理里选得到引擎、配不齐 Provider，无法「启用协作」 |
 
-自检：`pnpm vitest run src/features/shared-session/utils/sharedSessionEngines.test.ts` + 人工 diff 前后端两个集合。
+自检：`pnpm vitest run src/features/shared-session/utils/sharedSessionEngines.test.ts src/features/multi-agent/components/ComposerToggle.support.test.ts` + `cargo test --manifest-path src-tauri/Cargo.toml --lib validate_agent_target` + 人工 diff 前后端两个集合。
 
 ### G. UI 展示层（Settings / Sidebar / Session 管理）
 

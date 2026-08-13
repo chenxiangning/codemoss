@@ -59,11 +59,12 @@
 - `shared-send-pipeline`: Pi 的 durable provisioning、dispatch receipt、EngineEvent terminal settlement 与 recovery。
 - `model-provider-catalog-runtime`: Pi local Provider Profile 与 Model catalog 可被 Atomic Shared/Home picker 按 binding scope 查询。
 - `composer-control-surface`: Shared 与 Home 双栏展示并启用六 CLI；Native Session 保持原行为。
+- `multi-agent-orchestration`: 协作 host / stage 白名单与 Shared 支持集合同集；PI 可启用协作，Gemini 仍 fail-closed。
 
 ## Impact
 
-- Frontend：`src/features/shared-session/**`、`src/features/composer/**`、`src/features/app/components/Sidebar.tsx` 与 focused Vitest。
-- Backend：`src-tauri/src/shared_sessions.rs`、`shared_session_v2.rs`、`engine/pi_provider_profile.rs` 与相关 Rust tests。
+- Frontend：`src/features/shared-session/**`、`src/features/composer/**`、`src/features/multi-agent/components/{ComposerToggle,StageTargetPicker}.tsx`、`src/features/app/components/Sidebar.tsx` 与 focused Vitest。
+- Backend：`src-tauri/src/shared_sessions.rs`、`shared_session_v2.rs`、`agent_orchestration/support.rs`、`engine/pi_provider_profile.rs` 与相关 Rust tests。
 - Runtime contract：复用现有 Tauri commands 与 Engine runtime；不新增 IPC command。
 - Storage：继续 schema v2 与 `{engine}:{providerProfileId || default}` Binding Key，无迁移。
 - Dependencies：无新增依赖。

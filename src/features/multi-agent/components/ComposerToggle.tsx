@@ -3,6 +3,9 @@ import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 
 import { pushErrorToast } from "../../../services/toasts";
+import { loadSubagentStyles } from "../../../styles/featureStyleLoaders";
+import { useFeatureStylesReady } from "../../../styles/useFeatureStylesReady";
+import { isSharedSessionSupportedEngine } from "../../shared-session/utils/sharedSessionEngines";
 import type { EngineType } from "../../../types";
 import {
   selectTemplate,
@@ -27,18 +30,11 @@ type ComposerToggleProps = {
   onArm?: () => void;
 };
 
-const SUPPORTED: EngineType[] = [
-  "codex",
-  "claude",
-  "kimi",
-  "grok",
-  "opencode",
-];
-
+/** 协作 host / stage 与 Shared 支持集合同集，禁止再抄一份五引擎名单。 */
 export function isMultiAgentTargetSupported(
   engine: EngineType | null | undefined,
 ): boolean {
-  return Boolean(engine && SUPPORTED.includes(engine));
+  return isSharedSessionSupportedEngine(engine);
 }
 
 function templateHasIncompleteTarget(template: CollaborationTemplate): boolean {
@@ -54,6 +50,9 @@ export function MultiAgentComposerToggle({
   onArm,
 }: ComposerToggleProps) {
   const { t } = useTranslation();
+  // multi-agent.css 已从 bootstrap 卸出（冷启动 P1-1）。
+  // Inspector 抽屉只在右栏打开时才挂载，Shared Composer 入口必须自己拉同一切片。
+  const stylesReady = useFeatureStylesReady(loadSubagentStyles);
   const targetSupported = isMultiAgentTargetSupported(engine);
   const unavailable = !targetSupported;
   const selected = useSelectedTemplate();
@@ -182,7 +181,7 @@ export function MultiAgentComposerToggle({
   };
 
   const popover =
-    popOpen && popPos
+    popOpen && popPos && stylesReady
       ? createPortal(
           <div
             ref={popRef}
@@ -335,7 +334,7 @@ export function MultiAgentComposerToggle({
       {popover}
 
       <TemplateManagerModal
-        open={modalOpen}
+        open={modalOpen && stylesReady}
         initialTemplateId={selected.id}
         onClose={() => setModalOpen(false)}
       />

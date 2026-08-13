@@ -483,16 +483,15 @@ pub(super) fn prepared_from_begin(
 }
 
 pub(super) fn validate_agent_target(target: &ExecutionTargetInput) -> Result<(), String> {
-    match target.engine {
-        EngineType::Codex
-        | EngineType::Claude
-        | EngineType::Kimi
-        | EngineType::Grok
-        | EngineType::OpenCode => Ok(()),
-        other => Err(format!(
-            "agent-target-unavailable:{other:?}: unsupported Shared engine"
-        )),
-    }
+    crate::shared_sessions::ensure_supported_shared_session_engine(target.engine).map_err(
+        |_| {
+            format!(
+                "agent-target-unavailable:{:?}: unsupported Shared engine",
+                target.engine
+            )
+        },
+    )?;
+    Ok(())
 }
 
 pub(super) fn stage_access_mode(stage_id: &str, target: &ExecutionTargetInput) -> &'static str {
@@ -556,5 +555,51 @@ mod kill_switch_tests {
             return;
         }
         assert!(require_agent_enabled().is_ok());
+    }
+}
+
+#[cfg(test)]
+mod validate_agent_target_tests {
+    use super::validate_agent_target;
+    use crate::shared_event_log::canonical::types::CanonicalProviderProfileSource;
+    use crate::shared_session_v2::{EngineType, ExecutionTargetInput};
+
+    fn target(engine: EngineType) -> ExecutionTargetInput {
+        ExecutionTargetInput {
+            engine,
+            provider_profile_id: None,
+            model_catalog_entry_id: Some("m1".into()),
+            model: Some("m1".into()),
+            reasoning_effort: Some("medium".into()),
+            provider_profile_name_snapshot: Some("local".into()),
+            provider_profile_source: Some(CanonicalProviderProfileSource::Local),
+            runtime_capability_fingerprint: None,
+        }
+    }
+
+    #[test]
+    fn accepts_shared_supported_engines_including_pi() {
+        for engine in [
+            EngineType::Claude,
+            EngineType::Codex,
+            EngineType::Kimi,
+            EngineType::Grok,
+            EngineType::OpenCode,
+            EngineType::Pi,
+        ] {
+            assert!(
+                validate_agent_target(&target(engine)).is_ok(),
+                "{engine:?} should be a valid collab target"
+            );
+        }
+    }
+
+    #[test]
+    fn rejects_gemini_with_agent_unavailable_prefix() {
+        let err = validate_agent_target(&target(EngineType::Gemini)).expect_err("gemini");
+        assert!(
+            err.starts_with("agent-target-unavailable:"),
+            "unexpected error: {err}"
+        );
     }
 }

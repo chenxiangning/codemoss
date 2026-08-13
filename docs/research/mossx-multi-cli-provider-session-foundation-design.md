@@ -12,7 +12,7 @@ status: implemented
 > 内容类型：Architecture Decision Record
 > 生命周期：accepted / implemented in slices；原始 A–D 路线已归档，后续修复与收口 change 独立演进
 > 初始日期：2026-07-27
-> 最近校准：2026-08-13 · Session Index first-paint 必须同 IPC 携带 Shared native visibility（当前 V0/V2 ∪ archived/历史 binding id ∪ 精确 MOSSX protocol hint）；禁止空 hide 投影普通 native 行。事实源：`session_index/shared_visibility.rs`、`useThreadActionsListThreadsForWorkspace.ts`、OpenSpec `harden-shared-cli-session-index-visibility`
+> 最近校准：2026-08-13 · ① Session Index first-paint 必须同 IPC 携带 Shared native visibility（当前 V0/V2 ∪ archived/历史 binding id ∪ 精确 MOSSX protocol hint）；禁止空 hide 投影普通 native 行。事实源：`session_index/shared_visibility.rs`、`useThreadActionsListThreadsForWorkspace.ts`、OpenSpec `harden-shared-cli-session-index-visibility`。② Multi-agent 协作 host/stage 白名单与 Shared 支持集合对齐（含 PI）；禁止再抄五引擎名单。事实源：`ComposerToggle.tsx` `isMultiAgentTargetSupported`、`agent_orchestration/support.rs::validate_agent_target`、`sharedSessionEngines.ts`
 > 适用范围：Native Session、Shared Session、Provider Runtime、Session Catalog、Sidebar Projection、未来 Plugin / Orchestration
 > 核心决策：Native Session 保持原生身份；Shared Session 承担跨 CLI、跨 Provider 的逐 Turn 切换
 
@@ -24,9 +24,10 @@ status: implemented
 
 | 契约面 | 当前代码事实 | 事实源 |
 |--------|--------------|--------|
-| Built-in engines | 6：Claude/Codex/Gemini/Grok/Kimi/OpenCode | `engineIds.json`、`EngineType` |
-| Native rendering projection | 六引擎各有 realtime adapter + history loader | `src/features/threads/{adapters,loaders}/` |
-| Shared target boundary | Claude/Codex/Kimi/Grok/OpenCode；Gemini 排除 | `sharedSessionEngines.ts`、`src-tauri/src/shared_sessions.rs` |
+| Built-in engines | 7：Claude/Codex/Gemini/Grok/Kimi/OpenCode/PI | `engineIds.json`、`EngineType` |
+| Native rendering projection | 七引擎各有 realtime adapter + history loader | `src/features/threads/{adapters,loaders}/` |
+| Shared target boundary | Claude/Codex/Kimi/Grok/OpenCode/PI；Gemini 排除 | `sharedSessionEngines.ts`、`src-tauri/src/shared_sessions.rs` |
+| Multi-agent collab host/stage | **与 Shared 支持集合同集**（含 PI）；`isMultiAgentTargetSupported` 委托 `isSharedSessionSupportedEngine`，Rust `validate_agent_target` 走 `ensure_supported_shared_session_engine`；Gemini 仍 fail-closed | `ComposerToggle.tsx`、`agent_orchestration/support.rs`、OpenSpec `extend-shared-session-cli-targets-pi` |
 | Gemini runtime | registry 中存在，但 runtime policy 默认 disabled | `src-tauri/src/engine_policy.rs` |
 | Provider selection | Native 原子选择；Shared 逐 Turn target | `close-native-session-provider-create-binding` 与 Shared target contracts |
 | Shared send UI 状态机 | 九态 + Recovery Exit Ladder（Probe/Stop/停止并重建/放弃本轮） | `sendStateMachine.ts`、`SharedSendStatusBar.tsx`、`shared_session_v2.rs` |

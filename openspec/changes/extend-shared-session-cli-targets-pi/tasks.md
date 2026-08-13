@@ -22,7 +22,13 @@
 - [x] 4.2 [P0，依赖：2.*,3.*] 运行 `cargo test --manifest-path src-tauri/Cargo.toml --lib shared_session_v2`、`shared_sessions`、`shared_runtime_coordinator`、`engine::pi` focused tests 与 `cargo check --lib --bins`，全绿。
 - [x] 4.3 [P0，依赖：4.1,4.2] 运行 `openspec validate extend-shared-session-cli-targets-pi --strict --no-interactive`、`check:runtime-contracts`、符号哨兵 `rg "EngineType::Pi" src-tauri/src/shared_*.rs` 复查全部 match 臂；`git status --short` + `git diff --name-only` 逐文件核对：本变更文件归属清晰，不含他人未提交的 `fix-pi-session-continuity-and-sidebar` 文件。
 
-## 5. 切换视角自审
+## 5. Multi-Agent 协作白名单（补齐 Shared 接入后遗漏的独立闸门）
 
-- [x] 5.1 [P0，依赖：4.3] 兼容性自审：六 CLI picker/绑定/发送、五 CLI 既有行为、Native Pi 行为零回归；`_ =>` 兜底臂、`sanitize_shared_session_meta` 路径、Gemini fail-closed 不变。
-- [x] 5.2 [P0，依赖：5.1] 边界自审：Pi 未安装 fail closed、pending 占位不双前缀、established 后 `--session-id` 续聊、Model pair 不匹配零副作用；输出 review 结论清单交用户验收。
+- [x] 5.1 [P0] 输入：`ComposerToggle.tsx` 硬编码五引擎 `SUPPORTED`；输出：`isMultiAgentTargetSupported` 委托 `isSharedSessionSupportedEngine`（含 pi）；验证：`ComposerToggle.support.test.ts`。
+- [x] 5.2 [P0] 输入：`validate_agent_target` 五引擎 match；输出：走 `ensure_supported_shared_session_engine`，错误前缀保持 `agent-target-unavailable:`；验证：`validate_agent_target_tests`。
+- [x] 5.3 [P1] 输入：`StageTargetPicker.tsx` `LOCAL_PROFILE` 缺 pi；输出：补 `__local_pi__` sentinel；onboarding F8–F10 + 基石校准表回写。
+
+## 6. 切换视角自审
+
+- [x] 6.1 [P0，依赖：4.3] 兼容性自审：六 CLI picker/绑定/发送、五 CLI 既有行为、Native Pi 行为零回归；`_ =>` 兜底臂、`sanitize_shared_session_meta` 路径、Gemini fail-closed 不变。
+- [x] 6.2 [P0，依赖：6.1] 边界自审：Pi 未安装 fail closed、pending 占位不双前缀、established 后 `--session-id` 续聊、Model pair 不匹配零副作用；输出 review 结论清单交用户验收。
