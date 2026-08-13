@@ -9,7 +9,7 @@ Root cause: the A4 live-text externalization channel
 (`externalize-live-assistant-text-channel`, archived 2026-07-09) keeps streamed assistant text out
 of the reducer after the first ("shell") delta; only `drainLiveAssistantTextTail` flowing back into
 the reducer before a boundary transition can recover it. Two boundaries already do this correctly
-(terminal turn settlement, tool-item-start segment boundary). The AskUserQuestion gate-settlement
+(the interrupt path, tool-item-start segment boundary). The AskUserQuestion gate-settlement
 path (`settleThreadWaitingForUserChoice`, added 2026-04-29, ~2.5 months before the live-text
 channel) never was.
 
@@ -31,4 +31,4 @@ channel) never was.
 
 - MUST: text streamed before an AskUserQuestion gate fires mid-turn MUST remain visible after the
   gate settles.
-- MUST NOT: regress the existing terminal-settlement or tool-item-start drain behavior.
+- MUST NOT: regress the existing interrupt or tool-item-start drain behavior.

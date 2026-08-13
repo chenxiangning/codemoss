@@ -19,7 +19,7 @@
 ## Manual
 
 - [x] Exercised in daily use over roughly a week, on the pre-rebase branch.
-- [ ] Not re-exercised by hand since rebasing onto v0.8.9. The rebase was conflict-free and did not
+- Not re-exercised by hand since merging v0.8.9 in. The merge was conflict-free and did not
       touch this change's files, so the risk is low, but it is untested by hand at this base.
 
 ## Scope notes
@@ -27,5 +27,5 @@
 - `useThreadEventHandlers.ts` is not touched by upstream's `fix-askuserquestion-settlement-tombstone`,
   so this change and that one are independent.
 - The drain-before-boundary contract this reuses is already applied at two other boundaries
-  (terminal settlement and `incrementAgentSegment`). This adds the gate settle site as a third
+  (the interrupt path and `incrementAgentSegment`). This adds the gate settle site as a third
   consumer rather than introducing a new mechanism.

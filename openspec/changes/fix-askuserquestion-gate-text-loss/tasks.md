@@ -1,7 +1,7 @@
 ## 1. Spec
 
 - [x] Identify the gap: `settleThreadWaitingForUserChoice` never drains the live-text tail before a
-      boundary transition, unlike the terminal-settlement and tool-item-start call sites
+      boundary transition, unlike the interrupt and tool-item-start call sites
 - [x] Add a MODIFIED scenario to `conversation-render-surface-stability` naming the AskUserQuestion
       gate-settlement boundary explicitly
 

@@ -3,7 +3,7 @@
 `conversation-render-surface-stability`'s "Live assistant text MAY bypass root reducer while
 preserving final transcript convergence" requirement already mandates that a streaming assistant
 message's completion converges to the durable transcript. The implementation only wired that
-convergence into two boundary transitions (terminal turn settlement, tool-item-start segment
+convergence into two boundary transitions (the interrupt path, tool-item-start segment
 boundary) via `drainLiveAssistantTextTail`; the AskUserQuestion gate-settlement boundary
 (`settleThreadWaitingForUserChoice`) was never retrofitted when the live-text channel landed, since
 it predates the channel by roughly two and a half months.
