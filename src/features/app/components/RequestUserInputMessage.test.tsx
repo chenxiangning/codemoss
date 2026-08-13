@@ -432,6 +432,41 @@ describe("RequestUserInputMessage", () => {
     );
   });
 
+  it("treats a request as expired from wall-clock time even if the countdown never ticked", async () => {
+    // Regression: the countdown used to be a per-tick decrement that could
+    // lag real elapsed time whenever setInterval was throttled (backgrounded
+    // tab, main-thread jank). Jump the system clock past the deadline
+    // WITHOUT running any pending timers (no vi.advanceTimersByTime), proving
+    // the remaining time is derived fresh from Date.now() at submit time
+    // rather than an accumulated tick count that only updates on interval fire.
+    vi.useFakeTimers();
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    render(
+      <RequestUserInputMessage
+        requests={[baseRequest]}
+        activeThreadId="thread-1"
+        activeWorkspaceId="ws-1"
+        onSubmit={onSubmit}
+        onDismiss={vi.fn()}
+      />,
+    );
+
+    act(() => {
+      vi.setSystemTime(Date.now() + 1_800_000);
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "approval.submit" }));
+      await Promise.resolve();
+    });
+
+    expect(onSubmit).toHaveBeenCalledWith(
+      baseRequest,
+      { answers: { "q-1": { answers: [] } } },
+      { staleSettlementHint: "timeout" },
+    );
+  });
+
   it("keeps timeout hint when collapsed stale request is skipped after auto-dismiss failure", async () => {
     vi.useFakeTimers();
     const onDismiss = vi.fn().mockRejectedValue(new Error("fail"));

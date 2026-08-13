@@ -2182,12 +2182,12 @@ pub(crate) async fn respond_to_server_request(
     }
 
     // Native control request keeps the existing request-id routing contract.
-    for session in state
+    let claude_sessions_for_workspace = state
         .engine_manager
         .claude_manager
         .sessions_for_workspace(&workspace_id)
-        .await
-    {
+        .await;
+    for session in &claude_sessions_for_workspace {
         if session.has_pending_user_input(&request_id) {
             return session.respond_to_user_input(request_id, result).await;
         }
@@ -2196,6 +2196,24 @@ pub(crate) async fn respond_to_server_request(
                 .respond_to_approval_request(request_id, result)
                 .await;
         }
+    }
+
+    // See `expired_claude_ask_request_id` below for the gate's three conditions.
+    // A late AskUserQuestion answer: the request already timed out or was
+    // otherwise resolved before this response arrived, so no Claude session
+    // in the workspace has it pending anymore. Falling through to the
+    // Codex-session lookup below is architecturally wrong for a Claude-only
+    // request id and only ever produces a generic "workspace not connected"
+    // error the frontend cannot distinguish from a real connectivity
+    // failure. Give a specific, recognizable error instead.
+    if let Some(ask_request_id) = expired_claude_ask_request_id(
+        &request_id,
+        !claude_sessions_for_workspace.is_empty(),
+        is_user_input_response,
+    ) {
+        return Err(format!(
+            "AskUserQuestion request {ask_request_id} already expired or was answered"
+        ));
     }
 
     let codex_runtime_key =
@@ -3060,6 +3078,31 @@ Task:\n{cleaned_prompt}"
         "title": title,
         "worktreeName": worktree_name
     }))
+}
+
+/// A Claude-origin `AskUserQuestion` answer that arrived after the request was
+/// already resolved. Returns the request id when the response must be reported
+/// as expired rather than falling through to Codex-session resolution.
+///
+/// All three conditions are load-bearing:
+/// - `has_claude_session`: in a workspace with no Claude session at all, a
+///   generic connectivity error is the honest answer, and Codex-only
+///   workspaces keep their existing routing untouched.
+/// - `is_user_input_response`: approval responses share this entry point and
+///   must not be reclassified.
+/// - the `ask-` prefix: only AskUserQuestion ids are minted with it, so local
+///   Codex prompts (`ccgui-plan-blocker:` and similar) are excluded.
+fn expired_claude_ask_request_id(
+    request_id: &Value,
+    has_claude_session: bool,
+    is_user_input_response: bool,
+) -> Option<&str> {
+    if !has_claude_session || !is_user_input_response {
+        return None;
+    }
+    request_id
+        .as_str()
+        .filter(|value| value.starts_with("ask-"))
 }
 
 #[cfg(test)]

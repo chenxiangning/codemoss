@@ -160,6 +160,9 @@ function isStaleSettledRequestError(
   if (normalizedMessage.includes("unknown request_id for askuserquestion")) {
     return true;
   }
+  if (normalizedMessage.includes("already expired or was answered")) {
+    return true;
+  }
   const hasStaleRuntimeEvidence =
     normalizedMessage.includes("workspace not connected") ||
     normalizedMessage.includes("timeout") ||

@@ -132,9 +132,16 @@ export function RequestUserInputMessage({
   const [draftByRequest, setDraftByRequest] = useState<
     Record<string, RequestDraftState>
   >({});
-  const [remainingSecondsByRequest, setRemainingSecondsByRequest] = useState<
+  // Wall-clock deadline per request (epoch ms), not a decremented counter: a
+  // naive per-tick decrement drifts behind real elapsed time whenever
+  // setInterval is throttled (backgrounded/minimized window, main-thread
+  // jank), letting the UI accept a submit after the backend's real timeout
+  // already fired. Remaining seconds are derived from this deadline on every
+  // render instead.
+  const [deadlineAtByRequest, setDeadlineAtByRequest] = useState<
     Record<string, number>
   >({});
+  const [, forceCountdownTick] = useState(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const timeoutDismissedRequestKeysRef = useRef<Set<string>>(new Set());
@@ -170,13 +177,13 @@ export function RequestUserInputMessage({
         },
       };
     });
-    setRemainingSecondsByRequest((current) => {
+    setDeadlineAtByRequest((current) => {
       if (typeof current[requestKey] === "number") {
         return current;
       }
       return {
         ...current,
-        [requestKey]: REQUEST_STALE_TIMEOUT_SECONDS,
+        [requestKey]: Date.now() + REQUEST_STALE_TIMEOUT_SECONDS * 1000,
       };
     });
   }, [activeRequest, activeRequestKey]);
@@ -186,34 +193,33 @@ export function RequestUserInputMessage({
     setIsSubmitting(false);
   }, [activeRequestKey]);
 
+  // Ticks purely to force a re-render so the wall-clock-derived remaining
+  // time stays visible; deliberately NOT gated on isSubmitting/submitError so
+  // a failed submit's error banner doesn't also freeze the visible clock.
   useEffect(() => {
-    if (!activeRequestKey || isSubmitting || submitError) {
+    if (!activeRequestKey) {
       return undefined;
     }
     const timerId = window.setInterval(() => {
-      setRemainingSecondsByRequest((current) => {
-        const currentSeconds =
-          current[activeRequestKey] ?? REQUEST_STALE_TIMEOUT_SECONDS;
-        if (currentSeconds <= 0) {
-          return current;
-        }
-        return {
-          ...current,
-          [activeRequestKey]: currentSeconds - 1,
-        };
-      });
+      forceCountdownTick((tick) => tick + 1);
     }, 1000);
     return () => {
       window.clearInterval(timerId);
     };
-  }, [activeRequestKey, isSubmitting, submitError]);
+  }, [activeRequestKey]);
 
-  const activeRemainingSeconds = activeRequestKey
-    ? remainingSecondsByRequest[activeRequestKey] ?? REQUEST_STALE_TIMEOUT_SECONDS
-    : REQUEST_STALE_TIMEOUT_SECONDS;
-  const collapsedRemainingSeconds = collapsedRequestKey
-    ? remainingSecondsByRequest[collapsedRequestKey] ?? REQUEST_STALE_TIMEOUT_SECONDS
-    : REQUEST_STALE_TIMEOUT_SECONDS;
+  const remainingSecondsFromDeadline = (requestKey: string | null): number => {
+    if (!requestKey) {
+      return REQUEST_STALE_TIMEOUT_SECONDS;
+    }
+    const deadlineAt = deadlineAtByRequest[requestKey];
+    if (typeof deadlineAt !== "number") {
+      return REQUEST_STALE_TIMEOUT_SECONDS;
+    }
+    return Math.max(0, Math.ceil((deadlineAt - Date.now()) / 1000));
+  };
+  const activeRemainingSeconds = remainingSecondsFromDeadline(activeRequestKey);
+  const collapsedRemainingSeconds = remainingSecondsFromDeadline(collapsedRequestKey);
 
   // Timeout: submit the recommended (first) option. Fall back to dismiss only
   // when there is no selectable recommended answer.
@@ -270,7 +276,7 @@ export function RequestUserInputMessage({
           delete next[activeRequestKey];
           return next;
         });
-        setRemainingSecondsByRequest((current) => {
+        setDeadlineAtByRequest((current) => {
           if (typeof current[activeRequestKey] !== "number") {
             return current;
           }
@@ -372,8 +378,7 @@ export function RequestUserInputMessage({
   const getSettlementOptions = (
     targetRequestKey: string,
   ): RequestUserInputSettlementOptions | undefined => {
-    const targetRemainingSeconds =
-      remainingSecondsByRequest[targetRequestKey] ?? REQUEST_STALE_TIMEOUT_SECONDS;
+    const targetRemainingSeconds = remainingSecondsFromDeadline(targetRequestKey);
     return targetRemainingSeconds <= 0 ? { staleSettlementHint: "timeout" } : undefined;
   };
 
@@ -503,7 +508,7 @@ export function RequestUserInputMessage({
       delete next[targetRequestKey];
       return next;
     });
-    setRemainingSecondsByRequest((current) => {
+    setDeadlineAtByRequest((current) => {
       if (typeof current[targetRequestKey] !== "number") {
         return current;
       }

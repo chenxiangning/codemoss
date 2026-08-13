@@ -432,6 +432,50 @@ describe("useThreadUserInput", () => {
     });
   });
 
+  it("settles a late submit recognized as expired even without a local timeout hint", async () => {
+    // The frontend's own countdown can lag the backend's real deadline (clock
+    // drift, throttled tab). When that happens the submit arrives with no
+    // staleSettlementHint, so this must be recognized from the backend's
+    // error message alone, not the hint.
+    const dispatch = vi.fn();
+    vi.mocked(respondToUserInputRequest).mockRejectedValue(
+      new Error("AskUserQuestion request ask-1 already expired or was answered"),
+    );
+
+    const { result } = renderHook(() => useThreadUserInput({ dispatch }));
+
+    await act(async () => {
+      await result.current.handleUserInputSubmit(request, {
+        answers: {
+          age: {
+            answers: ["18-25岁 (Recommended)"],
+          },
+        },
+      });
+    });
+
+    expect(dispatch).toHaveBeenCalledWith({
+      type: "removeUserInputRequest",
+      requestId: "req-1",
+      workspaceId: "ws-1",
+      request,
+    });
+    // The stale branch also writes a durable terminal marker before removing,
+    // so a history reopen cannot rehydrate the card as live. That marker is
+    // settlement behaviour shared with every other stale path; what this test
+    // pins is that the expired-answer error reaches that branch at all,
+    // without a local timeout hint to corroborate it.
+    expect(dispatch).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "upsertItem",
+        item: expect.objectContaining({
+          toolType: "askuserquestion",
+          status: "completed",
+        }),
+      }),
+    );
+  });
+
   it("keeps empty submit retryable when workspace disconnects", async () => {
     const dispatch = vi.fn();
     vi.mocked(respondToUserInputRequest).mockRejectedValue(
