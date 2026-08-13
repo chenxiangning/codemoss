@@ -24,5 +24,6 @@
 - [x] Full `RequestUserInputMessage.test.tsx` (28/28) and `useThreadUserInput.test.tsx` (12/12)
       green
 - [x] `npx tsc --noEmit` clean
-- [ ] `cargo test` (deferred - live desktop app is this session's host; run via the `/tmp`
-      worktree rebuild before opening a PR)
+- [x] `cargo test` (2026-08-13, `/tmp` worktree on v0.8.9): full `--lib` run compared against a
+      clean-`upstream/main` control under identical conditions. 2026 passed / 6 failed here vs
+      2022 passed / 6 failed on the control, the same six failures both sides. No new failures.
