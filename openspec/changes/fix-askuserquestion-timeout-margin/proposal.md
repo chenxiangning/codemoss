@@ -1,9 +1,9 @@
 ## Why
 
 Evidence from local usage logs: 35 AskUserQuestion timeout errors, persisting well
-after the head-anchor fix (07-09) through 08-04. The contributor addressed here:
+after the head-anchor fix (07-09) through 08-04. The cause addressed here:
 
-1. **No margin between the CLI's own MCP fetch timeout and our server-side wait.** Both were set
+**No margin between the CLI's own MCP fetch timeout and our server-side wait.** Both were set
    to the exact same duration (currently 1800s each, discovered mid-investigation to have already
    been bumped from an earlier 300s - this repo has drifted these two independently-hardcoded
    numbers apart before). A photo-finish race: whichever side's clock starts a few ms later "wins,"
@@ -31,7 +31,7 @@ after the head-anchor fix (07-09) through 08-04. The contributor addressed here:
 - Verified against `docs/analysis/client-shortcuts-and-priorities-2026-07.md` before touching this:
   that doc frames the 300s-era timeout as already-shipped and its remaining gap as deferred
   cargo/rebuilt-app acceptance, not as "300s is wrong" - so this change does not relitigate the
-  base timeout value, only the margin and the event-delivery reliability around it.
+  base timeout value, only the margin around it.
 
 ## Acceptance
 

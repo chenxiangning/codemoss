@@ -15,7 +15,7 @@
 - Verified no `1800` literal survives at either wait site; both now read
   `ASK_USER_QUESTION_TIMEOUT_SECS`.
 
-## Rebase onto v0.8.9
+## Merge with v0.8.9
 
 Upstream's `fix-askuserquestion-settlement-tombstone` edited the same MCP timeout branch, producing
 one conflict hunk in `user_input.rs`. The two edits are complementary, not competing:
@@ -32,7 +32,7 @@ so no test or log consumer sees a different string.
 ## Manual
 
 - [x] Exercised in daily use over roughly a week, on the pre-rebase branch.
-- [ ] Not re-exercised by hand since rebasing onto v0.8.9.
+- Not re-exercised by hand since merging v0.8.9 in.
 
 ## Known limits
 

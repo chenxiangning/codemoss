@@ -31,6 +31,7 @@ duplicated-constant drift this change closes structurally.
   assert `1830000` (1800 + 30 margin, in ms) instead of the old exact-match `1800000`. This is the
   test that would have originally caught "not raised at all"; it now also encodes "raised past, not
   to."
-- `npx tsc --noEmit` N/A (no frontend files touched).
-- `cargo check`/`cargo test` deferred (see Scope) - to run via the `/tmp` worktree rebuild, not
+- `npx tsc --noEmit`: clean.
+- `cargo test --lib`: run on this branch against a clean-`upstream/main` control at the same base;
+  counts in `verification.md`. (Superseded note: to run via the `/tmp` worktree rebuild, not
   this live session.
