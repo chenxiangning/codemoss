@@ -20,6 +20,8 @@ const makeToolItem = (
   output,
 });
 
+const GROUP_TOGGLE_PATTERN = /批量终端|bashGroupBatchRun/;
+
 describe("BashToolGroupBlock", () => {
   afterEach(() => {
     cleanup();
@@ -35,6 +37,8 @@ describe("BashToolGroupBlock", () => {
       />,
     );
 
+    // 全完成挂载默认折叠，先展开整组
+    fireEvent.click(screen.getByRole("button", { name: GROUP_TOGGLE_PATTERN }));
     fireEvent.click(screen.getByText("npm run lint"));
 
     const outputLines = document.querySelectorAll(".bash-output-line");
@@ -67,11 +71,59 @@ describe("BashToolGroupBlock", () => {
       />,
     );
 
+    fireEvent.click(screen.getByRole("button", { name: GROUP_TOGGLE_PATTERN }));
+
     expect(screen.getByText("Show working tree status")).toBeTruthy();
     expect(screen.getByText("Show staged and unstaged changes")).toBeTruthy();
     expect(document.querySelectorAll(".bash-item-status")).toHaveLength(2);
 
     const allCompletedNode = screen.queryByText("全部完成") ?? screen.queryByText("tools.bashGroupAllCompleted");
     expect(allCompletedNode).toBeTruthy();
+  });
+
+  it("stays expanded while a command is processing", () => {
+    render(
+      <BashToolGroupBlock
+        items={[
+          makeToolItem("bash-live-1", "npm run build", "ok"),
+          makeToolItem("bash-live-2", "npm run test", "", "in_progress"),
+        ]}
+      />,
+    );
+
+    expect(document.querySelectorAll(".bash-timeline-item")).toHaveLength(2);
+  });
+
+  it("auto-collapses once all commands finish", () => {
+    const { rerender } = render(
+      <BashToolGroupBlock
+        items={[
+          makeToolItem("bash-done-1", "npm run lint", "ok"),
+          makeToolItem("bash-done-2", "npm run test", "", "in_progress"),
+        ]}
+      />,
+    );
+
+    // 进行中：整组展开
+    expect(document.querySelectorAll(".bash-timeline-item")).toHaveLength(2);
+
+    rerender(
+      <BashToolGroupBlock
+        items={[
+          makeToolItem("bash-done-1", "npm run lint", "ok"),
+          makeToolItem("bash-done-2", "npm run test", "ok"),
+        ]}
+      />,
+    );
+
+    // 全部完成：时间线行不再渲染（整组已折叠），header 仍在
+    expect(document.querySelectorAll(".bash-timeline-item")).toHaveLength(0);
+    expect(
+      screen.getByRole("button", { name: GROUP_TOGGLE_PATTERN }),
+    ).toBeTruthy();
+
+    // 用户手动展开后仍可见
+    fireEvent.click(screen.getByRole("button", { name: GROUP_TOGGLE_PATTERN }));
+    expect(document.querySelectorAll(".bash-timeline-item")).toHaveLength(2);
   });
 });

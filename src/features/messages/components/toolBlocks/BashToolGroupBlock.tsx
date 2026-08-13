@@ -84,11 +84,20 @@ export const BashToolGroupBlock = memo(function BashToolGroupBlock({
   onRequestAutoScroll,
 }: BashToolGroupBlockProps) {
   const { t } = useTranslation();
-  const [isExpanded, setIsExpanded] = useState(true);
+  // 仅在挂载时仍有 processing 命令才默认展开（直播进度）；
+  // 历史回放/全完成场景默认折叠，与 EditToolGroupBlock 的 defaultCollapsed 语义一致。
+  const [isExpanded, setIsExpanded] = useState(
+    () =>
+      items.some(
+        (entry) =>
+          resolveToolStatus(entry.status, Boolean(entry.output)) === 'processing',
+      ),
+  );
   const [expandedItemId, setExpandedItemId] = useState<string | null>(null);
   const [copiedOutputId, setCopiedOutputId] = useState<string | null>(null);
   const timelineRef = useRef<HTMLDivElement | null>(null);
   const prevCountRef = useRef(items.length);
+  const wasProcessingRef = useRef(false);
 
   const parsed = useMemo(
     () => items.map((item) => parseBashItem(item, t('tools.commandLabel'))),
@@ -106,6 +115,16 @@ export const BashToolGroupBlock = memo(function BashToolGroupBlock({
       setExpandedItemId(lastProcessing.id);
     }
   }, [parsed]);
+
+  // 全部命令跑完（processing → 无 processing）即自动折叠整组，
+  // 同时清掉残值的 expandedItemId，避免最后一条命令详情永远展开。
+  useEffect(() => {
+    if (wasProcessingRef.current && !hasProcessing) {
+      setIsExpanded(false);
+      setExpandedItemId(null);
+    }
+    wasProcessingRef.current = hasProcessing;
+  }, [hasProcessing]);
 
   useEffect(() => {
     if (items.length > prevCountRef.current && timelineRef.current) {
