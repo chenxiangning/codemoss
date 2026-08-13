@@ -510,11 +510,7 @@ pub(crate) async fn get_workspace_session_projection_summary_core(
     let workspace_id = normalize_workspace_id(&workspace_id)?;
     let normalized_query = query.unwrap_or_default();
     let attribution_mode = WorkspaceSessionAttributionMode::from_query(&normalized_query);
-    let scan_mode = build_catalog_scan_mode(
-        &normalized_query,
-        None,
-        Some(SESSION_CATALOG_MAX_LIMIT as u32),
-    );
+    let scan_mode = build_catalog_scan_mode(&normalized_query, None, None);
     let scope_catalog = build_workspace_scope_catalog_data(
         workspaces,
         engine_manager,

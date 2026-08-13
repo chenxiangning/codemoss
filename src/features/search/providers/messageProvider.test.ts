@@ -22,6 +22,21 @@ describe("searchMessages", () => {
     expect(results[0]?.kind).toBe("message");
   });
 
+  it("does not search sidebar threads that were never opened", () => {
+    const results = searchMessages({
+      query: "secret",
+      workspaceId: "ws-a",
+      threads: [
+        { id: "open", name: "Open", updatedAt: 2 },
+        { id: "closed", name: "Closed", updatedAt: 3 },
+      ],
+      threadItemsByThread: {
+        open: [{ id: "m1", kind: "message", role: "user", text: "visible" }],
+      },
+    });
+    expect(results).toEqual([]);
+  });
+
   it("preserves case-insensitive matching with cached normalized text", () => {
     const threadItemsByThread = {
       "t-1": [{ id: "m1", kind: "message", role: "user", text: "Hello MossX" }],

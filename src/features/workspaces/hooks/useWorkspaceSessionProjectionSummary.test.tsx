@@ -42,6 +42,7 @@ describe("useWorkspaceSessionProjectionSummary", () => {
         status: "active",
         folderId: null,
         sessionAttributionMode: "related",
+        scanMode: "bounded",
       },
     });
   });
@@ -83,6 +84,7 @@ describe("useWorkspaceSessionProjectionSummary", () => {
           status: "active",
           folderId: null,
           sessionAttributionMode: "related",
+        scanMode: "bounded",
         },
       });
     });
@@ -130,6 +132,7 @@ describe("useWorkspaceSessionProjectionSummary", () => {
         status: "all",
         folderId: null,
         sessionAttributionMode: "related",
+        scanMode: "bounded",
       },
     });
     expect(result.current.summary).toBeNull();

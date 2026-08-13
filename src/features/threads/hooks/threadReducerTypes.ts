@@ -52,6 +52,10 @@ export type ThreadState = {
   activeThreadIdByWorkspace: Record<string, string | null>;
   itemsByThread: Record<string, ConversationItem[]>;
   historyRestoredAtMsByThread: Record<string, number | null>;
+  historyWindowByThread: Record<
+    string,
+    { hasMore: boolean; nextCursor: string | null }
+  >;
   threadsByWorkspace: Record<string, ThreadSummary[]>;
   hiddenThreadIdsByWorkspace: Record<string, Record<string, true>>;
   threadParentById: Record<string, string>;
@@ -222,6 +226,17 @@ export type ThreadAction =
   | { type: "clearProcessingGeneratedImages"; threadId: string }
   | { type: "evictThreadItems"; threadIds: string[] }
   | { type: "setThreadItems"; threadId: string; items: ConversationItem[] }
+  | {
+      type: "prependThreadItems";
+      threadId: string;
+      items: ConversationItem[];
+    }
+  | {
+      type: "setThreadHistoryWindow";
+      threadId: string;
+      hasMore: boolean;
+      nextCursor: string | null;
+    }
   | {
       type: "appendReasoningSummary";
       threadId: string;

@@ -318,6 +318,24 @@ describe("useWorkspaceFiles", () => {
     unmount();
   });
 
+  it("does not scan the workspace tree when there is no active workspace", async () => {
+    const { result, unmount } = renderHook(() =>
+      useWorkspaceFiles({
+        activeWorkspace: null,
+        pollingEnabled: false,
+      }),
+    );
+
+    await flushAsyncWork();
+
+    expect(getWorkspaceDirectoryChildren).not.toHaveBeenCalled();
+    expect(getWorkspaceFiles).not.toHaveBeenCalled();
+    expect(result.current.isLoading).toBe(false);
+    expect(result.current.files).toEqual([]);
+
+    unmount();
+  });
+
   it("defers all file loading when initial loading is disabled", async () => {
     const { rerender, result, unmount } = renderHook(
       ({ initialLoadEnabled }: { initialLoadEnabled: boolean }) =>

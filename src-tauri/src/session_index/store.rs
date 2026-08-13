@@ -5,7 +5,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 
-const DDL: &str = r#"
+pub(crate) const DDL: &str = r#"
 CREATE TABLE IF NOT EXISTS session_index (
   engine TEXT NOT NULL,
   session_id TEXT NOT NULL,
@@ -37,6 +37,14 @@ CREATE TABLE IF NOT EXISTS session_index_sources (
   fingerprint TEXT NOT NULL,
   last_sync_ms INTEGER NOT NULL,
   row_count INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS session_index_file_cursors (
+  path TEXT PRIMARY KEY,
+  inode TEXT NOT NULL,
+  size INTEGER NOT NULL,
+  offset INTEGER NOT NULL,
+  titles_json TEXT NOT NULL DEFAULT '{}'
 );
 "#;
 
@@ -364,6 +372,61 @@ pub(crate) fn list_for_workspace_path(
         rows.truncate(limit);
     }
     Ok(rows)
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct SessionIndexFileCursor {
+    pub inode: String,
+    pub size: u64,
+    pub offset: u64,
+    pub titles_json: String,
+}
+
+pub(crate) fn load_file_cursor(
+    connection: &Connection,
+    path: &str,
+) -> Result<Option<SessionIndexFileCursor>, String> {
+    connection
+        .query_row(
+            "SELECT inode, size, offset, titles_json FROM session_index_file_cursors WHERE path = ?1",
+            [path],
+            |row| {
+                Ok(SessionIndexFileCursor {
+                    inode: row.get(0)?,
+                    size: row.get::<_, i64>(1)?.max(0) as u64,
+                    offset: row.get::<_, i64>(2)?.max(0) as u64,
+                    titles_json: row.get(3)?,
+                })
+            },
+        )
+        .optional()
+        .map_err(|error| error.to_string())
+}
+
+pub(crate) fn save_file_cursor(
+    connection: &Connection,
+    path: &str,
+    cursor: &SessionIndexFileCursor,
+) -> Result<(), String> {
+    connection
+        .execute(
+            "INSERT INTO session_index_file_cursors (path, inode, size, offset, titles_json)
+             VALUES (?1, ?2, ?3, ?4, ?5)
+             ON CONFLICT(path) DO UPDATE SET
+               inode = excluded.inode,
+               size = excluded.size,
+               offset = excluded.offset,
+               titles_json = excluded.titles_json",
+            params![
+                path,
+                cursor.inode,
+                cursor.size as i64,
+                cursor.offset as i64,
+                cursor.titles_json
+            ],
+        )
+        .map_err(|error| error.to_string())?;
+    Ok(())
 }
 
 fn map_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<SessionIndexRow> {

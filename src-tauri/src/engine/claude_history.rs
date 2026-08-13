@@ -11,11 +11,11 @@ use sha2::{Digest, Sha256};
 use std::collections::{HashMap, HashSet};
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use std::time::SystemTime;
 use tokio::fs;
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncSeekExt, AsyncWriteExt, BufReader};
 use tokio::sync::Semaphore;
 use tokio::time::timeout;
 
@@ -45,6 +45,73 @@ const CLAUDE_SOURCE_FACT_CACHE_SCHEMA_VERSION: u32 = 1;
 // non-ASCII path collisions (e.g. 新的空文件夹 vs 个人财务管理).
 const CLAUDE_SOURCE_FACT_SCANNER_VERSION: u32 = 5;
 const CLAUDE_SESSION_TITLE_PREVIEW_MAX_CHARS: usize = 60;
+/// Sidebar list scan: stop after this many content bytes (align Index peek).
+pub(crate) const CLAUDE_LIST_SCAN_MAX_BYTES: u64 = 64 * 1024;
+/// Sidebar list scan: stop after this many non-empty lines.
+pub(crate) const CLAUDE_LIST_SCAN_MAX_LINES: usize = 40;
+/// Skip a single JSONL line larger than this (list + catalog).
+const CLAUDE_LIST_SKIP_LINE_BYTES: usize = 200_000;
+const CLAUDE_LIST_DEFAULT_LIMIT: usize = 200;
+#[allow(dead_code)]
+pub(crate) const CLAUDE_UI_HISTORY_WINDOW: usize = 80;
+const CLAUDE_WINDOW_TAIL_CHUNK: u64 = 256 * 1024;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ClaudeSessionScanPurpose {
+    /// Sidebar / `list_*`: title + first user + mtime. Never read to EOF for count.
+    ListSummary,
+    /// Session catalog / source facts: may scan the whole transcript.
+    CatalogFact,
+}
+
+#[derive(Default)]
+struct ClaudeScanIoLog {
+    /// (absolute path, opens, bytes)
+    entries: Vec<(String, u64, u64)>,
+}
+
+static CLAUDE_SCAN_IO: Mutex<ClaudeScanIoLog> = Mutex::new(ClaudeScanIoLog { entries: Vec::new() });
+
+#[allow(dead_code)]
+pub(crate) fn reset_claude_list_io_stats() {
+    if let Ok(mut guard) = CLAUDE_SCAN_IO.lock() {
+        guard.entries.clear();
+    }
+}
+
+pub(crate) fn claude_list_io_stats_for_prefix(prefix: &Path) -> (u64, u64) {
+    let prefix = prefix.to_string_lossy();
+    let Ok(guard) = CLAUDE_SCAN_IO.lock() else {
+        return (0, 0);
+    };
+    let mut opens = 0;
+    let mut bytes = 0;
+    for (path, open_count, read_bytes) in &guard.entries {
+        if path.starts_with(prefix.as_ref()) {
+            opens += *open_count;
+            bytes += *read_bytes;
+        }
+    }
+    (opens, bytes)
+}
+
+fn record_claude_scan_open(path: &Path) {
+    let key = path.to_string_lossy().into_owned();
+    if let Ok(mut guard) = CLAUDE_SCAN_IO.lock() {
+        guard.entries.push((key, 1, 0));
+    }
+}
+
+fn record_claude_scan_read_bytes(path: &Path, bytes: u64) {
+    let key = path.to_string_lossy().into_owned();
+    if let Ok(mut guard) = CLAUDE_SCAN_IO.lock() {
+        if let Some(entry) = guard.entries.iter_mut().rev().find(|(p, _, _)| p == &key) {
+            entry.2 += bytes;
+        } else {
+            guard.entries.push((key, 0, bytes));
+        }
+    }
+}
 fn normalize_session_id(session_id: &str) -> Result<String, String> {
     normalize_claude_session_id(session_id)
 }
@@ -662,8 +729,13 @@ async fn scan_session_source_file_with_cache(
         }
     }
 
-    let outcome =
-        scan_session_source_file(path, attribution_scopes, allow_project_directory_fallback).await;
+    let outcome = scan_session_source_file_for_purpose(
+        path,
+        attribution_scopes,
+        allow_project_directory_fallback,
+        ClaudeSessionScanPurpose::CatalogFact,
+    )
+    .await;
 
     if let (Some(cache_path), Some(namespace)) = (cache_path.as_ref(), cache_namespace) {
         write_cached_source_fact_outcome(
@@ -682,11 +754,26 @@ async fn scan_session_source_file_with_cache(
 }
 
 /// Scan a single JSONL file and extract session summary metadata.
-/// Reads the file line-by-line to find the native title, first user message, and timestamps.
+/// Catalog scans may read to EOF; list scans stop after title / first user / budget.
 async fn scan_session_source_file(
     path: &Path,
     attribution_scopes: &[ClaudeSessionAttributionScope],
     allow_project_directory_fallback: bool,
+) -> ClaudeSessionScanOutcome {
+    scan_session_source_file_for_purpose(
+        path,
+        attribution_scopes,
+        allow_project_directory_fallback,
+        ClaudeSessionScanPurpose::CatalogFact,
+    )
+    .await
+}
+
+async fn scan_session_source_file_for_purpose(
+    path: &Path,
+    attribution_scopes: &[ClaudeSessionAttributionScope],
+    allow_project_directory_fallback: bool,
+    purpose: ClaudeSessionScanPurpose,
 ) -> ClaudeSessionScanOutcome {
     let mut diagnostics = Vec::new();
     let file = match fs::File::open(path).await {
@@ -706,11 +793,15 @@ async fn scan_session_source_file(
             };
         }
     };
+    record_claude_scan_open(path);
     let file_metadata = file.metadata().await.ok();
     let file_size_bytes = file_metadata.as_ref().map(|metadata| metadata.len());
     let file_mtime_ms = file_metadata
         .and_then(|metadata| metadata.modified().ok())
         .and_then(system_time_to_epoch_millis);
+    // Do not `take(64KiB)` on the reader: a first-line custom-title / first-user
+    // payload can be larger (redacted image) and must still parse. List stops
+    // after the budget in the line loop, so sparse tails are never consumed.
     let reader = BufReader::new(file);
     let mut lines = reader.lines();
 
@@ -723,6 +814,8 @@ async fn scan_session_source_file(
     let mut malformed_line_count: usize = 0;
     let mut read_error_count: usize = 0;
     let mut suppress_polluted_assistant_until_next_user = false;
+    let mut lines_seen: usize = 0;
+    let mut bytes_seen: u64 = 0;
 
     loop {
         let Some(line) = (match lines.next_line().await {
@@ -734,9 +827,19 @@ async fn scan_session_source_file(
         }) else {
             break;
         };
+        let line_bytes = line.len() as u64 + 1;
+        record_claude_scan_read_bytes(path, line_bytes);
+        bytes_seen = bytes_seen.saturating_add(line_bytes);
         let line = line.trim().to_string();
         if line.is_empty() {
             continue;
+        }
+        lines_seen += 1;
+        if purpose == ClaudeSessionScanPurpose::ListSummary
+            && line.len() > CLAUDE_LIST_SKIP_LINE_BYTES
+            && (first_user_message.is_some() || latest_native_title.is_some())
+        {
+            break;
         }
 
         let entry: Value = match parse_claude_summary_entry(&line) {
@@ -822,6 +925,19 @@ async fn scan_session_source_file(
                         CLAUDE_SESSION_TITLE_PREVIEW_MAX_CHARS,
                     ));
                 }
+            }
+        }
+
+        if purpose == ClaudeSessionScanPurpose::ListSummary {
+            let has_title = first_user_message.is_some() || latest_native_title.is_some();
+            if has_title && first_timestamp.is_some() {
+                break;
+            }
+            if lines_seen >= CLAUDE_LIST_SCAN_MAX_LINES {
+                break;
+            }
+            if bytes_seen >= CLAUDE_LIST_SCAN_MAX_BYTES {
+                break;
             }
         }
     }
@@ -943,8 +1059,13 @@ async fn scan_session_source_file(
             } else {
                 "complete".to_string()
             },
-            updated_at: last_timestamp.unwrap_or(now_ms),
-            created_at: first_timestamp.unwrap_or(now_ms),
+            updated_at: match purpose {
+                ClaudeSessionScanPurpose::ListSummary => file_mtime_ms
+                    .or(last_timestamp)
+                    .unwrap_or(now_ms),
+                ClaudeSessionScanPurpose::CatalogFact => last_timestamp.unwrap_or(now_ms),
+            },
+            created_at: first_timestamp.or(file_mtime_ms).unwrap_or(now_ms),
             message_count,
             file_size_bytes,
             file_mtime_ms,
@@ -970,11 +1091,17 @@ async fn scan_session_file(
     attribution_scopes: &[ClaudeSessionAttributionScope],
     allow_project_directory_fallback: bool,
 ) -> Option<ClaudeSessionSummary> {
-    scan_session_source_file(path, attribution_scopes, allow_project_directory_fallback)
-        .await
-        .into_summary()
+    scan_session_source_file_for_purpose(
+        path,
+        attribution_scopes,
+        allow_project_directory_fallback,
+        ClaudeSessionScanPurpose::ListSummary,
+    )
+    .await
+    .into_summary()
 }
 
+#[allow(dead_code)]
 async fn scan_subagent_session_file(
     path: &Path,
     parent_session_id: &str,
@@ -1494,7 +1621,6 @@ pub(crate) async fn list_claude_sessions_from_base_dir(
         }
 
         let mut jsonl_paths: Vec<(PathBuf, bool)> = Vec::new();
-        let mut subagent_jsonl_paths: Vec<(PathBuf, String, bool)> = Vec::new();
         let mut seen_paths = HashSet::new();
         let mut found_dir = false;
 
@@ -1516,33 +1642,6 @@ pub(crate) async fn list_claude_sessions_from_base_dir(
                         if seen_paths.insert(path.clone()) {
                             jsonl_paths.push((path.clone(), allow_session_fallback));
                         }
-                        let parent_session_id = name.trim_end_matches(".jsonl").to_string();
-                        let subagents_dir = path.with_extension("").join("subagents");
-                        if subagents_dir.exists() {
-                            let mut subagent_entries =
-                                fs::read_dir(&subagents_dir).await.map_err(|e| {
-                                    format!("Failed to read Claude subagent directory: {}", e)
-                                })?;
-                            while let Ok(Some(subagent_entry)) = subagent_entries.next_entry().await
-                            {
-                                let subagent_path = subagent_entry.path();
-                                let Some(subagent_name) =
-                                    subagent_path.file_name().and_then(|n| n.to_str())
-                                else {
-                                    continue;
-                                };
-                                if subagent_name.starts_with("agent-")
-                                    && subagent_name.ends_with(".jsonl")
-                                    && seen_paths.insert(subagent_path.clone())
-                                {
-                                    subagent_jsonl_paths.push((
-                                        subagent_path,
-                                        parent_session_id.clone(),
-                                        allow_session_fallback,
-                                    ));
-                                }
-                            }
-                        }
                     }
                 }
             }
@@ -1552,32 +1651,37 @@ pub(crate) async fn list_claude_sessions_from_base_dir(
             return Ok(Vec::new());
         }
 
-        // Scan all session files concurrently with a concurrency limit to prevent
-        // memory exhaustion from spawning too many parallel file reads.
+        // IO-before-limit: metadata/mtime only, then scan the newest `limit` files.
+        // Sidebar list does not inventory subagent jsonl.
+        let scan_limit = limit.unwrap_or(CLAUDE_LIST_DEFAULT_LIMIT).max(1);
+        let mut listed: Vec<(PathBuf, bool, i64)> = Vec::with_capacity(jsonl_paths.len());
+        for (path, allow_fallback) in jsonl_paths {
+            let mtime_ms = fs::metadata(&path)
+                .await
+                .ok()
+                .and_then(|metadata| metadata.modified().ok())
+                .and_then(system_time_to_epoch_millis)
+                .unwrap_or(0);
+            listed.push((path, allow_fallback, mtime_ms));
+        }
+        listed.sort_by(|left, right| {
+            right
+                .2
+                .cmp(&left.2)
+                .then_with(|| left.0.to_string_lossy().cmp(&right.0.to_string_lossy()))
+        });
+        listed.truncate(scan_limit);
+
         const MAX_CONCURRENT_SCANS: usize = 10;
         let semaphore = Arc::new(Semaphore::new(MAX_CONCURRENT_SCANS));
         let mut handles = Vec::new();
-        for (path, allow_fallback) in jsonl_paths {
+        for (path, allow_fallback, _) in listed {
             let permit = semaphore.clone();
             let workspace_path = workspace_path.to_path_buf();
             let attribution_scopes = attribution_scopes.to_vec();
             handles.push(tokio::spawn(async move {
                 let _permit = permit.acquire().await;
                 scan_session_file(&path, &workspace_path, &attribution_scopes, allow_fallback).await
-            }));
-        }
-        for (path, parent_session_id, allow_fallback) in subagent_jsonl_paths {
-            let permit = semaphore.clone();
-            let attribution_scopes = attribution_scopes.to_vec();
-            handles.push(tokio::spawn(async move {
-                let _permit = permit.acquire().await;
-                scan_subagent_session_file(
-                    &path,
-                    &parent_session_id,
-                    &attribution_scopes,
-                    allow_fallback,
-                )
-                .await
             }));
         }
 
@@ -1588,12 +1692,11 @@ pub(crate) async fn list_claude_sessions_from_base_dir(
             }
         }
 
-        // Sort by updated_at descending (most recent first)
         sessions.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
 
         Ok(limit_claude_sessions_preserving_relationships(
             sessions,
-            limit.unwrap_or(200),
+            scan_limit,
         ))
     })
     .await
@@ -1746,6 +1849,10 @@ pub struct ClaudeSessionLoadResult {
     pub messages: Vec<ClaudeSessionMessage>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub usage: Option<ClaudeSessionUsage>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub has_more: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub next_cursor: Option<String>,
 }
 
 fn rewrite_session_id_fields(value: &mut Value, source_session_id: &str, forked_session_id: &str) {
@@ -1830,9 +1937,26 @@ pub async fn load_claude_session_with_config(
     session_id: &str,
     config: Option<&EngineConfig>,
 ) -> Result<ClaudeSessionLoadResult, String> {
+    load_claude_session_with_config_window(workspace_path, session_id, config, None, None).await
+}
+
+pub async fn load_claude_session_with_config_window(
+    workspace_path: &Path,
+    session_id: &str,
+    config: Option<&EngineConfig>,
+    limit: Option<usize>,
+    before: Option<&str>,
+) -> Result<ClaudeSessionLoadResult, String> {
     let normalized_session_id = normalize_session_id(session_id)?;
     let base_dir = claude_projects_dir(config).ok_or("Cannot determine Claude home directory")?;
-    load_claude_session_from_base_dir(&base_dir, workspace_path, &normalized_session_id).await
+    load_claude_session_from_base_dir_window(
+        &base_dir,
+        workspace_path,
+        &normalized_session_id,
+        limit,
+        before,
+    )
+    .await
 }
 
 fn find_claude_session_file(
@@ -1865,16 +1989,117 @@ pub(crate) fn resolve_claude_session_file_with_config(
     find_claude_session_file(&base_dir, workspace_path, &normalized_session_id)
 }
 
+async fn read_claude_tail_window_bytes(
+    path: &Path,
+    end_exclusive: u64,
+) -> Result<(u64, Vec<u8>), String> {
+    let start = end_exclusive.saturating_sub(CLAUDE_WINDOW_TAIL_CHUNK);
+    let mut file = fs::File::open(path)
+        .await
+        .map_err(|error| format!("Failed to open session file: {}", error))?;
+    file.seek(std::io::SeekFrom::Start(start))
+        .await
+        .map_err(|error| format!("Failed to seek session file: {}", error))?;
+    let mut buf = vec![0u8; (end_exclusive.saturating_sub(start)) as usize];
+    let mut read = 0usize;
+    while read < buf.len() {
+        let n = file
+            .read(&mut buf[read..])
+            .await
+            .map_err(|error| format!("Failed to read session file: {}", error))?;
+        if n == 0 {
+            break;
+        }
+        read += n;
+    }
+    buf.truncate(read);
+    Ok((start, buf))
+}
+
+async fn load_claude_session_window_from_path(
+    path: &Path,
+    session_id: &str,
+    limit: usize,
+    before: Option<&str>,
+) -> Result<ClaudeSessionLoadResult, String> {
+    let file_len = fs::metadata(path)
+        .await
+        .map_err(|error| format!("Failed to stat session file: {}", error))?
+        .len();
+    let mut end = before
+        .and_then(|value| value.trim().parse::<u64>().ok())
+        .filter(|value| *value <= file_len)
+        .unwrap_or(file_len);
+    let mut assembled = Vec::new();
+    let mut window_start = end;
+    while end > 0 {
+        let (start, bytes) = read_claude_tail_window_bytes(path, end).await?;
+        window_start = start;
+        let mut chunk = bytes;
+        if start > 0 {
+            if let Some(newline) = chunk.iter().position(|byte| *byte == b'\n') {
+                chunk = chunk.split_off(newline + 1);
+                window_start = start + newline as u64 + 1;
+            }
+        }
+        assembled.splice(0..0, chunk);
+        if assembled.iter().filter(|byte| **byte == b'\n').count() >= limit.saturating_mul(4)
+            || start == 0
+        {
+            break;
+        }
+        end = start;
+    }
+    let has_more = window_start > 0;
+    let mut result =
+        parse_claude_session_from_reader(BufReader::new(std::io::Cursor::new(assembled)), session_id)
+            .await?;
+    if result.messages.len() > limit {
+        let skip = result.messages.len() - limit;
+        result.messages.drain(0..skip);
+        result.has_more = Some(true);
+        result.next_cursor = Some(window_start.to_string());
+    } else {
+        result.has_more = Some(has_more);
+        result.next_cursor = if has_more {
+            Some(window_start.to_string())
+        } else {
+            None
+        };
+    }
+    Ok(result)
+}
+
 pub(crate) async fn load_claude_session_from_base_dir(
     base_dir: &Path,
     workspace_path: &Path,
     session_id: &str,
 ) -> Result<ClaudeSessionLoadResult, String> {
+    load_claude_session_from_base_dir_window(base_dir, workspace_path, session_id, None, None).await
+}
+
+pub(crate) async fn load_claude_session_from_base_dir_window(
+    base_dir: &Path,
+    workspace_path: &Path,
+    session_id: &str,
+    limit: Option<usize>,
+    before: Option<&str>,
+) -> Result<ClaudeSessionLoadResult, String> {
     let session_file = find_claude_session_file(base_dir, workspace_path, session_id)?;
+    if let Some(limit) = limit.filter(|value| *value > 0) {
+        return load_claude_session_window_from_path(&session_file, session_id, limit, before)
+            .await;
+    }
     let file = fs::File::open(&session_file)
         .await
         .map_err(|e| format!("Failed to open session file: {}", e))?;
-    let reader = BufReader::new(file);
+    parse_claude_session_from_reader(BufReader::new(file), session_id).await
+}
+
+async fn parse_claude_session_from_reader<R: tokio::io::AsyncRead + Unpin>(
+    reader: BufReader<R>,
+    session_id: &str,
+) -> Result<ClaudeSessionLoadResult, String> {
     let mut lines = reader.lines();
 
     let mut messages: Vec<ClaudeSessionMessage> = Vec::new();
@@ -2218,6 +2443,8 @@ pub(crate) async fn load_claude_session_from_base_dir(
     Ok(ClaudeSessionLoadResult {
         messages,
         usage: last_usage,
+        has_more: None,
+        next_cursor: None,
     })
 }
 

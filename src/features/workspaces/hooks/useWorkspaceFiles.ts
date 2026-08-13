@@ -134,6 +134,11 @@ type UseWorkspaceFilesOptions = {
   pollingEnabled?: boolean;
 };
 
+/**
+ * Workspace file listing is root-children only (`list_workspace_directory_children`).
+ * Home / no `activeWorkspace` / `initialLoadEnabled=false` MUST NOT scan the tree.
+ * Full `list_workspace_files` is a compatibility fallback, not the cold path.
+ */
 export function useWorkspaceFiles({
   activeWorkspace,
   onDebug,

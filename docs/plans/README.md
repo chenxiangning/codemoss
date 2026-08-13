@@ -16,6 +16,7 @@ status: active
 ## Active execution plans
 
 - [AppShell 高内聚低耦合优化](./2026-08-11-app-shell-cohesion-optimization.md) — **活文档**：P0-0 度量 → bag 瘦身 → Host 子树化 → 物理模块化；完成 Todo 后必须回写进度与 Progress Log。
+- [History IO / 列表元数据屎山](../perf/2026-08-12-history-io-garbage-code-execution-todolist.md) — **活文档**：S0 → W0 列表止血 → W1 Catalog/Index → W2 窗口化 load → W3 搜索/usage；完成一项必须回写勾选与完成记录。
 
 ## Implemented historical plans
 

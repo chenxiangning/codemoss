@@ -12,15 +12,70 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
-use std::time::Duration;
+use std::sync::Mutex;
+use std::time::{Duration, UNIX_EPOCH};
 use tokio::fs;
 use tokio::io::AsyncReadExt;
 use tokio::time::timeout;
 
 const LOCAL_SESSION_SCAN_TIMEOUT: Duration = Duration::from_secs(60);
 const GEMINI_SESSION_ID_PEEK_BYTES: usize = 8 * 1024;
+const GEMINI_LIST_PEEK_BYTES: usize = 64 * 1024;
+const GEMINI_LIST_DEFAULT_LIMIT: usize = 200;
 const GEMINI_STRING_FIELD_BYTE_BUDGET: usize = 64 * 1024;
+/// Hard cap so `load_gemini_session` cannot `read_to_string` a multi-100MiB JSON.
+pub(crate) const GEMINI_LOAD_MAX_FILE_BYTES: u64 = 32 * 1024 * 1024;
 const GEMINI_OMITTED_PAYLOAD_SENTINEL: &str = "__ccgui_omitted_large_gemini_payload__";
+
+#[derive(Default)]
+struct GeminiScanIoLog {
+    entries: Vec<(String, u64, u64)>,
+}
+
+static GEMINI_SCAN_IO: Mutex<GeminiScanIoLog> = Mutex::new(GeminiScanIoLog { entries: Vec::new() });
+
+pub(crate) fn gemini_list_io_stats_for_prefix(prefix: &Path) -> (u64, u64) {
+    let prefix = prefix.to_string_lossy();
+    let Ok(guard) = GEMINI_SCAN_IO.lock() else {
+        return (0, 0);
+    };
+    let mut opens = 0;
+    let mut bytes = 0;
+    for (path, open_count, read_bytes) in &guard.entries {
+        if path.starts_with(prefix.as_ref()) {
+            opens += *open_count;
+            bytes += *read_bytes;
+        }
+    }
+    (opens, bytes)
+}
+
+fn record_gemini_scan_open(path: &Path) {
+    let key = path.to_string_lossy().into_owned();
+    if let Ok(mut guard) = GEMINI_SCAN_IO.lock() {
+        guard.entries.push((key, 1, 0));
+    }
+}
+
+fn record_gemini_scan_read_bytes(path: &Path, bytes: u64) {
+    let key = path.to_string_lossy().into_owned();
+    if let Ok(mut guard) = GEMINI_SCAN_IO.lock() {
+        if let Some(entry) = guard.entries.iter_mut().rev().find(|(p, _, _)| p == &key) {
+            entry.2 += bytes;
+        } else {
+            guard.entries.push((key, 0, bytes));
+        }
+    }
+}
+
+fn gemini_file_mtime_ms(path: &Path) -> i64 {
+    std::fs::metadata(path)
+        .ok()
+        .and_then(|metadata| metadata.modified().ok())
+        .and_then(|modified| modified.duration_since(UNIX_EPOCH).ok())
+        .map(|duration| duration.as_millis() as i64)
+        .unwrap_or(0)
+}
 
 fn normalize_session_id(session_id: &str) -> Result<String, String> {
     let normalized = session_id.trim();
@@ -1175,13 +1230,38 @@ fn parse_messages_from_value(value: &Value) -> GeminiSessionLoadResult {
 }
 
 async fn read_json(path: &Path) -> Result<Value, String> {
-    let raw = fs::read_to_string(path).await.map_err(|error| {
+    let metadata = fs::metadata(path).await.map_err(|error| {
         format!(
             "Failed to read Gemini session file {}: {}",
             path.display(),
             error
         )
     })?;
+    if metadata.len() > GEMINI_LOAD_MAX_FILE_BYTES {
+        return Err(format!(
+            "Gemini session file is too large to open ({} bytes; cap is {} bytes). Windowed Gemini load is not available yet.",
+            metadata.len(),
+            GEMINI_LOAD_MAX_FILE_BYTES
+        ));
+    }
+    let file = fs::File::open(path).await.map_err(|error| {
+        format!(
+            "Failed to read Gemini session file {}: {}",
+            path.display(),
+            error
+        )
+    })?;
+    let mut raw = String::new();
+    file.take(GEMINI_LOAD_MAX_FILE_BYTES)
+        .read_to_string(&mut raw)
+        .await
+        .map_err(|error| {
+            format!(
+                "Failed to read Gemini session file {}: {}",
+                path.display(),
+                error
+            )
+        })?;
     serde_json::from_str(&raw).map_err(|error| {
         format!(
             "Failed to parse Gemini session file {}: {}",
@@ -1303,6 +1383,64 @@ async fn resolve_workspace_session_files(
     matched
 }
 
+fn extract_json_string_field(head: &str, key: &str) -> Option<String> {
+    let needle = format!("\"{key}\"");
+    let idx = head.find(&needle)?;
+    let after = head[idx + needle.len()..].trim_start();
+    let after = after.strip_prefix(':')?.trim_start();
+    let after = after.strip_prefix('"')?;
+    let end = after.find('"')?;
+    let value = after[..end].trim();
+    if value.is_empty() {
+        None
+    } else {
+        Some(value.to_string())
+    }
+}
+
+fn parse_summary_from_list_head(
+    path: &Path,
+    head: &str,
+    mtime_ms: i64,
+) -> Option<GeminiSessionSummary> {
+    if let Ok(value) = serde_json::from_str::<Value>(head) {
+        return parse_summary_from_value(path, &value);
+    }
+    let session_id = extract_json_string_field(head, "sessionId")
+        .or_else(|| extract_json_string_field(head, "session_id"))?;
+    let first_message = extract_json_string_field(head, "displayContent")
+        .or_else(|| extract_json_string_field(head, "text"))
+        .map(|text| truncate_chars(&text, 60))
+        .unwrap_or_else(|| "Gemini Session".to_string());
+    let started_at = extract_json_string_field(head, "startTime")
+        .and_then(|value| parse_timestamp_millis(&value))
+        .unwrap_or(mtime_ms);
+    let updated_at = extract_json_string_field(head, "lastUpdated")
+        .and_then(|value| parse_timestamp_millis(&value))
+        .unwrap_or(mtime_ms);
+    Some(GeminiSessionSummary {
+        canonical_session_id: Some(session_id.clone()),
+        session_id,
+        first_message,
+        updated_at,
+        created_at: started_at,
+        message_count: 0,
+        file_size_bytes: std::fs::metadata(path).ok().map(|metadata| metadata.len()),
+        engine: Some("gemini".to_string()),
+        attribution_status: Some("strict-match".to_string()),
+    })
+}
+
+async fn peek_gemini_list_summary(path: &Path, mtime_ms: i64) -> Option<GeminiSessionSummary> {
+    record_gemini_scan_open(path);
+    let mut file = fs::File::open(path).await.ok()?;
+    let mut buf = vec![0u8; GEMINI_LIST_PEEK_BYTES];
+    let n = file.read(&mut buf).await.ok()?;
+    record_gemini_scan_read_bytes(path, n as u64);
+    let head = String::from_utf8_lossy(&buf[..n]);
+    parse_summary_from_list_head(path, &head, mtime_ms)
+}
+
 /// List Gemini sessions for a workspace path.
 pub async fn list_gemini_sessions(
     workspace_path: &Path,
@@ -1310,15 +1448,30 @@ pub async fn list_gemini_sessions(
     custom_home: Option<&str>,
 ) -> Result<Vec<GeminiSessionSummary>, String> {
     timeout(LOCAL_SESSION_SCAN_TIMEOUT, async {
-        let matched_files = resolve_workspace_session_files(workspace_path, custom_home).await;
+        let matched_paths = resolve_workspace_session_paths(workspace_path, custom_home).await;
+        let scan_limit = limit.unwrap_or(GEMINI_LIST_DEFAULT_LIMIT).max(1);
+        let mut listed: Vec<(PathBuf, i64)> = matched_paths
+            .into_iter()
+            .map(|path| {
+                let mtime = gemini_file_mtime_ms(&path);
+                (path, mtime)
+            })
+            .collect();
+        listed.sort_by(|left, right| {
+            right
+                .1
+                .cmp(&left.1)
+                .then_with(|| left.0.to_string_lossy().cmp(&right.0.to_string_lossy()))
+        });
+        listed.truncate(scan_limit);
+
         let mut sessions = Vec::new();
-        for (path, value) in matched_files {
-            if let Some(summary) = parse_summary_from_value(&path, &value) {
+        for (path, mtime_ms) in listed {
+            if let Some(summary) = peek_gemini_list_summary(&path, mtime_ms).await {
                 sessions.push(summary);
             }
         }
         sessions.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
-        sessions.truncate(limit.unwrap_or(200));
         Ok(sessions)
     })
     .await
@@ -1438,6 +1591,7 @@ mod tests {
     };
     use serde_json::json;
     use std::path::Path;
+    use std::time::{Duration, SystemTime};
 
     #[test]
     fn parse_summary_emits_best_effort_unified_identity() {
@@ -1830,5 +1984,171 @@ mod tests {
             .await
             .expect_err("dot session id should fail");
         assert!(error.contains("Invalid Gemini session id"));
+    }
+
+    fn write_sparse_gemini_session(
+        home: &std::path::Path,
+        alias: &str,
+        session_id: &str,
+        prompt: &str,
+        logical_size: u64,
+    ) {
+        let chats = home.join("tmp").join(alias).join("chats");
+        std::fs::create_dir_all(&chats).expect("create gemini chats");
+        let path = chats.join(format!("session-{session_id}.json"));
+        let header = json!({
+            "sessionId": session_id,
+            "startTime": "2026-08-13T00:00:00.000Z",
+            "lastUpdated": "2026-08-13T00:00:01.000Z",
+            "messages": [{
+                "type": "user",
+                "timestamp": "2026-08-13T00:00:00.000Z",
+                "displayContent": prompt
+            }]
+        })
+        .to_string();
+        std::fs::write(&path, &header).expect("write gemini header");
+        let file = std::fs::OpenOptions::new()
+            .write(true)
+            .open(&path)
+            .expect("reopen gemini session");
+        file.set_len(logical_size).expect("inflate gemini session");
+    }
+
+    #[tokio::test]
+    async fn list_gemini_sessions_caps_read_bytes_on_sparse_large_file() {
+        let unique = uuid::Uuid::new_v4();
+        let temp_root = std::env::temp_dir().join(format!("ccgui-gemini-list-budget-{unique}"));
+        let workspace_path = temp_root.join("workspace");
+        let gemini_home = temp_root.join("gemini-home");
+        std::fs::create_dir_all(&workspace_path).expect("create workspace");
+        std::fs::create_dir_all(&gemini_home).expect("create gemini home");
+        std::fs::write(
+            gemini_home.join("projects.json"),
+            json!({ "projects": { workspace_path.to_string_lossy(): "proj" } }).to_string(),
+        )
+        .expect("write projects.json");
+        write_sparse_gemini_session(
+            &gemini_home,
+            "proj",
+            "sparse-1",
+            "First Gemini user preview",
+            8 * 1024 * 1024,
+        );
+
+        let sessions = super::list_gemini_sessions(
+            &workspace_path,
+            Some(10),
+            Some(gemini_home.to_str().expect("utf8 home")),
+        )
+        .await
+        .expect("list gemini");
+        let (opened, read_bytes) = super::gemini_list_io_stats_for_prefix(&temp_root);
+        assert_eq!(sessions.len(), 1);
+        assert_eq!(sessions[0].session_id, "sparse-1");
+        assert_eq!(sessions[0].first_message, "First Gemini user preview");
+        assert_eq!(opened, 1);
+        assert!(
+            read_bytes <= 256 * 1024,
+            "list_gemini_sessions read {read_bytes} bytes from an 8MiB file"
+        );
+        assert!(read_bytes > 0, "io meter must observe the peek");
+
+        let _ = std::fs::remove_dir_all(&temp_root);
+    }
+
+    #[tokio::test]
+    async fn load_gemini_session_rejects_oversized_file_without_full_parse() {
+        let unique = uuid::Uuid::new_v4();
+        let temp_root = std::env::temp_dir().join(format!("ccgui-gemini-load-cap-{unique}"));
+        let workspace_path = temp_root.join("workspace");
+        let gemini_home = temp_root.join("gemini-home");
+        std::fs::create_dir_all(&workspace_path).expect("workspace");
+        std::fs::create_dir_all(&gemini_home).expect("home");
+        std::fs::write(
+            gemini_home.join("projects.json"),
+            json!({ "projects": { workspace_path.to_string_lossy(): "proj" } }).to_string(),
+        )
+        .expect("projects");
+        write_sparse_gemini_session(
+            &gemini_home,
+            "proj",
+            "huge-1",
+            "oversized gemini",
+            super::GEMINI_LOAD_MAX_FILE_BYTES + 1024,
+        );
+        let error = super::load_gemini_session(
+            &workspace_path,
+            "huge-1",
+            Some(gemini_home.to_str().expect("utf8")),
+        )
+        .await
+        .expect_err("oversized load must fail");
+        assert!(
+            error.contains("too large"),
+            "expected readable size error, got {error}"
+        );
+        let _ = std::fs::remove_dir_all(&temp_root);
+    }
+
+    #[tokio::test]
+    async fn list_gemini_sessions_opens_only_limit_files_after_mtime_sort() {
+        let unique = uuid::Uuid::new_v4();
+        let temp_root = std::env::temp_dir().join(format!("ccgui-gemini-list-limit-{unique}"));
+        let workspace_path = temp_root.join("workspace");
+        let gemini_home = temp_root.join("gemini-home");
+        std::fs::create_dir_all(&workspace_path).expect("create workspace");
+        std::fs::create_dir_all(&gemini_home).expect("create gemini home");
+        std::fs::write(
+            gemini_home.join("projects.json"),
+            json!({ "projects": { workspace_path.to_string_lossy(): "proj" } }).to_string(),
+        )
+        .expect("write projects.json");
+
+        let base_mtime = SystemTime::UNIX_EPOCH + Duration::from_secs(1_700_000_000);
+        for index in 0..8 {
+            write_sparse_gemini_session(
+                &gemini_home,
+                "proj",
+                &format!("sess-{index}"),
+                &format!("prompt {index}"),
+                if index < 5 { 8 * 1024 * 1024 } else { 512 },
+            );
+            let path = gemini_home
+                .join("tmp/proj/chats")
+                .join(format!("session-sess-{index}.json"));
+            let file = std::fs::OpenOptions::new()
+                .write(true)
+                .open(&path)
+                .expect("reopen for mtime");
+            file.set_modified(base_mtime + Duration::from_secs(index as u64))
+                .expect("set mtime");
+        }
+
+        let sessions = super::list_gemini_sessions(
+            &workspace_path,
+            Some(3),
+            Some(gemini_home.to_str().expect("utf8 home")),
+        )
+        .await
+        .expect("list limited gemini");
+        let (opened, read_bytes) = super::gemini_list_io_stats_for_prefix(&temp_root);
+        assert_eq!(sessions.len(), 3);
+        let ids: Vec<String> = sessions.iter().map(|s| s.session_id.clone()).collect();
+        assert!(
+            ids.iter()
+                .all(|id| id.ends_with("-5") || id.ends_with("-6") || id.ends_with("-7")),
+            "IO-before-limit must keep newest files, got {ids:?}"
+        );
+        assert_eq!(
+            opened, 3,
+            "list_gemini_sessions opened {opened} files with limit=3"
+        );
+        assert!(
+            read_bytes <= 256 * 1024,
+            "must not read the five 8MiB older files; read {read_bytes}"
+        );
+
+        let _ = std::fs::remove_dir_all(&temp_root);
     }
 }

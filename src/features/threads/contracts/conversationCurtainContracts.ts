@@ -71,6 +71,8 @@ export type ConversationMeta = {
   isThinking: boolean;
   heartbeatPulse: number | null;
   historyRestoredAtMs: number | null;
+  historyHasMore?: boolean | null;
+  historyNextCursor?: string | null;
 };
 
 export type SnapshotFallbackWarning = {

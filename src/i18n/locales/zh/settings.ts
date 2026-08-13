@@ -951,6 +951,12 @@ const settings = {
     sessionManagementFolderCreateSuccess: "已创建会话文件夹“{{name}}”。",
     sessionManagementFolderCreateFailed: "创建会话文件夹失败。",
     sessionManagementSearchPlaceholder: "搜索会话标题、ID 或来源…",
+    sessionManagementScanCapReached: "当前是有界扫描，可能尚未扫完全部历史。",
+    sessionManagementScanAll: "扫描全部",
+    sessionManagementScanAllConfirm:
+      "扫描全部会读取本机所有匹配会话文件，历史很大时可能很慢。确定继续？",
+    sessionManagementScanAllRunning: "正在扫描全部会话…",
+    sessionManagementScanAllCancel: "取消扫描",
     sessionManagementEngineAll: "全部引擎",
     sessionManagementStatusActive: "仅显示活跃",
     sessionManagementStatusArchived: "仅显示归档",

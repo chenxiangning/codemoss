@@ -40,13 +40,43 @@
 - `list_shared_sessions(workspaceId) -> SharedSessionSummary.nativeThreadIds`
 - `SharedEventWriter.binding_states_for_session(sharedSessionId)`
 
+### 2.1 Three-layer data plane（禁止串层）
+
+| 层 | 职责 | 自动入口 |
+|----|------|----------|
+| **Session Index** | 侧栏、冷启动、soft 刷新：只要 id / title / mtime | `list_session_index_for_workspace` |
+| **Session Catalog** | 会话管理、归档、归属；默认 **Bounded** | `list_workspace_sessions` |
+| **Transcript Loader** | 打开某一个对话 | `load_*_session` |
+
+**三问（每个 PR 自检）**
+
+1. UI 只要 title / mtime / id 吗？→ 禁止打开 transcript 全文。  
+2. 有 limit 吗？→ limit 必须在 IO 之前生效，禁止 parse 完再 `truncate`。  
+3. 会在冷启动 / focus / interval 自动跑吗？→ 必须有字节预算 + 超时 + 可取消。
+
+**禁止串层**
+
+```ts
+// BAD: hydrate 为了侧栏标题 fan-out 全文 list
+await Promise.all([
+  listClaudeSessions(path),
+  listGeminiSessions(path),
+  listGrokSessions(path),
+]);
+
+// GOOD: 冷路径只问 Index
+await listSessionIndexForWorkspace(workspaceId, { syncIfNeeded: true });
+```
+
+Session Management 默认 Bounded；「扫描全部」必须二次确认。启动 / focus / 侧栏 hydrate 禁止 `scanMode=exhaustive`。
+
 ### 3. Contracts
 
 - **Sidebar cold path (first-paint / ordinary refresh)** MUST prefer Session Index (`list_session_index_for_workspace` → `~/.ccgui/session-index.sqlite3`) for list-level rows (title/time/engine/path). Session Index is **not** archive/folder/usage authority.
 - Backend catalog active strict projection MUST remain the membership truth for **Session Management**, load-older convergence, and explicit force full-catalog — not the default cold-start sidebar owner.
 - Automatic post-first-paint exhaustive full-catalog is forbidden once Session Index seeds multi-engine first-paint; force refresh / Session Management MAY still call catalog.
 - AppShell workspace navigation 若只需要 owner topology，MUST 通过 `resolveWorkspaceProjectionOwnerIds` 从已加载 workspace registry 推导：main = self + direct `parentId` children（path/name/id stable order），worktree = self，registry pending = active id fallback。MUST NOT 为 topology 调用 `get_workspace_session_projection_summary` 或等价 exhaustive inventory；session membership 仍由 bounded catalog projection 决定。
-- Session Management may use a larger first-page catalog window than Sidebar. Current Settings catalog hook uses page size `9999` and does not expose user-visible pagination; Sidebar keeps its own startup/load-older catalog page size to avoid broadening startup pressure.
+- Session Management default list uses Bounded page size `SESSION_CATALOG_PAGE_SIZE=100`. Exhaustive scan (`scanMode=exhaustive`) is opt-in after confirm. Sidebar keeps its own startup/load-older catalog page size. Projection summary defaults to `SESSION_CATALOG_DEFAULT_LIMIT=50`, not `9999`.
 - Workspace Home MUST NOT derive an independent session membership set from `recentThreads`; if it later displays sessions, it MUST consume the same catalog projection or document an explicit display-window difference.
 - Native engine list APIs such as `listClaudeSessions` MAY provide transcript restore, diagnostics, or continuity seed, but MUST NOT widen or shrink complete catalog membership.
 - Shared Hidden Native Binding MUST be excluded from ordinary Native catalog projection. The

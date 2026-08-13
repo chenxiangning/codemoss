@@ -1,14 +1,16 @@
 use std::collections::HashMap;
 use std::fs::{self, File};
-use std::io::{BufRead, BufReader, Read};
+use std::io::{BufRead, BufReader, Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use rusqlite::Connection;
 use serde_json::Value;
 
 use super::store::{
-    mark_source_synced, normalize_path_key, source_is_fresh, upsert_rows, SessionIndexRow,
+    load_file_cursor, mark_source_synced, normalize_path_key, save_file_cursor, source_is_fresh,
+    upsert_rows, SessionIndexFileCursor, SessionIndexRow,
 };
 use crate::engine::claude_history::encode_project_path;
 
@@ -74,7 +76,7 @@ pub(crate) fn sync_claude_for_workspace(
         });
     }
 
-    let titles = read_claude_history_titles(&history_path, workspace_path);
+    let titles = read_claude_history_titles(connection, &history_path, workspace_path)?;
     let mut rows = Vec::new();
     if project_dir.is_dir() {
         let mut files: Vec<PathBuf> = fs::read_dir(&project_dir)
@@ -140,67 +142,149 @@ pub(crate) fn sync_claude_for_workspace(
     })
 }
 
+fn merge_claude_history_title_line(
+    titles: &mut HashMap<String, (i64, String)>,
+    target: &str,
+    line: &str,
+) {
+    if line.len() > 256_000 {
+        return;
+    }
+    let Ok(value) = serde_json::from_str::<Value>(line) else {
+        return;
+    };
+    let project = value
+        .get("project")
+        .and_then(Value::as_str)
+        .map(normalize_path_key)
+        .unwrap_or_default();
+    if project.is_empty() || project != target {
+        return;
+    }
+    let session_id = value
+        .get("sessionId")
+        .or_else(|| value.get("session_id"))
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+    let Some(session_id) = session_id else {
+        return;
+    };
+    let display = value
+        .get("display")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+    let Some(display) = display else {
+        return;
+    };
+    let timestamp = value.get("timestamp").and_then(Value::as_i64).unwrap_or(0);
+    let entry = titles
+        .entry(session_id.to_string())
+        .or_insert((timestamp, display.to_string()));
+    if entry.1.is_empty() || (timestamp > 0 && timestamp < entry.0) {
+        *entry = (timestamp, display.to_string());
+    }
+}
+
 fn read_claude_history_titles(
+    connection: &Connection,
     history_path: &Path,
     workspace_path: &Path,
-) -> HashMap<String, String> {
-    let Ok(file) = File::open(history_path) else {
-        return HashMap::new();
+) -> Result<HashMap<String, String>, String> {
+    let Ok(mut file) = File::open(history_path) else {
+        return Ok(HashMap::new());
     };
-    let target = normalize_path_key(&workspace_path.to_string_lossy());
-    let mut titles: HashMap<String, (i64, String)> = HashMap::new();
+    let metadata = file.metadata().map_err(|error| error.to_string())?;
+    let size = metadata.len();
+    let inode = claude_history_file_identity(&metadata);
+    let path_key = history_path.to_string_lossy().into_owned();
+    let workspace_key = normalize_path_key(&workspace_path.to_string_lossy());
+    let cursor_key = format!("{path_key}|{workspace_key}");
+    let stored = load_file_cursor(connection, &cursor_key)?;
+    let incremental = stored.as_ref().is_some_and(|cursor| {
+        cursor.inode == inode && size >= cursor.size && cursor.offset <= size
+    });
+    let mut titles: HashMap<String, (i64, String)> = if incremental {
+        stored
+            .as_ref()
+            .and_then(|cursor| serde_json::from_str(&cursor.titles_json).ok())
+            .unwrap_or_default()
+    } else {
+        HashMap::new()
+    };
+    let start_offset = if incremental {
+        stored.as_ref().map(|cursor| cursor.offset).unwrap_or(0)
+    } else {
+        0
+    };
+    if start_offset > 0 {
+        file.seek(SeekFrom::Start(start_offset))
+            .map_err(|error| error.to_string())?;
+    }
+    let target = workspace_key;
+    let mut bytes_read = 0u64;
     for line in BufReader::new(file).lines() {
         let Ok(line) = line else {
             continue;
         };
-        if line.len() > 256_000 {
-            continue;
-        }
-        let Ok(value) = serde_json::from_str::<Value>(&line) else {
-            continue;
-        };
-        let project = value
-            .get("project")
-            .and_then(Value::as_str)
-            .map(normalize_path_key)
-            .unwrap_or_default();
-        if project.is_empty() || project != target {
-            // Tolerate trailing-slash / slash style differences only via normalize.
-            continue;
-        }
-        let session_id = value
-            .get("sessionId")
-            .or_else(|| value.get("session_id"))
-            .and_then(Value::as_str)
-            .map(str::trim)
-            .filter(|value| !value.is_empty());
-        let Some(session_id) = session_id else {
-            continue;
-        };
-        let display = value
-            .get("display")
-            .and_then(Value::as_str)
-            .map(str::trim)
-            .filter(|value| !value.is_empty());
-        let Some(display) = display else {
-            continue;
-        };
-        let timestamp = value
-            .get("timestamp")
-            .and_then(Value::as_i64)
-            .unwrap_or(0);
-        let entry = titles
-            .entry(session_id.to_string())
-            .or_insert((timestamp, display.to_string()));
-        // Keep earliest user prompt as title (first message), but allow refresh if empty.
-        if entry.1.is_empty() || (timestamp > 0 && timestamp < entry.0) {
-            *entry = (timestamp, display.to_string());
-        }
+        bytes_read = bytes_read.saturating_add(line.len() as u64 + 1);
+        merge_claude_history_title_line(&mut titles, &target, &line);
     }
-    titles
+    record_claude_history_title_read_bytes(history_path, bytes_read);
+    let titles_json = serde_json::to_string(&titles).unwrap_or_else(|_| "{}".into());
+    save_file_cursor(
+        connection,
+        &cursor_key,
+        &SessionIndexFileCursor {
+            inode,
+            size,
+            offset: size,
+            titles_json,
+        },
+    )?;
+    Ok(titles
         .into_iter()
         .map(|(session_id, (_ts, title))| (session_id, truncate_title(&title, 80)))
-        .collect()
+        .collect())
+}
+
+fn claude_history_file_identity(metadata: &std::fs::Metadata) -> String {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        format!("{}:{}", metadata.dev(), metadata.ino())
+    }
+    #[cfg(not(unix))]
+    {
+        let modified = metadata
+            .modified()
+            .ok()
+            .and_then(|modified| modified.duration_since(UNIX_EPOCH).ok())
+            .map(|duration| duration.as_millis())
+            .unwrap_or(0);
+        format!("win:{}:{}", metadata.len(), modified)
+    }
+}
+
+static CLAUDE_HISTORY_TITLE_READS: Mutex<Vec<(String, u64)>> = Mutex::new(Vec::new());
+
+fn record_claude_history_title_read_bytes(path: &Path, bytes: u64) {
+    if let Ok(mut guard) = CLAUDE_HISTORY_TITLE_READS.lock() {
+        guard.push((path.to_string_lossy().into_owned(), bytes));
+    }
+}
+
+pub(crate) fn claude_history_title_read_bytes_for_prefix(prefix: &Path) -> u64 {
+    let prefix = prefix.to_string_lossy();
+    let Ok(guard) = CLAUDE_HISTORY_TITLE_READS.lock() else {
+        return 0;
+    };
+    guard
+        .iter()
+        .filter(|(path, _)| path.starts_with(prefix.as_ref()))
+        .map(|(_, bytes)| *bytes)
+        .sum()
 }
 
 fn peek_claude_first_user_preview(path: &Path) -> Option<String> {
@@ -680,4 +764,110 @@ pub(crate) fn invalidate_workspace_sources(
         )
         .map_err(|error| error.to_string())?;
     Ok(changed)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use super::super::store::DDL;
+    use serde_json::json;
+
+    #[test]
+    fn second_history_jsonl_sync_only_reads_appended_bytes() {
+        let temp = std::env::temp_dir().join(format!(
+            "ccgui-history-titles-{}",
+            std::time::SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map(|d| d.as_millis())
+                .unwrap_or(0)
+        ));
+        std::fs::create_dir_all(&temp).expect("temp");
+        let history = temp.join("history.jsonl");
+        let workspace = PathBuf::from("/tmp/ccgui-history-ws");
+        let prefix = json!({
+            "sessionId": "old",
+            "project": "/tmp/ccgui-history-ws",
+            "display": "old title",
+            "timestamp": 1
+        })
+        .to_string();
+        let prefix = format!("{prefix}\n{}", "x".repeat(8000));
+        std::fs::write(&history, format!("{prefix}\n")).expect("write prefix");
+        let connection = Connection::open_in_memory().expect("db");
+        connection.execute_batch(DDL).expect("ddl");
+
+        let first = read_claude_history_titles(&connection, &history, &workspace).expect("first");
+        let first_bytes = claude_history_title_read_bytes_for_prefix(&temp);
+        assert_eq!(first.get("old").map(String::as_str), Some("old title"));
+        assert!(first_bytes > 8000, "first pass reads the existing prefix");
+
+        let appended = json!({
+            "sessionId": "new",
+            "project": "/tmp/ccgui-history-ws",
+            "display": "new title",
+            "timestamp": 2
+        })
+        .to_string();
+        {
+            use std::io::Write;
+            let mut file = std::fs::OpenOptions::new()
+                .append(true)
+                .open(&history)
+                .expect("append");
+            writeln!(file, "{appended}").expect("write append");
+        }
+
+        let second = read_claude_history_titles(&connection, &history, &workspace).expect("second");
+        let total_bytes = claude_history_title_read_bytes_for_prefix(&temp);
+        let second_bytes = total_bytes.saturating_sub(first_bytes);
+        assert_eq!(second.get("old").map(String::as_str), Some("old title"));
+        assert_eq!(second.get("new").map(String::as_str), Some("new title"));
+        assert!(
+            second_bytes < first_bytes,
+            "incremental sync must not reread the {first_bytes}-byte prefix; read {second_bytes}"
+        );
+
+        let _ = std::fs::remove_dir_all(&temp);
+    }
+
+    #[test]
+    fn truncated_history_jsonl_rebuilds_instead_of_dirty_read() {
+        let temp = std::env::temp_dir().join(format!(
+            "ccgui-history-truncate-{}",
+            std::time::SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map(|d| d.as_millis())
+                .unwrap_or(0)
+        ));
+        std::fs::create_dir_all(&temp).expect("temp");
+        let history = temp.join("history.jsonl");
+        let workspace = PathBuf::from("/tmp/ccgui-history-ws2");
+        std::fs::write(
+            &history,
+            format!(
+                "{}\n{}\n",
+                json!({"sessionId":"keep","project":"/tmp/ccgui-history-ws2","display":"keep","timestamp":1}),
+                json!({"sessionId":"gone","project":"/tmp/ccgui-history-ws2","display":"gone","timestamp":2})
+            ),
+        )
+        .expect("write");
+        let connection = Connection::open_in_memory().expect("db");
+        connection.execute_batch(DDL).expect("ddl");
+        let first = read_claude_history_titles(&connection, &history, &workspace).expect("first");
+        assert!(first.contains_key("gone"));
+
+        std::fs::write(
+            &history,
+            format!(
+                "{}\n",
+                json!({"sessionId":"keep","project":"/tmp/ccgui-history-ws2","display":"keep-only","timestamp":1})
+            ),
+        )
+        .expect("truncate rewrite");
+        let second = read_claude_history_titles(&connection, &history, &workspace).expect("rebuild");
+        assert_eq!(second.get("keep").map(String::as_str), Some("keep-only"));
+        assert!(!second.contains_key("gone"));
+
+        let _ = std::fs::remove_dir_all(&temp);
+    }
 }

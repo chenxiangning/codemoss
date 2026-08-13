@@ -280,4 +280,34 @@ describe("useThreadActions list stale abandon (runtime workspace switch)", () =>
     });
     expect(countSetThreads(dispatch)).toBeGreaterThan(0);
   });
+
+  it("first-paint does not call engine disk lists", async () => {
+    vi.mocked(listThreadTitles).mockResolvedValue({});
+    const { result } = renderActions();
+    await act(async () => {
+      await result.current.listThreadsForWorkspace(workspace, {
+        preserveState: true,
+        startupHydrationMode: "first-paint",
+      });
+    });
+    expect(listGeminiSessions).not.toHaveBeenCalled();
+    expect(listGrokSessions).not.toHaveBeenCalled();
+    expect(listKimiSessions).not.toHaveBeenCalled();
+    expect(listClaudeSessions).not.toHaveBeenCalled();
+    expect(getOpenCodeSessionList).not.toHaveBeenCalled();
+    expect(listWorkspaceSessions).not.toHaveBeenCalled();
+  });
+
+  it("default listThreadsForWorkspace does not call Gemini/Grok/Kimi disk lists", async () => {
+    vi.mocked(listThreadTitles).mockResolvedValue({});
+    const { result } = renderActions();
+    await act(async () => {
+      await result.current.listThreadsForWorkspace(workspace, {
+        preserveState: true,
+      });
+    });
+    expect(listGeminiSessions).not.toHaveBeenCalled();
+    expect(listGrokSessions).not.toHaveBeenCalled();
+    expect(listKimiSessions).not.toHaveBeenCalled();
+  });
 });

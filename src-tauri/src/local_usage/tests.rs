@@ -232,6 +232,47 @@ fn scan_local_usage_aggregates_multiple_session_roots() {
 }
 
 #[test]
+fn second_local_usage_scan_reuses_file_cache_without_rereading_content() {
+    let day_keys = make_day_keys(2);
+    let day_key = day_keys
+        .last()
+        .cloned()
+        .unwrap_or_else(|| Local::now().format("%Y-%m-%d").to_string());
+    let naive = NaiveDateTime::parse_from_str(&format!("{day_key} 12:00:00"), "%Y-%m-%d %H:%M:%S")
+        .expect("timestamp");
+    let timestamp_ms = Local
+        .from_local_datetime(&naive)
+        .single()
+        .expect("timestamp")
+        .timestamp_millis();
+    let root = make_temp_sessions_root();
+    write_session_file(
+        &root,
+        &day_key,
+        &[format!(
+            r#"{{"timestamp":{timestamp_ms},"payload":{{"type":"token_count","info":{{"total_token_usage":{{"input_tokens":9,"cached_input_tokens":0,"output_tokens":4}}}}}}}}"#
+        )],
+    );
+
+    let _ = take_local_usage_content_reads();
+    let first = scan_local_usage_core(2, None, &[root.clone()], false).expect("first scan");
+    let first_reads = take_local_usage_content_reads();
+    let second = scan_local_usage_core(2, None, &[root], false).expect("second scan");
+    let second_reads = take_local_usage_content_reads();
+
+    assert_eq!(first.totals.last30_days_tokens, 13);
+    assert_eq!(second.totals.last30_days_tokens, 13);
+    assert!(
+        first_reads >= 1,
+        "first scan must read session content, got {first_reads}"
+    );
+    assert_eq!(
+        second_reads, 0,
+        "repeat scan must not reread unchanged session files"
+    );
+}
+
+#[test]
 fn resolve_sessions_roots_includes_workspace_overrides() {
     let mut workspaces = HashMap::new();
     let mut settings_a = WorkspaceSettings::default();

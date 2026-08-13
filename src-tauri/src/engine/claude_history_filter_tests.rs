@@ -213,7 +213,10 @@ async fn mixed_transcript_filters_control_plane_and_keeps_real_messages() {
         .find(|session| session.session_id == session_id)
         .expect("mixed session should remain visible");
     assert_eq!(summary.first_message, "Fix the sidebar bug");
-    assert_eq!(summary.message_count, 2);
+    assert!(
+        summary.message_count >= 1,
+        "list path no longer scans to EOF for an exact count"
+    );
 
     let result = load_claude_session_from_base_dir(&base_dir, &workspace_path, &session_id)
         .await
@@ -289,7 +292,10 @@ async fn mixed_transcript_filters_continuation_summary_and_keeps_real_messages()
         .find(|session| session.session_id == session_id)
         .expect("mixed continuation session should remain visible");
     assert_eq!(summary.first_message, "Fix the file tree flicker");
-    assert_eq!(summary.message_count, 2);
+    assert!(
+        summary.message_count >= 1,
+        "list path no longer scans to EOF for an exact count"
+    );
 
     let result = load_claude_session_from_base_dir(&base_dir, &workspace_path, &session_id)
         .await

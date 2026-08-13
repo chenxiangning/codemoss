@@ -213,7 +213,10 @@ async fn list_and_load_skip_nested_message_meta_rows() {
         .expect("nested-meta session should be listed");
 
     assert_eq!(summary.first_message, "真实第一条");
-    assert_eq!(summary.message_count, 2);
+    assert!(
+        summary.message_count >= 1,
+        "list path no longer scans to EOF for an exact count"
+    );
 
     let loaded = load_claude_session_from_base_dir(&base_dir, &workspace_path, &summary.session_id)
         .await
@@ -351,7 +354,10 @@ async fn list_then_load_issue_529_session_without_line_session_ids_keeps_identit
         .expect("issue-shaped session should be listed");
 
     assert_eq!(summary.first_message, "第一次消息正常");
-    assert_eq!(summary.message_count, 4);
+    assert!(
+        summary.message_count >= 1,
+        "list path no longer scans to EOF for an exact count"
+    );
     assert_eq!(
         summary.cwd.as_deref(),
         Some(workspace_path.to_string_lossy().as_ref())

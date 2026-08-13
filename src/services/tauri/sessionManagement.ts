@@ -151,6 +151,7 @@ export interface WorkspaceSessionCatalogQuery {
   status?: "active" | "archived" | "all" | null;
   folderId?: string | null;
   sessionAttributionMode?: WorkspaceSessionAttributionMode | null;
+  scanMode?: "bounded" | "exhaustive" | null;
 }
 
 export interface WorkspaceSessionCatalogPage {

@@ -30,6 +30,7 @@ status: active
 - [Streaming Render Stall Design (2026-07-30)](streaming-render-stall-design-2026-07-30.md) — 已实现 `1537211a1`；OpenSpec `17/17` 并于 2026-08-03 归档；idle virtualization 后续由 `4e932e672` 恢复
 - [React Best Practices P0 Follow-up Execution Plan (2026-08-10)](2026-08-10-react-best-practices-p0-followup-execution-plan.md) — P0 首批落地后的可执行后续：S0 验收 → S1 memo → S2 bundle → S3 appMode → S4 AppShell 分域
 - [New User Cold Start Perf TodoList (2026-08-12)](2026-08-12-new-user-cold-start-perf-todolist.md) — 新用户首屏可勾选执行清单：S0 基线 → P0 mermaid/bundle 击穿 → P1 CSS/条件挂载/memo → P2 层4/实测；完成一项勾一项
+- [History IO / 列表元数据屎山 TodoList (2026-08-12)](2026-08-12-history-io-garbage-code-execution-todolist.md) — **活文档**：杜绝「为标题读全文」；S0 基线 → W0 列表止血 → W1 Catalog/Index → W2 打开会话窗口化 → W3 搜索/usage；每完成一项必须回写进度
 - **Cold-start markers pipeline (P2-4)**：
   - 命令：`npm run perf:cold-start:startup-markers`
   - 输入：`.artifacts/startup-marker-source.json`（`window.__CCGUI_STARTUP_PERF__` 或含 `perf.startup.markers` 的 diagnostics 导出）

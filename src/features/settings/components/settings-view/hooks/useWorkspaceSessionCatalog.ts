@@ -18,11 +18,14 @@ export type WorkspaceSessionCatalogStatus = "active" | "archived" | "all";
 export type WorkspaceSessionCatalogMode = "project" | "global";
 export type WorkspaceSessionCatalogSource = "strict" | "related";
 
+export type WorkspaceSessionCatalogScanMode = "bounded" | "exhaustive";
+
 export type WorkspaceSessionCatalogFilters = {
   keyword: string;
   engine: string;
   status: WorkspaceSessionCatalogStatus;
   folderId?: string | null;
+  scanMode?: WorkspaceSessionCatalogScanMode | null;
 };
 
 type MutationKind = "archive" | "unarchive" | "delete" | "move-folder";
@@ -56,6 +59,7 @@ type WorkspaceSessionCatalogPageLike = {
   effectiveLimit?: number | null;
   limitCapped?: boolean | null;
   partialSource?: string | null;
+  sourceStatuses?: WorkspaceSessionCatalogPage["sourceStatuses"];
 } | null;
 
 type UseWorkspaceSessionCatalogOptions = {
@@ -118,6 +122,7 @@ function toQuery(
     status: filters.status,
     folderId: filters.folderId?.trim() || null,
     sessionAttributionMode,
+    scanMode: filters.scanMode ?? null,
   };
 }
 
@@ -142,6 +147,7 @@ function buildCatalogRequestKey(input: {
       status: query.status ?? null,
       folderId: query.folderId ?? null,
       sessionAttributionMode: query.sessionAttributionMode ?? null,
+      scanMode: query.scanMode ?? null,
     },
   });
 }
@@ -189,11 +195,20 @@ function requestCatalogPage(input: {
   return request;
 }
 
+function catalogScanCapReached(
+  sourceStatuses: WorkspaceSessionCatalogPage["sourceStatuses"],
+): boolean {
+  return (sourceStatuses ?? []).some(
+    (status) => status?.scanCapReached === true,
+  );
+}
+
 function normalizeCatalogPage(response: WorkspaceSessionCatalogPageLike): {
   data: WorkspaceSessionCatalogEntry[];
   nextCursor: string | null;
   partialSource: string | null;
   pageLimit: WorkspaceSessionCatalogPageLimitInfo;
+  scanCapReached: boolean;
 } {
   const requestedLimit =
     typeof response?.requestedLimit === "number" &&
@@ -214,6 +229,7 @@ function normalizeCatalogPage(response: WorkspaceSessionCatalogPageLike): {
       effectiveLimit,
       limitCapped: response?.limitCapped === true,
     },
+    scanCapReached: catalogScanCapReached(response?.sourceStatuses),
   };
 }
 
@@ -259,6 +275,7 @@ export function useWorkspaceSessionCatalog({
   const [entries, setEntries] = useState<WorkspaceSessionCatalogEntry[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [partialSource, setPartialSource] = useState<string | null>(null);
+  const [scanCapReached, setScanCapReached] = useState(false);
   const [pageLimit, setPageLimit] =
     useState<WorkspaceSessionCatalogPageLimitInfo>({
       requestedLimit: null,
@@ -270,15 +287,15 @@ export function useWorkspaceSessionCatalog({
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [isMutating, setIsMutating] = useState(false);
   const requestSeqRef = useRef(0);
-  const { engine, folderId, keyword, status } = filters;
+  const { engine, folderId, keyword, status, scanMode } = filters;
 
   const query = useMemo(
     () =>
       toQuery(
-        { engine, folderId, keyword, status },
+        { engine, folderId, keyword, status, scanMode },
         sessionAttributionMode,
       ),
-    [engine, folderId, keyword, sessionAttributionMode, status],
+    [engine, folderId, keyword, scanMode, sessionAttributionMode, status],
   );
 
   const loadPage = useCallback(
@@ -289,6 +306,7 @@ export function useWorkspaceSessionCatalog({
         setEntries(clearCatalogEntries);
         setNextCursor(null);
         setPartialSource(null);
+        setScanCapReached(false);
         setPageLimit({
           requestedLimit: null,
           effectiveLimit: null,
@@ -325,6 +343,7 @@ export function useWorkspaceSessionCatalog({
         );
         setNextCursor(page.nextCursor);
         setPartialSource(page.partialSource);
+        setScanCapReached(page.scanCapReached);
         setPageLimit(page.pageLimit);
         setError(null);
       } catch (incomingError) {
@@ -336,6 +355,7 @@ export function useWorkspaceSessionCatalog({
           setEntries([]);
           setNextCursor(null);
           setPartialSource(null);
+          setScanCapReached(false);
           setPageLimit({
             requestedLimit: null,
             effectiveLimit: null,
@@ -550,6 +570,7 @@ export function useWorkspaceSessionCatalog({
     entries,
     nextCursor,
     partialSource,
+    scanCapReached,
     pageLimit,
     error,
     isLoading,

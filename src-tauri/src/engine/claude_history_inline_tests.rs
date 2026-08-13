@@ -1668,7 +1668,10 @@ async fn load_claude_session_formats_local_control_events_and_hides_internal_row
         .find(|session| session.session_id == session_id)
         .expect("mixed local-control session should remain visible");
     assert_eq!(summary.first_message, "你好");
-    assert_eq!(summary.message_count, 2);
+    assert!(
+        summary.message_count >= 1,
+        "list path no longer scans to EOF for an exact count"
+    );
 
     let result = load_claude_session_from_base_dir(&base_dir, &workspace_path, &session_id)
         .await

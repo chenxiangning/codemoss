@@ -1,5 +1,6 @@
 import type { ConversationItem, ThreadSummary } from "../../../types";
 import { buildWorkspaceMessageIndex, makeMessageSnippet } from "../indexing/messageIndex";
+import { resolveMessageSearchThreadIds } from "../indexing/messageSearchScope";
 import type { SearchResult } from "../types";
 
 type SearchMessageOptions = {
@@ -7,6 +8,7 @@ type SearchMessageOptions = {
   workspaceId: string;
   threads: ThreadSummary[];
   threadItemsByThread: Record<string, ConversationItem[]>;
+  activeThreadId?: string | null;
 };
 
 export function searchMessages({
@@ -14,6 +16,7 @@ export function searchMessages({
   workspaceId,
   threads,
   threadItemsByThread,
+  activeThreadId,
 }: SearchMessageOptions): SearchResult[] {
   const normalizedQuery = query.trim().toLowerCase();
   if (!normalizedQuery) {
@@ -23,7 +26,11 @@ export function searchMessages({
   const threadNameById = new Map(threads.map((thread) => [thread.id, thread.name]));
   const threadUpdatedAtById = new Map(threads.map((thread) => [thread.id, thread.updatedAt]));
   const indexedMessages = buildWorkspaceMessageIndex(
-    threads.map((thread) => thread.id),
+    resolveMessageSearchThreadIds({
+      threads,
+      threadItemsByThread,
+      activeThreadId,
+    }),
     threadItemsByThread,
   );
 

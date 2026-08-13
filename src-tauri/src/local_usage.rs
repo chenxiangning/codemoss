@@ -4,6 +4,8 @@ use std::collections::{HashMap, HashSet};
 use std::fs::{self, File};
 use std::io::{BufRead, BufReader, Read};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{LazyLock, Mutex as StdMutex};
 use std::time::{Duration as StdDuration, SystemTime, UNIX_EPOCH};
 use tauri::State;
 use tokio::sync::Mutex;
@@ -48,6 +50,103 @@ const CODEX_THREAD_PREVIEW_MAX_BYTES: u64 = 256 * 1024;
 const CODEX_BOUNDED_CANDIDATE_LOOKAHEAD: usize = 20;
 const CODEX_PROVIDER_PROFILE_SOURCE_MANAGED: &str = "managed";
 const CODEX_PROVIDER_PROFILE_AVAILABILITY_UNKNOWN: &str = "unknown";
+
+#[derive(Clone, Default)]
+struct UsageFileCacheEntry {
+    mtime_ms: i64,
+    size: u64,
+    daily: HashMap<String, DailyTotals>,
+    model_totals: HashMap<String, i64>,
+}
+
+static USAGE_FILE_CACHE: LazyLock<StdMutex<HashMap<String, UsageFileCacheEntry>>> =
+    LazyLock::new(|| StdMutex::new(HashMap::new()));
+static USAGE_FILE_CONTENT_READS: AtomicU64 = AtomicU64::new(0);
+
+pub(crate) fn take_local_usage_content_reads() -> u64 {
+    USAGE_FILE_CONTENT_READS.swap(0, Ordering::Relaxed)
+}
+
+fn usage_file_fingerprint(path: &Path) -> Option<(i64, u64)> {
+    let metadata = fs::metadata(path).ok()?;
+    let mtime_ms = metadata
+        .modified()
+        .ok()?
+        .duration_since(UNIX_EPOCH)
+        .ok()?
+        .as_millis() as i64;
+    Some((mtime_ms, metadata.len()))
+}
+
+fn apply_cached_usage_file(
+    path: &Path,
+    daily: &mut HashMap<String, DailyTotals>,
+    model_totals: &mut HashMap<String, i64>,
+) -> bool {
+    let Some((mtime_ms, size)) = usage_file_fingerprint(path) else {
+        return false;
+    };
+    let Ok(cache) = USAGE_FILE_CACHE.lock() else {
+        return false;
+    };
+    let Some(entry) = cache.get(&path.to_string_lossy().into_owned()) else {
+        return false;
+    };
+    if entry.mtime_ms != mtime_ms || entry.size != size {
+        return false;
+    }
+    merge_daily_totals(daily, &entry.daily);
+    merge_model_totals(model_totals, &entry.model_totals);
+    true
+}
+
+fn remember_usage_file(
+    path: &Path,
+    daily: &HashMap<String, DailyTotals>,
+    model_totals: &HashMap<String, i64>,
+) {
+    let Some((mtime_ms, size)) = usage_file_fingerprint(path) else {
+        return;
+    };
+    if let Ok(mut cache) = USAGE_FILE_CACHE.lock() {
+        cache.insert(
+            path.to_string_lossy().into_owned(),
+            UsageFileCacheEntry {
+                mtime_ms,
+                size,
+                daily: daily.clone(),
+                model_totals: model_totals.clone(),
+            },
+        );
+    }
+}
+
+fn merge_daily_totals(
+    into: &mut HashMap<String, DailyTotals>,
+    from: &HashMap<String, DailyTotals>,
+) {
+    for (day, totals) in from {
+        let entry = into.entry(day.clone()).or_default();
+        entry.input += totals.input;
+        entry.cached += totals.cached;
+        entry.output += totals.output;
+        entry.agent_ms += totals.agent_ms;
+        entry.agent_runs += totals.agent_runs;
+    }
+}
+
+fn merge_model_totals(into: &mut HashMap<String, i64>, from: &HashMap<String, i64>) {
+    for (model, tokens) in from {
+        *into.entry(model.clone()).or_default() += *tokens;
+    }
+}
+
+fn empty_daily_template(source: &HashMap<String, DailyTotals>) -> HashMap<String, DailyTotals> {
+    source
+        .keys()
+        .map(|day| (day.clone(), DailyTotals::default()))
+        .collect()
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum CodexSessionParseMode {
@@ -1957,6 +2056,25 @@ fn scan_file(
     model_totals: &mut HashMap<String, i64>,
     workspace_path: Option<&Path>,
 ) -> Result<(), String> {
+    if apply_cached_usage_file(path, daily, model_totals) {
+        return Ok(());
+    }
+    let mut local_daily = empty_daily_template(daily);
+    let mut local_models = HashMap::new();
+    USAGE_FILE_CONTENT_READS.fetch_add(1, Ordering::Relaxed);
+    scan_file_uncached(path, &mut local_daily, &mut local_models, workspace_path)?;
+    remember_usage_file(path, &local_daily, &local_models);
+    merge_daily_totals(daily, &local_daily);
+    merge_model_totals(model_totals, &local_models);
+    Ok(())
+}
+
+fn scan_file_uncached(
+    path: &Path,
+    daily: &mut HashMap<String, DailyTotals>,
+    model_totals: &mut HashMap<String, i64>,
+    workspace_path: Option<&Path>,
+) -> Result<(), String> {
     let file = match File::open(path) {
         Ok(file) => file,
         Err(_) => {
@@ -2747,6 +2865,25 @@ fn scan_claude_project_dir(
 /// Scan a single Claude Code JSONL file for usage statistics.
 /// Claude Code format has token info in message.usage and model in message.model
 fn scan_claude_file(
+    path: &Path,
+    day_set: &HashSet<&str>,
+    daily: &mut HashMap<String, DailyTotals>,
+    model_totals: &mut HashMap<String, i64>,
+) -> Result<(), String> {
+    if apply_cached_usage_file(path, daily, model_totals) {
+        return Ok(());
+    }
+    let mut local_daily = empty_daily_template(daily);
+    let mut local_models = HashMap::new();
+    USAGE_FILE_CONTENT_READS.fetch_add(1, Ordering::Relaxed);
+    scan_claude_file_uncached(path, day_set, &mut local_daily, &mut local_models)?;
+    remember_usage_file(path, &local_daily, &local_models);
+    merge_daily_totals(daily, &local_daily);
+    merge_model_totals(model_totals, &local_models);
+    Ok(())
+}
+
+fn scan_claude_file_uncached(
     path: &Path,
     day_set: &HashSet<&str>,
     daily: &mut HashMap<String, DailyTotals>,

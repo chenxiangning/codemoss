@@ -3,8 +3,9 @@ use std::path::{Path, PathBuf};
 use uuid::Uuid;
 
 use super::claude_history::{
-    delete_claude_session_with_config, list_claude_sessions_with_config,
-    load_claude_session_with_config,
+    delete_claude_session_with_config, list_claude_session_source_facts_from_base_dir,
+    list_claude_sessions_with_config, load_claude_session_with_config,
+    ClaudeSessionAttributionScope,
 };
 use super::EngineConfig;
 
@@ -99,16 +100,16 @@ async fn lists_and_loads_real_claude_subagent_transcripts() {
         .await
         .expect("list claude sessions");
     let child_session_id = format!("subagent:{}:{}", parent_session_id, agent_id);
-    let child = sessions
-        .iter()
-        .find(|session| session.session_id == child_session_id)
-        .expect("real subagent session is listed");
-    assert_eq!(
-        child.parent_session_id.as_deref(),
-        Some(parent_session_id.as_str())
+    assert!(
+        sessions.iter().all(|session| session.session_id != child_session_id),
+        "sidebar list must not inventory subagent jsonl"
     );
-    assert_eq!(child.subagent_type.as_deref(), Some("Explore"));
-    assert_eq!(child.first_message, "分析 km-chat-new-web 项目");
+    assert!(
+        sessions
+            .iter()
+            .any(|session| session.session_id == parent_session_id),
+        "parent session remains listed"
+    );
 
     let result = load_claude_session_with_config(&workspace_path, &child_session_id, Some(&config))
         .await
@@ -164,18 +165,26 @@ async fn ignores_generic_subagent_agent_name_for_summary_title() {
         })],
     );
 
-    let config = test_config(&claude_home);
-    let sessions = list_claude_sessions_with_config(&workspace_path, None, Some(&config))
-        .await
-        .expect("list claude sessions");
+    let listed = list_claude_session_source_facts_from_base_dir(
+        &base_dir,
+        &workspace_path,
+        &[ClaudeSessionAttributionScope::workspace_path(
+            workspace_path.clone(),
+        )],
+        None,
+        None,
+    )
+    .await
+    .expect("catalog still inventories subagent facts");
     let child_session_id = format!("subagent:{}:{}", parent_session_id, agent_id);
-    let child = sessions
+    let child = listed
+        .facts
         .iter()
-        .find(|session| session.session_id == child_session_id)
-        .expect("real subagent session is listed");
+        .find(|fact| fact.canonical_session_id == child_session_id)
+        .expect("catalog source facts still include the subagent");
     assert_eq!(
-        child.first_message,
-        "检查 Claude session 显示为什么变成 Agent 202"
+        child.first_real_user_message.as_deref(),
+        Some("检查 Claude session 显示为什么变成 Agent 202")
     );
 
     let _ = std::fs::remove_dir_all(&temp_root);
@@ -223,18 +232,26 @@ async fn ignores_generic_subagent_description_for_summary_title() {
         })],
     );
 
-    let config = test_config(&claude_home);
-    let sessions = list_claude_sessions_with_config(&workspace_path, None, Some(&config))
-        .await
-        .expect("list claude sessions");
+    let listed = list_claude_session_source_facts_from_base_dir(
+        &base_dir,
+        &workspace_path,
+        &[ClaudeSessionAttributionScope::workspace_path(
+            workspace_path.clone(),
+        )],
+        None,
+        None,
+    )
+    .await
+    .expect("catalog still inventories subagent facts");
     let child_session_id = format!("subagent:{}:{}", parent_session_id, agent_id);
-    let child = sessions
+    let child = listed
+        .facts
         .iter()
-        .find(|session| session.session_id == child_session_id)
-        .expect("real subagent session is listed");
+        .find(|fact| fact.canonical_session_id == child_session_id)
+        .expect("catalog source facts still include the subagent");
     assert_eq!(
-        child.first_message,
-        "分析 description 被 Agent 202 覆盖的问题"
+        child.first_real_user_message.as_deref(),
+        Some("分析 description 被 Agent 202 覆盖的问题")
     );
 
     let _ = std::fs::remove_dir_all(&temp_root);

@@ -25,6 +25,7 @@ function normalizeQuery(query?: WorkspaceSessionCatalogQuery | null): WorkspaceS
       query?.sessionAttributionMode === "workspace-only"
         ? "workspace-only"
         : "related",
+    scanMode: query?.scanMode === "exhaustive" ? "exhaustive" : "bounded",
   };
 }
 

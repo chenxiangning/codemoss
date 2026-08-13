@@ -409,6 +409,7 @@ export const initialState: ThreadState = {
   activeThreadIdByWorkspace: {},
   itemsByThread: emptyItems,
   historyRestoredAtMsByThread: {},
+  historyWindowByThread: {},
   threadsByWorkspace: {},
   hiddenThreadIdsByWorkspace: {},
   threadParentById: {},
@@ -844,6 +845,8 @@ export function threadReducer(state: ThreadState, action: ThreadAction): ThreadS
       const { [action.threadId]: _items, ...restItems } = state.itemsByThread;
       const { [action.threadId]: _historyRestoredAt, ...restHistoryRestoredAt } =
         state.historyRestoredAtMsByThread;
+      const { [action.threadId]: _historyWindow, ...restHistoryWindow } =
+        state.historyWindowByThread;
       const { [action.threadId]: _status, ...restStatus } = state.threadStatusById;
       const { [action.threadId]: _turns, ...restTurns } = state.activeTurnIdByThread;
       const { [action.threadId]: _codexAcceptedTurn, ...restCodexAcceptedTurn } =
@@ -861,6 +864,7 @@ export function threadReducer(state: ThreadState, action: ThreadAction): ThreadS
         },
         itemsByThread: restItems,
         historyRestoredAtMsByThread: restHistoryRestoredAt,
+        historyWindowByThread: restHistoryWindow,
         threadStatusById: restStatus,
         activeTurnIdByThread: restTurns,
         codexAcceptedTurnByThread: restCodexAcceptedTurn,
@@ -1902,6 +1906,40 @@ export function threadReducer(state: ThreadState, action: ThreadAction): ThreadS
         itemsByThread: {
           ...state.itemsByThread,
           [action.threadId]: prepareThreadItems(filtered),
+        },
+      };
+    }
+    case "setThreadHistoryWindow": {
+      const previous = state.historyWindowByThread[action.threadId];
+      if (
+        previous?.hasMore === action.hasMore &&
+        (previous?.nextCursor ?? null) === (action.nextCursor ?? null)
+      ) {
+        return state;
+      }
+      return {
+        ...state,
+        historyWindowByThread: {
+          ...state.historyWindowByThread,
+          [action.threadId]: {
+            hasMore: action.hasMore,
+            nextCursor: action.nextCursor,
+          },
+        },
+      };
+    }
+    case "prependThreadItems": {
+      const existing = state.itemsByThread[action.threadId] ?? [];
+      const existingIds = new Set(existing.map((item) => item.id));
+      const older = action.items.filter((item) => !existingIds.has(item.id));
+      if (older.length === 0) {
+        return state;
+      }
+      return {
+        ...state,
+        itemsByThread: {
+          ...state.itemsByThread,
+          [action.threadId]: prepareThreadItems([...older, ...existing]),
         },
       };
     }

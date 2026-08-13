@@ -37,6 +37,12 @@ vi.mock("../../../services/tauri", () => ({
   listGeminiSessions: vi.fn(),
   listKimiSessions: vi.fn(),
   listGrokSessions: vi.fn(),
+  listSessionIndexForWorkspace: vi.fn(async () => ({
+    data: [],
+    source: "session-index",
+    synced: false,
+    engines: [],
+  })),
   getOpenCodeSessionList: vi.fn(),
   listWorkspaceSessions: vi.fn(),
   loadClaudeSession: vi.fn(),
@@ -245,6 +251,7 @@ describe("useThreadActions opencode sidebar listing timeout fallback", () => {
       const promise = result.current.listThreadsForWorkspace(workspace, {
         preserveState: true,
         includeOpenCodeSessions: true,
+        includeEngineDiskLists: true,
       });
       await act(async () => {
         await vi.advanceTimersByTimeAsync(30_001);
@@ -306,6 +313,7 @@ describe("useThreadActions opencode sidebar listing timeout fallback", () => {
         await result.current.listThreadsForWorkspace(workspace, {
           preserveState: true,
           includeOpenCodeSessions: true,
+        includeEngineDiskLists: true,
         });
       });
 
@@ -370,6 +378,7 @@ describe("useThreadActions opencode sidebar listing timeout fallback", () => {
       const firstRun = result.current.listThreadsForWorkspace(workspace, {
         preserveState: true,
         includeOpenCodeSessions: true,
+        includeEngineDiskLists: true,
       });
       await act(async () => {
         await vi.advanceTimersByTimeAsync(30_001);
@@ -402,6 +411,7 @@ describe("useThreadActions opencode sidebar listing timeout fallback", () => {
       const secondRun = result.current.listThreadsForWorkspace(workspace, {
         preserveState: true,
         includeOpenCodeSessions: true,
+        includeEngineDiskLists: true,
       });
       await act(async () => {
         await vi.advanceTimersByTimeAsync(30_001);
@@ -471,6 +481,7 @@ describe("useThreadActions opencode sidebar listing timeout fallback", () => {
       const run = result.current.listThreadsForWorkspace(workspace, {
         preserveState: true,
         includeOpenCodeSessions: true,
+        includeEngineDiskLists: true,
       });
       await act(async () => {
         await vi.advanceTimersByTimeAsync(30_001);

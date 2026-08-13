@@ -94,6 +94,8 @@ pub async fn list_claude_sessions(
 pub async fn load_claude_session(
     workspace_path: String,
     session_id: String,
+    limit: Option<usize>,
+    before: Option<String>,
     state: State<'_, AppState>,
     app: AppHandle,
 ) -> Result<Value, String> {
@@ -103,7 +105,12 @@ pub async fn load_claude_session(
             &*state,
             app,
             "load_claude_session",
-            json!({ "workspacePath": workspace_path, "sessionId": session_id }),
+            json!({
+                "workspacePath": workspace_path,
+                "sessionId": session_id,
+                "limit": limit,
+                "before": before,
+            }),
         )
         .await;
     }
@@ -112,9 +119,14 @@ pub async fn load_claude_session(
         .engine_manager
         .get_engine_config(EngineType::Claude)
         .await;
-    let result =
-        super::claude_history::load_claude_session_with_config(&path, &session_id, config.as_ref())
-            .await?;
+    let result = super::claude_history::load_claude_session_with_config_window(
+        &path,
+        &session_id,
+        config.as_ref(),
+        limit,
+        before.as_deref(),
+    )
+    .await?;
     serde_json::to_value(result).map_err(|error| error.to_string())
 }
 

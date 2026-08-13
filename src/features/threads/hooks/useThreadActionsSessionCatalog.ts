@@ -34,6 +34,14 @@ export type ArchivedSessionMapResult = {
   isComplete: boolean;
 };
 
+export type ActiveProjectCatalogSessions = {
+  sessions: ProjectCatalogSessionSummary[];
+  partialSource: string | null;
+  nextCursor: string | null;
+  sourceStatuses: WorkspaceSessionCatalogSourceStatus[];
+  hiddenAutomaticSessionIds: string[];
+};
+
 type UseThreadActionsSessionCatalogOptions = {
   canListWorkspaceSessions: boolean;
   listWorkspaceSessionsService: ListWorkspaceSessionsService | null;
@@ -149,13 +157,7 @@ export function useThreadActionsSessionCatalog({
     async (
       workspaceId: string,
       sessionAttributionMode: WorkspaceSessionAttributionMode = "related",
-    ): Promise<{
-      sessions: ProjectCatalogSessionSummary[];
-      partialSource: string | null;
-      nextCursor: string | null;
-      sourceStatuses: WorkspaceSessionCatalogSourceStatus[];
-      hiddenAutomaticSessionIds: string[];
-    } | null> => {
+    ): Promise<ActiveProjectCatalogSessions | null> => {
       if (!canListWorkspaceSessions || !listWorkspaceSessionsService) {
         return null;
       }

@@ -478,6 +478,12 @@ export function useThreadActionsResumeThreadForWorkspace(
             threadId: effectiveThreadId,
             timestamp: assembledSnapshot.meta.historyRestoredAtMs,
           });
+          dispatch({
+            type: "setThreadHistoryWindow",
+            threadId: effectiveThreadId,
+            hasMore: assembledSnapshot.meta.historyHasMore === true,
+            nextCursor: assembledSnapshot.meta.historyNextCursor ?? null,
+          });
           if (snapshot.tokenUsage) {
             dispatch({
               type: "setThreadTokenUsage",

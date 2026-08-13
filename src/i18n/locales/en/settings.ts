@@ -1013,6 +1013,13 @@ const settings = {
     sessionManagementFolderCreateSuccess: 'Created session folder "{{name}}".',
     sessionManagementFolderCreateFailed: "Could not create session folder.",
     sessionManagementSearchPlaceholder: "Search by title, ID, or source...",
+    sessionManagementScanCapReached:
+      "This is a bounded scan; older history may not be included yet.",
+    sessionManagementScanAll: "Scan all",
+    sessionManagementScanAllConfirm:
+      "Scan all reads every matching session file on disk. Large histories can be slow. Continue?",
+    sessionManagementScanAllRunning: "Scanning all sessions…",
+    sessionManagementScanAllCancel: "Cancel scan",
     sessionManagementEngineAll: "All engines",
     sessionManagementStatusActive: "Active only",
     sessionManagementStatusArchived: "Archived only",

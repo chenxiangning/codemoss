@@ -13,6 +13,7 @@ import {
   listGeminiSessions,
   listGrokSessions,
   listKimiSessions,
+  listSessionIndexForWorkspace,
   listThreadTitles,
   listWorkspaceSessionArchiveEvidence,
   listWorkspaceSessions,
@@ -40,6 +41,7 @@ vi.mock("../../../services/tauri", () => ({
   listGeminiSessions: vi.fn(),
   listGrokSessions: vi.fn(),
   listKimiSessions: vi.fn(),
+  listSessionIndexForWorkspace: vi.fn(),
   getOpenCodeSessionList: vi.fn(),
   listWorkspaceSessions: vi.fn(),
   listWorkspaceSessionArchiveEvidence: vi.fn(),
@@ -101,6 +103,12 @@ export function resetUseThreadActionsTestMocks() {
   vi.mocked(listGeminiSessions).mockResolvedValue([]);
   vi.mocked(listGrokSessions).mockResolvedValue([]);
   vi.mocked(listKimiSessions).mockResolvedValue([]);
+  vi.mocked(listSessionIndexForWorkspace).mockResolvedValue({
+    data: [],
+    source: "session-index",
+    synced: false,
+    engines: [],
+  });
   vi.mocked(getOpenCodeSessionList).mockResolvedValue([]);
   vi.mocked(listWorkspaceSessions).mockResolvedValue({
     data: [],

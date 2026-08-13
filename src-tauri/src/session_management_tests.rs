@@ -328,11 +328,11 @@
     }
 
     #[test]
-    fn active_keyword_and_archived_queries_require_exhaustive_scan() {
+    fn only_explicit_scan_mode_requires_exhaustive_scan() {
         assert!(!query_requires_exhaustive_scan(
             &WorkspaceSessionCatalogQuery::default()
         ));
-        assert!(query_requires_exhaustive_scan(
+        assert!(!query_requires_exhaustive_scan(
             &WorkspaceSessionCatalogQuery {
                 keyword: Some("needle".to_string()),
                 engine: None,
@@ -341,7 +341,7 @@
                 ..Default::default()
             }
         ));
-        assert!(query_requires_exhaustive_scan(
+        assert!(!query_requires_exhaustive_scan(
             &WorkspaceSessionCatalogQuery {
                 keyword: None,
                 engine: None,
@@ -350,7 +350,7 @@
                 ..Default::default()
             }
         ));
-        assert!(query_requires_exhaustive_scan(
+        assert!(!query_requires_exhaustive_scan(
             &WorkspaceSessionCatalogQuery {
                 keyword: None,
                 engine: None,
@@ -359,12 +359,18 @@
                 ..Default::default()
             }
         ));
+        assert!(query_requires_exhaustive_scan(
+            &WorkspaceSessionCatalogQuery {
+                scan_mode: Some("exhaustive".to_string()),
+                ..Default::default()
+            }
+        ));
         assert!(!query_requires_exhaustive_scan(
             &WorkspaceSessionCatalogQuery {
-                keyword: None,
-                engine: None,
-                status: Some("all".to_string()),
-                folder_id: None,
+                scan_mode: Some("bounded".to_string()),
+                keyword: Some("needle".to_string()),
+                status: Some("archived".to_string()),
+                folder_id: Some("folder-a".to_string()),
                 ..Default::default()
             }
         ));

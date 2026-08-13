@@ -239,6 +239,10 @@ pub(crate) struct WorkspaceSessionCatalogQuery {
     pub(crate) folder_id: Option<String>,
     #[serde(default)]
     pub(crate) session_attribution_mode: Option<WorkspaceSessionAttributionMode>,
+    /// `bounded` (default) or `exhaustive`. Keyword/folder/archived MUST NOT
+    /// implicitly upgrade scan mode.
+    #[serde(default)]
+    pub(crate) scan_mode: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -731,29 +735,12 @@ pub(crate) fn build_catalog_scan_limit(cursor: Option<&str>, limit: Option<u32>)
 }
 
 pub(crate) fn query_requires_exhaustive_scan(query: &WorkspaceSessionCatalogQuery) -> bool {
-    let has_keyword = query
-        .keyword
+    query
+        .scan_mode
         .as_deref()
         .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .is_some();
-    if has_keyword {
-        return true;
-    }
-    let has_folder_filter = query
-        .folder_id
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .filter(|value| *value != "__all__")
-        .is_some();
-    if has_folder_filter {
-        return true;
-    }
-    matches!(
-        parse_status_filter(query.status.as_deref()),
-        SessionCatalogStatusFilter::Archived
-    )
+        .map(|value| value.eq_ignore_ascii_case("exhaustive"))
+        .unwrap_or(false)
 }
 
 pub(crate) fn build_catalog_scan_mode(

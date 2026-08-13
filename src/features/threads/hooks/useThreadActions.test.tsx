@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { act } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ConversationItem } from "../../../types";
 import { resetUseThreadActionsTestMocks } from "./useThreadActions.test-mocks";
 import {
@@ -32,6 +32,11 @@ import {
 describe("useThreadActions", () => {
   beforeEach(() => {
     resetUseThreadActionsTestMocks();
+    vi.useRealTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it("resumes thread, sets items, status, name, and last message", async () => {
@@ -2523,13 +2528,16 @@ describe("useThreadActions", () => {
     const { result, dispatch } = renderActions();
 
     await act(async () => {
-      await result.current.listThreadsForWorkspace({
-        ...workspace,
-        settings: {
-          ...workspace.settings,
-          visibleThreadRootCount: 200,
+      await result.current.listThreadsForWorkspace(
+        {
+          ...workspace,
+          settings: {
+            ...workspace.settings,
+            visibleThreadRootCount: 200,
+          },
         },
-      });
+        { includeEngineDiskLists: true },
+      );
     });
 
     expect(listClaudeSessions).toHaveBeenCalledWith("/tmp/codex", 5);
@@ -2596,12 +2604,17 @@ describe("useThreadActions", () => {
     const { result, dispatch } = renderActions();
 
     await act(async () => {
-      await result.current.listThreadsForWorkspace(workspace);
+      await result.current.listThreadsForWorkspace(workspace, {
+        includeEngineDiskLists: true,
+      });
     });
 
     expect(listThreads).toHaveBeenCalledTimes(1);
     expect(listClaudeSessions).toHaveBeenCalled();
-    expect(getOpenCodeSessionList).toHaveBeenCalledWith("ws-1");
+    expect(getOpenCodeSessionList).toHaveBeenCalledWith(
+      "ws-1",
+      expect.objectContaining({ timeoutMs: expect.any(Number) }),
+    );
     expect(listWorkspaceSessions).toHaveBeenCalledWith("ws-1", {
       query: { status: "active", sessionAttributionMode: "related" },
       cursor: null,
@@ -2695,7 +2708,9 @@ describe("useThreadActions", () => {
     });
 
     await act(async () => {
-      await result.current.listThreadsForWorkspace(workspace);
+      await result.current.listThreadsForWorkspace(workspace, {
+        includeEngineDiskLists: true,
+      });
     });
 
     expect(listClaudeSessions).toHaveBeenCalled();
@@ -3075,6 +3090,7 @@ describe("useThreadActions", () => {
     await act(async () => {
       await result.current.listThreadsForWorkspace(workspace, {
         includeOpenCodeSessions: true,
+        includeEngineDiskLists: true,
       });
     });
 

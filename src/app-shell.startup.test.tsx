@@ -765,6 +765,7 @@ vi.mock("./features/threads/hooks/useThreads", () => ({
       activeItems: [],
       threadItemsByThread: threadId ? { [threadId]: [] } : {},
       historyRestoredAtMsByThread: {},
+      historyWindowByThread: {},
       approvals: [],
       userInputRequests: [],
       threadsByWorkspace: {

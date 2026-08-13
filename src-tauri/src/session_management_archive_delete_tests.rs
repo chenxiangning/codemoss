@@ -95,7 +95,7 @@
         let sessions = Mutex::new(HashMap::new());
         let engine_manager = engine::EngineManager::new();
 
-        let page = list_workspace_sessions_core(
+        let bounded = list_workspace_sessions_core(
             &workspaces,
             &sessions,
             &engine_manager,
@@ -112,10 +112,35 @@
             Some(10),
         )
         .await
-        .expect("list sessions");
+        .expect("bounded list");
+        assert_eq!(
+            bounded.data.len(),
+            0,
+            "keyword must not implicitly scan beyond the Bounded window"
+        );
 
-        assert_eq!(page.data.len(), 1);
-        assert_eq!(page.data[0].session_id, "codex-055");
+        let exhaustive = list_workspace_sessions_core(
+            &workspaces,
+            &sessions,
+            &engine_manager,
+            &storage_path,
+            "ws-1".to_string(),
+            Some(WorkspaceSessionCatalogQuery {
+                keyword: Some("needle".to_string()),
+                engine: None,
+                status: Some("all".to_string()),
+                folder_id: None,
+                scan_mode: Some("exhaustive".to_string()),
+                ..Default::default()
+            }),
+            None,
+            Some(10),
+        )
+        .await
+        .expect("exhaustive list");
+
+        assert_eq!(exhaustive.data.len(), 1);
+        assert_eq!(exhaustive.data[0].session_id, "codex-055");
         std::fs::remove_dir_all(base).ok();
     }
 
@@ -162,7 +187,7 @@
             )
             .await;
 
-        let summary = get_workspace_session_projection_summary_core(
+        let bounded = get_workspace_session_projection_summary_core(
             &workspaces,
             &engine_manager,
             &storage_path,
@@ -176,10 +201,31 @@
             }),
         )
         .await
-        .expect("summary");
+        .expect("bounded summary");
+        assert_eq!(
+            bounded.all_total, 51,
+            "default summary uses SESSION_CATALOG_DEFAULT_LIMIT+lookahead, not 9999"
+        );
 
-        assert_eq!(summary.all_total, 60);
-        assert_eq!(summary.filtered_total, 60);
+        let exhaustive = get_workspace_session_projection_summary_core(
+            &workspaces,
+            &engine_manager,
+            &storage_path,
+            "ws-1".to_string(),
+            Some(WorkspaceSessionCatalogQuery {
+                keyword: None,
+                engine: None,
+                status: Some("all".to_string()),
+                folder_id: None,
+                scan_mode: Some("exhaustive".to_string()),
+                ..Default::default()
+            }),
+        )
+        .await
+        .expect("exhaustive summary");
+
+        assert_eq!(exhaustive.all_total, 60);
+        assert_eq!(exhaustive.filtered_total, 60);
         std::fs::remove_dir_all(base).ok();
     }
 

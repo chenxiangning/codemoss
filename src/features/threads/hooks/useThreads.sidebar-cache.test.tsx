@@ -37,7 +37,7 @@ vi.mock("./useThreadAccountInfo", () => ({
 vi.mock("../../../services/tauri", () => ({
   respondToServerRequest: vi.fn(),
   respondToUserInputRequest: vi.fn(),
-  listThreadTitles: vi.fn(),
+  listThreadTitles: vi.fn().mockResolvedValue({}),
   setThreadTitle: vi.fn(),
   renameThreadTitleKey: vi.fn(),
   generateThreadTitle: vi.fn(),
@@ -88,6 +88,12 @@ vi.mock("../../../services/tauri", () => ({
   listGrokSessions: vi.fn().mockResolvedValue([]),
   listKimiSessions: vi.fn().mockResolvedValue([]),
   listClaudeSessions: vi.fn().mockResolvedValue([]),
+  listSessionIndexForWorkspace: vi.fn().mockResolvedValue({
+    data: [],
+    source: "session-index",
+    synced: false,
+    engines: [],
+  }),
   getOpenCodeSessionList: vi.fn().mockResolvedValue([]),
   getEmailInboundListenerStatus: vi.fn().mockResolvedValue({
     enabled: false,

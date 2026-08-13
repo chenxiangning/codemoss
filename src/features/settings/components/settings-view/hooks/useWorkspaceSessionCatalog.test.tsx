@@ -103,6 +103,7 @@ describe("useWorkspaceSessionCatalog", () => {
           status: "active",
           folderId: null,
           sessionAttributionMode: "related",
+          scanMode: null,
         },
         cursor: null,
         limit: SESSION_CATALOG_PAGE_SIZE,
@@ -280,6 +281,7 @@ describe("useWorkspaceSessionCatalog", () => {
           status: "active",
           folderId: null,
           sessionAttributionMode: "workspace-only",
+          scanMode: null,
         },
         cursor: null,
         limit: SESSION_CATALOG_PAGE_SIZE,
@@ -620,6 +622,7 @@ describe("useWorkspaceSessionCatalog", () => {
           status: "active",
           folderId: null,
           sessionAttributionMode: "related",
+          scanMode: null,
         },
         cursor: null,
         limit: SESSION_CATALOG_PAGE_SIZE,
@@ -705,6 +708,7 @@ describe("useWorkspaceSessionCatalog", () => {
           status: "active",
           folderId: null,
           sessionAttributionMode: "related",
+          scanMode: null,
         },
         cursor: null,
         limit: SESSION_CATALOG_PAGE_SIZE,
@@ -753,6 +757,7 @@ describe("useWorkspaceSessionCatalog", () => {
           status: "active",
           folderId: null,
           sessionAttributionMode: "related",
+          scanMode: null,
         },
         cursor: null,
         limit: SESSION_CATALOG_PAGE_SIZE,
@@ -761,6 +766,45 @@ describe("useWorkspaceSessionCatalog", () => {
 
     await waitFor(() => {
       expect(result.current.entries[0]?.engine).toBe("claude");
+    });
+  });
+
+  it("forwards explicit exhaustive scanMode and exposes scanCapReached", async () => {
+    vi.mocked(listWorkspaceSessions).mockResolvedValueOnce({
+      data: [],
+      nextCursor: null,
+      partialSource: null,
+      sourceStatuses: [
+        {
+          engine: "claude",
+          completeness: "partial",
+          scanCapReached: true,
+        },
+      ],
+    });
+
+    const { result } = renderHook(() =>
+      useWorkspaceSessionCatalog({
+        mode: "project",
+        workspaceId: "ws-1",
+        filters: { ...DEFAULT_FILTERS, scanMode: "exhaustive" },
+      }),
+    );
+
+    await waitFor(() => {
+      expect(listWorkspaceSessions).toHaveBeenCalledWith("ws-1", {
+        query: {
+          keyword: null,
+          engine: null,
+          status: "active",
+          folderId: null,
+          sessionAttributionMode: "related",
+          scanMode: "exhaustive",
+        },
+        cursor: null,
+        limit: SESSION_CATALOG_PAGE_SIZE,
+      });
+      expect(result.current.scanCapReached).toBe(true);
     });
   });
 });

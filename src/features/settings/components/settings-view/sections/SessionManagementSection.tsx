@@ -566,20 +566,26 @@ export function SessionManagementSection({
             ? current
             : draftFilters,
         );
+        setCatalogScanMode("bounded");
       });
     }, 300);
     return () => {
       window.clearTimeout(timeoutId);
     };
   }, [draftFilters, queryFilters]);
+  const [catalogScanMode, setCatalogScanMode] = useState<
+    "bounded" | "exhaustive"
+  >("bounded");
   const summaryQuery = useMemo(
     () => ({
       keyword: queryFilters.keyword,
       engine: queryFilters.engine,
       status: queryFilters.status,
       sessionAttributionMode: effectiveAttributionMode,
+      scanMode: catalogScanMode,
     }),
     [
+      catalogScanMode,
       effectiveAttributionMode,
       queryFilters.engine,
       queryFilters.keyword,
@@ -593,8 +599,9 @@ export function SessionManagementSection({
         mode === "project" && sessionFolderFilter !== SESSION_FOLDER_FILTER_ALL
           ? sessionFolderFilter
           : null,
+      scanMode: catalogScanMode,
     }),
-    [mode, queryFilters, sessionFolderFilter],
+    [catalogScanMode, mode, queryFilters, sessionFolderFilter],
   );
   const {
     summary: projectionSummary,
@@ -610,6 +617,7 @@ export function SessionManagementSection({
     entries: primaryEntries,
     nextCursor: primaryNextCursor,
     partialSource: primaryPartialSource,
+    scanCapReached: primaryScanCapReached,
     pageLimit: primaryPageLimit,
     error: primaryError,
     isLoading: primaryIsLoading,
@@ -788,8 +796,23 @@ export function SessionManagementSection({
     setSessionFolderDraftOpen(false);
     setSessionFolderDraftName("");
     setMoveTargetFolderId(SESSION_FOLDER_FILTER_ROOT);
+    setCatalogScanMode("bounded");
     resetSelection();
     setNotice(null);
+  };
+
+  const handleConfirmScanAll = () => {
+    const confirmed = window.confirm(
+      t("settings.sessionManagementScanAllConfirm"),
+    );
+    if (!confirmed) {
+      return;
+    }
+    setCatalogScanMode("exhaustive");
+  };
+
+  const handleCancelScanAll = () => {
+    setCatalogScanMode("bounded");
   };
 
   const handleFiltersChange = (
@@ -809,6 +832,7 @@ export function SessionManagementSection({
         setQueryFilters(applyPatch);
       });
     }
+    setCatalogScanMode("bounded");
     resetSelection();
     setNotice(null);
   };
@@ -2320,6 +2344,39 @@ export function SessionManagementSection({
               {primaryError ? (
                 <div className="settings-project-sessions-notice is-error">
                   {primaryError}
+                </div>
+              ) : null}
+              {primaryScanCapReached || catalogScanMode === "exhaustive" ? (
+                <div
+                  className="settings-project-sessions-notice"
+                  data-testid="session-management-scan-cap"
+                >
+                  <span>
+                    {catalogScanMode === "exhaustive"
+                      ? t("settings.sessionManagementScanAllRunning")
+                      : t("settings.sessionManagementScanCapReached")}
+                  </span>
+                  {catalogScanMode === "exhaustive" ? (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      data-testid="session-management-cancel-scan-all"
+                      onClick={handleCancelScanAll}
+                    >
+                      {t("settings.sessionManagementScanAllCancel")}
+                    </Button>
+                  ) : (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      data-testid="session-management-scan-all"
+                      onClick={handleConfirmScanAll}
+                    >
+                      {t("settings.sessionManagementScanAll")}
+                    </Button>
+                  )}
                 </div>
               ) : null}
 

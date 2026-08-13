@@ -1834,4 +1834,47 @@ describe("SessionManagementSection", () => {
       expect(getWorkspaceSessionProjectionSummary).toHaveBeenCalledTimes(2);
     });
   });
+
+  it("asks before switching Session Management to exhaustive scan", async () => {
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+    vi.mocked(listWorkspaceSessions).mockResolvedValue({
+      data: [],
+      nextCursor: null,
+      partialSource: null,
+      sourceStatuses: [
+        {
+          engine: "claude",
+          completeness: "partial",
+          scanCapReached: true,
+        },
+      ],
+    });
+
+    render(
+      <SessionManagementSection
+        title="Sessions"
+        description="Manage sessions"
+        appSettings={{ sessionAttributionMode: "related" } as AppSettings}
+        onUpdateAppSettings={vi.fn().mockResolvedValue(undefined)}
+        workspaces={[workspace]}
+        groupedWorkspaces={[
+          { id: null, name: "Ungrouped", workspaces: [workspace] },
+        ]}
+        initialWorkspaceId="ws-1"
+      />,
+    );
+
+    const scanAll = await screen.findByTestId("session-management-scan-all");
+    fireEvent.click(scanAll);
+    expect(confirmSpy).toHaveBeenCalled();
+    await waitFor(() => {
+      expect(listWorkspaceSessions).toHaveBeenCalledWith(
+        "ws-1",
+        expect.objectContaining({
+          query: expect.objectContaining({ scanMode: "exhaustive" }),
+        }),
+      );
+    });
+    confirmSpy.mockRestore();
+  });
 });

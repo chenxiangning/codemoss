@@ -47,6 +47,12 @@ vi.mock("../../../services/tauri", () => ({
   listGeminiSessions: vi.fn(),
   listKimiSessions: vi.fn(),
   listGrokSessions: vi.fn(),
+  listSessionIndexForWorkspace: vi.fn(async () => ({
+    data: [],
+    source: "session-index",
+    synced: false,
+    engines: [],
+  })),
   getOpenCodeSessionList: vi.fn(),
   listWorkspaceSessions: vi.fn(),
   loadClaudeSession: vi.fn(),
@@ -152,7 +158,9 @@ describe("useThreadActions native session bridges", () => {
     const { result, dispatch } = renderActions();
 
     await act(async () => {
-      await result.current.listThreadsForWorkspace(workspace);
+      await result.current.listThreadsForWorkspace(workspace, {
+        includeEngineDiskLists: true,
+      });
     });
 
     expect(connectWorkspace).toHaveBeenCalledWith("ws-1", "thread-list-live");
@@ -213,7 +221,9 @@ describe("useThreadActions native session bridges", () => {
     const { result, dispatch } = renderActions();
 
     await act(async () => {
-      await result.current.listThreadsForWorkspace(workspace);
+      await result.current.listThreadsForWorkspace(workspace, {
+        includeEngineDiskLists: true,
+      });
     });
 
     expect(connectWorkspace).toHaveBeenCalledWith("ws-1", "thread-list-live");
@@ -297,7 +307,9 @@ describe("useThreadActions native session bridges", () => {
     const { result, dispatch } = renderActions();
 
     await act(async () => {
-      await result.current.listThreadsForWorkspace(workspace);
+      await result.current.listThreadsForWorkspace(workspace, {
+        includeEngineDiskLists: true,
+      });
     });
 
     expectSetThreadsDispatched(dispatch, "ws-1", [
@@ -407,7 +419,9 @@ describe("useThreadActions native session bridges", () => {
     const { result, dispatch } = renderActions();
 
     await act(async () => {
-      await result.current.listThreadsForWorkspace(workspace);
+      await result.current.listThreadsForWorkspace(workspace, {
+        includeEngineDiskLists: true,
+      });
     });
 
     await waitFor(() => {
@@ -444,7 +458,9 @@ describe("useThreadActions native session bridges", () => {
     const { result, dispatch } = renderActions();
 
     await act(async () => {
-      await result.current.listThreadsForWorkspace(workspace);
+      await result.current.listThreadsForWorkspace(workspace, {
+        includeEngineDiskLists: true,
+      });
     });
 
     await waitFor(() => {
