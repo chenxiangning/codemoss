@@ -5,7 +5,7 @@ import {
 } from "./types";
 
 describe("isAtomicExecutionTarget", () => {
-  it("accepts PI native local target that Shared resolver rejects", () => {
+  it("accepts PI local target as atomic and, after Shared extension, resolved", () => {
     const target = {
       engine: "pi" as const,
       providerProfileId: null,
@@ -16,7 +16,7 @@ describe("isAtomicExecutionTarget", () => {
       reasoning: null,
     };
     expect(isAtomicExecutionTarget(target)).toBe(true);
-    expect(isResolvedExecutionTarget(target)).toBe(false);
+    expect(isResolvedExecutionTarget(target)).toBe(true);
   });
 
   it("still accepts shared engines as both atomic and resolved", () => {

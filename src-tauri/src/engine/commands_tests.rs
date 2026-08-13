@@ -107,6 +107,26 @@ fn image_support_guard_follows_engine_feature_matrix() {
 }
 
 #[test]
+fn provider_engine_dispatch_receipt_normalizes_pi_local_sentinel() {
+    // Pi local 的 runtime key 就是 workspace_id（pi_runtime_key 形态），
+    // 与 Kimi/Grok/OpenCode 的 `{engine}::ws::{local}` 不同。
+    let receipt = build_provider_engine_dispatch_receipt(
+        crate::engine::EngineType::Pi,
+        Some(crate::engine::pi_provider_profile::PI_LOCAL_PROVIDER_PROFILE_ID),
+        "workspace-local",
+        Some("kimi-coding/k3"),
+        None,
+    );
+
+    assert_eq!(receipt["engine"], "pi");
+    assert!(receipt["providerProfileId"].is_null());
+    assert_eq!(receipt["providerProfileSource"], "local");
+    assert_eq!(receipt["providerRuntimeKey"], "workspace-local");
+    assert_eq!(receipt["model"], "kimi-coding/k3");
+    assert!(receipt["reasoningEffort"].is_null());
+}
+
+#[test]
 fn provider_engine_dispatch_receipt_normalizes_local_sentinels() {
     for (engine, local_profile_id) in [
         (

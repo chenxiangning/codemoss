@@ -72,6 +72,9 @@ export async function loadOrderedSharedCreateProviders(
         isLocalProvider: entry.isLocalProvider,
       }));
       break;
+    // Pi 无多 Provider store：raw 留空，走下方 local sentinel 回落。
+    case "pi":
+      break;
   }
 
   const normalized = raw

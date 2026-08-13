@@ -37,6 +37,7 @@ fn is_supported_shared_session_engine(engine: EngineType) -> bool {
             | EngineType::Kimi
             | EngineType::Grok
             | EngineType::OpenCode
+            | EngineType::Pi
     )
 }
 
@@ -478,7 +479,8 @@ pub(crate) fn is_pending_shared_binding_thread_id(engine: EngineType, thread_id:
         EngineType::Kimi => normalized.starts_with("kimi-pending-shared-"),
         EngineType::Grok => normalized.starts_with("grok-pending-shared-"),
         EngineType::OpenCode => normalized.starts_with("opencode-pending-shared-"),
-        EngineType::Gemini | EngineType::Pi => false,
+        EngineType::Pi => normalized.starts_with("pi-pending-shared-"),
+        EngineType::Gemini => false,
     }
 }
 
@@ -504,7 +506,9 @@ pub(crate) fn binding_uses_established_native_thread(engine: EngineType, thread_
     match engine {
         EngineType::Claude => normalized.contains(':'),
         EngineType::Codex | EngineType::Kimi | EngineType::Grok | EngineType::OpenCode => true,
-        EngineType::Gemini | EngineType::Pi => false,
+        // Pi 与 Codex 同形态：非 pending、非空即 established native thread。
+        EngineType::Pi => true,
+        EngineType::Gemini => false,
     }
 }
 
@@ -1991,6 +1995,7 @@ mod tests {
             EngineType::Kimi,
             EngineType::Grok,
             EngineType::OpenCode,
+            EngineType::Pi,
         ] {
             assert!(is_pending_shared_binding_thread_id(
                 engine,
@@ -2029,7 +2034,12 @@ mod tests {
             EngineType::Codex,
             "codex-native-thread-1"
         ));
-        for engine in [EngineType::Kimi, EngineType::Grok, EngineType::OpenCode] {
+        for engine in [
+            EngineType::Kimi,
+            EngineType::Grok,
+            EngineType::OpenCode,
+            EngineType::Pi,
+        ] {
             assert!(!binding_uses_established_native_thread(
                 engine,
                 &format!("{}-pending-shared-1", engine.icon()),
@@ -2048,7 +2058,12 @@ mod tests {
 
     #[test]
     fn resolved_local_targets_validate_for_new_shared_cli_engines() {
-        for engine in [EngineType::Kimi, EngineType::Grok, EngineType::OpenCode] {
+        for engine in [
+            EngineType::Kimi,
+            EngineType::Grok,
+            EngineType::OpenCode,
+            EngineType::Pi,
+        ] {
             let catalog = crate::engine::status::get_local_engine_models_for_validation(engine)
                 .unwrap_or_else(|| panic!("missing local catalog for {engine:?}"));
             let selected = catalog

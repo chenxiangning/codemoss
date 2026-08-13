@@ -7,6 +7,7 @@ import {
   KIMI_LOCAL_PROVIDER_PROFILE_ID,
   LOCAL_PROVIDER_PROFILE_DISPLAY_NAME,
   OPENCODE_LOCAL_PROVIDER_PROFILE_ID,
+  PI_LOCAL_PROVIDER_PROFILE_ID,
 } from "../../threads/constants/codexProviderProfiles";
 import type { SharedSessionSupportedEngine } from "../utils/sharedSessionEngines";
 
@@ -37,6 +38,8 @@ export function localProviderSentinelId(
       return GROK_LOCAL_PROVIDER_PROFILE_ID;
     case "opencode":
       return OPENCODE_LOCAL_PROVIDER_PROFILE_ID;
+    case "pi":
+      return PI_LOCAL_PROVIDER_PROFILE_ID;
   }
 }
 

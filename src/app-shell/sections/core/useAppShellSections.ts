@@ -354,6 +354,7 @@ export function useAppShellSections(input: UseAppShellSectionsInput) {
               opencode: "workspace.engineOpenCode",
               kimi: "workspace.engineKimi",
               grok: "workspace.engineGrok",
+              pi: "workspace.enginePi",
             }[sharedEngine];
             // 创建：第一 Provider + profile 权威 catalog（local forceRefresh）。
             // 打开既有会话不走此路径，回显 last selectedTarget。

@@ -11,7 +11,7 @@ import {
 } from "./sharedSessionSummaries";
 
 describe("sharedSessionSummaries", () => {
-  it("keeps native thread ids for all five supported Shared engines", () => {
+  it("keeps native thread ids for all six supported Shared engines", () => {
     const summary = normalizeSharedSessionSummary({
       id: "shared-session-1",
       threadId: "shared:shared-session-1",
@@ -25,6 +25,8 @@ describe("sharedSessionSummaries", () => {
         "grok:session-3",
         "kimi:session-4",
         "opencode:session-5",
+        "pi:session-6",
+        "pi-pending-shared-7",
         "gemini:session-3",
         "gemini-pending-4",
       ],
@@ -42,6 +44,8 @@ describe("sharedSessionSummaries", () => {
       "grok:session-3",
       "kimi:session-4",
       "opencode:session-5",
+      "pi:session-6",
+      "pi-pending-shared-7",
     ]);
   });
 
@@ -61,6 +65,8 @@ describe("sharedSessionSummaries", () => {
       "kimi-pending-shared-2",
       "019d767b-5541-7010-a30d-a454864bccd8",
       "opencode:ses_opc_1",
+      "pi:real-pi-session",
+      "pi-pending-shared-2",
     ]);
 
     expect(expanded.has("grok:real-session-1")).toBe(true);
@@ -73,6 +79,10 @@ describe("sharedSessionSummaries", () => {
     );
     expect(expanded.has("opencode:ses_opc_1")).toBe(true);
     expect(expanded.has("ses_opc_1")).toBe(true);
+    expect(expanded.has("pi:real-pi-session")).toBe(true);
+    expect(expanded.has("real-pi-session")).toBe(true);
+    expect(expanded.has("pi:pi-pending-shared-2")).toBe(true);
+    expect(expanded.has("pi-pending-shared-2")).toBe(true);
   });
 
   it("remaps grok subagent parents from hidden native owner to shared thread", () => {

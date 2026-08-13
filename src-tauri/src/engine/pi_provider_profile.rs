@@ -24,6 +24,21 @@ fn normalize_profile_id(profile_id: Option<&str>) -> &str {
         .unwrap_or(PI_LOCAL_PROVIDER_PROFILE_ID)
 }
 
+/// Runtime Key（Ownership 归属）：
+/// - local（`__local_pi__` / 空）：= workspace_id（与 Native Pi 默认归属一致）
+/// - named profile：`{workspace}::pi::{profile}`（与 kimi/grok named 形态对齐）
+pub(crate) fn pi_runtime_key(
+    workspace_id: &str,
+    provider_profile_id: Option<&str>,
+) -> String {
+    let profile_id = normalize_profile_id(provider_profile_id);
+    if profile_id == PI_LOCAL_PROVIDER_PROFILE_ID {
+        workspace_id.to_string()
+    } else {
+        format!("{workspace_id}::pi::{profile_id}")
+    }
+}
+
 /// Resolve PI launch profile. Custom profile ids are treated as local until
 /// a future vendor CRUD lands; home always comes from optional env/settings
 /// path via the engine config on the session, not from multi-provider store.
@@ -32,12 +47,7 @@ pub(crate) fn resolve_pi_provider_launch_profile(
     provider_profile_id: Option<&str>,
     home_dir: Option<&Path>,
 ) -> Result<PiProviderLaunchProfile, String> {
-    let profile_id = normalize_profile_id(provider_profile_id);
-    let runtime_key = if profile_id == PI_LOCAL_PROVIDER_PROFILE_ID {
-        workspace_id.to_string()
-    } else {
-        format!("{workspace_id}::pi::{profile_id}")
-    };
+    let runtime_key = pi_runtime_key(workspace_id, provider_profile_id);
     Ok(PiProviderLaunchProfile {
         binding: None,
         home_dir: home_dir.map(Path::to_path_buf),

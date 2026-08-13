@@ -112,7 +112,7 @@ export function normalizePersistedExecutionTarget(
 
 /**
  * Atomic / create-session picker 的可执行选择：字段完整即可，不要求 Shared 引擎集合。
- * PI 等「仅 Native、不进 Shared」的引擎走此校验；Shared 另用 isResolvedExecutionTarget。
+ * 仅 Native、不进 Shared 的引擎（如 gemini）走此校验；Shared 另用 isResolvedExecutionTarget。
  *
  * `providerProfileId = null` 只有在 selection source 明确为 `disk` 时才表示
  * intentional local/default；legacy engine-only target 缺少该证据，必须 fail closed。

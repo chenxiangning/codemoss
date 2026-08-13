@@ -2666,7 +2666,12 @@ mod tests {
 
     #[test]
     fn provider_engine_events_settle_exact_shared_attempts() {
-        for engine in [EngineType::Kimi, EngineType::Grok, EngineType::OpenCode] {
+        for engine in [
+            EngineType::Kimi,
+            EngineType::Grok,
+            EngineType::OpenCode,
+            EngineType::Pi,
+        ] {
             let coordinator = SharedRuntimeCoordinator::default();
             let runtime_turn_id = format!("{}-turn-1", engine_token(engine));
             let native_session_id = format!("{}-session-1", engine_token(engine));

@@ -1593,6 +1593,9 @@ fn build_provider_engine_dispatch_receipt(
             ) | (
                 EngineType::OpenCode,
                 super::opencode_provider_profile::OPENCODE_LOCAL_PROVIDER_PROFILE_ID
+            ) | (
+                EngineType::Pi,
+                super::pi_provider_profile::PI_LOCAL_PROVIDER_PROFILE_ID
             )
         )
     });

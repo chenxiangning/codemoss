@@ -17,6 +17,7 @@ const SHARED_HIDE_ENGINE_PREFIXES = [
   "kimi",
   "grok",
   "opencode",
+  "pi",
 ] as const;
 
 type SharedSessionSummary = {

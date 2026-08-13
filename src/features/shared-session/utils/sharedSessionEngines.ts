@@ -5,7 +5,8 @@ export type SharedSessionSupportedEngine =
   | "codex"
   | "kimi"
   | "grok"
-  | "opencode";
+  | "opencode"
+  | "pi";
 
 const SHARED_SESSION_SUPPORTED_ENGINES = new Set<EngineType>([
   "claude",
@@ -13,6 +14,7 @@ const SHARED_SESSION_SUPPORTED_ENGINES = new Set<EngineType>([
   "kimi",
   "grok",
   "opencode",
+  "pi",
 ]);
 
 export function isSharedSessionSupportedEngine(

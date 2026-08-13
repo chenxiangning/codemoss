@@ -224,6 +224,45 @@ describe("resolveSharedSessionCreateInitialTarget", () => {
     ).rejects.toThrow("Grok CLI");
   });
 
+  it("resolves Pi to the local sentinel without fetching any vendor list", async () => {
+    getEngineModelsMock.mockResolvedValue([
+      {
+        id: "kimi-coding/k3",
+        model: "kimi-coding/k3",
+        displayName: "kimi-coding/k3",
+        description: "",
+        isDefault: true,
+      },
+    ]);
+
+    const target = await resolveSharedSessionCreateInitialTarget({
+      engine: "pi",
+      localProviderName: "本地配置",
+      unavailableModelMessage: "Pi CLI 没有可用 Model。",
+    });
+
+    // Pi 无多 Provider store：不调任何 vendor 列表，直接 local sentinel。
+    expect(getClaudeProvidersMock).not.toHaveBeenCalled();
+    expect(getCodexProvidersMock).not.toHaveBeenCalled();
+    expect(getKimiProvidersMock).not.toHaveBeenCalled();
+    expect(getGrokProvidersMock).not.toHaveBeenCalled();
+    expect(getOpenCodeProvidersMock).not.toHaveBeenCalled();
+    expect(getEngineModelsMock).toHaveBeenCalledWith("pi", {
+      providerProfileId: "__local_pi__",
+      forceRefresh: true,
+    });
+    expect(target).toEqual(
+      expect.objectContaining({
+        engine: "pi",
+        providerProfileId: null,
+        modelCatalogEntryId: "kimi-coding/k3",
+        model: "kimi-coding/k3",
+        providerProfileNameSnapshot: "本地配置",
+        providerProfileSource: "disk",
+      }),
+    );
+  });
+
   it("does not abort create when claude mapping sync fails", async () => {
     getClaudeProvidersMock.mockResolvedValue([
       {

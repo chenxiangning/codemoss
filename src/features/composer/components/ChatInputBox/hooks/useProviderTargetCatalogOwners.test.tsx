@@ -89,7 +89,7 @@ describe("Provider target catalog owners", () => {
     discoverCodexModelsMock.mockResolvedValue({ data: [] });
   });
 
-  it.each(["claude", "codex", "grok", "kimi", "opencode"])(
+  it.each(["claude", "codex", "grok", "kimi", "opencode", "pi"])(
     "recognizes %s as a Provider Profile engine",
     (engine) => {
       expect(isProviderProfileEngine(engine)).toBe(true);
@@ -124,10 +124,11 @@ describe("Provider target catalog owners", () => {
       "grok",
       "kimi",
       "opencode",
+      "pi",
     ]);
     expect(
       result.current.groups.filter((group) => group.enabled),
-    ).toHaveLength(5);
+    ).toHaveLength(6);
     expect(
       result.current.groups.flatMap((group) => group.profiles).every(
         (profile) => profile.enabled !== false,
@@ -202,7 +203,7 @@ describe("Provider target catalog owners", () => {
     },
   );
 
-  it("exposes the same five CLI groups on Home create-session", async () => {
+  it("exposes the same six CLI groups on Home create-session", async () => {
     const { result } = renderHook(() =>
       useAtomicProviderTargetCatalog({
         enabled: true,
@@ -224,6 +225,7 @@ describe("Provider target catalog owners", () => {
       "grok",
       "kimi",
       "opencode",
+      "pi",
     ]);
     expect(result.current.groups.every((group) => group.enabled)).toBe(true);
   });
