@@ -2,7 +2,7 @@
 
 - [x] 1.1 [P0][depends: none][input: `proposal.md`, `design.md`, `specs/email-sending-settings/spec.md`][output: confirmed implementation scope and non-goals][verify: code review notes] Confirm this change only builds email settings + SMTP send/test ability and does not implement automatic session reminders.
 - [x] 1.2 [P0][depends: none][input: `src-tauri/Cargo.toml`, current Rust toolchain, release targets][output: dependency decision for SMTP and credential store][verify: `cargo info` notes in PR] Confirm `lettre` feature set and credential store choice before editing dependencies.
-- [x] 1.3 [P0][depends: 1.1][input: `.trellis/spec/backend/*`, `.trellis/spec/frontend/*`, cross-layer guide][output: affected file list and validation plan][verify: implementation notes] Read required backend/frontend/cross-layer specs before code changes.
+- [x] 1.3 [P0][depends: 1.1][input: `dev-guidelines/backend/*`, `dev-guidelines/frontend/*`, cross-layer guide][output: affected file list and validation plan][verify: implementation notes] Read required backend/frontend/cross-layer specs before code changes.
 
 ## 2. Settings Model And Secret Storage
 
@@ -31,4 +31,4 @@
 - [x] 5.2 [P0][depends: 4][input: Settings UI and tauri bridge mocks][output: Vitest coverage for provider switching, custom edits, save, clear secret, test send success/error][verify: `npm run test -- --run src/features/settings/components/SettingsView.test.tsx`] Protect frontend behavior and secret masking.
 - [ ] 5.3 [P0][depends: 5.1,5.2][input: full change][output: baseline quality gates pass][verify: `npm run lint`, `npm run typecheck`, targeted `npm run test`, targeted `cargo test`] Run project-standard gates for touched layers.
 - [ ] 5.4 [P1][depends: 5.3][input: real 126/163/QQ or custom SMTP account via local secret][output: manual acceptance note proving one real test email sends][verify: screenshot/log note without secret] Validate “能真的发送出邮件” outside CI with secret redacted.
-- [ ] 5.5 [P1][depends: 5.4][input: implementation learnings][output: updated `.trellis/spec` guidance if new reusable email sender/security contract is introduced][verify: spec review] Capture reusable backend/secret handling conventions after implementation.
+- [ ] 5.5 [P1][depends: 5.4][input: implementation learnings][output: updated `dev-guidelines` guidance if new reusable email sender/security contract is introduced][verify: spec review] Capture reusable backend/secret handling conventions after implementation.

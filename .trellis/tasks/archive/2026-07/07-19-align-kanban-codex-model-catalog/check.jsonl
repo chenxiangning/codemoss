@@ -1,4 +1,0 @@
-{"file": ".claude/commands/trellis/finish-work.md", "reason": "Finish work checklist"}
-{"file": ".claude/commands/trellis/check.md", "reason": "Code quality check spec"}
-{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "前端回归测试与质量门禁"}
-{"file": "openspec/changes/align-kanban-codex-model-catalog/specs/codex-model-catalog-coverage/spec.md", "reason": "Kanban catalog parity 行为验收"}

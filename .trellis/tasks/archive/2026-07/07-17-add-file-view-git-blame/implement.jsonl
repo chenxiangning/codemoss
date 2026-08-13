@@ -1,6 +1,0 @@
-{"file": ".trellis/workflow.md", "reason": "Project workflow and conventions"}
-{"file": ".trellis/spec/backend/index.md", "reason": "Backend development guide"}
-{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend development guide"}
-{"file": "openspec/changes/add-file-view-git-blame/design.md", "reason": "Git Blame cross-layer design"}
-{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "UI-service-Tauri-daemon contract"}
-{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "CodeMirror lazy boundary and performance gate"}

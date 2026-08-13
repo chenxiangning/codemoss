@@ -98,5 +98,5 @@ roadmap `P1-11 Terminal / Runtime 输出背压`、`P1-12 Listener / Polling / Ti
   2. `rendererDiagnostics` 暴露 backpressure / listener / media 字段命名（与 Step 1/3/4 约定前缀，例：`events.backpressure.queueDepth` / `media.retained.count`）。
   3. `eventBackpressure` 抽象公共 API（`{ subscribe, push, flush, queueDepth, droppedCount }`）—— Step 3 / 4 复用。
   4. `useFocusRefresh` hook 公共契约 —— 后续 change 改 focus 触发的刷新统一走这条路径。
-- **Cross-Change Constraint**: `services/rendererDiagnostics.ts` 与 `services/events.ts` 字段命名必须与 Step 1 / 3 预先对齐（建议在 Step 1 落地时同步在本仓 issue 或 `.trellis/spec/` 留 schema 占位）。
+- **Cross-Change Constraint**: `services/rendererDiagnostics.ts` 与 `services/events.ts` 字段命名必须与 Step 1 / 3 预先对齐（建议在 Step 1 落地时同步在本仓 issue 或 `dev-guidelines/` 留 schema 占位）。
 - **Blocking Rule**: `eventBackpressure` API、listener owner registry 协议、`useFocusRefresh` 契约和 diagnostics 字段命名未就绪前，Step 3 / 4 不应启动任何复用这些抽象的实现；允许 Step 3 做 backend inventory，但不得写 frontend bridge integration。

@@ -103,6 +103,8 @@ const chat = {
     "commandsListUnavailableTitle": "Команды недоступны",
     "commandsListUnavailableMessage":
       "Не удалось загрузить слэш-команды: {{reason}}. Автодополнение команд может быть неполным; повторная попытка будет выполнена автоматически.",
+    "promptsListUnavailableTitle": "Промпты недоступны",
+    "promptsListUnavailableMessage": "Не удалось загрузить пользовательские промпты: {{reason}}. Автодополнение ! может быть неполным; откройте ! снова или создайте промпт, чтобы повторить.",
     "pleaseWait": "Пожалуйста, подождите...",
     "retrying": "Повтор ({{count}}/{{max}})...",
     "removeAgent": "Удалить агента",

@@ -1,15 +1,15 @@
 ## ADDED Requirements
 
-### Requirement: Cold start MUST complete active workspace first-paint before full-catalog
+### Requirement: Cold start MUST complete bounded active workspace first-paint without automatic full-catalog
 
-冷启主窗口在存在 active workspace 时，系统 MUST 先调度 `thread/list first-paint hydration`（phase=`active-workspace`，mode=`first-paint`），MUST NOT 在 UI 尚未 first-paint hydrated 时直接对 active workspace 调度 `thread/list full-catalog hydration`。first-paint 完成后方可在 idle 预算内调度至多一次自动 full-catalog。
+冷启主窗口在存在 active workspace 时，系统 MUST 先调度 `thread/list first-paint hydration`（phase=`active-workspace`，mode=`first-paint`），MUST NOT 在 UI 尚未 first-paint hydrated 时直接对 active workspace 调度 `thread/list full-catalog hydration`。first-paint 完成后 MUST NOT 仅因 settle 自动调度 full-catalog；完整历史由用户显式需求加载。
 
 #### Scenario: active workspace cold start records first-paint task
 
 - **WHEN** 用户冷启桌面客户端且存在 active workspace
 - **THEN** startupTrace MUST 包含 `traceLabel` 为 `thread/list first-paint hydration`（或等价 id `thread-list:first-paint:<workspaceId>`）的 task 生命周期
 - **AND** 该 task 的 `phase` MUST 为 `active-workspace`
-- **AND** 该 task MUST 在同 workspace 的自动 full-catalog task 之前 `started`
+- **AND** 若用户后续显式触发同 workspace 的 full-catalog，该 task MUST 更早 `started`
 
 #### Scenario: full-catalog is not the first list kind for active workspace
 
@@ -17,12 +17,30 @@
 - **THEN** 系统 MUST NOT 以 `kind=full-catalog` 作为该 workspace 冷启第一次 ensure 的 kind
 - **AND** MUST NOT 仅因 projection-owner 或旁路 ensure 而跳过 first-paint
 
-#### Scenario: automatic full-catalog runs at most once after first-paint idle
+#### Scenario: first-paint settle does not automatically enqueue full-catalog
 
 - **WHEN** active workspace first-paint 已完成
-- **AND** 用户未 force-enter、未 force refresh
-- **THEN** 系统 MUST 至多通过 idle 调度一次自动 `full-catalog` ensure
-- **AND** 该调度 MUST 尊重 `scheduleWhenBrowserIdle`（或等价）最小延迟，MUST NOT 在 first-paint finally 内同步立刻 full 扫
+- **AND** 用户未触发 Load older、Session Management 或 force refresh
+- **THEN** 系统 MUST NOT 仅因 first-paint settle 自动调度 `full-catalog`
+- **AND** 完整历史 MUST 由上述显式需求路径按各自 page/window budget 获取
+
+### Requirement: Codex pagination MUST bound underlying scan work
+
+Codex unified listing 的 `cursor + limit` MUST 约束 local JSONL candidate scan 与 live thread page fetch 的真实工作量，MUST NOT 先用 `usize::MAX` 或等价方式完整枚举后再 slice。实现 MAY 使用小幅 lookahead 证明 next page，但该 lookahead MUST 为固定有界常量。
+
+#### Scenario: first page does not parse the full Codex archive
+
+- **WHEN** Sidebar 请求 `cursor=null, limit=5`
+- **THEN** local candidate target MUST 基于 `5 + next-page proof + bounded lookahead`
+- **AND** candidates MUST 按 recent-first 顺序处理并在达到 unique-session target 后停止
+- **AND** 单个 local JSONL preview MUST 使用固定 byte budget，Desktop 与 daemon fallback MUST 遵循同一 preview contract
+- **AND** live list MUST NOT 为该请求遍历到全局 5000-thread cap
+
+#### Scenario: later cursor expands only the required bounded prefix
+
+- **WHEN** Sidebar 请求 offset cursor O 与 limit L
+- **THEN** scan target MUST 至少覆盖 `O + L` 与 bounded next-page proof
+- **AND** MUST NOT 因 O 非零退化为无界全目录扫描
 
 ### Requirement: startup-gate-ready MUST only reflect interactive readiness
 
@@ -38,12 +56,12 @@
 
 - **WHEN** active workspace first-paint hydration 成功 settle（completed 或等价 UI hydrated 发布）
 - **THEN** 系统 MAY stamp `startup-gate-ready` with reason `first-paint-complete`
-- **AND** 此时 full-catalog MUST 仍允许在后台继续或尚未开始
+- **AND** full-catalog MUST 保持未开始，除非已有明确用户需求触发
 
 #### Scenario: force-enter stamps interactive readiness without requiring full-catalog
 
 - **WHEN** 用户触发 startup force-enter
-- **THEN** 系统 MUST 取消 pending idle full-catalog 并阻止其重入（见 cooldown 要求）
+- **THEN** 系统 MUST 取消任何既有 startup-owned pending full-catalog 并阻止其重入（见 cooldown 要求）
 - **AND** 交互门控 MUST 可关闭
 - **AND** 系统 MUST NOT 要求 full-catalog 已完成
 

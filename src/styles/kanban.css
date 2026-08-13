@@ -389,6 +389,28 @@
   z-index: 3;
 }
 
+/* Windows 自绘窗口控制（—/▢/✕）绝对悬浮在窗口右上角。
+   Kanban 全屏顶栏不走 main-topbar / right-panel-toolbar 的避让，
+   右上角 PanelRight 会与窗口控件重叠；仅 Windows 为控件保留区让位。
+   顶栏高度对齐 --main-topbar-height，右侧按钮再吃 titlebar-toggle-offset，
+   与 .titlebar-toggle 同一垂直中线。 */
+.app.windows-desktop.kanban-active .kanban-board-header,
+.app.windows-desktop.kanban-active .kanban-projects-topbar {
+  box-sizing: border-box;
+  height: var(--main-topbar-height, 44px);
+  min-height: var(--main-topbar-height, 44px);
+  padding-top: 0;
+  padding-bottom: 0;
+  padding-right: calc(
+    24px + var(--titlebar-window-controls-width, 116px) +
+      var(--titlebar-toggle-side-gap, 12px)
+  );
+}
+
+.app.windows-desktop.kanban-active .kanban-board-header-right {
+  transform: translateY(var(--titlebar-toggle-offset, 0px));
+}
+
 .kanban-board-header > * {
   -webkit-app-region: no-drag;
 }

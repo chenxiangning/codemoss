@@ -1,8 +1,0 @@
-{"file": ".trellis/workflow.md", "reason": "Project workflow and conventions"}
-{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend development guide"}
-{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "Composer picker component and accessibility rules"}
-{"file": ".trellis/spec/frontend/hook-guidelines.md", "reason": "Provider catalog listener and async loading rules"}
-{"file": ".trellis/spec/frontend/state-management.md", "reason": "Transient picker and dialog request state boundaries"}
-{"file": ".trellis/spec/backend/provider-scoped-model-catalog.md", "reason": "Provider-scoped catalog contract"}
-{"file": ".trellis/spec/backend/native-provider-continuation-contract.md", "reason": "Continuation confirmation and idempotency contract"}
-{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "Reuse existing catalog and continuation flow"}

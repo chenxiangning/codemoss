@@ -12,7 +12,20 @@ const AGENT_PROMPT_ICON_LINE_REGEX =
   /^(?:agent\s*icon|selected\s*agent\s*icon|智能体图标|agent\s*icon\s*id)\s*[:：]\s*(.+)$/i;
 const TITLE_INJECTED_LINE_PREFIX_REGEX =
   /^\[(?:System|Session Spec Link|Spec Root Priority|Skill Prompt|Commons Prompt)\][^\n]*(?:\r?\n|$)/i;
-const PROJECT_MEMORY_BLOCK_REGEX = /^<project-memory\b[\s\S]*?<\/project-memory>\s*/i;
+// 与 conversationNormalization 对齐：legacy project-memory + 现网 project-memory-pack
+const PROJECT_MEMORY_BLOCK_REGEX =
+  /^<project-memory(?:-pack)?\b[\s\S]*?<\/project-memory(?:-pack)?>\s*/i;
+/** 未闭合/被 engine firstMessage 截断的注入包（侧栏标题污染源） */
+const PROJECT_MEMORY_OPEN_TAG_PREFIX_REGEX =
+  /^<project-memory(?:-pack)?\b/i;
+/**
+ * Grok CLI bootstrap 信封（user_info + rules 等）被截断进 firstMessage 时的
+ * 侧栏污染形态：`<user_info> OS Version: macos Shell...`
+ */
+const GROK_RUNTIME_CONTEXT_OPEN_TAG_PREFIX_REGEX =
+  /^<(?:user_info|rules|git_status|system-reminder|open_and_recently_viewed_files|agent_skills|mcp_servers|image_compression_notice)\b/i;
+const PROJECT_MEMORY_CLOSE_TAG_REGEX =
+  /<\/project-memory(?:-pack)?>/i;
 const PROJECT_MEMORY_LINE_PREFIX_REGEX =
   /^\[(?:已知问题|技术决策|项目上下文|对话记录|笔记|记忆)\]\s+/;
 const MODE_FALLBACK_PREFIX_REGEX =
@@ -110,6 +123,15 @@ export function stripInjectedProjectMemoryBlock(text: string) {
     normalized = trimmedLeading.replace(PROJECT_MEMORY_BLOCK_REGEX, "");
     changed = true;
     trimmedLeading = normalized.trimStart();
+  }
+
+  // engine firstMessage / nativeTitle 常截到 50~200 字，闭合标签丢失 → 正则匹配失败，
+  // 侧栏就会显示「<project-memory-pack s…」。未闭合时整段视为注入残片丢弃。
+  if (
+    PROJECT_MEMORY_OPEN_TAG_PREFIX_REGEX.test(trimmedLeading) &&
+    !PROJECT_MEMORY_CLOSE_TAG_REGEX.test(trimmedLeading)
+  ) {
+    return "";
   }
 
   const blocks = normalized.trimStart().split(MESSAGE_PARAGRAPH_BREAK_SPLIT_REGEX);
@@ -362,7 +384,12 @@ export function previewThreadName(text: string, fallback: string) {
   const extractedUserInput = extractLatestUserInputTextPreserveFormatting(strippedSharedSync);
   const strippedInjectedPrefix = stripInjectedPrefixLines(extractedUserInput);
   const collapsed = strippedInjectedPrefix.replace(/\s+/g, " ").trim();
-  if (!collapsed) {
+  // 二次闸：strip 后仍以注入包 / Grok bootstrap 开标签开头 → 不要截成侧栏污染名
+  if (
+    !collapsed ||
+    PROJECT_MEMORY_OPEN_TAG_PREFIX_REGEX.test(collapsed) ||
+    GROK_RUNTIME_CONTEXT_OPEN_TAG_PREFIX_REGEX.test(collapsed)
+  ) {
     return fallback;
   }
   const clipped = clipByChars(collapsed, MAX_DEFAULT_THREAD_TITLE_CHARS).trim();

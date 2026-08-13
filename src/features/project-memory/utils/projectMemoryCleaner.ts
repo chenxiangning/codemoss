@@ -115,9 +115,12 @@ export function cleanProjectMemoryRecordsForRequest(params: {
   }
 
   const conflicts = detectConflicts(params.records);
+  // 转接导语：Cleaned Context 服务用户当前请求，而非延续旧对话
+  const CLEANED_CONTEXT_BRIDGE =
+    "For the user's current request, these prior project facts may help:";
   const cleanedContextText =
     relevantFacts.length > 0
-      ? relevantFacts.map((fact) => `- ${fact}`).join("\n")
+      ? `${CLEANED_CONTEXT_BRIDGE}\n${relevantFacts.map((fact) => `- ${fact}`).join("\n")}`
       : "- No relevant facts found. Use source records only if the user explicitly asks about them.";
 
   return {

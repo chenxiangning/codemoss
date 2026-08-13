@@ -1,7 +1,0 @@
-{"file": ".trellis/workflow.md", "reason": "Project workflow and conventions"}
-{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend development guide"}
-{"file": "openspec/changes/add-multi-repository-global-git-actions/", "type": "directory", "reason": "OpenSpec behavior and implementation contract"}
-{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "Composer UI, i18n, accessibility"}
-{"file": ".trellis/spec/frontend/hook-guidelines.md", "reason": "Async orchestration and error handling"}
-{"file": ".trellis/spec/frontend/multi-repository-git-commit-workspace.md", "reason": "Explicit repository identity and scoped mutation"}
-{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "End-to-end prop and mutation flow"}

@@ -16,6 +16,7 @@ import {
   preloadViewerjs,
 } from "../../features/markdown/mermaidFullscreen";
 import { CodeBlockLanguageBadge } from "../presentation/codeBlockLanguageIcon";
+import { normalizeMermaidSource } from "../presentation/normalizeMermaidSource";
 
 type MermaidBlockProps = {
   value: string;
@@ -74,7 +75,10 @@ export default function MermaidBlock({
 
         // mermaid.render requires a unique id each call
         const id = `${idRef.current}-${Date.now()}`;
-        const { svg } = await mermaid.render(id, debouncedValue);
+        // Quote unsafe flowchart labels (parens / <br/>) so LLM diagrams parse.
+        // Source toggle / copy still use the original `value`.
+        const renderSource = normalizeMermaidSource(debouncedValue);
+        const { svg } = await mermaid.render(id, renderSource);
         if (!cancelled) {
           setRenderState({ status: "success", svg });
         }

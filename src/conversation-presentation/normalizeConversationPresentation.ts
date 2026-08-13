@@ -16,7 +16,10 @@ import {
   stripIntentCanvasContextPrompt,
 } from "../features/intent-canvas/utils/messageContext";
 import { NOTE_CARD_CONTEXT_SUMMARY_PREFIX } from "../features/note-cards/utils/noteCardContextInjection";
-import { MEMORY_CONTEXT_SUMMARY_PREFIX } from "../features/project-memory/utils/memoryMarkers";
+import {
+  MEMORY_CONTEXT_SUMMARY_PREFIX,
+  MEMORY_PICK_STATUS_PREFIX,
+} from "../features/project-memory/utils/memoryMarkers";
 import { parseProjectMemoryRetrievalPackPrefix } from "../features/project-memory/utils/projectMemoryRetrievalPack";
 import { extractCommandMessageDisplayText } from "../utils/commandMessageTags";
 import {
@@ -40,18 +43,70 @@ const NOTE_CARD_BLOCK_REGEX = /<note-card\b([^>]*)>([\s\S]*?)<\/note-card>/gi;
 const NOTE_CARD_CONTEXT_SUFFIX_REGEX =
   /(?:\r?\n){1,2}(<note-card-context>[\s\S]*<\/note-card-context>)\s*$/i;
 
+const MEMORY_PICK_RECORD_LINE_REGEX =
+  /^#(\d+)\s*\|\s*([^\s|]+)\s*\|\s*([^|]+?)(?:\s*\|\s*([^|]*?))?(?:\s*\|\s*([0-9.]+))?\s*$/;
+
+function parseMemoryPickPreviewRecordsFromText(preview: string) {
+  const records: Array<{
+    displayIndex: string;
+    index: string;
+    memoryId: string;
+    source: string;
+    title: string;
+    summary?: string;
+    score?: number;
+  }> = [];
+  for (const rawLine of preview.split(/\r?\n+/)) {
+    const line = rawLine.trim();
+    const match = MEMORY_PICK_RECORD_LINE_REGEX.exec(line);
+    if (!match) continue;
+    const displayIndex = `#${match[1]}`;
+    const memoryId = (match[2] ?? "").trim();
+    const title = (match[3] ?? "").trim() || memoryId;
+    const summary = (match[4] ?? "").trim();
+    const scoreRaw = (match[5] ?? "").trim();
+    const score = scoreRaw ? Number.parseFloat(scoreRaw) : undefined;
+    records.push({
+      displayIndex,
+      index: displayIndex,
+      memoryId,
+      source: "memory-pick",
+      title,
+      summary: summary || undefined,
+      score: Number.isFinite(score) ? score : undefined,
+    });
+  }
+  return records;
+}
+
 function buildMemoryPreviewContext(preview: string): ConversationPresentationContext | null {
   const normalizedPreview = preview.trim();
   if (!normalizedPreview) {
     return null;
   }
+  const pickRecords = parseMemoryPickPreviewRecordsFromText(normalizedPreview);
+  if (pickRecords.length > 0) {
+    const lines = pickRecords.map(
+      (record) => `${record.displayIndex} ${record.title}`.trim(),
+    );
+    return {
+      kind: "memory",
+      preview: lines.slice(0, 3).join("；"),
+      lines,
+      markdown: lines.join("\n"),
+      source: "memory-pick",
+      records: pickRecords,
+      packs: [],
+    };
+  }
   const lines = normalizedPreview
     .split(/[；\n]+/)
     .map((line) => line.trim())
-    .filter(Boolean);
+    .filter(Boolean)
+    .filter((line) => !line.startsWith("记忆挑选"));
   return {
     kind: "memory",
-    preview: normalizedPreview,
+    preview: lines.length > 0 ? lines.join("；") : normalizedPreview,
     lines: lines.length > 0 ? lines : [normalizedPreview],
     markdown: normalizedPreview,
     records: [],
@@ -146,8 +201,41 @@ function parseInjectedMemoryContext(text: string): {
   return null;
 }
 
+function parseMemoryPickEmptyStatusContext(
+  text: string,
+): ConversationPresentationContext | null {
+  const normalized = text.trim();
+  if (!normalized.startsWith(MEMORY_PICK_STATUS_PREFIX)) {
+    return null;
+  }
+  const body = normalized.slice(MEMORY_PICK_STATUS_PREFIX.length).trim();
+  const lines = body
+    .split(/\r?\n+/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  // reason \n title \n message
+  const reason = lines[0] ?? "no_match";
+  const title = lines[1] ?? "记忆参考";
+  const message = lines.slice(2).join(" ") || lines[1] || body;
+  return {
+    kind: "memory",
+    preview: message,
+    lines: [title, message],
+    markdown: message,
+    source: "memory-pick-empty",
+    records: [],
+    packs: [],
+    // reason 放 markdown 旁路字段不够；用 rawPayload 轻量携带
+    rawPayload: reason,
+  };
+}
+
 function parseAssistantMemoryContext(text: string): ConversationPresentationContext | null {
   const normalized = text.trim();
+  const emptyStatus = parseMemoryPickEmptyStatusContext(normalized);
+  if (emptyStatus) {
+    return emptyStatus;
+  }
   if (!normalized.startsWith(MEMORY_CONTEXT_SUMMARY_PREFIX)) {
     return null;
   }

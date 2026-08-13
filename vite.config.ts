@@ -91,9 +91,67 @@ export default defineConfig(({ command }) => ({
     __APP_VERSION__: JSON.stringify(packageJson.version),
   },
   build: {
+    // Cold-start: optional heavy vendors must not be force-preloaded with AppShell.
+    // They remain available via normal dynamic import when a feature actually needs them.
+    modulePreload: {
+      resolveDependencies(_filename, deps) {
+        const blockedPrefixes = [
+          "vendor-mermaid",
+          "vendor-markdown",
+          "vendor-codemirror",
+          "vendor-docs",
+          "vendor-ui-heavy",
+        ];
+        const blockedEntryPrefixes = [
+          "AboutView-",
+          "Detached",
+          "ClientDocumentation",
+          "SpecHub-",
+          "FileViewPanel-",
+          "BrowserDock-",
+          "treemap-",
+          "mermaidExport-",
+          "normalizeMermaidSource-",
+        ];
+        return deps.filter((dep) => {
+          const base = dep.split(/[\\/]/).pop() ?? dep;
+          if (blockedPrefixes.some((prefix) => base.startsWith(prefix))) {
+            return false;
+          }
+          if (blockedEntryPrefixes.some((prefix) => base.startsWith(prefix))) {
+            return false;
+          }
+          if (base.includes("mermaid") || base.includes("markdown-")) {
+            return false;
+          }
+          return true;
+        });
+      },
+    },
     rollupOptions: {
       output: {
         manualChunks(id) {
+          const normalizedId = id.replace(/\\/g, "/");
+          // Cold-start P0-1: force perfBaseline off mermaid/treemap shared facades.
+          // Without this, Rollup co-chunks isPerfBaselineEnabled with TreemapModule
+          // and bootstrapApp statically pays ~656KB gzip vendor-mermaid.
+          if (normalizedId.includes("/src/services/perfBaseline/")) {
+            return "perf-baseline";
+          }
+          // featureStyleLoaders is shared by AppShell; Rollup previously co-chunked
+          // it with mermaid diagram facades, reintroducing a static mermaid edge.
+          if (
+            normalizedId.includes("/src/styles/featureStyleLoaders") ||
+            normalizedId.includes("/src/styles/featureStyle")
+          ) {
+            return "feature-style-loaders";
+          }
+          // saveMermaidPngFile is a tiny Tauri invoke wrapper. If left for Rollup's
+          // shared merger it co-lands with mermaid diagram facades; the services/tauri
+          // barrel then statically pulls vendor-mermaid into AppShell.
+          if (normalizedId.includes("/src/services/tauri/mermaidExport")) {
+            return "mermaid-export";
+          }
           // Vite/Rollup 的共享 helper 虚拟模块不带 node_modules 路径，默认并进
           // 「首个使用者」chunk；一旦落进 vendor-mermaid / vendor-docs，入口会静态
           // 依赖这些重 chunk，把懒加载全部击穿。钉进常驻小 chunk（不要用 \0 全量
@@ -101,6 +159,12 @@ export default defineConfig(({ command }) => ({
           if (id === "\0vite/preload-helper.js" || id === "\0commonjsHelpers.js")
             return "vendor-shared";
           if (!id.includes("node_modules")) return;
+          // Radix compose-refs is tiny and used by shell UI; if left for Rollup's
+          // shared-chunk merger it co-lands with mermaid diagram facades and the
+          // whole vendor-mermaid becomes a static edge of app-shell (P0-1 follow-up).
+          if (normalizedId.includes("/@radix-ui/react-compose-refs/")) {
+            return "vendor-compose-refs";
+          }
           if (id.includes("/react-dom/") || /\/react\//.test(id) || id.includes("scheduler"))
             return "vendor-react";
           if (id.includes("@codemirror/") || id.includes("@lezer/")) return "vendor-codemirror";

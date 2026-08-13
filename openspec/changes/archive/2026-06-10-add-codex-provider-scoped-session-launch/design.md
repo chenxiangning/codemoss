@@ -177,8 +177,8 @@ This reflects the current code: `start_thread` does not carry selected model, la
 The implementation contract is also captured in:
 
 ```text
-.trellis/spec/backend/codex-provider-scoped-runtime.md
-.trellis/spec/frontend/codex-provider-session-ui.md
+dev-guidelines/backend/codex-provider-scoped-runtime.md
+dev-guidelines/frontend/codex-provider-session-ui.md
 ```
 
 These code-specs are the operational checklist for future edits. OpenSpec defines product behavior; Trellis code-spec defines current executable signatures, payload fields, validation matrices, and test points.

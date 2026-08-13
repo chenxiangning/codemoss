@@ -1,5 +1,0 @@
-{"file": ".claude/commands/trellis/finish-work.md", "reason": "Finish work checklist"}
-{"file": ".claude/commands/trellis/check.md", "reason": "Code quality check spec"}
-{"file": "openspec/changes/archive/2026-07-17-unify-git-diff-file-context-menu-actions/tasks.md", "reason": "Archived acceptance and verification checklist"}
-{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "Git file row and accessibility contract"}
-{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Frontend quality gates"}

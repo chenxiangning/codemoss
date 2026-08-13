@@ -110,7 +110,7 @@ Codex tests 必须继续跑。任何为了 Claude/Gemini 泛化而改变 Codex s
 
 - 删除或收窄 loader/reducer 中不再需要的 duplicate helper。
 - 确认 `MessagesRows` 不新增三引擎分叉组件。
-- 更新 `.trellis/spec/frontend` 中 conversation curtain / streaming profile 规则。
+- 更新 `dev-guidelines/frontend` 中 conversation curtain / streaming profile 规则。
 
 ## Verification
 

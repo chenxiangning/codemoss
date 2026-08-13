@@ -402,7 +402,7 @@ describe("useGlobalRuntimeNoticeDock", () => {
     expect(result.current.notices).toEqual([]);
   });
 
-  it("mirrors startup trace events but exposes only failed events to the dock", async () => {
+  it("mirrors only abnormal startup trace events into the notice channel", async () => {
     const { result } = renderHook(() =>
       useGlobalRuntimeNoticeDock([
         {
@@ -466,19 +466,10 @@ describe("useGlobalRuntimeNoticeDock", () => {
       }).catch(() => undefined);
     });
 
-    expect(getGlobalRuntimeNoticesSnapshot()).toEqual(
+    const mirroredNotices = getGlobalRuntimeNoticesSnapshot();
+    expect(mirroredNotices).toHaveLength(3);
+    expect(mirroredNotices).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({
-          category: "diagnostic",
-          messageKey: "runtimeNotice.startup.taskStarted",
-          messageParams: {
-            phase: "active-workspace",
-            task: "Load active workspace threads",
-            workspace: "Moss X",
-            durationMs: null,
-            reason: null,
-          },
-        }),
         expect.objectContaining({
           severity: "warning",
           messageKey: "runtimeNotice.startup.taskDegraded",
@@ -491,11 +482,19 @@ describe("useGlobalRuntimeNoticeDock", () => {
           },
         }),
         expect.objectContaining({
-          category: "bootstrap",
-          messageKey: "runtimeNotice.startup.activeWorkspaceReady",
+          severity: "error",
+          messageKey: "runtimeNotice.startup.taskFailed",
+          messageParams: {
+            phase: "active-workspace",
+            task: "Load active workspace threads",
+            workspace: "Moss X",
+            durationMs: 46,
+            reason: "failure",
+          },
         }),
         expect.objectContaining({
-          messageKey: "runtimeNotice.startup.commandCompleted",
+          severity: "error",
+          messageKey: "runtimeNotice.startup.commandFailed",
           messageParams: {
             command: "list_threads",
             workspace: "Moss X",
@@ -531,7 +530,7 @@ describe("useGlobalRuntimeNoticeDock", () => {
     );
   });
 
-  it("deduplicates repeated successful startup command notices in a short time bucket", async () => {
+  it("does not mirror repeated successful startup commands", async () => {
     const { result } = renderHook(() =>
       useGlobalRuntimeNoticeDock([
         {
@@ -556,21 +555,11 @@ describe("useGlobalRuntimeNoticeDock", () => {
     const commandNotices = getGlobalRuntimeNoticesSnapshot().filter(
       (notice) => notice.messageKey === "runtimeNotice.startup.commandCompleted",
     );
-    expect(commandNotices).toHaveLength(1);
-    expect(commandNotices[0]).toEqual(
-      expect.objectContaining({
-        repeatCount: 2,
-        messageParams: {
-          command: "get_git_status",
-          workspace: "Git Repo",
-          durationMs: 0,
-        },
-      }),
-    );
+    expect(commandNotices).toEqual([]);
     expect(result.current.notices).toEqual([]);
   });
 
-  it("groups repeated successful startup commands by project without merging unrelated logs", async () => {
+  it("keeps successful startup commands out of notices across projects", async () => {
     const { result } = renderHook(() =>
       useGlobalRuntimeNoticeDock([
         {
@@ -604,48 +593,11 @@ describe("useGlobalRuntimeNoticeDock", () => {
     const commandNotices = getGlobalRuntimeNoticesSnapshot().filter(
       (notice) => notice.messageKey === "runtimeNotice.startup.commandCompleted",
     );
-    expect(commandNotices).toHaveLength(3);
-    expect(commandNotices).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          repeatCount: 2,
-          messageParams: {
-            command: "list_threads",
-            workspace: "Alpha",
-            durationMs: 0,
-          },
-        }),
-        expect.objectContaining({
-          repeatCount: 1,
-          messageParams: {
-            command: "list_threads",
-            workspace: "Beta",
-            durationMs: 0,
-          },
-        }),
-        expect.objectContaining({
-          repeatCount: 1,
-          messageParams: {
-            command: "list_thread_titles",
-            workspace: "Alpha",
-            durationMs: 0,
-          },
-        }),
-      ]),
-    );
-    expect(commandNotices[commandNotices.length - 1]).toEqual(
-      expect.objectContaining({
-        repeatCount: 2,
-        messageParams: expect.objectContaining({
-          command: "list_threads",
-          workspace: "Alpha",
-        }),
-      }),
-    );
+    expect(commandNotices).toEqual([]);
     expect(result.current.notices).toEqual([]);
   });
 
-  it("does not mirror old startup trace events again after remount", async () => {
+  it("does not mirror successful startup trace events before or after remount", async () => {
     const workspace = {
       id: "ws-alpha",
       name: "Alpha",
@@ -667,7 +619,7 @@ describe("useGlobalRuntimeNoticeDock", () => {
       getGlobalRuntimeNoticesSnapshot().filter(
         (notice) => notice.messageKey === "runtimeNotice.startup.commandCompleted",
       ),
-    ).toHaveLength(1);
+    ).toHaveLength(0);
 
     firstRender.unmount();
     renderHook(() => useGlobalRuntimeNoticeDock([workspace]));
@@ -680,7 +632,7 @@ describe("useGlobalRuntimeNoticeDock", () => {
       getGlobalRuntimeNoticesSnapshot().filter(
         (notice) => notice.messageKey === "runtimeNotice.startup.commandCompleted",
       ),
-    ).toHaveLength(1);
+    ).toHaveLength(0);
 
     await act(async () => {
       await traceStartupCommand("list_thread_titles", { workspaceId: "ws-alpha" }, async () => "ok");
@@ -690,10 +642,10 @@ describe("useGlobalRuntimeNoticeDock", () => {
       getGlobalRuntimeNoticesSnapshot().filter(
         (notice) => notice.messageKey === "runtimeNotice.startup.commandCompleted",
       ),
-    ).toHaveLength(2);
+    ).toHaveLength(0);
   });
 
-  it("does not merge failed startup commands into successful project groups", async () => {
+  it("mirrors a failed command without retaining surrounding successful chatter", async () => {
     const { result } = renderHook(() =>
       useGlobalRuntimeNoticeDock([
         {
@@ -724,17 +676,7 @@ describe("useGlobalRuntimeNoticeDock", () => {
     const failedNotices = result.current.notices.filter(
       (notice) => notice.messageKey === "runtimeNotice.startup.commandFailed",
     );
-    expect(successfulNotices).toHaveLength(1);
-    expect(successfulNotices[0]).toEqual(
-      expect.objectContaining({
-        repeatCount: 2,
-        messageParams: {
-          command: "list_threads",
-          workspace: "Alpha",
-          durationMs: 0,
-        },
-      }),
-    );
+    expect(successfulNotices).toEqual([]);
     expect(failedNotices).toHaveLength(1);
     expect(failedNotices[0]).toEqual(
       expect.objectContaining({

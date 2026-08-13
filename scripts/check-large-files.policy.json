@@ -29,7 +29,9 @@
       "match": {
         "exactPaths": [
           "src/services/tauri.ts",
-          "src/app-shell.tsx"
+          "src/app-shell.tsx",
+          "src/app-shell/assembly/useAppShellRootComposition.ts",
+          "src/app-shell/sections/layoutNodes/useAppShellLayoutNodesSection.tsx"
         ],
         "prefixes": [
           "src-tauri/src/backend/",
@@ -37,7 +39,8 @@
           "src-tauri/src/git/",
           "src-tauri/src/runtime/",
           "src-tauri/src/codex/",
-          "src-tauri/src/computer_use/"
+          "src-tauri/src/computer_use/",
+          "src/app-shell/"
         ]
       }
     },

@@ -6,6 +6,7 @@ import type {
 } from "../../../types";
 import { getCollaborationModes } from "../../../services/tauri";
 import { formatCollaborationModeLabel } from "../../../utils/collaborationModes";
+import { scheduleCatalogIdlePrewarm } from "../../startup-orchestration/utils/scheduleCatalogIdlePrewarm";
 import { startupOrchestrator } from "../../startup-orchestration/utils/startupOrchestrator";
 
 type UseCollaborationModesOptions = {
@@ -173,6 +174,7 @@ export function useCollaborationModes({
       lastFetchedWorkspaceId.current = null;
       return;
     }
+    // P1-3: no active workspace → do not prewarm collaboration catalog.
     if (!workspaceId || !isConnected) {
       setModes([]);
       lastFetchedWorkspaceId.current = null;
@@ -182,7 +184,15 @@ export function useCollaborationModes({
     if (alreadyFetchedForWorkspace) {
       return;
     }
-    refreshModes("idle-prewarm");
+    // P1-4: defer past StartupGate so gate task board stays clean.
+    return scheduleCatalogIdlePrewarm({
+      run: () => {
+        if (lastFetchedWorkspaceId.current === workspaceId) {
+          return;
+        }
+        void refreshModes("idle-prewarm");
+      },
+    });
   }, [enabled, isConnected, modes.length, refreshModes, workspaceId]);
 
   return {

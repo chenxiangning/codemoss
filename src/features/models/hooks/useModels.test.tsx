@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
-import { act, renderHook, waitFor } from "@testing-library/react";
+import { StrictMode, type PropsWithChildren } from "react";
+import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { WorkspaceInfo } from "../../../types";
 import { getConfigModel, getModelList } from "../../../services/tauri";
@@ -47,7 +48,9 @@ describe("useModels", () => {
     window.localStorage.clear();
   });
 
-  afterEach(() => {
+  afterEach(async () => {
+    cleanup();
+    await Promise.resolve();
     vi.clearAllMocks();
     window.localStorage.clear();
   });
@@ -674,6 +677,32 @@ describe("useModels", () => {
 
     expect(getModelList).toHaveBeenCalledTimes(1);
     expect(result.current.models.length).toBeGreaterThan(0);
+  });
+
+  it("keeps the initial catalog request through StrictMode effect replay", async () => {
+    vi.mocked(getModelList).mockResolvedValue({
+      result: { data: [] },
+    });
+    vi.mocked(getConfigModel).mockResolvedValue(null);
+    const wrapper = ({ children }: PropsWithChildren) => (
+      <StrictMode>{children}</StrictMode>
+    );
+
+    const { result } = renderHook(
+      () =>
+        useModels({
+          activeWorkspace: workspace,
+          preferredSelectionReady: true,
+        }),
+      { wrapper },
+    );
+
+    await waitFor(() => {
+      expect(result.current.modelsReady).toBe(true);
+    });
+
+    expect(getModelList).toHaveBeenCalledTimes(1);
+    expect(getConfigModel).toHaveBeenCalledTimes(1);
   });
 
   it("does not repeat active workspace refresh when model/list fails without config fallback", async () => {

@@ -605,7 +605,7 @@ pub fn short_text(raw: &str, max_chars: usize) -> String {
 }
 
 // Cross-layer contract SSOT:
-// `.trellis/spec/multi-agent/contracts.md` + `openspec/specs/multi-agent-orchestration/spec.md`
+// `dev-guidelines/multi-agent/contracts.md` + `openspec/specs/multi-agent-orchestration/spec.md`
 /// 阶段行短摘要（chip / shortOutcome）
 pub const STAGE_SHORT_OUTCOME_CHARS: usize = 160;
 /// 末段/汇总用正文：保留完整阶段输出，仅作极端安全阀

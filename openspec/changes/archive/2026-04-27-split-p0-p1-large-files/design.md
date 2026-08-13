@@ -134,7 +134,7 @@ First-wave candidates 是多个互斥小批次，不是一个混合大包：
   Mitigation: 先抽 tests / fixtures / pure helpers，再抽 platform / diagnostics，避免一次重排 command surface。
 
 - [Risk] 分批拆分导致短期文件数量增加，导航复杂度上升。  
-  Mitigation: 每个目录内用 domain-oriented 命名，保留原 facade 作为入口，并在后续 `.trellis/spec` 中沉淀目录规则。
+  Mitigation: 每个目录内用 domain-oriented 命名，保留原 facade 作为入口，并在后续 `dev-guidelines` 中沉淀目录规则。
 
 - [Risk] 行数下降不足以低于 warn 阈值。  
   Mitigation: 对每批记录 before/after/headroom；若 P0 仍未低于 warn，必须列下一批延续任务。

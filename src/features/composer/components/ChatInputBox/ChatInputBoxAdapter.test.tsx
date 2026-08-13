@@ -23,6 +23,7 @@ const mockState = vi.hoisted(() => ({
   projectMemoryList: vi.fn(),
   noteCardList: vi.fn(),
   appendComposerRenderBudgetDiagnostic: vi.fn(),
+  requestCustomPromptsRefresh: vi.fn(),
 }));
 
 vi.mock('./ChatInputBox', async () => {
@@ -71,6 +72,10 @@ vi.mock('../../../../services/rendererDiagnostics', () => ({
   appendComposerRenderBudgetDiagnostic: mockState.appendComposerRenderBudgetDiagnostic,
 }));
 
+vi.mock('../../../prompts/promptEvents', () => ({
+  requestCustomPromptsRefresh: mockState.requestCustomPromptsRefresh,
+}));
+
 import { ChatInputBoxAdapter } from './ChatInputBoxAdapter';
 
 function renderAdapter(
@@ -98,6 +103,8 @@ describe('ChatInputBoxAdapter toggle bridge', () => {
 
   beforeEach(() => {
     mockState.latestProps = null;
+    mockState.requestCustomPromptsRefresh.mockReset();
+    mockState.requestCustomPromptsRefresh.mockResolvedValue([]);
     mockState.renderCount = 0;
     mockState.getClaudeProviders.mockReset().mockResolvedValue([
       {
@@ -1829,6 +1836,47 @@ describe('ChatInputBoxAdapter toggle bridge', () => {
       expect.objectContaining({
         id: '__create_new__',
       }),
+    ]);
+    // 非空内存不触发 revalidate
+    expect(mockState.requestCustomPromptsRefresh).not.toHaveBeenCalled();
+  });
+
+  it('revalidates prompts on bang empty state and uses refreshed list', async () => {
+    mockState.requestCustomPromptsRefresh.mockResolvedValue([
+      {
+        path: '/tmp/workspace/.ccgui/prompts/review.md',
+        name: 'review',
+        content: '请审查这段代码',
+        description: '代码评审',
+        argumentHint: undefined,
+        scope: 'workspace',
+      },
+    ]);
+
+    renderAdapter({
+      prompts: [],
+      workspaceId: 'ws-1',
+    });
+
+    await waitFor(() => expect(mockState.latestProps).toBeTruthy());
+
+    const latest = mockState.latestProps as {
+      promptCompletionProvider?: (
+        query: string,
+        signal: AbortSignal,
+      ) => Promise<Array<{ name: string; id: string }>>;
+    };
+
+    const results = await latest.promptCompletionProvider?.('', new AbortController().signal);
+
+    expect(mockState.requestCustomPromptsRefresh).toHaveBeenCalledWith(
+      'ws-1',
+      'on-demand',
+      { skipIfAuthoritative: true },
+    );
+    expect(results).toEqual([
+      expect.objectContaining({ name: 'review' }),
+      expect.objectContaining({ id: '__create_new__' }),
     ]);
   });
 

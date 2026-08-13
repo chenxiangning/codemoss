@@ -17,6 +17,7 @@ import {
   loadSharedProjection as loadSharedProjectionService,
   loadSharedSession as loadSharedSessionService,
 } from "../../shared-session/services/sharedSessions";
+import type { NormalizedHistorySnapshot } from "../contracts/conversationCurtainContracts";
 import type { HistoryLoadingProgressListener } from "../utils/historyLoadingProgress";
 
 export function createThreadHistoryLoaderForThread({
@@ -25,12 +26,21 @@ export function createThreadHistoryLoaderForThread({
   workspacePath,
   preferLocalCodexHistory,
   onHistoryProgress,
+  projectionTimeoutMs,
+  onSharedProjectionMerged,
 }: {
   targetThreadId: string;
   workspaceId: string;
   workspacePath: string | null;
   preferLocalCodexHistory: boolean;
   onHistoryProgress?: HistoryLoadingProgressListener;
+  /** Shared projection soft-timeout (ms); see sharedHistoryLoader. */
+  projectionTimeoutMs?: number;
+  /**
+   * Shared only: projection finished after Phase-A V0 returned (soft-timeout path).
+   * Caller applies with resume-generation / live-turn guards.
+   */
+  onSharedProjectionMerged?: (snapshot: NormalizedHistorySnapshot) => void;
 }) {
   if (targetThreadId.startsWith("shared:")) {
     return createSharedHistoryLoader({
@@ -38,6 +48,8 @@ export function createThreadHistoryLoaderForThread({
       loadSharedSession: loadSharedSessionService,
       loadSharedProjection: loadSharedProjectionService,
       onProgress: onHistoryProgress,
+      projectionTimeoutMs,
+      onProjectionMerged: onSharedProjectionMerged,
     });
   }
   if (targetThreadId.startsWith("claude:")) {

@@ -13,16 +13,31 @@
 //!   - `usage.record` — `{usage: {inputOther, output, inputCacheRead, inputCacheCreation}}`
 //!   Other types (`metadata`, `config.update`, `llm.request`, `llm.tools_snapshot`,
 //!   `tools.set_active_tools`, `step.begin`, `step.end`, ...) are skipped.
+//!
+//! Performance (list / load):
+//! - Sidebar list prefers `state.json` title / lastPrompt and only streams
+//!   `wire.jsonl` when those are missing (never full-read multi-MB wire for titles).
+//! - Session load streams wire line-by-line with large-payload redaction and tool
+//!   output budgets before returning to the UI.
 
 use chrono::DateTime;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::borrow::Cow;
+use std::io::{BufRead, BufReader as StdBufReader};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 use tokio::fs;
+use tokio::io::{AsyncBufReadExt, BufReader as AsyncBufReader};
 use tokio::time::timeout;
 
 const LOCAL_SESSION_SCAN_TIMEOUT: Duration = Duration::from_secs(60);
+const KIMI_LARGE_LINE_BYTE_BUDGET: usize = 512 * 1024;
+const KIMI_STRING_FIELD_BYTE_BUDGET: usize = 16 * 1024;
+const KIMI_TEXT_FIELD_BYTE_BUDGET: usize = 64 * 1024;
+const KIMI_TOOL_OUTPUT_CHAR_BUDGET: usize = 48 * 1024;
+const KIMI_TOOL_INPUT_JSON_BYTE_BUDGET: usize = 32 * 1024;
+const KIMI_OMITTED_PAYLOAD_SENTINEL: &str = "__ccgui_omitted_large_kimi_payload__";
 
 fn normalize_session_id(session_id: &str) -> Result<String, String> {
     let normalized = session_id.trim();
@@ -272,6 +287,215 @@ fn extract_input_text(input: Option<&Value>) -> String {
     }
 }
 
+fn find_json_string_end(input: &str, value_start: usize) -> Option<usize> {
+    let bytes = input.as_bytes();
+    let mut cursor = value_start;
+    let mut escaped = false;
+    while cursor < bytes.len() {
+        let byte = bytes[cursor];
+        if escaped {
+            escaped = false;
+        } else if byte == b'\\' {
+            escaped = true;
+        } else if byte == b'"' {
+            return Some(cursor);
+        }
+        cursor += 1;
+    }
+    None
+}
+
+fn redact_json_string_field_values(
+    input: &str,
+    target_key: &str,
+    value_byte_budget: usize,
+    replacement: &str,
+) -> String {
+    let mut output = String::with_capacity(input.len().min(KIMI_LARGE_LINE_BYTE_BUDGET));
+    let mut index = 0;
+    let key_pattern = format!("\"{}\"", target_key);
+    while let Some(relative_key_start) = input[index..].find(&key_pattern) {
+        let key_start = index + relative_key_start;
+        output.push_str(&input[index..key_start + key_pattern.len()]);
+        let mut cursor = key_start + key_pattern.len();
+        while let Some(byte) = input.as_bytes().get(cursor) {
+            if byte.is_ascii_whitespace() {
+                output.push(*byte as char);
+                cursor += 1;
+                continue;
+            }
+            break;
+        }
+        if input.as_bytes().get(cursor) != Some(&b':') {
+            index = cursor;
+            continue;
+        }
+        output.push(':');
+        cursor += 1;
+        while let Some(byte) = input.as_bytes().get(cursor) {
+            if byte.is_ascii_whitespace() {
+                output.push(*byte as char);
+                cursor += 1;
+                continue;
+            }
+            break;
+        }
+        if input.as_bytes().get(cursor) != Some(&b'"') {
+            index = cursor;
+            continue;
+        }
+        let value_start = cursor + 1;
+        let Some(value_end) = find_json_string_end(input, value_start) else {
+            index = cursor;
+            continue;
+        };
+        let value = &input[value_start..value_end];
+        if value.len() > value_byte_budget {
+            output.push('"');
+            output.push_str(replacement);
+            output.push('"');
+        } else {
+            output.push_str(&input[cursor..=value_end]);
+        }
+        index = value_end + 1;
+    }
+    output.push_str(&input[index..]);
+    output
+}
+
+fn prepare_kimi_wire_line_for_parse(line: &str) -> Cow<'_, str> {
+    let heavy = line.len() > KIMI_LARGE_LINE_BYTE_BUDGET
+        || line.contains("data:image")
+        || line.contains("base64");
+    if !heavy {
+        return Cow::Borrowed(line);
+    }
+    let mut prepared = line.to_string();
+    prepared = redact_json_string_field_values(
+        &prepared,
+        "output",
+        KIMI_TEXT_FIELD_BYTE_BUDGET,
+        KIMI_OMITTED_PAYLOAD_SENTINEL,
+    );
+    prepared = redact_json_string_field_values(
+        &prepared,
+        "text",
+        KIMI_TEXT_FIELD_BYTE_BUDGET,
+        KIMI_OMITTED_PAYLOAD_SENTINEL,
+    );
+    prepared = redact_json_string_field_values(
+        &prepared,
+        "think",
+        KIMI_TEXT_FIELD_BYTE_BUDGET,
+        KIMI_OMITTED_PAYLOAD_SENTINEL,
+    );
+    prepared = redact_json_string_field_values(
+        &prepared,
+        "data",
+        KIMI_STRING_FIELD_BYTE_BUDGET,
+        KIMI_OMITTED_PAYLOAD_SENTINEL,
+    );
+    Cow::Owned(prepared)
+}
+
+fn budget_tool_text(text: &str) -> String {
+    if text.chars().count() <= KIMI_TOOL_OUTPUT_CHAR_BUDGET {
+        return text.to_string();
+    }
+    let truncated: String = text.chars().take(KIMI_TOOL_OUTPUT_CHAR_BUDGET).collect();
+    format!(
+        "{}\n\n…[truncated {} chars for history load]",
+        truncated,
+        text.chars()
+            .count()
+            .saturating_sub(KIMI_TOOL_OUTPUT_CHAR_BUDGET)
+    )
+}
+
+fn budget_tool_input_value(value: Option<Value>) -> Option<Value> {
+    let Some(value) = value else {
+        return None;
+    };
+    match serde_json::to_string(&value) {
+        Ok(raw) if raw.len() <= KIMI_TOOL_INPUT_JSON_BYTE_BUDGET => Some(value),
+        Ok(raw) => {
+            let truncated: String = raw.chars().take(KIMI_TOOL_INPUT_JSON_BYTE_BUDGET).collect();
+            Some(Value::String(format!(
+                "{}…[truncated tool input]",
+                truncated
+            )))
+        }
+        Err(_) => Some(Value::String(KIMI_OMITTED_PAYLOAD_SENTINEL.to_string())),
+    }
+}
+
+fn first_prompt_preview_from_wire_line(line: &str) -> Option<String> {
+    if !(line.contains("\"type\":\"turn.prompt\"") || line.contains("\"type\": \"turn.prompt\""))
+    {
+        return None;
+    }
+    let prepared = prepare_kimi_wire_line_for_parse(line);
+    let Ok(value) = serde_json::from_str::<Value>(prepared.as_ref()) else {
+        return None;
+    };
+    if value.get("type").and_then(|v| v.as_str()) != Some("turn.prompt") {
+        return None;
+    }
+    let text = extract_input_text(value.get("input"));
+    let (display_text, image_paths) =
+        crate::engine::cli_image_input::split_kimi_prompt_for_display(&text);
+    let preview = if display_text.trim().is_empty() && !image_paths.is_empty() {
+        format!("[{} image(s)]", image_paths.len())
+    } else {
+        display_text
+    };
+    if preview.trim().is_empty() {
+        None
+    } else {
+        Some(preview)
+    }
+}
+
+/// Stream wire.jsonl for list: optional first prompt + prompt count. Stops early
+/// when only the first prompt is required.
+async fn scan_wire_for_list_summary(
+    wire_path: &Path,
+    need_first_prompt: bool,
+    need_prompt_count: bool,
+) -> (Option<String>, usize) {
+    if !need_first_prompt && !need_prompt_count {
+        return (None, 0);
+    }
+    let Ok(file) = fs::File::open(wire_path).await else {
+        return (None, 0);
+    };
+    let mut lines = AsyncBufReader::new(file).lines();
+    let mut first_prompt = None;
+    let mut message_count = 0usize;
+    loop {
+        let line = match lines.next_line().await {
+            Ok(Some(line)) => line,
+            Ok(None) => break,
+            Err(_) => break,
+        };
+        if !(line.contains("\"type\":\"turn.prompt\"")
+            || line.contains("\"type\": \"turn.prompt\""))
+        {
+            continue;
+        }
+        if need_prompt_count {
+            message_count += 1;
+        }
+        if need_first_prompt && first_prompt.is_none() {
+            first_prompt = first_prompt_preview_from_wire_line(&line);
+            if !need_prompt_count {
+                break;
+            }
+        }
+    }
+    (first_prompt, message_count)
+}
+
 /// Build a sidebar summary from one index entry. Best-effort: missing
 /// `state.json` or `wire.jsonl` degrade individual fields instead of
 /// dropping the session.
@@ -284,7 +508,6 @@ async fn build_summary_from_entry(entry: &KimiSessionIndexEntry) -> KimiSessionS
         .await
         .ok()
         .and_then(|raw| serde_json::from_str::<Value>(&raw).ok());
-    let wire_raw = fs::read_to_string(&wire_path).await.ok();
 
     let wire_mtime_millis = std::fs::metadata(&wire_path)
         .or_else(|_| std::fs::metadata(&state_path))
@@ -323,31 +546,12 @@ async fn build_summary_from_entry(entry: &KimiSessionIndexEntry) -> KimiSessionS
         .filter(|value| !value.is_empty())
         .map(|value| value.to_string());
 
-    let mut message_count = 0usize;
-    let mut first_prompt_text: Option<String> = None;
-    if let Some(wire) = wire_raw.as_deref() {
-        for line in wire.lines() {
-            if !line.contains("\"type\":\"turn.prompt\"") {
-                continue;
-            }
-            message_count += 1;
-            if first_prompt_text.is_none() {
-                if let Ok(value) = serde_json::from_str::<Value>(line) {
-                    let text = extract_input_text(value.get("input"));
-                    let (display_text, image_paths) =
-                        crate::engine::cli_image_input::split_kimi_prompt_for_display(&text);
-                    let preview = if display_text.trim().is_empty() && !image_paths.is_empty() {
-                        format!("[{} image(s)]", image_paths.len())
-                    } else {
-                        display_text
-                    };
-                    if !preview.trim().is_empty() {
-                        first_prompt_text = Some(preview);
-                    }
-                }
-            }
-        }
-    }
+    // Prefer state metadata; only stream wire when title/lastPrompt are missing.
+    // message_count from wire is optional for sidebar — skip full wire when we
+    // already have a display title to keep list O(sessions) light.
+    let need_wire_first = title.is_none() && last_prompt.is_none();
+    let (first_prompt_text, message_count) =
+        scan_wire_for_list_summary(&wire_path, need_wire_first, need_wire_first).await;
 
     let first_message = title
         .or(last_prompt)
@@ -379,241 +583,276 @@ fn accumulate_usage(target: &mut Option<i64>, delta: Option<i64>) {
     }
 }
 
+fn append_messages_from_wire_line(
+    line: &str,
+    messages: &mut Vec<KimiSessionMessage>,
+    usage: &mut KimiSessionUsage,
+    saw_usage: &mut bool,
+    counter: &mut usize,
+) {
+    let line = line.trim();
+    if line.is_empty() || !line.contains("\"type\"") {
+        return;
+    }
+    let prepared = prepare_kimi_wire_line_for_parse(line);
+    let Ok(value) = serde_json::from_str::<Value>(prepared.as_ref()) else {
+        return;
+    };
+    let line_type = value.get("type").and_then(|v| v.as_str()).unwrap_or("");
+    let timestamp = value
+        .get("time")
+        .and_then(|v| v.as_i64())
+        .and_then(millis_to_timestamp_text);
+
+    match line_type {
+        "turn.prompt" => {
+            let text = extract_input_text(value.get("input"));
+            if text.trim().is_empty() {
+                return;
+            }
+            // Wire prompt may include mossx CLI-only image injection. Split so
+            // the canvas shows user text + image thumbnails, never the
+            // ReadMediaFile instruction block.
+            let (display_text, image_paths) =
+                crate::engine::cli_image_input::split_kimi_prompt_for_display(&text);
+            if display_text.trim().is_empty() && image_paths.is_empty() {
+                return;
+            }
+            *counter += 1;
+            messages.push(KimiSessionMessage {
+                id: format!("kimi-user-{}", counter),
+                role: "user".to_string(),
+                text: display_text,
+                images: if image_paths.is_empty() {
+                    None
+                } else {
+                    Some(image_paths)
+                },
+                timestamp,
+                kind: "message".to_string(),
+                tool_type: None,
+                title: None,
+                tool_input: None,
+                tool_output: None,
+            });
+        }
+        "context.append_loop_event" => {
+            let Some(event) = value.get("event") else {
+                return;
+            };
+            match event.get("type").and_then(|v| v.as_str()) {
+                Some("content.part") => {
+                    let Some(part) = event.get("part") else {
+                        return;
+                    };
+                    let part_id = event
+                        .get("uuid")
+                        .and_then(|v| v.as_str())
+                        .map(|value| value.to_string())
+                        .unwrap_or_else(|| {
+                            *counter += 1;
+                            format!("kimi-part-{}", *counter)
+                        });
+                    match part.get("type").and_then(|v| v.as_str()) {
+                        Some("text") => {
+                            let text = part
+                                .get("text")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("")
+                                .to_string();
+                            if text.trim().is_empty() {
+                                return;
+                            }
+                            messages.push(KimiSessionMessage {
+                                id: part_id,
+                                role: "assistant".to_string(),
+                                text,
+                                images: None,
+                                timestamp,
+                                kind: "message".to_string(),
+                                tool_type: None,
+                                title: None,
+                                tool_input: None,
+                                tool_output: None,
+                            });
+                        }
+                        Some("think") => {
+                            let text = part
+                                .get("think")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("")
+                                .to_string();
+                            if text.trim().is_empty() {
+                                return;
+                            }
+                            messages.push(KimiSessionMessage {
+                                id: format!("{}-reasoning", part_id),
+                                role: "assistant".to_string(),
+                                text,
+                                images: None,
+                                timestamp,
+                                kind: "reasoning".to_string(),
+                                tool_type: None,
+                                title: None,
+                                tool_input: None,
+                                tool_output: None,
+                            });
+                        }
+                        _ => {}
+                    }
+                }
+                Some("tool.call") => {
+                    let call_id = event
+                        .get("toolCallId")
+                        .and_then(|v| v.as_str())
+                        .or_else(|| event.get("uuid").and_then(|v| v.as_str()))
+                        .map(|value| value.to_string())
+                        .unwrap_or_else(|| {
+                            *counter += 1;
+                            format!("kimi-tool-{}", *counter)
+                        });
+                    let tool_name = event
+                        .get("name")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("tool")
+                        .to_string();
+                    let input_value = budget_tool_input_value(event.get("args").cloned());
+                    let input_text = input_value
+                        .as_ref()
+                        .and_then(|v| serde_json::to_string_pretty(v).ok())
+                        .map(|text| budget_tool_text(&text))
+                        .unwrap_or_default();
+                    let title = event
+                        .get("description")
+                        .and_then(|v| v.as_str())
+                        .map(str::trim)
+                        .filter(|value| !value.is_empty())
+                        .map(|value| value.to_string())
+                        .unwrap_or_else(|| tool_name.clone());
+                    messages.push(KimiSessionMessage {
+                        id: call_id,
+                        role: "assistant".to_string(),
+                        text: input_text,
+                        images: None,
+                        timestamp,
+                        kind: "tool".to_string(),
+                        tool_type: Some(tool_name),
+                        title: Some(title),
+                        tool_input: input_value,
+                        tool_output: None,
+                    });
+                }
+                Some("tool.result") => {
+                    let call_id = event
+                        .get("toolCallId")
+                        .and_then(|v| v.as_str())
+                        .or_else(|| event.get("parentUuid").and_then(|v| v.as_str()))
+                        .map(|value| value.to_string())
+                        .unwrap_or_else(|| {
+                            *counter += 1;
+                            format!("kimi-tool-{}", *counter)
+                        });
+                    let result = event.get("result").cloned().unwrap_or(Value::Null);
+                    let output_text = result
+                        .get("output")
+                        .and_then(|v| v.as_str())
+                        .map(|value| value.to_string())
+                        .unwrap_or_else(|| serde_json::to_string(&result).unwrap_or_default());
+                    let output_text = budget_tool_text(&output_text);
+                    if output_text.trim().is_empty() {
+                        return;
+                    }
+                    let is_error = result
+                        .get("isError")
+                        .or_else(|| result.get("is_error"))
+                        .and_then(|v| v.as_bool())
+                        .unwrap_or(false);
+                    messages.push(KimiSessionMessage {
+                        id: format!("{}-result", call_id),
+                        role: "assistant".to_string(),
+                        text: output_text.clone(),
+                        images: None,
+                        timestamp,
+                        kind: "tool".to_string(),
+                        tool_type: Some(if is_error {
+                            "error".to_string()
+                        } else {
+                            "result".to_string()
+                        }),
+                        title: Some(if is_error {
+                            "Error".to_string()
+                        } else {
+                            "Result".to_string()
+                        }),
+                        tool_input: None,
+                        // Budgeted string only — never re-attach raw multi-MB result.
+                        tool_output: Some(Value::String(output_text)),
+                    });
+                }
+                _ => {}
+            }
+        }
+        "usage.record" => {
+            if let Some(record) = value.get("usage") {
+                *saw_usage = true;
+                accumulate_usage(
+                    &mut usage.input_tokens,
+                    record.get("inputOther").and_then(|v| v.as_i64()),
+                );
+                accumulate_usage(
+                    &mut usage.output_tokens,
+                    record.get("output").and_then(|v| v.as_i64()),
+                );
+                accumulate_usage(
+                    &mut usage.cache_read_input_tokens,
+                    record.get("inputCacheRead").and_then(|v| v.as_i64()),
+                );
+                accumulate_usage(
+                    &mut usage.cache_creation_input_tokens,
+                    record.get("inputCacheCreation").and_then(|v| v.as_i64()),
+                );
+            }
+        }
+        _ => {}
+    }
+}
+
 /// Parse `wire.jsonl` content into normalized messages + aggregated usage.
 fn parse_messages_from_wire(raw: &str) -> KimiSessionLoadResult {
     let mut messages: Vec<KimiSessionMessage> = Vec::new();
     let mut usage = KimiSessionUsage::default();
     let mut saw_usage = false;
     let mut counter = 0usize;
-
     for line in raw.lines() {
-        let line = line.trim();
-        if line.is_empty() || !line.contains("\"type\"") {
-            continue;
-        }
-        let Ok(value) = serde_json::from_str::<Value>(line) else {
-            continue;
-        };
-        let line_type = value.get("type").and_then(|v| v.as_str()).unwrap_or("");
-        let timestamp = value
-            .get("time")
-            .and_then(|v| v.as_i64())
-            .and_then(millis_to_timestamp_text);
-
-        match line_type {
-            "turn.prompt" => {
-                let text = extract_input_text(value.get("input"));
-                if text.trim().is_empty() {
-                    continue;
-                }
-                // Wire prompt may include mossx CLI-only image injection. Split so
-                // the canvas shows user text + image thumbnails, never the
-                // ReadMediaFile instruction block.
-                let (display_text, image_paths) =
-                    crate::engine::cli_image_input::split_kimi_prompt_for_display(&text);
-                if display_text.trim().is_empty() && image_paths.is_empty() {
-                    continue;
-                }
-                counter += 1;
-                messages.push(KimiSessionMessage {
-                    id: format!("kimi-user-{}", counter),
-                    role: "user".to_string(),
-                    text: display_text,
-                    images: if image_paths.is_empty() {
-                        None
-                    } else {
-                        Some(image_paths)
-                    },
-                    timestamp,
-                    kind: "message".to_string(),
-                    tool_type: None,
-                    title: None,
-                    tool_input: None,
-                    tool_output: None,
-                });
-            }
-            "context.append_loop_event" => {
-                let Some(event) = value.get("event") else {
-                    continue;
-                };
-                match event.get("type").and_then(|v| v.as_str()) {
-                    Some("content.part") => {
-                        let Some(part) = event.get("part") else {
-                            continue;
-                        };
-                        let part_id = event
-                            .get("uuid")
-                            .and_then(|v| v.as_str())
-                            .map(|value| value.to_string())
-                            .unwrap_or_else(|| {
-                                counter += 1;
-                                format!("kimi-part-{}", counter)
-                            });
-                        match part.get("type").and_then(|v| v.as_str()) {
-                            Some("text") => {
-                                let text = part
-                                    .get("text")
-                                    .and_then(|v| v.as_str())
-                                    .unwrap_or("")
-                                    .to_string();
-                                if text.trim().is_empty() {
-                                    continue;
-                                }
-                                messages.push(KimiSessionMessage {
-                                    id: part_id,
-                                    role: "assistant".to_string(),
-                                    text,
-                                    images: None,
-                                    timestamp,
-                                    kind: "message".to_string(),
-                                    tool_type: None,
-                                    title: None,
-                                    tool_input: None,
-                                    tool_output: None,
-                                });
-                            }
-                            Some("think") => {
-                                let text = part
-                                    .get("think")
-                                    .and_then(|v| v.as_str())
-                                    .unwrap_or("")
-                                    .to_string();
-                                if text.trim().is_empty() {
-                                    continue;
-                                }
-                                messages.push(KimiSessionMessage {
-                                    id: format!("{}-reasoning", part_id),
-                                    role: "assistant".to_string(),
-                                    text,
-                                    images: None,
-                                    timestamp,
-                                    kind: "reasoning".to_string(),
-                                    tool_type: None,
-                                    title: None,
-                                    tool_input: None,
-                                    tool_output: None,
-                                });
-                            }
-                            _ => {}
-                        }
-                    }
-                    Some("tool.call") => {
-                        let call_id = event
-                            .get("toolCallId")
-                            .and_then(|v| v.as_str())
-                            .or_else(|| event.get("uuid").and_then(|v| v.as_str()))
-                            .map(|value| value.to_string())
-                            .unwrap_or_else(|| {
-                                counter += 1;
-                                format!("kimi-tool-{}", counter)
-                            });
-                        let tool_name = event
-                            .get("name")
-                            .and_then(|v| v.as_str())
-                            .unwrap_or("tool")
-                            .to_string();
-                        let input_value = event.get("args").cloned();
-                        let input_text = input_value
-                            .as_ref()
-                            .and_then(|v| serde_json::to_string_pretty(v).ok())
-                            .unwrap_or_default();
-                        let title = event
-                            .get("description")
-                            .and_then(|v| v.as_str())
-                            .map(str::trim)
-                            .filter(|value| !value.is_empty())
-                            .map(|value| value.to_string())
-                            .unwrap_or_else(|| tool_name.clone());
-                        messages.push(KimiSessionMessage {
-                            id: call_id,
-                            role: "assistant".to_string(),
-                            text: input_text,
-                            images: None,
-                            timestamp,
-                            kind: "tool".to_string(),
-                            tool_type: Some(tool_name),
-                            title: Some(title),
-                            tool_input: input_value,
-                            tool_output: None,
-                        });
-                    }
-                    Some("tool.result") => {
-                        let call_id = event
-                            .get("toolCallId")
-                            .and_then(|v| v.as_str())
-                            .or_else(|| event.get("parentUuid").and_then(|v| v.as_str()))
-                            .map(|value| value.to_string())
-                            .unwrap_or_else(|| {
-                                counter += 1;
-                                format!("kimi-tool-{}", counter)
-                            });
-                        let result = event.get("result").cloned().unwrap_or(Value::Null);
-                        let output_text = result
-                            .get("output")
-                            .and_then(|v| v.as_str())
-                            .map(|value| value.to_string())
-                            .unwrap_or_else(|| serde_json::to_string(&result).unwrap_or_default());
-                        if output_text.trim().is_empty() {
-                            continue;
-                        }
-                        let is_error = result
-                            .get("isError")
-                            .or_else(|| result.get("is_error"))
-                            .and_then(|v| v.as_bool())
-                            .unwrap_or(false);
-                        messages.push(KimiSessionMessage {
-                            id: format!("{}-result", call_id),
-                            role: "assistant".to_string(),
-                            text: output_text,
-                            images: None,
-                            timestamp,
-                            kind: "tool".to_string(),
-                            tool_type: Some(if is_error {
-                                "error".to_string()
-                            } else {
-                                "result".to_string()
-                            }),
-                            title: Some(if is_error {
-                                "Error".to_string()
-                            } else {
-                                "Result".to_string()
-                            }),
-                            tool_input: None,
-                            tool_output: Some(result),
-                        });
-                    }
-                    _ => {}
-                }
-            }
-            "usage.record" => {
-                if let Some(record) = value.get("usage") {
-                    saw_usage = true;
-                    accumulate_usage(
-                        &mut usage.input_tokens,
-                        record.get("inputOther").and_then(|v| v.as_i64()),
-                    );
-                    accumulate_usage(
-                        &mut usage.output_tokens,
-                        record.get("output").and_then(|v| v.as_i64()),
-                    );
-                    accumulate_usage(
-                        &mut usage.cache_read_input_tokens,
-                        record.get("inputCacheRead").and_then(|v| v.as_i64()),
-                    );
-                    accumulate_usage(
-                        &mut usage.cache_creation_input_tokens,
-                        record.get("inputCacheCreation").and_then(|v| v.as_i64()),
-                    );
-                }
-            }
-            _ => {}
-        }
+        append_messages_from_wire_line(line, &mut messages, &mut usage, &mut saw_usage, &mut counter);
     }
-
     KimiSessionLoadResult {
         messages,
         usage: if saw_usage { Some(usage) } else { None },
     }
+}
+
+fn parse_messages_from_wire_reader<R: BufRead>(
+    reader: R,
+) -> Result<KimiSessionLoadResult, String> {
+    let mut messages: Vec<KimiSessionMessage> = Vec::new();
+    let mut usage = KimiSessionUsage::default();
+    let mut saw_usage = false;
+    let mut counter = 0usize;
+    for line in reader.lines() {
+        let line = line.map_err(|error| format!("Failed to read Kimi wire log: {}", error))?;
+        append_messages_from_wire_line(
+            &line,
+            &mut messages,
+            &mut usage,
+            &mut saw_usage,
+            &mut counter,
+        );
+    }
+    Ok(KimiSessionLoadResult {
+        messages,
+        usage: if saw_usage { Some(usage) } else { None },
+    })
 }
 
 async fn resolve_workspace_index_entries(
@@ -684,14 +923,16 @@ pub async fn load_kimi_session(
 ) -> Result<KimiSessionLoadResult, String> {
     let entry = find_workspace_index_entry(workspace_path, session_id, custom_home).await?;
     let wire_path = wire_log_path(Path::new(entry.session_dir.trim()));
-    let raw = fs::read_to_string(&wire_path).await.map_err(|error| {
+    // Stream line-by-line; never load multi-MB wire as one String.
+    let file = std::fs::File::open(&wire_path).map_err(|error| {
         format!(
             "Failed to read Kimi session wire log {}: {}",
             wire_path.display(),
             error
         )
     })?;
-    Ok(parse_messages_from_wire(&raw))
+    let reader = StdBufReader::new(file);
+    parse_messages_from_wire_reader(reader)
 }
 
 /// Delete a Kimi session: remove the session directory and drop its index lines.

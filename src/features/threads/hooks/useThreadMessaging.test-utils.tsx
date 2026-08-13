@@ -179,6 +179,7 @@ export function makeThreadMessagingHook(
     };
     claudeThinkingVisible?: boolean;
     onSharedDurableTurnCommitted?: ReturnType<typeof vi.fn>;
+    onInputMemoryCaptured?: ReturnType<typeof vi.fn>;
   } = {},
 ) {
   const activeThreadId =
@@ -254,6 +255,7 @@ export function makeThreadMessagingHook(
       runWithCreateSessionLoading: overrides.runWithCreateSessionLoading,
       onSharedDurableTurnCommitted:
         overrides.onSharedDurableTurnCommitted,
+      onInputMemoryCaptured: overrides.onInputMemoryCaptured,
     }),
   );
 

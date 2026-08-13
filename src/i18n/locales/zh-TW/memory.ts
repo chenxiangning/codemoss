@@ -160,6 +160,82 @@ const memory = {
     "offlineStep2": "/plugin install claude-mem",
     "offlineStep3": "在終端機中重新啟動 Claude Code",
     "offlineStep4": "重新啟動 ccgui"
+  },
+  "memoryPick": {
+    "regionLabel": "記憶參照挑選",
+    "role": "記憶參照",
+    "roleDesc": "傳送前 · 本地检索 · 尚未呼叫模型",
+    "roleDescReady": "傳送前 · 匹配完成 · 請選擇後傳送",
+    "match": {
+      "brand": "ccgui · 正在匹配專案記憶",
+      "sub": "本地检索中，有结果再选择注入；无结果将自动继续傳送…"
+    },
+    "listTitle": {
+      "always": "整輪自动 top(n) · 相關記憶（可改勾選數量）",
+      "pick": "本輪候選記憶"
+    },
+    "listHint": {
+      "empty": "暫無可用候選。可不帶記憶傳送，或關閉本 session 提示。",
+      "always": "整輪自动 · 按相關分預勾（預設 {{k}} 條，可增減）· 下次沿用相同數量",
+      "pick": "本輪挑選 · 預設全不選 · 点「詳情」看全文 · 僅本次傳送"
+    },
+    "empty": {
+      "timeout": "檢索逾時，未找到可用記憶。",
+      "error": "檢索失敗，未找到可用記憶。",
+      "none": "沒有匹配到專案記憶。"
+    },
+    "detail": "詳情",
+    "count": {
+      "empty": "候選 0 條",
+      "always": "整輪自动 · 已選 {{n}} · {{sec}}s 後自動確認 · 可改勾選",
+      "pick": "已選 {{n}} · 預設全不選"
+    },
+    "strategyTitle": "策略",
+    "mode": {
+      "pick": "本輪挑選記憶注入",
+      "pickSub": "僅本次 · 手動勾選",
+      "always": "整輪開啟自动top(n)記憶注入",
+      "alwaysSub": "本 session · 預設预勾 {{k}} 條（可改）"
+    },
+    "strategy": {
+      "kicker": "當前策略",
+      "alwaysTitle": "整輪開啟自动top(n)記憶注入（本 session）",
+      "pickTitle": "本輪挑選記憶注入",
+      "pick": {
+        "what": "做什麼",
+        "what1": "只影響這一次傳送，不會把記憶參照鎖成 session 常開。",
+        "what2": "左側列表預設全不選；你勾哪几條，确认后才注入模型。",
+        "what3": "可點每行詳情核對全文後再決定是否勾选。",
+        "what4": "勾选 0 條也可以：等於本輪不帶專案記憶傳送。",
+        "when": "什麼時候用",
+        "when1": "这次问题只和某几條约定 / 踩坑相關，怕自动 Top3 带噪声。",
+        "when2": "想先掃一眼再決定，而不是把排序結果全權交給算法。"
+      },
+      "always": {
+        "what": "做什麼",
+        "what1": "本 session 内，每輪按相關分預勾（預設 {{k}} 條）；你可增減勾选。",
+        "what2": "确认时记住勾选数量，下次傳送按相同数量预勾（仍可改）。",
+        "what3": "約 8s 後可自動確認；可隨時取消自動確認或手改列表。",
+        "when": "什麼時候用",
+        "when1": "連續多輪同一主題，不想每輪從零勾選。",
+        "when2": "信任检索排序，又希望能微调條数。"
+      }
+    },
+    "action": {
+      "confirmEmpty": "不帶記憶傳送",
+      "autoConfirming": "即將自動確認…",
+      "confirm": "確認並傳送",
+      "cancelAutoConfirm": "取消自動確認",
+      "autoConfirmHint": "客戶端將在 {{sec}}s 後自動確認 · 可取消",
+      "skip": "不選，直接傳送",
+      "dismiss": "本 session 不再提示 · 整輪關閉記憶注入"
+    },
+    "detailScore": "相關",
+    "detailSummary": "摘要",
+    "detailBody": "詳情",
+    "detailLoading": "載入中…",
+    "detailClose": "關閉",
+    "detailSelect": "勾选本條并關閉"
   }
 };
 

@@ -157,6 +157,26 @@ describe("ContextBar live canvas controls visibility", () => {
     expect(selectedToggle.disabled).toBe(true);
   });
 
+  it("hides the completion email toggle when the handler is omitted (shared CLI)", () => {
+    render(
+      <ContextBar
+        isLoading={false}
+        hasMessages
+      />,
+    );
+
+    expect(
+      screen.queryByRole("button", {
+        name: "composer.completionEmailAriaLabel",
+      }),
+    ).toBeNull();
+    expect(
+      screen.queryByRole("button", {
+        name: "composer.completionEmailSelected",
+      }),
+    ).toBeNull();
+  });
+
   it("renders Codex auto-compaction controls inside the context tooltip", () => {
     const onCodexAutoCompactionSettingsChange = vi.fn();
 

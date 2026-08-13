@@ -1,7 +1,11 @@
-import { useCallback, useRef } from "react";
+import { useCallback } from "react";
 import type { Dispatch } from "react";
 import type { RequestUserInputRequest } from "../../../types";
 import { requestUserInputIdentityKey } from "../../../utils/requestUserInputIdentity";
+import {
+  isUserInputRequestSettled,
+  markUserInputRequestSettled,
+} from "../../../utils/userInputSettlementTombstone";
 import type { ThreadAction } from "./useThreadsReducer";
 
 type UseThreadUserInputEventsOptions = {
@@ -17,17 +21,11 @@ export function useThreadUserInputEvents({
   dispatch,
   resolveClaudeContinuationThreadId,
 }: UseThreadUserInputEventsOptions) {
-  const completedRequestKeysRef = useRef<Set<string>>(new Set());
-
   return useCallback(
     (request: RequestUserInputRequest) => {
       const requestKey = requestUserInputIdentityKey(request);
       if (request.params.completed === true) {
-        completedRequestKeysRef.current.add(requestKey);
-        if (completedRequestKeysRef.current.size > 2048) {
-          completedRequestKeysRef.current.clear();
-          completedRequestKeysRef.current.add(requestKey);
-        }
+        markUserInputRequestSettled(requestKey);
         dispatch({
           type: "removeUserInputRequest",
           requestId: request.request_id,
@@ -36,7 +34,8 @@ export function useThreadUserInputEvents({
         });
         return;
       }
-      if (completedRequestKeysRef.current.has(requestKey)) {
+      // Suppress late / replayed non-completed events after local or runtime settlement.
+      if (isUserInputRequestSettled(requestKey)) {
         return;
       }
       const canonicalThreadId =

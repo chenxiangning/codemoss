@@ -1,6 +1,8 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { ClaudeDeferredImageLocator, ClaudeHydratedImage } from "../../types";
+import { createAsyncResultCache } from "../asyncResultCache";
 import type { AutoSessionMetadata } from "./sessionManagement";
+import { invalidateOpenCodeSessionListCache } from "./openCode";
 import { traceStartupCommand, type StartupWorkspaceScope } from "../../features/startup-orchestration/utils/startupTrace";
 
 function workspaceScope(workspaceId: string): StartupWorkspaceScope {
@@ -213,7 +215,46 @@ export async function deleteCodexSessions(workspaceId: string, sessionIds: strin
   });
 }
 export async function deleteOpenCodeSession(workspaceId: string, sessionId: string) {
-  return invoke<{ deleted: boolean; method: "cli" | "filesystem" }>("opencode_delete_session", { workspaceId, sessionId });
+  try {
+    return await invoke<{ deleted: boolean; method: "cli" | "filesystem" }>(
+      "opencode_delete_session",
+      { workspaceId, sessionId },
+    );
+  } finally {
+    invalidateOpenCodeSessionListCache(workspaceId);
+  }
+}
+
+/** Soft TTL so focus-refresh / second full-catalog does not re-scan Claude disk. */
+export const CLAUDE_SESSION_LIST_CACHE_TTL_MS = 60_000;
+
+type ClaudeSessionListResult =
+  | ClaudeSessionSummaryPayload[]
+  | Record<string, unknown>
+  | null
+  | undefined;
+
+const claudeSessionListCache = createAsyncResultCache<ClaudeSessionListResult>({
+  ttlMs: CLAUDE_SESSION_LIST_CACHE_TTL_MS,
+});
+
+export function invalidateClaudeSessionListCache(workspacePath?: string): void {
+  // Limit is part of key; path-scoped clears currently wipe the whole map
+  // (small cache; exact prefix iteration is not worth the complexity yet).
+  void workspacePath;
+  claudeSessionListCache.clear();
+}
+
+/** @internal */
+export function resetClaudeSessionListCacheForTests(): void {
+  claudeSessionListCache.clear();
+}
+
+function claudeSessionListCacheKey(
+  workspacePath: string,
+  limit?: number | null,
+): string {
+  return `${workspacePath}::${limit ?? "all"}`;
 }
 
 /**
@@ -224,12 +265,26 @@ export async function deleteOpenCodeSession(workspaceId: string, sessionId: stri
  * come from listWorkspaceSessions so catalog source status can decide whether
  * an empty Claude result is authoritative.
  */
-export async function listClaudeSessions(workspacePath: string, limit?: number | null): Promise<ClaudeSessionSummaryPayload[] | Record<string, unknown> | null | undefined> {
-  return traceStartupInvoke("list_claude_sessions", "global", () =>
-    invoke<ClaudeSessionSummaryPayload[] | Record<string, unknown> | null | undefined>("list_claude_sessions", {
-      workspacePath,
-      limit: limit ?? null,
-    }),
+export async function listClaudeSessions(
+  workspacePath: string,
+  limit?: number | null,
+): Promise<ClaudeSessionListResult> {
+  const path = workspacePath.trim();
+  if (!path) {
+    return [];
+  }
+  const key = claudeSessionListCacheKey(path, limit);
+  const cached = claudeSessionListCache.get(key);
+  if (cached !== undefined) {
+    return cached;
+  }
+  return claudeSessionListCache.getOrLoad(key, () =>
+    traceStartupInvoke("list_claude_sessions", "global", () =>
+      invoke<ClaudeSessionListResult>("list_claude_sessions", {
+        workspacePath: path,
+        limit: limit ?? null,
+      }),
+    ),
   );
 }
 

@@ -6,11 +6,16 @@ export async function respondToServerRequest(
   requestId: number | string,
   decision: "accept" | "decline",
   sharedOwner?: SharedRuntimeControlOwner | null,
+  options?: { scope?: "once" | "session" | "workspace" },
 ) {
+  const result: Record<string, unknown> = { decision };
+  if (options?.scope) {
+    result.scope = options.scope;
+  }
   return invoke("respond_to_server_request", {
     workspaceId,
     requestId,
-    result: { decision },
+    result,
     providerProfileId: sharedOwner?.providerProfileId ?? null,
     ...(sharedOwner
       ? {

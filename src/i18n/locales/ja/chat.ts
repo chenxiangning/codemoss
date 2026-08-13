@@ -103,6 +103,8 @@ const chat = {
     "commandsListUnavailableTitle": "コマンドを利用できません",
     "commandsListUnavailableMessage":
       "スラッシュコマンドの読み込みに失敗しました: {{reason}}。コマンド補完が不完全になる場合があります。自動的に再試行します。",
+    "promptsListUnavailableTitle": "プロンプトを利用できません",
+    "promptsListUnavailableMessage": "カスタムプロンプトの読み込みに失敗しました：{{reason}}。! 補完が不完全な可能性があります。! を再度開くかプロンプトを作成して再試行してください。",
     "pleaseWait": "お待ちください...",
     "retrying": "再試行中 ({{count}}/{{max}})...",
     "removeAgent": "エージェントを削除",

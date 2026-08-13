@@ -23,6 +23,8 @@ import type {
 } from "../../../types";
 import { isEngineCapabilityAvailable } from "../../engine/engineCapabilityMatrix";
 import { useStatusPanelData } from "../hooks/useStatusPanelData";
+import { loadStatusPanelStyles } from "../../../styles/featureStyleLoaders";
+import { useFeatureStylesReady } from "../../../styles/useFeatureStylesReady";
 import {
   createFrozenGovernanceEvidenceSnapshot,
   createHarnessGovernanceEvidence,
@@ -258,6 +260,7 @@ export const StatusPanel = memo(function StatusPanel({
   onRemoveCodeAnnotation,
   codeAnnotations,
 }: StatusPanelProps) {
+  const stylesReady = useFeatureStylesReady(loadStatusPanelStyles);
   const { t } = useTranslation();
   const deferredItems = useDeferredValue(items);
   const effectiveItems = isProcessing ? deferredItems : items;
@@ -888,6 +891,10 @@ export const StatusPanel = memo(function StatusPanel({
   );
 
   const orderedTabs = variant === "dock" ? DOCK_TAB_ORDER : POPOVER_TAB_ORDER;
+
+  if (!stylesReady) {
+    return null;
+  }
 
   return (
     <div

@@ -1,4 +1,0 @@
-{"file": ".claude/commands/trellis/finish-work.md", "reason": "Finish work checklist"}
-{"file": ".claude/commands/trellis/check.md", "reason": "Code quality check spec"}
-{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "Validate focused Rust changes"}
-{"file": ".trellis/spec/guides/workspace-session-catalog-contract.md", "reason": "Verify catalog title behavior"}

@@ -1,6 +1,0 @@
-{"file": ".trellis/workflow.md", "reason": "Project workflow and conventions"}
-{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend development guide"}
-{"file": ".trellis/spec/frontend/claude-context-usage-display.md", "reason": "保持 Claude/Codex context usage presentation 与可信度契约"}
-{"file": "src/features/composer/components/ChatInputBox/TokenIndicator.tsx", "reason": "复用 Claude footer indicator 视觉 primitive"}
-{"file": "src/features/composer/components/ChatInputBox/ContextBar.tsx", "reason": "保留 Codex tooltip 与 compaction behavior"}
-{"file": "src/features/composer/components/Composer.tsx", "reason": "迁移到 canonical footer usage slot"}

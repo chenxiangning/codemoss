@@ -28,20 +28,26 @@ vi.mock("./ChatInputBox/ChatInputBoxAdapter", () => ({
     text: string;
     onTextChange: (next: string, cursor: number | null) => void;
     onSend: () => void;
-    memoryReferenceMode?: "off" | "single" | "always";
-    onSetMemoryReferenceMode?: (mode: "off" | "single" | "always") => void;
+    memoryReferenceMode?: "off" | "pick" | "always" | "single";
+    onSetMemoryReferenceMode?: (
+      mode: "off" | "pick" | "always" | "single",
+    ) => void;
   }) => (
     <div>
       <button
         type="button"
         aria-pressed={memoryReferenceMode !== "off"}
         aria-label="composer.memoryReferenceToggle"
-        onClick={() => onSetMemoryReferenceMode?.(memoryReferenceMode === "off" ? "single" : "off")}
+        onClick={() =>
+          onSetMemoryReferenceMode?.(
+            memoryReferenceMode === "off" ? "pick" : "off",
+          )
+        }
       >
         {memoryReferenceMode === "always"
           ? "composer.memoryReferenceAlwaysOn"
-          : memoryReferenceMode === "single"
-            ? "composer.memoryReferenceSingleOn"
+          : memoryReferenceMode === "pick" || memoryReferenceMode === "single"
+            ? "composer.memoryReferencePickOn"
             : "composer.memoryReferenceOff"}
       </button>
       <button
@@ -54,9 +60,9 @@ vi.mock("./ChatInputBox/ChatInputBoxAdapter", () => ({
       <span data-testid="memory-reference-mode">
         {memoryReferenceMode === "always"
           ? "always"
-          : memoryReferenceMode === "single"
-            ? "single"
-          : "composer.memoryReferenceOff"}
+          : memoryReferenceMode === "pick" || memoryReferenceMode === "single"
+            ? "pick"
+            : "composer.memoryReferenceOff"}
       </span>
       <textarea
         aria-label="chat draft"
@@ -112,7 +118,7 @@ describe("Composer Memory Reference toggle", () => {
     cleanup();
   });
 
-  it("defaults off, toggles single-send reference and clears after send", async () => {
+  it("defaults off, toggles pick-this-turn reference and keeps after send", async () => {
     const onSend = vi.fn(() => Promise.resolve());
     renderComposer(onSend);
 
@@ -122,7 +128,7 @@ describe("Composer Memory Reference toggle", () => {
 
     fireEvent.click(toggle);
     expect(toggle.getAttribute("aria-pressed")).toBe("true");
-    expect(screen.getByText("composer.memoryReferenceSingleOn")).toBeTruthy();
+    expect(screen.getByText("composer.memoryReferencePickOn")).toBeTruthy();
 
     fireEvent.change(screen.getByLabelText("chat draft"), {
       target: { value: "hello memory" },
@@ -135,9 +141,10 @@ describe("Composer Memory Reference toggle", () => {
     expect(onSend).toHaveBeenCalledWith(
       "hello memory",
       [],
-      expect.objectContaining({ memoryReferenceEnabled: true }),
+      expect.objectContaining({ memoryReferenceMode: "pick" }),
     );
-    expect(toggle.getAttribute("aria-pressed")).toBe("false");
+    // pick 偏好保留，不再像旧 single 发完即关
+    expect(toggle.getAttribute("aria-pressed")).toBe("true");
   });
 
   it("keeps always-on memory reference after send", async () => {

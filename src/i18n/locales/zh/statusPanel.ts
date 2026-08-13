@@ -166,6 +166,7 @@ const statusPanel = {
         error: "额度查询失败：{{message}}",
         unsupported:
           "{{engine}} 当前 base_url 不是已知 Coding Plan 域名（Kimi/MiniMax/智谱）",
+        notSupported: "暂不支持额度查询",
       },
     },
     cost: {

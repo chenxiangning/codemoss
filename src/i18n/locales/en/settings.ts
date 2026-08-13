@@ -493,6 +493,7 @@ const settings = {
     sidebarWebService: "Web Service",
     sidebarEmail: "Email",
     sidebarGit: "Git",
+    sidebarMemory: "Project Memory",
     sidebarOther: "Other",
     sidebarReleaseNotes: "Release Notes",
     sidebarVendors: "Vendors",
@@ -1110,6 +1111,52 @@ const settings = {
     dictationTitle: "Dictation",
     dictationDescription:
       "Enable microphone dictation with on-device transcription.",
+    memoryDescription:
+      "Manage on-device project memory: capture from chats, pre-send reference injection, and an optional local semantic model.",
+    memoryRulesTitle: "Project memory rules",
+    memoryRulesStorage:
+      "Storage: under .ccgui/project-memory/ in the user home directory (macOS/Linux: ~/…/.ccgui/…; Windows: %USERPROFILE%\\.ccgui\\…), isolated per workspace; never uploaded.",
+    memoryRulesWrite:
+      "Write: auto-captured after conversation turns (can disable per workspace); manual create/edit/delete; desensitize and dedupe applied.",
+    memoryRulesRead:
+      "Use: with Memory Reference on in Composer, local retrieve-and-confirm before send; keyword matching by default; optional semantic model improves fuzzy recall.",
+    memoryRulesInject:
+      "Inject: memories are prior context for the current user message only; the user bubble shows original text; failures never block send.",
+    memoryEmbedModelTitle: "Local semantic model",
+    memoryEmbedModelDesc:
+      "Memory reference uses keyword matching by default. On-device ONNX semantic vectors were removed from this build to restore Intel macOS packaging; a cross-platform approach will return later.",
+    memoryEmbedPhaseTokenizer: "Downloading tokenizer…",
+    memoryEmbedPhaseModel: "Downloading semantic model…",
+    memoryEmbedNotDownloadable: "Not downloadable in this environment.",
+    memoryEmbedRuntimeDisabled:
+      "This build does not include a local semantic runtime; memory reference uses keyword matching.",
+    memoryEmbedRuntimeDisabledHint:
+      "ONNX Runtime was removed to restore Intel macOS packaging; semantic vector retrieval will return with a cross-platform solution.",
+    memoryEmbedModelPath: "Storage location",
+    memoryEmbedDeleteModel: "Delete model",
+    memoryEmbedDeleteConfirm:
+      "Delete the local semantic model? Memory reference will fall back to keyword matching. You can download again anytime.",
+    memorySemanticRetrievalToggle: "Use semantic model for retrieval",
+    memorySemanticRetrievalToggleDesc:
+      "No semantic runtime in this build; the switch stays off until a model is available.",
+    memorySemanticRetrievalNeedModel:
+      "Semantic model is not available in this build",
+    memorySemanticRetrievalLexicalHint: "Current: keyword text retrieval",
+    memorySemanticRetrievalSemanticHint:
+      "Current: semantic model retrieval (hybrid when available)",
+    memoryReferencePreviewTitle: "What it looks like when enabled",
+    memoryReferencePreviewDesc:
+      "Before send, the app matches project memory for you to confirm. Static previews only — not a live chat.",
+    memoryReferencePreviewMatchLabel: "① Matching",
+    memoryReferencePreviewMatchRole: "Pre-send · local search · model not called yet",
+    memoryReferencePreviewPickLabel: "② Pick and confirm",
+    memoryReferencePreviewEmptyLabel: "③ No related memory",
+    memoryReferencePreviewInjectLabel: "④ After confirm",
+    memoryReferencePreviewInjectHead:
+      "Injected 3 project memories · pick for this turn",
+    memoryReferencePreviewInjectRow1: "My take: good to ship, no big changes.",
+    memoryReferencePreviewInjectRow2: "All fixes: hybrid thresholds, scores…",
+    memoryReferencePreviewInjectRow3: "Why exact “你好” showed ~0.5…",
     enableDictationDesc: "Downloads the selected Whisper model on first use.",
     downloadSize: "Download size:",
     preferredDictationLanguage: "Preferred dictation language",
@@ -1223,21 +1270,39 @@ const settings = {
       "Customize the Open in menu shown in the title bar and file previews.",
     editOpenAppTitle: "Edit open target",
     editOpenAppDesc: "Configure display name, type, and launch arguments.",
+    addOpenAppTitle: "Add open target",
+    addOpenAppDesc:
+      "Pick a detected app, browse for an executable, or add a custom command.",
     openAppDone: "Done",
     label: "Label",
     type: "Type",
     typeApp: "App",
     typeCommand: "Command",
     typeFinder: "Finder",
+    typeFileManagerMac: "Finder",
+    typeFileManagerWindows: "File Explorer",
+    typeFileManagerLinux: "File manager",
     appName: "App name",
+    appNamePlaceholder: "App name, bundle name, or executable path",
+    appNameHelp: "Enter a display name, or use Browse to pick a .app / .exe.",
     command: "Command",
     args: "Args",
     defaultRadio: "Default",
     removeApp: "Remove app",
     removeAppAriaLabel: "Remove app",
-    addApp: "Add app",
+    addApp: "Add open target",
+    browseApplication: "Browse application…",
+    addCustomCommand: "Custom command…",
+    openAppPresetSearch: "Search apps, e.g. VS Code, Cursor…",
+    openAppPresetFileManagerHint: "Reveal in the system file manager",
+    openAppHealthOk: "Available",
+    openAppHealthMissing: "Not found",
+    openAppHealthBroken: "Broken",
+    openAppHealthUnknown: "Unchecked",
+    openAppHealthRefreshing: "Checking…",
+    openAppHealthClickToVerify: "Click to re-check",
     openInHelp:
-      "Commands receive the selected path as the final argument. Apps use macOS open with optional args.",
+      "Commands receive the selected path as the final argument. Apps launch via the OS (macOS open, Windows executable or PATH command).",
     newApp: "New App",
     selectEditor: "Select editor",
     openInTarget: "Open in {{target}}",

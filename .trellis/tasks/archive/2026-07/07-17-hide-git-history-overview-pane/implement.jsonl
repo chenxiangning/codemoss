@@ -1,5 +1,0 @@
-{"file": ".trellis/workflow.md", "reason": "Project workflow and conventions"}
-{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend development guide"}
-{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "Git History component render and accessibility contract"}
-{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Scoped frontend change and validation gates"}
-{"file": "openspec/changes/hide-git-history-overview-pane/", "type": "directory", "reason": "Authoritative behavior change artifacts"}

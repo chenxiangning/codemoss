@@ -5,7 +5,9 @@
   margin-bottom: 12px;
   /* 2026-08：禁用 content-visibility（对齐 jetbrains-cc-gui 的事故教训）——
      屏外占位→真实高度的跳变导致 scrollHeight 骤降、浏览器 clamp、视口上跳卡半屏。
-     长对话性能由虚拟化（idle）与流式尾窗兜底。 */
+     长对话列表虚拟化 / 流式尾窗已关；用 layout+style containment 隔离样式污染，
+     不做 size containment，避免 intrinsic 高度跳变。 */
+  contain: layout style;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1379,19 +1381,354 @@
   border-color: var(--border-strong, var(--border-subtle));
 }
 
+/* 记忆参考 · 空/超时/失败：logo + 文案；中性黑白/灰，浅深主题 token 适配，无 accent 彩 */
+.memory-pick-empty-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  align-self: stretch;
+  justify-self: stretch;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  margin: 6px 0 10px;
+  padding: 2px 0 4px;
+  border: none;
+  background: transparent;
+  box-sizing: border-box;
+}
+
+.memory-pick-empty-status-logo {
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 7px;
+  overflow: hidden;
+  flex: 0 0 auto;
+  background: color-mix(in srgb, var(--text-primary) 6%, transparent);
+  border: 1px solid var(--border-subtle);
+}
+
+.memory-pick-empty-status-logo-img {
+  width: 16px;
+  height: 16px;
+  object-fit: contain;
+  display: block;
+  pointer-events: none;
+  user-select: none;
+  opacity: 0.92;
+}
+
+.memory-pick-empty-status-text {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0 6px;
+  min-width: 0;
+  flex: 1 1 auto;
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--text-primary);
+}
+
+.memory-pick-empty-status-brand {
+  flex: 0 0 auto;
+  font-weight: 650;
+  color: var(--text-secondary);
+}
+
+.memory-pick-empty-status-sep {
+  flex: 0 0 auto;
+  font-weight: 500;
+  color: var(--text-faint);
+}
+
+.memory-pick-empty-status-msg {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-muted);
+}
+
+:root[data-theme="light"] .memory-pick-empty-status-logo,
+html[data-theme="light"] .memory-pick-empty-status-logo {
+  background: color-mix(in srgb, var(--text-primary) 5%, #fff);
+  border-color: var(--border-subtle);
+}
+
+/* 记忆挑选 · 已注入摘要
+ * 折叠头与「已处理 · 思考 N 次 ›」同构：label + chevron + 全宽 hairline。
+ * 色系只走正文语义 token；min-width:0 防止 nowrap 撑破主幕布横向滚动。
+ */
+.memory-inject-summary {
+  display: block;
+  align-self: stretch;
+  justify-self: stretch;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: clip;
+  margin: 4px 0 12px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  box-sizing: border-box;
+}
+
+.memory-inject-summary-toggle {
+  appearance: none;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  color: var(--text-faint);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.25;
+  letter-spacing: 0.01em;
+  text-align: left;
+  cursor: pointer;
+  user-select: none;
+  box-shadow: none;
+  overflow: hidden;
+  transition: color 160ms ease;
+}
+
+.memory-inject-summary-toggle:hover {
+  color: var(--text-secondary);
+  background: transparent;
+}
+
+.memory-inject-summary-toggle:active {
+  color: var(--text-secondary);
+}
+
+.memory-inject-summary-toggle:focus-visible {
+  outline: none;
+}
+
+.memory-inject-summary-toggle:focus-visible .memory-inject-summary-toggle-copy {
+  border-radius: 4px;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 22%, transparent);
+}
+
+.memory-inject-summary-toggle-copy {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 0 10px;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.memory-inject-summary-label {
+  flex: 1 1 0;
+  min-width: 0;
+  font-weight: 400;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: inherit;
+}
+
+.memory-inject-summary-chevron {
+  flex: 0 0 auto;
+  width: 14px;
+  height: 14px;
+  opacity: 0.7;
+  color: currentColor;
+  transition:
+    transform 240ms cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 160ms ease;
+}
+
+.memory-inject-summary-toggle.is-collapsed .memory-inject-summary-chevron {
+  transform: rotate(0deg);
+}
+
+.memory-inject-summary-toggle.is-expanded .memory-inject-summary-chevron {
+  transform: rotate(90deg);
+  opacity: 0.75;
+}
+
+.memory-inject-summary-toggle:hover .memory-inject-summary-chevron {
+  opacity: 0.9;
+}
+
+/* 与 .messages-process-phase-toggle-rule 同款全宽 hairline */
+.memory-inject-summary-rule {
+  display: block;
+  width: 100%;
+  height: 0;
+  border: none;
+  border-top: 1px solid color-mix(in srgb, var(--border-subtle) 88%, transparent);
+  transition: border-color 160ms ease;
+}
+
+.memory-inject-summary-toggle:hover .memory-inject-summary-rule {
+  border-top-color: color-mix(in srgb, var(--border-strong) 28%, var(--border-subtle));
+}
+
+.memory-inject-summary-body {
+  padding: 2px 0 4px;
+  margin: 0;
+  border: none;
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: clip;
+}
+
+/* 单行：序号 · 标题 · 详情 · [分数] */
+.memory-inject-rec {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  max-width: 100%;
+  padding: 6px 0;
+  box-sizing: border-box;
+}
+
+.memory-inject-rec + .memory-inject-rec {
+  border-top: 1px solid color-mix(in srgb, var(--border-subtle) 70%, transparent);
+}
+
+.memory-inject-rec-idx {
+  flex: 0 0 auto;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.memory-inject-rec-title {
+  flex: 1 1 0;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+
+.memory-inject-rec-title:hover {
+  text-decoration: underline;
+  color: var(--text-primary);
+}
+
+.memory-inject-rec-detail {
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.memory-inject-rec-detail:hover {
+  text-decoration: underline;
+  color: var(--text-primary);
+}
+
+.memory-inject-rec-detail.is-static {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.memory-inject-rec-score {
+  flex: 0 0 auto;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .memory-inject-summary-toggle,
+  .memory-inject-summary-chevron,
+  .memory-inject-summary-rule {
+    transition: none !important;
+  }
+}
+
+/* 用户行：气泡靠右；注入摘要在气泡下一行左对齐，宽度跟 .messages-full 内容列 */
+.message-context-stack.is-user.has-memory-inject,
+.message-context-stack.is-user:has(> .memory-inject-summary) {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  margin-left: 0;
+  margin-right: 0;
+  justify-items: stretch;
+  gap: 6px;
+  overflow-x: clip;
+}
+
+.message-context-stack.is-user.has-memory-inject > .bubble,
+.message-context-stack.is-user:has(> .memory-inject-summary) > .bubble {
+  justify-self: end;
+  max-width: min(85%, 100%);
+  order: 0;
+}
+
+.message-context-stack.is-user.has-memory-inject > .memory-inject-summary,
+.message-context-stack.is-user:has(> .memory-inject-summary) > .memory-inject-summary {
+  justify-self: stretch;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  order: 1;
+}
+
 .memory-context-payload-dialog-overlay {
   position: fixed;
   inset: 0;
   z-index: 2000;
   display: grid;
   place-items: center;
-  padding: 24px;
+  /* 上下留白，避免被视口裁切 */
+  padding: max(16px, 4vh) 16px;
   background: rgba(0, 0, 0, 0.42);
+  overflow: auto;
+  overscroll-behavior: contain;
 }
 
 .memory-context-payload-dialog {
-  width: min(860px, calc(100vw - 48px));
-  max-height: min(720px, calc(100vh - 48px));
+  width: min(860px, calc(100vw - 32px));
+  /* 视口自适应：优先占可用高度，避免固定 720 被剪切 */
+  max-height: min(85vh, calc(100dvh - 32px));
+  height: auto;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
   border: 1px solid var(--border-subtle);
@@ -1399,6 +1736,7 @@
   background: var(--surface-card);
   box-shadow: 0 24px 80px rgba(0, 0, 0, 0.35);
   overflow: hidden;
+  margin: auto;
 }
 
 .memory-context-payload-dialog-header {
@@ -1453,10 +1791,32 @@
 
 .memory-context-payload-dialog-body {
   min-height: 0;
+  max-height: none;
   overflow: auto;
+  overscroll-behavior: contain;
   padding: 14px 16px 18px;
   display: grid;
   gap: 14px;
+  /* 内容过高时在 body 内滚动，避免整窗被视口裁切 */
+  -webkit-overflow-scrolling: touch;
+}
+
+.memory-inject-detail-dialog {
+  max-height: min(80vh, calc(100dvh - 32px));
+}
+
+.memory-inject-detail-section {
+  display: grid;
+  gap: 6px;
+}
+
+.memory-inject-detail-text {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--text-primary);
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .memory-context-payload-pack-list {
@@ -1556,6 +1916,17 @@
   justify-items: end;
 }
 
+/* 覆盖上方 is-user：有记忆注入时不要整体右贴，摘要与幕布列同宽左齐 */
+.message-context-stack.is-user.has-memory-inject {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  margin-left: 0;
+  margin-right: 0;
+  justify-items: stretch;
+  overflow-x: clip;
+}
+
 .message-context-stack.is-user > .bubble {
   max-width: 100%;
 }
@@ -1564,10 +1935,17 @@
 .message-context-stack.is-user > .browser-context-summary-card,
 .message-context-stack.is-user > .intent-canvas-context-summary-card,
 .message-context-stack.is-user > .note-card-context-summary-card,
-.message-context-stack.is-user > .message-code-annotation-context {
+.message-context-stack.is-user > .message-code-annotation-context,
+.message-context-stack.is-user > .memory-inject-summary,
+.message-context-stack.is-user > .memory-pick-empty-status {
   max-width: 100%;
   min-width: 0;
   box-sizing: border-box;
+}
+
+.message-context-stack > .memory-pick-empty-status {
+  max-width: 100%;
+  min-width: 0;
 }
 
 .message-code-annotation-context {

@@ -1,4 +1,0 @@
-{"file": ".trellis/workflow.md", "reason": "Project workflow and conventions"}
-{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend development guide"}
-{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "组件 props、i18n、accessibility 与 feature-local helper 规范"}
-{"file": ".trellis/spec/backend/native-provider-continuation-contract.md", "reason": "Provider Continuation identity/source projection contract"}

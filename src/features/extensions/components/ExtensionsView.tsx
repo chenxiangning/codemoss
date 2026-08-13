@@ -13,6 +13,8 @@ import { useTranslation } from "react-i18next";
 
 import type { WorkspaceInfo } from "../../../types";
 import { Button } from "@/components/ui/button";
+import { loadExtensionsStyles } from "../../../styles/featureStyleLoaders";
+import { useFeatureStylesReady } from "../../../styles/useFeatureStylesReady";
 
 import { McpsDashboardSection } from "./McpsDashboardSection";
 import { SkillsDashboardSection } from "./SkillsDashboardSection";
@@ -57,10 +59,17 @@ type ExtensionsViewProps = {
 
 export function ExtensionsView({ activeWorkspace }: ExtensionsViewProps) {
   const { t } = useTranslation();
+  const stylesReady = useFeatureStylesReady(loadExtensionsStyles);
   const [activeTab, setActiveTab] = useState<ActiveTab>("usage");
   const PanelIcon = PANEL_ICONS[activeTab];
   const viewClassName =
     activeTab === "usage" ? "extensions-view extensions-view-usage" : "extensions-view";
+
+  if (!stylesReady) {
+    return (
+      <section className="extensions-view" aria-label={t("extensions.title")} aria-busy="true" />
+    );
+  }
 
   return (
     <section className={viewClassName} aria-label={t("extensions.title")}>

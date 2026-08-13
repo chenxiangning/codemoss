@@ -1,5 +1,0 @@
-{"file": ".trellis/workflow.md", "reason": "Project workflow and conventions"}
-{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend development guide"}
-{"file": "openspec/changes/archive/2026-07-17-unify-git-diff-file-context-menu-actions/design.md", "reason": "Archived OpenSpec implementation design and scope"}
-{"file": "openspec/changes/archive/2026-07-17-unify-git-diff-file-context-menu-actions/specs/git-panel-diff-view/spec.md", "reason": "Archived normative context-menu behavior"}
-{"file": ".trellis/spec/frontend/multi-repository-git-commit-workspace.md", "reason": "Repository-scoped mutation contract"}

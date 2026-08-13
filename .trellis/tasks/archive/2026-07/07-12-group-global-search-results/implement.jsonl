@@ -1,5 +1,0 @@
-{"file": ".trellis/workflow.md", "reason": "Project workflow and conventions"}
-{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend development guide"}
-{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "搜索结果组件、i18n 与样式契约"}
-{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "行为变更测试与质量门禁"}
-{"file": ".trellis/spec/frontend/type-safety.md", "reason": "SearchResult projection 类型安全"}

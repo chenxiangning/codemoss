@@ -25,9 +25,15 @@ describe("markdownCodeBlockHelpers", () => {
     expect(extractLatexContent("tex", "x^2")).toBe("x^2");
     expect(extractLatexContent(null, "```latex\nx^2\n```")).toBe("x^2");
     expect(extractMermaidContent("mermaid", "graph TD")).toBe("graph TD");
+    expect(extractMermaidContent("flowchart", "flowchart TD\nA-->B")).toBe(
+      "flowchart TD\nA-->B",
+    );
     expect(extractMermaidContent(null, "```mermaid\ngraph TD\n```")).toBe(
       "graph TD",
     );
+    expect(
+      extractMermaidContent(null, "```flowchart\nflowchart TD\nA-->B\n```"),
+    ).toBe("flowchart TD\nA-->B");
   });
 
   it("extracts code and normalizes a trailing newline from pre nodes", () => {

@@ -26,6 +26,16 @@ status: active
 - [Project Memory architecture](./03-project-memory-architecture.md) — Superseded Phase 1 snapshot。
 - [Project Memory consumption research](./04-project-memory-consumption-research.md) — Superseded by explicit Memory Reference/default `off` contracts。
 
+## Project Memory · Pick Gate（current work）
+
+> 行为与 UI 实现指导以 OpenSpec change 为准，不把 historical research 当 current contract。
+
+- OpenSpec change: [`../../openspec/changes/add-memory-pick-gate/`](../../openspec/changes/add-memory-pick-gate/)  
+  - `proposal.md` — 范围 / 验收 / 拍板决策  
+  - `design.md` — 状态机 / 模式 / 注入  
+  - **`ux.md`** — **UI/UX 定稿（实现视觉交互必读）**  
+- 可交互金样: [`../prototypes/memory-pick-gate-ui-variants.html`](../prototypes/memory-pick-gate-ui-variants.html)（C 样式 only）
+
 ## External pinned research
 
 - [MemOS architecture analysis](./02-memos-architecture-analysis.md)

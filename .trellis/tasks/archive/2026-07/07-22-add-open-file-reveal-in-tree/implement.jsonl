@@ -1,7 +1,0 @@
-{"file": ".trellis/workflow.md", "reason": "Project workflow and conventions"}
-{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend development guide"}
-{"file": ".trellis/spec/frontend/directory-structure.md", "reason": "Frontend file placement"}
-{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "Component props and i18n"}
-{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Behavior test and quality gates"}
-{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "Reuse existing file tree state"}
-{"file": "openspec/changes/add-open-file-reveal-in-tree/design.md", "reason": "Confirmed implementation design"}

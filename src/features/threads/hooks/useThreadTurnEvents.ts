@@ -32,7 +32,8 @@ import type { TurnExecutionSnapshot } from "../../shared-session/target/types";
 import { hasCodexBackgroundHelperPreview } from "../utils/codexBackgroundHelpers";
 import { isCodexPrewarmThreadStart } from "../utils/codexPendingPrewarm";
 import {
-  drainLiveAssistantTextTail,
+  clearLiveAssistantText,
+  peekLiveAssistantText,
   renameLiveAssistantTextThread,
 } from "../utils/liveAssistantTextChannel";
 import { resolveCodexSubagentIdentity } from "../utils/codexSubagentIdentity";
@@ -47,6 +48,31 @@ import type { ThreadAction } from "./useThreadsReducer";
  * Claude/Gemini/Kimi/OpenCode threads use "<engine>:" or "<engine>-pending-" prefixes.
  */
 const inferEngineFromThreadId = inferEngineFromLegacyThreadId;
+
+/**
+ * Terminal 路径（完成/失败/稳定性诊断）在 markProcessing(false) 前必须把
+ * live 通道全文写入 durable item，否则 UI 只剩建壳首字。
+ */
+function settleLiveAssistantFullText(
+  dispatch: Dispatch<ThreadAction>,
+  workspaceId: string,
+  threadId: string,
+): void {
+  const liveEntry = peekLiveAssistantText(threadId);
+  if (!liveEntry?.text) {
+    return;
+  }
+  dispatch({
+    type: "completeAgentMessage",
+    workspaceId,
+    threadId,
+    itemId: liveEntry.itemId,
+    text: liveEntry.text,
+    hasCustomName: true,
+    timestamp: Date.now(),
+  });
+  clearLiveAssistantText(threadId);
+}
 
 type ContextCompactionSourcePayload = {
   auto?: boolean | null;
@@ -499,19 +525,11 @@ export function useThreadTurnEvents({
         return false;
       }
       safeTargets.forEach(({ threadId: targetThreadId }) => {
-        // A4 live-text 外部化：terminal settlement 前把尚未落入 reducer 的尾段
-        // 回灌到同一 assistant item。否则 isStreaming 关闭后只能读到建壳首段。
-        const liveTextTail = drainLiveAssistantTextTail(targetThreadId);
-        if (liveTextTail) {
-          dispatch({
-            type: "appendAgentDelta",
-            workspaceId,
-            threadId: targetThreadId,
-            itemId: liveTextTail.itemId,
-            delta: liveTextTail.tailDelta,
-            hasCustomName: true,
-          });
-        }
+        // A4 live-text 外部化：terminal settlement 必须把通道内「全文」一次写入
+        // durable item。只 append shell 后尾段时，若 shell 首 delta 未进 reducer
+        // 或 shellTextLength 失真，isStreaming 关闭后 UI 会只剩「已」「**」这类
+        // 建壳碎片，重开历史才恢复（用户截图中的典型形态）。
+        settleLiveAssistantFullText(dispatch, workspaceId, targetThreadId);
         dispatch({
           type: "clearProcessingGeneratedImages",
           threadId: targetThreadId,
@@ -655,6 +673,7 @@ export function useThreadTurnEvents({
       }
 
       dispatch({ type: "ensureThread", workspaceId, threadId, engine: inferEngineFromThreadId(threadId) });
+      settleLiveAssistantFullText(dispatch, workspaceId, threadId);
       dispatch({
         type: "clearProcessingGeneratedImages",
         threadId,
@@ -680,6 +699,7 @@ export function useThreadTurnEvents({
       markReviewing(threadId, false);
       setActiveTurnId(threadId, null);
       if (aliasThreadId) {
+        settleLiveAssistantFullText(dispatch, workspaceId, aliasThreadId);
         dispatch({
           type: "clearProcessingGeneratedImages",
           threadId: aliasThreadId,
@@ -799,6 +819,7 @@ export function useThreadTurnEvents({
       }
 
       dispatch({ type: "ensureThread", workspaceId, threadId, engine: inferEngineFromThreadId(threadId) });
+      settleLiveAssistantFullText(dispatch, workspaceId, threadId);
       dispatch({
         type: "clearProcessingGeneratedImages",
         threadId,
@@ -819,6 +840,7 @@ export function useThreadTurnEvents({
       markReviewing(threadId, false);
       setActiveTurnId(threadId, null);
       if (aliasThreadId) {
+        settleLiveAssistantFullText(dispatch, workspaceId, aliasThreadId);
         dispatch({
           type: "clearProcessingGeneratedImages",
           threadId: aliasThreadId,

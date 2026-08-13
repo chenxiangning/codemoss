@@ -49,7 +49,21 @@ test("startup marker snapshot extracts latest diagnostic payload", async () => {
 
   await runScript(["--input", inputPath, "--output", outputPath]);
   const snapshot = JSON.parse(await readFile(outputPath, "utf-8"));
+  assert.equal(snapshot.status, "ok");
   assert.equal(snapshot.markers.length, 2);
   assert.equal(snapshot.markers[0].atMs, 12.35);
   assert.equal(snapshot.markers[1].name, "first-interactive");
+});
+
+test("startup marker snapshot writes formal unsupported payload when input missing", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "ccgui-startup-marker-missing-"));
+  const inputPath = join(dir, "missing.json");
+  const outputPath = join(dir, "startup.json");
+  await runScript(["--input", inputPath, "--output", outputPath]);
+  const snapshot = JSON.parse(await readFile(outputPath, "utf-8"));
+  assert.equal(snapshot.status, "unsupported");
+  assert.equal(snapshot.markers[0].atMs, null);
+  assert.equal(snapshot.markers[1].name, "first-interactive");
+  assert.match(String(snapshot.unsupportedReason), /missing input file/);
+  assert.ok(snapshot.followUp);
 });

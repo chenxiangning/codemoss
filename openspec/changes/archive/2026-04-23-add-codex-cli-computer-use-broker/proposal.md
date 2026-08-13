@@ -54,7 +54,7 @@
 
 - Backend: `src-tauri/src/computer_use/**`、`src-tauri/src/engine/codex_prompt_service.rs` 或等价 Codex prompt service、`src-tauri/src/command_registry.rs`、`src-tauri/src/state.rs`。
 - Frontend: `src/features/computer-use/**`、`src/services/tauri/computerUse.ts`、`src/types.ts`、i18n 文案。
-- Specs: `openspec/specs/**`、`.trellis/spec/backend/computer-use-bridge.md`。
+- Specs: `openspec/specs/**`、`dev-guidelines/backend/computer-use-bridge.md`。
 - Tests: Rust broker unit tests、frontend hook/component tests、Tauri service mapping tests。
 
 ## 验收标准

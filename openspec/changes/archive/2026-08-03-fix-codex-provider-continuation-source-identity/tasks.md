@@ -5,5 +5,5 @@
 
 ## 2. Contract Sync And Verification
 
-- [x] 2.1 [P0][依赖 1.1] 更新 `.trellis/spec/backend/native-provider-continuation-contract.md`，写明 Codex raw/canonical 等价规则、exact logical id preservation 与 Claude/Kimi strict rule；用 source/code diff 人工核对。
+- [x] 2.1 [P0][依赖 1.1] 更新 `dev-guidelines/backend/native-provider-continuation-contract.md`，写明 Codex raw/canonical 等价规则、exact logical id preservation 与 Claude/Kimi strict rule；用 source/code diff 人工核对。
 - [x] 2.2 [P0][依赖 1.1、1.2、2.1] 执行 Rust focused tests、frontend focused Vitest、`npm run typecheck`、`npm run check:runtime-contracts` 与 `openspec validate fix-codex-provider-continuation-source-identity --strict --no-interactive`，记录全部结果。

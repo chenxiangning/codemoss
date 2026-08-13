@@ -13,12 +13,17 @@ use super::stream_helpers::{
 };
 use super::ClaudeSession;
 use crate::engine::events::EngineEvent;
+use crate::engine::session_directory_grant::{
+    extract_absolute_path_from_text, extract_absolute_path_from_tool_input,
+    is_sensitive_grant_root, looks_like_outside_allowlist_denial, suggest_grant_root,
+};
 use crate::engine::EngineType;
 
 #[derive(Clone, Copy)]
 enum ClaudeSyntheticApprovalKind {
     FileChange,
     CommandExecution,
+    DirectoryGrant,
 }
 
 fn is_claude_file_change_tool(tool_name: &str) -> bool {
@@ -56,8 +61,17 @@ fn detect_claude_synthetic_approval_kind(
     tool_name: &str,
     message: &str,
 ) -> Option<ClaudeSyntheticApprovalKind> {
-    if !has_claude_permission_signal(message) {
+    if !has_claude_permission_signal(message) && !looks_like_outside_allowlist_denial(message) {
         return None;
+    }
+
+    // Outside L1 with a recoverable absolute path → DirectoryGrant (any tool, incl. Read).
+    if looks_like_outside_allowlist_denial(message) {
+        let absolute = extract_absolute_path_from_tool_input(tool_input)
+            .or_else(|| extract_absolute_path_from_text(message));
+        if absolute.is_some() {
+            return Some(ClaudeSyntheticApprovalKind::DirectoryGrant);
+        }
     }
 
     if is_claude_file_change_tool(tool_name) {
@@ -73,7 +87,25 @@ fn detect_claude_synthetic_approval_kind(
         {
             return Some(ClaudeSyntheticApprovalKind::FileChange);
         }
+        // Command blocked for allowlist write, but absolute path outside → grant first.
+        if looks_like_outside_allowlist_denial(message) {
+            if extract_absolute_path_from_tool_input(tool_input)
+                .or_else(|| extract_absolute_path_from_text(message))
+                .is_some()
+            {
+                return Some(ClaudeSyntheticApprovalKind::DirectoryGrant);
+            }
+        }
         return Some(ClaudeSyntheticApprovalKind::CommandExecution);
+    }
+
+    // Read / other tools with allowlist denial + path → DirectoryGrant
+    if looks_like_outside_allowlist_denial(message)
+        && extract_absolute_path_from_tool_input(tool_input)
+            .or_else(|| extract_absolute_path_from_text(message))
+            .is_some()
+    {
+        return Some(ClaudeSyntheticApprovalKind::DirectoryGrant);
     }
 
     None
@@ -133,6 +165,107 @@ impl ClaudeSession {
         };
 
         match kind {
+            ClaudeSyntheticApprovalKind::DirectoryGrant => {
+                let absolute_path: String = match extract_absolute_path_from_tool_input(
+                    tool_input.as_ref(),
+                )
+                .or_else(|| extract_absolute_path_from_text(output))
+                {
+                    Some(path) => path,
+                    None => {
+                        return Some(self.build_command_mode_blocked_signal(
+                            turn_id, tool_id, &tool_name, output,
+                        ));
+                    }
+                };
+
+                // Already inside L1 → do not re-prompt grant.
+                if self.is_path_in_session_allowlist(&absolute_path) {
+                    return None;
+                }
+
+                let suggested_root = match suggest_grant_root(&absolute_path) {
+                    Ok(root) => root,
+                    Err(_) => {
+                        return Some(self.build_command_mode_blocked_signal(
+                            turn_id, tool_id, &tool_name, output,
+                        ));
+                    }
+                };
+                let sensitive = is_sensitive_grant_root(&suggested_root);
+                let suggested_display = suggested_root.to_string_lossy().to_string();
+                let message = if sensitive {
+                    format!(
+                        "Path is outside this session's allowed working directories. Grant access to a narrowed root (sensitive path). Suggested: {suggested_display}"
+                    )
+                } else {
+                    format!(
+                        "Path is outside this session's allowed working directories. Allow this directory for the session to continue? Suggested root: {suggested_display}"
+                    )
+                };
+
+                let mut input_map = serde_json::Map::new();
+                if let Some(Value::Object(existing)) = tool_input.clone() {
+                    input_map = existing;
+                }
+                input_map.insert(
+                    "path".to_string(),
+                    Value::String(absolute_path.clone()),
+                );
+                input_map.insert(
+                    "canonicalPath".to_string(),
+                    Value::String(absolute_path.clone()),
+                );
+                input_map.insert(
+                    "suggestedRoot".to_string(),
+                    Value::String(suggested_display.clone()),
+                );
+                input_map.insert(
+                    "defaultScope".to_string(),
+                    Value::String("session".to_string()),
+                );
+                input_map.insert("scope".to_string(), Value::String("session".to_string()));
+                input_map.insert("isSensitiveRoot".to_string(), Value::Bool(sensitive));
+                input_map.insert(
+                    "grantKind".to_string(),
+                    Value::String("directory".to_string()),
+                );
+                input_map.insert(
+                    "originalToolName".to_string(),
+                    Value::String(tool_name.clone()),
+                );
+                input_map.insert(
+                    "engine".to_string(),
+                    Value::String("claude".to_string()),
+                );
+                input_map.insert(
+                    "retryContext".to_string(),
+                    serde_json::json!({
+                        "toolId": tool_id,
+                        "turnId": turn_id,
+                        "toolName": tool_name,
+                    }),
+                );
+
+                if let Ok(mut pending) = self.pending_approval_requests.lock() {
+                    pending.insert(tool_id.to_string(), turn_id.to_string());
+                }
+                if let Ok(mut grants) = self.pending_directory_grants.lock() {
+                    grants.insert(tool_id.to_string(), suggested_root);
+                }
+
+                self.emit_turn_event(
+                    turn_id,
+                    EngineEvent::ApprovalRequest {
+                        workspace_id: self.workspace_id.clone(),
+                        request_id: Value::String(tool_id.to_string()),
+                        tool_name: "DirectoryGrant".to_string(),
+                        input: Some(Value::Object(input_map)),
+                        message: Some(message),
+                    },
+                );
+                None
+            }
             ClaudeSyntheticApprovalKind::FileChange => {
                 let request_id = Value::String(tool_id.to_string());
                 let input = tool_input;

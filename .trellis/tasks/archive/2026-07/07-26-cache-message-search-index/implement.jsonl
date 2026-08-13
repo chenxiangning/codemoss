@@ -1,4 +1,0 @@
-{"file": ".trellis/workflow.md", "reason": "Project workflow and conventions"}
-{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend development guide"}
-{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Frontend cache and regression rules"}
-{"file": ".trellis/spec/frontend/type-safety.md", "reason": "IndexedMessage type change"}

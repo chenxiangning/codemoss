@@ -1,7 +1,7 @@
 use super::thread_listing::{
     build_local_codex_session_preview, build_thread_list_empty_response,
     codex_session_identifier_candidates, merge_unified_codex_thread_entries,
-    select_unified_codex_partial_source,
+    resolve_unified_codex_scan_limit, select_unified_codex_partial_source,
 };
 use super::{
     codex_provider_binding_lookup_keys, create_session_runtime_recovering_error,
@@ -19,6 +19,13 @@ use serde_json::json;
 use std::collections::HashSet;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+
+#[test]
+fn unified_codex_scan_limit_tracks_cursor_page_and_bounded_lookahead() {
+    assert_eq!(resolve_unified_codex_scan_limit(0, 5), 26);
+    assert_eq!(resolve_unified_codex_scan_limit(50, 50), 121);
+    assert_eq!(resolve_unified_codex_scan_limit(usize::MAX, 200), 5_000);
+}
 
 fn register_shared_control_owner(
     coordinator: &SharedRuntimeCoordinator,

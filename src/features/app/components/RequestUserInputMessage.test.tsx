@@ -120,8 +120,8 @@ describe("RequestUserInputMessage", () => {
     expect(screen.getByText("Provide input")).toBeTruthy();
   });
 
-  it("settles active request through skip handler without normal answer submit", async () => {
-    const onSubmit = vi.fn();
+  it("settles active request through skip as submit with skippedQuestionIds", async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
     const onDismiss = vi.fn().mockResolvedValue(undefined);
     render(
       <RequestUserInputMessage
@@ -136,14 +136,17 @@ describe("RequestUserInputMessage", () => {
     fireEvent.click(screen.getByRole("button", { name: "Skip this question and continue" }));
 
     await waitFor(() => {
-      expect(onDismiss).toHaveBeenCalledWith(baseRequest);
+      expect(onSubmit).toHaveBeenCalledWith(baseRequest, {
+        answers: {},
+        skippedQuestionIds: ["q-1"],
+      });
       expect(screen.queryByText("Provide input")).toBeNull();
     });
-    expect(onSubmit).not.toHaveBeenCalled();
+    expect(onDismiss).not.toHaveBeenCalled();
   });
 
-  it("settles collapsed request through skip handler", async () => {
-    const onSubmit = vi.fn();
+  it("settles collapsed request through skip as submit", async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
     const onDismiss = vi.fn().mockResolvedValue(undefined);
     render(
       <RequestUserInputMessage
@@ -159,15 +162,18 @@ describe("RequestUserInputMessage", () => {
     fireEvent.click(screen.getByRole("button", { name: "Skip this question and continue" }));
 
     await waitFor(() => {
-      expect(onDismiss).toHaveBeenCalledWith(baseRequest);
+      expect(onSubmit).toHaveBeenCalledWith(baseRequest, {
+        answers: {},
+        skippedQuestionIds: ["q-1"],
+      });
       expect(screen.queryByRole("group", { name: "Collapsed question card" })).toBeNull();
     });
-    expect(onSubmit).not.toHaveBeenCalled();
+    expect(onDismiss).not.toHaveBeenCalled();
   });
 
   it("keeps request visible when skip settlement fails", async () => {
-    const onSubmit = vi.fn();
-    const onDismiss = vi.fn().mockRejectedValue(new Error("fail"));
+    const onSubmit = vi.fn().mockRejectedValue(new Error("fail"));
+    const onDismiss = vi.fn();
     render(
       <RequestUserInputMessage
         requests={[baseRequest]}
@@ -183,8 +189,11 @@ describe("RequestUserInputMessage", () => {
     await waitFor(() => {
       expect(screen.getByText("Submit failed. Please retry.")).toBeTruthy();
     });
-    expect(onDismiss).toHaveBeenCalledWith(baseRequest);
-    expect(onSubmit).not.toHaveBeenCalled();
+    expect(onSubmit).toHaveBeenCalledWith(baseRequest, {
+      answers: {},
+      skippedQuestionIds: ["q-1"],
+    });
+    expect(onDismiss).not.toHaveBeenCalled();
     expect(screen.getByText("Provide input")).toBeTruthy();
   });
 
@@ -460,16 +469,14 @@ describe("RequestUserInputMessage", () => {
 
   it("keeps timeout hint when collapsed stale request is skipped after auto-dismiss failure", async () => {
     vi.useFakeTimers();
-    const onDismiss = vi
-      .fn()
-      .mockRejectedValueOnce(new Error("fail"))
-      .mockResolvedValueOnce(undefined);
+    const onDismiss = vi.fn().mockRejectedValue(new Error("fail"));
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
     render(
       <RequestUserInputMessage
         requests={[baseRequest]}
         activeThreadId="thread-1"
         activeWorkspaceId="ws-1"
-        onSubmit={vi.fn()}
+        onSubmit={onSubmit}
         onDismiss={onDismiss}
       />,
     );
@@ -487,9 +494,15 @@ describe("RequestUserInputMessage", () => {
       await Promise.resolve();
     });
 
-    expect(onDismiss).toHaveBeenNthCalledWith(2, baseRequest, {
-      staleSettlementHint: "timeout",
-    });
+    // Skip always goes through submit path (with timeout stale hint when countdown is 0).
+    expect(onSubmit).toHaveBeenCalledWith(
+      baseRequest,
+      {
+        answers: {},
+        skippedQuestionIds: ["q-1"],
+      },
+      { staleSettlementHint: "timeout" },
+    );
     expect(screen.queryByRole("group", { name: "Collapsed question card" })).toBeNull();
   });
 

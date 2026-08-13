@@ -1,6 +1,0 @@
-{"file": ".claude/commands/trellis/finish-work.md", "reason": "Finish work checklist"}
-{"file": ".claude/commands/trellis/check.md", "reason": "Code quality check spec"}
-{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Focused tests, accessibility, CodeMirror regression guard"}
-{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "Rust regression and compatibility checks"}
-{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Cross-layer verification"}
-{"file": "docs/perf/render-jank-knife-experiments-2026-07-08.md", "reason": "Conversation render performance guard"}

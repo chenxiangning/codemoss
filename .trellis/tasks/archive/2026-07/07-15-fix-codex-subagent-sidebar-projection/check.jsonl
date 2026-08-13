@@ -1,9 +1,0 @@
-{"file": ".claude/commands/trellis/finish-work.md", "reason": "Finish work checklist"}
-{"file": ".claude/commands/trellis/check.md", "reason": "Code quality check spec"}
-{"file": ".trellis/spec/guides/workspace-session-catalog-contract.md", "reason": "核对 catalog membership 与 stable identity"}
-{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "检查 optional parentSessionId mapping"}
-{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "Rust runtime path review"}
-{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "frontend tests、boundary normalization 与 commit scope"}
-{"file": "openspec/changes/fix-codex-subagent-sidebar-projection/specs/subagent-session-tree-navigation/spec.md", "reason": "behavior acceptance scenarios"}
-{"file": "src-tauri/src/local_usage/tests.rs", "reason": "real-shape parser regression seam"}
-{"file": "src/features/app/hooks/useThreadRows.test.ts", "reason": "Sidebar parent-child tree regression seam"}

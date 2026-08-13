@@ -411,6 +411,160 @@ fn scan_codex_summaries_merges_disk_and_multiple_provider_homes_for_workspace() 
 }
 
 #[test]
+fn bounded_codex_scan_uses_recent_candidates_and_counts_unique_sessions() {
+    assert_eq!(resolve_codex_candidate_scan_limit(2), 22);
+    assert_eq!(resolve_codex_candidate_scan_limit(usize::MAX), usize::MAX);
+    let base = std::env::temp_dir().join(format!("ccgui-codex-bounded-scan-{}", Uuid::new_v4()));
+    let root = base.join("sessions");
+    let day_key = "2026-01-19";
+    let newest_a = write_named_session_file(
+        &root,
+        day_key,
+        "rollout-a-new",
+        &[r#"{"timestamp":"2026-01-19T12:03:00.000Z","type":"session_meta","payload":{"id":"session-a","cwd":"/tmp/project-alpha"}}"#.to_string()],
+    );
+    let duplicate_a = write_named_session_file(
+        &root,
+        day_key,
+        "rollout-a-old",
+        &[r#"{"timestamp":"2026-01-19T12:02:00.000Z","type":"session_meta","payload":{"id":"session-a","cwd":"/tmp/project-alpha"}}"#.to_string()],
+    );
+    let session_b = write_named_session_file(
+        &root,
+        day_key,
+        "session-b",
+        &[r#"{"timestamp":"2026-01-19T12:01:00.000Z","type":"session_meta","payload":{"id":"session-b","cwd":"/tmp/project-alpha"}}"#.to_string()],
+    );
+    let session_c = write_named_session_file(
+        &root,
+        day_key,
+        "session-c",
+        &[r#"{"timestamp":"2026-01-19T12:00:00.000Z","type":"session_meta","payload":{"id":"session-c","cwd":"/tmp/project-alpha"}}"#.to_string()],
+    );
+    for (path, seconds) in [
+        (&newest_a, 400),
+        (&duplicate_a, 300),
+        (&session_b, 200),
+        (&session_c, 100),
+    ] {
+        File::open(path)
+            .expect("open candidate")
+            .set_modified(std::time::UNIX_EPOCH + std::time::Duration::from_secs(seconds))
+            .expect("set candidate mtime");
+    }
+
+    let (summaries, scanned_file_count) = scan_codex_session_summaries_bounded_with_mode(
+        Some(Path::new("/tmp/project-alpha")),
+        std::slice::from_ref(&root),
+        2,
+        CodexSessionParseMode::ThreadPreview,
+    )
+    .expect("bounded scan summaries");
+    let session_ids = summaries
+        .into_iter()
+        .map(|summary| summary.session_id)
+        .collect::<HashSet<_>>();
+
+    assert_eq!(
+        session_ids,
+        HashSet::from(["session-a".to_string(), "session-b".to_string()])
+    );
+    assert_eq!(
+        scanned_file_count, 3,
+        "duplicate must not consume the unique-session budget"
+    );
+
+    fs::remove_dir_all(base).ok();
+}
+
+#[test]
+fn full_codex_scan_merges_duplicate_evidence_before_truncation() {
+    let base = std::env::temp_dir().join(format!("ccgui-codex-full-scan-{}", Uuid::new_v4()));
+    let root = base.join("sessions");
+    let newest = write_named_session_file(
+        &root,
+        "2026-01-19",
+        "rollout-new",
+        &[r#"{"timestamp":"2026-01-19T12:01:00.000Z","type":"session_meta","payload":{"id":"session-a","cwd":"/tmp/project-alpha"}}"#.to_string()],
+    );
+    let older_with_usage = write_named_session_file(
+        &root,
+        "2026-01-18",
+        "rollout-old",
+        &[
+            r#"{"timestamp":"2026-01-18T12:00:00.000Z","type":"session_meta","payload":{"id":"session-a","cwd":"/tmp/project-alpha"}}"#.to_string(),
+            r#"{"timestamp":"2026-01-18T12:00:01.000Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":10,"cached_input_tokens":0,"output_tokens":5}}}}"#.to_string(),
+        ],
+    );
+    File::open(&newest)
+        .expect("open newest candidate")
+        .set_modified(UNIX_EPOCH + StdDuration::from_secs(200))
+        .expect("set newest candidate mtime");
+    File::open(&older_with_usage)
+        .expect("open older candidate")
+        .set_modified(UNIX_EPOCH + StdDuration::from_secs(100))
+        .expect("set older candidate mtime");
+
+    let (summaries, scanned_file_count) = scan_codex_session_summaries_bounded_with_mode(
+        Some(Path::new("/tmp/project-alpha")),
+        std::slice::from_ref(&root),
+        1,
+        CodexSessionParseMode::Full,
+    )
+    .expect("full scan summaries");
+
+    assert_eq!(scanned_file_count, 2);
+    assert_eq!(summaries.len(), 1);
+    assert_eq!(summaries[0].session_id, "session-a");
+    assert_eq!(summaries[0].usage.total_tokens, 15);
+
+    fs::remove_dir_all(base).ok();
+}
+
+#[test]
+fn thread_preview_caps_jsonl_bytes_and_uses_file_mtime() {
+    let root = make_temp_sessions_root();
+    let oversized_early_event = format!(
+        r#"{{"timestamp":"2026-01-19T12:00:01.000Z","type":"event_msg","payload":{{"type":"notice","blob":"{}"}}}}"#,
+        "x".repeat(CODEX_THREAD_PREVIEW_MAX_BYTES as usize)
+    );
+    let path = write_named_session_file(
+        &root,
+        "2026-01-19",
+        "preview-byte-budget",
+        &[
+            r#"{"timestamp":"2026-01-19T12:00:00.000Z","type":"session_meta","payload":{"id":"preview-session","cwd":"/tmp/project-alpha"}}"#.to_string(),
+            r#"{"timestamp":"2026-01-19T12:00:00.500Z","type":"event_msg","payload":{"type":"user_message","message":"Preview title"}}"#.to_string(),
+            oversized_early_event,
+            r#"{"timestamp":"2026-01-19T12:00:02.000Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":10,"cached_input_tokens":0,"output_tokens":5}}}}"#.to_string(),
+        ],
+    );
+    let expected_mtime = UNIX_EPOCH + StdDuration::from_secs(777);
+    File::open(&path)
+        .expect("open preview candidate")
+        .set_modified(expected_mtime)
+        .expect("set preview mtime");
+
+    let preview = parse_codex_session_summary_with_mode(
+        &path,
+        Some(Path::new("/tmp/project-alpha")),
+        CodexSessionParseMode::ThreadPreview,
+    )
+    .expect("parse preview")
+    .expect("preview summary");
+    let full = parse_codex_session_summary(&path, Some(Path::new("/tmp/project-alpha")))
+        .expect("parse full")
+        .expect("full summary");
+
+    assert_eq!(preview.summary.as_deref(), Some("Preview title"));
+    assert_eq!(preview.timestamp, 777_000);
+    assert_eq!(preview.usage.total_tokens, 0);
+    assert_eq!(full.usage.total_tokens, 15);
+
+    fs::remove_dir_all(root).ok();
+}
+
+#[test]
 fn scan_codex_summaries_prefers_latest_valid_native_thread_name() {
     let base = std::env::temp_dir().join(format!("ccgui-codex-native-title-{}", Uuid::new_v4()));
     let codex_home = base.join("codex-home");

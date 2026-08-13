@@ -715,7 +715,12 @@ pub fn engine_event_to_app_server_event_with_turn_context(
             ..
         } => {
             let tool_name_lower = tool_name.to_ascii_lowercase();
-            let method = if tool_name_lower.contains("apply")
+            let method = if tool_name_lower == "directorygrant"
+                || tool_name_lower.contains("directory_grant")
+                || tool_name_lower.contains("directorygrant")
+            {
+                "item/directoryGrant/requestApproval"
+            } else if tool_name_lower.contains("apply")
                 || tool_name_lower.contains("patch")
                 || tool_name_lower.contains("write")
                 || tool_name_lower.contains("edit")
@@ -1228,6 +1233,32 @@ mod tests {
             Value::String("thread-1".to_string())
         );
         assert_eq!(mapped.message["params"]["argv"], json!(["git", "status"]));
+    }
+
+    #[test]
+    fn directory_grant_approval_maps_to_directory_grant_method() {
+        let event = EngineEvent::ApprovalRequest {
+            workspace_id: "ws-grant".to_string(),
+            request_id: json!("req-grant-1"),
+            tool_name: "DirectoryGrant".to_string(),
+            input: Some(json!({
+                "suggestedRoot": "/Users/me/.claude",
+                "grantKind": "directory",
+                "defaultScope": "session"
+            })),
+            message: Some("outside allowed working directories".to_string()),
+        };
+
+        let mapped =
+            engine_event_to_app_server_event(&event, "thread-g", "item-g").expect("mapped event");
+        assert_eq!(
+            mapped.message["method"],
+            Value::String("item/directoryGrant/requestApproval".to_string())
+        );
+        assert_eq!(
+            mapped.message["params"]["suggestedRoot"],
+            Value::String("/Users/me/.claude".to_string())
+        );
     }
 
     #[test]

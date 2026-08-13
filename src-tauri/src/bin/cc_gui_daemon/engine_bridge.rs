@@ -23,6 +23,8 @@ pub(crate) mod claude_message_content;
 pub(crate) mod cli_image_input;
 #[path = "../../engine/events.rs"]
 pub mod events;
+#[path = "../../engine/session_directory_grant.rs"]
+pub mod session_directory_grant;
 #[path = "../../engine/gemini.rs"]
 pub mod gemini;
 #[path = "../../engine/gemini_history.rs"]

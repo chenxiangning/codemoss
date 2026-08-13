@@ -74,5 +74,5 @@ Phase 2 已经证明 mossx 可以发现官方 Computer Use 安装态，并能把
 - Backend: `src-tauri/src/computer_use/**` host-contract diagnostics、platform adapter 分类、command registration。
 - Frontend: `src/features/computer-use/**` host-contract result rendering、CTA gating、i18n copy。
 - Services/types: `src/services/tauri.ts`、`src/services/tauri/computerUse.ts`、`src/types.ts`。
-- Specs/docs: OpenSpec delta specs、manual test matrix、`.trellis/spec/**/computer-use-bridge.md`。
+- Specs/docs: OpenSpec delta specs、manual test matrix、`dev-guidelines/**/computer-use-bridge.md`。
 - No new third-party dependency is expected.

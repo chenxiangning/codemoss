@@ -21,6 +21,8 @@ for (const chunkName of [
   "vendor-mermaid",
   "vendor-docs",
   "vendor-ui-heavy",
+  // Cold-start P0-1: perfBaseline must stay in its own chunk (not treemap/mermaid).
+  "perf-baseline",
 ]) {
   if (!source.includes(chunkName)) {
     fail(`vite manualChunks missing ${chunkName}`);

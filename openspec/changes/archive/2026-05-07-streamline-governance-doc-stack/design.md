@@ -3,7 +3,7 @@
 当前仓库的 instruction/doc stack 同时包含以下层：
 
 - `AGENTS.md`：项目级 agent 入口与硬约束
-- `.trellis/spec/**`：frontend/backend/guides 等实现层规范
+- `dev-guidelines/**`：frontend/backend/guides 等实现层规范
 - `openspec/project.md`：OpenSpec workspace 总览与治理状态
 - `openspec/README.md`：OpenSpec 工作区入口说明
 - `.claude/**`、`.codex/**`：host adapter hooks/commands/skills 配置
@@ -44,7 +44,7 @@
    - 载体：`AGENTS.md`
    - 职责：规则优先级、最小 session-start 路径、全局 gate、各层指针
 2. **Implementation rules**
-   - 载体：`.trellis/spec/**`
+   - 载体：`dev-guidelines/**`
    - 职责：frontend/backend/guides 具体实现规范
 3. **Behavior specs**
    - 载体：`openspec/**`
@@ -109,7 +109,7 @@
 - host-specific config
 - skills/agent registration glue
 
-治理含义由 `AGENTS.md` 与 `.trellis/spec` / `openspec` 解释，adapter 只负责接入。
+治理含义由 `AGENTS.md` 与 `dev-guidelines` / `openspec` 解释，adapter 只负责接入。
 
 **Why this over “把 host-specific 规则写在 host 目录里”？**
 
@@ -163,5 +163,5 @@
 
 ## Open Questions
 
-- 是否在后续批次新增一份“项目规则地图”放到 `.trellis/spec/guides/`，作为 AGENTS 的稳定二级入口。  
+- 是否在后续批次新增一份“项目规则地图”放到 `dev-guidelines/guides/`，作为 AGENTS 的稳定二级入口。  
   当前先不做，避免把一次收敛又变成新增一个中心化大文档。

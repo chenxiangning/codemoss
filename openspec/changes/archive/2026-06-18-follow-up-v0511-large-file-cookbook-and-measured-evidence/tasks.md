@@ -10,7 +10,7 @@
 
 ## 2. Recovery cookbook
 
-- [x] Update `.trellis/spec/backend/codex-provider-scoped-runtime.md` with recovery failure playbook.
+- [x] Update `dev-guidelines/backend/codex-provider-scoped-runtime.md` with recovery failure playbook.
 - [x] Document `staleRecoveryClassification.reasonCode` / `staleReason` / `userAction`.
 - [x] Add GEMINI / CLAUDE provider recovery template.
 - [x] Link the cookbook back to `codex-stale-thread-binding-recovery` and `codex-message-recovery-hook`.

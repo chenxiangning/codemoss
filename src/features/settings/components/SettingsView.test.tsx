@@ -1583,55 +1583,11 @@ describe("SettingsView Display", () => {
     expect(onWindowOpacityChange).toHaveBeenCalledWith(72);
   });
 
-  it("commits ui scale from preset dropdown options", async () => {
-    const onUpdateAppSettings = vi.fn().mockResolvedValue(undefined);
-    renderDisplaySection({ onUpdateAppSettings });
-
-    const scaleSelect = screen.getByTestId(
-      "settings-ui-scale-select",
-    ) as HTMLSelectElement;
-
-    expect(within(scaleSelect).getByRole("option", { name: "80%" })).toBeTruthy();
-    expect(within(scaleSelect).getByRole("option", { name: "150%" })).toBeTruthy();
-    expect(within(scaleSelect).queryByRole("option", { name: "160%" })).toBeNull();
-    expect(screen.queryByTestId("settings-ui-scale-save")).toBeNull();
-
-    fireEvent.change(scaleSelect, { target: { value: "1.2" } });
-
-    await waitFor(() => {
-      expect(onUpdateAppSettings).toHaveBeenCalledWith(
-        expect.objectContaining({ uiScale: 1.2 }),
-      );
-    });
-
-    fireEvent.change(scaleSelect, { target: { value: "0.8" } });
-
-    await waitFor(() => {
-      expect(onUpdateAppSettings).toHaveBeenCalledWith(
-        expect.objectContaining({ uiScale: 0.8 }),
-      );
-    });
-  });
-
-  it("resets ui scale to 100% from settings when dirty", async () => {
-    const onUpdateAppSettings = vi.fn().mockResolvedValue(undefined);
-    renderDisplaySection({
-      onUpdateAppSettings,
-      appSettings: { uiScale: 1.2 },
-    });
-
-    fireEvent.click(screen.getByTestId("settings-ui-scale-reset"));
-
-    await waitFor(() => {
-      expect(onUpdateAppSettings).toHaveBeenCalledWith(
-        expect.objectContaining({ uiScale: 1 }),
-      );
-    });
-  });
-
-  it("hides ui scale reset when scale is already 100%", () => {
-    renderDisplaySection({ appSettings: { uiScale: 1 } });
+  it("hides ui scale controls — scale permanently locked to 100%", () => {
+    renderDisplaySection({ appSettings: { uiScale: 1.2 } });
+    expect(screen.queryByTestId("settings-ui-scale-select")).toBeNull();
     expect(screen.queryByTestId("settings-ui-scale-reset")).toBeNull();
+    expect(screen.queryByTestId("settings-ui-scale-save")).toBeNull();
   });
 
   it("commits ui font selection and code font dropdown changes", async () => {

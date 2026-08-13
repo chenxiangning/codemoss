@@ -8,7 +8,7 @@
 | # | 决策 | 依据 |
 |---|---|---|
 | D1 | SQLite WAL + 单写者 Actor（专用 OS 线程 + std::sync::mpsc） | Foundation §14.4.1/§14.4.3；同步 rusqlite 调用不阻塞 tokio runtime，线程天然串行化 |
-| D2 | 模块落位 `src-tauri/src/shared_event_log/`，按 domain 子模块拆分 | `.trellis/spec/backend/directory-structure.md` |
+| D2 | 模块落位 `src-tauri/src/shared_event_log/`，按 domain 子模块拆分 | `dev-guidelines/backend/directory-structure.md` |
 | D3 | 零新增依赖：rusqlite 0.32 (bundled) + serde_json + sha2 已在/将确认于 Cargo.toml | 胶水开发模式；sha2 若缺则评估后补（成熟维护库） |
 | D4 | 崩溃测试台用"子进程受害模式"：同一 test binary 以 env 进入 victim 角色，父进程 SIGKILL | 真实 WAL 行为，不模拟；Foundation §14.4.8 |
 | D5 | checksum 的 deterministic-json：递归 sort object keys、UTF-8、无空白、number 走 serde_json 最短往返格式 | Foundation §14.4.4：不得依赖语言 Map 迭代顺序 |

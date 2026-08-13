@@ -260,7 +260,7 @@ docs(readme): 校准项目文档索引
 
 - [AGENTS.md](AGENTS.md) — 仓库规则总入口（用 AI 辅助开发本项目时必读）。
 - [项目文档总索引](docs/README.md) — 架构、性能、计划、研究和时间快照，并明确各自事实边界。
-- [.trellis/spec/](.trellis/spec/) — 前端、后端的详细实现规范。
+- [dev-guidelines/](dev-guidelines/) — 前端、后端的详细实现规范。
 - [OpenSpec 工作区](openspec/README.md) — behavior specs、工作流与治理总览。
 - [主 capability spec 索引](openspec/specs/README.md) — 已同步到主线的全部 behavior contract。
 - [活跃提案索引](openspec/changes/README.md) — 当前变更、进度、归档门禁与 artifact 链接。

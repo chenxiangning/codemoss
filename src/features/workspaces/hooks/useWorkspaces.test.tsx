@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { StrictMode, type ReactNode } from "react";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { WorkspaceInfo } from "../../../types";
@@ -15,6 +16,10 @@ import {
 } from "../../../services/tauri";
 import { pushErrorToast } from "../../../services/toasts";
 import { useWorkspaces } from "./useWorkspaces";
+import {
+  getStartupTraceSnapshot,
+  resetStartupTraceForTests,
+} from "../../startup-orchestration/utils/startupTrace";
 
 vi.mock("../../../services/tauri", () => ({
   listWorkspaces: vi.fn(),
@@ -71,12 +76,17 @@ const workspaceTwo: WorkspaceInfo = {
   settings: { sidebarCollapsed: false, groupId: null },
 };
 
+function StrictModeWrapper({ children }: { children: ReactNode }) {
+  return <StrictMode>{children}</StrictMode>;
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   // Default to "no pending recovery notice" so implementations never leak
   // across cases (clearAllMocks does not reset implementations).
   vi.mocked(takeWorkspacesRecoveryNotice).mockResolvedValue(null);
   writeClientStoreData("threads", {});
+  resetStartupTraceForTests();
 });
 
 afterEach(() => {
@@ -458,6 +468,36 @@ describe("useWorkspaces sidebar cache", () => {
 describe("useWorkspaces workspaces recovery notice", () => {
   const takeNoticeMock = vi.mocked(takeWorkspacesRecoveryNotice);
   const pushErrorToastMock = vi.mocked(pushErrorToast);
+
+  it("deduplicates initial workspace and recovery reads under StrictMode", async () => {
+    let resolveList: (value: WorkspaceInfo[]) => void = () => {};
+    vi.mocked(listWorkspaces).mockReturnValue(
+      new Promise<WorkspaceInfo[]>((resolve) => {
+        resolveList = resolve;
+      }),
+    );
+
+    const { result } = renderHook(() => useWorkspaces(), {
+      wrapper: StrictModeWrapper,
+    });
+
+    expect(listWorkspaces).toHaveBeenCalledTimes(1);
+    expect(takeNoticeMock).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      resolveList([workspaceOne]);
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(result.current.workspaces).toEqual([workspaceOne]));
+    expect(listWorkspaces).toHaveBeenCalledTimes(1);
+    expect(takeNoticeMock).toHaveBeenCalledTimes(1);
+    expect(getStartupTraceSnapshot().events).toContainEqual(
+      expect.objectContaining({
+        type: "command",
+        commandLabel: "list_workspaces",
+        status: "completed",
+      }),
+    );
+  });
 
   it("surfaces exactly one recovery toast when startup holds a quarantine notice", async () => {
     const backupFileName = "workspaces.json.corrupted-20260724T000000Z.bak";

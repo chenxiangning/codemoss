@@ -128,7 +128,12 @@ export function ComposerReadinessBar({
             onReloadProviderConfig={onReloadProviderConfig}
           />
         ) : (
-          <div className="composer-readiness-target">
+          // 无交互选择器：引擎 + 模型固定占位；模型未就绪仅模型名显示 loading
+          <div
+            className="composer-readiness-target"
+            data-testid="composer-readiness-model-static"
+            aria-busy={Boolean(isModelConfigRefreshing)}
+          >
             <span className="composer-readiness-icon" aria-hidden="true">
               <EngineIcon engine={readiness.target.engine} size={17} />
             </span>
@@ -138,7 +143,21 @@ export function ComposerReadinessBar({
             <span className="composer-readiness-divider" aria-hidden="true">
               /
             </span>
-            <span className="composer-readiness-model">
+            <span
+              className="composer-readiness-model"
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 4,
+              }}
+            >
+              {isModelConfigRefreshing ? (
+                <span
+                  className="codicon codicon-loading selector-refresh-icon-spinning"
+                  style={{ fontSize: 12 }}
+                  aria-hidden
+                />
+              ) : null}
               {readiness.target.modelLabel}
             </span>
           </div>

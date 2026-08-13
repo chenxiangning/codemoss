@@ -16,6 +16,7 @@ import {
   classifyContextProtocolText,
   isMossxProgramControlTitle,
 } from "../../../utils/contextProtocol";
+import { remapThreadParentsToSharedOwners } from "../../shared-session/runtime/sharedSessionSummaries";
 
 const CLAUDE_HISTORY_MESSAGE_ID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -1339,13 +1340,8 @@ export function stripHiddenSharedBindingSummaries(
       changed = true;
       return false;
     }
-    // Shared 子代理：parent 已 remap 到 shared: 时必须保留在列表中，
-    // 供 useThreadRows / childSubagentThreads / S10→Strip 合成使用。
-    // （旧逻辑直接丢掉 → Shared 无子代理入口；Native 不受影响）
-    const parent = summary.parentThreadId?.trim() ?? "";
-    if (parent.startsWith("shared:") && !summary.id.startsWith("shared:")) {
-      return true;
-    }
+    // Shared 子代理：store 中保留（childSubagentThreads / Strip / 幕布合成）。
+    // 侧栏「不展示崽子」由 useThreadRows.isSharedSidebarHiddenPup 负责，不在此删行。
     return true;
   });
   return changed ? next : summaries;
@@ -1531,17 +1527,8 @@ export function mergeGrokSessionSummaries(
   if (!nativeOwnerToSharedThreadId || nativeOwnerToSharedThreadId.size === 0) {
     return merged;
   }
-  return merged.map((thread) => {
-    const parent = thread.parentThreadId?.trim() || "";
-    if (!parent) {
-      return thread;
-    }
-    const remapped = nativeOwnerToSharedThreadId.get(parent);
-    if (!remapped || remapped === parent) {
-      return thread;
-    }
-    return { ...thread, parentThreadId: remapped };
-  });
+  // 与主路径 remap 共用 lookup（raw / engine: 变体），禁止 exact map.get only
+  return remapThreadParentsToSharedOwners(merged, nativeOwnerToSharedThreadId);
 }
 
 function normalizeCatalogEngine(

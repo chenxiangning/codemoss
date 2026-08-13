@@ -79,6 +79,8 @@ const sidebar = {
     activateWorkspace: "Open in main panel",
     collapseWorkspace: "Collapse workspace sessions",
     expandWorkspace: "Expand workspace sessions",
+    dragToReorder: "Drag to reorder projects",
+    longPressToReorder: "Long-press to drag and reorder",
     workspaceActionsGroup: "Workspace Actions",
     setWorkspaceAlias: "Set alias",
     assignWorkspaceGroup: "Change project group",

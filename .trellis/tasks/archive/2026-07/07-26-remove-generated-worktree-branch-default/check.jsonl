@@ -1,3 +1,0 @@
-{"file": ".claude/commands/trellis/finish-work.md", "reason": "Finish work checklist"}
-{"file": ".claude/commands/trellis/check.md", "reason": "Code quality check spec"}
-{"file": "openspec/changes/remove-generated-worktree-branch-default/specs/git-worktree-base-selection/spec.md", "reason": "Behavior contract"}

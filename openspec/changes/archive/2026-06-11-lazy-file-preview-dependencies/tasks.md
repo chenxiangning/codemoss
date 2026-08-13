@@ -33,7 +33,7 @@
   - This task is **permanently withdrawn** and tagged
     *No-Reintroduction*. Any future PR/change that re-tries this
     optimization must be rejected at review; see
-    `.trellis/spec/frontend/quality-guidelines.md` (CodeMirror
+    `dev-guidelines/frontend/quality-guidelines.md` (CodeMirror
     State-Coupled Extensions 不可跨越 Lazy Boundary) and
     `openspec/docs/lazy-state-extension-regression-2026-06-11.md`
     for the long-form rationale and the decision checklist.

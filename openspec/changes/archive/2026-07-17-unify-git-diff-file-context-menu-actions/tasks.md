@@ -8,7 +8,7 @@
 
 - [x] 2.1 [P0, depends: 1.2] 输入 single-repository contextmenu events，新增 regression tests；输出 native-menu suppression、Git submenu accessibility、section-local bulk target、cancel/confirm isolation 的可执行证据。
 - [x] 2.2 [P0, depends: 1.3] 输入 two-repository same-path fixtures 与 explicit workspace-root fixture，新增 regression tests；输出 exact repository callback、refresh-on-success、zero side effects on menu-open 的可执行证据。
-- [x] 2.3 [P1, depends: 1.2, 1.3] 输入最终 callback/data-flow，更新 `.trellis/spec/frontend/multi-repository-git-commit-workspace.md`；输出可执行 signature、action matrix、error matrix 与 test requirements。
+- [x] 2.3 [P1, depends: 1.2, 1.3] 输入最终 callback/data-flow，更新 `dev-guidelines/frontend/multi-repository-git-commit-workspace.md`；输出可执行 signature、action matrix、error matrix 与 test requirements。
 
 ## 3. Verification And Closure
 

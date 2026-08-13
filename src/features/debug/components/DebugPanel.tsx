@@ -2,6 +2,8 @@ import { useMemo, useRef } from "react";
 import type { MouseEvent as ReactMouseEvent } from "react";
 import { useTranslation } from "react-i18next";
 import type { DebugEntry } from "../../../types";
+import { loadDebugStyles } from "../../../styles/featureStyleLoaders";
+import { useFeatureStylesReady } from "../../../styles/useFeatureStylesReady";
 
 type DebugPanelProps = {
   entries: DebugEntry[];
@@ -36,6 +38,10 @@ export function DebugPanel({
 }: DebugPanelProps) {
   const { t } = useTranslation();
   const isVisible = variant === "full" || isOpen;
+  const stylesReady = useFeatureStylesReady(loadDebugStyles, isVisible);
+  if (!stylesReady && isVisible) {
+    return null;
+  }
 
   type FormattedDebugEntry = DebugEntry & {
     timeLabel: string;

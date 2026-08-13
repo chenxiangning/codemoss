@@ -197,14 +197,14 @@ Oversized test split completed.
 
 ## Cross-Layer Review
 
-Reviewed against `.trellis/spec/guides/cross-layer-thinking-guide.md`.
+Reviewed against `dev-guidelines/guides/cross-layer-thinking-guide.md`.
 
 - `textFiles` bridge extraction still calls the same `file_read` / `file_write` Tauri command names.
 - Frontend request payload keys remain `scope`, `kind`, `workspaceId`, and `content`; no optional collection semantics changed.
 - Backend command registry was not modified for the text file extraction; `file_read` and `file_write` remain registered through the existing files module.
 - Runtime helper extraction moved only `runtime_key` and `normalize_engine`; no Tauri command, payload, runtime event, or storage contract changed.
 - Settings presentational extraction preserved props, i18n keys, persisted state behavior, and rendered markup.
-- No durable new code-level Trellis rule was introduced beyond the OpenSpec contract and implementation notes, so `.trellis/spec/**` was not changed in this batch.
+- No durable new code-level Trellis rule was introduced beyond the OpenSpec contract and implementation notes, so `dev-guidelines/**` was not changed in this batch.
 
 ## Large-File Delta
 

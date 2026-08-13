@@ -1,7 +1,0 @@
-{"file": ".trellis/workflow.md", "reason": "Project workflow and conventions"}
-{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend development guide"}
-{"file": ".trellis/spec/frontend/directory-structure.md", "reason": "feature-local pure helper 落位"}
-{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "Pull Dialog render 与 i18n/accessibility"}
-{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "行为变更测试与 large-file gate"}
-{"file": ".trellis/spec/frontend/type-safety.md", "reason": "typed pure resolver"}
-{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "避免在 JSX 复制组合逻辑"}

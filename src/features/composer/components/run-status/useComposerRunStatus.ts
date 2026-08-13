@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { TurnPlan } from "../../../../types";
 import type { SubagentInfo, TodoItem } from "../../../status-panel/types";
 import {
@@ -137,15 +137,11 @@ export function useComposerRunStatus(input: ComposerRunStatusInput) {
   const [expandedSection, setExpandedSection] = useState<RunStatusSection | null>(
     null,
   );
-  const userCollapsedRef = useRef(false);
-  const autoExpandedSubagentRef = useRef(false);
 
-  // 活动条 section 消失时清对应 expand；与子代理互不拖垮
+  // 活动条 section 消失时清对应 expand；默认收起，仅用户手动 toggle 展开
   useEffect(() => {
     if (!activityVisible && !showSubagentSection) {
       setExpandedSection(null);
-      userCollapsedRef.current = false;
-      autoExpandedSubagentRef.current = false;
       return;
     }
     setExpandedSection((current) => {
@@ -163,34 +159,11 @@ export function useComposerRunStatus(input: ComposerRunStatusInput) {
     showTodoSection,
   ]);
 
-  // 子代理 running 时自动展开：只看子代理自身，不看 todo/edit 是否有活动
-  useEffect(() => {
-    if (!subagentRunning || !showSubagentSection) return;
-    if (userCollapsedRef.current || autoExpandedSubagentRef.current) return;
-    autoExpandedSubagentRef.current = true;
-    setExpandedSection("subagent");
-  }, [showSubagentSection, subagentRunning]);
-
-  // 子代理段从有→无时，允许下次再 auto-expand
-  useEffect(() => {
-    if (!showSubagentSection) {
-      autoExpandedSubagentRef.current = false;
-    }
-  }, [showSubagentSection]);
-
   const toggleSection = useCallback((section: RunStatusSection) => {
-    setExpandedSection((current) => {
-      if (current === section) {
-        userCollapsedRef.current = true;
-        return null;
-      }
-      userCollapsedRef.current = false;
-      return section;
-    });
+    setExpandedSection((current) => (current === section ? null : section));
   }, []);
 
   const collapse = useCallback(() => {
-    userCollapsedRef.current = true;
     setExpandedSection(null);
   }, []);
 

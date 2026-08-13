@@ -1,5 +1,6 @@
-import type { MouseEvent, ReactNode } from "react";
+import type { MouseEvent, PointerEvent as ReactPointerEvent, ReactNode } from "react";
 import { useTranslation } from "react-i18next";
+import GripVertical from "lucide-react/dist/esm/icons/grip-vertical";
 import ListChevronsDownUp from "lucide-react/dist/esm/icons/list-chevrons-down-up";
 import ListChevronsUpDown from "lucide-react/dist/esm/icons/list-chevrons-up-down";
 import SquarePlus from "lucide-react/dist/esm/icons/square-plus";
@@ -34,6 +35,15 @@ type WorkspaceCardProps = {
   onSelectWorkspace: (workspaceId: string) => void;
   onToggleWorkspaceCollapse: (workspaceId: string, collapsed: boolean) => void;
   pinnedRowActions?: WorkspaceRowPinnedAction[];
+  /** Long-press reorder is armed / in progress for this card. */
+  isDragging?: boolean;
+  /**
+   * Long-press entry on the left collapse button only.
+   * After arming, that button switches to a drag affordance.
+   */
+  collapsePointerHandlers?: {
+    onPointerDown: (event: ReactPointerEvent) => void;
+  } | null;
   children?: React.ReactNode;
 };
 
@@ -50,6 +60,8 @@ export function WorkspaceCard({
   onSelectWorkspace,
   onToggleWorkspaceCollapse,
   pinnedRowActions,
+  isDragging = false,
+  collapsePointerHandlers = null,
   children,
 }: WorkspaceCardProps) {
   const { t } = useTranslation();
@@ -57,6 +69,13 @@ export function WorkspaceCard({
   const collapseLabel = isCollapsed
     ? t("sidebar.expandWorkspace")
     : t("sidebar.collapseWorkspace");
+  const isReorderable = Boolean(collapsePointerHandlers);
+  const isDragHandleMode = isDragging && isReorderable;
+  const collapseControlLabel = isDragHandleMode
+    ? t("sidebar.dragToReorder")
+    : isReorderable
+      ? `${collapseLabel} · ${t("sidebar.longPressToReorder")}`
+      : collapseLabel;
 
   const handleToggleCollapse = () => {
     onToggleWorkspaceCollapse(workspace.id, !isCollapsed);
@@ -80,7 +99,11 @@ export function WorkspaceCard({
   );
 
   return (
-    <div className={`workspace-card ${isActive ? "is-active" : ""}`}>
+    <div
+      className={`workspace-card${isActive ? " is-active" : ""}${
+        isDragging ? " is-dragging" : ""
+      }${isReorderable ? " is-reorderable" : ""}`}
+    >
       <div
         className={`workspace-row ${
           isActive
@@ -92,13 +115,16 @@ export function WorkspaceCard({
         role="button"
         tabIndex={0}
         onClick={(event) => {
-          if (event.detail > 1) {
+          if (event.detail > 1 || isDragging) {
             return;
           }
           handleSelectWorkspace();
         }}
         onDoubleClick={(event) => {
           event.preventDefault();
+          if (isDragging) {
+            return;
+          }
           handleToggleCollapse();
         }}
         onContextMenu={(event) => onShowWorkspaceMenu(event, workspace)}
@@ -112,14 +138,21 @@ export function WorkspaceCard({
         <div className="workspace-header-content">
           <button
             type="button"
-            className={`workspace-folder-btn workspace-collapse-toggle${hasRunningSession ? " is-session-running" : ""}`}
-            aria-label={collapseLabel}
-            title={collapseLabel}
-            aria-expanded={!isCollapsed}
+            className={`workspace-folder-btn workspace-collapse-toggle${
+              hasRunningSession ? " is-session-running" : ""
+            }${isDragHandleMode ? " is-drag-handle" : ""}${
+              isReorderable ? " is-reorder-entry" : ""
+            }`}
+            aria-label={collapseControlLabel}
+            title={collapseControlLabel}
+            aria-expanded={isDragHandleMode ? undefined : !isCollapsed}
+            aria-grabbed={isDragHandleMode ? true : undefined}
             data-tauri-drag-region="false"
+            onPointerDown={collapsePointerHandlers?.onPointerDown}
             onClick={(event) => {
               event.stopPropagation();
-              if (event.detail > 1) {
+              // Long-press armed / dragging: this control is the drag entry, not collapse.
+              if (isDragging || event.detail > 1) {
                 return;
               }
               handleToggleCollapse();
@@ -138,16 +171,24 @@ export function WorkspaceCard({
               }
             }}
           >
-            <span className="workspace-collapse-toggle-folder-icon" aria-hidden>
-              {folderIcon}
-            </span>
-            <span className="workspace-collapse-toggle-affordance-icon" aria-hidden>
-              {isCollapsed ? (
-                <ListChevronsUpDown size={14} strokeWidth={1.8} />
-              ) : (
-                <ListChevronsDownUp size={14} strokeWidth={1.8} />
-              )}
-            </span>
+            {isDragHandleMode ? (
+              <span className="workspace-collapse-toggle-drag-icon" aria-hidden>
+                <GripVertical size={14} strokeWidth={1.9} />
+              </span>
+            ) : (
+              <>
+                <span className="workspace-collapse-toggle-folder-icon" aria-hidden>
+                  {folderIcon}
+                </span>
+                <span className="workspace-collapse-toggle-affordance-icon" aria-hidden>
+                  {isCollapsed ? (
+                    <ListChevronsUpDown size={14} strokeWidth={1.8} />
+                  ) : (
+                    <ListChevronsDownUp size={14} strokeWidth={1.8} />
+                  )}
+                </span>
+              </>
+            )}
           </button>
 
           <span className="workspace-name-text">{workspaceName ?? workspace.name}</span>

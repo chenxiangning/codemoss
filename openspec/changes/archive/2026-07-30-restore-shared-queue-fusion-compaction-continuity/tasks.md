@@ -15,7 +15,7 @@
 ## 3. Lifecycle UI 与 Contract（P1，依赖 1-2）
 
 - [x] 3.1 将 existing active-thread compaction lifecycle scalar 投影到 Shared Composer，禁止恢复逐 delta root dispatch
-- [x] 3.2 更新 `.trellis/spec/backend/shared-session-v2-send-contract.md` 的 executable contract 与 focused commands
+- [x] 3.2 更新 `dev-guidelines/backend/shared-session-v2-send-contract.md` 的 executable contract 与 focused commands
 
 ## 4. 增量验证与闭环（P0，依赖 1-3）
 

@@ -18,7 +18,7 @@ The repository SHALL treat agent/runtime session artifacts as local-only state u
 #### Scenario: Runtime artifact content is not silently rehomed as stable docs
 
 - **WHEN** a collaborator removes runtime artifacts from version control
-- **THEN** the cleanup SHALL NOT automatically migrate that content into `openspec/**`, `.trellis/**`, or other long-lived documentation folders
+- **THEN** the cleanup SHALL NOT automatically migrate that content into `openspec/**`, `dev-guidelines/**`, or other long-lived documentation folders
 - **AND** any content worth preserving SHALL require an intentional, separate curation step
 
 ### Requirement: Repository Hygiene Rules MUST Distinguish Stable Guidance From Generated State
@@ -28,7 +28,7 @@ The repository SHALL make the boundary between stable governance guidance and ge
 #### Scenario: Stable docs remain in canonical governance layers
 
 - **WHEN** a collaborator needs project rules or workflow guidance
-- **THEN** the canonical sources SHALL be `AGENTS.md`, `.trellis/spec/**`, and `openspec/**`
+- **THEN** the canonical sources SHALL be `AGENTS.md`, `dev-guidelines/**`, and `openspec/**`
 - **AND** generated runtime state directories SHALL NOT be referenced as normative guidance sources
 
 #### Scenario: Local agent artifacts use local-only storage semantics

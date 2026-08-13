@@ -51,7 +51,7 @@ Codex catalog thread 可以合法使用 raw logical session id（例如 `codex-h
 
 - Backend：`src-tauri/src/native_continuation/commands.rs`。
 - Frontend tests：`src/features/app/hooks/useSidebarMenus.test.tsx`；生产 mapping 保持不变。
-- Contract：`.trellis/spec/backend/native-provider-continuation-contract.md` 与本 change 的 delta spec。
+- Contract：`dev-guidelines/backend/native-provider-continuation-contract.md` 与本 change 的 delta spec。
 - Dependencies：无新增依赖；IPC payload shape 不变。
 
 ## 验收标准

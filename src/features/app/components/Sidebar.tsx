@@ -35,9 +35,14 @@ import { SidebarTopbarSlot } from "./SidebarTopbarSlot";
 import { SidebarVersionTag } from "./SidebarVersionTag";
 import { SidebarWorkspaceDropOverlay } from "./SidebarWorkspaceDropOverlay";
 import { SidebarWorkspaceMenuOverlay } from "./SidebarWorkspaceMenuOverlay";
+import {
+  SidebarWorkspaceSortableList,
+  type SidebarWorkspaceDragChrome,
+} from "./SidebarWorkspaceSortableList";
 import { ProviderContinuationDialog } from "./ProviderContinuationDialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { RendererContextMenu } from "../../../components/ui/RendererContextMenu";
+import type { SidebarWorkspaceReorderRequest } from "../../workspaces/utils/sidebarWorkspaceReorder";
 import { useCollapsedGroups } from "../hooks/useCollapsedGroups";
 import { useExitedSessionVisibility } from "../hooks/useExitedSessionVisibility";
 import {
@@ -168,6 +173,9 @@ type SidebarProps = {
   onAddWorkspace: () => void;
   onSelectHome: () => void;
   onSelectWorkspace: (id: string) => void;
+  onReorderWorkspaces?: (
+    input: SidebarWorkspaceReorderRequest,
+  ) => void | Promise<void>;
   onConnectWorkspace: (workspace: WorkspaceInfo) => void;
   onAddAgent: (
     workspace: WorkspaceInfo,
@@ -308,6 +316,7 @@ function SidebarImpl({
   onAddWorkspace,
   onSelectHome: _onSelectHome,
   onSelectWorkspace,
+  onReorderWorkspaces,
   onConnectWorkspace,
   onAddAgent,
   engineOptions = [],
@@ -1858,7 +1867,10 @@ function SidebarImpl({
     [sessionFolderOverrideByWorkspaceId, sessionFoldersByWorkspaceId, t],
   );
 
-  const renderWorkspaceEntry = useCallback((entry: WorkspaceInfo) => {
+  const renderWorkspaceEntry = useCallback((
+    entry: WorkspaceInfo,
+    drag: SidebarWorkspaceDragChrome | null = null,
+  ) => {
     const threads = threadsByWorkspace[entry.id] ?? [];
     const isCollapsed = entry.settings.sidebarCollapsed;
     const isExpanded = expandedWorkspaces.has(entry.id);
@@ -1929,6 +1941,8 @@ function SidebarImpl({
         onSelectWorkspace={onSelectWorkspace}
         onToggleWorkspaceCollapse={onToggleWorkspaceCollapse}
         pinnedRowActions={buildWorkspaceRowPinnedActions(entry, hideExitedSessions)}
+        isDragging={drag?.isDragging ?? false}
+        collapsePointerHandlers={drag?.collapsePointerHandlers ?? null}
       >
         {worktrees.length > 0 && (
           <WorktreeSection
@@ -2147,6 +2161,29 @@ function SidebarImpl({
     _threadListLoadingByWorkspace,
   ]);
 
+  const isWorkspaceReorderDisabled =
+    isSearchActive || !onReorderWorkspaces;
+
+  const handleReorderUngrouped = useCallback(
+    (orderedWorkspaceIds: string[]) => {
+      void onReorderWorkspaces?.({
+        groupId: null,
+        orderedWorkspaceIds,
+      });
+    },
+    [onReorderWorkspaces],
+  );
+
+  const handleReorderNamedGroup = useCallback(
+    (groupId: string, orderedWorkspaceIds: string[]) => {
+      void onReorderWorkspaces?.({
+        groupId,
+        orderedWorkspaceIds,
+      });
+    },
+    [onReorderWorkspaces],
+  );
+
   return (
     <aside
       className={`sidebar${isSearchOpen ? " search-open" : ""}`}
@@ -2338,8 +2375,16 @@ function SidebarImpl({
               </TooltipIconButton>
             </div>
             <div className="workspace-list">
-          {defaultWorkspaceEntries.map(renderWorkspaceEntry)}
-          {ungroupedWorkspaceEntries.map(renderWorkspaceEntry)}
+          {defaultWorkspaceEntries.map((entry) => renderWorkspaceEntry(entry))}
+          {ungroupedWorkspaceEntries.length > 0 ? (
+            <SidebarWorkspaceSortableList
+              groupId={null}
+              workspaces={ungroupedWorkspaceEntries}
+              isDragDisabled={isWorkspaceReorderDisabled}
+              onReorder={handleReorderUngrouped}
+              renderWorkspace={renderWorkspaceEntry}
+            />
+          ) : null}
           {namedGroupedWorkspaces.map((group) => {
             const toggleId = group.id;
             const isGroupCollapsed = Boolean(
@@ -2356,7 +2401,17 @@ function SidebarImpl({
                 isCollapsed={isGroupCollapsed}
                 onToggleCollapse={toggleGroupCollapse}
               >
-                {visibleWorkspaces.map(renderWorkspaceEntry)}
+                {visibleWorkspaces.length > 0 ? (
+                  <SidebarWorkspaceSortableList
+                    groupId={group.id}
+                    workspaces={visibleWorkspaces}
+                    isDragDisabled={isWorkspaceReorderDisabled}
+                    onReorder={(orderedWorkspaceIds) =>
+                      handleReorderNamedGroup(group.id, orderedWorkspaceIds)
+                    }
+                    renderWorkspace={renderWorkspaceEntry}
+                  />
+                ) : null}
               </WorkspaceGroup>
             );
           })}

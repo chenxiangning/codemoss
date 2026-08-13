@@ -1,4 +1,0 @@
-{"file": ".trellis/workflow.md", "reason": "Project workflow and conventions"}
-{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend development guide"}
-{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "Radix component composition 与 accessibility"}
-{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "启动回环 regression 与质量门禁"}

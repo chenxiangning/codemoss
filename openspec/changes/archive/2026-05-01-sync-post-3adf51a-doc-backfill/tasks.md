@@ -13,7 +13,7 @@
 
 ## 3. Trellis Code-Spec Backfill
 
-- [x] 3.1 [P0][depends: 2.x][input: latest code facts][output: `.trellis/spec/**` executable rules][verify: code-spec 只包含可执行 contract，不写流水账] 更新 Trellis code-level specs。
+- [x] 3.1 [P0][depends: 2.x][input: latest code facts][output: `dev-guidelines/**` executable rules][verify: code-spec 只包含可执行 contract，不写流水账] 更新 Trellis code-level specs。
 - [x] 3.2 [P1][depends: 3.1][input: cross-layer rules][output: guides index / cross-layer checklist 更新][verify: 后续 AI 可从 spec index 发现规则] 更新必要索引。
 
 ## 4. Project Snapshot

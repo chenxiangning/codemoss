@@ -12,6 +12,8 @@ const ROOT = join(process.cwd(), "src/features/multi-agent");
 /** 相对 multi-agent 根的路径；这些文件允许协议/模型文案硬编码 */
 const ALLOW_PATH_PREFIXES = [
   "utils/collabPrompt.ts", // 模型协议 marker 与调度 prompt
+  "runtime/mainCanvasContextInjection.ts", // 主幕 digest 模型侧协议 marker
+  "runtime/skillContextInjection.ts", // skill 正文注入模型侧前缀
   "templates/builtin.ts", // 内置 rolePrompt（喂模型）；展示走 multiAgent.builtin.*
   "hooks/useAgentStageTranscript.ts", // 弱状态词正则含中英
 ];

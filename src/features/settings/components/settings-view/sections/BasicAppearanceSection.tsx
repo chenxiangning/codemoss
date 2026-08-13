@@ -55,11 +55,6 @@ import {
   listCodeFontSizeSelectOptions,
 } from "../../../../../utils/fonts";
 import {
-  formatUiScalePercentLabel,
-  listUiScaleSelectOptions,
-  UI_SCALE_DEFAULT,
-} from "../../../../../utils/uiScale";
-import {
   DOCK_ICON_OPTIONS,
   sanitizeDockIconId,
   type DockIconId,
@@ -298,11 +293,12 @@ export function BasicAppearanceSection({
   resolvedAppearanceTheme,
   themePresetOptions,
   onThemePresetChange,
-  uiScaleDraft,
-  handleCommitUiScale,
-  handleResetUiScale,
-  scaleShortcutTitle,
-  scaleShortcutText,
+  // Scale props retained for call-site stability; feature locked to 100%.
+  uiScaleDraft: _uiScaleDraft,
+  handleCommitUiScale: _handleCommitUiScale,
+  handleResetUiScale: _handleResetUiScale,
+  scaleShortcutTitle: _scaleShortcutTitle,
+  scaleShortcutText: _scaleShortcutText,
   userMsgPresets,
   isUserMsgPresetActive,
   handleUserMsgPresetClick,
@@ -623,47 +619,7 @@ export function BasicAppearanceSection({
           </div>
         </div>
 
-        <div className="settings-pref-row">
-          <div className="settings-pref-meta">
-            <div className="settings-pref-title">{t("settings.interfaceScale")}</div>
-            <div className="settings-pref-desc" title={scaleShortcutTitle}>
-              {scaleShortcutText}
-            </div>
-          </div>
-          <div className="settings-pref-control settings-pref-font-control">
-            <div className="settings-pref-select-wrap">
-              <select
-                className="settings-pref-select"
-                aria-label={t("settings.interfaceScaleAriaLabel")}
-                data-testid="settings-ui-scale-select"
-                value={String(uiScaleDraft)}
-                onChange={(event) => {
-                  const parsed = Number(event.target.value);
-                  if (!Number.isFinite(parsed)) {
-                    return;
-                  }
-                  handleCommitUiScale(parsed);
-                }}
-              >
-                {listUiScaleSelectOptions(uiScaleDraft).map((scale) => (
-                  <option key={scale} value={String(scale)}>
-                    {formatUiScalePercentLabel(scale)}
-                  </option>
-                ))}
-              </select>
-            </div>
-            {Math.abs(uiScaleDraft - UI_SCALE_DEFAULT) > 0.001 ? (
-              <button
-                type="button"
-                className="settings-pref-reset"
-                onClick={handleResetUiScale}
-                data-testid="settings-ui-scale-reset"
-              >
-                {t("settings.reset")}
-              </button>
-            ) : null}
-          </div>
-        </div>
+        {/* UI scale permanently locked to 100% — control removed (2026-08 freeze). */}
       </div>
 
       {/* 界面显示面板已隐藏，仅隐藏 UI，底层可见性逻辑保留 */}

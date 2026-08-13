@@ -16,4 +16,4 @@
 
 ## 4. Code-spec memory
 
-- [x] 4.1 [P0][依赖: 1.*-3.*][输入: structured-output implementation lesson][输出: `.trellis/spec/frontend/model-structured-output.md` + index/quality triggers][验证: doc review] Capture the model-output normalization contract in frontend code-specs so future AI work reads the rule before implementation.
+- [x] 4.1 [P0][依赖: 1.*-3.*][输入: structured-output implementation lesson][输出: `dev-guidelines/frontend/model-structured-output.md` + index/quality triggers][验证: doc review] Capture the model-output normalization contract in frontend code-specs so future AI work reads the rule before implementation.

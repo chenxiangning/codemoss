@@ -2,6 +2,226 @@
 
 ---
 
+### **2026年8月12日（v0.8.8）**
+
+中文：
+
+这一版将应用升到 **0.8.8**，主线是「侧栏 Session Index 冷路径、冷启再削重、界面缩放永久 100%、跨目录可授权」：对话列表冷启与日常刷新改为本地 SQLite Session Index，不再默认全量多引擎 catalog 扫描；版本说明拆索引 + 分版本 chunk，并延后自动弹窗与 first-paint 错峰；新用户路径打断 mermaid 静态依赖、CSS/统计分级延后；界面缩放永久锁定 100% 消除 WebView 假死路径；Claude Read/Bash 越界时内联目录授权卡（写入 L1，下次 `--add-dir`）；另收口 Shared 历史非阻塞、Markdown 表行计数白屏、AskUserQuestion 幽灵卡、macOS 通知、Grok 标题污染、并行会话模型 residual 与「用…打开」等。
+
+✨ Features
+- **侧栏 Session Index 冷路径**：冷启 / 日常刷新从本地 SQLite Session Index 取 list 级行（Claude / Codex / Kimi + 有界 Gemini/Grok/OpenCode writer）；first-paint 合并 index 水合后，有多引擎种子则不再自动 post-first-paint full-catalog；会话管理 / load-older / 强制刷新仍走完整 catalog；OpenSpec：`rewrite-sidebar-session-index`
+- **会话目录授权（DirectoryGrant）**：Read/Bash 因 allowed working directories 越界时合成内联授权卡（#1062 方案 A）；批准写入 session L1，下次 Claude CLI 启动注入 `--add-dir`；拒绝保持 fail-closed
+- **「用…打开」跨平台配置与当前文件打开**：预设探测 / Browse、可点击健康态重检、系统图标与深浅色主题；顶栏应用打开当前文件，访达仍开工作区；修复底栏下拉不可点
+- **省略号 Tooltip 门控 + 运行时通知坞可收起**：`FloatingTooltipButton` 仅在目标水平截断时弹出；侧栏会话名短标题不再无意义气泡；`GlobalRuntimeNoticeDock` 支持点外 / Escape 收起（含 portal 面板）
+- **首页 Composer 几何对齐**：去掉 HomeChat 对输入区 padding / min-height / 字号的覆盖，与会话 Composer 共用 `ChatInputBox` 尺寸（含响应式断点）
+
+🔧 Improvements
+- 将应用版本号提升到 `0.8.8`（`package.json` / `package-lock.json` / `src-tauri/tauri.conf.json`），与本补丁发版元数据对齐
+- **版本说明分片 + 冷启降本**：`CHANGELOG` 生成轻量 index + 分版本 JSON；冷路径只加载 index + 当前版本正文；codegen 接入 dev/build 与 tauri frontend bootstrap
+- **版本说明自动弹窗延后与 lastSeen 时机**：版本 bump 后延迟 2s 再 auto-open，错开 first-paint / AppShell hydrate；内容加载成功即写 `releaseNotesLastSeenVersion`，避免中途卡死导致每次启动重弹
+- **新用户冷启路径**：打断 bootstrap 对 mermaid 的静态依赖；收敛 mapDeps / preload / catalog prewarm；非关键面板 CSS 分级延后（保留 subagent-ui 聊天列布局）；百度统计 defer；Tooltip 共用 ambient Provider；回退分时 i18n 为整包加载，避免 settings/files raw key
+- **会话 catalog 缓存与 idle 收敛**：OpenCode / Claude session list IPC 加 TTL + in-flight 缓存；focus soft recovery 在 catalog 仍新鲜时跳过再 fan-out；删除会话时使 OpenCode 缓存失效；quiet idle 全量 catalog 在 active first-paint 之后调度
+- **Codex ThreadPreview 分区早停**：按 YYYY/MM/DD 分区 recent-first 收集候选并带 early-stop 预算，避免为小分页先全树 collect 再 sort
+
+🐛 Fixes
+- **界面缩放永久锁定 100%**：设置 / 快捷键 / 命令面板不再可调 uiScale；`clamp` / `sanitize` / `apply` 恒为 identity；历史 `settings.json` 非 1 值忽略并回写 1；清除 startup-guard residual，从产品侧关掉 WKWebView / WebView2 假死路径
+- **Markdown 表行计数栈溢出白屏（#1066）**：`countMarkdownTableRows` 加 WeakSet 断环 + 深度上限 64；仅 heavy-defer kill-switch 开启时遍历；产品路径零树遍历，避免多代理场景 `RangeError: Maximum call stack size exceeded`
+- **Shared 历史 V0 先画 + 软超时 projection**：snapshot 就绪即卸 curtain 可对话；projection 默认 12s 软超时后后台 merge；迟到结果与 live 画布 items 合并而非整表覆盖
+- **AskUserQuestion 结算幽灵卡 + 请求输入 UI**：跳过/提交后 MCP 继续且同 identity 不再重弹；sole-waiter 恢复与历史防 rehydrate；幕布扁平折叠 / 分段 Tab 定稿
+- **macOS 系统通知**：桌面端改 `UNUserNotificationCenter`；非 `.app` 裸二进制跳过 UN API 避免 debug 崩溃；Windows 仍走 plugin
+- **Grok 历史 / 侧栏标题污染**：过滤 `<user_info>` / `<rules>` 等 bootstrap 信封；优先真实 `<user_query>` 作 first prompt 与会话名；弱标题可被真用户文案升级
+- **Native 并行会话跨供应商模型 residual**：历史二次发送时，catalog 就绪则 repair 错误 freeform 产品模型名；空 catalog 仍放行 freeform 避免冷启回归
+- **Shared 会话隐藏完成邮件入口**：Shared V2 不传 / hard-guard `onToggleCompletionEmail`，避免假能力静默失败
+- **Kanban Windows 顶栏**：为窗口控件预留右侧间距；锁定 44px 高度并对齐 titlebar-toggle-offset，避免与 —/▢/✕ 重叠或偏中线
+- **Revert debug identity（#1078）**：撤回 PR #1072 调试身份相关改动，恢复干净生产路径
+
+English:
+
+This release moves the app to **0.8.8**. The headline is a Session Index cold path for the sidebar, another cold-start cost cut, permanently locked 100% UI scale, and session directory grants: conversation list cold start and ordinary refresh load list rows from a local SQLite Session Index instead of exhaustive multi-engine catalog projection; release notes become an index plus per-version chunks with deferred auto-open off first paint; new-user paths drop static mermaid, defer non-critical CSS/analytics, and load i18n as a whole package again; interface scale is product-locked at 100% to close WebView freeze paths; Claude Read/Bash out-of-cwd prompts can grant directories into session L1 (`--add-dir` next launch); Shared history non-blocking paint, Markdown table row-count stack overflow, AskUserQuestion ghost cards, macOS notifications, Grok title pollution, parallel-session model residual, and Open With polish round out the ship.
+
+✨ Features
+- **Sidebar Session Index cold path**: cold start and ordinary refresh read list-level rows from a local SQLite Session Index (Claude / Codex / Kimi + bounded Gemini/Grok/OpenCode writers); after first-paint index hydration seeds multi-engine rows, automatic post-first-paint full-catalog stops; Session Management / load-older / force refresh still use full catalog; OpenSpec: `rewrite-sidebar-session-index`
+- **Session directory grant (DirectoryGrant)**: when Read/Bash hit allowed-working-directories bounds, synthesize an inline grant card (#1062 plan A); approvals persist in session L1 and inject `--add-dir` on the next Claude CLI start; deny stays fail-closed
+- **Cross-platform Open With + open current file**: preset probe / Browse, clickable health recheck, system icons and light/dark themes; titlebar apps open the current file while Finder still opens the workspace; fix unclickable bottom-bar dropdown
+- **Ellipsis tooltip gate + dismissible runtime notice dock**: `FloatingTooltipButton` only opens when the target is horizontally truncated; short fully-visible thread titles no longer flash tooltips; `GlobalRuntimeNoticeDock` minimizes on outside click / Escape (including portaled panels)
+- **Home Composer geometry alignment**: drop HomeChat overrides for input padding / min-height / font size so home inherits shared `ChatInputBox` geometry (including responsive breakpoints)
+
+🔧 Improvements
+- Bump the app version to `0.8.8` across frontend package metadata, the lockfile, and Tauri bundle configuration so this patch ship matches SemVer and packaging metadata
+- **Release-notes sharding + cold-start cost cut**: generate a light index plus per-version JSON so cold path loads index + current version only; wire codegen into dev/build and tauri frontend bootstrap
+- **Deferred release-notes auto-open and earlier lastSeen**: delay auto-open 2s after a version bump to clear first-paint / AppShell hydrate; write `releaseNotesLastSeenVersion` as soon as content loads successfully so a freeze mid-modal no longer re-triggers every launch
+- **New-user cold-start path**: break static mermaid from bootstrap; tighten mapDeps / preload / catalog prewarm; defer non-critical panel CSS (keep subagent-ui chat-column layout); defer analytics; share ambient Tooltip provider; restore whole-pack i18n load to avoid settings/files raw keys
+- **Session catalog cache and idle convergence**: TTL + in-flight cache for OpenCode / Claude session list IPC; focus soft recovery skips re-fan-out while the catalog is still fresh; invalidate OpenCode cache on session delete; schedule quiet idle full-catalog after active first-paint
+- **Codex ThreadPreview partition early-stop**: collect candidates recent-first by YYYY/MM/DD partitions with an early-stop budget instead of full-tree collect-then-sort for a small page
+
+🐛 Fixes
+- **UI scale permanently locked to 100%**: settings / shortcuts / command palette no longer change uiScale; clamp / sanitize / apply always identity; legacy non-1 `settings.json` values ignored and rewritten to 1; clear startup-guard residual and retire the WKWebView / WebView2 freeze path at product level
+- **Markdown table row-count stack overflow white screen (#1066)**: bound `countMarkdownTableRows` with WeakSet cycle breaks + depth cap 64; traverse only when heavy-defer kill-switch is on; product path zero tree walks so multi-agent `RangeError: Maximum call stack size exceeded` no longer takes ErrorBoundary
+- **Shared history V0-first paint + soft-timeout projection**: drop the curtain when the V0 snapshot is ready; projection soft-times out at 12s then merges in the background; late results merge into live canvas items instead of replacing the whole table
+- **AskUserQuestion settlement ghost cards + request-input UI**: after skip/submit, MCP continues and the same identity does not re-prompt; sole-waiter restore and history anti-rehydrate; finalize flat collapse / segmented Tab canvas chrome
+- **macOS system notifications**: desktop path uses `UNUserNotificationCenter`; skip UN APIs for non-`.app` bare binaries so debug launches do not crash; Windows still uses the plugin path
+- **Grok history / sidebar title pollution**: filter bootstrap envelopes such as `<user_info>` / `<rules>`; prefer real `<user_query>` for first prompt and thread names; weak titles can upgrade to real user copy
+- **Native parallel-session cross-provider model residual**: on resend from history, repair wrong freeform product model names when catalog is ready; empty catalog still allows freeform to avoid cold-start regressions
+- **Hide completion-email entry on Shared sessions**: Shared V2 does not pass / hard-guards `onToggleCompletionEmail` so a fake capability cannot fail silently
+- **Kanban Windows top bar**: reserve right inset for window chrome; lock 44px height and align titlebar-toggle-offset so PanelRight does not collide or mis-center with —/▢/✕
+- **Revert debug identity (#1078)**: revert PR #1072 debug-identity changes and restore a clean production path
+
+---
+
+### **2026年8月11日（v0.8.7）**
+
+中文：
+
+这一版将应用升到 **0.8.7**，主线是「发送前可挑记忆、Shared 下崽侧栏不串台、Cmd+R 冷启可点」：Native / Shared / Collab 统一接入发送前记忆挑选闸门（pick / always），always 预勾可改且 8s 读秒可取消；Phase-2/3 补齐 hybrid 检索、习惯持久化与本地语义模型；Shared 子代理按 parent-id 改挂并在侧栏隐藏下崽；同时收口冷启猛点假死（`ComposerGate` 轻量输入区 + 模型位 loading）与队列 auto-drain 启动门对齐。Mac 验收不卡死（约 98% 收口）。
+
+✨ Features
+- **发送前记忆挑选闸门（Phase-1）**：Native / Shared / Collab 统一 `pick` / `always` 闸门与 memory-pick 注入；always 可改预勾条数并记忆，8s 读秒可取消；详情 Dialog portal + Markdown；底栏 icon 文案、固定行高；侧栏标题剥离 `project-memory-pack`；幕布与 Composer 模式同步
+- **Hybrid 检索与可感注入转接（Phase-2）**：统一 Pick / Scout 检索核（lexical + 可选 semantic/hybrid）；`emptyReason` 走主幕时间线 status 可感；telemetry 白名单禁正文；Pack Instruction 钉死 Primary task 与 UNTRUSTED 参考语义；闸门 / 空结果 UI 中性色与列表高度收口（采集 ABCD 路径零改动）
+- **项目记忆习惯与本地语义（Phase-3）**：session 策略 localStorage 持久化；Composer dismiss 恢复为 pick；设置「项目记忆」规则说明 + 语义模型按需下载到用户主目录 `.ccgui/models/embedding/`（展示本机绝对路径，跨平台）；embed-index 旁路异步索引；用户可关语义强制词面；hybrid 最低门槛与词面满分抬升；匹配最短 1s 冻结
+- **Composer 冷启轻量门控（ComposerGate / ComposerLight）**：冷启先挂 Adapter 轻量层，工具栏结构与最终态一致；模型选择位始终占位（「加载中」→ 真模型名同位置替换）；停手后再挂完整 `ComposerImpl`（状态条等重能力）
+- **模型位 / Readiness 静态占位**：轻量路径经 `sendReadiness` 渲染 Readiness 模型位，**不**在冷启开 atomic catalog（避免假死复现）；未解析模型时转圈 + 文案，就绪后替换
+
+🔧 Improvements
+- 将应用版本号提升到 `0.8.7`（`package.json` / `package-lock.json` / `src-tauri/tauri.conf.json`），与本补丁发版元数据对齐
+- **队列 drain 非对抗调度**：无 queue/inflight 时 drain signal 稳定 `empty`；有队列才跟 status；放行与 `startup-gate-ready` / force-enter 对齐，gate 后短静默再开 auto-drain；用户 `handleSend` / `queueMessage` 始终可用
+- **冷启 list / restore quiet 副线**：first-paint 与 restore 错峰、点击 soft-cancel 进行中 list；home 无 active 时 stamp `home-input-ready`；uiScale healthy 确认 rAF 延后
+- **Composer 空闲 memo**：非流式忽略 ActiveCanvas 热 props，减轻 history hydrate 重渲
+- 联调证据与收口文档：`docs/analysis/cold-start-composer-freeze-closeout-2026-08-11.md`、二分 checklist 与截图包
+
+🐛 Fixes
+- **Shared 子代理 parent 改挂**：隐藏 native owner 后，按引擎无关 lookup（raw / `engine:` 变体）将子代理 parent 改挂到 shared 会话，避免仅 exact 匹配漏挂并升为顶层根；统一 list / Grok / Kimi / live 改挂路径，不扩大 hide、不删子代理行
+- **侧栏隐藏 Shared 下崽**：在 `useThreadRows` 按 parent-id 精准剔除 Shared-owned 子代理（含 raw / `engine:` 与 `shared:` parent）；threads store 保留行供幕布 / Strip / `childSubagentThreads`，不改幕布展示规则
+- **记忆挑选匹配态与 always 读秒**：匹配品牌改用项目 logo 并轻微呼吸动画，最短展示 1s 避免闪断；仅闸门以 always 进入 awaiting 时武装 8s 读秒，任意交互打断后本轮不重启；顶栏单行 ellipsis，策略菜单虚线框
+- **Cmd+R / 冷启猛点整窗假死**：根因完整 `Composer.tsx` 立即挂载与点击撞主线程；轻量层不卡，完整层停手后再挂（Mac 验收通过）
+- **假死回归（队列 auto-drain）**：默认开 S1 drain 并下灌 `threadStatusById` / `activeItems` 时冷启猛点窗复现假死；改为启动门后放行 + 近点击跳过 settlement/auto-drain，保留防重发与 cap=1
+- **输入区 UX**：模型位与「全自动」间无大空洞（readiness 不 `1fr` 撑空）；轻量层使用 `footer.composer` 与完整态同宽（`max-width: 750px`），避免先全宽再缩
+
+English:
+
+This release moves the app to **0.8.7**. The headline is a pre-send memory pick gate, Shared subagents that stay out of the sidebar tree, and cold starts that stay clickable under Cmd+R thrash: Native / Shared / Collab share a pick / always gate before send (always countdown cancellable, preview counts remembered); Phase-2/3 unifies hybrid retrieval, habit persistence, and local semantic models; Shared children reparent by parent-id and are filtered from the sidebar; cold-start click freeze is closed with `ComposerGate` (light shell + model-slot loading) and queue auto-drain aligned to `startup-gate`. Mac verification: no hard freeze (~98% closeout).
+
+✨ Features
+- **Pre-send memory pick gate (Phase-1)**: unified `pick` / `always` gate and memory-pick injection across Native / Shared / Collab; always remembers editable pre-check counts with an 8s cancellable countdown; portal Dialog + Markdown details; icon+label footer, fixed row height; strip `project-memory-pack` from sidebar titles; canvas and Composer modes stay in sync
+- **Hybrid retrieval and explainable injection (Phase-2)**: shared Pick / Scout kernel (lexical + optional semantic/hybrid); `emptyReason` surfaces on the main timeline status lane; telemetry whitelist excludes body text; pack instructions pin Primary task and UNTRUSTED reference semantics; neutral empty-state chrome and list height polish (capture ABCD paths unchanged)
+- **Project memory habits and local semantics (Phase-3)**: persist session policy in localStorage; Composer dismiss restore to pick; Settings “Project Memory” rules + on-demand semantic model download under user-home `.ccgui/models/embedding/` (absolute path per machine); async embed-index side path; optional force-lexical toggle; hybrid min thresholds and full-lexical score floor; match UI min 1s frozen
+- **Composer cold-start light gate (`ComposerGate` / `ComposerLight`)**: mount Adapter-light first with final toolbar structure; model slot always reserved (“loading” → real model name in place); promote to full `ComposerImpl` after the user stops interacting (status strip and heavy hooks)
+- **Model slot / Readiness static placeholder**: light path uses `sendReadiness` so Readiness shows the model slot without enabling the atomic catalog on cold start; spinner + copy while unresolved, then replace
+
+🔧 Improvements
+- Bump the app version to `0.8.7` across frontend package metadata, the lockfile, and Tauri bundle configuration so this patch ship matches SemVer and packaging metadata
+- **Non-adversarial queue drain scheduling**: stable `empty` drain signal with no queue/inflight; status only for threads with work; release after `startup-gate-ready` / force-enter plus a short quiet; `handleSend` / `queueMessage` always available
+- **Cold-start list / restore quiet side path**: staggered first-paint and restore, soft-cancel in-flight list on click; stamp `home-input-ready` when no active workspace; defer uiScale healthy localStorage write via rAF
+- **Composer idle memo**: ignore ActiveCanvas hot props when not processing to cut history-hydrate re-renders
+- Investigation notes and evidence: `docs/analysis/cold-start-composer-freeze-closeout-2026-08-11.md`, bisect checklist, screenshot pack
+
+🐛 Fixes
+- **Shared subagent parent reattach**: after native owners are hidden, engine-agnostic lookup (raw / `engine:` variants) reparents children onto the shared session so exact-only matches no longer promote them to top-level roots; list / Grok / Kimi / live reparent paths share the fix without widening hide or deleting child rows
+- **Hide Shared children in the sidebar**: `useThreadRows` drops Shared-owned subagents by parent-id (raw / `engine:` and `shared:` parents); the threads store keeps rows for canvas / Strip / `childSubagentThreads` without changing canvas display rules
+- **Memory-pick match chrome and always countdown**: match state uses the project logo with a light pulse and a 1s minimum display; the 8s always countdown arms only when the gate enters awaiting as always, and any interaction cancels restart for that turn; top bar single-line ellipsis and dashed strategy menu chrome
+- **Cmd+R / cold-start full-window freeze**: root cause was mounting full `Composer.tsx` immediately under early clicks; light path stays clickable, full path mounts after quiet (Mac verified)
+- **Freeze regression from queue auto-drain**: default S1 drain plus composition-hot `threadStatusById` / `activeItems` re-froze cold-start thrash; release drain after startup-gate and skip settlement/auto-drain under recent input; keep anti-resend gates and cap=1
+- **Composer chrome UX**: no large gap between model loading and mode pills (readiness no longer grows with `1fr`); light shell uses `footer.composer` max-width 750px so the box does not go full-width then shrink
+
+---
+
+### **2026年8月10日（v0.8.6）**
+
+中文：
+
+这一版将应用升到 **0.8.6**，主线是「中转额度可看、Windows 冷启可点、协作首段有主幕上下文」：Session Control HUD 接入 Sub2API / New API 中转额度与 Grok 本地用量；冷启 CSS 写入按 macOS WKWebView / Windows WebView2 分轨，修 Windows 点击假死且不回归 mac 首点死锁；协作首段把主幕已有对话 digest 注入模型侧，右栏可解释、主幕卡标题不泄漏；侧栏同组项目长按重排；`!` 提示词列表 soft-failure 与 Grok/Kimi/Shared 记忆整轮写入一并压实。
+
+✨ Features
+- **中转站额度查询与 HUD 展示**：未知中转 base+key 先探 `GET /v1/usage`，失败回退 `/api/user/self`；Grok local 读 `~/.grok/config.toml`；Session Control HUD 展示余额与用量摘要（供应商 `{origin} {source}`、金额两位小数），失败友好中文文案
+- **协作首段注入主幕对话上下文**：主幕已有对话时，触发协作将 digest 置顶写入首段 `model text`（后续段仍只吃可见任务 + 上游产出）；主幕协作卡标题优先 `userVisibleText`，右栏「注入上下文」首段增加「主幕对话上下文」分区
+- **侧栏同组项目长按重排**：长按折叠/文件夹控件武装拖拽（约 380ms），组内调整 `sortOrder` 并持久化；无独立拖柄列，列表内就地重排
+
+🔧 Improvements
+- 将应用版本号提升到 `0.8.6`（`package.json` / `package-lock.json` / `src-tauri/tauri.conf.json`），与本补丁发版元数据对齐
+
+🐛 Fixes
+- **Windows 冷启点击假死 / macOS 首点死锁分轨**：冷启 `applyUiScale` 按平台分支——Windows WebView2 首帧零冗余 CSS 写入（避免 Blink style recalc 堵 hit-test），macOS WKWebView 恢复预热写入（避免 CSSOM 懒初始化首点死锁）；blank-screen watchdog 冷启窗延迟；StartupGateOverlay 减少 `color-mix` 负担
+- **`!` 自定义提示词列表 soft-failure 永久空态**：启动编排 timeout/stale 不再把空数组 stamp 为权威拉取；空态 on-demand revalidate，并发 refresh 共享 in-flight
+- **Grok / Kimi / Shared 项目记忆整轮写入**：Native Gemini 系 TurnCompleted 始终走 text-lane，驱动完整 `conversation_turn` 融合；Shared V2/V1 补 `captureTurnInput`，terminal 投影后仍触发完成融合
+
+English:
+
+This release moves the app to **0.8.6**. The headline is visible relay quota, Windows cold starts that stay clickable, and collab first stages that inherit main-canvas dialogue: Session Control HUD adds Sub2API / New API relay balance plus local Grok usage; cold-start CSS writes split by macOS WKWebView vs Windows WebView2 so Windows no longer freezes on click without regressing mac first-click lockups; collab injects a main-canvas dialogue digest into the first stage (explainable in the Inspector, clean titles on the main card); long-press reorder for projects in a sidebar group; `!` custom-prompt soft-failure and Grok/Kimi/Shared memory turn capture round out the patch.
+
+✨ Features
+- **Relay quota probe and HUD display**: unknown relay base+key probes `GET /v1/usage` first, falls back to `/api/user/self`; Grok local reads `~/.grok/config.toml`; Session Control HUD shows balance and usage summary (provider as `{origin} {source}`, two-decimal amounts) with friendly Chinese failure copy
+- **Main-canvas dialogue into collab first stage**: when the main canvas already has turns, starting collab prepends a capped digest to the first-stage model text (later stages still take visible task + upstream only); collab card titles prefer `userVisibleText`; Inspector inject-context gains a first-stage “main-canvas dialogue” section
+- **Long-press reorder for projects in a group**: long-press the collapse/folder control (~380ms) arms drag; reorder within the same group and persist `sortOrder`; no separate handle column, in-list reorder only
+
+🔧 Improvements
+- Bump the app version to `0.8.6` across frontend package metadata, the lockfile, and Tauri bundle configuration so this patch ship matches SemVer and packaging metadata
+
+🐛 Fixes
+- **Windows cold-start click freeze / macOS first-click deadlock, platform-split**: `applyUiScale` branches by platform—Windows WebView2 keeps residual-only clears on the first frame (no Blink style-recalc hit-test stall), macOS WKWebView restores warm-up writes (no CSSOM lazy-init first-click deadlock); blank-screen watchdog delays force-layout in the cold window; StartupGateOverlay reduces `color-mix` cost
+- **`!` custom-prompt list soft-failure permanent empty**: startup orchestration timeout/stale no longer stamps an empty array as authoritative; empty state revalidates on demand with shared in-flight refresh
+- **Grok / Kimi / Shared project-memory full-turn capture**: Native Gemini-family TurnCompleted always emits text-lane item/completed so `onAgentMessageCompleted` fuses full `conversation_turn`s; Shared V2/V1 capture turn input and still fuse after terminal projection
+
+---
+
+### **2026年8月9日（v0.8.5）**
+
+中文：
+
+这一版将应用升到 **0.8.5**，主线是「供应商设置可日常管、对话贴底更稳、切项目不再卡」：CLI 设置拆成引擎设置 / 供应商通道，官方配置可应用内编辑（懒加载 CodeMirror）；消息画布去掉虚拟列表、重写贴底跟随；工作区切换热路径不再做全量会话投影扫描；启动全屏遮罩默认关闭（可本机测试恢复）；侧栏内联改名与归档即时消失、工具行统一 kind 标签与文件图标；纯图发送与 Git 行默认进 DIFF 一并压实。
+
+✨ Features
+- **供应商设置分层与官方/三方切换**：各 CLI 页拆为「引擎设置」与「供应商通道」；官方/本地统一 `VendorOfficialConfigCard`（使用 / 停用 / 授权）；Grok/Kimi/OpenCode 本地官方迁出三方表；启用徽章改为 `VendorProviderActiveSwitch`（关当前通道可 `__disabled__` 回退全局官方配置，不改写 `~/.codex` / `~/.grok` 等文件）
+- **官方配置应用内编辑（Kimi / Grok / OpenCode + Claude / Codex 对齐）**：读/写各自全局 config（TOML/JSON/JSONC），校验 + 原子写 + Unix `0o600`；可「打开所在文件夹」；对话框统一多面板 chrome
+- **官方配置 CodeMirror 编辑器**：懒加载 Syntax 高亮 / 行号 / 折叠；JSON 解析 lint；跟随主题；不进入设置页首屏关键路径
+- **侧栏会话内联改名与文件夹操作收敛**：去掉全局 `RenameThreadPrompt` 弹窗，行内 Enter/blur 确认、Escape 取消；文件夹次要操作收入 portaled ⋯ 菜单（重命名 / 新建文件夹 / 删除）；新建会话仍留在行上
+- **工具行统一 kind 标签 + 文件类型图标**：`ToolMarkerShell` 增加 kind 槽（单色动作图标 → 短 kind → 内容）；Read / 批量读 / Edit 展示 `ToolFileTypeIcon`；kind、匹配数、搜索字段、批量标题、bash 回退、截断 diff 等完成多语言
+- **纯图 / 仅附件发送链路**：Grok 等多模态引擎注入的 image-only 占位文案不落用户气泡；空正文但有图/附件的用户消息保留；按图片身份去重避免连发纯图被折叠；乐观气泡先于 await 绘制，避免空会话占位闪一下；Read 读到图片文件时展开 `ImageView` 预览
+- **Git Diff 行默认打开可编辑 DIFF**：文件行点击进 DIFF 审阅；行内动作改为「打开文件」；刷新时保留分区/文件夹折叠
+
+🔧 Improvements
+- 将应用版本号提升到 `0.8.5`（`package.json` / `package-lock.json` / `src-tauri/tauri.conf.json`），与本补丁发版元数据对齐
+- **消息贴底跟随重写并移除虚拟化**：以紧凑 `useMessagesCanvasFollow` 取代旧 scroll authority / 收敛环 / echo 指纹；时间线静态全量 DOM 渲染；发送 / 开历史 / settle 走 force-pin；手动回底支持平滑滚动（`resumeFollowAndSmoothPin`）
+- **启动遮罩默认隐藏**：主窗冷启不再挂全屏 `StartupGateOverlay`；「其他设置」底部提供本机测试开关（默认关、下次启动生效）；后台 first-paint / gate-ready 契约不变
+- **CLI 自定义路径与自定义模型文案**：路径行标题带引擎名；空路径显示「当前使用：系统 PATH」；安装状态冷载用 checking/session cache，避免误报「未安装」；unified-exec 分段控件在外部状态就绪前不点亮
+- **用户气泡复制操作**：短气泡用遮罩叠复制按钮，不再预留右侧 padding
+- **应用图标全平台补边距**：桌面 / Windows tile / Android / iOS 启动图标统一留白，避免系统圆角裁切品牌标
+
+🐛 Fixes
+- **切换工作区主线程卡死**：AppShell 导航所需 owner topology 改为本地 `workspaces` 推导，切换热路径不再调用 `get_workspace_session_projection_summary`（9999 全源扫描）；list 在 stale/cancel 后协作式早退，禁止迟到 setThreads；Settings/会话管理显式统计查询不变
+- **Markdown/工具增高误取消贴底**：仅在 `scrollTop` 上移且高度未缩小时视为用户离开底部；高度增长 + scrollTop 不动保持跟随；pin 后双 rAF 宽限，抑制 reflow 滚动回声；ResizeObserver 与 live-text stick 合并到每帧最多 pin 一次
+- **归档成功后侧栏不消失**：优先精确 `sessionId` 匹配（后端归一化 id 时单结果回退），`deletedThreadIds` 传入加载守卫，行即时移除，避免等全量 catalog 重扫与 continuity 竞态
+- **Read 目录检测**：`list_dir` / target directory / 尾斜杠路径正确显示文件夹图标与 List 标签
+- **供应商设置首屏状态**：provider 列表先 loading；CLI 版本冷载不误标未安装
+
+English:
+
+This release moves the app to **0.8.5**. The headline is vendor settings you can actually manage day to day, a calmer stick-to-bottom conversation canvas, and workspace switches that no longer freeze the UI: CLI settings split into engine vs provider channels with in-app official config editors (lazy CodeMirror); the message canvas drops virtualization and rewrites follow; workspace-switch hot paths no longer run exhaustive session projection scans; the startup full-screen gate is off by default (opt-in for local repro); sidebar inline rename + instant archive, unified tool kind labels/file icons; image-only sends and Git row → DIFF by default round out the ship.
+
+✨ Features
+- **Vendor settings hierarchy and official/third-party switching**: each CLI tab splits into Engine settings vs Provider channels; official/local rows use `VendorOfficialConfigCard` (Use / Stop using / Authorize); Grok/Kimi/OpenCode local official rows leave the third-party table; enable badges become `VendorProviderActiveSwitch` (turning off the active channel can clear managed `current` via `__disabled__` and fall back to global official config without rewriting `~/.codex` / `~/.grok`, etc.)
+- **In-app official config editors (Kimi / Grok / OpenCode + Claude / Codex aligned)**: read/write each engine’s global config (TOML/JSON/JSONC) with validation, atomic write, and Unix `0o600`; open containing folder; shared multi-pane dialog chrome
+- **Lazy CodeMirror for official configs**: syntax highlight / line numbers / folding; JSON parse lint; theme-aware; kept off the settings shell critical path
+- **Inline thread rename and denser folder actions**: remove global `RenameThreadPrompt`; in-row Enter/blur confirm, Escape cancel; folder secondary actions move into a portaled ⋯ menu (rename / new folder / delete); new-session stays on the row
+- **Unified tool markers with kind labels + file-type icons**: `ToolMarkerShell` kind slot (mono action icon → short kind → content); Read / batch-read / Edit show `ToolFileTypeIcon`; kind labels, match counts, search fields, batch titles, bash fallbacks, truncated-diff copy fully i18n’d
+- **Image-only / attachment-only send path**: strip synthetic Grok (and similar) image-only fallback text from history and canvas; keep empty-text user messages that still have images/attachments; dedupe by image identity so sequential pure-image turns are not collapsed; paint optimistic user bubbles before awaits so the empty-thread placeholder does not flash; Read(image) expands to a real `ImageView` preview
+- **Git Diff rows open editable DIFF by default**: row click reviews the diff; the row action becomes “Open file”; section/folder collapse survives git watch refreshes
+
+🔧 Improvements
+- Bump the app version to `0.8.5` across frontend package metadata, the lockfile, and Tauri bundle configuration so this patch ship matches SemVer and packaging metadata
+- **Stick-to-bottom rewrite + end virtualization**: compact `useMessagesCanvasFollow` replaces the old scroll-authority / convergence / echo-fingerprint stack; timeline renders a static full DOM; send / history-open / settle use force-pin; manual back-to-bottom supports smooth scroll (`resumeFollowAndSmoothPin`)
+- **Startup gate overlay off by default**: main window no longer mounts full-screen `StartupGateOverlay` on cold start; Other settings gains a local test switch (default off, next launch); background first-paint / gate-ready contracts unchanged
+- **CLI custom path and custom models copy**: path row titles include the engine name; empty path reads “Currently using: system PATH”; install status cold load uses checking/session cache to avoid false “not installed”; unified-exec segmented control stays inactive until external status is ready
+- **User bubble copy actions**: short bubbles overlay copy controls with a scrim instead of reserved right padding
+- **Padded app icons across platforms**: desktop / Windows tiles / Android / iOS launchers share consistent padding so OS masks no longer clip the mark
+
+🐛 Fixes
+- **Workspace-switch main-thread stall**: AppShell navigation owner topology is derived locally from `workspaces`—the switch hot path no longer calls `get_workspace_session_projection_summary` (9999 full-source scan); list paths abandon cooperatively after stale/cancel and never apply late `setThreads`; explicit Settings/session-management projection queries stay
+- **False unfollow on Markdown/tool height growth**: leave-bottom only when `scrollTop` moves up and height did not shrink; height growth with stable `scrollTop` keeps follow armed; two-rAF grace after pin blocks reflow scroll echoes; ResizeObserver and live-text stick coalesce to at most one pin per frame
+- **Archived rows stick in the sidebar**: prefer exact `sessionId` match (single-result fallback when the backend normalizes ids) and pass `deletedThreadIds` into the load guard so the row drops immediately instead of racing a full catalog rescan + continuity merge
+- **Read directory detection**: `list_dir` / target directory / trailing-slash paths render folder icons and List labels correctly
+- **Vendor settings first paint**: provider lists start in loading; CLI version cold load no longer flashes “not installed”
+
+---
+
 ### **2026年8月8日（v0.8.4）**
 
 中文：

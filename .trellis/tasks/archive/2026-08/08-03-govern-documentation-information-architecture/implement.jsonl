@@ -1,7 +1,0 @@
-{"file": ".trellis/workflow.md", "reason": "Project workflow and conventions"}
-{"file": ".trellis/spec/backend/index.md", "reason": "Backend development guide"}
-{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend development guide"}
-{"file": "AGENTS.md", "reason": "Repository documentation and workflow gates"}
-{"file": ".trellis/spec/guides/project-instruction-layering-guide.md", "reason": "Documentation ownership and layering boundary"}
-{"file": "openspec/changes/archive/2026-08-03-govern-documentation-information-architecture/design.md", "reason": "Approved lifecycle-first migration design"}
-{"file": "openspec/changes/archive/2026-08-03-govern-documentation-information-architecture/specs/documentation-governance/spec.md", "reason": "Executable documentation governance requirements"}

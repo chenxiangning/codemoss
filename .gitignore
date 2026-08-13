@@ -34,16 +34,6 @@ CLAUDE.md
 # AI workflow local-only state
 .claude/settings.local.json
 .codex/hooks/__pycache__/
-.trellis/.developer
-.trellis/.current-task
-.trellis/.ralph-state.json
-.trellis/.agents/
-.trellis/.agent-log
-.trellis/.session-id
-.trellis/.plan-log
-.trellis/*.tmp
-.trellis/*.new
-.trellis/.backup-*/
 .ccgui/
 .omx/
 

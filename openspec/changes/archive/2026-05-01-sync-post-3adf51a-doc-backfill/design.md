@@ -7,7 +7,7 @@
 - `git log 3adf51af0ceff9597930e4f85435ef99f4fa96a8..HEAD`
 - 既有 active changes 与 archived changes
 - 当前 `openspec/specs/**`
-- 当前 `.trellis/spec/**`
+- 当前 `dev-guidelines/**`
 
 设计核心是“按 capability 聚合，而不是按 commit 碎片化”。一个小修复如果只是强化已有能力，就写进对应 capability 的 delta spec；只有无法归属的行为才在本追溯 change 中新增 delta 场景。
 
@@ -53,7 +53,7 @@
 
 ### Decision 4: Update Trellis Specs Only For Executable Rules
 
-`.trellis/spec/**` 只记录后续 AI 写代码时必须执行的 code-level contract，例如：
+`dev-guidelines/**` 只记录后续 AI 写代码时必须执行的 code-level contract，例如：
 
 - skill discovery source priority and symlink handling
 - terminal shell path setting boundary

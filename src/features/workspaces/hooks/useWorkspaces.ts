@@ -34,6 +34,7 @@ import {
 } from "../../threads/utils/sidebarSnapshot";
 import { isDefaultWorkspacePath } from "../utils/defaultWorkspace";
 import { isWindowsPlatform } from "../../../utils/platform";
+import { traceStartupCommand } from "../../startup-orchestration/utils/startupTrace";
 
 const GROUP_ID_RANDOM_MODULUS = 1_000_000;
 const RESERVED_GROUP_NAME = "Ungrouped";
@@ -124,30 +125,56 @@ export function useWorkspaces(options: UseWorkspacesOptions = {}) {
   const workspaceSettingsRef = useRef<Map<string, WorkspaceSettings>>(new Map());
   const codexDiskPrewarmCompletedRef = useRef<Set<string>>(new Set());
   const codexDiskPrewarmInFlightRef = useRef<Record<string, Promise<void> | undefined>>({});
+  const initialWorkspaceRequestRef = useRef<Promise<WorkspaceInfo[]> | null>(null);
+  const recoveryNoticeRequestRef = useRef<ReturnType<
+    typeof takeWorkspacesRecoveryNotice
+  > | null>(null);
   const { onDebug, defaultCodexBin, appSettings, onUpdateAppSettings } = options;
+
+  const commitWorkspaceEntries = useCallback((entries: WorkspaceInfo[]) => {
+    setWorkspaces(entries);
+    setActiveWorkspaceId((prev) => {
+      if (!prev) {
+        return prev;
+      }
+      return entries.some((entry) => entry.id === prev) ? prev : null;
+    });
+    setHasLoaded(true);
+  }, []);
 
   const refreshWorkspaces = useCallback(async () => {
     try {
       const entries = await listWorkspaces();
-      setWorkspaces(entries);
-      setActiveWorkspaceId((prev) => {
-        if (!prev) {
-          return prev;
-        }
-        return entries.some((entry) => entry.id === prev) ? prev : null;
-      });
-      setHasLoaded(true);
+      commitWorkspaceEntries(entries);
       return entries;
     } catch (err) {
       console.error("Failed to load workspaces", err);
       setHasLoaded(true);
       return undefined;
     }
-  }, []);
+  }, [commitWorkspaceEntries]);
 
   useEffect(() => {
-    void refreshWorkspaces();
-  }, [refreshWorkspaces]);
+    let active = true;
+    const request = initialWorkspaceRequestRef.current ??=
+      traceStartupCommand("list_workspaces", "global", listWorkspaces);
+    void request
+      .then((entries) => {
+        if (active) {
+          commitWorkspaceEntries(entries);
+        }
+      })
+      .catch((error) => {
+        if (!active) {
+          return;
+        }
+        console.error("Failed to load workspaces", error);
+        setHasLoaded(true);
+      });
+    return () => {
+      active = false;
+    };
+  }, [commitWorkspaceEntries]);
 
   useEffect(() => {
     // Startup quarantine happens before the webview loads, so listWorkspaces
@@ -155,9 +182,10 @@ export function useWorkspaces(options: UseWorkspacesOptions = {}) {
     // recovery notice is the only signal for that path; take semantics keep the
     // toast to a single display even across hook remounts.
     let active = true;
-    void (async () => {
-      try {
-        const notice = await takeWorkspacesRecoveryNotice();
+    const request = recoveryNoticeRequestRef.current ??=
+      takeWorkspacesRecoveryNotice();
+    void request
+      .then((notice) => {
         if (active && notice) {
           pushErrorToast({
             title:
@@ -177,14 +205,17 @@ export function useWorkspaces(options: UseWorkspacesOptions = {}) {
                 }) || "工作区文件已损坏且自动备份失败，已回退到空工作区列表。",
           });
         }
-      } catch (noticeError) {
+      })
+      .catch((noticeError) => {
+        if (!active) {
+          return;
+        }
         // A failed notice fetch must never break the workspaces list load.
         console.error(
           "[useWorkspaces] failed to fetch workspaces recovery notice",
           noticeError,
         );
-      }
-    })();
+      });
     return () => {
       active = false;
     };

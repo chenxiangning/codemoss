@@ -1,6 +1,6 @@
 ## Why
 
-当前仓库同时维护 `AGENTS.md`、`.trellis/spec/**`、`openspec/project.md`、`openspec/README.md`、`.claude/**`、`.codex/**`，并且默认要求在 session start 时大范围读取这些文档。结果不是“规则充分”，而是“规则分层失焦”：同一治理约束在多个入口重复出现，single source of truth 不够清晰，维护成本和上下文噪音持续上升。
+当前仓库同时维护 `AGENTS.md`、`dev-guidelines/**`、`openspec/project.md`、`openspec/README.md`、`.claude/**`、`.codex/**`，并且默认要求在 session start 时大范围读取这些文档。结果不是“规则充分”，而是“规则分层失焦”：同一治理约束在多个入口重复出现，single source of truth 不够清晰，维护成本和上下文噪音持续上升。
 
 同时，仓库中已经出现 `.omx/**` 这类 runtime/session 产物被提交进版本库的情况。它们不是稳定规范，而是 agent orchestration 的运行时状态、研究快照与会话副产物，会污染事实源并放大 review 噪音。现在需要一次明确的治理收敛，把“什么该进仓、什么只是本地 runtime 产物”讲清楚并落到规则与忽略策略上。
 
@@ -8,7 +8,7 @@
 
 ### 目标
 
-- 收敛项目级文档链路，明确 `AGENTS.md`、`.trellis/spec/**`、`openspec/**`、`.claude/**`、`.codex/**` 各自职责。
+- 收敛项目级文档链路，明确 `AGENTS.md`、`dev-guidelines/**`、`openspec/**`、`.claude/**`、`.codex/**` 各自职责。
 - 建立更清晰的读取入口，让 AI/human 优先读取“最少但够用”的上下文，而不是无差别扫全仓规则。
 - 明确 `.omx/**` 属于 runtime artifact，不应继续进入 Git，并通过 `.gitignore` 与仓库治理规则固化这一点。
 - 为后续规则维护建立 single source of truth，降低重复改文档和跨文件漂移风险。
@@ -29,7 +29,7 @@
 ## What Changes
 
 - 将 `AGENTS.md` 收敛为项目级入口与硬约束文档，只保留规则优先级、分层说明、最小 session start 路径和少数全局 gate。
-- 将 frontend/backend/cross-layer 等实现细则继续下沉到 `.trellis/spec/**`，避免在 `AGENTS.md` 重复维护同一规则。
+- 将 frontend/backend/cross-layer 等实现细则继续下沉到 `dev-guidelines/**`，避免在 `AGENTS.md` 重复维护同一规则。
 - 将 `openspec/project.md` 定义为 OpenSpec workspace 的唯一全局治理总览；`openspec/README.md` 收缩为短入口与导航，不再重复维护大段 snapshot/governance 正文。
 - 明确 `.claude/**`、`.codex/**` 只承担 host adapter / hooks / commands / skills glue 角色，不再承载主治理正文。
 - 将 session-start hook 的默认注入收敛为“完整项目入口 + 精简 current state + 规则/Spec 指针”，避免继续内联大段 active task 列表与 spec index 正文。
@@ -67,7 +67,7 @@
   - `AGENTS.md`
   - `openspec/README.md`
   - `openspec/project.md`
-  - `.trellis/spec/**`（主要是 index / guide 引用层）
+  - `dev-guidelines/**`（主要是 index / guide 引用层）
 - Affected repo hygiene:
   - `.gitignore`
   - `.omx/**`

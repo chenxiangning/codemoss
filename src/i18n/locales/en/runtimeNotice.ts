@@ -30,6 +30,155 @@ const runtimeNotice = {
         "Finishing startup. Please wait — clicking the UI now may freeze the app.",
       forceDismiss: "Enter now",
     },
+    startupTimeline: {
+      title: "Background work timeline",
+      summary: "{{rawCount}} raw records · {{nodeCount}} merged nodes",
+      sections: {
+        startup: "Startup",
+        startupHint: "startup trace order",
+        runtime: "Runtime",
+        runtimeHint: "runtime notice time",
+      },
+      empty: "No records yet",
+      globalProject: "Global",
+      projectSummary: "{{name}} +{{count}}",
+      count: "×{{count}}",
+      duration: {
+        single: "{{duration}}",
+        total: "Total {{duration}}",
+        unavailable: "Duration —",
+      },
+      status: {
+        queued: "Queued",
+        started: "Running",
+        completed: "Done",
+        failed: "Failed",
+        timedOut: "Timed out",
+        cancelled: "Cancelled",
+        degraded: "Degraded",
+        info: "Info",
+        warning: "Warning",
+      },
+      detail: {
+        label: "View {{title}} details",
+        project: "Project",
+        workspacePath: "Full path",
+        workspaceId: "Workspace ID",
+        workspaceCatalog: "Projects (local cache)",
+        technical: "Technical identifiers",
+        phase: "Phase",
+        sources: "Sources",
+        timing: "Timing breakdown",
+        first: "First",
+        latest: "Latest",
+        max: "Slowest",
+        total: "Total",
+        durationSamples: "{{count}} timed executions",
+        noPath: "Full path was not recorded",
+      },
+      operations: {
+        "workspace-catalog": {
+          title: "Load workspaces",
+          description:
+            "Reads workspace names and paths so later background work targets the correct projects; conversation bodies are not loaded.",
+        },
+        "session-catalog": {
+          title: "Refresh session list",
+          description:
+            "Reads session indexes, titles, and ownership for this project across CLIs to refresh resumable sidebar sessions; full transcripts are not loaded.",
+        },
+        "workspace-files": {
+          title: "Read project files",
+          description: "Reads the project file-tree index for file panels and path navigation.",
+        },
+        skills: {
+          title: "Load Skills",
+          description: "Reads project and global Skills for the composer and agents.",
+        },
+        prompts: {
+          title: "Load Prompts",
+          description: "Reads project prompt templates for quick selection and reuse.",
+        },
+        commands: {
+          title: "Load Commands",
+          description: "Reads CLI and project commands to refresh composer command choices.",
+        },
+        "collaboration-modes": {
+          title: "Load collaboration modes",
+          description: "Reads collaboration modes supported by the active engine.",
+        },
+        models: {
+          title: "Refresh models",
+          description: "Reads available engine models for session creation and model switching.",
+        },
+        agents: {
+          title: "Load Agents",
+          description: "Reads available agents for task delegation and composer selection.",
+        },
+        "git-status": {
+          title: "Check Git status",
+          description: "Reads the current branch and file status to refresh Git indicators.",
+        },
+        "git-diff": {
+          title: "Read Git diff",
+          description: "Reads file-change summaries for diff panels and commit scope decisions.",
+        },
+        dictation: {
+          title: "Check dictation model",
+          description: "Checks whether the local dictation model is available for voice input.",
+        },
+        "input-history": {
+          title: "Restore input history",
+          description: "Restores local drafts and input history so unfinished text survives restart.",
+        },
+        "storage-migration": {
+          title: "Check local-state migration",
+          description: "Checks and migrates older local state so settings and caches remain readable.",
+        },
+        "storage-preload": {
+          title: "Preload local state",
+          description: "Reads lightweight startup configuration before the main interface mounts.",
+        },
+        "app-import": {
+          title: "Load client code",
+          description: "Loads the main interface module in preparation for mounting the client shell.",
+        },
+        i18n: {
+          title: "Load language resources",
+          description: "Loads localized interface copy for startup and subsequent screens.",
+        },
+        "interface-resources": {
+          title: "Mount client interface",
+          description: "Prepares interface resources and mounts the client shell.",
+        },
+        "runtime-connection": {
+          title: "Check runtime connection",
+          description: "Tracks project CLI runtime connection, recovery, and availability state.",
+        },
+        "shell-ready": {
+          title: "Client shell ready",
+          description: "The main interface shell is mounted and project data can continue loading.",
+        },
+        "input-ready": {
+          title: "Input ready",
+          description: "The composer has completed the initialization required for interaction.",
+        },
+        "active-workspace-ready": {
+          title: "Active project first screen ready",
+          description: "Essential first-screen project data has settled; heavier work may continue.",
+        },
+        "startup-gate-ready": {
+          title: "Startup safety gate ready",
+          description: "Required startup work has settled enough to remove the interaction mask.",
+        },
+      },
+      fallback: {
+        task: "Runs a startup background task; inspect its technical identifiers for exact scope.",
+        command: "Calls an internal command; inspect its technical identifiers for exact scope.",
+        milestone: "Records a readiness milestone in the client startup process.",
+        notice: "Records startup or runtime state while preserving the original notice key.",
+      },
+    },
     uiScale: {
       startupGuardReset:
         "The previous launch froze at {{scale}}% interface scale, so scale was temporarily reset to 100% for this session. Your setting was not changed — you can re-apply it in Settings.",

@@ -64,7 +64,9 @@ describe("messages context stack layout", () => {
         ".message-context-stack.is-user > .browser-context-summary-card,",
         ".message-context-stack.is-user > .intent-canvas-context-summary-card,",
         ".message-context-stack.is-user > .note-card-context-summary-card,",
-        ".message-context-stack.is-user > .message-code-annotation-context",
+        ".message-context-stack.is-user > .message-code-annotation-context,",
+        ".message-context-stack.is-user > .memory-inject-summary,",
+        ".message-context-stack.is-user > .memory-pick-empty-status",
       ].join("\n"),
     );
 
@@ -81,6 +83,13 @@ describe("messages context stack layout", () => {
     );
     expect(messagesPart1Css).not.toContain(
       ".message:has(.message-image-grid, .message-deferred-image-list, .message-generated-image-card)",
+    );
+    // 允许 layout/style containment 隔离样式污染；禁止 size containment 以免高度跳变。
+    expect(messagesPart1Css).toMatch(
+      /^\.message\s*\{[\s\S]*?^\s*contain:\s*layout\s+style\s*;/m,
+    );
+    expect(messagesPart1Css).not.toMatch(
+      /^\.message\s*\{[\s\S]*?^\s*contain:\s*[^;]*\bsize\b/m,
     );
   });
 });

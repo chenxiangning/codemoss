@@ -11,7 +11,7 @@
 
 ## 3. Contract Sync And Verification
 
-- [x] 3.1 [P1, depends: 2.3] 同步 `.trellis/spec/backend/shared-session-v2-send-contract.md` 与 cross-layer guidance，记录 durable terminal barrier 和 sibling event propagation checklist。
+- [x] 3.1 [P1, depends: 2.3] 同步 `dev-guidelines/backend/shared-session-v2-send-contract.md` 与 cross-layer guidance，记录 durable terminal barrier 和 sibling event propagation checklist。
 - [x] 3.2 [P0, depends: 3.1] 运行 focused Vitest、Rust Shared settlement test、`npm run typecheck`、runtime contract check 与 `openspec validate --all --strict --no-interactive`。
 - [x] 3.3 [P1, depends: 3.2] 复核 diff、未完成 manual evidence 与 rollback 边界，更新任务状态并输出审计结果。
 

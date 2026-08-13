@@ -11,6 +11,8 @@ import GitCommitHorizontal from "lucide-react/dist/esm/icons/git-commit-horizont
 import Hash from "lucide-react/dist/esm/icons/hash";
 import Info from "lucide-react/dist/esm/icons/info";
 import SquareTerminal from "lucide-react/dist/esm/icons/square-terminal";
+import { loadWorktreeModalStyles } from "../../../styles/featureStyleLoaders";
+import { useFeatureStylesReady } from "../../../styles/useFeatureStylesReady";
 
 type WorktreeBaseRefOption = {
   name: string;
@@ -98,6 +100,7 @@ export function WorktreePrompt({
   isBusy = false,
   isSavingScript = false,
 }: WorktreePromptProps) {
+  const stylesReady = useFeatureStylesReady(loadWorktreeModalStyles);
   const { t } = useTranslation();
   const inputRef = useRef<HTMLInputElement | null>(null);
   const baseRefDropdownRef = useRef<HTMLDivElement | null>(null);
@@ -108,6 +111,10 @@ export function WorktreePrompt({
     inputRef.current?.focus();
     inputRef.current?.select();
   }, []);
+
+  if (!stylesReady) {
+    return null;
+  }
 
   const normalizedBaseRef = baseRef.trim();
   const groupedBaseRefs: Record<WorktreeBaseRefOption["group"], WorktreeBaseRefOption[]> = {

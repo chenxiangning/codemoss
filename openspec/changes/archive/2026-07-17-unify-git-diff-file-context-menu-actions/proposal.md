@@ -70,7 +70,7 @@ Git Diff changed-file rows already share the same renderer, but single-repositor
   - `GitDiffPanel.test.tsx`
   - `GitMultiRepositoryChanges.test.tsx`
 - Code-level contract:
-  - `.trellis/spec/frontend/multi-repository-git-commit-workspace.md`
+  - `dev-guidelines/frontend/multi-repository-git-commit-workspace.md`
 - Behavior spec:
   - `openspec/specs/git-panel-diff-view/spec.md` after verify/sync
 - Backend/API/dependencies: unchanged。

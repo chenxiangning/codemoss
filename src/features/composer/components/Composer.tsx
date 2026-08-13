@@ -60,7 +60,13 @@ import {
 import { computeDictationInsertion } from "../../../utils/dictation";
 import { useComposerAutocompleteState } from "../hooks/useComposerAutocompleteState";
 import { useComposerDraft } from "../hooks/composerDraftStore";
+import {
+  ensureInteractiveInputHooks,
+  getLastInteractiveInputAtMs,
+  hadRecentInteractiveInput,
+} from "../../../utils/interactiveMainThread";
 import { ChatInputBoxAdapter } from "./ChatInputBox/ChatInputBoxAdapter";
+import { ComposerLight } from "./ComposerLight";
 import type { ChatInputBoxHandle } from "./ChatInputBox/ChatInputBoxAdapter";
 import { isSameProviderExecutionProfile } from "./ChatInputBox/selectors/ModelSelect";
 import {
@@ -220,7 +226,7 @@ function resolveClaudeWindowUsedTokens(
   return hasWindowSnapshot ? inputTokens + cachedInputTokens : null;
 }
 
-type ComposerProps = {
+export type ComposerProps = {
   kanbanContextMode?: "new" | "inherit";
   onKanbanContextModeChange?: (mode: "new" | "inherit") => void;
   items?: ConversationItem[];
@@ -486,12 +492,20 @@ const COMPOSER_INPUT_INTERACTION_IDLE_MS = 320;
 const BROWSER_OPEN_DOCK_EVENT = "browser-agent:open-dock";
 const BROWSER_OPEN_URL_EVENT = "browser-agent:open-url";
 const PENDING_BROWSER_URL_KEY = "ccgui.browserAgent.pendingUrl";
+/** ActiveCanvas 下灌的热字段：轻量/空闲时忽略，避免历史 hydrate 打爆 Composer 重渲 */
 const COMPOSER_CANVAS_ONLY_PROPS = new Set<keyof ComposerProps>([
   "items",
   "threadItemsByThread",
   "threadStatusById",
+  "threadParentById",
   "contextUsage",
   "accountRateLimits",
+  "userInputRequests",
+  "isContextCompacting",
+  "codexCompactionLifecycleState",
+  "codexCompactionSource",
+  "codexCompactionCompletedAt",
+  "lastTokenUsageUpdatedAt",
 ]);
 
 function toContextChipCarryOverKey(chip: ContextSelectionChip) {
@@ -1347,6 +1361,110 @@ function ComposerImpl({
   >([]);
   const [memoryReferenceMode, setMemoryReferenceMode] =
     useState<MemoryReferenceMode>("off");
+  const [memoryReferenceDismissed, setMemoryReferenceDismissed] =
+    useState(false);
+  // hydrate session 习惯（localStorage → memoryPickSessionStore）
+  useEffect(() => {
+    if (!activeWorkspaceId || !activeThreadId) {
+      setMemoryReferenceMode("off");
+      setMemoryReferenceDismissed(false);
+      return;
+    }
+    let cancelled = false;
+    let unsubscribe: (() => void) | undefined;
+    void import("../../project-memory/memoryPick/memoryPickSessionStore").then(
+      ({
+        getMemoryPickSessionPolicy,
+        subscribeMemoryPickSessionStore,
+      }) => {
+        if (cancelled) return;
+        const syncFromStore = () => {
+          const policy = getMemoryPickSessionPolicy(
+            activeWorkspaceId,
+            activeThreadId,
+          );
+          setMemoryReferenceMode(policy.composerMode);
+          setMemoryReferenceDismissed(policy.dismissed);
+        };
+        syncFromStore();
+        unsubscribe = subscribeMemoryPickSessionStore(syncFromStore);
+      },
+    );
+    return () => {
+      cancelled = true;
+      unsubscribe?.();
+    };
+  }, [activeThreadId, activeWorkspaceId]);
+  // 闸门内切到 always/pick 时同步菜单（与幕布策略轨一致）
+  useEffect(() => {
+    const onMode = (event: Event) => {
+      const detail = (
+        event as CustomEvent<{
+          mode?: MemoryReferenceMode;
+          workspaceId?: string;
+          threadId?: string;
+        }>
+      ).detail;
+      if (
+        detail?.workspaceId &&
+        activeWorkspaceId &&
+        detail.workspaceId !== activeWorkspaceId
+      ) {
+        return;
+      }
+      if (
+        detail?.threadId &&
+        activeThreadId &&
+        detail.threadId !== activeThreadId
+      ) {
+        return;
+      }
+      if (
+        detail?.mode === "always" ||
+        detail?.mode === "pick" ||
+        detail?.mode === "off"
+      ) {
+        setMemoryReferenceMode(detail.mode);
+      }
+    };
+    window.addEventListener("ccgui:memory-pick-composer-mode", onMode);
+    return () => {
+      window.removeEventListener("ccgui:memory-pick-composer-mode", onMode);
+    };
+  }, [activeThreadId, activeWorkspaceId]);
+  const handleSetMemoryReferenceMode = useCallback(
+    (mode: MemoryReferenceMode) => {
+      const normalized =
+        mode === "single" ? ("pick" as const) : mode === "pick" || mode === "always" || mode === "off"
+          ? mode
+          : ("off" as const);
+      setMemoryReferenceMode(normalized);
+      if (activeWorkspaceId && activeThreadId) {
+        // 动态 import 避免循环依赖；菜单显式 off 必须写回 session
+        void import("../../project-memory/memoryPick/memoryPickSessionStore").then(
+          ({ forceMemoryPickComposerModeFromMenu }) => {
+            forceMemoryPickComposerModeFromMenu(
+              activeWorkspaceId,
+              activeThreadId,
+              normalized,
+            );
+          },
+        );
+      }
+    },
+    [activeThreadId, activeWorkspaceId],
+  );
+  const handleRestoreMemoryReference = useCallback(() => {
+    if (!activeWorkspaceId || !activeThreadId) return;
+    void import("../../project-memory/memoryPick/memoryPickSessionStore").then(
+      ({ restoreMemoryPickFromDismiss }) => {
+        restoreMemoryPickFromDismiss(activeWorkspaceId, activeThreadId);
+        setMemoryReferenceMode("pick");
+        setMemoryReferenceDismissed(false);
+      },
+    );
+  }, [activeThreadId, activeWorkspaceId]);
+
   const [carryOverManualMemoryIds, setCarryOverManualMemoryIds] = useState<
     string[]
   >([]);
@@ -2442,7 +2560,10 @@ function ComposerImpl({
       const selectedMemoryIds = selectedManualMemories.map((entry) => entry.id);
       const selectedNoteCardIds = selectedNoteCards.map((entry) => entry.id);
       const selectedMemoryInjectionMode = getManualMemoryInjectionMode();
-      const shouldReferenceMemory = memoryReferenceMode !== "off";
+      // 记忆参考三态：off | pick | always（single 归一 pick）；由发送链路统一闸门
+      const resolvedMemoryReferenceMode =
+        memoryReferenceMode === "single" ? "pick" : memoryReferenceMode;
+      const shouldPassMemoryReference = resolvedMemoryReferenceMode !== "off";
       // Context Fan-in（§8.6）：协作不再整类拦截 skill/记忆/便签；注入由发送链路首段消化。
       const browserContextAttachment = browserContext.attachment;
       const hasBrowserContextAttachment = Boolean(browserContextAttachment);
@@ -2466,14 +2587,20 @@ function ComposerImpl({
         skillInvocations.length > 0 ||
         selectedMemoryIds.length > 0 ||
         selectedNoteCardIds.length > 0 ||
-        shouldReferenceMemory ||
+        shouldPassMemoryReference ||
         hasBrowserContextAttachment ||
         createSessionTarget !== null ||
         isAgentSubmission
           ? {
               ...(skillInvocations.length > 0 ? { skillInvocations } : {}),
-              ...(shouldReferenceMemory
-                ? { memoryReferenceEnabled: true }
+              ...(shouldPassMemoryReference
+                ? {
+                    memoryReferenceMode: resolvedMemoryReferenceMode,
+                    // 兼容旧测试/路径：always 仍标 enabled
+                    ...(resolvedMemoryReferenceMode === "always"
+                      ? { memoryReferenceEnabled: true as const }
+                      : {}),
+                  }
                 : {}),
               ...(selectedMemoryIds.length > 0
                 ? { selectedMemoryIds, selectedMemoryInjectionMode }
@@ -3525,7 +3652,9 @@ function ComposerImpl({
               onCodexQuickCommand={handleCodexQuickCommand}
               onForkQuickStart={handleForkQuickStart}
               memoryReferenceMode={memoryReferenceMode}
-              onSetMemoryReferenceMode={setMemoryReferenceMode}
+              memoryReferenceDismissed={memoryReferenceDismissed}
+              onSetMemoryReferenceMode={handleSetMemoryReferenceMode}
+              onRestoreMemoryReference={handleRestoreMemoryReference}
               hasMessages={items.length > 0}
               onRewind={handleRewind}
               showRewindEntry={canRewindSession}
@@ -3629,6 +3758,17 @@ function areComposerPropsEqual(
   previous: ComposerProps,
   next: ComposerProps,
 ): boolean {
+  // 非流式：忽略 canvas 大对象。冷启 list/history hydrate 会高频换 items 引用，
+  // 若每帧重渲 ComposerLight/Impl，与点击叠在一起会假死（973 之后 dc97 加重了 status/items 下灌）。
+  const eitherProcessing =
+    Boolean(previous.isProcessing) || Boolean(next.isProcessing);
+  if (!eitherProcessing) {
+    return areComposerPropsShallowEqual(
+      previous,
+      next,
+      COMPOSER_CANVAS_ONLY_PROPS,
+    );
+  }
   const shouldUseInteractionLaneComparator =
     Boolean(previous.isProcessing) && Boolean(next.isProcessing);
   if (!shouldUseInteractionLaneComparator) {
@@ -3668,4 +3808,84 @@ function areComposerPropsShallowEqual(
   return true;
 }
 
-export const Composer = memo(ComposerImpl, areComposerPropsEqual);
+/**
+ * 根治路径：先挂 ComposerLight（与完整态同一套工具栏结构：模型位始终占位 loading），
+ * 停手后再挂 ComposerImpl。模型未就绪时只在「模型选择」槽显示 loading，禁止缺位布局。
+ * warm 后直开 full，避免历史会话再走一遍残缺态。
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const IS_VITEST =
+  typeof import.meta !== "undefined" && (import.meta as any).env?.MODE === "test";
+
+/** 进程内 warm：完整 Composer 安全挂过一次后，后续挂载直开 full */
+let composerHeavyWarmed = false;
+
+function ComposerGate(props: ComposerProps) {
+  const [full, setFull] = useState(() => IS_VITEST || composerHeavyWarmed);
+
+  useEffect(() => {
+    if (IS_VITEST || full) {
+      return;
+    }
+    ensureInteractiveInputHooks();
+    const mountedAt = Date.now();
+    let cancelled = false;
+    let timerId: number | null = null;
+
+    const tick = () => {
+      if (cancelled) {
+        return;
+      }
+      const now = Date.now();
+      const lastInput = getLastInteractiveInputAtMs();
+      const elapsed = now - mountedAt;
+      const hadInputSinceMount = lastInput >= mountedAt;
+      const quietFor = now - lastInput;
+
+      if (hadInputSinceMount && quietFor >= 1_200 && elapsed >= 1_000) {
+        if (hadRecentInteractiveInput(250)) {
+          timerId = window.setTimeout(tick, 150);
+          return;
+        }
+        composerHeavyWarmed = true;
+        setFull(true);
+        return;
+      }
+
+      // 无人操作：catalog 通常已就绪后再上完整层（模型位已有 loading 占位，不靠缺位）
+      if (!hadInputSinceMount && elapsed >= 2_800) {
+        composerHeavyWarmed = true;
+        setFull(true);
+        return;
+      }
+
+      timerId = window.setTimeout(tick, 120);
+    };
+
+    timerId = window.setTimeout(tick, 400);
+    return () => {
+      cancelled = true;
+      if (timerId != null) {
+        window.clearTimeout(timerId);
+      }
+    };
+  }, [full]);
+
+  useEffect(() => {
+    if (full) {
+      composerHeavyWarmed = true;
+    }
+  }, [full]);
+
+  if (full) {
+    return <ComposerImpl {...props} />;
+  }
+  return <ComposerLight {...props} />;
+}
+
+export const Composer = memo(ComposerGate, areComposerPropsEqual);
+
+/** @internal 测试可重置 warm，避免污染其它用例 */
+export function __resetComposerHeavyWarmForTests(): void {
+  composerHeavyWarmed = false;
+}

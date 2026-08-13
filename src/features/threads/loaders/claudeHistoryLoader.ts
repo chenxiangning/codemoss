@@ -1127,6 +1127,36 @@ function normalizeClaudeToolName(toolName: string) {
   return toolName.trim().toLowerCase();
 }
 
+/** Native AskUserQuestion or MCP bridge (`mcp__ccgui__AskUserQuestion`). */
+function isClaudeAskUserQuestionToolName(toolName: string) {
+  const normalized = normalizeClaudeToolName(toolName);
+  if (!normalized) {
+    return false;
+  }
+  if (
+    normalized === "askuserquestion" ||
+    normalized === "ask_user_question"
+  ) {
+    return true;
+  }
+  return (
+    normalized.includes("askuserquestion") ||
+    normalized.includes("ask_user_question")
+  );
+}
+
+/**
+ * MCP bridge asks cannot be answered after history reopen: live request_id is a
+ * hash of a synthetic tool_id, while transcript tool ids are CLI tool_use ids.
+ * Only rehydrate interactive cards for native AskUserQuestion.
+ */
+function isNativeClaudeAskUserQuestionToolName(toolName: string) {
+  const normalized = normalizeClaudeToolName(toolName);
+  return (
+    normalized === "askuserquestion" || normalized === "ask_user_question"
+  );
+}
+
 const CLAUDE_FILE_PATH_KEYS = [
   "file_path",
   "filePath",
@@ -1805,10 +1835,9 @@ export function parseClaudeHistoryMessages(
             status,
             output: outputText || existing.output,
           };
-          const sourceToolType = normalizeClaudeToolName(existing.toolType);
           if (
-            sourceToolType === "askuserquestion" ||
-            sourceToolType === "ask_user_question"
+            isClaudeAskUserQuestionToolName(existing.toolType) ||
+            isClaudeAskUserQuestionToolName(existing.title ?? "")
           ) {
             removePendingAskTool(existing.id);
             const templates = askTemplatesByToolId.get(existing.id) ?? [];
@@ -1850,12 +1879,9 @@ export function parseClaudeHistoryMessages(
     }
 
     const toolName = getClaudeToolName(message);
-    const normalizedToolName = normalizeClaudeToolName(toolName);
-    const normalizedToolType = normalizeClaudeToolName(toolType);
     const isAskUserQuestion =
-      normalizedToolName === "askuserquestion" ||
-      normalizedToolType === "askuserquestion" ||
-      normalizedToolType === "ask_user_question";
+      isClaudeAskUserQuestionToolName(toolName) ||
+      isClaudeAskUserQuestionToolName(toolType);
     const resolvedToolId = toolId || `claude-tool-${items.length + 1}`;
     const parsedFileChange = inferClaudeFileChange(toolName, message);
     items.push({
@@ -1881,7 +1907,7 @@ export function parseClaudeHistoryMessages(
 
   for (const pendingToolId of pendingAskToolIds) {
     const index = toolIndexById.get(pendingToolId);
-    if (index === undefined || index >= items.length - 1) {
+    if (index === undefined) {
       continue;
     }
     const existing = items[index];
@@ -1891,9 +1917,13 @@ export function parseClaudeHistoryMessages(
     if (existing.status === "completed" || existing.status === "failed") {
       continue;
     }
+    // Incomplete Ask tools left at the tail after a hang/skip without tool_result
+    // must not stay interactive. Mark failed so extractPendingUserInputQueue drops them.
+    // (Native mid-turn asks that truly need answer are only live via realtime events.)
+    const isTrailingIncomplete = index >= items.length - 1;
     items[index] = {
       ...existing,
-      status: "completed",
+      status: isTrailingIncomplete ? "failed" : "completed",
     };
   }
 
@@ -1910,19 +1940,39 @@ function extractPendingUserInputQueueFromClaudeItems(
 ): RequestUserInputRequest[] {
   const queue: RequestUserInputRequest[] = [];
   const seen = new Set<string>();
+  // Durable evidence that the user already settled an ask in this thread history.
+  const hasSubmittedAudit = items.some(
+    (item) =>
+      item.kind === "tool" && item.toolType === "requestUserInputSubmitted",
+  );
+  if (hasSubmittedAudit) {
+    // Prefer not to rehydrate any interactive card once a submit/skip audit exists.
+    // Live incomplete asks still arrive via realtime events, not history reopen.
+    return queue;
+  }
 
   for (const item of items) {
     if (item.kind !== "tool") {
       continue;
     }
-    const normalizedToolType = normalizeClaudeToolName(item.toolType);
-    if (
-      normalizedToolType !== "askuserquestion" &&
-      normalizedToolType !== "ask_user_question"
-    ) {
-      continue;
+    if (!isClaudeAskUserQuestionToolName(item.toolType ?? "")) {
+      // Title may still carry mcp__ccgui__AskUserQuestion when toolType was normalized.
+      if (!isClaudeAskUserQuestionToolName(item.title ?? "")) {
+        continue;
+      }
     }
     if (item.status === "completed" || item.status === "failed") {
+      continue;
+    }
+    // MCP bridge asks cannot be answered after reopen (request_id identity mismatch).
+    // Only native AskUserQuestion may rehydrate into the interactive queue.
+    const toolLabel = `${item.toolType ?? ""} ${item.title ?? ""}`;
+    if (
+      !isNativeClaudeAskUserQuestionToolName(item.toolType ?? "") &&
+      !isNativeClaudeAskUserQuestionToolName(item.title ?? "") &&
+      (toolLabel.toLowerCase().includes("mcp") ||
+        toolLabel.toLowerCase().includes("ccgui"))
+    ) {
       continue;
     }
     const templates = parseAskUserQuestionTemplates(

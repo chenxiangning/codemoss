@@ -9,7 +9,10 @@
 //
 // appendRendererDiagnostic 不受 build-time PROD 门控,故本模块在打包版天然可用。
 
-import { appendRendererDiagnostic } from "../rendererDiagnostics";
+import {
+  appendRendererDiagnostic,
+  appendVolatileRendererDiagnostic,
+} from "../rendererDiagnostics";
 import { getRecentHotspotSummary } from "./hotspotTracker";
 import { readPerfContext } from "./perfContextBridge";
 import { getRecentReactScanRenderSummary } from "./reactScanRenderLog";
@@ -18,6 +21,7 @@ const WARN_FRAME_MS = 50; // 约掉 3 帧(60fps 下)
 const SEVERE_FRAME_MS = 100; // 约掉 6 帧
 const MIN_REPORT_INTERVAL_MS = 500; // 节流:相邻掉帧上报最短间隔,避免日志雪崩
 const MAX_FRAME_DROP_REPORTS = 200; // 单次会话上报上限
+const DURABLE_SEVERE_FRAME_REPORT_INTERVAL_MS = 60_000;
 // rAF 间隔超过该值视为挂起(睡眠/后台)恢复而非渲染掉帧:WKWebView 在页面不可见或系统
 // 睡眠时会暂停 rAF,恢复后第一帧的 delta 等于整段停摆时长(实测可达几十分钟),曾把
 // worstFrameMs 污染成无意义的天文数字。diagnosticsReport 统计时用同一阈值剔除历史脏数据。
@@ -26,6 +30,7 @@ export const SUSPEND_GAP_MS = 5000;
 let rafHandle: number | null = null;
 let lastFrameTime: number | null = null;
 let lastReportAt = Number.NEGATIVE_INFINITY;
+let lastDurableSevereReportAt = Number.NEGATIVE_INFINITY;
 let frameDropReports = 0;
 let longTaskObserver: PerformanceObserver | null = null;
 let detachVisibilityListener: (() => void) | null = null;
@@ -54,6 +59,19 @@ function isDevBuild(): boolean {
   return env.DEV === true && env.MODE !== "test";
 }
 
+function hasDiagnosticsOwnedHotspot(
+  hotspots: ReturnType<typeof getRecentHotspotSummary>,
+): boolean {
+  return hotspots.some(
+    (row) =>
+      row.category === "diagnostics-persist" ||
+      row.category === "diagnostics-export" ||
+      row.category === "perf-jank-live-collect" ||
+      (row.category === "client-store-write" &&
+        row.maxDetail?.startsWith("diagnostics:") === true),
+  );
+}
+
 function reportFrameDrop(deltaMs: number): void {
   const at = nowMs();
   if (at - lastReportAt < MIN_REPORT_INTERVAL_MS) {
@@ -68,26 +86,43 @@ function reportFrameDrop(deltaMs: number): void {
   // 掉帧前一小段时间里主线程被哪些热路径占用(WKWebView 无 longtask 的替代归因)。
   // 窗口取掉帧时长 + 600ms:既覆盖掉帧帧本身,也覆盖紧邻其前的铺垫工作。
   const hotspots = getRecentHotspotSummary(Math.min(3_000, deltaMs + 600));
-  appendRendererDiagnostic("perf.frame-drop", {
+  const payload = {
     deltaMs: Math.round(deltaMs),
     approxFps: Math.max(1, Math.round(1000 / deltaMs)),
     level: deltaMs >= SEVERE_FRAME_MS ? "severe" : "warn",
     ...context,
     topRenders: getRecentReactScanRenderSummary(600),
     hotspots,
-  });
+  };
+  const shouldPersistSevereFrame =
+    deltaMs >= SEVERE_FRAME_MS &&
+    at - lastDurableSevereReportAt >= DURABLE_SEVERE_FRAME_REPORT_INTERVAL_MS &&
+    !hasDiagnosticsOwnedHotspot(hotspots);
+  if (shouldPersistSevereFrame) {
+    lastDurableSevereReportAt = at;
+    appendRendererDiagnostic("perf.frame-drop", payload);
+  } else {
+    appendVolatileRendererDiagnostic("perf.frame-drop", payload);
+  }
   // dev 下把严重掉帧直接打进 console,便于复现时从 DevTools 一键复制现场。
-  if (isDevBuild() && deltaMs >= SEVERE_FRAME_MS && typeof console !== "undefined") {
+  if (
+    isDevBuild() &&
+    deltaMs >= SEVERE_FRAME_MS &&
+    typeof console !== "undefined"
+  ) {
     const hotspotText = hotspots
-      .map((row) => `${row.category}=${row.totalMs}ms(max ${row.maxMs}${row.maxDetail ? ` ${row.maxDetail}` : ""})×${row.count}`)
+      .map(
+        (row) =>
+          `${row.category}=${row.totalMs}ms(max ${row.maxMs}${row.maxDetail ? ` ${row.maxDetail}` : ""})×${row.count}`,
+      )
       .join(" ");
     console.warn(
-      `[perf.frame-drop] ${Math.round(deltaMs)}ms (~${Math.max(1, Math.round(1000 / deltaMs))}fps)`
-        + ` streaming=${context.isStreaming ? context.streamActivityPhase ?? "yes" : "no"}`
-        + (context.lastInteractionLabel
+      `[perf.frame-drop] ${Math.round(deltaMs)}ms (~${Math.max(1, Math.round(1000 / deltaMs))}fps)` +
+        ` streaming=${context.isStreaming ? (context.streamActivityPhase ?? "yes") : "no"}` +
+        (context.lastInteractionLabel
           ? ` interaction=${context.lastInteractionLabel}@${context.lastInteractionAgoMs}ms`
-          : "")
-        + (hotspotText ? ` hotspots: ${hotspotText}` : " hotspots: (none ≥1ms)"),
+          : "") +
+        (hotspotText ? ` hotspots: ${hotspotText}` : " hotspots: (none ≥1ms)"),
     );
   }
 }
@@ -211,5 +246,6 @@ export function __resetFrameDropMonitorForTests(): void {
   stopFrameDropMonitor();
   stopLongTaskObserver();
   lastReportAt = Number.NEGATIVE_INFINITY;
+  lastDurableSevereReportAt = Number.NEGATIVE_INFINITY;
   frameDropReports = 0;
 }

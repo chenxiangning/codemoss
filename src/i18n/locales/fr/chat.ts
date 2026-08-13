@@ -103,6 +103,8 @@ const chat = {
     "commandsListUnavailableTitle": "Commandes indisponibles",
     "commandsListUnavailableMessage":
       "Échec du chargement des commandes slash : {{reason}}. L'autocomplétion peut être incomplète ; une nouvelle tentative aura lieu automatiquement.",
+    "promptsListUnavailableTitle": "Prompts indisponibles",
+    "promptsListUnavailableMessage": "Échec du chargement des prompts personnalisés : {{reason}}. La complétion ! peut être incomplète ; rouvrez ! ou créez un prompt pour réessayer.",
     "pleaseWait": "Veuillez patienter...",
     "retrying": "Nouvelle tentative ({{count}}/{{max}})...",
     "removeAgent": "Supprimer l'agent",

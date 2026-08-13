@@ -1028,7 +1028,7 @@ Discord/Telegram ←→ Live Adapter ←→ Runtime (log, jobs, slices) ←→ p
 - **Single source of truth 是 OpenSpec spec**：`openspec/specs/engine-capability-matrix/spec.md`（四值状态 `supported / compat-input / unsupported / unknown`，`:23-31`；TS 与 Rust matrix 必须与 spec-owned matrix 一致，`:9`；fixture `openspec/specs/engine-capability-matrix/fixtures/matrix.json`）；CI 门禁 `npm run check:engine-capability-matrix`（`scripts/check-engine-capability-matrix.mjs`）；
 - 另有独立的引擎级 enable 门禁 `engine_enabled_in_settings`（`mod.rs:98-136`）+ `detect_engines_with_gates`（`manager.rs:143-199`），与 capability matrix 是两套机制。
 
-**unified-exec 命名澄清（重要）**：仓库里的 "unified-exec" 专指 **Codex CLI 官方 `[features].unified_exec` 特性开关的治理 contract**（指南 `.trellis/spec/guides/codex-unified-exec-override-contract.md`；spec `openspec/specs/codex-unified-exec-override-governance/spec.md`；实现 `types.rs:1315-1317, 1947-1949` + 三个 Tauri command + 前端导出 `src/services/tauri.ts:168`），**不是 mossx 的"统一执行层"规范**。mossx 级 unified execution 规范**尚不存在**——最接近的现存物就是 §5.1 的 `engine/mod.rs` 抽象 + `EngineEvent` → app-server 事件契约。本文 §6 的目标架构即为补这份空白。
+**unified-exec 命名澄清（重要）**：仓库里的 "unified-exec" 专指 **Codex CLI 官方 `[features].unified_exec` 特性开关的治理 contract**（指南 `dev-guidelines/guides/codex-unified-exec-override-contract.md`；spec `openspec/specs/codex-unified-exec-override-governance/spec.md`；实现 `types.rs:1315-1317, 1947-1949` + 三个 Tauri command + 前端导出 `src/services/tauri.ts:168`），**不是 mossx 的"统一执行层"规范**。mossx 级 unified execution 规范**尚不存在**——最接近的现存物就是 §5.1 的 `engine/mod.rs` 抽象 + `EngineEvent` → app-server 事件契约。本文 §6 的目标架构即为补这份空白。
 
 ### 5.3 事件流现状：Rust → 前端
 
@@ -1051,7 +1051,7 @@ Discord/Telegram ←→ Live Adapter ←→ Runtime (log, jobs, slices) ←→ p
 
 **mossx 的统一 session 层：有，但是"只读 catalog 投影 + 元数据 overlay"，不是统一存储/执行层**：
 
-- **Workspace Session Catalog**：`list_workspace_sessions`（`src-tauri/src/session_management.rs:101-120, 469`）按引擎分别扫描后合并成统一 `WorkspaceSessionCatalogEntry`，entry id 带引擎前缀（`claude:{id}` 等，`:2501, 2586, 2663`），overlay archive/folder/自定义 title，带 per-engine `sourceStatuses`；治理 contract `.trellis/spec/guides/workspace-session-catalog-contract.md`（stable key = `engine + ownerWorkspaceId + canonicalSessionId`，`:48`）；
+- **Workspace Session Catalog**：`list_workspace_sessions`（`src-tauri/src/session_management.rs:101-120, 469`）按引擎分别扫描后合并成统一 `WorkspaceSessionCatalogEntry`，entry id 带引擎前缀（`claude:{id}` 等，`:2501, 2586, 2663`），overlay archive/folder/自定义 title，带 per-engine `sourceStatuses`；治理 contract `dev-guidelines/guides/workspace-session-catalog-contract.md`（stable key = `engine + ownerWorkspaceId + canonicalSessionId`，`:48`）；
 - **Shared Sessions（跨引擎串线的已有雏形）**：`src-tauri/src/shared_sessions.rs`——mossx 自有目录 `shared-sessions`（`:19`），`SharedSessionMeta { selected_engine, bindings_by_engine: HashMap<EngineType, SharedEngineBinding{native_thread_id,...}> }`（`:53-74`），即**一个逻辑会话绑定 Claude + Codex 两条 native thread**。但仅支持 Claude/Codex 两引擎（`is_supported_shared_session_engine`，`:30-32`），且 delta sync 有界（`MAX_DELTA_SYNC_TURNS=8` / `MAX_DELTA_SYNC_CHARS=4000`，`:23-24`）。
 
 ### 5.5 市场货架与供应链原型
@@ -1695,8 +1695,8 @@ flowchart TD
 | 其他引擎 | `src-tauri/src/engine/{gemini,opencode,kimi}.rs`；`gemini_event_parsing.rs` |
 | 命令入口 | `src-tauri/src/engine/commands.rs`（engine_send_message 1434；inline forwarders 1634-2297） |
 | capability | `src-tauri/src/engine/capability_matrix.rs`；`src/features/engine/engineCapabilityMatrix.ts`；`scripts/check-engine-capability-matrix.mjs`；`openspec/specs/engine-capability-matrix/spec.md` + `fixtures/matrix.json` |
-| unified_exec（Codex 特性治理） | `.trellis/spec/guides/codex-unified-exec-override-contract.md`；`openspec/specs/codex-unified-exec-override-governance/spec.md`；`src-tauri/src/types.rs:1315-1317` |
-| 会话层 | `src-tauri/src/session_management.rs`；`src-tauri/src/shared_sessions.rs`；`src-tauri/src/engine/{claude_history,gemini_history,kimi_history}.rs`；`src-tauri/src/local_usage.rs`；`.trellis/spec/guides/workspace-session-catalog-contract.md` |
+| unified_exec（Codex 特性治理） | `dev-guidelines/guides/codex-unified-exec-override-contract.md`；`openspec/specs/codex-unified-exec-override-governance/spec.md`；`src-tauri/src/types.rs:1315-1317` |
+| 会话层 | `src-tauri/src/session_management.rs`；`src-tauri/src/shared_sessions.rs`；`src-tauri/src/engine/{claude_history,gemini_history,kimi_history}.rs`；`src-tauri/src/local_usage.rs`；`dev-guidelines/guides/workspace-session-catalog-contract.md` |
 | 前端事件/IPC | `src/services/events.ts`；`src/services/tauri.ts`（+ `src/services/tauri/*`） |
 | steering 现状 | `src/features/threads/hooks/useQueuedSend.ts`；`src-tauri/src/types.rs:1310-1313`（`experimental_steer_enabled`） |
 | 市场货架/供应链 | `src/features/extensions/components/ExtensionsView.tsx`；`src-tauri/src/curated_skills.rs`；`skills-lock.json`；`scripts/agent-catalog/sync-agency-agents.mjs` |

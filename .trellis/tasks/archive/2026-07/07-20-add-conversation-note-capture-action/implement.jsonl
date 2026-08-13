@@ -1,7 +1,0 @@
-{"file": ".trellis/workflow.md", "reason": "Project workflow and conventions"}
-{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend development guide"}
-{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "icon button accessibility、i18n 与 component props contract"}
-{"file": ".trellis/spec/frontend/hook-guidelines.md", "reason": "复用 hook action，保持 local low-frequency state"}
-{"file": ".trellis/spec/frontend/workspace-note-context-capture.md", "reason": "conversation capture single-source contract"}
-{"file": "src/features/messages/hooks/useConversationNoteCaptureMenu.ts", "reason": "复用现有 menu builder 与 draft action"}
-{"file": "src/features/messages/components/MessagesTimeline.tsx", "reason": "现有 final boundary action group"}

@@ -1,8 +1,8 @@
 # Windows 冷启动点击假死 + uiScale 0.8 修复分析
 
-> **日期**：2026-08-07  
+> **日期**：2026-08-07（撰写），2026-08-10（补充 §10 并最终修复）  
 > **机器**：本地 Windows（用户 **CXN**，系统 DPI 125%）  
-> **状态**：现场验收 **明显改善且稳定**（uiScale 100% 全场景 OK；0.8 等待 loading 后点 OK；0.8 不等 loading 立刻点 — 已通过「先 100% 再延后应用 0.8」规避）  
+> **最终状态**：✅ **已完全解决**（2026-08-10 commit `c0e91a0d3`）。详尽时间线见 [`cold-start-click-freeze-postmortem-2026-08-10.md`](./cold-start-click-freeze-postmortem-2026-08-10.md)  
 > **对比基线**：v0.7.15 **无此现象**；v0.8.x 回归  
 > **相关**：`docs/analysis/windows-ccgui-startup-hang-2026-08-05.md`（uiScale / WebView2 根因，本报告是其续篇与交叉修复）  
 > **提交记录**：见 **§0A 人物与提交台账**、**§0B 两日修复全清单**（作者均来自 `git log`，禁止凭记忆改写）
@@ -370,3 +370,122 @@ shell 高度链:     src/styles/base.css
 
 **一句话：**  
 0.8.x 修好了「列表永远不来」，却让冷启动必跑重扫；叠上 0.8 的 transform 缩放，loading 中一点就死。现改为 **轻列表先出 + 重扫后置**，缩放 **CSS zoom** 且 **冷启动先 100% 再延后应用用户缩放**；Mac 共享编排收益，但缩放延迟与 CSS zoom 需冒烟，必要时改为仅 Windows 延迟。
+
+---
+
+## 10. 2026-08-09 续报：macOS 已解决，Windows 2s 窗口仍复现
+
+> **状态**：macOS 测试完全通过。Windows 在 2 秒内点击（含 force-enter 后立即点击、展开加载日志等）仍会卡死，超过 2 秒后正常。总体改善明显但未根治。
+
+### 10.1 代码审计结论
+
+macOS 与 Windows 的 UI 层代码路径**完全相同**：
+- `usesCssPageZoom()` 所有平台返回 `true`，统一 CSS zoom
+- `applyUiScale` 一律只写 CSS，不调 native setZoom
+- `StartupGateOverlay` 行为一致
+- 冷启 hydration 编排一致
+
+**平台差异仅在引擎层：** Windows = WebView2 (Chromium Blink) + 125% DPI；macOS = WKWebView (WebKit)。
+
+### 10.2 诊断数据分析
+
+`diagnostics.json`（`%USERPROFILE%\.ccgui\client\`）：
+- 文件大小 401KB，超出 256KB byte budget **57%**
+- 跨 4 天（Aug 5-9）多 session 累积合并
+- 冷启前 10 秒仅 2 条事件（无意义的 `window/error`）→ memory-first + 30s batch persist 正在生效
+- 帧掉/longtask 均在 ~108 秒后才出现（消息流式渲染，非冷启窗内）
+- 冷启窗内**没有诊断风暴**——系统本身已被抑制
+
+关键推论：**卡死时连 rAF 回调都无法执行**（否则会有 `perf.frame-drop` 条目），说明主线程被完全阻塞而非轻微 jank。
+
+### 10.3 根因推论（WebView2 特定连锁反应）
+
+```text
+t=0ms    React 首帧渲染 → DOM 构建
+t≈0ms    useEffect 触发 apply(1)
+           ├─ 无条件清除 html/body 上 20+ CSS inline 属性
+           │  (zoom, transform, width, height, position...)
+           ├─ width/height 置空 → Blink 标记整个文档 layout tree 脏
+           └─ 125% DPI 下 Blink 的样式重算 + 布局成本显著高于 WebKit
+
+t≈0ms    同帧：confirmUiScaleHealthy() → localStorage.removeItem() → 同步磁盘 I/O
+
+t=500ms  COLD_START_FIRST_PAINT_DELAY → first-paint list 启动
+           └─ Codex list_threads IPC → list_threads response → setThreads (React setState)
+
+t=1s     StartupGateOverlay summary refresh → setInterval → setState → React re-render
+
+t=1.5s   blankScreenWatchdog 首次检查
+           ├─ getElementById("root")
+           ├─ getBoundingClientRect()  ← 强制同步布局！
+           ├─ getComputedStyle()       ← 强制同步布局！
+           └─ 此时 React 正在 reconciliation → forced layout 阻塞主线程
+
+此时用户点击（展开加载日志 / 其他 overlay 按钮）
+  → WebView2 compositor 需要 hit-test（确认点击目标）
+  → hit-test 依赖 layout tree 的最新状态
+  → 但主线程正在 style recalc + layout + React render
+  → compositor 阻塞等待主线程
+  → 用户感知：窗口假死
+```
+
+**为何 macOS 不卡：** WKWebView 的 compositor hit-test 可以使用 stale 布局树而不等待主线程；且 WebKit 的 layout pass 在标准缩放下更快。
+
+**为何 2 秒后不卡：** 2s 时 first-paint list 通常已完成（~4.4s），React reconciliation 已沉降；即使 force-enter（10s）后立即点击，first-paint 的 setState 已结束，主线程空闲。
+
+**为何代码中 2 秒与 `UI_SCALE_AFTER_FORCE_ENTER_DELAY_MS` 对齐：** uiScale phase-2（去应用用户 ≠1 缩放）要等到 gate-ready（first-paint complete ~4.4s）或 force-enter+2s 后才执行。在这之前 CSS zoom=1，不触发缩放相关的 compositor 开销。所以点击卡死的 2s 窗口**不是缩放本身**导致的，而是 CSS 属性写操作 + 强制布局 + React setState 的叠加效应。
+
+### 10.4 修复方案
+
+#### P0-1：消除冷启时的无效 CSS 属性写操作
+
+**文件**：`src/utils/applyUiScale.ts`
+
+`apply(1)` 无条件清除 html/body 上 20+ CSS inline 属性。在冷启首帧这些属性本无值，清除操作仍使 Blink 标记布局脏。改为仅清除**实际有残留值**的属性。
+
+```ts
+// Before: 无条件 20-property flush
+el.style.zoom = "";  el.style.width = "";  el.style.height = "";  // ...
+
+// After: 仅写实际有值的属性
+for (const prop of ZOOM_FILL_PROPS) {
+  if (el.style[prop] !== "") el.style[prop] = "";
+}
+```
+
+冷启首帧时所有属性为空 → 零次写入 → 零布局无效化。
+
+#### P0-2：冷启 gate 期间跳过 blankScreenWatchdog
+
+**文件**：`src/services/rendererDiagnostics.ts`、`src/bootstrapApp.tsx`
+
+`blankScreenWatchdog` 每 1.5s 调用 `getBoundingClientRect()` + `getComputedStyle()` 触发强制同步布局。冷启时 overlay 全覆盖，白屏检测无意义。改为冷启窗内跳过检查。
+
+```ts
+// bootstrapApp.tsx：传入 startDelayMs 覆盖整个 gate 窗口
+startRendererBlankScreenWatchdog({
+  rootId: "root",
+  startDelayMs: 15_000,
+});
+```
+
+#### P1-1：替换 StartupGateOverlay 的 color-mix 为分层 opacity
+
+**文件**：`src/features/app/components/StartupGateOverlay.tsx`
+
+`color-mix(in_srgb, var(--surface-messages) 92%, transparent)` 在 WebView2 上需要 GPU shader 计算。改为 `background + opacity` 分层渲染避免 shader 开销。
+
+#### P1-2：诊断文件读取时主动 trim
+
+**文件**：`src/services/rendererDiagnostics.ts`
+
+当前 401KB 文件（超预算 57%）在每次冷启时读取/解析。首次加载时主动 trim 到 256KB 预算并写回。
+
+### 10.5 仍存在的缺口
+
+| # | 缺口 | 优先级 |
+|---|------|--------|
+| 9 | 以上 4 个修复合并后需在 Windows 125% DPI 实机验证 | **高** |
+| 10 | macOS 回归冒烟：分层 opacity 替代 color-mix 的视觉效果 | **中** |
+| 11 | 如 P0 改动仍不根治，需上 WebView2 DevTools 录制 Performance trace | **中** |
+| 12 | `applyUiScale` 的冷启优化可能需要添加 focused 单元测试 | **低** |

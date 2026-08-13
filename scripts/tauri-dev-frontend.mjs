@@ -68,6 +68,9 @@ function spawnViteDevServer() {
 async function main() {
   await ensureTauriDevResourcePlaceholders(repoRoot);
   await runNodeScript(ensureDevPortScript);
+  // Release notes catalog is generated manually (or on production build):
+  //   npm run release-notes:generate
+  // Dev no longer rewrites generated/* on every start.
   spawnViteDevServer();
 }
 

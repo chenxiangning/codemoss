@@ -1,5 +1,0 @@
-{"file": ".claude/commands/trellis/finish-work.md", "reason": "Finish work checklist"}
-{"file": ".claude/commands/trellis/check.md", "reason": "Code quality check spec"}
-{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "行为变更 focused test 与 large-file gate"}
-{"file": "src/features/messages/components/Messages.note-capture.test.tsx", "reason": "右键与 semantic capture 回归"}
-{"file": "src/features/messages/components/Messages.test.tsx", "reason": "final boundary action count 回归"}

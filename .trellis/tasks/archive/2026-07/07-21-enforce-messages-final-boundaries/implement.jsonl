@@ -1,5 +1,0 @@
-{"file": ".trellis/workflow.md", "reason": "Project workflow and conventions"}
-{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend development guide"}
-{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Boundary checker, tests, CI and regression risk"}
-{"file": ".trellis/spec/frontend/type-safety.md", "reason": "AST records and neutral owner contracts"}
-{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Verify dependency graph and CI data flow"}

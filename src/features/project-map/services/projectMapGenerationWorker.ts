@@ -545,7 +545,11 @@ function filePriority(path: string): number {
   ) {
     return 0;
   }
-  if (path.startsWith("openspec/") || path.startsWith(".trellis/spec/")) {
+  if (
+    path.startsWith("openspec/") ||
+    path.startsWith("dev-guidelines/") ||
+    path.startsWith(".trellis/spec/")
+  ) {
     return 1;
   }
   if (path.startsWith("src/") || path.includes("/src/")) {

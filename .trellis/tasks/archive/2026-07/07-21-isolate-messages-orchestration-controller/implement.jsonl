@@ -1,6 +1,0 @@
-{"file": ".trellis/workflow.md", "reason": "Project workflow and conventions"}
-{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend development guide"}
-{"file": ".trellis/spec/frontend/hook-guidelines.md", "reason": "五个 orchestration hook 的 owner、dependency 与 cleanup contract"}
-{"file": ".trellis/spec/frontend/state-management.md", "reason": "按更新频率拆分 state owner 并保持 model identity"}
-{"file": ".trellis/spec/frontend/messages-streaming-render-contract.md", "reason": "保持 liveAssistantTextChannel row-local streaming contract"}
-{"file": ".trellis/spec/frontend/parallel-conversation-runtime-residuals.md", "reason": "workspace/thread scope 隔离与 runtime residual cleanup"}

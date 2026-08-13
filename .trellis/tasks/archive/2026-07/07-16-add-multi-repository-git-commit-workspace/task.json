@@ -1,8 +1,0 @@
-{
-  "id": "07-16-add-multi-repository-git-commit-workspace",
-  "title": "实现多仓库 Git 提交工作区",
-  "status": "completed",
-  "openspec_change": "add-multi-repository-git-commit-workspace",
-  "scope": "frontend-backend-cross-layer",
-  "completedAt": "2026-07-16"
-}

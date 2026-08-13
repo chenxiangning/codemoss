@@ -1,9 +1,12 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import ChevronDown from "lucide-react/dist/esm/icons/chevron-down";
+import ChevronRight from "lucide-react/dist/esm/icons/chevron-right";
 import ChevronUp from "lucide-react/dist/esm/icons/chevron-up";
+import FolderOpen from "lucide-react/dist/esm/icons/folder-open";
 import Pencil from "lucide-react/dist/esm/icons/pencil";
 import Plus from "lucide-react/dist/esm/icons/plus";
 import Star from "lucide-react/dist/esm/icons/star";
+import Terminal from "lucide-react/dist/esm/icons/terminal";
 import Trash2 from "lucide-react/dist/esm/icons/trash-2";
 import {
   Dialog,
@@ -14,11 +17,20 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import type { OpenAppTarget } from "@/types";
+import { getOpenAppPresetsForHost } from "../../../../app/constants/openAppPresets";
 import { useOpenAppIcons } from "../../../../app/hooks/useOpenAppIcons";
+import { useOpenAppTargetHealth } from "../../../../app/hooks/useOpenAppTargetHealth";
 import {
-  GENERIC_APP_ICON,
-  getKnownOpenAppIcon,
-} from "../../../../app/utils/openAppIcons";
+  resolveOpenAppHealth,
+  type OpenAppHealth,
+} from "../../../../app/utils/openAppHealth";
+import {
+  basenameFromPath,
+  fileManagerTypeI18nKey,
+  getOpenAppHostPlatform,
+} from "../../../../app/utils/openAppPlatform";
+import { resolveOpenAppDisplayIcon } from "../../../../app/utils/openAppIcons";
+import { pickApplicationPath } from "../../../../../services/tauri/filePickers";
 import type { OpenAppDraft } from "../actions/settingsViewActions";
 
 type OpenAppsSectionProps = {
@@ -33,7 +45,7 @@ type OpenAppsSectionProps = {
   handleSelectOpenAppDefault: (id: string) => void;
   handleMoveOpenApp: (index: number, direction: "up" | "down") => void;
   handleDeleteOpenApp: (index: number) => void;
-  handleAddOpenApp: () => void;
+  handleAddOpenApp: (initial?: Partial<OpenAppDraft>) => string | void;
 };
 
 function kindLabel(
@@ -42,7 +54,7 @@ function kindLabel(
 ): string {
   if (kind === "app") return t("settings.typeApp");
   if (kind === "command") return t("settings.typeCommand");
-  return t("settings.typeFinder");
+  return t(fileManagerTypeI18nKey());
 }
 
 function targetSubtitle(
@@ -61,6 +73,27 @@ function targetSubtitle(
   return kind;
 }
 
+function healthLabel(t: (key: string) => string, health: OpenAppHealth): string {
+  if (health === "ok") return t("settings.openAppHealthOk");
+  if (health === "missing") return t("settings.openAppHealthMissing");
+  if (health === "broken") return t("settings.openAppHealthBroken");
+  return t("settings.openAppHealthUnknown");
+}
+
+function healthActionTitle(
+  t: (key: string) => string,
+  health: OpenAppHealth,
+  refreshing: boolean,
+): string {
+  if (refreshing) {
+    return t("settings.openAppHealthRefreshing");
+  }
+  if (health === "unknown" || health === "missing") {
+    return t("settings.openAppHealthClickToVerify");
+  }
+  return healthLabel(t, health);
+}
+
 export function OpenAppsSection({
   active,
   t,
@@ -75,20 +108,37 @@ export function OpenAppsSection({
   handleDeleteOpenApp,
   handleAddOpenApp,
 }: OpenAppsSectionProps) {
-  const lazyIconById = useOpenAppIcons(openAppDrafts, { enabled: active });
   const [editingId, setEditingId] = useState<string | null>(null);
-  const prevCountRef = useRef(openAppDrafts.length);
+  const [addPickerOpen, setAddPickerOpen] = useState(false);
+  const hostPlatform = getOpenAppHostPlatform();
 
-  // Newly added app opens the editor dialog.
-  useEffect(() => {
-    if (openAppDrafts.length > prevCountRef.current) {
-      const last = openAppDrafts[openAppDrafts.length - 1];
-      if (last) {
-        setEditingId(last.id);
-      }
-    }
-    prevCountRef.current = openAppDrafts.length;
-  }, [openAppDrafts]);
+  const presets = useMemo(
+    () => getOpenAppPresetsForHost(hostPlatform),
+    [hostPlatform],
+  );
+
+  const presetIconTargets = useMemo<OpenAppTarget[]>(
+    () =>
+      presets.map((preset) => ({
+        id: preset.id,
+        label: preset.label,
+        kind: preset.kind,
+        appName: preset.appName ?? (preset.kind === "app" ? preset.label : null),
+        command: preset.command ?? null,
+        args: [],
+      })),
+    [presets],
+  );
+
+  const lazyIconById = useOpenAppIcons(openAppDrafts, { enabled: active });
+  const presetLazyIconById = useOpenAppIcons(presetIconTargets, {
+    enabled: active && addPickerOpen,
+  });
+  const { probeById, targetHealthById, refreshingIds, refreshTarget } =
+    useOpenAppTargetHealth({
+      enabled: active,
+      targets: openAppDrafts,
+    });
 
   const editingIndex = useMemo(
     () => openAppDrafts.findIndex((item) => item.id === editingId),
@@ -98,16 +148,168 @@ export function OpenAppsSection({
     editingIndex >= 0 ? openAppDrafts[editingIndex] : null;
 
   const editingIconSrc = editingTarget
-    ? getKnownOpenAppIcon(editingTarget.id) ??
-      lazyIconById[editingTarget.id] ??
-      openAppIconById[editingTarget.id] ??
-      GENERIC_APP_ICON
-    : GENERIC_APP_ICON;
+    ? resolveOpenAppDisplayIcon(editingTarget, {
+        ...openAppIconById,
+        ...lazyIconById,
+      })
+    : resolveOpenAppDisplayIcon({
+        id: "generic",
+        kind: "app",
+        label: "",
+        appName: "",
+        command: null,
+      });
 
   const closeEditor = () => {
     setEditingId(null);
     void handleCommitOpenApps(openAppDrafts);
   };
+
+  const openAddPicker = () => {
+    setAddPickerOpen(true);
+  };
+
+  const resolvePresetIcon = (
+    preset: (typeof presets)[number],
+  ): string => {
+    return resolveOpenAppDisplayIcon(
+      {
+        id: preset.id,
+        kind: preset.kind,
+        label: preset.label,
+        appName: preset.appName ?? (preset.kind === "app" ? preset.label : null),
+        command: preset.command ?? null,
+      },
+      presetLazyIconById,
+    );
+  };
+
+  const addFromBrowse = async () => {
+    try {
+      const path = await pickApplicationPath();
+      if (!path) {
+        return;
+      }
+      const label = basenameFromPath(path);
+      const id = handleAddOpenApp({
+        label,
+        kind: "app",
+        appName: path,
+        command: null,
+        argsText: "",
+      });
+      setAddPickerOpen(false);
+      if (typeof id === "string") {
+        setEditingId(id);
+      }
+    } catch {
+      // dialog cancelled / unavailable
+    }
+  };
+
+  const addFromPreset = async (presetId: string) => {
+    const preset = presets.find((item) => item.id === presetId);
+    if (!preset) {
+      return;
+    }
+
+    if (preset.kind === "finder") {
+      const already = openAppDrafts.some((item) => item.kind === "finder");
+      if (already) {
+        setAddPickerOpen(false);
+        return;
+      }
+      handleAddOpenApp({
+        label: t(fileManagerTypeI18nKey()),
+        kind: "finder",
+        appName: null,
+        command: null,
+        argsText: "",
+      });
+      setAddPickerOpen(false);
+      return;
+    }
+
+    const probe = probeById[preset.id];
+    if (probe && !probe.installed) {
+      // Missing → browse to locate
+      await addFromBrowse();
+      return;
+    }
+
+    if (preset.kind === "command") {
+      const id = handleAddOpenApp({
+        label: preset.label,
+        kind: "command",
+        appName: null,
+        command: probe?.resolvedPath || preset.command || "",
+        argsText: "",
+      });
+      setAddPickerOpen(false);
+      if (typeof id === "string") {
+        setEditingId(id);
+      }
+      return;
+    }
+
+    handleAddOpenApp({
+      label: preset.label,
+      kind: "app",
+      appName: probe?.resolvedPath || preset.appName || preset.label,
+      command: null,
+      argsText: "",
+      // stable id when known preset so icons/health match
+      id: openAppDrafts.some((d) => d.id === preset.id)
+        ? undefined
+        : preset.id,
+    });
+    setAddPickerOpen(false);
+  };
+
+  const addCustomCommand = () => {
+    const id = handleAddOpenApp({
+      label: t("settings.typeCommand"),
+      kind: "command",
+      appName: null,
+      command: "",
+      argsText: "",
+    });
+    setAddPickerOpen(false);
+    if (typeof id === "string") {
+      setEditingId(id);
+    }
+  };
+
+  const browseForEditingApp = async () => {
+    if (editingIndex < 0) {
+      return;
+    }
+    try {
+      const path = await pickApplicationPath();
+      if (!path) {
+        return;
+      }
+      const label =
+        openAppDrafts[editingIndex]?.label?.trim() || basenameFromPath(path);
+      handleOpenAppDraftChange(editingIndex, {
+        appName: path,
+        label:
+          openAppDrafts[editingIndex]?.label?.trim() &&
+          openAppDrafts[editingIndex]?.label !== t("settings.newApp")
+            ? openAppDrafts[editingIndex]!.label
+            : label,
+      });
+    } catch {
+      // ignore
+    }
+  };
+
+  // Keep health/icons warm only while active (hooks already gated).
+  useEffect(() => {
+    if (!active) {
+      setAddPickerOpen(false);
+    }
+  }, [active]);
 
   if (!active) {
     return null;
@@ -125,14 +327,23 @@ export function OpenAppsSection({
 
         <div className="settings-open-apps-list" role="list">
           {openAppDrafts.map((target, index) => {
-            const iconSrc =
-              getKnownOpenAppIcon(target.id) ??
-              lazyIconById[target.id] ??
-              openAppIconById[target.id] ??
-              GENERIC_APP_ICON;
+            const iconSrc = resolveOpenAppDisplayIcon(target, {
+              ...openAppIconById,
+              ...lazyIconById,
+            });
             const isDefault = target.id === openAppSelectedId;
             const displayName =
-              target.label.trim() || t("settings.label") || "App";
+              target.kind === "finder"
+                ? t(fileManagerTypeI18nKey())
+                : target.label.trim() || t("settings.label") || "App";
+            const health = resolveOpenAppHealth(
+              target,
+              probeById,
+              targetHealthById,
+            );
+            const isRefreshing = Boolean(refreshingIds[target.id]);
+            const canRefresh =
+              health === "unknown" || health === "missing" || isRefreshing;
 
             return (
               <div
@@ -171,6 +382,33 @@ export function OpenAppsSection({
                   </button>
 
                   <div className="settings-open-app-summary-actions">
+                    {canRefresh ? (
+                      <button
+                        type="button"
+                        className={`settings-open-app-health settings-open-app-health--${health}${
+                          isRefreshing ? " is-refreshing" : " is-actionable"
+                        }`}
+                        title={healthActionTitle(t, health, isRefreshing)}
+                        aria-label={healthActionTitle(t, health, isRefreshing)}
+                        disabled={isRefreshing}
+                        onClick={(event) => {
+                          event.preventDefault();
+                          event.stopPropagation();
+                          void refreshTarget(target);
+                        }}
+                      >
+                        {isRefreshing
+                          ? t("settings.openAppHealthRefreshing")
+                          : healthLabel(t, health)}
+                      </button>
+                    ) : (
+                      <span
+                        className={`settings-open-app-health settings-open-app-health--${health}`}
+                        title={healthLabel(t, health)}
+                      >
+                        {healthLabel(t, health)}
+                      </span>
+                    )}
                     {isDefault ? (
                       <span className="settings-open-app-default-badge">
                         <Star size={12} aria-hidden />
@@ -231,7 +469,7 @@ export function OpenAppsSection({
           <button
             type="button"
             className="settings-open-app-add-btn"
-            onClick={handleAddOpenApp}
+            onClick={openAddPicker}
           >
             <Plus size={15} aria-hidden />
             {t("settings.addApp")}
@@ -242,6 +480,119 @@ export function OpenAppsSection({
         </div>
       </div>
 
+      {/* Add picker — presets + browse */}
+      <Dialog
+        open={addPickerOpen}
+        onOpenChange={(open) => {
+          if (!open) {
+            setAddPickerOpen(false);
+          }
+        }}
+      >
+        <DialogContent className="settings-open-app-dialog settings-open-app-dialog--wide" showCloseButton>
+          <DialogHeader className="settings-open-app-dialog-header">
+            <div className="settings-open-app-dialog-titles">
+              <DialogTitle>{t("settings.addOpenAppTitle")}</DialogTitle>
+              <DialogDescription>
+                {t("settings.addOpenAppDesc")}
+              </DialogDescription>
+            </div>
+          </DialogHeader>
+          <div className="settings-open-app-dialog-body">
+            <div className="settings-open-app-preset-list" role="list">
+              {presets.map((preset) => {
+                const probe = probeById[preset.id];
+                const installed =
+                  preset.kind === "finder" ? true : (probe?.installed ?? false);
+                const missing =
+                  preset.kind !== "finder" && probe && !probe.installed;
+                const iconSrc = resolvePresetIcon(preset);
+                const title =
+                  preset.kind === "finder"
+                    ? t(fileManagerTypeI18nKey())
+                    : preset.label;
+                const subtitle =
+                  preset.kind === "finder"
+                    ? t("settings.openAppPresetFileManagerHint")
+                    : preset.kind === "command"
+                      ? t("settings.typeCommand")
+                      : t("settings.typeApp");
+                const healthKey = missing
+                  ? "missing"
+                  : installed
+                    ? "ok"
+                    : "unknown";
+                const healthText =
+                  healthKey === "missing"
+                    ? t("settings.openAppHealthMissing")
+                    : healthKey === "ok"
+                      ? t("settings.openAppHealthOk")
+                      : t("settings.openAppHealthUnknown");
+                return (
+                  <button
+                    key={preset.id}
+                    type="button"
+                    className={`settings-open-app-preset-row${missing ? " is-missing" : ""}`}
+                    onClick={() => void addFromPreset(preset.id)}
+                    role="listitem"
+                  >
+                    <span className="settings-open-app-preset-icon" aria-hidden>
+                      <img src={iconSrc} alt="" width={22} height={22} />
+                    </span>
+                    <span className="settings-open-app-preset-text">
+                      <span className="settings-open-app-preset-name">
+                        {title}
+                      </span>
+                      <span className="settings-open-app-preset-sub">
+                        {subtitle}
+                      </span>
+                    </span>
+                    <span
+                      className={`settings-open-app-health settings-open-app-health--${healthKey}`}
+                    >
+                      {healthText}
+                    </span>
+                    <ChevronRight
+                      className="settings-open-app-preset-chevron"
+                      size={16}
+                      aria-hidden
+                    />
+                  </button>
+                );
+              })}
+            </div>
+            <div className="settings-open-app-picker-actions">
+              <button
+                type="button"
+                className="settings-open-app-dialog-action"
+                onClick={() => void addFromBrowse()}
+              >
+                <FolderOpen size={14} aria-hidden />
+                {t("settings.browseApplication")}
+              </button>
+              <button
+                type="button"
+                className="settings-open-app-dialog-action"
+                onClick={addCustomCommand}
+              >
+                <Terminal size={14} aria-hidden />
+                {t("settings.addCustomCommand")}
+              </button>
+            </div>
+          </div>
+          <DialogFooter className="settings-open-app-dialog-footer">
+            <button
+              type="button"
+              className="settings-open-app-dialog-done"
+              onClick={() => setAddPickerOpen(false)}
+            >
+              {t("settings.openAppDone")}
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit dialog */}
       <Dialog
         open={editingTarget != null}
         onOpenChange={(open) => {
@@ -268,8 +619,10 @@ export function OpenAppsSection({
                 </span>
                 <div className="settings-open-app-dialog-titles">
                   <DialogTitle>
-                    {editingTarget.label.trim() ||
-                      t("settings.editOpenAppTitle")}
+                    {editingTarget.kind === "finder"
+                      ? t(fileManagerTypeI18nKey())
+                      : editingTarget.label.trim() ||
+                        t("settings.editOpenAppTitle")}
                   </DialogTitle>
                   <DialogDescription>
                     {t("settings.editOpenAppDesc")}
@@ -285,15 +638,20 @@ export function OpenAppsSection({
                 </span>
                 <input
                   className="settings-open-app-dialog-input"
-                  value={editingTarget.label}
+                  value={
+                    editingTarget.kind === "finder"
+                      ? t(fileManagerTypeI18nKey())
+                      : editingTarget.label
+                  }
                   placeholder={t("settings.label")}
+                  disabled={editingTarget.kind === "finder"}
                   onChange={(event) =>
                     handleOpenAppDraftChange(editingIndex, {
                       label: event.target.value,
                     })
                   }
                   aria-label={`Open app label ${editingIndex + 1}`}
-                  autoFocus
+                  autoFocus={editingTarget.kind !== "finder"}
                 />
               </label>
 
@@ -310,7 +668,7 @@ export function OpenAppsSection({
                     [
                       ["app", t("settings.typeApp")],
                       ["command", t("settings.typeCommand")],
-                      ["finder", t("settings.typeFinder")],
+                      ["finder", t(fileManagerTypeI18nKey())],
                     ] as const
                   ).map(([kind, label]) => (
                     <button
@@ -332,22 +690,35 @@ export function OpenAppsSection({
               </div>
 
               {editingTarget.kind === "app" ? (
-                <label className="settings-open-app-dialog-field">
+                <div className="settings-open-app-dialog-field">
                   <span className="settings-open-app-dialog-label">
                     {t("settings.appName")}
                   </span>
-                  <input
-                    className="settings-open-app-dialog-input"
-                    value={editingTarget.appName ?? ""}
-                    placeholder={t("settings.appName")}
-                    onChange={(event) =>
-                      handleOpenAppDraftChange(editingIndex, {
-                        appName: event.target.value,
-                      })
-                    }
-                    aria-label={`Open app name ${editingIndex + 1}`}
-                  />
-                </label>
+                  <div className="settings-open-app-dialog-input-row">
+                    <input
+                      className="settings-open-app-dialog-input"
+                      value={editingTarget.appName ?? ""}
+                      placeholder={t("settings.appNamePlaceholder")}
+                      onChange={(event) =>
+                        handleOpenAppDraftChange(editingIndex, {
+                          appName: event.target.value,
+                        })
+                      }
+                      aria-label={`Open app name ${editingIndex + 1}`}
+                    />
+                    <button
+                      type="button"
+                      className="settings-open-app-dialog-secondary"
+                      onClick={() => void browseForEditingApp()}
+                    >
+                      <FolderOpen size={14} aria-hidden />
+                      {t("settings.browseApplication")}
+                    </button>
+                  </div>
+                  <span className="settings-open-app-dialog-hint">
+                    {t("settings.appNameHelp")}
+                  </span>
+                </div>
               ) : null}
 
               {editingTarget.kind === "command" ? (

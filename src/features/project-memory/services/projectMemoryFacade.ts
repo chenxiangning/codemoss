@@ -91,6 +91,32 @@ export type CompleteTurnMemoryParams = NormalizedConversationTurnPayload & {
   importance?: string | null;
 };
 
+function scheduleEmbedIndexUpsert(
+  workspaceId: string,
+  memory: ProjectMemoryItem | null | undefined,
+) {
+  if (!memory?.id || !workspaceId) return;
+  // 旁路异步：动态 import 避免 facade ↔ worker 环；失败不传播
+  void import("../utils/projectMemoryEmbeddingIndexWorker")
+    .then(({ enqueueEmbedIndexUpsert }) => {
+      enqueueEmbedIndexUpsert(workspaceId, memory);
+    })
+    .catch(() => {
+      // ignore
+    });
+}
+
+function scheduleEmbedIndexDelete(workspaceId: string, memoryId: string) {
+  if (!memoryId || !workspaceId) return;
+  void import("../utils/projectMemoryEmbeddingIndexWorker")
+    .then(({ enqueueEmbedIndexDelete }) => {
+      enqueueEmbedIndexDelete(workspaceId, memoryId);
+    })
+    .catch(() => {
+      // ignore
+    });
+}
+
 export const projectMemoryFacade = {
   getSettings(): Promise<ProjectMemorySettings> {
     return projectMemoryGetSettings();
@@ -110,18 +136,23 @@ export const projectMemoryFacade = {
   getDetail(memoryId: string, workspaceId: string): Promise<ProjectMemoryItem | null> {
     return projectMemoryGetDetail(memoryId, workspaceId);
   },
-  create(params: CreateProjectMemoryParams): Promise<ProjectMemoryItem> {
-    return projectMemoryCreate(params);
+  async create(params: CreateProjectMemoryParams): Promise<ProjectMemoryItem> {
+    const created = await projectMemoryCreate(params);
+    scheduleEmbedIndexUpsert(created.workspaceId, created);
+    return created;
   },
-  update(
+  async update(
     memoryId: string,
     workspaceId: string,
     patch: UpdateProjectMemoryParams,
   ): Promise<ProjectMemoryItem> {
-    return projectMemoryUpdate(memoryId, workspaceId, patch);
+    const updated = await projectMemoryUpdate(memoryId, workspaceId, patch);
+    scheduleEmbedIndexUpsert(updated.workspaceId || workspaceId, updated);
+    return updated;
   },
-  delete(memoryId: string, workspaceId: string): Promise<void> {
-    return projectMemoryDelete(memoryId, workspaceId);
+  async delete(memoryId: string, workspaceId: string): Promise<void> {
+    await projectMemoryDelete(memoryId, workspaceId);
+    scheduleEmbedIndexDelete(workspaceId, memoryId);
   },
   diagnostics(workspaceId: string): Promise<ProjectMemoryDiagnosticsResult> {
     return projectMemoryDiagnostics(workspaceId);
@@ -140,12 +171,17 @@ export const projectMemoryFacade = {
     workspacePath?: string | null;
     engine?: string | null;
   }): Promise<ProjectMemoryItem | null> {
+    // capture 输入确权可不 embed；等 complete 再索引
     return projectMemoryCaptureAuto(input);
   },
   captureTurnInput(input: CaptureTurnInputParams): Promise<ProjectMemoryItem | null> {
     return projectMemoryCaptureTurnInput(input);
   },
-  completeTurnMemory(input: CompleteTurnMemoryParams): Promise<ProjectMemoryItem> {
-    return projectMemoryCompleteTurn(input);
+  async completeTurnMemory(
+    input: CompleteTurnMemoryParams,
+  ): Promise<ProjectMemoryItem> {
+    const completed = await projectMemoryCompleteTurn(input);
+    scheduleEmbedIndexUpsert(completed.workspaceId || input.workspaceId, completed);
+    return completed;
   },
 };

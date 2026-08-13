@@ -75,6 +75,8 @@ const sidebar = {
     activateWorkspace: "切到主区",
     collapseWorkspace: "收起工作区会话",
     expandWorkspace: "展开工作区会话",
+    dragToReorder: "拖动以调整项目顺序",
+    longPressToReorder: "长按拖动排序",
     workspaceActionsGroup: "工作区操作",
     setWorkspaceAlias: "设置别名",
     assignWorkspaceGroup: "调整所属分组",

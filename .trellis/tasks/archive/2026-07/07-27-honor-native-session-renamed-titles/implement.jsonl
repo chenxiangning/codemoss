@@ -1,5 +1,0 @@
-{"file": ".trellis/workflow.md", "reason": "Project workflow and conventions"}
-{"file": ".trellis/spec/backend/index.md", "reason": "Backend development guide"}
-{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "Rust backend implementation and tests"}
-{"file": ".trellis/spec/backend/codex-provider-scoped-runtime.md", "reason": "Codex homes must remain provider-scoped"}
-{"file": ".trellis/spec/guides/workspace-session-catalog-contract.md", "reason": "Catalog title projection contract"}

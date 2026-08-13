@@ -1,4 +1,0 @@
-{"file": ".trellis/workflow.md", "reason": "Project workflow and conventions"}
-{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend development guide"}
-{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "优先复用现有 neutral owners，避免 duplicate helpers"}
-{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "验证 producer/consumer data flow 与 dependency direction"}

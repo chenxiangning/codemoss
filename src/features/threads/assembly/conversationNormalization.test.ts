@@ -106,6 +106,42 @@ describe("conversationNormalization", () => {
     );
   });
 
+  it("treats slash-skill optimistic text and command-tag transcript as the same user turn", () => {
+    const typed = [
+      "/aimax:code-review 审查PR1635，并告诉我她解决了什么问题，我应不应该合并",
+      "",
+      "我是一位100岁太奶",
+    ].join("\n");
+    const transcript = [
+      "<command-message>aimax:code-review</command-message>",
+      "<command-name>/aimax:code-review</command-name>",
+      "<command-args>审查PR1635，并告诉我她解决了什么问题，我应不应该合并",
+      "",
+      "我是一位100岁太奶</command-args>",
+    ].join("\n");
+
+    expect(normalizeComparableUserText(typed)).toBe(
+      normalizeComparableUserText(transcript),
+    );
+    expect(
+      isEquivalentUserObservation({ text: typed, images: [] }, { text: transcript, images: [] }),
+    ).toBe(true);
+    expect(buildComparableUserMessageKey({ text: typed })).toBe(
+      buildComparableUserMessageKey({ text: transcript }),
+    );
+  });
+
+  it("does not collapse unrelated plain paths when stripping leading slash for skills", () => {
+    expect(normalizeComparableUserText("/Users/foo/bar")).toBe("Users/foo/bar");
+    expect(normalizeComparableUserText("Users/foo/bar")).toBe("Users/foo/bar");
+    expect(
+      isEquivalentUserObservation(
+        { text: "/aimax:code-review 审查PR1", images: [] },
+        { text: "/other-skill 审查PR1", images: [] },
+      ),
+    ).toBe(false);
+  });
+
   it("treats note-card injected user text and note attachments as the same user intent", () => {
     const injectedText = [
       "请按这个执行",
