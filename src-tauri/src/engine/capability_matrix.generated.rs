@@ -137,7 +137,7 @@ pub fn spec_capability_state(engine_type: EngineType, capability: &str) -> &'sta
             "reasoning.effort" => "supported",
             "collaboration.mode" => "unsupported",
             "session.continuation" => "supported",
-            "image.input" => "compat-input",
+            "image.input" => "supported",
             "input.mid-turn" => "unsupported",
             "session.resume" => "supported",
             "session.fork" => "unknown",

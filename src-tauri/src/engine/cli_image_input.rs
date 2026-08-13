@@ -234,9 +234,25 @@ pub(crate) fn split_kimi_prompt_for_display(text: &str) -> (String, Vec<String>)
 }
 
 /// Stable marker separating user-visible text from PI CLI-only image injection.
+///
+/// Legacy transport (pre `@file` switch): sessions written before the upgrade
+/// may still contain this marker; keep it for history parsing only.
 pub(crate) const PI_IMAGE_INJECTION_MARKER: &str = "\n\n<!-- mossx:pi-image-attachments -->\n";
 
+/// Build Pi `@file` arguments that attach image files as native image content
+/// blocks in print mode. One argument per image, in attachment order.
+pub(crate) fn pi_image_file_args(image_paths: &[PathBuf]) -> Vec<String> {
+    image_paths
+        .iter()
+        .map(|path| format!("@{}", path.display()))
+        .collect()
+}
+
 /// Build a PI headless prompt that makes attached images reachable via Read tools.
+///
+/// Legacy transport kept for history round-trip tests of pre-`@file` sessions;
+/// new sends MUST use `pi_image_file_args` instead.
+#[cfg(test)]
 pub(crate) fn build_pi_prompt_with_images(text: &str, image_paths: &[PathBuf]) -> String {
     if image_paths.is_empty() {
         return text.to_string();
@@ -263,6 +279,50 @@ pub(crate) fn split_pi_prompt_for_display(text: &str) -> (String, Vec<String>) {
         return (visible, extract_image_paths_from_injection(injection));
     }
     (text.to_string(), Vec::new())
+}
+
+/// Split a Pi `@file`-era user message text into user-visible text + image paths.
+///
+/// Pi's file processor wraps each attached file as `<file name="/abs/path">...</file>`
+/// ahead of the user text; the inner content may hold processing hints. Image
+/// content blocks are ignored by history (display goes through paths), so only
+/// the text block needs splitting here.
+pub(crate) fn split_pi_file_attachments_for_display(text: &str) -> (String, Vec<String>) {
+    if !text.contains("<file name=\"") {
+        return (text.to_string(), Vec::new());
+    }
+    let mut paths: Vec<String> = Vec::new();
+    let mut visible = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(start) = rest.find("<file name=\"") {
+        visible.push_str(&rest[..start]);
+        let after_open = &rest[start + "<file name=\"".len()..];
+        let Some(quote_end) = after_open.find('"') else {
+            // Malformed tag: keep the remainder verbatim.
+            visible.push_str(&rest[start..]);
+            rest = "";
+            break;
+        };
+        let raw_path = &after_open[..quote_end];
+        let Some(open_tag_end) = after_open[quote_end..].find('>').map(|i| quote_end + i) else {
+            visible.push_str(&rest[start..]);
+            rest = "";
+            break;
+        };
+        let inner_start = open_tag_end + 1;
+        if let Some(close_at) = rest[inner_start..].find("</file>") {
+            rest = &rest[inner_start + close_at + "</file>".len()..];
+        } else {
+            // Truncated wrapper: skip just the open tag.
+            rest = &rest[inner_start..];
+        }
+        let path = unescape_xml_attr(raw_path);
+        if !path.is_empty() && !paths.iter().any(|existing| existing == &path) {
+            paths.push(path);
+        }
+    }
+    visible.push_str(rest);
+    (visible.trim().to_string(), paths)
 }
 
 fn extract_image_paths_from_injection(injection: &str) -> Vec<String> {
@@ -382,5 +442,65 @@ mod tests {
         assert!(paths[0].exists());
         assert!(paths[0].starts_with(dir.join(".mossx").join("image-staging")));
         let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn pi_image_file_args_prefixes_each_path_in_order() {
+        let args = pi_image_file_args(&[
+            PathBuf::from("/abs/one.png"),
+            PathBuf::from("/abs/dir with space/two.jpg"),
+        ]);
+        assert_eq!(args, vec!["@/abs/one.png", "@/abs/dir with space/two.jpg"]);
+        assert!(pi_image_file_args(&[]).is_empty());
+    }
+
+    #[test]
+    fn split_pi_file_attachments_single_image_with_text() {
+        let (visible, images) = split_pi_file_attachments_for_display(
+            "<file name=\"/a/one.png\"></file>\nlook at this",
+        );
+        assert_eq!(visible, "look at this");
+        assert_eq!(images, vec!["/a/one.png"]);
+    }
+
+    #[test]
+    fn split_pi_file_attachments_multi_image_with_hints_and_dedupe() {
+        let (visible, images) = split_pi_file_attachments_for_display(
+            "<file name=\"/a/one.png\"></file>\n<file name=\"/a/two.png\">[Image resized to 1024x768.]</file>\n<file name=\"/a/one.png\"></file>\ncompare",
+        );
+        assert_eq!(visible, "compare");
+        assert_eq!(images, vec!["/a/one.png", "/a/two.png"]);
+    }
+
+    #[test]
+    fn split_pi_file_attachments_image_only_text() {
+        let (visible, images) =
+            split_pi_file_attachments_for_display("<file name=\"/a/one.png\"></file>\n");
+        assert_eq!(visible, "");
+        assert_eq!(images, vec!["/a/one.png"]);
+    }
+
+    #[test]
+    fn split_pi_file_attachments_leaves_plain_text_unchanged() {
+        let (visible, images) = split_pi_file_attachments_for_display("just text");
+        assert_eq!(visible, "just text");
+        assert!(images.is_empty());
+    }
+
+    #[test]
+    fn split_pi_file_attachments_keeps_malformed_tag_verbatim() {
+        let (visible, images) =
+            split_pi_file_attachments_for_display("before <file name=\"/a/broken.png after");
+        assert_eq!(visible, "before <file name=\"/a/broken.png after");
+        assert!(images.is_empty());
+    }
+
+    #[test]
+    fn legacy_pi_injection_roundtrip_still_parses() {
+        let wire = build_pi_prompt_with_images("what is this", &[PathBuf::from("/abs/one.png")]);
+        assert!(wire.contains(PI_IMAGE_INJECTION_MARKER));
+        let (visible, images) = split_pi_prompt_for_display(&wire);
+        assert_eq!(visible, "what is this");
+        assert_eq!(images, vec!["/abs/one.png"]);
     }
 }

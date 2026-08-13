@@ -80,7 +80,7 @@ describe("useThreadMessaging", () => {
     },
   );
 
-  it.each(["claude", "grok", "kimi", "opencode"] as const)(
+  it.each(["claude", "grok", "kimi", "opencode", "pi"] as const)(
     "does not block %s sends with non-empty images at client boundary",
     async (engine) => {
       const { result, pushThreadErrorMessage } = makeThreadMessagingHook(engine, {

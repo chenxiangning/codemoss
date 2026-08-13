@@ -429,10 +429,13 @@ impl PiSession {
             params.images.as_deref(),
             &self.workspace_path,
         )?;
-        let prompt_text = crate::engine::cli_image_input::build_pi_prompt_with_images(
-            &params.text,
-            &image_files,
-        );
+        // Pi print mode natively attaches `@file` arguments as image content
+        // blocks (deterministic, processed by pi's file processor); keep the
+        // prompt itself free of any injected marker or read-tool instruction.
+        for image_arg in crate::engine::cli_image_input::pi_image_file_args(&image_files) {
+            cmd.arg(image_arg);
+        }
+        let prompt_text = params.text.clone();
         // Positional prompt; avoid leading '-' being parsed as a flag.
         let safe_text = if prompt_text.starts_with('-') {
             format!(" {prompt_text}")
@@ -994,6 +997,82 @@ mod tests {
             Some("high".to_string())
         );
         assert_eq!(resolve_thinking_flag(Some("nope")), None);
+    }
+
+    fn command_args(cmd: &Command) -> Vec<String> {
+        cmd.as_std()
+            .get_args()
+            .map(|arg| arg.to_string_lossy().to_string())
+            .collect()
+    }
+
+    #[test]
+    fn build_command_attaches_images_as_at_file_args_before_prompt() {
+        let dir = std::env::temp_dir().join(format!("pi-cmd-test-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let image = dir.join("shot one.png");
+        std::fs::write(&image, b"fake-png").unwrap();
+        let session = PiSession::new("ws".to_string(), dir.clone(), None);
+        let params = SendMessageParams {
+            text: "look at this".to_string(),
+            images: Some(vec![image.to_string_lossy().to_string()]),
+            ..Default::default()
+        };
+
+        let cmd = session.build_command(&params).expect("build_command");
+        let args = command_args(&cmd);
+
+        let at_arg = format!("@{}", image.display());
+        let at_pos = args
+            .iter()
+            .position(|arg| arg == &at_arg)
+            .expect("missing @file arg");
+        let prompt_pos = args
+            .iter()
+            .rposition(|arg| arg.contains("look at this"))
+            .expect("missing prompt arg");
+        assert!(at_pos < prompt_pos, "@file arg must precede the prompt");
+        let prompt = &args[prompt_pos];
+        assert!(!prompt.contains("mossx:pi-image-attachments"));
+        assert!(!prompt.contains("read tool"));
+
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn build_command_without_images_has_no_at_file_args() {
+        let dir = std::env::temp_dir().join(format!("pi-cmd-test-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let session = PiSession::new("ws".to_string(), dir.clone(), None);
+        let params = SendMessageParams {
+            text: "plain".to_string(),
+            ..Default::default()
+        };
+
+        let cmd = session.build_command(&params).expect("build_command");
+        let args = command_args(&cmd);
+        assert!(!args.iter().any(|arg| arg.starts_with('@')));
+
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn build_command_fails_when_all_images_unresolvable() {
+        let dir = std::env::temp_dir().join(format!("pi-cmd-test-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let session = PiSession::new("ws".to_string(), dir.clone(), None);
+        let params = SendMessageParams {
+            text: "look".to_string(),
+            images: Some(vec![dir.join("missing.png").to_string_lossy().to_string()]),
+            ..Default::default()
+        };
+
+        let error = session
+            .build_command(&params)
+            .expect_err("unresolvable images must fail before spawn");
+        assert!(error.contains("none of the attached images"));
+
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     #[tokio::test]

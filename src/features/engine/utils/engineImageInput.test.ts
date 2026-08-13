@@ -14,6 +14,7 @@ describe("engineImageInput", () => {
     ["grok", true],
     ["kimi", true],
     ["opencode", true],
+    ["pi", true],
   ] as const)("engineSupportsImageInput(%s) => %s", (engine, expected) => {
     expect(engineSupportsImageInput(engine)).toBe(expected);
   });
@@ -59,6 +60,7 @@ describe("engineImageInput", () => {
       "grok",
       "kimi",
       "opencode",
+      "pi",
     ];
     for (const engine of supported) {
       expect(engineSupportsImageInput(engine)).toBe(true);

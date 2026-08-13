@@ -141,7 +141,7 @@ export const GENERATED_ENGINE_CAPABILITY_MATRIX: Readonly<
     "reasoning.effort": "supported",
     "collaboration.mode": "unsupported",
     "session.continuation": "supported",
-    "image.input": "compat-input",
+    "image.input": "supported",
     "input.mid-turn": "unsupported",
     "session.resume": "supported",
     "session.fork": "unknown",

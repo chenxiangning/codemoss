@@ -714,10 +714,21 @@ pub async fn load_pi_session(
             .map(str::to_string);
         match role {
             "user" => {
-                let (display_text, images) =
-                    crate::engine::cli_image_input::split_pi_prompt_for_display(
-                        &extract_text_blocks(message.get("content")),
-                    );
+                let raw_text = extract_text_blocks(message.get("content"));
+                // Legacy injection marker first (pre-`@file` sessions), then the
+                // `@file`-era `<file name="...">` wrappers. Image content blocks
+                // are ignored: display goes through paths.
+                let (display_text, images) = {
+                    let (legacy_text, legacy_images) =
+                        crate::engine::cli_image_input::split_pi_prompt_for_display(&raw_text);
+                    if !legacy_images.is_empty() {
+                        (legacy_text, legacy_images)
+                    } else {
+                        crate::engine::cli_image_input::split_pi_file_attachments_for_display(
+                            &legacy_text,
+                        )
+                    }
+                };
                 if display_text.trim().is_empty() && images.is_empty() {
                     continue;
                 }
@@ -880,6 +891,64 @@ mod tests {
             .await
             .expect("delete");
         assert!(!file.exists());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn loads_at_file_era_user_message_with_images() {
+        let dir = std::env::temp_dir().join(format!(
+            "pi-history-atfile-test-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        ));
+        let sessions = dir.join("sessions");
+        let cwd_dir = sessions.join("--tmp-project--");
+        std::fs::create_dir_all(&cwd_dir).expect("mkdir");
+        let session_id = "019fe705-27fd-712e-a1be-f972ef3773f4";
+        let file = cwd_dir.join(format!("2026-08-14T05-00-00-000Z_{session_id}.jsonl"));
+        let project = dir.join("project");
+        std::fs::create_dir_all(&project).unwrap();
+        let mut handle = std::fs::File::create(&file).expect("create");
+        writeln!(
+            handle,
+            r#"{{"type":"session","version":3,"id":"{session_id}","timestamp":"2026-08-14T05:00:00.000Z","cwd":"{}"}}"#,
+            project.display()
+        )
+        .unwrap();
+        // `@file`-era user turn: <file name> wrappers + user text in the text
+        // block, plus a base64 image content block that must NOT be projected.
+        writeln!(
+            handle,
+            r#"{{"type":"message","id":"m1","timestamp":"2026-08-14T05:00:01.000Z","message":{{"role":"user","content":[{{"type":"text","text":"<file name=\"/abs/one.png\"></file>\n<file name=\"/abs/two.png\">[Image resized to 1024x768.]</file>\ncompare these"}},{{"type":"image","data":"aGVsbG8=","mimeType":"image/png"}}]}}}}"#
+        )
+        .unwrap();
+        // Legacy injection-era turn must keep parsing too.
+        writeln!(
+            handle,
+            r#"{{"type":"message","id":"m2","timestamp":"2026-08-14T05:01:00.000Z","message":{{"role":"user","content":[{{"type":"text","text":"legacy text\n\n<!-- mossx:pi-image-attachments -->\nThe user attached the following image file(s). You MUST call the read tool on each absolute path below before answering questions about visual content.\n1. /abs/legacy.png\n"}}]}}}}"#
+        )
+        .unwrap();
+
+        let agent_dir = dir.to_string_lossy().to_string();
+        let loaded = load_pi_session(&project, session_id, Some(&agent_dir))
+            .await
+            .expect("load");
+        assert_eq!(loaded.messages.len(), 2);
+
+        let at_file_turn = &loaded.messages[0];
+        assert_eq!(at_file_turn.text, "compare these");
+        assert_eq!(
+            at_file_turn.images,
+            Some(vec!["/abs/one.png".to_string(), "/abs/two.png".to_string()])
+        );
+        assert!(!at_file_turn.text.contains("aGVsbG8="));
+
+        let legacy_turn = &loaded.messages[1];
+        assert_eq!(legacy_turn.text, "legacy text");
+        assert_eq!(legacy_turn.images, Some(vec!["/abs/legacy.png".to_string()]));
+
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
