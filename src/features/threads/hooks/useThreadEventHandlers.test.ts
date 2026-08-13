@@ -612,6 +612,17 @@ describe("useThreadEventHandlers diagnostics", () => {
     expect(
       options.dispatch.mock.invocationCallOrder[drainCall],
     ).toBeLessThan(options.markProcessing.mock.invocationCallOrder[settleCall]);
+
+    // The batched realtime queue must be flushed before the drain, matching the
+    // other settlement boundaries. Without it the shell delta can still be
+    // queued when the tail is dispatched, and appendAgentDelta would create a
+    // second assistant item for it instead of appending to the existing one.
+    const flushPendingRealtimeEvents =
+      itemHookFactory.getFlushPendingRealtimeEvents();
+    expect(flushPendingRealtimeEvents).toHaveBeenCalledTimes(1);
+    expect(
+      flushPendingRealtimeEvents.mock.invocationCallOrder[0],
+    ).toBeLessThan(options.dispatch.mock.invocationCallOrder[drainCall]);
   });
 
   it("marks codex foreground turns as suspected after the bounded no-progress window", () => {

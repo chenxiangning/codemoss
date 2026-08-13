@@ -6,12 +6,15 @@
 
 ## Automated
 
-- Vitest: `useThreadEventHandlers.test.ts` 65/65 green, including the new case that asserts the
-  live-text tail is drained into the reducer before the user-choice gate settles.
+- Vitest: `useThreadEventHandlers.test.ts` 65/65 green (re-run 2026-08-13 after the flush change),
+  including the new case asserting both orderings via `invocationCallOrder`: the batched realtime
+  queue is flushed before the tail is drained, and the tail reaches the reducer before the thread
+  is marked not-processing.
+- Load-bearing check: deleting the flush call drops the suite to 64/65 on that test; restoring it
+  returns 65/65.
 - Vitest: `liveAssistantTextChannel.test.ts` 14/14 green (the channel this change drains from).
 - `npx tsc --noEmit`: clean.
-- Merges clean onto v0.8.9 with no conflicts, and alongside the three sibling AskUserQuestion
-  changes in a combined integration build.
+- Merges clean onto v0.8.9 with no conflicts.
 
 ## Manual
 
