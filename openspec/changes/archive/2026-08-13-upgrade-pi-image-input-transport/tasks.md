@@ -32,5 +32,5 @@
 
 - [ ] 5.1 `cargo test`(相关模块)与受影响 vitest 全绿
 - [ ] 5.2 实机验收(macOS):pi engine + k3 粘贴截图发送(模型直接识图)、空文本附图、历史 reload 新格式、旧 session 混排、composer 不再弹「不支持图片」
-- [ ] 5.3 回填 verification.md;按用户指示 commit(注意不混入无关 diff)
+- [x] 5.3 回填 verification.md;已 commit `a371b75da` + `00712d4c9`(未混入无关 diff)
 - [ ] 5.4 用户确认后处理 pi fork 仓 `feat/interactive-image-attachments` 工作区的废弃改动

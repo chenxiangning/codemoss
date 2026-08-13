@@ -48,5 +48,5 @@
 
 ## 待办
 
-- [ ] 5.3 commit 后回填 hash(仅本 change 文件,不混入其他 session 的工作区改动)
+- [x] 5.3 已 commit:代码 `a371b75da` feat(engine),openspec 归档 `00712d4c9` docs(openspec);均未混入其他 session 的工作区改动
 - [ ] 5.4 pi fork 仓 `feat/interactive-image-attachments` 废弃改动清理(等用户确认)
