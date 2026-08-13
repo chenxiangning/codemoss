@@ -242,6 +242,8 @@ export function useListThreadsForWorkspace({
          * first-paint). Default false so warm SQLite answers in ms.
          */
         forceSessionIndexSync?: boolean;
+        /** Importer refresh: merge SQLite rows onto the current list. */
+        mergeExistingThreads?: boolean;
         /** Orchestrator cancel/stale flag — skip late setThreads after soft-ignore cancel. */
         isStale?: () => boolean;
       },
@@ -612,7 +614,7 @@ export function useListThreadsForWorkspace({
               type: "setThreads",
               workspaceId: workspace.id,
               threads: sqliteSummaries,
-              mode: "replace",
+              mode: options?.mergeExistingThreads ? "merge" : "replace",
             });
             appliedThreadListUpdate = true;
           }

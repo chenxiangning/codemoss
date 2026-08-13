@@ -87,8 +87,8 @@ type ListThreadsForWorkspace = (
     recoverySource?: string;
     /** Quiet post-first-paint index re-scan (writers), not cold first paint. */
     forceSessionIndexSync?: boolean;
-    /** Expand/reload: allow Claude/Gemini/Grok/Kimi/OpenCode disk lists. */
     includeEngineDiskLists?: boolean;
+    mergeExistingThreads?: boolean;
     /** When true mid-flight, list apply must no-op (workspace cancelled/switched). */
     isStale?: () => boolean;
   },
@@ -579,6 +579,7 @@ export function useWorkspaceThreadListHydration({
         force?: boolean;
         deletedThreadIds?: string[];
         startupHydrationMode?: "first-paint" | "full-catalog";
+        mergeExistingThreads?: boolean;
       },
     ) => {
       const workspace = workspacesById.get(workspaceId);
@@ -665,6 +666,7 @@ export function useWorkspaceThreadListHydration({
         // After the first workspace is clickable, later projects must force
         // Index writers. Warm SQLite otherwise returns a partial engine set.
         forceSessionIndexSync: false,
+        mergeExistingThreads: options?.mergeExistingThreads,
       });
     },
     [
@@ -976,6 +978,7 @@ export function useWorkspaceThreadListHydration({
           ensureWorkspaceThreadListLoaded(workspaceId, {
             preserveState: true,
             startupHydrationMode: "first-paint",
+            mergeExistingThreads: true,
           });
         });
       },

@@ -4,3 +4,4 @@
 - 重叠 tick 跳过（`overlapping_tick_is_rejected` 绿）
 - `upserted>0` 才 emit；FE first-paint 再 SELECT
 - 侧栏加载路径不 await importer
+- Review 补丁：导入刷新 `mergeExistingThreads`，避免 first-paint replace 再盖引擎
