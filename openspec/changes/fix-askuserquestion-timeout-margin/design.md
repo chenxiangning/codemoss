@@ -17,10 +17,6 @@ duplicated-constant drift this change closes structurally.
 - A small, fixed 30s margin rather than a percentage or a second independently-configurable value.
   Simplicity: the race window this closes is scheduling jitter (milliseconds), not proportional to
   the total timeout, so a fixed small margin is the right shape, not `1.1x` or similar.
-- Broadcast channel capacity bump (1024 -> 4096) as a mitigation, explicitly documented in-code as
-  such. A structurally complete fix (per-turn dedicated channels, or backpressure-aware delivery
-  with replay) is a materially larger architecture change - out of scope here, flagged as a
-  possible follow-up if 4096 doesn't sufficiently reduce the observed rate.
 
 ## Alternatives
 
@@ -28,8 +24,6 @@ duplicated-constant drift this change closes structurally.
 |---|---|---|
 | Leave `MCP_TOOL_TIMEOUT` exactly matching the server wait | Not adopted | Satisfies the spec's literal wording but not its intent; the whole point of raising it is to give the CLI room, and zero margin gives none |
 | Percentage-based margin (e.g. server wait * 1.02) | Not adopted | Overcomplicated for what is fundamentally a fixed scheduling-jitter budget, not something that scales with the total timeout |
-| Per-turn dedicated broadcast channels (removes the shared-bus contention entirely) | Not adopted (this change) | The structurally complete fix for issue 3a, but a materially larger surface (every event forwarder's subscribe/wiring changes); worth a follow-up if 4096 isn't enough in practice |
-| Replay/resync on `Lagged` instead of a capacity bump | Not adopted (this change) | Would require knowing what was dropped to resync it, which `RecvError::Lagged` doesn't tell you (only a count); a real fix here needs a different mechanism (e.g. a durable per-turn event log to replay from), out of scope |
 
 ## Validation
 

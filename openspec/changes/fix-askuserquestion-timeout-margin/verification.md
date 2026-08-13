@@ -7,9 +7,10 @@
 ## Automated
 
 - Cargo: `cargo test --lib engine::claude` 236/236 green.
-- Cargo: full `cargo test --lib` run compared against a clean-`upstream/main` control under
-  identical conditions. Integration 2026 passed / 6 failed; control 2022 passed / 6 failed, with
-  the **same six** failures on both sides. No new failures attributable to this change.
+- Cargo: `cargo test --lib` on this branch, 2022 passed / 6 failed. Clean-`upstream/main` control
+  at the same base, 2022 passed / 6 failed. Identical counts, and the **same six** pre-existing
+  failures both sides, so this branch introduces none. (It adds no tests, so an identical count
+  is the expected result.)
 - `npx tsc --noEmit`: clean.
 - Verified no `1800` literal survives at either wait site; both now read
   `ASK_USER_QUESTION_TIMEOUT_SECS`.
@@ -35,9 +36,6 @@ so no test or log consumer sees a different string.
 
 ## Known limits
 
-- The broadcast channel bump (1024 to 4096) is a mitigation, not a guarantee. It raises the
-  practical threshold at which a `RecvError::Lagged` can drop a `RequestUserInput` event; it does
-  not remove the possibility. This is stated in the code comment as well.
 - The 30s CLI margin is a fixed constant rather than a negotiated value. A server-authoritative
   deadline pushed to the frontend would remove this class of drift entirely, but needs a protocol
   change and is deliberately out of scope here.

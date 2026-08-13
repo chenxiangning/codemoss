@@ -752,15 +752,7 @@ impl ClaudeSession {
         workspace_path: PathBuf,
         config: Option<EngineConfig>,
     ) -> Self {
-        // Shared by every concurrent turn's event forwarder in this session; a
-        // slow consumer during a heavy-activity turn can push a DIFFERENT
-        // turn's events (including an AskUserQuestion RequestUserInput) past
-        // this capacity, silently dropping them (RecvError::Lagged) instead of
-        // ever reaching the renderer - looking exactly like a 30-minute
-        // timeout instead of a rendering failure. Bumped from 1024 as a
-        // mitigation, not a guarantee: it raises the practical threshold, it
-        // doesn't remove the possibility.
-        let (event_sender, _) = broadcast::channel(4096);
+        let (event_sender, _) = broadcast::channel(1024);
         let config = config.unwrap_or_default();
 
         Self {
