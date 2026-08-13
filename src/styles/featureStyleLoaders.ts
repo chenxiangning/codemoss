@@ -212,6 +212,18 @@ export function loadStatusPanelStyles() {
 }
 
 /**
+ * Composer 上方 run-status 展开「任务 / Plan」复用 TodoList / PlanList。
+ * 底部 Status dock 已退役，不能指望 StatusPanel 兄弟表面拉起 CSS。
+ * 只拉列表切片，禁止整包 status-panel / engine-task-output。
+ */
+export function loadComposerRunStatusListStyles() {
+  return loadStyles([
+    () => import("./status-panel.todo-list.css"),
+    () => import("./status-panel.plan-list.css"),
+  ]);
+}
+
+/**
  * Multi-agent collab surface extras (P1-1).
  * NOTE: subagent-ui.css must stay in bootstrap — it owns the always-on
  * ConversationInspectorSplit chat column layout (see bootstrap.ts).

@@ -12,6 +12,14 @@
 - **AND** 模板 portal 与模板管理弹窗 MUST 等到 `stylesReady` 再绘制
 - **AND** `bootstrap.ts` MUST NOT 静态 `import "./styles/multi-agent.css"`
 
+#### Scenario: Composer 上方任务/Plan 展开不依赖 Status Panel
+- **WHEN** 用户冷启动后点开 Composer run-status 的「任务」或 Plan pill，且从未打开 Status Panel
+- **THEN** `ComposerRunStatusStrip` MUST 调用 `loadComposerRunStatusListStyles`
+- **AND** 该 loader MUST 加载 `status-panel.todo-list.css` 与 `status-panel.plan-list.css`
+- **AND** MUST NOT 加载整包 `status-panel.css` 或 `engine-task-output.css`
+- **AND** 任务/Plan 列表 MUST 等到 `listStylesReady` 再绘制
+- **AND** `bootstrap.ts` MUST NOT 静态 `import "./styles/status-panel.css"`
+
 #### Scenario: Git Diff 弹窗不依赖 Status Panel 拿导航壳
 - **WHEN** 用户冷启动后直接打开 Git / History Diff 弹窗，且从未打开 Status Panel
 - **THEN** `loadDiffStyles` MUST 加载 `editable-diff-compare-nav.css` 与 `editable-diff-review-shell.css`

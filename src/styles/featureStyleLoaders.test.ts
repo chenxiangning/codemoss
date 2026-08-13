@@ -44,6 +44,27 @@ describe("feature style loader contracts", () => {
     expect(vendorLoader).not.toContain('import("./settings.css")');
   });
 
+  it("loads run-status todo/plan list slices without the status-panel bundle", () => {
+    const runStatusLoader = loaderSource.slice(
+      loaderSource.indexOf("export function loadComposerRunStatusListStyles"),
+      loaderSource.indexOf("export function loadSubagentStyles"),
+    );
+
+    expect(runStatusLoader).toContain('import("./status-panel.todo-list.css")');
+    expect(runStatusLoader).toContain('import("./status-panel.plan-list.css")');
+    expect(runStatusLoader).not.toContain('import("./status-panel.css")');
+    expect(runStatusLoader).not.toContain('import("./engine-task-output.css")');
+  });
+
+  it("keeps StatusPanel bundle importing the extracted todo-list slice", () => {
+    const statusPanelCss = readFileSync(
+      new URL("./status-panel.css", import.meta.url),
+      "utf8",
+    );
+    expect(statusPanelCss).toContain('@import "./status-panel.todo-list.css"');
+    expect(statusPanelCss).not.toContain(".sp-todo-item {");
+  });
+
   it("exposes P1-1 deferred startup CSS loaders", () => {
     for (const name of [
       "loadTerminalStyles",

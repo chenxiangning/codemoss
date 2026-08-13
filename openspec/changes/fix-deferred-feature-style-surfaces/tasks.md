@@ -36,6 +36,15 @@
 - 验证：`WorkspaceFileComparePanel.compare-editor.test.tsx`
 - 优先级：P0
 
+## 4.5 Composer run-status 自己拉任务/Plan 列表切片
+
+- [x] 完成（`ComposerRunStatusStrip` 调 `loadComposerRunStatusListStyles`；todo/plan 等 `listStylesReady`）
+- 输入：`src/features/composer/components/run-status/ComposerRunStatusStrip.tsx`、`src/styles/featureStyleLoaders.ts`
+- 动作：抽出 `status-panel.todo-list.css`；strip 只拉 todo + plan 切片，不整包 status-panel
+- 输出：未开 Status Panel 时任务行横向对齐，不再圆圈/文字各占一行
+- 验证：`ComposerRunStatusStrip.test.tsx` + `featureStyleLoaders.test.ts`
+- 优先级：P0
+
 ## 5. 回归与收口
 
 - [x] 完成（focused vitest 绿；用户确认双栏/单栏都解决）

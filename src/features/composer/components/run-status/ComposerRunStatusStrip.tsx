@@ -8,6 +8,8 @@ import PanelTop from "lucide-react/dist/esm/icons/panel-top";
 import PanelTopClose from "lucide-react/dist/esm/icons/panel-top-close";
 import type { LucideIcon } from "lucide-react";
 import type { TurnPlan } from "../../../../types";
+import { loadComposerRunStatusListStyles } from "../../../../styles/featureStyleLoaders";
+import { useFeatureStylesReady } from "../../../../styles/useFeatureStylesReady";
 import type { SubagentInfo, TodoItem } from "../../../status-panel/types";
 import type { TurnFileChangesSummary } from "../../../messages/utils/turnFileChanges";
 import { TodoList } from "../../../status-panel/components/TodoList";
@@ -139,6 +141,13 @@ export const ComposerRunStatusStrip = memo(function ComposerRunStatusStrip(
     isProcessing,
   });
 
+  // 任务 / Plan 复用 .sp-todo-* / .sp-plan-*；Status dock 已退役，必须自己拉切片。
+  const needsListStyles = model.showTodoSection || model.showPlanSection;
+  const listStylesReady = useFeatureStylesReady(
+    loadComposerRunStatusListStyles,
+    needsListStyles,
+  );
+
   const baseId = useId();
   const panelId = `${baseId}-panel`;
   const stripRef = useRef<HTMLDivElement>(null);
@@ -224,6 +233,7 @@ export const ComposerRunStatusStrip = memo(function ComposerRunStatusStrip(
               >
                 <ExpandedBody
                   section={sectionExpanded}
+                  listStylesReady={listStylesReady}
                   todos={model.displayTodos}
                   subagents={model.subagents}
                   plan={model.plan}
@@ -350,6 +360,7 @@ export const ComposerRunStatusStrip = memo(function ComposerRunStatusStrip(
 
 function ExpandedBody({
   section,
+  listStylesReady,
   todos,
   subagents,
   plan,
@@ -363,6 +374,7 @@ function ExpandedBody({
   onRevertAllFiles,
 }: {
   section: RunStatusSection;
+  listStylesReady: boolean;
   todos: TodoItem[];
   subagents: SubagentInfo[];
   plan: TurnPlan | null;
@@ -375,6 +387,9 @@ function ExpandedBody({
   onRevertFile?: (path: string) => void | Promise<void>;
   onRevertAllFiles?: (paths: string[]) => void | Promise<void>;
 }) {
+  if ((section === "todo" || section === "plan") && !listStylesReady) {
+    return null;
+  }
   if (section === "todo") {
     return (
       <div className="composer-run-status-body">

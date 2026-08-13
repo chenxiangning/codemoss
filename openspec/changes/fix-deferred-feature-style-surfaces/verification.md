@@ -2,8 +2,8 @@
 
 ## 自动化
 
-- `npx vitest run src/styles/featureStyleLoaders.test.ts src/styles/git-diff-modal-layout.test.ts src/features/multi-agent/components/ComposerToggle.styles.test.ts src/features/files/components/WorkspaceFileComparePanel.compare-editor.test.tsx src/features/git/components/WorkspaceEditableDiffCompare.test.tsx src/features/git/components/WorkspaceReadOnlyDiffCompare.test.ts`
-- 结果：相关测试全绿（2026-08-13）
+- `npx vitest run src/styles/featureStyleLoaders.test.ts src/styles/git-diff-modal-layout.test.ts src/features/multi-agent/components/ComposerToggle.styles.test.ts src/features/composer/components/run-status/ComposerRunStatusStrip.test.tsx src/features/files/components/WorkspaceFileComparePanel.compare-editor.test.tsx src/features/git/components/WorkspaceEditableDiffCompare.test.tsx src/features/git/components/WorkspaceReadOnlyDiffCompare.test.ts`
+- 结果：相关测试全绿（2026-08-13）；run-status 任务切片补测 21/21 绿（2026-08-14）
 
 ## 人工
 

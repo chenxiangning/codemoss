@@ -6,6 +6,30 @@ import { describe, expect, it, vi } from "vitest";
 import { ComposerRunStatusStrip } from "./ComposerRunStatusStrip";
 
 describe("ComposerRunStatusStrip styles", () => {
+  it("loads deferred todo/plan list styles from the strip host", () => {
+    const stripSource = readFileSync(
+      resolve(process.cwd(), "src/features/composer/components/run-status/ComposerRunStatusStrip.tsx"),
+      "utf8",
+    );
+    // Status dock 已退役；任务/Plan 列表 class 在延迟切片里。
+    // test mode 下 hook 不真调 loader，用源码契约锁住接线。
+    expect(stripSource).toContain("loadComposerRunStatusListStyles");
+    expect(stripSource).toContain("useFeatureStylesReady");
+    expect(stripSource).toContain("listStylesReady");
+  });
+
+  it("keeps extracted todo rows as a horizontal flex list", () => {
+    const css = readFileSync(
+      resolve(process.cwd(), "src/styles/status-panel.todo-list.css"),
+      "utf8",
+    );
+    const itemRule =
+      css.match(/\.sp-todo-item\s*\{([\s\S]*?)\n\}/)?.[1] ?? "";
+    expect(itemRule).toContain("display: flex");
+    expect(itemRule).toContain("align-items: flex-start");
+    expect(itemRule).toContain("gap: 8px");
+  });
+
   it("keeps expanded panels out of document flow (absolute overlay)", () => {
     const css = readFileSync(
       resolve(process.cwd(), "src/styles/composer-run-status.css"),
@@ -205,6 +229,30 @@ describe("ComposerRunStatusStrip", () => {
     });
     // 仅编辑段时撤销全部后整条 strip 也应消失
     expect(screen.queryByTestId("composer-run-status")).toBeNull();
+  });
+
+  it("expands the todo list without waiting on StatusPanel", () => {
+    render(
+      <ComposerRunStatusStrip
+        todos={[{ content: "OpenSpec: add-session-index-import-daemon", status: "pending" }]}
+        subagents={[]}
+        plan={null}
+        isPlanMode={false}
+        isProcessing={false}
+        mergePlanIntoTodos={false}
+        sessionFileChanges={null}
+      />,
+    );
+
+    const todoTab = screen
+      .getAllByRole("tab")
+      .find((tab) => tab.getAttribute("data-section") === "todo")!;
+    fireEvent.click(todoTab);
+
+    expect(
+      screen.getByText("OpenSpec: add-session-index-import-daemon"),
+    ).toBeTruthy();
+    expect(document.querySelector(".sp-todo-item.sp-todo-pending")).toBeTruthy();
   });
 
   it("collapses pills via chrome toggle and restores them", () => {

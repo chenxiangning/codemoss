@@ -1,0 +1,81 @@
+/* TodoList / 空态切片：StatusPanel 与 Composer run-status 共用。
+ * 禁止整包拉 status-panel.css；run-status 只 import 本文件 + plan-list。 */
+
+/* 空状态 */
+.sp-empty {
+  padding: 16px;
+  text-align: center;
+  color: var(--text-faint);
+  font-size: 12px;
+}
+
+.sp-root--dock .sp-empty {
+  padding: 20px 12px;
+}
+
+/* ─── TodoList ─── */
+.sp-todo-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.sp-todo-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  transition: background 0.1s ease;
+}
+
+.sp-todo-item:hover {
+  background: var(--surface-hover);
+}
+
+.sp-todo-icon {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  margin-top: 1px;
+}
+
+.sp-todo-text {
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--text-strong);
+  word-break: break-word;
+}
+
+/* pending */
+.sp-todo-pending .sp-todo-icon {
+  color: var(--text-faint);
+}
+
+/* in_progress */
+.sp-todo-in_progress .sp-todo-icon {
+  color: var(--text-muted);
+}
+
+.sp-todo-in_progress .sp-todo-icon svg {
+  animation: sp-spin 1s linear infinite;
+}
+
+/* completed */
+.sp-todo-completed .sp-todo-icon {
+  color: #89d185;
+}
+
+.sp-todo-completed .sp-todo-text {
+  text-decoration: line-through;
+  color: var(--text-faint);
+}
+
+@keyframes sp-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
