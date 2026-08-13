@@ -89,6 +89,46 @@ describe("conversationAssembler", () => {
     expect(state.items[0]?.id).toBe("assistant-visible");
   });
 
+  it("bounds oversized commandExecution output when hydrating history", () => {
+    const snapshot: NormalizedHistorySnapshot = {
+      engine: "codex",
+      workspaceId: "ws-1",
+      threadId: "thread-1",
+      items: [
+        {
+          id: "tool-history-flood",
+          kind: "tool",
+          toolType: "commandExecution",
+          title: "Command",
+          detail: "Get-ChildItem -Recurse",
+          output: `${"n".repeat(400_000)}\nHISTORY-TAIL`,
+          status: "completed",
+        },
+      ],
+      plan: null,
+      userInputQueue: [],
+      meta: {
+        workspaceId: "ws-1",
+        threadId: "thread-1",
+        engine: "codex",
+        activeTurnId: null,
+        isThinking: false,
+        heartbeatPulse: null,
+        historyRestoredAtMs: null,
+      },
+      fallbackWarnings: [],
+    };
+
+    const state = hydrateHistory(snapshot);
+    const tool = state.items[0];
+    expect(tool?.kind).toBe("tool");
+    if (tool?.kind === "tool") {
+      expect(tool.output?.length ?? 0).toBeLessThanOrEqual(256 * 1024);
+      expect(tool.output).toContain("omitted");
+      expect(tool.output?.endsWith("HISTORY-TAIL")).toBe(true);
+    }
+  });
+
   it("keeps compact control events as diagnostic tool rows instead of assistant prose", () => {
     const snapshot: NormalizedHistorySnapshot = {
       engine: "codex",
@@ -264,6 +304,50 @@ describe("conversationAssembler", () => {
     );
     expect(tool?.status).toBe("completed");
     expect(tool?.output).toBe("line 1\n");
+  });
+
+  it("bounds commandExecution output while keeping the live tail", () => {
+    let state = createState();
+    state = appendEvent(
+      state,
+      createEvent({
+        itemKind: "tool",
+        operation: "itemStarted",
+        item: {
+          id: "tool-flood",
+          kind: "tool",
+          toolType: "commandExecution",
+          title: "Command",
+          detail: "Get-ChildItem -Recurse",
+          status: "started",
+        },
+      }),
+    );
+    state = appendEvent(
+      state,
+      createEvent({
+        itemKind: "tool",
+        operation: "appendToolOutputDelta",
+        item: {
+          id: "tool-flood",
+          kind: "tool",
+          toolType: "commandExecution",
+          title: "Command",
+          detail: "",
+          output: "",
+          status: "started",
+        },
+        delta: `${"n".repeat(300_000)}\nFINAL-LINE`,
+      }),
+    );
+
+    const tool = state.items.find(
+      (item): item is Extract<ConversationItem, { kind: "tool" }> =>
+        item.kind === "tool" && item.id === "tool-flood",
+    );
+    expect(tool?.output?.length ?? 0).toBeLessThanOrEqual(256 * 1024);
+    expect(tool?.output).toContain("omitted");
+    expect(tool?.output?.endsWith("FINAL-LINE")).toBe(true);
   });
 
   it("appends message/reasoning deltas and updates active turn id", () => {

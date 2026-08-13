@@ -20,7 +20,7 @@ The Tauri `BatchedTauriEventSink` MUST continue to deliver every accepted event 
 
 ### Requirement: Backend Snapshot Throttle MUST Reduce Source-Side Snapshot Bursts
 
-The backend emit path for `item/updated` text snapshots MUST apply a 32ms per-`(workspaceId, itemId, kind)` throttle. Snapshots for the same key arriving within 32ms of the previous emit MUST replace that key's pending snapshot with the latest complete snapshot and emit that latest snapshot on the next available window. Terminal events (`item/completed`, `turn/completed`, `turn/error`) MUST force flush all pending snapshots. The throttle MUST NOT concatenate complete snapshot strings; append-buffering is reserved for raw `outputDelta` events.
+The backend emit path for `item/updated` text snapshots MUST apply a 32ms per-`(workspaceId, itemId, kind)` throttle. Snapshots for the same key arriving within 32ms of the previous emit MUST replace that key's pending snapshot with the latest complete snapshot and emit that latest snapshot on the next available window. Terminal events (`item/completed`, `turn/completed`, `turn/error`) MUST force flush all pending snapshots. The throttle MUST NOT concatenate complete snapshot strings; append-buffering is reserved for raw `outputDelta` events. Assembled `ConversationItem.output` byte budgets MUST be applied after event delivery and MUST NOT be implemented by dropping `item/commandExecution/outputDelta` or `item/fileChange/outputDelta`.
 
 #### Scenario: 10 text snapshots in 100ms for one tool item
 - **WHEN** the backend emits 10 `item/updated` text snapshots for the same `(workspaceId, itemId, "commandExecution")` within 100ms
@@ -36,7 +36,8 @@ The backend emit path for `item/updated` text snapshots MUST apply a 32ms per-`(
 - **WHEN** the backend evaluates whether to throttle
 - **THEN** critical methods (`turn/completed`, `turn/error`, `runtime/ended`, `item/tool/requestUserInput`, `approval/request`) MUST NEVER be throttled
 - **AND** `item/commandExecution/outputDelta` and `item/fileChange/outputDelta` MUST NEVER be throttled
-- **AND** only `item/updated` text snapshots MUST be subject to throttling.
+- **AND** only `item/updated` text snapshots MUST be subject to throttling
+- **AND** assembled `ConversationItem.output` byte budgets MUST be applied after delivery, never by dropping these delta events
 
 ### Requirement: Sink MUST Emit Batch Stats To The Webview
 

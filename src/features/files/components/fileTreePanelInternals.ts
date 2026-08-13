@@ -80,6 +80,9 @@ const SPECIAL_BUILD_ARTIFACT_DIRECTORIES = new Set([
   ".mypy_cache",
   ".tox",
   ".dart_tool",
+  "temp",
+  "tmp",
+  ".tmp",
 ]);
 export const EMPTY_DIRECTORY_METADATA: WorkspaceDirectoryEntry[] = [];
 // Lowered from 250: on WebKitGTK (Tauri's Linux webview) an un-virtualized tree

@@ -177,51 +177,146 @@ pub(crate) fn should_always_skip(name: &str) -> bool {
     name == ".git"
 }
 
+pub(crate) const MANAGED_CODEXIGNORE_BEGIN: &str = "# BEGIN mossx-managed-junk-dirs";
+pub(crate) const MANAGED_CODEXIGNORE_END: &str = "# END mossx-managed-junk-dirs";
+
+const SPECIAL_DEPENDENCY_DIR_NAMES: &[&str] = &[
+    "node_modules",
+    ".pnpm-store",
+    ".yarn",
+    "bower_components",
+    "vendor",
+    ".venv",
+    "venv",
+    "env",
+    "__pypackages__",
+    "Pods",
+    "Carthage",
+    ".m2",
+    ".ivy2",
+    ".cargo",
+];
+
+const SPECIAL_BUILD_ARTIFACT_DIR_NAMES: &[&str] = &[
+    "target",
+    "dist",
+    "build",
+    "out",
+    "coverage",
+    ".next",
+    ".nuxt",
+    ".svelte-kit",
+    ".angular",
+    ".parcel-cache",
+    ".turbo",
+    ".cache",
+    ".gradle",
+    "CMakeFiles",
+    "bin",
+    "obj",
+    "__pycache__",
+    ".pytest_cache",
+    ".mypy_cache",
+    ".tox",
+    ".dart_tool",
+    "temp",
+    "tmp",
+    ".tmp",
+];
+
 pub(crate) fn is_special_dependency_dir_name(name: &str) -> bool {
-    matches!(
-        name,
-        "node_modules"
-            | ".pnpm-store"
-            | ".yarn"
-            | "bower_components"
-            | "vendor"
-            | ".venv"
-            | "venv"
-            | "env"
-            | "__pypackages__"
-            | "Pods"
-            | "Carthage"
-            | ".m2"
-            | ".ivy2"
-            | ".cargo"
-    )
+    SPECIAL_DEPENDENCY_DIR_NAMES.iter().any(|entry| *entry == name)
 }
 
 pub(crate) fn is_special_build_artifact_dir_name(name: &str) -> bool {
-    matches!(
-        name,
-        "target"
-            | "dist"
-            | "build"
-            | "out"
-            | "coverage"
-            | ".next"
-            | ".nuxt"
-            | ".svelte-kit"
-            | ".angular"
-            | ".parcel-cache"
-            | ".turbo"
-            | ".cache"
-            | ".gradle"
-            | "CMakeFiles"
-            | "bin"
-            | "obj"
-            | "__pycache__"
-            | ".pytest_cache"
-            | ".mypy_cache"
-            | ".tox"
-            | ".dart_tool"
-    ) || name.starts_with("cmake-build-")
+    SPECIAL_BUILD_ARTIFACT_DIR_NAMES
+        .iter()
+        .any(|entry| *entry == name)
+        || name.starts_with("cmake-build-")
+}
+
+pub(crate) fn workspace_junk_dir_ignore_patterns() -> Vec<String> {
+    let mut patterns = SPECIAL_DEPENDENCY_DIR_NAMES
+        .iter()
+        .chain(SPECIAL_BUILD_ARTIFACT_DIR_NAMES.iter())
+        .map(|name| format!("{name}/"))
+        .collect::<Vec<_>>();
+    patterns.push("cmake-build-*/".to_string());
+    patterns
+}
+
+pub(crate) fn merge_managed_codexignore(existing: &str) -> String {
+    let managed_body = workspace_junk_dir_ignore_patterns().join("\n");
+    let managed_block = format!(
+        "{MANAGED_CODEXIGNORE_BEGIN}\n{managed_body}\n{MANAGED_CODEXIGNORE_END}\n"
+    );
+    let begin = existing.find(MANAGED_CODEXIGNORE_BEGIN);
+    let end = existing.find(MANAGED_CODEXIGNORE_END);
+    if let (Some(begin_index), Some(end_index)) = (begin, end) {
+        if end_index >= begin_index {
+            let after_end = end_index + MANAGED_CODEXIGNORE_END.len();
+            let prefix = existing[..begin_index].trim_end();
+            let suffix = existing[after_end..].trim_start_matches(['\r', '\n']);
+            let mut merged = String::new();
+            if !prefix.is_empty() {
+                merged.push_str(prefix);
+                merged.push('\n');
+                merged.push('\n');
+            }
+            merged.push_str(&managed_block);
+            if !suffix.is_empty() {
+                if !merged.ends_with('\n') {
+                    merged.push('\n');
+                }
+                merged.push_str(suffix);
+                if !suffix.ends_with('\n') {
+                    merged.push('\n');
+                }
+            }
+            return merged;
+        }
+    }
+    if existing.trim().is_empty() {
+        return managed_block;
+    }
+    let mut merged = existing.trim_end().to_string();
+    merged.push('\n');
+    merged.push('\n');
+    merged.push_str(&managed_block);
+    merged
+}
+
+pub(crate) fn upsert_managed_codexignore(workspace_root: &Path) -> Result<bool, String> {
+    if !workspace_root.is_dir() {
+        return Err(format!(
+            "workspace root is not a directory: {}",
+            workspace_root.display()
+        ));
+    }
+    let path = workspace_root.join(".codexignore");
+    let existing = if path.exists() {
+        std::fs::read_to_string(&path)
+            .map_err(|error| format!("Failed to read .codexignore: {error}"))?
+    } else {
+        String::new()
+    };
+    let next = merge_managed_codexignore(&existing);
+    if next == existing {
+        return Ok(false);
+    }
+    std::fs::write(&path, next)
+        .map_err(|error| format!("Failed to write .codexignore: {error}"))?;
+    Ok(true)
+}
+
+pub(crate) fn try_upsert_managed_codexignore(workspace_path: &str) {
+    let trimmed = workspace_path.trim();
+    if trimmed.is_empty() {
+        return;
+    }
+    if let Err(error) = upsert_managed_codexignore(Path::new(trimmed)) {
+        log::warn!("[codexignore] failed to upsert managed junk-dir block: {error}");
+    }
 }
 
 pub(crate) fn is_special_directory_path(path: &str) -> bool {
@@ -1055,4 +1150,68 @@ fn list_workspace_directory_children_uncached(
         limit_hit,
         directory_entries,
     )
+}
+
+#[cfg(test)]
+mod junk_dir_ignore_tests {
+    use super::{
+        is_special_directory_path, merge_managed_codexignore, upsert_managed_codexignore,
+        MANAGED_CODEXIGNORE_BEGIN, MANAGED_CODEXIGNORE_END,
+    };
+    use std::fs;
+
+    #[test]
+    fn temp_family_paths_are_special_directories() {
+        assert!(is_special_directory_path("service/temp"));
+        assert!(is_special_directory_path("apps/web/tmp"));
+        assert!(is_special_directory_path("pkg/.tmp"));
+        assert!(is_special_directory_path("target"));
+        assert!(is_special_directory_path("apps/web/node_modules"));
+    }
+
+    #[test]
+    fn merge_creates_managed_block_for_empty_file() {
+        let merged = merge_managed_codexignore("");
+        assert!(merged.contains(MANAGED_CODEXIGNORE_BEGIN));
+        assert!(merged.contains("node_modules/"));
+        assert!(merged.contains("target/"));
+        assert!(merged.contains("temp/"));
+        assert!(merged.contains("tmp/"));
+        assert!(merged.contains(".tmp/"));
+        assert!(merged.contains(MANAGED_CODEXIGNORE_END));
+        assert_eq!(merged.matches(MANAGED_CODEXIGNORE_BEGIN).count(), 1);
+    }
+
+    #[test]
+    fn merge_preserves_user_rules_and_replaces_managed_block() {
+        let existing = format!(
+            "user-secret/\n\n{MANAGED_CODEXIGNORE_BEGIN}\nold_dir/\n{MANAGED_CODEXIGNORE_END}\n\nuser-keep/\n"
+        );
+        let merged = merge_managed_codexignore(&existing);
+        assert!(merged.contains("user-secret/"));
+        assert!(merged.contains("user-keep/"));
+        assert!(!merged.contains("old_dir/"));
+        assert!(merged.contains("temp/"));
+        assert_eq!(merged.matches(MANAGED_CODEXIGNORE_BEGIN).count(), 1);
+    }
+
+    #[test]
+    fn upsert_writes_codexignore_once_then_is_idempotent() {
+        let dir = std::env::temp_dir().join(format!(
+            "mossx-codexignore-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("clock")
+                .as_nanos()
+        ));
+        fs::create_dir_all(&dir).expect("temp workspace");
+        let first = upsert_managed_codexignore(&dir).expect("first upsert");
+        let second = upsert_managed_codexignore(&dir).expect("second upsert");
+        let contents = fs::read_to_string(dir.join(".codexignore")).expect("read ignore");
+        let _ = fs::remove_dir_all(&dir);
+        assert!(first);
+        assert!(!second);
+        assert!(contents.contains("node_modules/"));
+        assert!(contents.contains("temp/"));
+    }
 }

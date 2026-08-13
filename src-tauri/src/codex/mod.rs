@@ -769,6 +769,12 @@ pub(crate) async fn start_thread(
 
     let normalized_provider_profile_id =
         codex_core::normalize_provider_profile_id(provider_profile_id.as_deref());
+    if let Some(workspace_path) = {
+        let workspaces = state.workspaces.lock().await;
+        workspaces.get(&workspace_id).map(|entry| entry.path.clone())
+    } {
+        crate::shared::workspace_listing::try_upsert_managed_codexignore(&workspace_path);
+    }
     let resolved_model = resolve_provider_scoped_fallback_model(
         &state,
         &workspace_id,
@@ -2324,6 +2330,7 @@ async fn generate_commit_message_on_session(
     app: &AppHandle,
 ) -> Result<String, String> {
     // Create a background helper thread (hidden from the main chat sidebar).
+    crate::shared::workspace_listing::try_upsert_managed_codexignore(&session.entry.path);
     let thread_params = json!({
         "cwd": session.entry.path,
         "approvalPolicy": "never"
@@ -2892,6 +2899,7 @@ Examples:\n\
 Task:\n{cleaned_prompt}"
     );
 
+    crate::shared::workspace_listing::try_upsert_managed_codexignore(&session.entry.path);
     let thread_params = json!({
         "cwd": session.entry.path,
         "approvalPolicy": "never"

@@ -1,13 +1,13 @@
 # OpenSpec Main Specs 索引
 
-`openspec/specs/*/spec.md` 是已经同步进入 mainline 的 capability behavior truth。当前索引覆盖 **496** 个 capability，并按 capability id 首字母分组。
+`openspec/specs/*/spec.md` 是已经同步进入 mainline 的 capability behavior truth。当前索引覆盖 **498** 个 capability，并按 capability id 首字母分组。
 
 ## 使用边界
 
 - 查当前已生效的行为契约：从本索引进入对应 `spec.md`。
 - 查尚未归档、可能仍含未同步 delta 的提案：查看 [Active Changes](../changes/README.md)。
 - 查历史决策与归档证据：查看 [Archived Changes](../changes/archive/README.md)。
-- Updated At: `2026-08-03`（第三波 bulk archive 后重建）。
+- Updated At: `2026-08-14`（bound-command-execution-output-memory 同步新增 2 个 capability）。
 
 ## A
 
@@ -178,6 +178,7 @@
 - [conversation-curtain-assembly-core](./conversation-curtain-assembly-core/spec.md)
 - [conversation-curtain-normalization-core](./conversation-curtain-normalization-core/spec.md)
 - [conversation-fact-contract](./conversation-fact-contract/spec.md)
+- [conversation-tool-output-budget](./conversation-tool-output-budget/spec.md)
 - [conversation-file-change-surface-parity](./conversation-file-change-surface-parity/spec.md)
 - [conversation-hard-delete](./conversation-hard-delete/spec.md)
 - [conversation-history-expansion-scroll-restoration](./conversation-history-expansion-scroll-restoration/spec.md)
@@ -555,6 +556,7 @@
 - [workspace-filetree-progressive-scan-protocol](./workspace-filetree-progressive-scan-protocol/spec.md)
 - [workspace-filetree-root-node](./workspace-filetree-root-node/spec.md)
 - [workspace-filetree-special-directory-loading](./workspace-filetree-special-directory-loading/spec.md)
+- [workspace-junk-dir-ignore](./workspace-junk-dir-ignore/spec.md)
 - [workspace-home-opencode-entry](./workspace-home-opencode-entry/spec.md)
 - [workspace-home-shadcn-ux](./workspace-home-shadcn-ux/spec.md)
 - [workspace-note-card-pool](./workspace-note-card-pool/spec.md)

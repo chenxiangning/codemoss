@@ -675,6 +675,7 @@ pub(crate) async fn start_thread_core(
 ) -> Result<Value, String> {
     let session_key = session_key_for_provider(&workspace_id, provider_profile_id.as_deref());
     let session = get_session_clone(sessions, &session_key).await?;
+    crate::shared::workspace_listing::try_upsert_managed_codexignore(&session.entry.path);
     let timeout_duration = session.default_request_timeout();
     let mut params = Map::new();
     params.insert("cwd".to_string(), json!(session.entry.path));

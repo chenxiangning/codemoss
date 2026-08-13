@@ -2,7 +2,7 @@
 
 > OpenSpec change id: `redesign-sidebar-engine-rail`  
 > UI 定案：方案 D（左侧 CLI logo 轨）  
-> 原型：`_temp/sidebar-session-group-variants.html`  
+> 原型：`docs/prototypes/sidebar-session-group-variants.html`  
 > 依赖：`rewrite-sidebar-session-index` 已交付的 Session Index（`~/.ccgui/session-index.sqlite3`）
 
 ---
@@ -92,7 +92,7 @@
 - **不过滤层**：`sharedNativeVisibility.ts`、`isSharedSidebarHiddenPup`、`parentThreadId` 解析、archive overlay **只调用、不改逻辑**。
 - **文档**：`dev-guidelines/guides/workspace-session-catalog-contract.md` 三层数据面补「侧栏 UI = rail，membership = Index」。
 - **ADR**：不改 engine registry / Shared binding schema / canonical fact。无需回写基石表，除非 tombstone 字段进入 Index schema——若进入，在 design 里记一行事实源即可。
-- **原型**：`_temp/` 仅评审，不入库。
+- **原型**：`docs/prototypes/sidebar-session-group-variants.html`。
 
 ---
 

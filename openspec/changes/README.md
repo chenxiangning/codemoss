@@ -2,15 +2,16 @@
 
 本页是 `mossx` OpenSpec proposal 的当前入口。它只维护 active change 的执行状态，并把 archived change 路由到完整历史索引；详细治理快照仍以 [`../project.md`](../project.md) 为准。
 
-- Updated At: `2026-08-13`
+- Updated At: `2026-08-14`
 - Active proposals: `5+`（以磁盘 `openspec/changes/*` 为准）
 - Archived proposals: `848+`
-- Main capability specs: `492`
+- Main capability specs: `494`
 
 ## Active Proposals
 
 | Change | Progress | Current gate | Artifacts |
 | ------ | -------: | ------------ | --------- |
+| [`bound-command-execution-output-memory`](bound-command-execution-output-memory/proposal.md) | implemented / user accepted / committed | commandExecution 256KiB / fileChange 1MiB head+tail；temp/tmp/.tmp 进 junk 名单；Codex thread start upsert `.codexignore` 托管段；delta specs 已 sync 主 specs，未 archive | [proposal](bound-command-execution-output-memory/proposal.md) · [design](bound-command-execution-output-memory/design.md) · [tasks](bound-command-execution-output-memory/tasks.md) · [specs](bound-command-execution-output-memory/specs/) · [verification](bound-command-execution-output-memory/verification.md) |
 | [`fix-deferred-feature-style-surfaces`](fix-deferred-feature-style-surfaces/proposal.md) | implemented / user accepted | 延迟 CSS 按可见宿主接线 + Git Diff 单栏/双栏互斥滚动层；用户 2026-08-13 手测通过 | [proposal](fix-deferred-feature-style-surfaces/proposal.md) · [design](fix-deferred-feature-style-surfaces/design.md) · [tasks](fix-deferred-feature-style-surfaces/tasks.md) · [specs](fix-deferred-feature-style-surfaces/specs/) · [verification](fix-deferred-feature-style-surfaces/verification.md) |
 | [`add-session-index-import-daemon`](add-session-index-import-daemon/proposal.md) | implementing | 外部 CLI → SQLite 间隔导入；不进侧栏加载 | [proposal](add-session-index-import-daemon/proposal.md) |
 | [`redesign-sidebar-engine-rail`](redesign-sidebar-engine-rail/proposal.md) | implemented / committing | 方案 D logo 轨 + 侧栏 SQLite-only first-paint；外部 CLI 导入另开 daemon | [proposal](redesign-sidebar-engine-rail/proposal.md) · [design](redesign-sidebar-engine-rail/design.md) · [tasks](redesign-sidebar-engine-rail/tasks.md) · [verification](redesign-sidebar-engine-rail/verification.md) |

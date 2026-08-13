@@ -330,6 +330,26 @@ describe("threadItems", () => {
     }
   });
 
+  it("bounds oversized commandExecution output on normalize", () => {
+    const output = `head-${"x".repeat(300_000)}-tail`;
+    const item: ConversationItem = {
+      id: "tool-huge",
+      kind: "tool",
+      toolType: "commandExecution",
+      title: "Command",
+      detail: "Get-ChildItem -Recurse",
+      output,
+    };
+    const normalized = normalizeItem(item);
+    expect(normalized.kind).toBe("tool");
+    if (normalized.kind === "tool") {
+      expect(normalized.output?.length ?? 0).toBeLessThanOrEqual(256 * 1024);
+      expect(normalized.output).toContain("omitted");
+      expect(normalized.output?.startsWith("head-")).toBe(true);
+      expect(normalized.output?.endsWith("-tail")).toBe(true);
+    }
+  });
+
   it("preserves long structured edit detail JSON", () => {
     const oldString = Array.from({ length: 180 }, (_, index) => `old-${index}`).join("\n");
     const newString = Array.from({ length: 180 }, (_, index) => `new-${index}`).join("\n");

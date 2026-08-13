@@ -25,6 +25,9 @@ pub(super) fn is_builtin_ignored_path(path: &Path) -> bool {
                 | ".ccgui"
                 | ".mossx"
                 | ".codemoss"
+                | "temp"
+                | "tmp"
+                | ".tmp"
         )
     })
 }

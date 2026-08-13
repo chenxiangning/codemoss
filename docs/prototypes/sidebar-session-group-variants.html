@@ -1,0 +1,662 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>mossx 左侧会话分组 · 10 个可交互方案</title>
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+  <style>
+    :root {
+      --bg: #0f1218;
+      --panel: #161b24;
+      --sidebar: #12171f;
+      --row-hover: color-mix(in oklab, #ffffff 5.5%, transparent);
+      --row-active: color-mix(in oklab, #3b82f6 16%, #161b24);
+      --line: color-mix(in oklab, #ffffff 8%, transparent);
+      --ink: #eceff4;
+      --muted: #8b93a2;
+      --faint: #66707f;
+      --accent: #3b82f6;
+      --shared: #f0c14b;
+      --claude: #d97757;
+    }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font: 13px/1.4 "IBM Plex Sans", "Source Han Sans SC", "Noto Sans SC", sans-serif;
+    }
+    .page { padding: 24px 28px 48px; max-width: 1760px; margin: 0 auto; }
+    h1 { font-size: 22px; font-weight: 560; letter-spacing: -0.03em; margin: 0 0 6px; }
+    .lead { color: var(--muted); max-width: 78ch; margin: 0 0 10px; }
+    .howto { color: var(--faint); font-size: 12px; margin: 0 0 20px; }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(260px, 1fr));
+      gap: 16px;
+    }
+    @media (max-width: 1500px) { .grid { grid-template-columns: repeat(3, minmax(260px, 1fr)); } }
+    @media (max-width: 980px) { .grid { grid-template-columns: repeat(2, minmax(260px, 1fr)); } }
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      overflow: hidden;
+      min-height: 560px;
+      display: flex;
+      flex-direction: column;
+    }
+    .card.pick { outline: 1px solid color-mix(in oklab, var(--accent) 70%, transparent); outline-offset: 2px; }
+    .meta { padding: 11px 12px 9px; border-bottom: 1px solid var(--line); }
+    .meta .id { font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 11px; color: var(--faint); }
+    .meta h2 { margin: 2px 0 3px; font-size: 13.5px; font-weight: 580; }
+    .meta p { margin: 0; color: var(--muted); font-size: 11.5px; }
+    .badge {
+      display: inline-block; margin-top: 7px; font-size: 10px; letter-spacing: 0.06em;
+      text-transform: uppercase; color: #dbeafe;
+      border: 1px solid color-mix(in oklab, var(--accent) 45%, transparent);
+      padding: 2px 6px; border-radius: 999px;
+    }
+    .frame { flex: 1; background: var(--sidebar); display: flex; flex-direction: column; min-height: 0; }
+    .ws {
+      padding: 9px 10px 7px; display: flex; align-items: center; gap: 8px;
+      border-bottom: 1px solid var(--line);
+    }
+    .ws .dot { width: 7px; height: 7px; border-radius: 50%; background: #47d488; }
+    .ws .name { font-weight: 560; font-size: 12.5px; }
+    .ws .sub { margin-left: auto; color: var(--faint); font-size: 11px; font-variant-numeric: tabular-nums; }
+    .list { padding: 4px 0 8px; overflow: auto; flex: 1; }
+    .gh {
+      display: flex; align-items: center; gap: 7px;
+      width: 100%; padding: 5px 10px 4px;
+      color: var(--muted); font-size: 11.5px;
+      background: none; border: 0; color: inherit;
+      cursor: pointer; text-align: left;
+    }
+    .gh:hover { background: var(--row-hover); }
+    .gh .label { color: var(--muted); letter-spacing: 0.02em; }
+    .gh .count { margin-left: auto; color: var(--faint); font-variant-numeric: tabular-nums; font-size: 11px; }
+    .chev { width: 8px; opacity: .5; flex-shrink: 0; font-size: 10px; }
+    .row {
+      display: grid; grid-template-columns: 16px 1fr auto; gap: 7px;
+      align-items: center; width: 100%;
+      padding: 5px 10px 5px 12px; min-height: 28px;
+      background: none; border: 0; color: inherit; cursor: pointer; text-align: left;
+    }
+    .row:hover { background: var(--row-hover); }
+    .row.on { background: var(--row-active); }
+    .title { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 12.5px; color: var(--ink); }
+    .time { color: var(--faint); font-size: 10.5px; font-variant-numeric: tabular-nums; }
+    .child { padding-left: 30px; }
+    .pills { display: flex; flex-wrap: wrap; gap: 4px; padding: 8px 8px 4px; }
+    .pill {
+      border: 1px solid var(--line); color: var(--muted); background: none;
+      border-radius: 999px; padding: 2px 7px; font-size: 11px; cursor: pointer;
+      display: inline-flex; align-items: center; gap: 4px;
+    }
+    .pill.on { color: var(--ink); border-color: color-mix(in oklab, var(--accent) 50%, transparent); background: color-mix(in oklab, var(--accent) 16%, transparent); }
+    .rail { display: grid; grid-template-columns: 34px 1fr; min-height: 0; flex: 1; }
+    .rail-nav {
+      border-right: 1px solid var(--line); padding: 8px 0;
+      display: flex; flex-direction: column; align-items: center; gap: 6px;
+    }
+    .rbtn {
+      width: 24px; height: 24px; border-radius: 6px; border: 1px solid transparent;
+      background: none; color: var(--ink); cursor: pointer;
+      display: grid; place-items: center;
+    }
+    .rbtn.on { border-color: color-mix(in oklab, var(--accent) 55%, transparent); background: color-mix(in oklab, var(--accent) 14%, transparent); }
+    .shared-strip {
+      padding: 4px 6px 6px;
+      border-bottom: 1px solid var(--line);
+      background: color-mix(in oklab, var(--shared) 6%, transparent);
+    }
+    .chip {
+      display: inline-flex; align-items: center; gap: 4px;
+      font-size: 10px; color: var(--muted);
+      border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; height: 16px;
+    }
+    .two-col { display: grid; grid-template-columns: 1fr 1fr; flex: 1; min-height: 0; }
+    .two-col > div { min-width: 0; overflow: auto; }
+    .two-col > div + div { border-left: 1px solid var(--line); }
+    .col-h { padding: 6px 8px; font-size: 10.5px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--faint); border-bottom: 1px solid var(--line); }
+    .engine-card {
+      margin: 6px 8px; border: 1px solid var(--line); border-radius: 7px; overflow: hidden;
+    }
+    .engine-card .gh { padding: 7px 8px; }
+    .note { margin-top: 18px; color: var(--muted); font-size: 12.5px; }
+    .icon { display: inline-flex; flex-shrink: 0; }
+    .icon img, .icon svg { width: 14px; height: 14px; display: block; }
+    .rbtn .icon img, .rbtn .icon svg, .rbtn .icon { width: 14px; height: 14px; }
+    .pin { color: #f59e0b; font-size: 10px; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="text/babel">
+    const { useMemo, useState } = React;
+
+    const CLAUDE_SVG = "../src/assets/model-icons/claude.svg";
+    const GEMINI_SVG = "../src/assets/model-icons/gemini.svg";
+
+    const KIMI_PATHS = [
+      "M21.846 0a1.923 1.923 0 110 3.846H20.15a.226.226 0 01-.227-.226V1.923C19.923.861 20.784 0 21.846 0z",
+      "M11.065 11.199l7.257-7.2c.137-.136.06-.41-.116-.41H14.3a.164.164 0 00-.117.051l-7.82 7.756c-.122.12-.302.013-.302-.179V3.82c0-.127-.083-.23-.185-.23H3.186c-.103 0-.186.103-.186.23V19.77c0 .128.083.23.186.23h2.69c.103 0 .186-.102.186-.23v-3.25c0-.069.025-.135.069-.178l2.424-2.406a.158.158 0 01.205-.023l6.484 4.772a7.677 7.677 0 003.453 1.283c.108.012.2-.095.2-.23v-3.06c0-.117-.07-.212-.164-.227a5.028 5.028 0 01-2.027-.807l-5.613-4.064c-.117-.078-.132-.279-.028-.381z",
+    ];
+    const GROK_PATHS = [
+      "M9.27 15.29l7.978-5.897c.391-.29.95-.177 1.137.272.98 2.369.542 5.215-1.41 7.169-1.951 1.954-4.667 2.382-7.149 1.406l-2.711 1.257c3.889 2.661 8.611 2.003 11.562-.953 2.341-2.344 3.066-5.539 2.388-8.42l.006.007c-.983-4.232.242-5.924 2.75-9.383.06-.082.12-.164.179-.248l-3.301 3.305v-.01L9.267 15.292M7.623 16.723c-2.792-2.67-2.31-6.801.071-9.184 1.761-1.763 4.647-2.483 7.166-1.425l2.705-1.25a7.808 7.808 0 00-1.829-1A8.975 8.975 0 005.984 5.83c-2.533 2.536-3.33 6.436-1.962 9.764 1.022 2.487-.653 4.246-2.34 6.022-.599.63-1.199 1.259-1.682 1.925l7.62-6.815",
+    ];
+    const OPENAI_PATH = "M9.205 8.658v-2.26c0-.19.072-.333.238-.428l4.543-2.616c.619-.357 1.356-.523 2.117-.523 2.854 0 4.662 2.212 4.662 4.566 0 .167 0 .357-.024.547l-4.71-2.759a.797.797 0 0 0-.856 0l-5.97 3.473zm10.609 8.8V12.06c0-.333-.143-.57-.429-.737l-5.97-3.473 1.95-1.118a.433.433 0 0 1 .476 0l4.543 2.617c1.309.76 2.189 2.378 2.189 3.948 0 1.808-1.07 3.473-2.76 4.163zM7.802 12.703l-1.95-1.142c-.167-.095-.239-.238-.239-.428V5.899c0-2.545 1.95-4.472 4.591-4.472 1 0 1.927.333 2.712.928L8.23 5.067c-.285.166-.428.404-.428.737v6.898zM12 15.128l-2.795-1.57v-3.33L12 8.658l2.795 1.57v3.33L12 15.128zm1.796 7.23c-1 0-1.927-.332-2.712-.927l4.686-2.712c.285-.166.428-.404.428-.737v-6.898l1.974 1.142c.167.095.238.238.238.428v5.233c0 2.545-1.974 4.472-4.614 4.472zm-5.637-5.303l-4.544-2.617c-1.308-.761-2.188-2.378-2.188-3.948A4.482 4.482 0 0 1 4.21 6.327v5.423c0 .333.143.571.428.738l5.947 3.449-1.95 1.118a.432.432 0 0 1-.476 0zm-.262 3.9c-2.688 0-4.662-2.021-4.662-4.519 0-.19.024-.38.047-.57l4.686 2.71c.286.167.571.167.856 0l5.97-3.448v2.26c0 .19-.07.333-.237.428l-4.543 2.616c-.619.357-1.356.523-2.117.523zm5.899 2.83a5.947 5.947 0 0 0 5.827-4.756C22.287 18.339 24 15.84 24 13.296c0-1.665-.713-3.282-1.998-4.448.119-.5.19-.999.19-1.498 0-3.401-2.759-5.947-5.946-5.947-.642 0-1.26.095-1.88.31A5.962 5.962 0 0 0 10.205 0a5.947 5.947 0 0 0-5.827 4.757C1.713 5.447 0 7.945 0 10.49c0 1.666.713 3.283 1.998 4.448-.119.5-.19 1-.19 1.499 0 3.401 2.759 5.946 5.946 5.946.642 0 1.26-.095 1.88-.309a5.96 5.96 0 0 0 4.162 1.713z";
+
+    function Glyph({ paths }) {
+      return (
+        <svg viewBox="0 0 24 24" fill="currentColor" fillRule="evenodd" aria-hidden>
+          {paths.map((d) => <path key={d.slice(0, 24)} d={d} />)}
+        </svg>
+      );
+    }
+
+    function SharedIcon() {
+      return (
+        <svg viewBox="0 0 24 24" fill="none" aria-hidden>
+          <circle cx="6.7" cy="8.2" r="2.1" stroke="currentColor" strokeWidth="1.7" />
+          <circle cx="17.3" cy="8.2" r="2.1" stroke="currentColor" strokeWidth="1.7" />
+          <circle cx="12" cy="16.5" r="2.1" stroke="currentColor" strokeWidth="1.7" />
+          <path d="M8.7 9.6 10.8 11m4.5-1.4L13.2 11m-1.2 3v.9" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+          <circle cx="12" cy="11.9" r="1.35" fill="currentColor" />
+        </svg>
+      );
+    }
+
+    function EngineIcon({ engine }) {
+      if (engine === "shared") return <span className="icon" style={{ color: "var(--shared)" }}><SharedIcon /></span>;
+      if (engine === "claude") return <span className="icon"><img src={CLAUDE_SVG} alt="" /></span>;
+      if (engine === "gemini") return <span className="icon"><img src={GEMINI_SVG} alt="" /></span>;
+      if (engine === "codex") return <span className="icon"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden><path d={OPENAI_PATH} fillRule="evenodd" /></svg></span>;
+      if (engine === "grok") return <span className="icon"><Glyph paths={GROK_PATHS} /></span>;
+      if (engine === "kimi") return <span className="icon"><Glyph paths={KIMI_PATHS} /></span>;
+      return null;
+    }
+
+    const ENGINES = [
+      { id: "shared", label: "Shared" },
+      { id: "claude", label: "Claude" },
+      { id: "codex", label: "Codex" },
+      { id: "gemini", label: "Gemini" },
+      { id: "grok", label: "Grok" },
+      { id: "kimi", label: "Kimi" },
+    ];
+
+    const SESSIONS = [
+      { id: "s1", engine: "shared", title: "多 CLI 重做会话列表", time: "2m", pinned: true },
+      { id: "s2", engine: "shared", title: "Review 登录流", time: "1h" },
+      { id: "c1", engine: "claude", title: "修 Sidebar 白屏", time: "12m" },
+      { id: "c1a", engine: "claude", title: "Explore 子代理", time: "11m", parentId: "c1" },
+      { id: "c2", engine: "claude", title: "写 OpenSpec 变更", time: "昨天" },
+      { id: "c3", engine: "claude", title: "核对 Index 契约", time: "周一" },
+      { id: "x1", engine: "codex", title: "补 session-index 测试", time: "3h" },
+      { id: "x1a", engine: "codex", title: "agent: rust-scan", time: "3h", parentId: "x1" },
+      { id: "x2", engine: "codex", title: "Rust 扫描预算", time: "周二" },
+      { id: "g1", engine: "gemini", title: "对照 Gemini 输出", time: "昨天" },
+      { id: "g2", engine: "gemini", title: "整理模型目录", time: "3天前" },
+      { id: "k1", engine: "grok", title: "Grok 标题污染排查", time: "4h" },
+      { id: "k2", engine: "grok", title: "续写发布说明", time: "周日" },
+      { id: "m1", engine: "kimi", title: "Kimi 长上下文试跑", time: "5h" },
+      { id: "m2", engine: "kimi", title: "中文文档校对", time: "上周" },
+    ];
+
+    function rootsOf(engine, list) {
+      return list.filter((row) => row.engine === engine && !row.parentId);
+    }
+    function childrenOf(id, list) {
+      return list.filter((row) => row.parentId === id);
+    }
+
+    function SessionRow({ row, selectedId, onSelect, child }) {
+      return (
+        <button
+          type="button"
+          className={"row" + (child ? " child" : "") + (selectedId === row.id ? " on" : "")}
+          onClick={() => onSelect(row.id)}
+        >
+          <EngineIcon engine={row.engine} />
+          <span className="title">
+            {row.pinned ? <span className="pin">● </span> : null}
+            {row.title}
+          </span>
+          <span className="time">{row.time}</span>
+        </button>
+      );
+    }
+
+    function GroupBlock({ engine, label, sessions, open, onToggle, selectedId, onSelect, hideEmpty = true }) {
+      const roots = rootsOf(engine, sessions);
+      if (hideEmpty && roots.length === 0) return null;
+      const count = sessions.filter((row) => row.engine === engine).length;
+      return (
+        <div className="group">
+          <button type="button" className="gh" onClick={() => onToggle(engine)}>
+            <span className="chev">{open ? "▾" : "▸"}</span>
+            <EngineIcon engine={engine} />
+            <span className="label">{label}</span>
+            <span className="count">{count}</span>
+          </button>
+          {open ? roots.map((row) => (
+            <React.Fragment key={row.id}>
+              <SessionRow row={row} selectedId={selectedId} onSelect={onSelect} />
+              {childrenOf(row.id, sessions).map((child) => (
+                <SessionRow key={child.id} row={child} selectedId={selectedId} onSelect={onSelect} child />
+              ))}
+            </React.Fragment>
+          )) : null}
+        </div>
+      );
+    }
+
+    function useBoard(initialCollapsed = ["gemini", "grok", "kimi"]) {
+      const [selectedId, setSelectedId] = useState("s1");
+      const [collapsed, setCollapsed] = useState(() => new Set(initialCollapsed));
+      const toggle = (engine) => {
+        setCollapsed((prev) => {
+          const next = new Set(prev);
+          if (next.has(engine)) next.delete(engine);
+          else next.add(engine);
+          return next;
+        });
+      };
+      return { selectedId, setSelectedId, collapsed, toggle, isOpen: (id) => !collapsed.has(id) };
+    }
+
+    function WorkspaceHead() {
+      return (
+        <div className="ws">
+          <span className="dot" />
+          <span className="name">mossx</span>
+          <span className="sub">{SESSIONS.length}</span>
+        </div>
+      );
+    }
+
+    function VariantA() {
+      const board = useBoard();
+      return (
+        <div className="frame">
+          <WorkspaceHead />
+          <div className="list">
+            {ENGINES.map((engine) => (
+              <GroupBlock
+                key={engine.id}
+                engine={engine.id}
+                label={engine.label}
+                sessions={SESSIONS}
+                open={board.isOpen(engine.id)}
+                onToggle={board.toggle}
+                selectedId={board.selectedId}
+                onSelect={board.setSelectedId}
+              />
+            ))}
+          </div>
+        </div>
+      );
+    }
+
+    function VariantB() {
+      const board = useBoard(["gemini", "grok"]);
+      const native = ENGINES.filter((engine) => engine.id !== "shared");
+      return (
+        <div className="frame">
+          <WorkspaceHead />
+          <div className="shared-strip">
+            <GroupBlock
+              engine="shared"
+              label="Shared"
+              sessions={SESSIONS}
+              open={board.isOpen("shared")}
+              onToggle={board.toggle}
+              selectedId={board.selectedId}
+              onSelect={board.setSelectedId}
+            />
+          </div>
+          <div className="list">
+            {native.map((engine) => (
+              <GroupBlock
+                key={engine.id}
+                engine={engine.id}
+                label={engine.label}
+                sessions={SESSIONS}
+                open={board.isOpen(engine.id)}
+                onToggle={board.toggle}
+                selectedId={board.selectedId}
+                onSelect={board.setSelectedId}
+              />
+            ))}
+          </div>
+        </div>
+      );
+    }
+
+    function VariantC() {
+      const [filter, setFilter] = useState("all");
+      const [selectedId, setSelectedId] = useState("s1");
+      const rows = SESSIONS.filter((row) => !row.parentId && (filter === "all" || row.engine === filter));
+      return (
+        <div className="frame">
+          <WorkspaceHead />
+          <div className="pills">
+            <button type="button" className={"pill" + (filter === "all" ? " on" : "")} onClick={() => setFilter("all")}>全部</button>
+            {ENGINES.map((engine) => (
+              <button
+                key={engine.id}
+                type="button"
+                className={"pill" + (filter === engine.id ? " on" : "")}
+                onClick={() => setFilter(engine.id)}
+              >
+                <EngineIcon engine={engine.id} />
+                {engine.label}
+              </button>
+            ))}
+          </div>
+          <div className="list">
+            {rows.map((row) => (
+              <button
+                key={row.id}
+                type="button"
+                className={"row" + (selectedId === row.id ? " on" : "")}
+                onClick={() => setSelectedId(row.id)}
+              >
+                <EngineIcon engine={row.engine} />
+                <span className="title">{row.title} <span className="chip"><EngineIcon engine={row.engine} />{row.engine}</span></span>
+                <span className="time">{row.time}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      );
+    }
+
+    function VariantD() {
+      const [engine, setEngine] = useState("shared");
+      const [selectedId, setSelectedId] = useState("s1");
+      const current = ENGINES.find((item) => item.id === engine);
+      const roots = rootsOf(engine, SESSIONS);
+      return (
+        <div className="frame">
+          <WorkspaceHead />
+          <div className="rail">
+            <div className="rail-nav">
+              {ENGINES.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  className={"rbtn" + (engine === item.id ? " on" : "")}
+                  title={item.label}
+                  onClick={() => setEngine(item.id)}
+                >
+                  <EngineIcon engine={item.id} />
+                </button>
+              ))}
+            </div>
+            <div className="list">
+              <div className="gh" style={{ cursor: "default" }}>
+                <EngineIcon engine={engine} />
+                <span className="label">{current.label}</span>
+                <span className="count">{SESSIONS.filter((row) => row.engine === engine).length}</span>
+              </div>
+              {roots.map((row) => (
+                <React.Fragment key={row.id}>
+                  <SessionRow row={row} selectedId={selectedId} onSelect={setSelectedId} />
+                  {childrenOf(row.id, SESSIONS).map((child) => (
+                    <SessionRow key={child.id} row={child} selectedId={selectedId} onSelect={setSelectedId} child />
+                  ))}
+                </React.Fragment>
+              ))}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    function VariantE() {
+      const board = useBoard(["gemini", "grok", "kimi"]);
+      const [pinned, setPinned] = useState(() => new Set(["s1"]));
+      const recent = SESSIONS.filter((row) => !row.parentId && !pinned.has(row.id)).slice(0, 3);
+      const togglePin = (id) => {
+        setPinned((prev) => {
+          const next = new Set(prev);
+          if (next.has(id)) next.delete(id);
+          else next.add(id);
+          return next;
+        });
+      };
+      return (
+        <div className="frame">
+          <WorkspaceHead />
+          <div className="list">
+            <div className="gh" style={{ cursor: "default" }}><span className="label">Pinned</span></div>
+            {SESSIONS.filter((row) => pinned.has(row.id)).map((row) => (
+              <button
+                key={row.id}
+                type="button"
+                className={"row" + (board.selectedId === row.id ? " on" : "")}
+                onClick={() => board.setSelectedId(row.id)}
+                onDoubleClick={() => togglePin(row.id)}
+              >
+                <EngineIcon engine={row.engine} />
+                <span className="title"><span className="pin">● </span>{row.title}</span>
+                <span className="time">{row.time}</span>
+              </button>
+            ))}
+            <div className="gh" style={{ cursor: "default" }}><span className="label">Recent</span></div>
+            {recent.map((row) => (
+              <button
+                key={row.id}
+                type="button"
+                className={"row" + (board.selectedId === row.id ? " on" : "")}
+                onClick={() => board.setSelectedId(row.id)}
+                onDoubleClick={() => togglePin(row.id)}
+              >
+                <EngineIcon engine={row.engine} />
+                <span className="title">{row.title}</span>
+                <span className="time">{row.time}</span>
+              </button>
+            ))}
+            {ENGINES.map((engine) => (
+              <GroupBlock
+                key={engine.id}
+                engine={engine.id}
+                label={engine.label}
+                sessions={SESSIONS.filter((row) => !pinned.has(row.id))}
+                open={board.isOpen(engine.id)}
+                onToggle={board.toggle}
+                selectedId={board.selectedId}
+                onSelect={board.setSelectedId}
+              />
+            ))}
+          </div>
+        </div>
+      );
+    }
+
+    function VariantF() {
+      const board = useBoard([]);
+      return (
+        <div className="frame">
+          <WorkspaceHead />
+          <div className="list">
+            {ENGINES.map((engine) => (
+              <div key={engine.id}>
+                <button type="button" className="gh" style={{ position: "sticky", top: 0, background: "var(--sidebar)" }} onClick={() => board.toggle(engine.id)}>
+                  <span className="chev">{board.isOpen(engine.id) ? "▾" : "▸"}</span>
+                  <EngineIcon engine={engine.id} />
+                  <span className="label">{engine.label}</span>
+                  <span className="count">{SESSIONS.filter((row) => row.engine === engine.id).length}</span>
+                </button>
+                {board.isOpen(engine.id) ? rootsOf(engine.id, SESSIONS).map((row) => (
+                  <React.Fragment key={row.id}>
+                    <SessionRow row={row} selectedId={board.selectedId} onSelect={board.setSelectedId} />
+                    {childrenOf(row.id, SESSIONS).map((child) => (
+                      <SessionRow key={child.id} row={child} selectedId={board.selectedId} onSelect={board.setSelectedId} child />
+                    ))}
+                  </React.Fragment>
+                )) : null}
+              </div>
+            ))}
+          </div>
+        </div>
+      );
+    }
+
+    function VariantG() {
+      const [selectedId, setSelectedId] = useState("s1");
+      return (
+        <div className="frame">
+          <WorkspaceHead />
+          <div className="two-col">
+            <div>
+              <div className="col-h">Shared</div>
+              {rootsOf("shared", SESSIONS).map((row) => (
+                <SessionRow key={row.id} row={row} selectedId={selectedId} onSelect={setSelectedId} />
+              ))}
+            </div>
+            <div>
+              <div className="col-h">Native · 5 CLI</div>
+              {SESSIONS.filter((row) => row.engine !== "shared" && !row.parentId).map((row) => (
+                <SessionRow key={row.id} row={row} selectedId={selectedId} onSelect={setSelectedId} />
+              ))}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    function VariantH() {
+      const board = useBoard(["codex", "gemini", "grok", "kimi"]);
+      return (
+        <div className="frame">
+          <WorkspaceHead />
+          <div className="list">
+            {ENGINES.map((engine) => (
+              <GroupBlock
+                key={engine.id}
+                engine={engine.id}
+                label={engine.label}
+                sessions={SESSIONS}
+                open={board.isOpen(engine.id)}
+                onToggle={board.toggle}
+                selectedId={board.selectedId}
+                onSelect={board.setSelectedId}
+              />
+            ))}
+          </div>
+        </div>
+      );
+    }
+
+    function VariantI() {
+      const board = useBoard(["gemini", "grok", "kimi"]);
+      return (
+        <div className="frame">
+          <WorkspaceHead />
+          <div className="list">
+            {ENGINES.map((engine) => {
+              const count = SESSIONS.filter((row) => row.engine === engine.id).length;
+              return (
+                <div key={engine.id}>
+                  <button type="button" className="gh" onClick={() => board.toggle(engine.id)} title={engine.label}>
+                    <span className="chev">{board.isOpen(engine.id) ? "▾" : "▸"}</span>
+                    <EngineIcon engine={engine.id} />
+                    <span className="count">{count}</span>
+                  </button>
+                  {board.isOpen(engine.id) ? rootsOf(engine.id, SESSIONS).map((row) => (
+                    <SessionRow key={row.id} row={row} selectedId={board.selectedId} onSelect={board.setSelectedId} />
+                  )) : null}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      );
+    }
+
+    function VariantJ() {
+      const board = useBoard(["claude", "codex", "gemini", "grok", "kimi"]);
+      return (
+        <div className="frame">
+          <WorkspaceHead />
+          <div className="list">
+            {ENGINES.map((engine) => {
+              const roots = rootsOf(engine.id, SESSIONS);
+              const latest = roots[0];
+              const count = SESSIONS.filter((row) => row.engine === engine.id).length;
+              return (
+                <div key={engine.id} className="engine-card">
+                  <button type="button" className="gh" onClick={() => board.toggle(engine.id)}>
+                    <EngineIcon engine={engine.id} />
+                    <span className="label">{engine.label}</span>
+                    <span className="count">{count}</span>
+                  </button>
+                  {latest && !board.isOpen(engine.id) ? (
+                    <SessionRow row={latest} selectedId={board.selectedId} onSelect={board.setSelectedId} />
+                  ) : null}
+                  {board.isOpen(engine.id) ? roots.map((row) => (
+                    <SessionRow key={row.id} row={row} selectedId={board.selectedId} onSelect={board.setSelectedId} />
+                  )) : null}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      );
+    }
+
+    const VARIANTS = [
+      { id: "A", title: "引擎手风琴", desc: "点组头折叠。组内按时间，子会话缩进。", rec: true, View: VariantA },
+      { id: "B", title: "Shared 置顶条", desc: "协作先看见，下面才是 5 个 CLI。", View: VariantB },
+      { id: "C", title: "顶部筛选胶囊", desc: "点 logo 胶囊过滤，列表仍按时间。", View: VariantC },
+      { id: "D", title: "左侧 logo 轨", desc: "点左侧 icon 只看一个 CLI。", View: VariantD },
+      { id: "E", title: "钉住 / 最近 / 引擎", desc: "双击行钉住或取消。其余按 CLI 分组。", View: VariantE },
+      { id: "F", title: "粘滞组头", desc: "滚动时组头吸顶，组头可折叠。", View: VariantF },
+      { id: "G", title: "左右分栏", desc: "左 Shared，右 5 个 Native 平铺。", View: VariantG },
+      { id: "H", title: "文件树文件夹", desc: "CLI 当文件夹，默认只展开 Shared / Claude。", View: VariantH },
+      { id: "I", title: "纯 logo 组头", desc: "组头不写字，只留官方 icon + 数量。", View: VariantI },
+      { id: "J", title: "引擎卡片", desc: "收起只露最近一条，点卡片展开该 CLI。", View: VariantJ },
+    ];
+
+    function App() {
+      const [pick, setPick] = useState("A");
+      return (
+        <div className="page">
+          <h1>左侧会话分组 · 10 个可交互方案</h1>
+          <p className="lead">
+            同一份 5 CLI 数据：Claude / Codex / Gemini / Grok / Kimi，外加 Shared。
+            组头用仓库同款 logo（Claude / Gemini 官方图，Codex OpenAI glyph，Grok / Kimi / Shared 现用 glyph）。
+          </p>
+          <p className="howto">点组头折叠 · 点会话选中 · C 点胶囊过滤 · D 点左侧 logo 切换 · E 双击钉住 · 点卡片外框标记你选的方案</p>
+          <div className="grid">
+            {VARIANTS.map((item) => (
+              <article key={item.id} className={"card" + (pick === item.id ? " pick" : "")} onClick={(event) => {
+                if (event.target.closest(".frame")) return;
+                setPick(item.id);
+              }}>
+                <div className="meta">
+                  <div className="id">{item.id}</div>
+                  <h2>{item.title}</h2>
+                  <p>{item.desc}</p>
+                  {item.rec ? <span className="badge">推荐默认</span> : null}
+                </div>
+                <item.View />
+              </article>
+            ))}
+          </div>
+          <p className="note">当前标记：方案 {pick}。回我字母即可。文件：docs/prototypes/sidebar-session-group-variants.html</p>
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+  </script>
+</body>
+</html>

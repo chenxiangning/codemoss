@@ -5,6 +5,7 @@ import type {
 } from "../contracts/conversationCurtainContracts";
 import type { ConversationItem } from "../../../types";
 import { normalizeItem } from "../../../utils/threadItems";
+import { boundToolOutput } from "../utils/boundToolOutput";
 import {
   areEquivalentAssistantMessageTexts,
   compactComparableConversationText,
@@ -741,13 +742,13 @@ function appendToolOutputDelta(
   if (!isToolItem(existing)) {
     return replaceItemAtIndex(items, -1, {
       ...event.item,
-      output: delta,
+      output: boundToolOutput(delta, event.item.toolType),
       status: event.item.status ?? "started",
     });
   }
   return replaceItemAtIndex(items, existingIndex, {
     ...existing,
-    output: `${existing.output ?? ""}${delta}`,
+    output: boundToolOutput(`${existing.output ?? ""}${delta}`, existing.toolType),
   });
 }
 

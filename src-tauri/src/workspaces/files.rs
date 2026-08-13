@@ -1415,6 +1415,9 @@ mod tests {
         assert!(is_special_directory_path("service/build"));
         assert!(is_special_directory_path("native/cmake-build-debug"));
         assert!(is_special_directory_path("cache/.turbo"));
+        assert!(is_special_directory_path("service/temp"));
+        assert!(is_special_directory_path("apps/web/tmp"));
+        assert!(is_special_directory_path("pkg/.tmp"));
     }
 
     #[test]
