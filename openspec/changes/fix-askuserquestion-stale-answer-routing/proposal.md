@@ -6,7 +6,7 @@ reached the agent. Root cause investigation found two compounding bugs:
 1. The frontend countdown (`RequestUserInputMessage.tsx`) was a naive per-`setInterval`-tick
    decrement, not anchored to a wall-clock deadline. Any delay in `setInterval` scheduling
    (backgrounded/minimized window, main-thread jank) makes the displayed remaining time lag real
-   elapsed time, so a submit can reach the backend after its real 300s deadline while the UI still
+   elapsed time, so a submit can reach the backend after its real deadline while the UI still
    showed time remaining.
 2. When a submit genuinely arrives late, `respond_to_server_request` (`codex/mod.rs`) finds no
    Claude session with the request still pending (already removed by the backend timeout) and

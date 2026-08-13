@@ -47,11 +47,12 @@ countdown's own state update), it's classified correctly regardless.
 - `useThreadUserInput.test.tsx`: new test mocks the backend's new expired-answer error message on
   a submit with no `staleSettlementHint`, asserts it settles as stale. Verified it fails on the
   pre-fix classifier (uncaught rejection).
-  Rebased onto `fix-askuserquestion-settlement-tombstone`: that change made the stale branch write
+  Merged with `fix-askuserquestion-settlement-tombstone`: that change made the stale branch write
   a durable terminal marker before removing the request, so this test now asserts the marker is
   present rather than absent. The marker is settlement behaviour shared with every stale path; what
   this test pins is unchanged - that the expired-answer error reaches the stale branch on its own,
   with no local timing hint to corroborate it. Re-verified load-bearing by removing the classifier
   clause and observing the test fail.
 - `npx tsc --noEmit` clean on all touched frontend files.
-- `cargo check`/`cargo test` deferred (see Scope).
+- `cargo test --lib`: run on this branch against a clean-`upstream/main` control at the same base;
+  counts in `verification.md`.

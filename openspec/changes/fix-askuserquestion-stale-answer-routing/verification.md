@@ -18,7 +18,7 @@
   timeout hint` fails; restored, it passes. The fix is doing work at this base, not riding on
   upstream behaviour.
 
-## Rebase onto v0.8.9
+## Merge with v0.8.9
 
 This change merged onto v0.8.9 without a textual conflict, but upstream's
 `fix-askuserquestion-settlement-tombstone` changed behaviour in a path this change's tests cover,
@@ -37,7 +37,7 @@ hint to corroborate it.
 ## Manual
 
 - [x] Exercised in daily use over roughly a week, on the pre-rebase branch.
-- [ ] Not re-exercised by hand since rebasing onto v0.8.9.
+- Not re-exercised by hand since merging v0.8.9 in.
 
 ## Known limits
 
