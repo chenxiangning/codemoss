@@ -12,6 +12,8 @@
 
 ### 2026-08-13
 
+- [`2026-08-13-upgrade-pi-image-input-transport`](2026-08-13-upgrade-pi-image-input-transport/proposal.md) — user accepted，已同步 `engine-image-input-boundary`；pi 图片输入 transport 换 `@file` argv 原生附件，`image.input` 升 supported，history `<file name>` 双格式解析
+
 - [`2026-08-13-fix-pi-session-index-cold-start`](2026-08-13-fix-pi-session-index-cold-start/proposal.md) — user accepted，已同步 `pi-session-history`、`session-index-engine-stale-sync`；重启后左侧 Native PI 从 Session Index 投影
 - [`2026-08-13-fix-pi-session-continuity-and-sidebar`](2026-08-13-fix-pi-session-continuity-and-sidebar/proposal.md) — user accepted，已同步 `pi-thread-session-continuity`、`pi-session-history`；Native Pi 续聊同一 jsonl + Session Index 侧栏历史
 - [`2026-08-13-harden-shared-cli-session-index-visibility`](2026-08-13-harden-shared-cli-session-index-visibility/proposal.md) — verified implementation，已同步 `shared-session-thread`、`workspace-sidebar-session-loading`；Session Index 首屏同 IPC durable Shared hide，V2 失败 fail-closed，early-paint 保留 `shared:*`
