@@ -1,0 +1,96 @@
+/* 共享壳层：顶栏、按钮三形态、mode 徽标、统计、工具条。页面特有样式写在各自 HTML。 */
+
+.page { max-width: 1200px; margin: 0 auto; padding: 24px; }
+
+/* ---------- 顶栏（对齐现网 manager hero，44px 高度感） ---------- */
+.topbar {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+.topbar .title { font-size: 15px; font-weight: 700; letter-spacing: -0.01em; margin: 0; color: var(--text-strong); }
+.topbar .subtitle { font-size: 12px; color: var(--text-faint); margin: 0; }
+.topbar .spacer { flex: 1; }
+
+.search {
+  display: flex; align-items: center; gap: 6px;
+  height: 30px; padding: 0 10px; min-width: 220px;
+  background: var(--surface-control); border: 1px solid transparent; border-radius: var(--radius);
+  color: var(--text-faint); font-size: 12px;
+}
+.search:focus-within { border-color: var(--border-strong); background: var(--surface-card); }
+.search input {
+  border: none; outline: none; background: transparent; flex: 1;
+  font: inherit; color: var(--text-primary); font-size: 12px;
+}
+.search svg { flex: none; }
+
+/* ---------- 按钮三形态（design-tokens 第 6 节） ---------- */
+button {
+  border: none; border-radius: var(--radius); padding: 6px 12px;
+  font-size: 13px; font-weight: 600; cursor: pointer;
+  background: transparent; color: var(--text-primary);
+  display: inline-flex; align-items: center; gap: 6px;
+  font-family: var(--ui-font-family);
+}
+button.primary { background: var(--text-primary); color: var(--surface-messages); }
+button.secondary { background: var(--surface-control); border: 1px solid var(--border-strong); }
+button.ghost { border: 1px solid var(--border-strong); color: var(--text-muted); background: transparent; }
+button.icon-button { padding: 6px; border-radius: var(--radius-md); color: var(--text-muted); }
+button.icon-button:hover { background: var(--surface-control-hover); color: var(--text-primary); }
+button.danger { color: var(--status-error); }
+button:disabled { opacity: 0.5; cursor: default; }
+button.sm { padding: 4px 8px; font-size: 12px; border-radius: var(--radius-md); }
+
+/* ---------- mode 徽标 ---------- */
+.badge {
+  display: inline-flex; align-items: center; height: 18px; padding: 0 6px;
+  border-radius: var(--radius-sm); font-size: 10px; font-weight: 700; letter-spacing: 0.04em;
+  background: var(--surface-control); color: var(--text-muted);
+  text-transform: uppercase; flex: none;
+}
+.badge.architect { color: var(--text-accent); background: var(--surface-control); }
+.badge.spotlight { color: var(--status-warning); }
+.badge.file { color: var(--text-subtle); }
+
+/* ---------- 健康度徽标 ---------- */
+.health { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 600; }
+.health::before { content: ""; width: 6px; height: 6px; border-radius: 999px; background: currentColor; }
+.health.ok { color: var(--status-success); }
+.health.stale { color: var(--status-warning); }
+.health.broken { color: var(--status-error); }
+
+/* ---------- 复选框 ---------- */
+input[type="checkbox"] {
+  appearance: none; width: 14px; height: 14px; margin: 0; flex: none;
+  border: 1px solid var(--border-strong); border-radius: 4px;
+  background: var(--surface-card); cursor: pointer; position: relative;
+}
+input[type="checkbox"]:checked { background: var(--text-primary); border-color: var(--text-primary); }
+input[type="checkbox"]:checked::after {
+  content: ""; position: absolute; left: 3.5px; top: 1px;
+  width: 4px; height: 8px; border: solid var(--surface-messages);
+  border-width: 0 1.5px 1.5px 0; transform: rotate(45deg);
+}
+
+/* ---------- 批量工具条 ---------- */
+.bulkbar {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 12px; margin-bottom: 12px;
+  background: var(--surface-card); border: 1px solid var(--border-subtle); border-radius: var(--radius);
+  font-size: 12px; color: var(--text-muted);
+}
+
+/* ---------- 通用 ---------- */
+.mono { font-family: var(--code-font-family); font-size: 11px; }
+.time { color: var(--text-faint); font-size: 11px; white-space: nowrap; }
+.stat-inline { color: var(--text-faint); font-size: 11px; white-space: nowrap; }
+.stat-inline b { color: var(--text-muted); font-weight: 600; }
+.note {
+  padding: 10px 12px; margin: 0 0 16px;
+  border: 1px dashed var(--border-strong); border-radius: var(--radius);
+  color: var(--text-subtle); font-size: 12px;
+}
+.kicker { color: var(--text-accent); font-size: 11px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; }
+h1.page-title { margin: 6px 0 4px; font-size: 22px; letter-spacing: -0.04em; color: var(--text-strong); }
+.lede { max-width: 70ch; color: var(--text-muted); margin: 0 0 20px; font-size: 13px; }
+svg { display: block; }
