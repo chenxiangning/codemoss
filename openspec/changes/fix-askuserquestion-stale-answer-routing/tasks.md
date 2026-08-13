@@ -21,9 +21,13 @@
       (`RequestUserInputMessage.test.tsx`), confirmed failing pre-fix
 - [x] New test: late submit recognized as expired without a local timeout hint
       (`useThreadUserInput.test.tsx`), confirmed failing pre-fix
-- [x] Full `RequestUserInputMessage.test.tsx` (28/28) and `useThreadUserInput.test.tsx` (12/12)
+- [x] Full `RequestUserInputMessage.test.tsx` (28/28) and `useThreadUserInput.test.tsx` (13/13)
       green
 - [x] `npx tsc --noEmit` clean
-- [x] `cargo test` (2026-08-13, `/tmp` worktree on v0.8.9): full `--lib` run compared against a
-      clean-`upstream/main` control under identical conditions. 2026 passed / 6 failed here vs
-      2022 passed / 6 failed on the control, the same six failures both sides. No new failures.
+- [x] `cargo test --lib` (2026-08-13, on v0.8.9): 2025 passed / 6 failed on this branch vs
+      2022 passed / 6 failed on a clean-`upstream/main` control at the same base. The +3 is the
+      three new `expired_claude_ask_*` tests; same six pre-existing failures both sides.
+- [x] Unit tests for the `codex/mod.rs` gate via the extracted `expired_claude_ask_request_id`
+      predicate: recognized for a Claude-origin user-input response, ignored for a
+      `ccgui-plan-blocker:` id and for approval responses, and not fired when the workspace has
+      no Claude session.

@@ -9,6 +9,10 @@
 - Vitest: `useThreadUserInput.test.tsx` 13/13 green, `RequestUserInputMessage.test.tsx` 28/28 green.
 - Vitest: `userInputSettlementTombstone.test.ts` 3/3 green (upstream's, unaffected).
 - `npx tsc --noEmit`: clean.
+- Cargo: `cargo test --lib` on this branch, 2025 passed / 6 failed. Clean-`upstream/main` control
+  at the same base, 2022 passed / 6 failed. The +3 is exactly the three new
+  `expired_claude_ask_*` tests added here; the same six pre-existing failures appear on both
+  sides, so this branch introduces none.
 - Load-bearing check: with the `"already expired or was answered"` clause removed from
   `isStaleSettledRequestError`, `settles a late submit recognized as expired even without a local
   timeout hint` fails; restored, it passes. The fix is doing work at this base, not riding on
@@ -43,3 +47,8 @@ hint to corroborate it.
 - The backend classifier keys off a `request_id` shaped like an AskUserQuestion id (`ask-*`) with no
   pending Claude session in a workspace that has one. That is a heuristic about id shape, not a
   typed signal.
+- Since `fix-askuserquestion-settlement-tombstone`, a stale classification is durable: it writes a
+  terminal history item and a tombstone that blocks re-queue of that identity. So a wrong "expired"
+  verdict is now permanent rather than a dismissible banner. The one non-hypothetical route to a
+  wrong verdict is `has_pending_user_input` swallowing a poisoned-lock error and returning false
+  for a genuinely live request. Low probability, but it is the honest bound.

@@ -1,8 +1,7 @@
 ## Why
 
-Transcript evidence (2026-07-12, session bcd0c219): George answered an AskUserQuestion gate and
-the reply never reached the agent ("I guess the askuserquestion reply never got through"). Root
-cause investigation found two compounding bugs:
+Observed 2026-07-12 in local usage: a user answered an AskUserQuestion gate and the reply never
+reached the agent. Root cause investigation found two compounding bugs:
 
 1. The frontend countdown (`RequestUserInputMessage.tsx`) was a naive per-`setInterval`-tick
    decrement, not anchored to a wall-clock deadline. Any delay in `setInterval` scheduling
@@ -38,8 +37,8 @@ cause investigation found two compounding bugs:
   `src/features/threads/hooks/useThreadUserInput.ts`.
 - Backend: `src-tauri/src/codex/mod.rs`.
 - Tests: `RequestUserInputMessage.test.tsx`, `useThreadUserInput.test.tsx` (new regression tests).
-  `cargo check`/`cargo test` deferred for the same reason as the sibling change (live desktop app
-  is this session's host).
+  `cargo test --lib` was run on this branch against a clean-`upstream/main` control at the same
+  base; results in `verification.md`.
 - No change to the question card layout, MCP bridge protocol, or non-AskUserQuestion routing
   (approval requests, Codex's own user-input requests are untouched).
 

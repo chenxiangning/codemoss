@@ -30,10 +30,15 @@ The system MUST treat a user action against a locally timed-out `AskUserQuestion
 - **WHEN** a user submits or skips a Claude-origin `AskUserQuestion` card
 - **AND** the backend has already resolved that request (timeout, prior answer, or turn teardown)
   so no Claude session has it pending anymore
+- **AND** the workspace still has at least one live Claude session
 - **THEN** the backend response MUST be distinguishable from a generic workspace-connectivity
   failure
 - **AND** the backend MUST NOT route the lookup through Codex-session resolution for a
   Claude-origin request id
+
+  Note: the precondition is deliberate. When a workspace has no live Claude session at all, a
+  generic connectivity failure is the honest answer, and Codex-only workspaces MUST keep their
+  existing routing untouched.
 - **AND** the client MUST classify the response as stale settlement regardless of whether a local
   timeout hint was attached to the request
 
