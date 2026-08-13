@@ -101,17 +101,26 @@ export function filterThreadsForEngineRail(
   if (!railId) {
     return [...threads];
   }
-  const byId = new Map(threads.map((thread) => [thread.id, thread]));
+  const byId = new Map<string, ThreadSummary>(
+    threads.map((thread) => [thread.id, thread]),
+  );
   const keep = new Set<string>();
   threads.forEach((thread) => {
     if (resolveSidebarRailId(thread) !== railId) {
       return;
     }
     let cursor: ThreadSummary | undefined = thread;
-    while (cursor && !keep.has(cursor.id)) {
+    while (cursor !== undefined && !keep.has(cursor.id)) {
       keep.add(cursor.id);
-      const parentId: string | undefined = cursor.parentThreadId?.trim();
-      cursor = parentId ? byId.get(parentId) : undefined;
+      const parentRaw: string | null | undefined = cursor.parentThreadId;
+      if (typeof parentRaw !== "string") {
+        break;
+      }
+      const parentId = parentRaw.trim();
+      if (!parentId) {
+        break;
+      }
+      cursor = byId.get(parentId);
     }
   });
   return threads.filter((thread) => keep.has(thread.id));
