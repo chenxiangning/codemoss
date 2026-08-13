@@ -1,5 +1,12 @@
 import { listen } from "@tauri-apps/api/event";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type MouseEvent as ReactMouseEvent,
+} from "react";
 import { useTranslation } from "react-i18next";
 import ArrowRight from "lucide-react/dist/esm/icons/arrow-right";
 import Crosshair from "lucide-react/dist/esm/icons/crosshair";
@@ -22,6 +29,7 @@ import {
   type BrowserTabCloseSessionsHandler,
 } from "../hooks/useBrowserTabContextMenu";
 import { requestBrowserContextAttachment } from "../state/browserContextAttachmentCommands";
+import { resolveBrowserTabLabel } from "../utils/browserTabLabel";
 
 const BROWSER_ELEMENT_SELECT_ENDED_EVENT = "browser-agent://element-select-ended";
 
@@ -42,16 +50,6 @@ export type BrowserDockNotice = {
   kind: "info" | "warning" | "error";
   message: string;
 };
-
-/** 编辑器标签模式的 tab 文案：取 hostname（file:// 等无 host 时回退完整 URL，由 CSS 截断）。 */
-function sessionHostLabel(session: BrowserSession): string {
-  try {
-    const hostname = new URL(session.normalizedUrl).hostname;
-    return hostname || session.normalizedUrl;
-  } catch {
-    return session.normalizedUrl;
-  }
-}
 
 /** tab 状态点：ready 绿 / loading 黄 / 异常红 / 其余灰。 */
 function sessionStatusDotClass(session: BrowserSession): string {
@@ -81,6 +79,11 @@ type BrowserDockEditorChromeProps = {
   onActivateSession: (session: BrowserSession) => void;
   onCloseSession: (sessionId: string) => void;
   onCloseSessions: BrowserTabCloseSessionsHandler;
+  /** 内嵌模式在 child WebView 内注入菜单；未传入时保留 HTML fallback。 */
+  onEmbeddedTabContextMenu?: (
+    event: ReactMouseEvent<HTMLDivElement>,
+    sessionId: string,
+  ) => void;
   onTabMenuOpenChange?: (open: boolean) => void;
   onNewTab: () => void;
   onPopOut: () => void;
@@ -108,6 +111,7 @@ export function BrowserDockEditorChrome({
   onActivateSession,
   onCloseSession,
   onCloseSessions,
+  onEmbeddedTabContextMenu,
   onTabMenuOpenChange,
   onNewTab,
   onPopOut,
@@ -139,6 +143,19 @@ export function BrowserDockEditorChrome({
       onTabMenuOpenChange?.(false);
     };
   }, [onTabMenuOpenChange]);
+
+  const handleTabContextMenu = useCallback(
+    (event: ReactMouseEvent<HTMLDivElement>, sessionId: string) => {
+      if (onEmbeddedTabContextMenu) {
+        event.preventDefault();
+        event.stopPropagation();
+        onEmbeddedTabContextMenu(event, sessionId);
+        return;
+      }
+      openTabContextMenu(event, sessionId);
+    },
+    [onEmbeddedTabContextMenu, openTabContextMenu],
+  );
 
   // ⌘L / Ctrl+L 聚焦地址栏（浏览器肌肉记忆；组件仅在内嵌展开态挂载）
   useEffect(() => {
@@ -229,12 +246,14 @@ export function BrowserDockEditorChrome({
     <>
       <div className="browser-agent-editor-tabbar">
         <div className="browser-agent-tab-track" role="tablist" aria-label={t("browserAgent.dock.tabs")}>
-          {openSessions.map((session) => (
+          {openSessions.map((session) => {
+            const tabLabel = resolveBrowserTabLabel(session);
+            return (
             <div
               key={session.browserSessionId}
               className={`browser-agent-tab browser-agent-editor-tab${session.browserSessionId === activeSessionId ? " is-active" : ""}`}
               role="presentation"
-              onContextMenu={(event) => openTabContextMenu(event, session.browserSessionId)}
+              onContextMenu={(event) => handleTabContextMenu(event, session.browserSessionId)}
             >
               <button
                 type="button"
@@ -242,14 +261,14 @@ export function BrowserDockEditorChrome({
                 aria-selected={session.browserSessionId === activeSessionId}
                 className="browser-agent-tab-main"
                 onClick={() => onActivateSession(session)}
-                title={session.title || session.normalizedUrl}
+                title={tabLabel}
               >
                 <span className="browser-agent-tab-main-content">
                   <span className="browser-agent-editor-tab-avatar" aria-hidden>
-                    {sessionHostLabel(session).charAt(0).toUpperCase() || "?"}
+                    {tabLabel.charAt(0).toUpperCase() || "?"}
                   </span>
                   <span className="browser-agent-tab-label">
-                    {sessionHostLabel(session)}
+                    {tabLabel}
                   </span>
                   <span
                     className={`browser-agent-editor-tab-status ${sessionStatusDotClass(session)}`}
@@ -270,7 +289,8 @@ export function BrowserDockEditorChrome({
                 <X size={11} aria-hidden />
               </button>
             </div>
-          ))}
+            );
+          })}
           <Button
             type="button"
             size="sm"
@@ -371,7 +391,7 @@ export function BrowserDockEditorChrome({
           </button>
         </div>
       </div>
-      {tabContextMenu ? (
+      {tabContextMenu && !onEmbeddedTabContextMenu ? (
         <RendererContextMenu
           menu={tabContextMenu}
           onClose={closeTabContextMenu}

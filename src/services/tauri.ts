@@ -252,6 +252,7 @@ export {
   refreshBrowserAgentSnapshot,
   routeBrowserAgentProvider,
   runBrowserAgentAction,
+  showBrowserAgentTabContextMenuOverlay,
   startBrowserAgentElementSelect,
   stopBrowserAgentElementSelect,
   syncBrowserAgentWebviewBounds,

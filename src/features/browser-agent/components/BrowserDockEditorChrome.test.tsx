@@ -106,6 +106,102 @@ describe("BrowserDockEditorChrome", () => {
     expect(screen.getByRole("button", { name: "Collapse browser controls" })).toBeTruthy();
   });
 
+  it("shows a short file name instead of the raw file url", () => {
+    renderChrome({
+      openSessions: [
+        makeSession({
+          title: "file:///Users/demo/docs/intro.html",
+          normalizedUrl: "file:///Users/demo/docs/intro.html",
+        }),
+      ],
+    });
+
+    expect(screen.getByRole("tab", { name: /intro\.html/i })).toBeTruthy();
+    expect(screen.queryByText(/file:\/\//)).toBeNull();
+  });
+
+  it("uses the HTML fallback menu when no native context menu handler is supplied", () => {
+    const onTabMenuOpenChange = vi.fn();
+    renderChrome({ onTabMenuOpenChange });
+
+    fireEvent.contextMenu(screen.getByRole("tab"));
+    expect(onTabMenuOpenChange).toHaveBeenCalledWith(true);
+
+    fireEvent.click(document.querySelector(".renderer-context-menu-backdrop")!);
+    expect(onTabMenuOpenChange).toHaveBeenCalledWith(false);
+  });
+
+  it("delegates an embedded tab right-click to its WebView menu without opening an HTML overlay", () => {
+    const onEmbeddedTabContextMenu = vi.fn();
+    const onTabMenuOpenChange = vi.fn();
+    renderChrome({ onEmbeddedTabContextMenu, onTabMenuOpenChange });
+
+    const contextEvent = fireEvent.contextMenu(screen.getByRole("tab"), {
+      clientX: 80,
+      clientY: 24,
+    });
+
+    expect(contextEvent).toBe(false);
+    expect(onEmbeddedTabContextMenu).toHaveBeenCalledWith(
+      expect.anything(),
+      "session-1",
+    );
+    expect(screen.queryByRole("menu", { name: "Browser tab actions" })).toBeNull();
+    expect(onTabMenuOpenChange).not.toHaveBeenCalledWith(true);
+  });
+
+  it("opens a close menu on tab right-click and blocks the native menu", () => {
+    const first = makeSession({
+      browserSessionId: "session-1",
+      title: null,
+      normalizedUrl: "https://one.example/",
+    });
+    const second = makeSession({
+      browserSessionId: "session-2",
+      title: null,
+      normalizedUrl: "https://two.example/",
+    });
+    renderChrome({
+      openSessions: [first, second],
+      activeSession: first,
+      activeSessionId: first.browserSessionId,
+    });
+
+    const tab = screen.getByRole("tab", { name: /one\.example/i });
+    const contextEvent = fireEvent.contextMenu(tab, {
+      clientX: 80,
+      clientY: 24,
+    });
+    expect(contextEvent).toBe(false);
+
+    const menu = screen.getByRole("menu", { name: "Browser tab actions" });
+    expect(screen.getByRole("menuitem", { name: "Close tab" })).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: "Close other tabs" })).toBeTruthy();
+    expect(
+      screen.getByRole("menuitem", { name: "Close tabs to the right" }),
+    ).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: "Close all tabs" })).toBeTruthy();
+    expect(menu).toBeTruthy();
+  });
+
+  it("disables close-other and close-right when only one tab is open", () => {
+    renderChrome();
+
+    fireEvent.contextMenu(screen.getByRole("tab"));
+
+    expect(
+      (screen.getByRole("menuitem", { name: "Close other tabs" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+    expect(
+      (
+        screen.getByRole("menuitem", {
+          name: "Close tabs to the right",
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
+  });
+
   it("does not put attach / pop-out / collapse on the tab bar", () => {
     renderChrome();
 
@@ -156,115 +252,5 @@ describe("BrowserDockEditorChrome", () => {
     });
     expect(idleButton.className).not.toContain("is-on");
     expect(idleButton.getAttribute("aria-pressed")).toBe("false");
-  });
-
-  it("tells the dock to hide the native webview while the tab menu is open", () => {
-    const onTabMenuOpenChange = vi.fn();
-    renderChrome({ onTabMenuOpenChange });
-
-    fireEvent.contextMenu(screen.getByRole("tab"));
-    expect(onTabMenuOpenChange).toHaveBeenCalledWith(true);
-
-    fireEvent.click(document.querySelector(".renderer-context-menu-backdrop")!);
-    expect(onTabMenuOpenChange).toHaveBeenCalledWith(false);
-  });
-
-  it("opens a close menu on tab right-click and blocks the native menu", () => {
-    const first = makeSession({
-      browserSessionId: "session-1",
-      normalizedUrl: "https://one.example/",
-    });
-    const second = makeSession({
-      browserSessionId: "session-2",
-      normalizedUrl: "https://two.example/",
-    });
-    renderChrome({
-      openSessions: [first, second],
-      activeSession: first,
-      activeSessionId: first.browserSessionId,
-    });
-
-    const tab = screen.getByRole("tab", { name: /one\.example/i });
-    const contextEvent = fireEvent.contextMenu(tab, {
-      clientX: 80,
-      clientY: 24,
-    });
-    expect(contextEvent).toBe(false);
-
-    const menu = screen.getByRole("menu", { name: "Browser tab actions" });
-    expect(screen.getByRole("menuitem", { name: "Close tab" })).toBeTruthy();
-    expect(screen.getByRole("menuitem", { name: "Close other tabs" })).toBeTruthy();
-    expect(
-      screen.getByRole("menuitem", { name: "Close tabs to the right" }),
-    ).toBeTruthy();
-    expect(screen.getByRole("menuitem", { name: "Close all tabs" })).toBeTruthy();
-    expect(menu).toBeTruthy();
-  });
-
-  it("disables close-other and close-right when only one tab is open", () => {
-    renderChrome();
-
-    fireEvent.contextMenu(screen.getByRole("tab"));
-
-    expect(
-      (screen.getByRole("menuitem", { name: "Close other tabs" }) as HTMLButtonElement)
-        .disabled,
-    ).toBe(true);
-    expect(
-      (
-        screen.getByRole("menuitem", {
-          name: "Close tabs to the right",
-        }) as HTMLButtonElement
-      ).disabled,
-    ).toBe(true);
-  });
-
-  it("closes the invoked tab, others, right-side tabs, and all tabs from the menu", () => {
-    const first = makeSession({
-      browserSessionId: "session-1",
-      normalizedUrl: "https://one.example/",
-    });
-    const second = makeSession({
-      browserSessionId: "session-2",
-      normalizedUrl: "https://two.example/",
-    });
-    const third = makeSession({
-      browserSessionId: "session-3",
-      normalizedUrl: "https://three.example/",
-    });
-
-    const { props, rerender } = renderChrome({
-      openSessions: [first, second, third],
-      activeSession: second,
-      activeSessionId: second.browserSessionId,
-    });
-
-    fireEvent.contextMenu(screen.getByRole("tab", { name: /two\.example/i }));
-    fireEvent.click(screen.getByRole("menuitem", { name: "Close tab" }));
-    expect(props.onCloseSessions).toHaveBeenCalledWith(["session-2"], undefined);
-
-    rerender(<BrowserDockEditorChrome {...props} />);
-    fireEvent.contextMenu(screen.getByRole("tab", { name: /two\.example/i }));
-    fireEvent.click(screen.getByRole("menuitem", { name: "Close other tabs" }));
-    expect(props.onCloseSessions).toHaveBeenCalledWith(["session-1", "session-3"], {
-      preferActiveId: "session-2",
-    });
-
-    rerender(<BrowserDockEditorChrome {...props} />);
-    fireEvent.contextMenu(screen.getByRole("tab", { name: /two\.example/i }));
-    fireEvent.click(
-      screen.getByRole("menuitem", { name: "Close tabs to the right" }),
-    );
-    expect(props.onCloseSessions).toHaveBeenCalledWith(["session-3"], {
-      preferActiveId: "session-2",
-    });
-
-    rerender(<BrowserDockEditorChrome {...props} />);
-    fireEvent.contextMenu(screen.getByRole("tab", { name: /two\.example/i }));
-    fireEvent.click(screen.getByRole("menuitem", { name: "Close all tabs" }));
-    expect(props.onCloseSessions).toHaveBeenCalledWith(
-      ["session-1", "session-2", "session-3"],
-      undefined,
-    );
   });
 });

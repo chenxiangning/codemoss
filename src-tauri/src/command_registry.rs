@@ -44,6 +44,7 @@ pub(crate) fn invoke_handler(
         crate::browser_agent::open_browser_agent_window,
         crate::browser_agent::sync_browser_agent_webview_bounds,
         crate::browser_agent::hide_browser_agent_webview,
+        crate::browser_agent::show_browser_agent_tab_context_menu_overlay,
         crate::browser_agent::start_browser_agent_element_select,
         crate::browser_agent::stop_browser_agent_element_select,
         crate::browser_agent::list_browser_agent_evidence,

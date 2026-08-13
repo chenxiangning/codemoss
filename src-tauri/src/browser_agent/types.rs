@@ -274,6 +274,33 @@ pub(crate) struct BrowserWebviewMountRequest {
     pub(crate) bounds: BrowserWebviewBounds,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct BrowserTabContextMenuTheme {
+    pub(crate) color_scheme: String,
+    pub(crate) surface: String,
+    pub(crate) foreground: String,
+    pub(crate) border: String,
+    pub(crate) hover_surface: String,
+    pub(crate) disabled_foreground: String,
+    pub(crate) shadow: String,
+}
+
+/// 内嵌 Browser Dock 的 tab context menu overlay 请求。
+/// `x` 为相对 child WebView 内容区的 logical pixel 坐标。
+#[derive(Debug, Clone, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct BrowserTabContextMenuRequest {
+    pub(crate) browser_session_id: String,
+    pub(crate) x: f64,
+    pub(crate) locale: Option<String>,
+    /// 仅用于 native child WebView 内菜单的展示态；真正的关闭目标仍由前端依据当前 tab
+    /// 列表重新计算，避免陈旧菜单误关闭会话。
+    #[serde(default)]
+    pub(crate) disabled_actions: Vec<String>,
+    pub(crate) theme: BrowserTabContextMenuTheme,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct BrowserWebviewEvent {

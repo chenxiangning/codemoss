@@ -15,6 +15,7 @@ import type {
   UpdateBrowserSessionRequest,
   BrowserWebviewBounds,
   BrowserWebviewMountRequest,
+  BrowserTabContextMenuRequest,
   BrowserPlatformCapability,
   BrowserProviderRouteDecision,
 } from "../../features/browser-agent/types";
@@ -119,6 +120,13 @@ export async function hideBrowserAgentWebview(
   browserSessionId: string,
 ): Promise<void> {
   return invoke<void>("hide_browser_agent_webview", { browserSessionId });
+}
+
+/** 将标签页菜单注入 child WebView，避免 HTML overlay 隐藏页面。 */
+export async function showBrowserAgentTabContextMenuOverlay(
+  request: BrowserTabContextMenuRequest,
+): Promise<void> {
+  return invoke<void>("show_browser_agent_tab_context_menu_overlay", { request });
 }
 
 /** 在内嵌子 webview 中启动元素选择器（选中结果经 bridge 回传主窗口 attach 流程）。 */

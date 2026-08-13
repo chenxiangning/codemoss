@@ -1,4 +1,4 @@
-import { useEffect, type RefObject } from "react";
+import { useEffect, useRef, type RefObject } from "react";
 import {
   hideBrowserAgentWebview,
   mountBrowserAgentWebview,
@@ -6,9 +6,24 @@ import {
 } from "@/services/tauri";
 import type { BrowserSession, BrowserWebviewBounds } from "../types";
 
-// 已创建的 native 子 webview 记录：native 层存活于组件卸载/重挂载之外，
-// 重挂载（如 centerMode 往返）只需 sync bounds 恢复显示，避免重复 mount 触发整页刷新。
-const mountedEmbeddedSessions = new Set<string>();
+// Browser Dock 的 tab 是 session 数据，不是 native WebView 实例。内嵌模式只维护一个
+// renderer，并把它导航到当前 tab；否则多个 child WebView 会在同一矩形互相覆盖。
+let embeddedRendererMounted = false;
+let renderedEmbeddedSessionId: string | null = null;
+
+// 当前期望可见的 session。native renderer 的 mount / sync / hide 会影响同一块 surface，
+// 因此必须由同一串行队列执行；不能只在 Promise 返回后丢弃旧结果。
+let desiredVisibleSessionId: string | null = null;
+let nativeVisibilityOperation = Promise.resolve();
+
+function enqueueNativeVisibilityOperation(
+  operation: () => Promise<void>,
+): Promise<void> {
+  const scheduled = nativeVisibilityOperation.then(operation, operation);
+  // 某次 mount 失败不应阻断后续 tab 的恢复操作。
+  nativeVisibilityOperation = scheduled.catch(() => {});
+  return scheduled;
+}
 
 function measureContainer(
   container: HTMLElement | null,
@@ -25,21 +40,57 @@ function measureContainer(
 }
 
 /**
- * 显示内嵌子 webview：已挂载则 sync bounds（含 show），未挂载则 mount 新建。
- * forceRemount 用于「同会话打开新 URL」——重建子 webview 完成导航
- * （与浮动窗 openBrowserAgentWindow 每次重建窗口的行为对齐）。
+ * 显示内嵌 renderer：切换 tab 或打开新 URL 时调用 mount，让 native 侧导航到目标 session；
+ * 仅 bounds 变化时走 sync，避免同一页面无意义导航。
  */
 export async function showEmbeddedBrowserWebview(
   browserSessionId: string,
   bounds: BrowserWebviewBounds,
   forceRemount = false,
 ): Promise<void> {
-  if (!forceRemount && mountedEmbeddedSessions.has(browserSessionId)) {
-    await syncBrowserAgentWebviewBounds(browserSessionId, bounds);
-    return;
+  desiredVisibleSessionId = browserSessionId;
+  return enqueueNativeVisibilityOperation(async () => {
+    // 队列中的旧 tab 已被新的激活意图取代，不得再碰 native surface。
+    if (desiredVisibleSessionId !== browserSessionId) {
+      return;
+    }
+    try {
+      const needsNavigation =
+        forceRemount ||
+        !embeddedRendererMounted ||
+        renderedEmbeddedSessionId !== browserSessionId;
+      if (needsNavigation) {
+        await mountBrowserAgentWebview({ browserSessionId, bounds });
+        embeddedRendererMounted = true;
+        renderedEmbeddedSessionId = browserSessionId;
+      } else {
+        await syncBrowserAgentWebviewBounds(browserSessionId, bounds);
+      }
+    } catch (error) {
+      // 旧请求失败不应把已经选中的新 tab 误标为失败。
+      if (desiredVisibleSessionId === browserSessionId) {
+        throw error;
+      }
+      return;
+    }
+  });
+}
+
+/** 仅当该 session 不再是期望可见页时才 hide，避免卸载/切 tab 的过期 cleanup 把刚 show 的页藏掉。 */
+export function requestHideEmbeddedBrowserWebview(browserSessionId: string): void {
+  if (desiredVisibleSessionId === browserSessionId) {
+    desiredVisibleSessionId = null;
   }
-  await mountBrowserAgentWebview({ browserSessionId, bounds });
-  mountedEmbeddedSessions.add(browserSessionId);
+  void enqueueNativeVisibilityOperation(async () => {
+    // 已重新激活或已切换到其它 tab 时，过期 cleanup 不能触碰当前 renderer。
+    if (
+      desiredVisibleSessionId === browserSessionId ||
+      renderedEmbeddedSessionId !== browserSessionId
+    ) {
+      return;
+    }
+    await hideBrowserAgentWebview(browserSessionId);
+  }).catch(() => {});
 }
 
 /**
@@ -47,15 +98,30 @@ export async function showEmbeddedBrowserWebview(
  * 注销后下次内嵌显示会重新 mount，保证 renderer 绑定与页面内容最新。
  */
 export function unmountEmbeddedBrowserWebview(browserSessionId: string): void {
-  mountedEmbeddedSessions.delete(browserSessionId);
-  void hideBrowserAgentWebview(browserSessionId).catch(() => {
-    // webview 可能本就不存在（从未内嵌挂载），hide 容错路径忽略。
-  });
+  const rendererBelongsToSession =
+    renderedEmbeddedSessionId === browserSessionId;
+  if (desiredVisibleSessionId === browserSessionId) {
+    desiredVisibleSessionId = null;
+  }
+  if (!rendererBelongsToSession) {
+    requestHideEmbeddedBrowserWebview(browserSessionId);
+    return;
+  }
+
+  embeddedRendererMounted = false;
+  renderedEmbeddedSessionId = null;
+  void enqueueNativeVisibilityOperation(async () => {
+    // 若关闭动作尚未执行时又回到同一 tab，新的 show 优先，不能把它藏掉。
+    if (desiredVisibleSessionId === browserSessionId) {
+      return;
+    }
+    await hideBrowserAgentWebview(browserSessionId);
+  }).catch(() => {});
 }
 
 /**
  * 内嵌模式的显隐与 bounds 同步纪律（native 子 webview 不受 CSS 隐藏管辖）：
- * - activeSession 切换：cleanup 隐藏旧会话，effect 显示新会话
+ * - activeSession 切换：当前 renderer 直接导航到新会话，旧 tab 不保留 native 实例
  * - 容器/窗口尺寸变化（含 split 拖拽）：ResizeObserver 单点收敛 sync bounds
  * - 组件卸载（关 dock / 离开 chat mode）：cleanup 兜底隐藏，webview 本体保留以便秒回
  */
@@ -69,18 +135,35 @@ export function useEmbeddedBrowserWebview({
   active: boolean;
 }): void {
   const activeSessionId = activeSession?.browserSessionId ?? null;
+  const latestActiveSessionIdRef = useRef(activeSessionId);
+  const visibilityLifecycleVersionRef = useRef(0);
+  const lastVisibleSessionIdRef = useRef<string | null>(null);
+  latestActiveSessionIdRef.current = activeSessionId;
 
   useEffect(() => {
+    const lifecycleVersion = ++visibilityLifecycleVersionRef.current;
     if (!active || !activeSessionId) {
+      const previousSessionId = lastVisibleSessionIdRef.current;
+      if (previousSessionId) {
+        requestHideEmbeddedBrowserWebview(previousSessionId);
+        lastVisibleSessionIdRef.current = null;
+      }
       return;
     }
+    lastVisibleSessionIdRef.current = activeSessionId;
     const bounds = measureContainer(containerRef.current);
     if (bounds) {
       // 打开动作的报错由 openSessionWindow 链路呈现；此处静默避免双 notice。
       void showEmbeddedBrowserWebview(activeSessionId, bounds).catch(() => {});
     }
     return () => {
-      void hideBrowserAgentWebview(activeSessionId).catch(() => {});
+      // dependency 切换时，React 会先执行旧 cleanup 再建立新 effect。延后一轮后只有
+      // 生命周期没有被新 tab 接管（组件卸载 / Dock 失活）才真的 hide。
+      queueMicrotask(() => {
+        if (visibilityLifecycleVersionRef.current === lifecycleVersion) {
+          requestHideEmbeddedBrowserWebview(activeSessionId);
+        }
+      });
     };
   }, [active, activeSessionId, containerRef]);
 
@@ -93,11 +176,23 @@ export function useEmbeddedBrowserWebview({
       return;
     }
     const syncBounds = () => {
-      const nextBounds = measureContainer(containerRef.current);
-      if (!nextBounds || !mountedEmbeddedSessions.has(activeSessionId)) {
+      // ResizeObserver 可能在 effect cleanup 后投递旧回调；它只能同步当前 tab，
+      // 否则旧 tab 会重新写入 native renderer binding 并遮住新页面。
+      if (latestActiveSessionIdRef.current !== activeSessionId) {
         return;
       }
-      void syncBrowserAgentWebviewBounds(activeSessionId, nextBounds).catch(
+      const nextBounds = measureContainer(containerRef.current);
+      if (!nextBounds) {
+        return;
+      }
+      if (
+        desiredVisibleSessionId !== null &&
+        desiredVisibleSessionId !== activeSessionId
+      ) {
+        return;
+      }
+      // 首帧 bounds 为空时 effect 会跳过 mount；尺寸就绪后在同一协调器补一次 show。
+      void showEmbeddedBrowserWebview(activeSessionId, nextBounds).catch(
         () => {},
       );
     };

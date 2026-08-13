@@ -113,6 +113,24 @@ export type BrowserWebviewMountRequest = {
   bounds: BrowserWebviewBounds;
 };
 
+export type BrowserTabContextMenuTheme = {
+  colorScheme: "light" | "dark";
+  surface: string;
+  foreground: string;
+  border: string;
+  hoverSurface: string;
+  disabledForeground: string;
+  shadow: string;
+};
+
+export type BrowserTabContextMenuRequest = {
+  browserSessionId: string;
+  x: number;
+  locale?: string | null;
+  disabledActions: string[];
+  theme: BrowserTabContextMenuTheme;
+};
+
 export type BrowserWebviewEvent = {
   browserSessionId: string;
   label: string;

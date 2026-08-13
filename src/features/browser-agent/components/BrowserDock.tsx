@@ -1,5 +1,12 @@
 import { listen } from "@tauri-apps/api/event";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type MouseEvent as ReactMouseEvent,
+} from "react";
 import { useTranslation } from "react-i18next";
 import AlertCircle from "lucide-react/dist/esm/icons/alert-circle";
 import ChevronUp from "lucide-react/dist/esm/icons/chevron-up";
@@ -16,6 +23,7 @@ import { RendererContextMenu } from "@/components/ui/RendererContextMenu";
 import { loadBrowserAgentStyles } from "../../../styles/featureStyleLoaders";
 import type {
   BrowserSession,
+  BrowserTabContextMenuTheme,
   BrowserWebviewEvent,
 } from "../types";
 import {
@@ -24,7 +32,8 @@ import {
 } from "../state/activeBrowserContext";
 import {
   BROWSER_OPEN_URL_EVENT,
-  PENDING_BROWSER_URL_KEY,
+  dequeuePendingBrowserUrl,
+  enqueuePendingBrowserUrl,
 } from "../state/dockEvents";
 import {
   measureEmbeddedWebviewContainer,
@@ -37,6 +46,12 @@ import {
   BrowserDockEditorChrome,
   type BrowserDockNotice,
 } from "./BrowserDockEditorChrome";
+import { resolveBrowserTabLabel } from "../utils/browserTabLabel";
+import {
+  resolveBrowserTabCloseTargets,
+  type BrowserTabCloseAction,
+} from "../utils/browserTabCloseTargets";
+import { urlsPointToSameBrowserResource } from "../utils/browserTabUrlMatch";
 import {
   closeBrowserAgentSession,
   createBrowserAgentSession,
@@ -44,12 +59,25 @@ import {
   getBrowserAgentStatus,
   listBrowserAgentSessions,
   openBrowserAgentWindow,
+  showBrowserAgentTabContextMenuOverlay,
   updateBrowserAgentSession,
   updateAppSettings,
   validateBrowserAgentUrl,
 } from "@/services/tauri";
 
 const BROWSER_WEBVIEW_EVENT = "browser-agent://webview-event";
+const BROWSER_TAB_CONTEXT_ACTION_EVENT = "browser-agent://tab-context-action";
+const BROWSER_TAB_CLOSE_ACTIONS: BrowserTabCloseAction[] = [
+  "current",
+  "others",
+  "right",
+  "all",
+];
+
+type BrowserTabContextActionPayload = {
+  browserSessionId: string;
+  action: BrowserTabCloseAction;
+};
 
 type BrowserDockProps = {
   workspaceId: string;
@@ -108,6 +136,40 @@ function hasTauriEventBridge(): boolean {
   return typeof (window as TauriInternalsWindow).__TAURI_INTERNALS__?.transformCallback === "function";
 }
 
+function readThemeToken(
+  styles: CSSStyleDeclaration,
+  token: string,
+  fallback: string,
+): string {
+  return styles.getPropertyValue(token).trim() || fallback;
+}
+
+/** child WebView 不继承宿主 CSS variables；右键时读取当前主题并显式同步给菜单。 */
+function readBrowserTabContextMenuTheme(): BrowserTabContextMenuTheme {
+  const root = document.documentElement;
+  const styles = getComputedStyle(root);
+  const configuredTheme = root.dataset.theme;
+  const prefersLight =
+    typeof window.matchMedia === "function" &&
+    window.matchMedia("(prefers-color-scheme: light)").matches;
+  const colorScheme =
+    configuredTheme === "light" || configuredTheme === "dark"
+      ? configuredTheme
+      : prefersLight
+        ? "light"
+        : "dark";
+
+  return {
+    colorScheme,
+    surface: readThemeToken(styles, "--surface-popover", "Canvas"),
+    foreground: readThemeToken(styles, "--text-strong", "CanvasText"),
+    border: readThemeToken(styles, "--border-quiet", "ButtonBorder"),
+    hoverSurface: readThemeToken(styles, "--surface-hover", "ButtonFace"),
+    disabledForeground: readThemeToken(styles, "--text-muted", "GrayText"),
+    shadow: readThemeToken(styles, "--shadow-accent", "none"),
+  };
+}
+
 export function BrowserDock({
   workspaceId,
   ownerSurface = "vibecoding",
@@ -129,8 +191,8 @@ export function BrowserDock({
   const [infoOpen, setInfoOpen] = useState(false);
   // 岛 ⇄ 状态行形变：纯展示态，不影响会话逻辑
   const [docked, setDocked] = useState(false);
-  // 右键菜单是 HTML，盖不过内嵌 native 子 webview；菜单打开时按既有 hide 纪律让层
-  const [tabMenuOpen, setTabMenuOpen] = useState(false);
+  const openInFlightRef = useRef(false);
+  const openSessionsRef = useRef<BrowserSession[]>([]);
   const activeSessionRef = useRef<BrowserSession | null>(null);
   const onSessionChangeRef = useRef(onSessionChange);
   const isEmbedded = displayMode === "embedded";
@@ -141,6 +203,7 @@ export function BrowserDock({
     () => sessions.filter((session) => session.status !== "closed"),
     [sessions],
   );
+  openSessionsRef.current = openSessions;
   const activeSession = useMemo(() => {
     if (!activeSessionId) {
       return null;
@@ -160,11 +223,11 @@ export function BrowserDock({
     : t("browserAgent.dock.footnote");
 
   // 内嵌显隐纪律：切会话/关 dock/离开 chat（组件卸载）时显式 hide，bounds 随容器同步。
-  // tab 右键菜单打开时 active=false：只 hide，不注销 mounted 记录，关闭后 sync 恢复，不整页刷新。
+  // 右键菜单注入 child WebView 自身；它与页面同层渲染，不会触发 hide 或重建。
   useEmbeddedBrowserWebview({
     containerRef: webviewContainerRef,
     activeSession,
-    active: isEmbedded && resolvedEnabled && !tabMenuOpen,
+    active: isEmbedded && resolvedEnabled,
   });
 
   useEffect(() => {
@@ -202,15 +265,33 @@ export function BrowserDock({
         if (!mounted) {
           return;
         }
-        setSessions(nextSessions);
-        const nextActive = nextSessions.find((session) => session.status !== "closed") ?? null;
-        setActiveSessionId(nextActive?.browserSessionId ?? null);
-        if (nextActive) {
-          setActiveBrowserContextSession(nextActive, { rendererBound: false });
-        } else {
-          clearActiveBrowserContextSession();
-        }
-        onSessionChangeRef.current?.(nextActive);
+        setSessions((current) => {
+          const byId = new Map<string, BrowserSession>();
+          for (const session of nextSessions) {
+            byId.set(session.browserSessionId, session);
+          }
+          for (const session of current) {
+            if (!byId.has(session.browserSessionId)) {
+              byId.set(session.browserSessionId, session);
+            }
+          }
+          return [...byId.values()];
+        });
+        setActiveSessionId((currentActiveId) => {
+          if (currentActiveId) {
+            return currentActiveId;
+          }
+          const nextActive =
+            nextSessions.find((session) => session.status !== "closed") ?? null;
+          if (nextActive) {
+            setActiveBrowserContextSession(nextActive, { rendererBound: false });
+            onSessionChangeRef.current?.(nextActive);
+          } else {
+            clearActiveBrowserContextSession();
+            onSessionChangeRef.current?.(null);
+          }
+          return nextActive?.browserSessionId ?? null;
+        });
       } catch (error) {
         if (mounted) {
           setNotice({
@@ -303,17 +384,22 @@ export function BrowserDock({
 
   const openSessionWindow = useCallback(async (session: BrowserSession, forceRemount = false) => {
     if (isEmbedded) {
-      // 内嵌：子 webview 挂到容器矩形。bounds 为 null（首个会话 frame 尚未渲染）时
-      // 由 useEmbeddedBrowserWebview 的 effect 在渲染后兜底 mount。
-      const bounds = measureEmbeddedWebviewContainer(webviewContainerRef.current);
-      if (bounds) {
-        await showEmbeddedBrowserWebview(
-          session.browserSessionId,
-          bounds,
-          forceRemount,
-        );
+      // tab 激活只更新 React state，由 useEmbeddedBrowserWebview 单点驱动 native
+      // renderer。否则 click handler 与 effect 会对同一切换各发一次 mount。
+      // 同 tab 的地址栏导航是唯一例外：它需要立即把 renderer 导向新 URL。
+      if (forceRemount) {
+        const bounds = measureEmbeddedWebviewContainer(webviewContainerRef.current);
+        if (bounds) {
+          await showEmbeddedBrowserWebview(
+            session.browserSessionId,
+            bounds,
+            true,
+          );
+        }
+        setActiveBrowserContextSession(session, { rendererBound: true });
+      } else {
+        setActiveBrowserContextSession(session, { rendererBound: false });
       }
-      setActiveBrowserContextSession(session, { rendererBound: true });
       return session;
     }
     try {
@@ -332,138 +418,6 @@ export function BrowserDock({
       throw error;
     }
   }, [i18n.language, isEmbedded]);
-
-  const handleOpen = useCallback(async (nextUrl?: string) => {
-    if (!resolvedEnabled || busy) {
-      return;
-    }
-    const normalizedDraft = normalizeUrlDraft(nextUrl ?? urlDraft);
-    if (!normalizedDraft) {
-      setNotice({ kind: "warning", message: t("browserAgent.dock.emptyUrl") });
-      return;
-    }
-
-    setBusy(true);
-    setNotice(null);
-    try {
-      const validation = await validateBrowserAgentUrl(normalizedDraft, workspaceId);
-      if (!validation.allowed || !validation.normalizedUrl) {
-        setNotice({
-          kind: "warning",
-          message:
-            validation.diagnostic?.message ?? t("browserAgent.dock.blockedUrl"),
-        });
-        return;
-      }
-      if (activeSession && nextUrl === undefined) {
-        const preparedSession = await updateBrowserAgentSession({
-          browserSessionId: activeSession.browserSessionId,
-          workspaceId,
-          url: validation.normalizedUrl,
-          status: "loading",
-          diagnosticMessage: null,
-          errorCode: null,
-        });
-        const openedSession = await openSessionWindow(preparedSession, true);
-        setActiveSessionId(openedSession.browserSessionId);
-        setUrlDraft(validation.normalizedUrl);
-        setSessions((current) =>
-          current.map((item) =>
-            item.browserSessionId === openedSession.browserSessionId
-              ? openedSession
-              : item,
-          ),
-        );
-        setNotice({ kind: "info", message: t("browserAgent.dock.opened") });
-        return;
-      }
-      const preparedSession = await createBrowserAgentSession({
-        workspaceId,
-        url: validation.normalizedUrl,
-        ownerSurface,
-      });
-      const openedSession = await openSessionWindow(preparedSession);
-      setActiveSessionId(openedSession.browserSessionId);
-      setUrlDraft(validation.normalizedUrl);
-      setSessions((current) => [
-        openedSession,
-        ...current.filter((item) => item.browserSessionId !== openedSession.browserSessionId),
-      ]);
-      setNotice({ kind: "info", message: t("browserAgent.dock.opened") });
-    } catch (error) {
-      setNotice({
-        kind: "error",
-        message: error instanceof Error ? error.message : String(error),
-      });
-    } finally {
-      setBusy(false);
-    }
-  }, [
-    activeSession,
-    busy,
-    ownerSurface,
-    openSessionWindow,
-    resolvedEnabled,
-    t,
-    urlDraft,
-    workspaceId,
-  ]);
-
-  useEffect(() => {
-    const consumePendingUrl = () => {
-      if (!resolvedEnabled) {
-        return;
-      }
-      const pendingUrl = window.sessionStorage.getItem(PENDING_BROWSER_URL_KEY);
-      if (!pendingUrl) {
-        return;
-      }
-      window.sessionStorage.removeItem(PENDING_BROWSER_URL_KEY);
-      void handleOpen(pendingUrl);
-    };
-    consumePendingUrl();
-    const handleOpenUrl = (event: Event) => {
-      const detail = (event as CustomEvent<{ url?: string }>).detail;
-      if (detail?.url) {
-        if (!resolvedEnabled) {
-          return;
-        }
-        window.sessionStorage.removeItem(PENDING_BROWSER_URL_KEY);
-        void handleOpen(detail.url);
-        return;
-      }
-      consumePendingUrl();
-    };
-    window.addEventListener(BROWSER_OPEN_URL_EVENT, handleOpenUrl);
-    return () => {
-      window.removeEventListener(BROWSER_OPEN_URL_EVENT, handleOpenUrl);
-    };
-  }, [handleOpen, resolvedEnabled]);
-
-  const handleEnableBrowserAgent = useCallback(async () => {
-    if (busy) {
-      return;
-    }
-    setBusy(true);
-    setNotice(null);
-    try {
-      const settings = await getAppSettings();
-      await updateAppSettings({
-        ...settings,
-        browserAgentEnabled: true,
-        browserAgentPreferBuiltIn: true,
-      });
-      setStatusEnabled(true);
-      setNotice({ kind: "info", message: t("browserAgent.dock.enabled") });
-    } catch (error) {
-      setNotice({
-        kind: "error",
-        message: error instanceof Error ? error.message : String(error),
-      });
-    } finally {
-      setBusy(false);
-    }
-  }, [busy, t]);
 
   const handleActivateSession = useCallback(
     (session: BrowserSession) => {
@@ -497,6 +451,183 @@ export function BrowserDock({
     [openSessionWindow, resolvedEnabled],
   );
 
+  const handleOpen = useCallback(async (nextUrl?: string) => {
+    if (!resolvedEnabled) {
+      return;
+    }
+    if (busy || openInFlightRef.current) {
+      // 上一会话还在创建/挂载时打开新 URL：入 FIFO，busy 翻转后 drain，连点不得覆盖。
+      if (nextUrl !== undefined) {
+        enqueuePendingBrowserUrl(nextUrl);
+      }
+      return;
+    }
+    const normalizedDraft = normalizeUrlDraft(nextUrl ?? urlDraft);
+    if (!normalizedDraft) {
+      setNotice({ kind: "warning", message: t("browserAgent.dock.emptyUrl") });
+      return;
+    }
+
+    openInFlightRef.current = true;
+    setBusy(true);
+    setNotice(null);
+    const previousActiveId = activeSessionId;
+    try {
+      const validation = await validateBrowserAgentUrl(normalizedDraft, workspaceId);
+      if (!validation.allowed || !validation.normalizedUrl) {
+        setNotice({
+          kind: "warning",
+          message:
+            validation.diagnostic?.message ?? t("browserAgent.dock.blockedUrl"),
+        });
+        return;
+      }
+      const existingSession = openSessionsRef.current.find((session) =>
+        urlsPointToSameBrowserResource(
+          session.normalizedUrl || session.url,
+          validation.normalizedUrl,
+        ),
+      );
+      if (existingSession && nextUrl !== undefined) {
+        // 同一 HTML 再点一次：回到已有 tab，绝不能再 create/hide 把当前页弄没。
+        handleActivateSession(existingSession);
+        return;
+      }
+      if (activeSession && nextUrl === undefined) {
+        const preparedSession = await updateBrowserAgentSession({
+          browserSessionId: activeSession.browserSessionId,
+          workspaceId,
+          url: validation.normalizedUrl,
+          status: "loading",
+          diagnosticMessage: null,
+          errorCode: null,
+        });
+        const openedSession = await openSessionWindow(preparedSession, true);
+        setActiveSessionId(openedSession.browserSessionId);
+        setUrlDraft(validation.normalizedUrl);
+        setSessions((current) =>
+          current.map((item) =>
+            item.browserSessionId === openedSession.browserSessionId
+              ? openedSession
+              : item,
+          ),
+        );
+        setNotice({ kind: "info", message: t("browserAgent.dock.opened") });
+        return;
+      }
+      const preparedSession = await createBrowserAgentSession({
+        workspaceId,
+        url: validation.normalizedUrl,
+        ownerSurface,
+      });
+      // 先落 tab，再 mount：mount 失败时用户至少看得到新标签，旧 webview 也还在。
+      setActiveSessionId(preparedSession.browserSessionId);
+      setUrlDraft(validation.normalizedUrl);
+      setSessions((current) => [
+        preparedSession,
+        ...current.filter((item) => item.browserSessionId !== preparedSession.browserSessionId),
+      ]);
+      try {
+        const openedSession = await openSessionWindow(preparedSession);
+        setSessions((current) =>
+          current.map((item) =>
+            item.browserSessionId === openedSession.browserSessionId
+              ? openedSession
+              : item,
+          ),
+        );
+      } catch (mountError) {
+        if (previousActiveId) {
+          setActiveSessionId(previousActiveId);
+          const previousSession = openSessionsRef.current.find(
+            (session) => session.browserSessionId === previousActiveId,
+          );
+          if (previousSession) {
+            void openSessionWindow(previousSession).catch(() => {});
+          }
+        }
+        throw mountError;
+      }
+      setNotice({ kind: "info", message: t("browserAgent.dock.opened") });
+    } catch (error) {
+      setNotice({
+        kind: "error",
+        message: error instanceof Error ? error.message : String(error),
+      });
+    } finally {
+      openInFlightRef.current = false;
+      setBusy(false);
+    }
+  }, [
+    activeSession,
+    activeSessionId,
+    handleActivateSession,
+    openSessionWindow,
+    ownerSurface,
+    resolvedEnabled,
+    t,
+    urlDraft,
+    workspaceId,
+  ]);
+
+  useEffect(() => {
+    const handleOpenUrl = (event: Event) => {
+      if (!resolvedEnabled) {
+        return;
+      }
+      const requestedUrl = (event as CustomEvent<{ url?: string }>).detail?.url;
+      if (!requestedUrl) {
+        const pendingUrl = dequeuePendingBrowserUrl();
+        if (pendingUrl) {
+          void handleOpen(pendingUrl);
+        }
+        return;
+      }
+      // 事件路径直接打开；若队列里有同一条则摘走，避免随后 drain 再开一次。
+      dequeuePendingBrowserUrl(requestedUrl);
+      void handleOpen(requestedUrl);
+    };
+    window.addEventListener(BROWSER_OPEN_URL_EVENT, handleOpenUrl);
+    return () => {
+      window.removeEventListener(BROWSER_OPEN_URL_EVENT, handleOpenUrl);
+    };
+  }, [handleOpen, resolvedEnabled]);
+
+  useEffect(() => {
+    if (!resolvedEnabled || busy) {
+      return;
+    }
+    const pendingUrl = dequeuePendingBrowserUrl();
+    if (pendingUrl) {
+      void handleOpen(pendingUrl);
+    }
+  }, [busy, handleOpen, resolvedEnabled]);
+
+  const handleEnableBrowserAgent = useCallback(async () => {
+    if (busy) {
+      return;
+    }
+    setBusy(true);
+    setNotice(null);
+    try {
+      const settings = await getAppSettings();
+      await updateAppSettings({
+        ...settings,
+        browserAgentEnabled: true,
+        browserAgentPreferBuiltIn: true,
+      });
+      setStatusEnabled(true);
+      setNotice({ kind: "info", message: t("browserAgent.dock.enabled") });
+    } catch (error) {
+      setNotice({
+        kind: "error",
+        message: error instanceof Error ? error.message : String(error),
+      });
+    } finally {
+      setBusy(false);
+    }
+  }, [busy, t]);
+
   const handleCloseSessions = useCallback(async (
     sessionIds: string[],
     options?: { preferActiveId?: string },
@@ -520,7 +651,7 @@ export function BrowserDock({
           const closed = await closeBrowserAgentSession(sessionId);
           clearActiveBrowserContextSession(sessionId);
           if (isEmbedded) {
-            // 注销内嵌子 webview 记录（Rust 侧 close 已按 renderer 绑定 hide，此处再兜底并清集合）
+            // Rust 侧只会关闭与 session 绑定的唯一 renderer；此处同步前端协调器状态。
             unmountEmbeddedBrowserWebview(sessionId);
           }
           closedById.set(sessionId, closed);
@@ -598,6 +729,89 @@ export function BrowserDock({
     await handleCloseSessions([sessionId]);
   }, [handleCloseSessions]);
 
+  const handleEmbeddedTabContextMenu = useCallback(
+    (event: ReactMouseEvent<HTMLDivElement>, browserSessionId: string) => {
+      if (!hasTauriEventBridge()) {
+        return;
+      }
+      const bounds = measureEmbeddedWebviewContainer(webviewContainerRef.current);
+      const sessionIds = openSessionsRef.current.map(
+        (session) => session.browserSessionId,
+      );
+      void showBrowserAgentTabContextMenuOverlay({
+        browserSessionId,
+        x: Math.max(12, event.clientX - (bounds?.x ?? 0)),
+        locale: i18n.language,
+        theme: readBrowserTabContextMenuTheme(),
+        disabledActions: BROWSER_TAB_CLOSE_ACTIONS.filter(
+          (action) =>
+            busy ||
+            resolveBrowserTabCloseTargets(sessionIds, browserSessionId, action)
+              .length === 0,
+        ),
+      }).catch((error) => {
+        setNotice({
+          kind: "error",
+          message: error instanceof Error ? error.message : String(error),
+        });
+      });
+    },
+    [busy, i18n.language],
+  );
+
+  useEffect(() => {
+    if (!isEmbedded || !hasTauriEventBridge()) {
+      return;
+    }
+    let disposed = false;
+    let cleanup: (() => void) | null = null;
+    void listen<BrowserTabContextActionPayload>(
+      BROWSER_TAB_CONTEXT_ACTION_EVENT,
+      (event) => {
+        if (disposed) {
+          return;
+        }
+        const { browserSessionId, action } = event.payload;
+        const sessionIds = openSessionsRef.current.map(
+          (session) => session.browserSessionId,
+        );
+        const targets = resolveBrowserTabCloseTargets(
+          sessionIds,
+          browserSessionId,
+          action,
+        );
+        if (targets.length === 0) {
+          return;
+        }
+        void handleCloseSessions(
+          targets,
+          action === "others" || action === "right"
+            ? { preferActiveId: browserSessionId }
+            : undefined,
+        );
+      },
+    )
+      .then((unlisten) => {
+        if (disposed) {
+          unlisten();
+          return;
+        }
+        cleanup = unlisten;
+      })
+      .catch((error: unknown) => {
+        if (!disposed) {
+          setNotice({
+            kind: "error",
+            message: error instanceof Error ? error.message : String(error),
+          });
+        }
+      });
+    return () => {
+      disposed = true;
+      cleanup?.();
+    };
+  }, [handleCloseSessions, isEmbedded]);
+
   const handleCloseActiveSession = useCallback(async () => {
     if (!activeSession) {
       return;
@@ -621,7 +835,7 @@ export function BrowserDock({
     },
   });
 
-  // 弹出独立窗体：hide 内嵌子 webview 并注销挂载记录，当前会话移交浮动窗（含注入工具条）
+  // 弹出独立窗体：释放唯一内嵌 renderer，当前会话移交浮动窗（含注入工具条）。
   const handlePopOut = useCallback(async () => {
     if (!activeSession || busy) {
       return;
@@ -668,7 +882,9 @@ export function BrowserDock({
             onCloseSessions={(sessionIds, options) => {
               void handleCloseSessions(sessionIds, options);
             }}
-            onTabMenuOpenChange={setTabMenuOpen}
+            onEmbeddedTabContextMenu={
+              hasTauriEventBridge() ? handleEmbeddedTabContextMenu : undefined
+            }
             onNewTab={() => {
               setActiveSessionId(null);
               setUrlDraft("");
@@ -699,12 +915,12 @@ export function BrowserDock({
                     aria-selected={session.browserSessionId === activeSessionId}
                     className="browser-agent-tab-main"
                     onClick={() => handleActivateSession(session)}
-                    title={session.title || session.normalizedUrl}
+                    title={resolveBrowserTabLabel(session)}
                   >
                     <span className="browser-agent-tab-main-content">
                       <Globe size={12} aria-hidden />
                       <span className="browser-agent-tab-label">
-                        {session.title || session.normalizedUrl}
+                        {resolveBrowserTabLabel(session)}
                       </span>
                     </span>
                   </button>

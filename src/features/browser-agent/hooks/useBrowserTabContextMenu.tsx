@@ -93,11 +93,17 @@ export function useBrowserTabContextMenu({
         },
       ];
 
-      const position = clampRendererContextMenuPosition(event.clientX, event.clientY, {
-        width: 248,
-        height: estimateRendererContextMenuHeight(items),
-        padding: 10,
-      });
+      // 菜单优先在 tab 上方展开（落在 chat / 顶栏 HTML 层），避免掉进 native 子 webview。
+      const menuHeight = estimateRendererContextMenuHeight(items);
+      const position = clampRendererContextMenuPosition(
+        event.clientX,
+        event.clientY - menuHeight,
+        {
+          width: 248,
+          height: menuHeight,
+          padding: 10,
+        },
+      );
       setMenu({
         ...position,
         label: t("browserAgent.dock.tabContextMenu"),
