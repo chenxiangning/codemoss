@@ -1,4 +1,7 @@
 /* Checkpoint diff and editable review surfaces. */
+@import "./editable-diff-compare-nav.css";
+@import "./editable-diff-review-shell.css";
+
 .checkpoint-diff-modal {
   width: min(1600px, calc(100vw - 48px));
   max-width: min(1600px, calc(100vw - 48px));
@@ -152,167 +155,8 @@
   color: var(--text-muted);
 }
 
-.editable-diff-review-surface {
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  min-width: 0;
-  height: 100%;
-}
-
-.editable-diff-review-toolbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 10px 12px;
-  border-bottom: 1px solid var(--border-subtle);
-  background: color-mix(in srgb, var(--surface-panel) 86%, transparent);
-}
-
-.editable-diff-review-toolbar-copy {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.editable-diff-review-toolbar-kicker {
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--text-faint);
-}
-
-.editable-diff-review-toolbar-title {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text-strong);
-}
-
-.editable-diff-review-toolbar-actions {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.editable-diff-review-action {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  border: 1px solid var(--border-subtle);
-  border-radius: 8px;
-  background: transparent;
-  color: var(--text-strong);
-  font-size: 12px;
-  font-weight: 600;
-  padding: 6px 10px;
-}
-
-.editable-diff-review-action:not(:disabled) {
-  cursor: pointer;
-}
-
-.editable-diff-review-action:not(:disabled):hover {
-  background: var(--surface-hover);
-}
-
-.editable-diff-review-action:disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
-}
-
-.editable-diff-review-surface.is-toolbar-inline-actions
-  .editable-diff-review-toolbar-actions {
-  display: contents;
-}
-
-.git-history-diff-modal-actions > .editable-diff-review-toolbar-actions {
-  display: contents;
-}
-
-.git-history-diff-modal-actions .editable-diff-review-action {
-  width: auto;
-  height: auto;
-  min-height: 0;
-  border: none;
-  border-radius: 0;
-  background: transparent;
-  padding: 0;
-  font-size: 11px;
-  line-height: 1.2;
-  font-weight: 700;
-  color: var(--text-strong);
-}
-
-.git-history-diff-modal-actions
-  .editable-diff-review-action:not(:disabled):hover {
-  background: transparent;
-  color: var(--text-emphasis);
-}
-
-.git-history-diff-modal-actions .editable-diff-review-readonly-hint {
-  max-width: 160px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.editable-diff-review-readonly-hint {
-  font-size: 11px;
-  color: var(--text-muted);
-}
-
-.editable-diff-review-layout {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 300px;
-  min-height: 0;
-  min-width: 0;
-  flex: 1;
-}
-
-.editable-diff-review-surface:not(.has-sidebar) .editable-diff-review-layout {
-  grid-template-columns: minmax(0, 1fr);
-}
-
-.editable-diff-review-main {
-  min-width: 0;
-  min-height: 0;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-}
-
-.editable-diff-review-main > .diff-viewer-frame,
-.editable-diff-review-main > .fvp,
-.editable-diff-review-main > .editable-diff-review-viewer,
-.editable-diff-review-main > .editable-diff-compare {
-  flex: 1;
-  min-height: 0;
-  min-width: 0;
-}
-
-.editable-diff-review-viewer {
-  display: flex;
-  flex-direction: column;
-}
-
-.editable-diff-review-viewer > .diff-viewer-frame {
-  flex: 1;
-  min-height: 0;
-  min-width: 0;
-}
-
-.editable-diff-review-viewer.is-toolbar-only {
-  display: none;
-}
-
-.editable-diff-compare {
+/* Checkpoint modal only: tight compare grid. Do not apply globally. */
+.checkpoint-diff-modal .editable-diff-compare {
   min-width: 0;
   min-height: 0;
   height: 100%;
@@ -322,59 +166,30 @@
   overflow: hidden;
 }
 
-.editable-diff-compare.has-external-nav {
+.checkpoint-diff-modal .editable-diff-compare.has-external-nav {
   grid-template-rows: minmax(0, 1fr);
 }
 
-.editable-diff-compare-nav {
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 4px;
-  padding: 3px 10px;
-  border-bottom: 1px solid var(--border-subtle);
-  background: var(--surface-panel);
-  color: var(--text-muted);
-  font-size: 11px;
-  font-variant-numeric: tabular-nums;
-}
-
-.editable-diff-compare-nav > span {
-  margin-right: 4px;
-  white-space: nowrap;
-}
-
-.editable-diff-compare-nav .ghost {
-  width: 26px;
-  height: 26px;
-  min-width: 26px;
-  padding: 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.editable-diff-compare-nav.is-external {
+/* Checkpoint toolbar 自己排 flex order；Git / History 顶栏不要全局抢位。 */
+.checkpoint-diff-modal-actions > .editable-diff-compare-nav.is-external,
+.git-history-diff-modal.checkpoint-diff-modal
+  .git-history-diff-modal-actions
+  > .editable-diff-compare-nav.is-external {
   order: -2;
-  flex: 0 0 auto;
-  padding: 0;
-  border: none;
-  background: transparent;
 }
 
-.editable-diff-compare-columns {
+.checkpoint-diff-modal .editable-diff-compare-columns {
   display: grid;
   min-height: 0;
   grid-template-columns: repeat(2, minmax(360px, 1fr));
   overflow: auto;
 }
 
-.editable-diff-compare .file-compare-column {
+.checkpoint-diff-modal .editable-diff-compare .file-compare-column {
   min-width: 360px;
 }
 
-.editable-diff-compare .file-compare-column:first-child .cm-content {
+.checkpoint-diff-modal .editable-diff-compare .file-compare-column:first-child .cm-content {
   cursor: default;
 }
 

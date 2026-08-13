@@ -112,6 +112,38 @@ describe("CompareEditorColumn read-only rendering", () => {
     });
   });
 
+  it("re-scrolls the same hunk when navigationEpoch advances", async () => {
+    const { rerender } = render(
+      <CompareEditorColumn
+        draft={READ_ONLY_DRAFT}
+        editorTheme="dark"
+        markers={{ added: [], modified: [2] }}
+        lineGaps={[]}
+        activeLineNumber={2}
+        navigationEpoch={0}
+      />,
+    );
+
+    await waitFor(() => expect(flashNavigationLine).toHaveBeenCalledTimes(1));
+
+    rerender(
+      <CompareEditorColumn
+        draft={READ_ONLY_DRAFT}
+        editorTheme="dark"
+        markers={{ added: [], modified: [2] }}
+        lineGaps={[]}
+        activeLineNumber={2}
+        navigationEpoch={1}
+      />,
+    );
+
+    await waitFor(() => expect(flashNavigationLine).toHaveBeenCalledTimes(2));
+    expect(dispatch).toHaveBeenLastCalledWith({
+      selection: { anchor: 20 },
+      scrollIntoView: true,
+    });
+  });
+
   it("keeps explicit unsupported state on the plain-text fallback", () => {
     const { container } = render(
       <CompareEditorColumn

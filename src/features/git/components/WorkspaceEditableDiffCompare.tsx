@@ -86,6 +86,7 @@ export function WorkspaceEditableDiffCompare({
   const [previousSource, setPreviousSource] = useState<string | null>(null);
   const [hasResolvedBaseline, setHasResolvedBaseline] = useState(false);
   const [activeDifferenceIndex, setActiveDifferenceIndex] = useState(0);
+  const [navigationEpoch, setNavigationEpoch] = useState(0);
   const loadFullDiff = useCallback(
     (path: string) => fullDiffLoader?.(path) ?? getGitFileFullDiff(workspaceId, path),
     [fullDiffLoader, workspaceId],
@@ -317,13 +318,14 @@ export function WorkspaceEditableDiffCompare({
       <button
         type="button"
         className="ghost"
-        onClick={() =>
+        onClick={() => {
           setActiveDifferenceIndex(
             (current) =>
               (current - 1 + diffResult.changedBlocks.length) %
               diffResult.changedBlocks.length,
-          )
-        }
+          );
+          setNavigationEpoch((epoch) => epoch + 1);
+        }}
         disabled={!canNavigateDifferences}
         aria-label={t("files.fileCompare.previousDifference")}
         title={t("files.fileCompare.previousDifference")}
@@ -333,11 +335,12 @@ export function WorkspaceEditableDiffCompare({
       <button
         type="button"
         className="ghost"
-        onClick={() =>
+        onClick={() => {
           setActiveDifferenceIndex(
             (current) => (current + 1) % diffResult.changedBlocks.length,
-          )
-        }
+          );
+          setNavigationEpoch((epoch) => epoch + 1);
+        }}
         disabled={!canNavigateDifferences}
         aria-label={t("files.fileCompare.nextDifference")}
         title={t("files.fileCompare.nextDifference")}
@@ -371,6 +374,7 @@ export function WorkspaceEditableDiffCompare({
             activeLineNumber={
               activeDifference?.lineNumbersByColumn[columnIndex] ?? null
             }
+            navigationEpoch={navigationEpoch}
           />
         ))}
       </div>

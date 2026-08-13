@@ -25,6 +25,12 @@ describe("feature style loader contracts", () => {
     );
 
     expect(diffLoader).toContain('import("./file-view-panel.css")');
+    expect(diffLoader).toContain('import("./editable-diff-compare-nav.css")');
+    expect(diffLoader).toContain('import("./editable-diff-review-shell.css")');
+    expect(diffLoader).not.toContain(
+      'import("./status-panel-checkpoint-diff.css")',
+    );
+    expect(diffLoader).not.toContain('import("./status-panel.css")');
   });
 
   it("loads vendor model-manager dialog styles without the full settings bundle", () => {

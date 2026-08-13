@@ -30,6 +30,8 @@ export function loadDiffStyles() {
     () => import("./diff.css"),
     () => import("./diff-viewer.css"),
     () => import("./file-view-panel.css"),
+    () => import("./editable-diff-compare-nav.css"),
+    () => import("./editable-diff-review-shell.css"),
   ]);
 }
 

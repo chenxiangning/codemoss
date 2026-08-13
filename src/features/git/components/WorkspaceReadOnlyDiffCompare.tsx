@@ -108,6 +108,7 @@ export function WorkspaceReadOnlyDiffCompare({
   const previousColumnRatioRef = useRef(DEFAULT_PREVIOUS_COLUMN_RATIO);
   const resizeCleanupRef = useRef<(() => void) | null>(null);
   const [activeDifferenceIndex, setActiveDifferenceIndex] = useState(0);
+  const [navigationEpoch, setNavigationEpoch] = useState(0);
   const [resolvedDiff, setResolvedDiff] = useState(diff);
 
   useEffect(() => {
@@ -336,12 +337,13 @@ export function WorkspaceReadOnlyDiffCompare({
       <button
         type="button"
         className="ghost"
-        onClick={() =>
+        onClick={() => {
           setActiveDifferenceIndex(
             (current) =>
               (current - 1 + diffResult.changedBlocks.length) % diffResult.changedBlocks.length,
-          )
-        }
+          );
+          setNavigationEpoch((epoch) => epoch + 1);
+        }}
         disabled={!canNavigateDifferences}
         aria-label={t("files.fileCompare.previousDifference")}
         title={t("files.fileCompare.previousDifference")}
@@ -351,11 +353,12 @@ export function WorkspaceReadOnlyDiffCompare({
       <button
         type="button"
         className="ghost"
-        onClick={() =>
+        onClick={() => {
           setActiveDifferenceIndex(
             (current) => (current + 1) % diffResult.changedBlocks.length,
-          )
-        }
+          );
+          setNavigationEpoch((epoch) => epoch + 1);
+        }}
         disabled={!canNavigateDifferences}
         aria-label={t("files.fileCompare.nextDifference")}
         title={t("files.fileCompare.nextDifference")}
@@ -394,6 +397,7 @@ export function WorkspaceReadOnlyDiffCompare({
               lineNumberLabels={compareModel.lineNumberLabels[columnIndex] ?? null}
               saveFileShortcut="cmd+s"
               activeLineNumber={activeDifference?.lineNumbersByColumn[columnIndex] ?? null}
+              navigationEpoch={navigationEpoch}
               diffTone={columnIndex === 0 ? "deletion" : "addition"}
             />
             {resizableColumns && columnIndex === 0 ? (

@@ -11,6 +11,8 @@
 
 | Change | Progress | Current gate | Artifacts |
 | ------ | -------: | ------------ | --------- |
+| [`fix-deferred-feature-style-surfaces`](fix-deferred-feature-style-surfaces/proposal.md) | implemented / user accepted | 延迟 CSS 按可见宿主接线 + Git Diff 单栏/双栏互斥滚动层；用户 2026-08-13 手测通过 | [proposal](fix-deferred-feature-style-surfaces/proposal.md) · [design](fix-deferred-feature-style-surfaces/design.md) · [tasks](fix-deferred-feature-style-surfaces/tasks.md) · [specs](fix-deferred-feature-style-surfaces/specs/) · [verification](fix-deferred-feature-style-surfaces/verification.md) |
+| [`redesign-sidebar-engine-rail`](redesign-sidebar-engine-rail/proposal.md) | proposal ready / await review | 方案 D logo 轨 + Index-only list + 删除 tombstone；过滤规则冻结 | [proposal](redesign-sidebar-engine-rail/proposal.md) |
 | [`fix-history-open-tail-first`](fix-history-open-tail-first/proposal.md) | implemented / user accepted | 长会话 tail-first 首屏 + 芯片分页加载更早；迟到 projection 禁止从头刷；用户手测有效果 | [proposal](fix-history-open-tail-first/proposal.md) · [design](fix-history-open-tail-first/design.md) · [tasks](fix-history-open-tail-first/tasks.md) · [specs](fix-history-open-tail-first/specs/) |
 | [`fix-browser-dock-tab-webview-context-menu`](fix-browser-dock-tab-webview-context-menu/proposal.md) | implemented / review requested | 单一 embedded renderer + child-WebView 菜单 bridge + theme-token transfer；用户已验收全部工作区变更；**不 commit** | [proposal](fix-browser-dock-tab-webview-context-menu/proposal.md) |
 | [`refine-browser-excerpt-curtain-and-locate`](refine-browser-excerpt-curtain-and-locate/proposal.md) | implemented / review green | 网页摘录 V3 细线 + 点选去重 + locate 进模型；87 vitest + toolbar rust 绿；**commit 不含 Dock tab 菜单** | [proposal](refine-browser-excerpt-curtain-and-locate/proposal.md) · [design](refine-browser-excerpt-curtain-and-locate/design.md) · [tasks](refine-browser-excerpt-curtain-and-locate/tasks.md) · [specs](refine-browser-excerpt-curtain-and-locate/specs/) · [verification](refine-browser-excerpt-curtain-and-locate/verification.md) |
@@ -44,6 +46,7 @@
 
 ## Active backlog notes（2026-08-08）
 
+- **新增并落地** `fix-deferred-feature-style-surfaces`（2026-08-13）：延迟 CSS 入口漏接 + Git Diff 弹窗单栏/双栏滚动合同；用户手测通过，待 commit。
 - **已归档** `fix-pi-session-index-cold-start` → `archive/2026-08-13-fix-pi-session-index-cold-start`：重启后左侧 Native PI 行从 Session Index 投影；warm SQLite first-paint + cwd fingerprint + 并行 writer；用户 2026-08-13 手测通过。
 - **已归档** `fix-pi-session-continuity-and-sidebar` → `archive/2026-08-13-fix-pi-session-continuity-and-sidebar`：Native Pi 续聊同一 jsonl + Session Index 侧栏历史；用户 2026-08-13 手测通过。
 - **新增并落地** `fix-history-open-tail-first`（2026-08-13）：中断/失败长会话打开从头刷到最新；hydrate 改 tail-first；顶上芯片分页加载更早；迟到 projection atomic；用户手测有效果。

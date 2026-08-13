@@ -242,104 +242,102 @@
 }
 
 /*
- * Default (non-maximized): hug content height so short diffs don't leave a
- * huge empty panel. Cap with max-height; overlay already centers the dialog.
- * Maximized keeps the previous full-viewport fill.
+ * Modal body is a definite-height flex shell.
+ * Unified list scrolls in .diff-viewer; split compare scrolls in CM;
+ * .diff-viewer-anchor-dock stays pinned. Do not hug virtualized list height.
  */
 .git-history-diff-modal-viewer {
   display: flex;
   flex-direction: column;
   min-height: 0;
-  height: auto;
-  max-height: calc(100vh - 180px);
   min-width: 0;
   overflow: hidden;
-  flex: 0 1 auto;
+  flex: 1 1 auto;
+  height: min(72vh, calc(100vh - 160px));
 }
 
 .git-history-diff-modal.is-maximized .git-history-diff-modal-viewer {
   height: calc(100vh - 128px);
   max-height: calc(100vh - 128px);
-  flex: 1 1 auto;
 }
 
+.git-history-diff-modal-viewer > .editable-diff-review-surface,
 .git-history-diff-modal-viewer > .diff-viewer-frame {
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
+.git-history-diff-modal-viewer .editable-diff-review-layout,
+.git-history-diff-modal-viewer .editable-diff-review-main,
+.git-history-diff-modal-viewer .editable-diff-review-viewer:not(.is-toolbar-only),
+.git-history-diff-modal-viewer .diff-viewer-frame {
   flex: 1 1 auto;
   min-height: 0;
   min-width: 0;
 }
 
-/* Non-maximized: collapse the height:100% / flex:1 chain so content drives size. */
-.git-history-diff-modal:not(.is-maximized) .editable-diff-review-surface {
-  height: auto;
+/* Unified: the native list is the only vertical scrollport. */
+.git-history-diff-modal-viewer .diff-viewer {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
 }
 
-.git-history-diff-modal:not(.is-maximized) .editable-diff-review-layout {
-  flex: 0 1 auto;
-}
-
-.git-history-diff-modal:not(.is-maximized) .editable-diff-review-main > .diff-viewer-frame,
-.git-history-diff-modal:not(.is-maximized) .editable-diff-review-main > .fvp,
-.git-history-diff-modal:not(.is-maximized) .editable-diff-review-main > .editable-diff-review-viewer,
-.git-history-diff-modal:not(.is-maximized) .editable-diff-review-main > .editable-diff-compare {
-  flex: 0 1 auto;
-}
-
-.git-history-diff-modal:not(.is-maximized) .editable-diff-compare {
-  height: auto;
-  max-height: calc(100vh - 220px);
-  grid-template-rows: auto minmax(0, auto);
-}
-
-.git-history-diff-modal:not(.is-maximized) .editable-diff-compare.has-external-nav {
-  grid-template-rows: minmax(0, auto);
-}
-
-.git-history-diff-modal:not(.is-maximized) .editable-diff-compare-columns {
-  /* Let columns grow with content; cap so long files scroll inside the pane. */
-  max-height: calc(100vh - 240px);
-}
-
-.git-history-diff-modal:not(.is-maximized) .file-compare-column {
-  /* auto content row instead of 1fr fill so short files don't stretch */
-  grid-template-rows: auto auto auto;
+.git-history-diff-modal-viewer .diff-viewer.has-aligned-text-preview {
+  overflow: hidden;
 }
 
 /*
- * CodeMirror: hug document height when short; cap when long so the scroller
- * takes over (clientHeight stays constrained → CM keeps viewport rendering).
+ * Split: CodeMirror scroller is the only vertical scrollport.
+ * Columns must NOT be overflow:auto — that grows CM to document height
+ * and the hidden parent then clips, so neither pane can scroll.
  */
-.git-history-diff-modal:not(.is-maximized) .file-compare-editor,
-.git-history-diff-modal:not(.is-maximized) .file-compare-editor .fvp-editor,
-.git-history-diff-modal:not(.is-maximized) .file-compare-editor .file-compare-cm,
-.git-history-diff-modal:not(.is-maximized) .file-compare-editor .cm-editor {
-  height: auto;
-  max-height: calc(100vh - 280px);
+.git-history-diff-modal-viewer .editable-diff-compare {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
 }
 
-.git-history-diff-modal:not(.is-maximized) .file-compare-cm .cm-scroller {
-  height: auto;
-  max-height: calc(100vh - 280px);
+.git-history-diff-modal-viewer .editable-diff-compare-columns,
+.git-history-diff-modal-viewer .file-compare-columns,
+.git-history-diff-modal-viewer .editable-diff-compare .editable-diff-compare-columns.is-resizable {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
+.git-history-diff-modal-viewer .file-compare-column {
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+  grid-template-rows: auto auto minmax(0, 1fr);
+}
+
+.git-history-diff-modal-viewer .file-compare-editor,
+.git-history-diff-modal-viewer .file-compare-editor .fvp-editor,
+.git-history-diff-modal-viewer .file-compare-editor .file-compare-cm,
+.git-history-diff-modal-viewer .file-compare-editor .cm-editor {
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.git-history-diff-modal-viewer .file-compare-cm .cm-scroller {
+  min-height: 0;
+  height: 100%;
   overflow: auto;
 }
 
-.git-history-diff-modal:not(.is-maximized) .file-compare-readonly-content {
-  height: auto;
-  max-height: calc(100vh - 280px);
-}
-
-/* Aligned preview path (GitDiffViewer → WorkspaceReadOnlyDiffCompare) */
-.git-history-diff-modal:not(.is-maximized) .diff-viewer-frame,
-.git-history-diff-modal:not(.is-maximized) .diff-viewer.has-aligned-text-preview,
-.git-history-diff-modal:not(.is-maximized) .diff-viewer-aligned-text-preview {
-  flex: 0 1 auto;
-  min-height: 0;
-}
-
-.git-history-diff-modal:not(.is-maximized) .diff-viewer-aligned-text-preview > .editable-diff-compare {
-  flex: 0 1 auto;
-  height: auto;
-  max-height: calc(100vh - 220px);
+.git-history-diff-modal-viewer .diff-viewer-anchor-dock {
+  flex: 0 0 auto;
 }
 
 .git-history-diff-modal-overlay.is-popup .editable-diff-review-surface.is-toolbar-inline-actions .diff-viewer-header-sticky,

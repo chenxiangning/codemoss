@@ -216,6 +216,7 @@ export function CompareEditorColumn({
   collapsedRanges = [],
   saveFileShortcut,
   activeLineNumber,
+  navigationEpoch = 0,
   diffTone = null,
   lineNumberLabels = null,
 }: {
@@ -226,6 +227,7 @@ export function CompareEditorColumn({
   collapsedRanges?: FileCompareCollapsedRange[];
   saveFileShortcut?: string | null;
   activeLineNumber: number | null;
+  navigationEpoch?: number;
   diffTone?: "deletion" | "addition" | null;
   lineNumberLabels?: readonly (number | null)[] | null;
 }) {
@@ -252,7 +254,8 @@ export function CompareEditorColumn({
       scrollIntoView: true,
     });
     cmRef.current?.flashNavigationLine(activeLineNumber);
-  }, [activeLineNumber, shouldRenderPlainText]);
+    // navigationEpoch：1/1 环回时行号不变，仍要再 scroll/flash 一次。
+  }, [activeLineNumber, navigationEpoch, shouldRenderPlainText]);
 
   return (
     <section
@@ -352,6 +355,7 @@ export function WorkspaceFileComparePanel({
   const [draftsById, setDraftsById] = useState<Record<string, CompareColumnDraft>>({});
   const [scratchTexts, setScratchTexts] = useState({ left: "", right: "" });
   const [activeDifferenceIndex, setActiveDifferenceIndex] = useState(0);
+  const [navigationEpoch, setNavigationEpoch] = useState(0);
 
   useEffect(() => {
     void loadFileViewStyles();
@@ -473,6 +477,7 @@ export function WorkspaceFileComparePanel({
     setActiveDifferenceIndex((current) =>
       (current - 1 + diffResult.changedBlocks.length) % diffResult.changedBlocks.length,
     );
+    setNavigationEpoch((epoch) => epoch + 1);
   }, [canNavigateDiffs, diffResult.changedBlocks.length]);
 
   const goNextDifference = useCallback(() => {
@@ -480,6 +485,7 @@ export function WorkspaceFileComparePanel({
       return;
     }
     setActiveDifferenceIndex((current) => (current + 1) % diffResult.changedBlocks.length);
+    setNavigationEpoch((epoch) => epoch + 1);
   }, [canNavigateDiffs, diffResult.changedBlocks.length]);
 
   const handlePanelScroll = useCallback((event: UIEvent<HTMLDivElement>) => {
@@ -624,6 +630,7 @@ export function WorkspaceFileComparePanel({
               activeLineNumber={
                 activeDifference?.lineNumbersByColumn[index] ?? null
               }
+              navigationEpoch={navigationEpoch}
             />
           );
         })}
