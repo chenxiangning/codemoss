@@ -1741,8 +1741,10 @@ impl DaemonState {
                             // Always emit agentMessage item/completed (Claude-parity) so
                             // project-memory fusion runs after TextDelta streaming.
                             if !completed_text.trim().is_empty() {
-                                let completion_item_id =
-                                    gemini_agent_completion_item_id(&render_state, &item_id_clone);
+                                let completion_item_id = gemini_agent_completion_item_id(
+                                    &render_state,
+                                    &item_id_clone,
+                                );
                                 event_sink.emit_app_server_event(AppServerEvent {
                                     workspace_id: event.workspace_id().to_string(),
                                     message: json!({
@@ -1994,8 +1996,10 @@ impl DaemonState {
                             // Always emit agentMessage item/completed (Claude-parity) so
                             // project-memory fusion runs after TextDelta streaming.
                             if !completed_text.trim().is_empty() {
-                                let completion_item_id =
-                                    gemini_agent_completion_item_id(&render_state, &item_id_clone);
+                                let completion_item_id = gemini_agent_completion_item_id(
+                                    &render_state,
+                                    &item_id_clone,
+                                );
                                 event_sink.emit_app_server_event(AppServerEvent {
                                     workspace_id: event.workspace_id().to_string(),
                                     message: json!({
@@ -2238,8 +2242,10 @@ impl DaemonState {
                             // Always emit agentMessage item/completed (Claude-parity) so
                             // project-memory fusion runs after TextDelta streaming.
                             if !completed_text.trim().is_empty() {
-                                let completion_item_id =
-                                    gemini_agent_completion_item_id(&render_state, &item_id_clone);
+                                let completion_item_id = gemini_agent_completion_item_id(
+                                    &render_state,
+                                    &item_id_clone,
+                                );
                                 event_sink.emit_app_server_event(AppServerEvent {
                                     workspace_id: event.workspace_id().to_string(),
                                     message: json!({

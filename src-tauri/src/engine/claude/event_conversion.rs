@@ -166,17 +166,18 @@ impl ClaudeSession {
 
         match kind {
             ClaudeSyntheticApprovalKind::DirectoryGrant => {
-                let absolute_path: String =
-                    match extract_absolute_path_from_tool_input(tool_input.as_ref())
-                        .or_else(|| extract_absolute_path_from_text(output))
-                    {
-                        Some(path) => path,
-                        None => {
-                            return Some(self.build_command_mode_blocked_signal(
-                                turn_id, tool_id, &tool_name, output,
-                            ));
-                        }
-                    };
+                let absolute_path: String = match extract_absolute_path_from_tool_input(
+                    tool_input.as_ref(),
+                )
+                .or_else(|| extract_absolute_path_from_text(output))
+                {
+                    Some(path) => path,
+                    None => {
+                        return Some(self.build_command_mode_blocked_signal(
+                            turn_id, tool_id, &tool_name, output,
+                        ));
+                    }
+                };
 
                 // Already inside L1 → do not re-prompt grant.
                 if self.is_path_in_session_allowlist(&absolute_path) {
@@ -207,7 +208,10 @@ impl ClaudeSession {
                 if let Some(Value::Object(existing)) = tool_input.clone() {
                     input_map = existing;
                 }
-                input_map.insert("path".to_string(), Value::String(absolute_path.clone()));
+                input_map.insert(
+                    "path".to_string(),
+                    Value::String(absolute_path.clone()),
+                );
                 input_map.insert(
                     "canonicalPath".to_string(),
                     Value::String(absolute_path.clone()),
@@ -230,7 +234,10 @@ impl ClaudeSession {
                     "originalToolName".to_string(),
                     Value::String(tool_name.clone()),
                 );
-                input_map.insert("engine".to_string(), Value::String("claude".to_string()));
+                input_map.insert(
+                    "engine".to_string(),
+                    Value::String("claude".to_string()),
+                );
                 input_map.insert(
                     "retryContext".to_string(),
                     serde_json::json!({

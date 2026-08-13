@@ -909,11 +909,10 @@ fn collect_codex_jsonl_candidates_from_root_recent_first(
         })
         .collect();
     local.sort_by(|left, right| {
-        right.modified_at.cmp(&left.modified_at).then_with(|| {
-            left.path
-                .to_string_lossy()
-                .cmp(&right.path.to_string_lossy())
-        })
+        right
+            .modified_at
+            .cmp(&left.modified_at)
+            .then_with(|| left.path.to_string_lossy().cmp(&right.path.to_string_lossy()))
     });
     for candidate in local {
         if candidates.len() >= max_candidates {

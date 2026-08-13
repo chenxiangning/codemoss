@@ -2350,10 +2350,7 @@ fn expand_user_path(path: &str) -> Result<std::path::PathBuf, String> {
         return dirs::home_dir().ok_or_else(|| "Cannot determine home directory".to_string());
     }
 
-    if let Some(rest) = trimmed
-        .strip_prefix("~/")
-        .or_else(|| trimmed.strip_prefix("~\\"))
-    {
+    if let Some(rest) = trimmed.strip_prefix("~/").or_else(|| trimmed.strip_prefix("~\\")) {
         let home = dirs::home_dir().ok_or_else(|| "Cannot determine home directory".to_string())?;
         return Ok(home.join(rest));
     }
@@ -2378,11 +2375,18 @@ fn resolve_containing_folder(path: &str) -> Result<std::path::PathBuf, String> {
     };
 
     if folder.exists() {
-        return dunce::canonicalize(&folder)
-            .map_err(|error| format!("Failed to resolve folder `{}`: {error}", folder.display()));
+        return dunce::canonicalize(&folder).map_err(|error| {
+            format!(
+                "Failed to resolve folder `{}`: {error}",
+                folder.display()
+            )
+        });
     }
 
-    Err(format!("Folder does not exist: {}", folder.display()))
+    Err(format!(
+        "Folder does not exist: {}",
+        folder.display()
+    ))
 }
 
 fn open_directory_in_file_manager(folder: &std::path::Path) -> Result<(), String> {
@@ -2433,8 +2437,9 @@ pub(crate) async fn reveal_in_file_manager(path: String) -> Result<(), String> {
     }
 
     let expanded = expand_user_path(trimmed)?;
-    let canonical = dunce::canonicalize(&expanded)
-        .map_err(|error| format!("Failed to resolve path `{trimmed}`: {error}"))?;
+    let canonical = dunce::canonicalize(&expanded).map_err(|error| {
+        format!("Failed to resolve path `{trimmed}`: {error}")
+    })?;
 
     #[cfg(windows)]
     {
@@ -3114,7 +3119,11 @@ pub(crate) async fn probe_open_app_target(
     command: Option<String>,
 ) -> Result<OpenAppTargetProbeResult, String> {
     tokio::task::spawn_blocking(move || {
-        probe_open_app_target_sync(&kind, app_name.as_deref(), command.as_deref())
+        probe_open_app_target_sync(
+            &kind,
+            app_name.as_deref(),
+            command.as_deref(),
+        )
     })
     .await
     .map_err(|err| err.to_string())

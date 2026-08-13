@@ -1222,10 +1222,7 @@ fn budget_gemini_string(value: &str) -> String {
     if value.contains("data:image") || value.contains("base64") {
         return GEMINI_OMITTED_PAYLOAD_SENTINEL.to_string();
     }
-    let truncated: String = value
-        .chars()
-        .take(GEMINI_STRING_FIELD_BYTE_BUDGET)
-        .collect();
+    let truncated: String = value.chars().take(GEMINI_STRING_FIELD_BYTE_BUDGET).collect();
     format!(
         "{}…[truncated {} chars]",
         truncated,

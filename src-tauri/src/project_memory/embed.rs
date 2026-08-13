@@ -96,7 +96,8 @@ fn remove_model_files_in_dir(model_dir: &Path) -> Result<(), String> {
 
     for path in [&onnx_path, &tokenizer_path, &tmp_onnx, &tmp_tok] {
         if path.exists() {
-            std::fs::remove_file(path).map_err(|e| format!("remove {}: {}", path.display(), e))?;
+            std::fs::remove_file(path)
+                .map_err(|e| format!("remove {}: {}", path.display(), e))?;
             log::info!("[embed] removed {}", path.display());
         }
     }
@@ -137,7 +138,9 @@ pub(crate) async fn project_memory_embed_text(
 pub(crate) async fn project_memory_embed_download(
     app: tauri::AppHandle,
 ) -> Result<ProjectMemoryEmbedHealth, String> {
-    log::info!("[embed] download rejected: ONNX runtime removed to restore Intel macOS packaging");
+    log::info!(
+        "[embed] download rejected: ONNX runtime removed to restore Intel macOS packaging"
+    );
     Ok(disabled_health(&app))
 }
 

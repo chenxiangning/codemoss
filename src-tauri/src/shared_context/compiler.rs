@@ -160,7 +160,9 @@ fn collab_stage_portable_text(payload: &Value) -> Option<String> {
                 .map(str::trim)
                 .filter(|value| !value.is_empty())
         })?;
-    Some(format!("[协作环节 {node_id} · {status}]\n{body}"))
+    Some(format!(
+        "[协作环节 {node_id} · {status}]\n{body}"
+    ))
 }
 
 fn transform_event(
@@ -179,9 +181,8 @@ fn transform_event(
                     omissions.push(ProjectionOmission {
                         entry_id: entry_id.clone(),
                         category: "collab-control-prompt".to_string(),
-                        reason:
-                            "collab scheduler briefing/summary is not portable ordinary context"
-                                .to_string(),
+                        reason: "collab scheduler briefing/summary is not portable ordinary context"
+                            .to_string(),
                         disposition: OmissionDisposition::NotRetrievable,
                         retrievable_ref: None,
                     });
