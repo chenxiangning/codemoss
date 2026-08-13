@@ -110,7 +110,7 @@ export function filterThreadsForEngineRail(
     let cursor: ThreadSummary | undefined = thread;
     while (cursor && !keep.has(cursor.id)) {
       keep.add(cursor.id);
-      const parentId = cursor.parentThreadId?.trim();
+      const parentId: string | undefined = cursor.parentThreadId?.trim();
       cursor = parentId ? byId.get(parentId) : undefined;
     }
   });

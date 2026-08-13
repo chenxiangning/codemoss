@@ -600,7 +600,7 @@ export function useListThreadsForWorkspace({
             ),
           );
           const archivedSessionMap = await archivedSessionMapPromise.catch(
-            () => new Map(),
+            () => null,
           );
           const sqliteSummaries = applySessionArchiveState(
             filterDeletedSummaries([

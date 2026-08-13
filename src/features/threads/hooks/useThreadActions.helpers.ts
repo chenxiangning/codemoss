@@ -1363,8 +1363,8 @@ function mergeNativeCliSessionSummaries(params: {
       sessionKind?: string | null;
     }
   >;
-  idPrefix: "gemini" | "grok" | "kimi";
-  engineSource: "gemini" | "grok" | "kimi";
+  idPrefix: "gemini" | "grok" | "kimi" | "pi";
+  engineSource: "gemini" | "grok" | "kimi" | "pi";
   fallbackTitle: string;
   workspaceId: string;
   mappedTitles: Record<string, string>;

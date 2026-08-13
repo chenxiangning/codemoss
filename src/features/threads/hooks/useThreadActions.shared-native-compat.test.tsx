@@ -9,7 +9,6 @@ import {
   listGeminiSessions,
   listGrokSessions,
   listKimiSessions,
-  listPiSessions,
   listWorkspaceSessions,
   listThreadTitles,
   listThreads,
