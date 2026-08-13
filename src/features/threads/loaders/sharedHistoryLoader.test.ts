@@ -464,6 +464,62 @@ describe("sharedHistoryLoader", () => {
     expect(warn).toHaveBeenCalledOnce();
   });
 
+  it("returns V0 immediately when projection soft-times out and merges later", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    let resolveProjection: (value: unknown[]) => void = () => undefined;
+    const projectionPromise = new Promise<unknown[]>((resolve) => {
+      resolveProjection = resolve;
+    });
+    const onProjectionMerged = vi.fn();
+    const loader = createSharedHistoryLoader({
+      workspaceId: "ws-1",
+      loadSharedSession: vi.fn().mockResolvedValue({
+        selectedEngine: "claude",
+        items: [
+          { id: "legacy", kind: "message", role: "user", text: "legacy-v0" },
+        ],
+      }),
+      loadSharedProjection: vi.fn().mockReturnValue(projectionPromise),
+      projectionTimeoutMs: 30,
+      onProjectionMerged,
+    });
+
+    const snapshotPromise = loader.load("shared:soft-timeout");
+    const snapshot = await snapshotPromise;
+
+    expect(snapshot.items[0]).toMatchObject({
+      id: "legacy",
+      text: "legacy-v0",
+    });
+    expect(onProjectionMerged).not.toHaveBeenCalled();
+    expect(warn).toHaveBeenCalled();
+
+    resolveProjection([
+      {
+        id: "canonical-user",
+        kind: "message",
+        content: { role: "user", text: "from-projection", engineSource: "claude" },
+        fidelity: "canonical",
+        checksum: "ck-user",
+      },
+    ]);
+    await vi.waitFor(() => {
+      expect(onProjectionMerged).toHaveBeenCalledTimes(1);
+    });
+    const merged = onProjectionMerged.mock.calls[0]?.[0] as {
+      items: Array<{ id?: string; text?: string; role?: string }>;
+    };
+    expect(merged.items.length).toBeGreaterThan(0);
+    expect(
+      merged.items.some(
+        (item) =>
+          item.id === "canonical-user" ||
+          item.text === "from-projection" ||
+          item.text === "legacy-v0",
+      ),
+    ).toBe(true);
+  });
+
   it("propagates projection failure when no legacy snapshot can preserve history", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
     const projectionError = new Error("canonical projection unavailable");
@@ -479,7 +535,25 @@ describe("sharedHistoryLoader", () => {
     await expect(loader.load("shared:session-without-legacy")).rejects.toBe(
       projectionError,
     );
-    expect(warn).toHaveBeenCalledOnce();
+    expect(warn).toHaveBeenCalled();
+  });
+
+  it("fails closed when empty V0 and projection soft-times out", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const loader = createSharedHistoryLoader({
+      workspaceId: "ws-1",
+      loadSharedSession: vi.fn().mockResolvedValue({
+        selectedEngine: "claude",
+        items: [],
+      }),
+      loadSharedProjection: vi.fn().mockReturnValue(new Promise(() => undefined)),
+      projectionTimeoutMs: 20,
+    });
+
+    await expect(loader.load("shared:empty-timeout")).rejects.toThrow(
+      /timed out/,
+    );
+    expect(warn).toHaveBeenCalled();
   });
 
   it("keeps the stable Shared thread id after the display title changes", async () => {

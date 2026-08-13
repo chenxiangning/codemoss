@@ -120,6 +120,31 @@ describe("useMessagesRuntimeState", () => {
     expect(result.current.liveAssistantMessageId).toBeNull();
   });
 
+  it("keeps a finalizing live window for Grok after thinking ends", () => {
+    // 回归：Grok 无 finalizing 时 isStreaming 瞬间关掉，MessageRow 只读建壳首字。
+    const { result, rerender } = renderHook(
+      (props: { isThinking: boolean }) =>
+        useMessagesRuntimeState(
+          buildRuntimeInput({
+            activeEngine: "grok",
+            isThinking: props.isThinking,
+          }),
+        ),
+      {
+        initialProps: { isThinking: true },
+      },
+    );
+
+    expect(result.current.liveAssistantMessageId).toBe(assistantItem.id);
+
+    act(() => {
+      rerender({ isThinking: false });
+    });
+
+    expect(result.current.isAssistantFinalizing).toBe(true);
+    expect(result.current.liveAssistantMessageId).toBe(assistantItem.id);
+  });
+
   it("reports matching assistant ids again after the workspace scope changes", () => {
     const reportVisibleTextRendered = vi.fn();
     const { result, rerender } = renderHook(

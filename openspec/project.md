@@ -19,13 +19,13 @@ The product in this repository is `ccgui`: a Tauri 2 desktop AI engineering work
 - Spec artifacts: `openspec/specs/*`
 - Change workflow artifacts: `openspec/changes/<change-id>/{proposal,design,tasks,verification}.md`
 - Archive: `openspec/changes/archive/*`
-- Implementation rules: `.trellis/spec/**`
+- Implementation rules: `dev-guidelines/**`
 - Current workspace state: active changes = `1`, archive changes = `848`, main specs = `492`
 
 ## Entry Surfaces
 
 - `AGENTS.md`
-  - repository entry, rule priority, PlanFirst gate, OpenSpec/Trellis boundary, merge guardrails
+  - repository entry, rule priority, PlanFirst gate, OpenSpec boundary, merge guardrails
 - `README.md` / `README.zh-CN.md`
   - product overview, development commands, documentation map
 - `docs/README.md`
@@ -46,19 +46,19 @@ The product in this repository is `ccgui`: a Tauri 2 desktop AI engineering work
   - change-local truth for proposal, design, tasks, and verification
 - `openspec/specs/*`
   - mainline capability truth after sync/archive
-- `.trellis/spec/**`
+- `dev-guidelines/**`
   - code-level implementation contracts and development rules
 
 ## Governance Model
 
 - `AGENTS.md`
-  - repo entry, global gates, minimal reading path, session record invariant, merge guardrails
-- `.trellis/spec/**`
+  - repo entry, global gates, minimal reading path, merge guardrails
+- `dev-guidelines/**`
   - frontend/backend/guides implementation rules and executable contracts
 - `openspec/**`
   - behavior specs, change workflow, archive, and workspace governance
-- `.claude/**` / `.codex/**`
-  - host hooks, commands, skills, and adapter glue
+- `.claude/**` / `.codex/**` / `.agents/skills/**`
+  - optional host adapters and skills
 - `.omx/**` and local state files
   - runtime artifacts, not repository truth
 
@@ -343,14 +343,11 @@ This snapshot is evidence-oriented. It does not claim full product QA for every 
 - OpenSpec is the source of truth for behavior changes:
   - `openspec/changes/<change-id>/*` defines proposal/design/tasks/spec deltas.
   - behavior changes SHOULD be tracked by an OpenSpec change before implementation.
-- Trellis is the execution container for delivery:
-  - `.trellis/tasks/*` should map back to one OpenSpec change.
-  - implementation and verification should be traceable to linked change artifacts.
+- Implementation rules live in `dev-guidelines/**` and must stay aligned with shipped code.
 - Recommended delivery loop:
   1. Select or create an OpenSpec change.
-  2. Create or activate the linked Trellis task.
-  3. Implement and verify.
-  4. Sync main specs and archive when the change passes gate checks.
+  2. Implement and verify against `dev-guidelines/**`.
+  3. Sync main specs and archive when the change passes gate checks.
 
 ## Key Commands
 

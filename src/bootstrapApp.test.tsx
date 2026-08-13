@@ -110,7 +110,10 @@ describe("startApp", () => {
     expect(initInputHistoryStoreMock).toHaveBeenCalledTimes(1);
     expect(createRootMock).toHaveBeenCalledWith(document.getElementById("root"));
     expect(renderMock).toHaveBeenCalledTimes(1);
-    expect(startRendererBlankScreenWatchdogMock).toHaveBeenCalledWith({ rootId: "root" });
+    expect(startRendererBlankScreenWatchdogMock).toHaveBeenCalledWith({
+      rootId: "root",
+      startDelayMs: 15_000,
+    });
     expect(recordStartupMilestoneMock).toHaveBeenCalledWith("shell-ready");
     expect(recordStartupPerfMarkerMock).toHaveBeenCalledWith("first-paint");
     expect(recordStartupTaskTraceMock).toHaveBeenCalledWith(

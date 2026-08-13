@@ -906,12 +906,21 @@ describe("VendorSettingsPanel", () => {
     const helpButtons = screen.getAllByRole("button", {
       name: "What does this do?",
     });
-    // CurrentCodexGlobalConfigCard is mocked in this suite, so the remaining
-    // engine rows still each expose a help affordance:
-    // background terminal, provider labels, custom path, custom models.
-    expect(helpButtons.length).toBeGreaterThanOrEqual(4);
+    // CurrentCodexGlobalConfigCard is mocked and custom models intentionally
+    // uses an inline hint, leaving help for custom path, runtime, and labels.
+    expect(helpButtons).toHaveLength(3);
 
     fireEvent.click(helpButtons[0]);
+    expect(
+      await screen.findByText("Configure the executable path for this CLI."),
+    ).toBeTruthy();
+    expect(
+      screen.getByText("Leave empty to resolve via system PATH."),
+    ).toBeTruthy();
+
+    // Close the open popover before opening the next row help.
+    fireEvent.click(helpButtons[0]);
+    fireEvent.click(helpButtons[1]);
     expect(
       await screen.findByText("Official default on this platform: enabled."),
     ).toBeTruthy();
@@ -921,9 +930,8 @@ describe("VendorSettingsPanel", () => {
       ),
     ).toBeTruthy();
 
-    // Close the open popover before opening the next row help.
-    fireEvent.click(helpButtons[0]);
     fireEvent.click(helpButtons[1]);
+    fireEvent.click(helpButtons[2]);
     expect(
       await screen.findByText(
         "Display Codex provider badges in the sidebar and pinned session lists.",

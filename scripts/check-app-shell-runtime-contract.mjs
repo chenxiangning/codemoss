@@ -1,15 +1,32 @@
+import { readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import { ESLint } from "eslint";
 import ts from "typescript";
 
 const APP_SHELL_FILE = "src/app-shell.tsx";
-const SEARCH_SECTION_FILE = "src/app-shell-parts/useAppShellSearchAndComposerSection.ts";
-const SECTIONS_FILE = "src/app-shell-parts/useAppShellSections.ts";
-const LAYOUT_FILE = "src/app-shell-parts/useAppShellLayoutNodesSection.tsx";
-const RENDER_FILE = "src/app-shell-parts/renderAppShell.tsx";
+/** T2.6：业务 hooks / assembly 入参在 composition host */
+const APP_SHELL_COMPOSITION_FILE =
+  "src/app-shell/assembly/useAppShellRootComposition.ts";
+/** T2.1–T2.3：section hooks 在 AppShellView（Providers 下） */
+const APP_SHELL_VIEW_FILE = "src/app-shell/assembly/appShellView.tsx";
+/** T1.1：domain bag 字面量在 assembly 模块 */
+const APP_SHELL_DOMAIN_ASSEMBLY_FILE =
+  "src/app-shell/domains/useAppShellDomainAssembly.ts";
+const SEARCH_SECTION_FILE =
+  "src/app-shell/sections/useAppShellSearchAndComposerSection.ts";
+const SECTIONS_FILE = "src/app-shell/sections/core/useAppShellSections.ts";
+const LAYOUT_FILE =
+  "src/app-shell/sections/layoutNodes/useAppShellLayoutNodesSection.tsx";
+const RENDER_FILE = "src/app-shell/render/renderAppShell.tsx";
 const APP_SHELL_DOMAIN_CONTEXT_NAMES = new Set([
   "runtimeThreadContext",
+  "sessionIdentityContext",
+  "workspaceCatalogContext",
+  "gitSurfaceContext",
+  "modeRoutingContext",
+  "accountSurfaceContext",
+  "dictationSurfaceContext",
   "workspaceNavigationContext",
   "composerContext",
   "layoutContext",
@@ -19,10 +36,18 @@ const APP_SHELL_DOMAIN_CONTEXT_NAMES = new Set([
   "modelSelectionContext",
   "collaborationModeContext",
 ]);
-const LEGACY_CONTEXT_DESTRUCTURE_IDENTIFIERS = new Set(["ctx", "legacyCtx"]);
+const LEGACY_CONTEXT_DESTRUCTURE_IDENTIFIERS = new Set([
+  "ctx",
+  "legacyCtx",
+  // T2.4：search/composer 分组入参展平后的 boundary 解构
+  "boundary",
+]);
 
 const CONTRACT_FILES = [
   APP_SHELL_FILE,
+  APP_SHELL_COMPOSITION_FILE,
+  APP_SHELL_VIEW_FILE,
+  APP_SHELL_DOMAIN_ASSEMBLY_FILE,
   SEARCH_SECTION_FILE,
   SECTIONS_FILE,
   LAYOUT_FILE,
@@ -126,8 +151,32 @@ function getVariableObjectLiteral(sourceFile, variableName) {
   return result;
 }
 
-function collectDomainContextKeySets(sourceFile, variableName) {
-  const objectLiteral = getVariableObjectLiteral(sourceFile, variableName);
+/** T1.1：production bag 在 assembleAppShellDomainContexts → defineAppShellDomainContexts({...}) */
+function getDefineAppShellDomainContextsObjectLiteral(sourceFile) {
+  let result = null;
+  visitNode(sourceFile, (node) => {
+    if (result) {
+      return;
+    }
+    if (
+      ts.isCallExpression(node) &&
+      ts.isIdentifier(node.expression) &&
+      node.expression.text === "defineAppShellDomainContexts" &&
+      node.arguments.length > 0 &&
+      ts.isObjectLiteralExpression(node.arguments[0])
+    ) {
+      result = node.arguments[0];
+    }
+  });
+  if (!result) {
+    throw new Error(
+      `Cannot find defineAppShellDomainContexts({...}) in ${sourceFile.fileName}.`,
+    );
+  }
+  return result;
+}
+
+function collectDomainContextKeySetsFromObjectLiteral(sourceFile, objectLiteral, label) {
   const sourceKeysByIdentifier = collectLocalObjectLiteralSourceKeys(sourceFile);
   const domainKeys = new Map();
   const allKeys = new Set();
@@ -144,7 +193,7 @@ function collectDomainContextKeySets(sourceFile, variableName) {
     if (!domainObject) {
       continue;
     }
-    const keys = collectObjectLiteralEffectiveKeys(
+    const keys = collectObjectLiteralEffectiveKeysDeep(
       domainObject,
       sourceKeysByIdentifier,
     );
@@ -156,11 +205,29 @@ function collectDomainContextKeySets(sourceFile, variableName) {
 
   if (domainKeys.size === 0) {
     throw new Error(
-      `Cannot find domain context object literals in variable "${variableName}" (${sourceFile.fileName}).`,
+      `Cannot find domain context object literals in "${label}" (${sourceFile.fileName}).`,
     );
   }
 
   return { domainKeys, allKeys };
+}
+
+function collectDomainContextKeySets(sourceFile, variableName) {
+  const objectLiteral = getVariableObjectLiteral(sourceFile, variableName);
+  return collectDomainContextKeySetsFromObjectLiteral(
+    sourceFile,
+    objectLiteral,
+    variableName,
+  );
+}
+
+function collectDomainContextKeySetsFromDefineCall(sourceFile) {
+  const objectLiteral = getDefineAppShellDomainContextsObjectLiteral(sourceFile);
+  return collectDomainContextKeySetsFromObjectLiteral(
+    sourceFile,
+    objectLiteral,
+    "defineAppShellDomainContexts",
+  );
 }
 
 function getInitializerObjectLiteral(initializer) {
@@ -215,6 +282,33 @@ function collectObjectLiteralEffectiveKeys(objectLiteral, sourceKeysByIdentifier
   return keys;
 }
 
+/** T1.10：展开 builder 入参中的嵌套 object（如 sessionHot），避免 hot keys 丢失 */
+function collectObjectLiteralEffectiveKeysDeep(
+  objectLiteral,
+  sourceKeysByIdentifier,
+) {
+  const keys = collectObjectLiteralEffectiveKeys(
+    objectLiteral,
+    sourceKeysByIdentifier,
+  );
+  for (const property of objectLiteral.properties) {
+    if (
+      !ts.isPropertyAssignment(property) ||
+      !ts.isObjectLiteralExpression(property.initializer)
+    ) {
+      continue;
+    }
+    const nested = collectObjectLiteralEffectiveKeysDeep(
+      property.initializer,
+      sourceKeysByIdentifier,
+    );
+    for (const key of nested) {
+      keys.add(key);
+    }
+  }
+  return keys;
+}
+
 function checkObjectLiteralShorthandBindingsInObject(
   sourceFile,
   objectLiteral,
@@ -248,8 +342,12 @@ function checkObjectLiteralShorthandBindingsInObject(
   return issues;
 }
 
-function checkDomainContextShorthandBindings(sourceFile, variableName, checker) {
-  const objectLiteral = getVariableObjectLiteral(sourceFile, variableName);
+function checkDomainContextShorthandBindingsInDomainBag(
+  sourceFile,
+  objectLiteral,
+  label,
+  checker,
+) {
   const issues = [];
 
   for (const property of objectLiteral.properties) {
@@ -268,13 +366,33 @@ function checkDomainContextShorthandBindings(sourceFile, variableName, checker) 
       ...checkObjectLiteralShorthandBindingsInObject(
         sourceFile,
         domainObject,
-        `${variableName}.${domainName}`,
+        `${label}.${domainName}`,
         checker,
       ),
     );
   }
 
   return issues;
+}
+
+function checkDomainContextShorthandBindings(sourceFile, variableName, checker) {
+  const objectLiteral = getVariableObjectLiteral(sourceFile, variableName);
+  return checkDomainContextShorthandBindingsInDomainBag(
+    sourceFile,
+    objectLiteral,
+    variableName,
+    checker,
+  );
+}
+
+function checkDomainContextShorthandBindingsFromDefineCall(sourceFile, checker) {
+  const objectLiteral = getDefineAppShellDomainContextsObjectLiteral(sourceFile);
+  return checkDomainContextShorthandBindingsInDomainBag(
+    sourceFile,
+    objectLiteral,
+    "defineAppShellDomainContexts",
+    checker,
+  );
 }
 
 function isTypePosition(node) {
@@ -323,51 +441,87 @@ function isDeclarationIdentifier(node) {
   return false;
 }
 
+function isNestedFunctionLike(node) {
+  return (
+    ts.isFunctionDeclaration(node) ||
+    ts.isFunctionExpression(node) ||
+    ts.isArrowFunction(node) ||
+    ts.isMethodDeclaration(node)
+  );
+}
+
 function getCtxDestructureKeys(sourceFile, functionName, checker) {
   const fn = findFunctionDeclaration(sourceFile, functionName);
   const allKeys = new Set();
   const bindingSymbols = new Map();
   const bindingNameNodes = new Set();
-  const contextDestructureIdentifiers = new Set(
+  // ctx / legacyCtx 始终算 bag 读侧
+  const bagDestructureIdentifiers = new Set(
     LEGACY_CONTEXT_DESTRUCTURE_IDENTIFIERS,
   );
+  // 顶层参数（如 search section 的 input）仅在「非嵌套函数体」内算 bag 读侧
+  // 避免 handleReorderWorkspaces(input) 内 `const { groupId } = input` 误报
+  const topLevelParamNames = new Set(
+    fn.parameters
+      .filter((parameter) => ts.isIdentifier(parameter.name))
+      .map((parameter) => parameter.name.text),
+  );
 
-  for (const parameter of fn.parameters) {
-    if (ts.isIdentifier(parameter.name)) {
-      contextDestructureIdentifiers.add(parameter.name.text);
+  function considerDestructure(node, nestedFunctionDepth) {
+    if (
+      !ts.isVariableDeclaration(node) ||
+      !ts.isObjectBindingPattern(node.name) ||
+      !node.initializer ||
+      !ts.isIdentifier(node.initializer)
+    ) {
+      return;
+    }
+    const sourceName = node.initializer.text;
+    const isBagId = bagDestructureIdentifiers.has(sourceName);
+    const isTopLevelParam =
+      nestedFunctionDepth === 0 && topLevelParamNames.has(sourceName);
+    if (!isBagId && !isTopLevelParam) {
+      return;
+    }
+    for (const element of node.name.elements) {
+      if (element.dotDotDotToken) {
+        continue;
+      }
+      if (!ts.isIdentifier(element.name)) {
+        continue;
+      }
+      bindingNameNodes.add(element.name);
+      const symbol = checker.getSymbolAtLocation(element.name);
+      const key = element.propertyName
+        ? getPropertyNameText(element.propertyName)
+        : element.name.text;
+      if (!key) {
+        continue;
+      }
+      allKeys.add(key);
+      if (symbol) {
+        bindingSymbols.set(symbol, key);
+      }
     }
   }
 
-  visitNode(fn.body, (node) => {
-    if (
-      ts.isVariableDeclaration(node) &&
-      ts.isObjectBindingPattern(node.name) &&
-      node.initializer &&
-      ts.isIdentifier(node.initializer) &&
-      contextDestructureIdentifiers.has(node.initializer.text)
-    ) {
-      for (const element of node.name.elements) {
-        if (element.dotDotDotToken) {
-          continue;
-        }
-        if (!ts.isIdentifier(element.name)) {
-          continue;
-        }
-        bindingNameNodes.add(element.name);
-        const symbol = checker.getSymbolAtLocation(element.name);
-        const key = element.propertyName
-          ? getPropertyNameText(element.propertyName)
-          : element.name.text;
-        if (!key) {
-          continue;
-        }
-        allKeys.add(key);
-        if (symbol) {
-          bindingSymbols.set(symbol, key);
-        }
-      }
+  function visitWithDepth(node, nestedFunctionDepth) {
+    considerDestructure(node, nestedFunctionDepth);
+
+    // 进入嵌套函数时 depth+1；根 fn 本身不在此递归入口
+    if (isNestedFunctionLike(node) && node !== fn) {
+      // 嵌套函数参数会遮蔽同名顶层 input，不再当 bag 源
+      node.forEachChild((child) => visitWithDepth(child, nestedFunctionDepth + 1));
+      return;
     }
-  });
+
+    node.forEachChild((child) => visitWithDepth(child, nestedFunctionDepth));
+  }
+
+  if (!fn.body) {
+    throw new Error(`Function "${functionName}" has no body.`);
+  }
+  fn.body.forEachChild((child) => visitWithDepth(child, 0));
 
   if (allKeys.size === 0) {
     throw new Error(`Cannot find context destructure in ${sourceFile.fileName}.`);
@@ -599,20 +753,25 @@ async function main() {
   const checker = program.getTypeChecker();
 
   const appShellSource = getProgramSourceFile(program, APP_SHELL_FILE);
+  const compositionSource = getProgramSourceFile(
+    program,
+    APP_SHELL_COMPOSITION_FILE,
+  );
+  const viewSource = getProgramSourceFile(program, APP_SHELL_VIEW_FILE);
+  const assemblySource = getProgramSourceFile(
+    program,
+    APP_SHELL_DOMAIN_ASSEMBLY_FILE,
+  );
   const searchSource = getProgramSourceFile(program, SEARCH_SECTION_FILE);
   const sectionsSource = getProgramSourceFile(program, SECTIONS_FILE);
   const layoutSource = getProgramSourceFile(program, LAYOUT_FILE);
   const renderSource = getProgramSourceFile(program, RENDER_FILE);
 
-  const appShellDomainContextKeySets = collectDomainContextKeySets(
-    appShellSource,
-    "rawAppShellDomainContexts",
-  );
-  const appShellDomainContextShorthandIssues = checkDomainContextShorthandBindings(
-    appShellSource,
-    "rawAppShellDomainContexts",
-    checker,
-  );
+  // T1.1：bag 在 assembly 模块；app-shell 仅 useAppShellDomainAssembly 入参
+  const appShellDomainContextKeySets =
+    collectDomainContextKeySetsFromDefineCall(assemblySource);
+  const appShellDomainContextShorthandIssues =
+    checkDomainContextShorthandBindingsFromDefineCall(assemblySource, checker);
   const appShellDomainSourceSets = new Map([
     ["appShellDomainContexts", appShellDomainContextKeySets.allKeys],
     ...appShellDomainContextKeySets.domainKeys,
@@ -651,19 +810,37 @@ async function main() {
     checker,
   );
 
-  const searchProvided = resolveProvidedKeysFromArgument(
-    getFirstCallArgument(appShellSource, "useAppShellSearchAndComposerSection"),
-    appShellDomainSourceSets,
+  // T2.4：searchAndComposerInput 分组字面量 → 展平组内 keys 作为 provided
+  const searchAndComposerInputLiteral = getVariableObjectLiteral(
+    compositionSource,
+    "searchAndComposerInput",
   );
+  const searchProvidedKeys = new Set();
+  for (const property of searchAndComposerInputLiteral.properties) {
+    if (
+      ts.isPropertyAssignment(property) &&
+      ts.isObjectLiteralExpression(property.initializer)
+    ) {
+      for (const key of collectObjectLiteralOwnKeys(property.initializer)) {
+        searchProvidedKeys.add(key);
+      }
+    }
+  }
+  const searchProvidedResolved = {
+    keys: searchProvidedKeys,
+    unresolvedSpreads: [],
+  };
+
+  // T2.6：section / layout / render 调用在 AppShellView
   const sectionsProvided = resolveProvidedKeysFromArgument(
-    getFirstCallArgument(appShellSource, "useAppShellSections"),
+    getFirstCallArgument(viewSource, "useAppShellSections"),
     new Map([
       ...appShellDomainSourceSets,
       ["searchAndComposerSection", searchReturnKeys],
     ]),
   );
   const layoutProvided = resolveProvidedKeysFromArgument(
-    getFirstCallArgument(appShellSource, "useAppShellLayoutNodesSection"),
+    getFirstCallArgument(viewSource, "useAppShellLayoutNodesSection"),
     new Map([
       ...appShellDomainSourceSets,
       ["searchAndComposerSection", searchReturnKeys],
@@ -671,7 +848,7 @@ async function main() {
     ]),
   );
   const renderProvided = resolveProvidedKeysFromArgument(
-    getFirstCallArgument(appShellSource, "renderAppShell"),
+    getFirstCallArgument(viewSource, "renderAppShell"),
     new Map([
       ...appShellDomainSourceSets,
       ["searchAndComposerSection", searchReturnKeys],
@@ -679,14 +856,15 @@ async function main() {
       ["layoutNodes", layoutReturnKeys],
     ]),
   );
+  void appShellSource;
 
   const issues = [
     ...appShellDomainContextShorthandIssues,
     ...checkContract({
       name: "useAppShellSearchAndComposerSection",
       requiredKeys: searchRequiredKeys,
-      providedKeys: searchProvided.keys,
-      unresolvedSpreads: searchProvided.unresolvedSpreads,
+      providedKeys: searchProvidedResolved.keys,
+      unresolvedSpreads: searchProvidedResolved.unresolvedSpreads,
     }),
     ...checkContract({
       name: "useAppShellSections",
@@ -706,6 +884,7 @@ async function main() {
       providedKeys: renderProvided.keys,
       unresolvedSpreads: renderProvided.unresolvedSpreads,
     }),
+    ...checkNoProductionFullFlatten(),
   ];
 
   if (issues.length > 0) {
@@ -717,6 +896,57 @@ async function main() {
   }
 
   console.log("check-app-shell-runtime-contract: OK");
+}
+
+/**
+ * T5.4：生产路径禁止 full-flatten（flattenAppShellDomainContexts 调用）。
+ * 允许：domains 定义文件、legacy 门面、测试文件。
+ */
+function checkNoProductionFullFlatten() {
+  const root = path.resolve(process.cwd(), "src/app-shell");
+  const allowName = new Set([
+    "appShellDomainContexts.ts",
+    "legacyFlatten.ts",
+  ]);
+  const issues = [];
+
+  function walk(dir) {
+    for (const name of readdirSync(dir)) {
+      const full = path.join(dir, name);
+      if (statSync(full).isDirectory()) {
+        walk(full);
+        continue;
+      }
+      if (!/\.(ts|tsx)$/.test(name) || name.includes(".test.")) continue;
+      if (allowName.has(name)) continue;
+      const source = readFileSync(full, "utf8");
+      const lines = source.split("\n");
+      lines.forEach((line, index) => {
+        if (
+          line.includes("flattenAppShellDomainContexts(") &&
+          !line.includes("export function flattenAppShellDomainContexts") &&
+          !line.includes("flattenSelectedAppShellDomainContexts")
+        ) {
+          issues.push(
+            `[full-flatten ban] ${path.relative(process.cwd(), full)}:${index + 1}: ${line.trim()}`,
+          );
+        }
+        // 生产 consumer 不得调用 Legacy adapt（定义 / re-export / 注释除外）
+        if (
+          /adaptAppShellLegacyFlatContext\s*[<(]/.test(line) &&
+          !line.includes("export function adaptAppShellLegacyFlatContext") &&
+          !full.includes(`${path.sep}legacy${path.sep}`)
+        ) {
+          issues.push(
+            `[legacy-adapt ban] ${path.relative(process.cwd(), full)}:${index + 1}: ${line.trim()}`,
+          );
+        }
+      });
+    }
+  }
+
+  walk(root);
+  return issues;
 }
 
 try {

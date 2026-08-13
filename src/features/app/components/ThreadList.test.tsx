@@ -190,6 +190,26 @@ describe("ThreadList", () => {
     );
   });
 
+  function mockThreadNameOverflow(
+    row: Element,
+    options: { truncated: boolean },
+  ) {
+    const name = row.querySelector(".thread-name");
+    expect(name).toBeTruthy();
+    if (!(name instanceof HTMLElement)) {
+      throw new Error("Missing thread name");
+    }
+    Object.defineProperty(name, "scrollWidth", {
+      configurable: true,
+      get: () => (options.truncated ? 240 : 80),
+    });
+    Object.defineProperty(name, "clientWidth", {
+      configurable: true,
+      get: () => 80,
+    });
+    return name;
+  }
+
   it("delays thread row tooltip enough to avoid incidental pass-over hovers", async () => {
     vi.useFakeTimers();
     const view = render(<ThreadList {...baseProps} />);
@@ -200,6 +220,7 @@ describe("ThreadList", () => {
       if (!row) {
         throw new Error("Missing thread row");
       }
+      mockThreadNameOverflow(row, { truncated: true });
 
       await act(async () => {
         fireEvent.mouseEnter(row);
@@ -213,6 +234,69 @@ describe("ThreadList", () => {
       expect(
         document.querySelector('[data-slot="tooltip-popup"]')?.textContent,
       ).toContain("Alpha");
+    } finally {
+      view.unmount();
+      vi.useRealTimers();
+    }
+  });
+
+  it("hides the thread name bubble when the title is fully visible", async () => {
+    vi.useFakeTimers();
+    const view = render(<ThreadList {...baseProps} />);
+
+    try {
+      const row = screen.getByText("Alpha").closest(".thread-row");
+      expect(row).toBeTruthy();
+      if (!row) {
+        throw new Error("Missing thread row");
+      }
+      mockThreadNameOverflow(row, { truncated: false });
+
+      await act(async () => {
+        fireEvent.mouseEnter(row);
+        await vi.advanceTimersByTimeAsync(THREAD_ROW_TOOLTIP_DELAY_MS + 20);
+      });
+      expect(document.querySelector('[data-slot="tooltip-popup"]')).toBeNull();
+    } finally {
+      view.unmount();
+      vi.useRealTimers();
+    }
+  });
+
+  it("shows the thread name bubble only when the title is truncated", async () => {
+    vi.useFakeTimers();
+    const view = render(
+      <ThreadList
+        {...baseProps}
+        unpinnedRows={[
+          {
+            thread: {
+              ...thread,
+              name: "你好1+1=2? 这是一段会被截断的长标题",
+            },
+            depth: 0,
+          },
+        ]}
+      />,
+    );
+
+    try {
+      const row = screen
+        .getByText("你好1+1=2? 这是一段会被截断的长标题")
+        .closest(".thread-row");
+      expect(row).toBeTruthy();
+      if (!row) {
+        throw new Error("Missing thread row");
+      }
+      mockThreadNameOverflow(row, { truncated: true });
+
+      await act(async () => {
+        fireEvent.mouseEnter(row);
+        await vi.advanceTimersByTimeAsync(THREAD_ROW_TOOLTIP_DELAY_MS + 20);
+      });
+      expect(
+        document.querySelector('[data-slot="tooltip-popup"]')?.textContent,
+      ).toContain("你好1+1=2? 这是一段会被截断的长标题");
     } finally {
       view.unmount();
       vi.useRealTimers();

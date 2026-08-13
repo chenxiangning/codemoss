@@ -2,6 +2,7 @@
 
 > OpenSpec change id: `optimize-cold-start-hydration-orchestration`  
 > Evidence anchor: 2026-08-08 cold-start diagnostic dump（elapsed 57.5s；`opencode_session_list` 6–13s×N；`list_threads` 多轮；full-catalog timeout 后重扫；**无 first-paint 任务**）  
+> Recurrence anchor: 2026-08-09 macOS 0.8.5（冷启立刻点击必卡、等待后恢复；renderer diagnostics 约 1.5 MiB 且约每 2s 全量重写；Codex `limit=5` 仍扫描约 235 MiB JSONL）
 > 关联历史：`docs/analysis/windows-cold-start-click-freeze-and-uiscale-0.8-2026-08-07.md`、`client-startup-orchestration`、`sidebar-list-timeout-fallback`
 
 ---
@@ -45,7 +46,7 @@
 
 ---
 
-## Implementation status（2026-08-08 收口）
+## Implementation status（2026-08-09）
 
 | 阶段 | 状态 | 说明 |
 |------|------|------|
@@ -53,9 +54,12 @@
 | S1 路径纠偏 | ✅ | 冷启默认 first-paint；非 active 不 full |
 | S2 Gate 诚实 | ✅ | 仅 first-paint-complete / home input / force-enter |
 | S3 禁重扫 + OpenCode 预算 | ✅ | 60s cooldown；OpenCode full 3s + last-good |
-| S4 git/catalog 错峰 | ⏳ defer | 未改 git/skills/model 调度 |
-| S5 Overlay 产品化 | ✅ | 自动关闭恢复；加载日志默认折叠；复制进折叠区 |
+| S4 git/catalog 错峰 | ⏸ defer | 不再由全局 barrier / shared catalog queue 实现；保留既有 domain phase/cap |
+| S5 Overlay 产品化 | ✅ | 保持 manual-only；加载日志默认折叠；复制进折叠区 |
 | 实测 | ✅ | 可交互 ~4.4s；firstPaintPresent=true；gate=first-paint-complete |
+| S6 复发根治 | ✅ | 诊断 memory-first/circuit breaker、Codex 真 bounded preview、移除 automatic full-catalog；见 tasks §8 |
+| S7 resource barrier | ❌ 已回滚 | 人工验收使安全点击窗口由约 2s 退化到约 3s；未减少 source work |
+| S8 diagnostic ownership | ✅ 人工验收通过 | normal trace 不再双写 notice；summary 1Hz pull；展开 click-frozen；copy on demand；冷启后立即点击未再冻结 |
 
 事实源见 `design.md` §Post-implementation 与 `tasks.md` 勾选。
 
@@ -63,11 +67,19 @@
 
 ## What Changes
 
+### 2026-08-09 复发根治（P0）
+
+- `perf.frame-drop` 等高频采样默认只保留在 session memory；只有非诊断自触发的 severe sample 才允许低频 durable sampling。renderer diagnostics 持久化增加 byte budget，并把周期写频率从秒级降到低频批量，防止「掉帧 → 写诊断 → 再掉帧」正反馈。
+- Codex first-page 的 `limit/cursor` 必须约束 **真实文件候选与 live page 扫描量**，禁止再用 `usize::MAX` 扫完整个 `sessions/**` 后才 `.take(limit)`。候选按 filesystem mtime 新到旧处理，达到 `offset + limit + lookahead` 的 unique session budget 后停止。
+- first-paint settle 后不再自动 enqueue exhaustive/full-catalog。完整历史继续由 Sidebar `Load older`、Session Management 或用户显式 refresh 获取；冷启和普通按钮点击不得与隐式全量目录扫描竞争主线程/IPC。
+- StartupGate 的 `startupTrace` 作为 canonical lifecycle channel；正常 task/success command/milestone 不再镜像到 runtime notice。折叠 summary 最多 1Hz pull，展开时冻结点击瞬间 snapshot，复制按钮按需读取 latest diagnostic stores。
+- S7 `input-ready` 全局 resource barrier 已回滚：cached workspace 不再等待 current refresh；catalog 不再共用全局串行 cap。loading 仍只允许用户按钮关闭，不因 milestone/timeout 自动隐藏。
+
 ### 编排契约（P0）
 
-- **强制冷启路径**：active workspace 必须先 `thread/list first-paint hydration`，再 idle 后 `full-catalog`；dump 中「无 first-paint」视为 **回归失败**。  
+- **强制冷启路径**：active workspace 必须先执行有界 `thread/list first-paint hydration`；不得仅因 first-paint settle 自动 enqueue `full-catalog`，dump 中「无 first-paint」视为 **回归失败**。
 - **`startup-gate-ready` 语义收紧**：仅允许 first-paint 成功 / home 仅 input-ready / 用户 force-enter；**禁止** full-catalog timeout/degraded 冒充 ready。  
-- **timeout 后禁止同 dedupeKey 自动重扫**；force-enter / stale cancel 必须阻止 idle full-catalog 再 schedule。  
+- **timeout 后禁止同 dedupeKey 自动重扫**；force-enter / stale cancel 必须阻止任何既有 startup-owned full-catalog 再 schedule。
 - **soft-ignore 与 IPC 取消对齐**：task degraded 后尽量不再继续 apply setThreads；OpenCode/list 路径具备硬超时或可丢弃结果。
 
 ### 重活限流（P0）
@@ -144,7 +156,7 @@
 
 ### Modified Capabilities
 
-- `client-startup-orchestration`：强化 first-paint 有界 hydrate、idle full 可中断、timeout/fallback 不得 stamp 交互完成态、heavy command 与 git 冷启预算、trace 必须暴露 first-paint 与 gate 原因。  
+- `client-startup-orchestration`：强化 first-paint 有界 hydrate、完整历史显式加载、timeout/fallback 不得 stamp 交互完成态、heavy command 与 git 冷启预算、trace 必须暴露 first-paint 与 gate 原因。
 - `sidebar-list-timeout-fallback`：与 full-catalog 子源 timeout / last-good 对齐；明确 degraded 后不得污染 Codex 合并；冷启 OpenCode 失败保种。  
 - `conversation-lifecycle-contract`（若需要 delta）：列表 reload 空/降级时保留本地可见会话的冷启场景交叉引用。  
 - `runtime-performance-evidence-gates`（可选轻量 delta）：冷启 evidence 增加「first-paint 事件存在」「full-catalog 不阻塞 gate」类门禁说明（不强制本 change 采满 release 矩阵）。

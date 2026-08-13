@@ -8,7 +8,11 @@ import type {
   RequestUserInputSettlementResult,
 } from "../../../types";
 import { respondToUserInputRequest } from "../../../services/tauri";
-import { requestUserInputConversationItemId } from "../../../utils/requestUserInputIdentity";
+import {
+  requestUserInputConversationItemId,
+  requestUserInputIdentityKey,
+} from "../../../utils/requestUserInputIdentity";
+import { markUserInputRequestSettled } from "../../../utils/userInputSettlementTombstone";
 import type { ThreadAction } from "./useThreadsReducer";
 
 type UseThreadUserInputOptions = {
@@ -252,6 +256,16 @@ export function useThreadUserInput({
       };
       if (response.skippedQuestionIds?.length) {
         responseOptions.skippedQuestionIds = response.skippedQuestionIds;
+      } else if (
+        settlementKind === "dismiss" &&
+        isEmptyResponse(response) &&
+        request.params.questions.length > 0
+      ) {
+        // Pure skip/cancel: always declare every question skipped so runtime
+        // formats a structured skip answer (MCP oneshot + history parse).
+        responseOptions.skippedQuestionIds = request.params.questions
+          .map((question) => question.id)
+          .filter((questionId) => questionId.trim().length > 0);
       }
       try {
         await respondToUserInputRequest(
@@ -270,6 +284,44 @@ export function useThreadUserInput({
           });
         }
         if (isStaleSettledRequestError(error, response, settlementKind, staleSettlementHint)) {
+          // Tombstone before remove so late re-emits cannot re-open the card.
+          markUserInputRequestSettled(requestUserInputIdentityKey(request));
+          if (stateThreadId) {
+            // Durable terminal marker so history reopen cannot rehydrate a live card.
+            const payload = buildSubmittedPayload(request, response);
+            dispatch({
+              type: "upsertItem",
+              workspaceId: request.workspace_id,
+              threadId: stateThreadId,
+              item: {
+                id: request.params.item_id,
+                kind: "tool",
+                toolType: "askuserquestion",
+                title: "Tool: askuserquestion",
+                detail: "",
+                status: "completed",
+                output: buildSubmittedFallbackOutput(payload),
+              },
+              hasCustomName: true,
+            });
+            if (recordSubmittedItem) {
+              dispatch({
+                type: "upsertItem",
+                workspaceId: request.workspace_id,
+                threadId: stateThreadId,
+                item: {
+                  id: requestUserInputConversationItemId(request),
+                  kind: "tool",
+                  toolType: "requestUserInputSubmitted",
+                  title: buildSubmittedTitle(payload),
+                  detail: JSON.stringify(payload),
+                  status: "completed",
+                  output: buildSubmittedFallbackOutput(payload),
+                },
+                hasCustomName: true,
+              });
+            }
+          }
           dispatch({
             type: "removeUserInputRequest",
             requestId: request.request_id,
@@ -318,6 +370,8 @@ export function useThreadUserInput({
           hasCustomName: true,
         });
       }
+      // Tombstone before remove so resume/replay of the same identity cannot re-queue.
+      markUserInputRequestSettled(requestUserInputIdentityKey(request));
       dispatch({
         type: "removeUserInputRequest",
         requestId: request.request_id,
@@ -349,11 +403,19 @@ export function useThreadUserInput({
       request: RequestUserInputRequest,
       options?: RequestUserInputSettlementOptions,
     ) => {
+      const skippedQuestionIds = request.params.questions
+        .map((question) => question.id)
+        .filter((questionId) => questionId.trim().length > 0);
       return await settleUserInputRequest(
         request,
-        { answers: {} },
         {
-          recordSubmittedItem: false,
+          answers: {},
+          ...(skippedQuestionIds.length > 0 ? { skippedQuestionIds } : {}),
+        },
+        {
+          // Persist a submitted audit so history reopen cannot rehydrate a live card
+          // after skip/cancel (same durable evidence as explicit submit).
+          recordSubmittedItem: true,
           settlementKind: "dismiss",
           staleSettlementHint: options?.staleSettlementHint,
         },

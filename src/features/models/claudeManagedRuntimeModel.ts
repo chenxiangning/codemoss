@@ -26,11 +26,30 @@ const PROFILE_ENV_MODEL_SLOTS = [
 /**
  * 跨供应商残留启发式：出现在「当前 catalog 未收录」时才触发 repair。
  * 不把合法 freeform（如 claude-opus-4-6、用户自定义名）当成脏数据。
+ *
+ * 并行 native 事故：仅 kimi 启发式时，DeepSeek catalog 会 freeform 放行
+ * `MiniMax-M3` → 第三方 API 400。扩展常见产品/品牌 residual，仍要求
+ * `!legal.has(value)` 才 repair（catalog/env 合法名优先）。
  */
 const FOREIGN_RUNTIME_RESIDUE_HINTS = [
+  // Kimi
   /^k3$/i,
   /^kimi-/i,
   /^kimi-code\//i,
+  // MiniMax（并行 native 截图事故）
+  /minimax/i,
+  // 其它常见 managed 第三方产品名（未在合法集时才 residual）
+  /deepseek/i,
+  /^glm-/i,
+  /qwen/i,
+  /doubao/i,
+  /moonshot/i,
+  /^abab/i,
+  /^ernie/i,
+  /baichuan/i,
+  /^yi-/i,
+  /^step-/i,
+  /longcat/i,
 ] as const;
 
 export function buildLegalClaudeRuntimes(
@@ -147,7 +166,9 @@ export function resolveClaudeManagedRuntimeModel(options: {
     return { runtime: fallback, entryId: entryId || fallback, repaired: false };
   }
 
-  // catalog 空窗：尽量 env 默认；否则非残留 candidate 放行
+  // catalog 空窗：尽量 env 默认；否则放行 candidate freeform。
+  // 无 catalog 时无法证明「跨供应商 residual」——产品名启发式不得误杀
+  // MiniMax 等合法会话在 catalog 尚未就绪时的 selection（#catalog-unavailable）。
   if (catalog.length === 0) {
     const envMain =
       typeof options.profileEnv?.ANTHROPIC_MODEL === "string"
@@ -163,7 +184,7 @@ export function resolveClaudeManagedRuntimeModel(options: {
         ),
       };
     }
-    if (candidate && !isForeignClaudeRuntimeResidue(candidate)) {
+    if (candidate) {
       return { runtime: candidate, entryId: candidate, repaired: false };
     }
   }

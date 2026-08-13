@@ -32,14 +32,18 @@ const MESSAGE_ROW_RENDER_DIAGNOSTIC_MIN_INTERVAL_MS = 5_000;
 const MESSAGE_ROW_RENDER_DIAGNOSTIC_RENDER_COUNT_STEP = 20;
 const EARLY_RENDERER_DIAGNOSTICS_STORAGE_KEY =
   "ccgui.bootstrapRendererDiagnostics";
-const DEFAULT_BLANK_WATCHDOG_INTERVAL_MS = 1_500;
+// 1.5s 曾导致冷启动后持续强制 reflow；拉长间隔并在 maxReports 后停表（见 start 内）。
+const DEFAULT_BLANK_WATCHDOG_INTERVAL_MS = 5_000;
 const DEFAULT_BLANK_WATCHDOG_MIN_CONSECUTIVE_SAMPLES = 2;
 const DEFAULT_BLANK_WATCHDOG_MAX_REPORTS = 6;
 const DEFAULT_RENDERER_HEARTBEAT_INTERVAL_MS = 15_000;
 const MAX_HEARTBEAT_FAILURE_REPORTS = 3;
+const MAX_PERSISTED_RENDERER_DIAGNOSTICS_BYTES = 256 * 1024;
+const MAX_VOLATILE_RENDERER_DIAGNOSTICS = 200;
+const MAX_VOLATILE_RENDERER_DIAGNOSTICS_BYTES = 256 * 1024;
 // 高频 append（流式期间可达每秒数十次）不允许逐次触发全量 read-merge-write，
 // 统一进内存 pending buffer，按该间隔 leading+trailing 节流合并落盘。
-const DIAGNOSTICS_PERSIST_THROTTLE_MS = 2_000;
+const DIAGNOSTICS_PERSIST_THROTTLE_MS = 30_000;
 const MAX_PENDING_DIAGNOSTIC_ENTRIES = 2_000;
 const MAX_DIAGNOSTIC_LABEL_LENGTH = 160;
 const MAX_DIAGNOSTIC_PAYLOAD_DEPTH = 4;
@@ -53,6 +57,7 @@ const TRUNCATED_DIAGNOSTIC_VALUE = "[truncated]";
 let installed = false;
 let bufferedEntries: RendererDiagnosticEntry[] = [];
 let pendingPersistEntries: RendererDiagnosticEntry[] = [];
+let volatileEntries: RendererDiagnosticEntry[] = [];
 let persistedDiagnosticsCache: RendererDiagnosticEntry[] | null = null;
 let persistedDiagnosticSignatures = new Set<string>();
 const diagnosticEntrySignatureCache = new WeakMap<
@@ -90,6 +95,8 @@ type BlankScreenWatchdogOptions = {
   intervalMs?: number;
   minConsecutiveSamples?: number;
   maxReports?: number;
+  /** Skip checks for this initial duration (ms) — avoids forced layout during cold-start gate. */
+  startDelayMs?: number;
 };
 
 type RendererHeartbeatOptions = {
@@ -136,6 +143,72 @@ function isStreamLatencyEvidence(label: string): boolean {
   return STREAM_LATENCY_EVIDENCE_LABELS.has(label.toLowerCase());
 }
 
+function utf8ByteLength(value: string): number {
+  let byteLength = 0;
+  for (let index = 0; index < value.length; index += 1) {
+    const codeUnit = value.charCodeAt(index);
+    if (codeUnit < 0x80) {
+      byteLength += 1;
+    } else if (codeUnit < 0x800) {
+      byteLength += 2;
+    } else if (
+      codeUnit >= 0xd800 &&
+      codeUnit <= 0xdbff &&
+      index + 1 < value.length &&
+      value.charCodeAt(index + 1) >= 0xdc00 &&
+      value.charCodeAt(index + 1) <= 0xdfff
+    ) {
+      byteLength += 4;
+      index += 1;
+    } else {
+      byteLength += 3;
+    }
+  }
+  return byteLength;
+}
+
+function trimDiagnosticsToByteBudget(
+  entries: RendererDiagnosticEntry[],
+  maxBytes: number,
+): RendererDiagnosticEntry[] {
+  if (entries.length === 0) {
+    return entries;
+  }
+  const entryBytes = entries.map((entry) =>
+    utf8ByteLength(getDiagnosticEntrySignature(entry)),
+  );
+  let retainedCount = entries.length;
+  let serializedBytes =
+    2 +
+    Math.max(0, entries.length - 1) +
+    entryBytes.reduce((sum, size) => sum + size, 0);
+  if (serializedBytes <= maxBytes) {
+    return entries;
+  }
+
+  const removed = new Set<number>();
+  const removalOrder = [
+    ...entries.flatMap((entry, index) =>
+      isActionableRendererDiagnostic(entry.label) ? [] : [index],
+    ),
+    ...entries.flatMap((entry, index) =>
+      isActionableRendererDiagnostic(entry.label) ? [index] : [],
+    ),
+  ];
+  for (const index of removalOrder) {
+    if (serializedBytes <= maxBytes || retainedCount === 0) {
+      break;
+    }
+    removed.add(index);
+    serializedBytes -= entryBytes[index] ?? 0;
+    if (retainedCount > 1) {
+      serializedBytes -= 1;
+    }
+    retainedCount -= 1;
+  }
+  return entries.filter((_, index) => !removed.has(index));
+}
+
 function trimDiagnostics(entries: RendererDiagnosticEntry[]) {
   const regularEntries: RendererDiagnosticEntry[] = [];
   const actionableEntries: RendererDiagnosticEntry[] = [];
@@ -158,7 +231,7 @@ function trimDiagnostics(entries: RendererDiagnosticEntry[]) {
       regularEntries.push(entry);
     }
   }
-  return [
+  const countBoundedEntries = [
     ...regularEntries.slice(
       Math.max(0, regularEntries.length - MAX_RENDERER_DIAGNOSTICS),
     ),
@@ -187,6 +260,10 @@ function trimDiagnostics(entries: RendererDiagnosticEntry[]) {
       ),
     ),
   ].sort((left, right) => left.timestamp - right.timestamp);
+  return trimDiagnosticsToByteBudget(
+    countBoundedEntries,
+    MAX_PERSISTED_RENDERER_DIAGNOSTICS_BYTES,
+  );
 }
 
 function mergeDiagnostics(
@@ -266,10 +343,7 @@ function isSensitiveDiagnosticField(
   ) {
     return false;
   }
-  if (
-    /(?:^|_)hash(?:_|$)/.test(normalized) &&
-    isSafeDiagnosticHash(value)
-  ) {
+  if (/(?:^|_)hash(?:_|$)/.test(normalized) && isSafeDiagnosticHash(value)) {
     return false;
   }
   if (
@@ -332,9 +406,7 @@ function sanitizeDiagnosticValue(
     seen.add(value);
     const sanitized = value
       .slice(0, MAX_DIAGNOSTIC_ARRAY_ITEMS)
-      .map((entry) =>
-        sanitizeDiagnosticValue(entry, "", depth + 1, seen),
-      );
+      .map((entry) => sanitizeDiagnosticValue(entry, "", depth + 1, seen));
     seen.delete(value);
     if (value.length > MAX_DIAGNOSTIC_ARRAY_ITEMS) {
       sanitized.push(TRUNCATED_DIAGNOSTIC_VALUE);
@@ -353,12 +425,7 @@ function sanitizeDiagnosticValue(
       MAX_DIAGNOSTIC_PAYLOAD_KEYS,
     )) {
       const key = clipDiagnosticString(rawKey, MAX_DIAGNOSTIC_KEY_LENGTH);
-      sanitized[key] = sanitizeDiagnosticValue(
-        entry,
-        key,
-        depth + 1,
-        seen,
-      );
+      sanitized[key] = sanitizeDiagnosticValue(entry, key, depth + 1, seen);
     }
     if (entries.length > MAX_DIAGNOSTIC_PAYLOAD_KEYS) {
       sanitized.__truncated__ = entries.length - MAX_DIAGNOSTIC_PAYLOAD_KEYS;
@@ -611,9 +678,26 @@ function readPersistedDiagnosticsFromStores() {
 
 function getPersistedDiagnosticsSnapshot(): RendererDiagnosticEntry[] {
   if (persistedDiagnosticsCache === null) {
-    const loadedEntries = readPersistedDiagnosticsFromStores();
+    let loadedEntries = readPersistedDiagnosticsFromStores();
     if (!isPreloaded()) {
       return loadedEntries;
+    }
+    // Defensive: the persisted file can grow beyond the byte budget across
+    // multi-day sessions (field evidence: 401 KB on disk vs 256 KB budget).
+    // Trim once at cache-population so in-memory state stays bounded and the
+    // next persist writes a smaller file.
+    const untrimmedBytes =
+      2 +
+      Math.max(0, loadedEntries.length - 1) +
+      loadedEntries.reduce(
+        (sum, entry) => sum + utf8ByteLength(getDiagnosticEntrySignature(entry)),
+        0,
+      );
+    if (untrimmedBytes > MAX_PERSISTED_RENDERER_DIAGNOSTICS_BYTES) {
+      loadedEntries = trimDiagnosticsToByteBudget(
+        loadedEntries,
+        MAX_PERSISTED_RENDERER_DIAGNOSTICS_BYTES,
+      );
     }
     persistedDiagnosticsCache = loadedEntries;
     persistedDiagnosticSignatures = new Set(
@@ -654,6 +738,7 @@ export function exportRendererDiagnostics(): RendererDiagnosticEntry[] {
     getPersistedDiagnosticsSnapshot(),
     bufferedEntries,
     pendingPersistEntries,
+    volatileEntries,
   );
   recordHotspotSample(
     "diagnostics-export",
@@ -680,6 +765,7 @@ export function getRendererDiagnosticsRevision(): number {
 export function clearRendererDiagnostics(): void {
   bufferedEntries = [];
   pendingPersistEntries = [];
+  volatileEntries = [];
   persistedDiagnosticsCache = [];
   persistedDiagnosticSignatures = new Set();
   if (diagnosticsPersistTimer !== null) {
@@ -773,6 +859,32 @@ export function appendRendererDiagnostic(
   appendRendererDiagnosticEntry(label, payload, false);
 }
 
+/**
+ * Session-only diagnostic ring for high-frequency samplers. Entries remain
+ * visible to live/export surfaces without triggering client-store persistence.
+ */
+export function appendVolatileRendererDiagnostic(
+  label: string,
+  payload: Record<string, unknown> = {},
+) {
+  const entry = normalizeDiagnosticEntry({
+    timestamp: Date.now(),
+    label,
+    payload,
+  });
+  if (!entry) {
+    return;
+  }
+  const countBoundedEntries = [...volatileEntries, entry].slice(
+    -MAX_VOLATILE_RENDERER_DIAGNOSTICS,
+  );
+  volatileEntries = trimDiagnosticsToByteBudget(
+    countBoundedEntries,
+    MAX_VOLATILE_RENDERER_DIAGNOSTICS_BYTES,
+  );
+  bumpDiagnosticsRevision();
+}
+
 function appendRendererDiagnosticEntry(
   label: string,
   payload: Record<string, unknown>,
@@ -829,10 +941,7 @@ export function appendRendererPerfDiagnostic(
 }
 
 export type ClientInteractionPerfEvidenceKind =
-  | "measured"
-  | "proxy"
-  | "manual-only"
-  | "unsupported";
+  "measured" | "proxy" | "manual-only" | "unsupported";
 
 export type ClientInteractionPerfDiagnosticInput = {
   area:
@@ -1454,11 +1563,31 @@ export function startRendererBlankScreenWatchdog(
   );
   blankWatchdogConsecutiveSamples = 0;
   blankWatchdogReports = 0;
+
+  const startDelayMs = Math.max(0, options.startDelayMs ?? 0);
+  const startedAt = Date.now();
+
   blankWatchdogTimer = window.setInterval(() => {
-    // 隐藏窗口不存在"用户看到白屏"，跳过采样避免后台每 1.5s 两次强制回流
+    // The full-screen StartupGate overlay covers everything during cold start
+    // so blank-screen detection has no user-facing value; getBoundingClientRect
+    // + getComputedStyle inside the check force a synchronous layout that
+    // competes with first-paint React commits on WebView2 (Chromium Blink).
+    if (startDelayMs > 0 && Date.now() - startedAt < startDelayMs) {
+      blankWatchdogConsecutiveSamples = 0;
+      return;
+    }
+    // 隐藏窗口不存在"用户看到白屏"，跳过采样避免后台周期性强制回流
     // （getBoundingClientRect + getComputedStyle），并清零连续计数。
     if (document.visibilityState === "hidden") {
       blankWatchdogConsecutiveSamples = 0;
+      return;
+    }
+    // 已达报告上限：停表，避免「健康窗口」仍每 tick 强制 layout。
+    if (blankWatchdogReports >= maxReports) {
+      if (blankWatchdogTimer !== null) {
+        window.clearInterval(blankWatchdogTimer);
+        blankWatchdogTimer = null;
+      }
       return;
     }
     const snapshot = collectRendererBlankScreenSnapshot(rootId);
@@ -1467,10 +1596,7 @@ export function startRendererBlankScreenWatchdog(
       return;
     }
     blankWatchdogConsecutiveSamples += 1;
-    if (
-      blankWatchdogConsecutiveSamples < minConsecutiveSamples ||
-      blankWatchdogReports >= maxReports
-    ) {
+    if (blankWatchdogConsecutiveSamples < minConsecutiveSamples) {
       return;
     }
     blankWatchdogReports += 1;
@@ -1479,6 +1605,10 @@ export function startRendererBlankScreenWatchdog(
       intervalMs,
       ...snapshot,
     });
+    if (blankWatchdogReports >= maxReports && blankWatchdogTimer !== null) {
+      window.clearInterval(blankWatchdogTimer);
+      blankWatchdogTimer = null;
+    }
   }, intervalMs);
 }
 

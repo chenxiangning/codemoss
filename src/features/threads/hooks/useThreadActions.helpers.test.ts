@@ -963,7 +963,8 @@ describe("useThreadActions.helpers", () => {
       },
     ];
     const stripped = stripHiddenSharedBindingSummaries(input, new Set());
-    // control-plane 顶层仍丢；挂在 shared 下的子代理保留（Strip/childThreads 数据源）
+    // control-plane 顶层仍丢；挂在 shared 下的子代理 store 保留（幕布/Strip 数据源）
+    // 侧栏隐藏由 useThreadRows 负责，不在 strip 删行
     expect(stripped.map((row) => row.id)).toEqual([
       "shared:s1",
       "grok:impl-1",

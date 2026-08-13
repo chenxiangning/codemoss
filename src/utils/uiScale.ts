@@ -1,31 +1,33 @@
-export const UI_SCALE_MIN = 0.8;
-export const UI_SCALE_MAX = 2.6;
+/**
+ * UI scale is permanently locked to 100%.
+ *
+ * Field evidence (2026-08): any uiScale ≠ 1 could freeze WebView renderers
+ * (native zoom / CSS zoom + cold-start load). Product decision: remove the
+ * scale feature entirely; all callers must treat scale as identity only.
+ *
+ * clampUiScale / sanitizeUiScale always return 1 so load, save, shortcuts,
+ * and apply paths cannot reintroduce a non-identity scale — including
+ * legacy settings.json values (0.8 / 0.9 / 1.2 / …).
+ */
+export const UI_SCALE_LOCKED = true;
+export const UI_SCALE_MIN = 1;
+export const UI_SCALE_MAX = 1;
 export const UI_SCALE_STEP = 0.1;
 export const UI_SCALE_DEFAULT = 1;
 
-/** Settings UI presets: 80%–150% in 10% steps. */
-export const UI_SCALE_PRESETS = [
-  0.8, 0.9, 1, 1.1, 1.2, 1.3, 1.4, 1.5,
-] as const;
+/** Settings UI presets retired — only identity remains. */
+export const UI_SCALE_PRESETS = [1] as const;
 
 const UI_SCALE_PRESET_EPS = 0.001;
 
-export function clampUiScale(value: number) {
-  if (!Number.isFinite(value)) {
-    return UI_SCALE_DEFAULT;
-  }
-  const clamped = Math.min(UI_SCALE_MAX, Math.max(UI_SCALE_MIN, value));
-  return Number(clamped.toFixed(2));
+/** Always identity. Ignores input (legacy values included). */
+export function clampUiScale(_value: number) {
+  return UI_SCALE_DEFAULT;
 }
 
-export function sanitizeUiScale(value: number) {
-  if (!Number.isFinite(value)) {
-    return UI_SCALE_DEFAULT;
-  }
-  if (value < UI_SCALE_MIN || value > UI_SCALE_MAX) {
-    return UI_SCALE_DEFAULT;
-  }
-  return Number(value.toFixed(2));
+/** Always identity. Ignores input (legacy / invalid values included). */
+export function sanitizeUiScale(_value: number) {
+  return UI_SCALE_DEFAULT;
 }
 
 export function formatUiScale(value: number) {
@@ -47,15 +49,10 @@ export function matchUiScalePreset(value: number): number | null {
 }
 
 /**
- * Options for the settings select. Legacy / shortcut values outside the
- * preset grid are temporarily included so the control stays controlled.
+ * Options for any leftover scale select. Only 100%.
  */
-export function listUiScaleSelectOptions(current: number): number[] {
-  const resolved = clampUiScale(current);
-  if (matchUiScalePreset(resolved) !== null) {
-    return [...UI_SCALE_PRESETS];
-  }
-  return [...UI_SCALE_PRESETS, resolved].sort((a, b) => a - b);
+export function listUiScaleSelectOptions(_current: number): number[] {
+  return [...UI_SCALE_PRESETS];
 }
 
 export function formatUiScalePercentLabel(value: number): string {

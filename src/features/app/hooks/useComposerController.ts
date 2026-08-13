@@ -1,6 +1,7 @@
 import { useCallback, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type {
+  ConversationItem,
   EngineType,
   MessageSendOptions,
   QueuedMessage,
@@ -28,6 +29,9 @@ export function useComposerController({
   isReviewing,
   isContextCompacting,
   hasPendingUserInput,
+  threadStatusById,
+  activeItems,
+  resolveWorkspace,
   steerEnabled,
   activeEngine,
   isSharedSession,
@@ -66,6 +70,19 @@ export function useComposerController({
   isReviewing: boolean;
   isContextCompacting?: boolean;
   hasPendingUserInput?: boolean;
+  threadStatusById?: Record<
+    string,
+    | {
+        isProcessing?: boolean;
+        isReviewing?: boolean;
+        isContextCompacting?: boolean;
+        terminalPulse?: number;
+        continuationPulse?: number;
+      }
+    | undefined
+  >;
+  activeItems?: ConversationItem[];
+  resolveWorkspace?: (workspaceId: string) => WorkspaceInfo | null;
   steerEnabled: boolean;
   activeEngine?: EngineType;
   isSharedSession?: boolean;
@@ -151,6 +168,9 @@ export function useComposerController({
     isReviewing,
     isContextCompacting,
     hasPendingUserInput,
+    threadStatusById,
+    activeItems,
+    resolveWorkspace,
     steerEnabled,
     activeWorkspace,
     activeEngine,

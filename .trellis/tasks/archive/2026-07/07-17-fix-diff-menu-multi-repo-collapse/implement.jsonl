@@ -1,9 +1,0 @@
-{"file": ".trellis/workflow.md", "reason": "Project workflow and conventions"}
-{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend development guide"}
-{"file": "src/features/git/components/GitDiffPanel.tsx", "reason": "Remove only the Diff menu repository-switch rendering while preserving selector contracts."}
-{"file": "src/features/git/components/GitMultiRepositoryChanges.tsx", "reason": "Add repository-and-section-scoped local collapse state through the existing DiffSection contract."}
-{"file": "src/features/git/components/GitDiffPanel.test.tsx", "reason": "Lock the hidden Diff menu action behavior."}
-{"file": "src/features/git/components/GitMultiRepositoryChanges.test.tsx", "reason": "Cover independent multi-repository collapse and no side effects."}
-{"file": "openspec/changes/hide-diff-repository-switch-and-fix-multi-repo-collapse/specs/git-panel-diff-view/spec.md", "reason": "Behavior contract for menu visibility and multi-repository section collapse."}
-{"file": ".trellis/spec/frontend/multi-repository-git-commit-workspace.md", "reason": "Preserve repository identity, commit selection, mutation, refresh, and file-open contracts."}
-{"file": ".trellis/spec/frontend/state-management.md", "reason": "Keep collapse state local and presentation-only."}

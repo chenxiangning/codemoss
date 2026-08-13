@@ -23,7 +23,7 @@
 
 ## 5. Specs And Verification
 
-- [x] 5.1 [P1] 同步 `.trellis/spec` 的 repository-scoped Git identity、adaptive single/multi UI 与 partial success executable contract；依赖：1-4；验证：index links 与 referenced symbols/commands 存在。
+- [x] 5.1 [P1] 同步 `dev-guidelines` 的 repository-scoped Git identity、adaptive single/multi UI 与 partial success executable contract；依赖：1-4；验证：index links 与 referenced symbols/commands 存在。
 - [x] 5.2 [P0] 运行 focused Vitest、`npm run typecheck`、`npm run check:runtime-contracts` 与相关 Rust tests；依赖：1-4；验证：全部通过或记录明确 pre-existing failure。
 - [x] 5.3 [P0] 运行 `openspec validate add-multi-repository-git-commit-workspace --strict --no-interactive` 并执行 implementation/spec/task drift review；依赖：5.1、5.2；验证：strict validation 通过。
 
@@ -36,7 +36,7 @@
 
 - [x] 7.1 [P0] 调整 single repository diff mode DOM/layout 为 changed files 在上、commit composer 在下并吸底，保留 generate/commit/push semantics；依赖：3.1；验证：single mode DOM order 与 CSS contract tests。
 - [x] 7.2 [P0] 调整 multi repository group surface 为独立 scroll region，共享 commit composer 位于底部，避免遮挡最后一行；依赖：3.2、3.3；验证：multi mode DOM order、overflow 与 selection tests。
-- [x] 7.3 [P1] 同步 `.trellis/spec` 与 i18n/accessibility contract，不新增 polling 或 root render arrays；依赖：6.1-7.2；验证：spec link、accessible picker/footer assertions。
+- [x] 7.3 [P1] 同步 `dev-guidelines` 与 i18n/accessibility contract，不新增 polling 或 root render arrays；依赖：6.1-7.2；验证：spec link、accessible picker/footer assertions。
 - [x] 7.4 [P0] 运行 focused Vitest、lint、typecheck、runtime contracts 与 strict OpenSpec validation；依赖：6.1-7.3；验证：全部通过或记录明确 pre-existing failure。
 
 ## 8. Multi-Repository AI And Two-Level History Picker

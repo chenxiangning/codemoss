@@ -2,6 +2,10 @@ import { useCallback } from "react";
 
 import { DEFAULT_VISIBLE_THREAD_ROOT_COUNT } from "../constants";
 import type { ThreadSummary } from "../../../types";
+import {
+  buildSharedSidebarHiddenParentKeys,
+  isSharedSidebarHiddenPup,
+} from "../../shared-session/runtime/sharedSessionSummaries";
 
 type ThreadRow = {
   thread: ThreadSummary;
@@ -16,6 +20,11 @@ type ThreadRowResult = {
   hasMoreRoots: boolean;
 };
 
+/**
+ * 侧栏会话树。
+ * Shared 下崽：parent 指向 shared: / Shared hidden native owner 时不进入侧栏树
+ * （不进 roots、不进 children）。threads store 仍可保留这些行供幕布/Strip。
+ */
 export function useThreadRows(threadParentById: Record<string, string>) {
   const getThreadRows = useCallback(
     (
@@ -26,11 +35,16 @@ export function useThreadRows(threadParentById: Record<string, string>) {
       visibleThreadRootCount = DEFAULT_VISIBLE_THREAD_ROOT_COUNT,
     ): ThreadRowResult => {
       const threadIds = new Set(threads.map((thread) => thread.id));
+      const sharedHiddenParentKeys = buildSharedSidebarHiddenParentKeys(threads);
       const childrenByParent = new Map<string, ThreadSummary[]>();
       const roots: ThreadSummary[] = [];
 
       threads.forEach((thread) => {
         const parentId = thread.parentThreadId ?? threadParentById[thread.id];
+        // Shared 下崽：侧栏精准隐藏（不扩散到 setThreads / 幕布数据源）
+        if (isSharedSidebarHiddenPup(thread, parentId, sharedHiddenParentKeys)) {
+          return;
+        }
         if (parentId && parentId !== thread.id && threadIds.has(parentId)) {
           const list = childrenByParent.get(parentId) ?? [];
           list.push(thread);

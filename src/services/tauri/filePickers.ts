@@ -45,3 +45,35 @@ export async function pickWebAssetsArchive(): Promise<string | null> {
   }
   return selection;
 }
+
+/**
+ * Pick a desktop application path for Open With targets.
+ * macOS: prefers .app bundles; Windows: .exe; other: no filter.
+ */
+export async function pickApplicationPath(): Promise<string | null> {
+  const platform =
+    typeof navigator !== "undefined"
+      ? (
+          (navigator as Navigator & { userAgentData?: { platform?: string } })
+            .userAgentData?.platform ??
+          navigator.platform ??
+          ""
+        ).toLowerCase()
+      : "";
+  const isWindows = platform.includes("win");
+  const isMac = platform.includes("mac");
+
+  const selection = await open({
+    multiple: false,
+    directory: false,
+    filters: isWindows
+      ? [{ name: "Applications", extensions: ["exe", "cmd", "bat"] }]
+      : isMac
+        ? [{ name: "Applications", extensions: ["app"] }]
+        : undefined,
+  });
+  if (!selection || Array.isArray(selection)) {
+    return null;
+  }
+  return selection;
+}

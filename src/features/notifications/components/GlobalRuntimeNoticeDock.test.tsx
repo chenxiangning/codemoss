@@ -145,6 +145,93 @@ describe("GlobalRuntimeNoticeDock", () => {
     expect(screen.getByText("初始化进度和关键错误会显示在这里")).toBeTruthy();
   });
 
+  it("minimizes when clicking outside the expanded panel", () => {
+    const onMinimize = vi.fn();
+
+    render(
+      <div>
+        <button type="button">outside</button>
+        <GlobalRuntimeNoticeDock
+          notices={[]}
+          visibility="expanded"
+          status="idle"
+          onExpand={vi.fn()}
+          onMinimize={onMinimize}
+          onClear={vi.fn()}
+        />
+      </div>,
+    );
+
+    fireEvent.mouseDown(screen.getByRole("button", { name: "outside" }));
+    expect(onMinimize).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not minimize when clicking inside the expanded panel", () => {
+    const onMinimize = vi.fn();
+
+    render(
+      <GlobalRuntimeNoticeDock
+        notices={[]}
+        visibility="expanded"
+        status="idle"
+        onExpand={vi.fn()}
+        onMinimize={onMinimize}
+        onClear={vi.fn()}
+      />,
+    );
+
+    fireEvent.mouseDown(screen.getByText("暂无运行时提示"));
+    expect(onMinimize).not.toHaveBeenCalled();
+  });
+
+  it("minimizes when pressing Escape while expanded", () => {
+    const onMinimize = vi.fn();
+
+    render(
+      <GlobalRuntimeNoticeDock
+        notices={[]}
+        visibility="expanded"
+        status="idle"
+        onExpand={vi.fn()}
+        onMinimize={onMinimize}
+        onClear={vi.fn()}
+      />,
+    );
+
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(onMinimize).toHaveBeenCalledTimes(1);
+  });
+
+  it("minimizes portal panel when clicking outside the portaled surface", () => {
+    const onMinimize = vi.fn();
+
+    render(
+      <div className="sidebar-bottom-nav">
+        <button type="button">outside-sidebar</button>
+        <GlobalRuntimeNoticeDock
+          notices={[]}
+          visibility="expanded"
+          status="idle"
+          onExpand={vi.fn()}
+          onMinimize={onMinimize}
+          onClear={vi.fn()}
+        />
+      </div>,
+    );
+
+    const portalPanel = document.querySelector(
+      ".global-runtime-notice-dock-portal-layer .global-runtime-notice-dock",
+    );
+    expect(portalPanel).toBeTruthy();
+
+    fireEvent.mouseDown(screen.getByRole("button", { name: "outside-sidebar" }));
+    expect(onMinimize).toHaveBeenCalledTimes(1);
+
+    onMinimize.mockClear();
+    fireEvent.mouseDown(portalPanel as HTMLElement);
+    expect(onMinimize).not.toHaveBeenCalled();
+  });
+
   it("portals the expanded sidebar popover above clipped sidebar containers", () => {
     const { container } = render(
       <div className="sidebar-bottom-nav">

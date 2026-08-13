@@ -1,5 +1,0 @@
-{"file": ".trellis/workflow.md", "reason": "Project workflow and conventions"}
-{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend development guide"}
-{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "UI、i18n 与 accessibility contract"}
-{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "focused test 与最小回归约束"}
-{"file": "openspec/changes/replace-language-server-fallback-with-install-guidance/specs/file-view-code-intelligence-navigation/spec.md", "reason": "本次 behavior delta"}

@@ -169,6 +169,7 @@ const statusPanel = {
         error: "Limit query failed: {{message}}",
         unsupported:
           "{{engine}} base_url is not a known coding-plan host (Kimi / MiniMax / Zhipu).",
+        notSupported: "Quota is not supported for this relay",
       },
     },
     cost: {

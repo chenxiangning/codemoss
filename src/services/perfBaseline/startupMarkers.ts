@@ -1,5 +1,10 @@
-import { isPerfBaselineEnabled, PERF_BASELINE_SCHEMA_VERSION } from "./index";
-import { appendRendererDiagnostic } from "../rendererDiagnostics";
+// Import only the lightweight enablement module — never the perfBaseline barrel /
+// index. Barrel co-chunking with mermaid diagram facades previously forced
+// vendor-mermaid onto bootstrapApp's static graph (cold-start P0-1).
+import {
+  isPerfBaselineEnabled,
+  PERF_BASELINE_SCHEMA_VERSION,
+} from "./perfBaselineEnabled";
 
 export type StartupPerfMarkerName = "first-paint" | "first-interactive";
 
@@ -50,7 +55,14 @@ function writeWindowSnapshot() {
     platform: getPlatformLabel(),
   };
   window.__CCGUI_STARTUP_PERF__ = snapshot;
-  appendRendererDiagnostic("perf.startup.markers", snapshot);
+  // Dynamic import keeps rendererDiagnostics (heavy) off the bootstrap static graph.
+  void import("../rendererDiagnostics")
+    .then(({ appendRendererDiagnostic }) => {
+      appendRendererDiagnostic("perf.startup.markers", snapshot);
+    })
+    .catch(() => {
+      // Diagnostics are best-effort during cold start.
+    });
 }
 
 export function recordStartupPerfMarker(name: StartupPerfMarkerName) {

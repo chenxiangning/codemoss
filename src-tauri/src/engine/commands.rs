@@ -442,6 +442,21 @@ fn next_gemini_routed_item_id(
     routed_item_id
 }
 
+/// Prefer the last text-lane item id so synthetic `item/completed` upserts the
+/// same assistant bubble as streamed TextDelta (Claude-parity; avoids double bubbles).
+pub(crate) fn gemini_agent_completion_item_id(
+    state: &GeminiRenderRoutingState,
+    base_item_id: &str,
+) -> String {
+    if let Some(id) = state.active_text_item_id.as_ref() {
+        return id.clone();
+    }
+    match state.text_run_index {
+        0 | 1 => base_item_id.to_string(),
+        n => format!("{base_item_id}:text-{n}"),
+    }
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct OpenCodeCommandEntry {
@@ -2461,10 +2476,14 @@ pub async fn engine_send_message(
                         } else {
                             accumulated_agent_text.clone()
                         };
-                        // Preserve realtime interleaving for Gemini: when text deltas
-                        // already streamed, don't collapse them back into a single
-                        // synthetic completed assistant message.
-                        if !completed_text.trim().is_empty() && !render_state.saw_text_delta {
+                        // Always emit agentMessage item/completed so project-memory
+                        // fusion (onAgentMessageCompleted) runs even after TextDelta.
+                        // Use text-lane id so the frontend upserts the streamed bubble.
+                        if !completed_text.trim().is_empty() {
+                            let completion_item_id = gemini_agent_completion_item_id(
+                                &render_state,
+                                &item_id_clone,
+                            );
                             let synthetic = AppServerEvent {
                                 workspace_id: event.workspace_id().to_string(),
                                 message: json!({
@@ -2472,7 +2491,7 @@ pub async fn engine_send_message(
                                     "params": {
                                         "threadId": &current_thread_id,
                                         "item": {
-                                            "id": &routed_item_id,
+                                            "id": completion_item_id,
                                             "type": "agentMessage",
                                             "text": completed_text,
                                             "status": "completed",
@@ -2723,9 +2742,14 @@ pub async fn engine_send_message(
                         } else {
                             accumulated_agent_text.clone()
                         };
-                        // Kimi text blocks always arrive as TextDelta, so this
-                        // synthetic completion only fires as a safety net.
-                        if !completed_text.trim().is_empty() && !render_state.saw_text_delta {
+                        // Always emit agentMessage item/completed so project-memory
+                        // fusion runs after normal TextDelta streaming (Claude-parity).
+                        // Use text-lane id so the frontend upserts the streamed bubble.
+                        if !completed_text.trim().is_empty() {
+                            let completion_item_id = gemini_agent_completion_item_id(
+                                &render_state,
+                                &item_id_clone,
+                            );
                             let synthetic = AppServerEvent {
                                 workspace_id: event.workspace_id().to_string(),
                                 message: json!({
@@ -2733,7 +2757,7 @@ pub async fn engine_send_message(
                                     "params": {
                                         "threadId": &current_thread_id,
                                         "item": {
-                                            "id": &routed_item_id,
+                                            "id": completion_item_id,
                                             "type": "agentMessage",
                                             "text": completed_text,
                                             "status": "completed",
@@ -2986,9 +3010,14 @@ pub async fn engine_send_message(
                         } else {
                             accumulated_agent_text.clone()
                         };
-                        // Grok text blocks always arrive as TextDelta, so this
-                        // synthetic completion only fires as a safety net.
-                        if !completed_text.trim().is_empty() && !render_state.saw_text_delta {
+                        // Always emit agentMessage item/completed so project-memory
+                        // fusion runs after normal TextDelta streaming (Claude-parity).
+                        // Use text-lane id so the frontend upserts the streamed bubble.
+                        if !completed_text.trim().is_empty() {
+                            let completion_item_id = gemini_agent_completion_item_id(
+                                &render_state,
+                                &item_id_clone,
+                            );
                             let synthetic = AppServerEvent {
                                 workspace_id: event.workspace_id().to_string(),
                                 message: json!({
@@ -2996,7 +3025,7 @@ pub async fn engine_send_message(
                                     "params": {
                                         "threadId": &current_thread_id,
                                         "item": {
-                                            "id": &routed_item_id,
+                                            "id": completion_item_id,
                                             "type": "agentMessage",
                                             "text": completed_text,
                                             "status": "completed",

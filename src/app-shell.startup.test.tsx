@@ -270,16 +270,23 @@ vi.mock("./app-shell-parts/useSelectedComposerSession", () => ({
   },
 }));
 
-vi.mock("./services/tauri", () => ({
-  getModelList: vi.fn(async () => ({
-    result: {
-      data: startupState.codexModels,
-    },
-  })),
-  getConfigModel: vi.fn(async () => startupState.configModel),
-  pickWorkspacePath: vi.fn(async () => null),
-  ensureWorkspacePathDir: vi.fn(async () => null),
-}));
+vi.mock("./services/tauri", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./services/tauri")>();
+  return {
+    ...actual,
+    getModelList: vi.fn(async () => ({
+      result: {
+        data: startupState.codexModels,
+      },
+    })),
+    getConfigModel: vi.fn(async () => startupState.configModel),
+    pickWorkspacePath: vi.fn(async () => null),
+    ensureWorkspacePathDir: vi.fn(async () => null),
+    getClaudeProviders: vi.fn(async () => []),
+    clearDetachedExternalChangeMonitor: vi.fn(async () => undefined),
+    configureDetachedExternalChangeMonitor: vi.fn(async () => undefined),
+  };
+});
 
 vi.mock("@tauri-apps/api/window", () => ({
   getCurrentWindow: tauriWindowMocks.getCurrentWindow,
@@ -306,13 +313,28 @@ vi.mock("./services/toasts", () => ({
   pushErrorToast: vi.fn(),
 }));
 
-vi.mock("./features/vendors/modelManagerRequest", () => ({
-  requestVendorModelManager: vi.fn(),
-}));
+vi.mock("./features/vendors/modelManagerRequest", async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import("./features/vendors/modelManagerRequest")
+    >();
+  return {
+    ...actual,
+    requestVendorModelManager: vi.fn(),
+    consumeVendorModelManagerRequest: vi.fn(() => null),
+  };
+});
 
-vi.mock("./features/composer/components/ChatInputBox/providers", () => ({
-  forceRefreshAgents: vi.fn(),
-}));
+vi.mock("./features/composer/components/ChatInputBox/providers", async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import("./features/composer/components/ChatInputBox/providers")
+    >();
+  return {
+    ...actual,
+    forceRefreshAgents: vi.fn(),
+  };
+});
 
 vi.mock("./features/app/hooks/useAppSettingsController", () => ({
   useAppSettingsController: () => ({
@@ -427,7 +449,7 @@ vi.mock("./app-shell-parts/useCreateSessionLoading", () => ({
 
 vi.mock("./features/app/hooks/useUpdaterController", () => ({
   useUpdaterController: () => ({
-    updaterState: null,
+    updaterState: { stage: "idle" },
     startUpdate: createNoopFunction(),
     checkForUpdates: createNoopFunction(),
     dismissUpdate: createNoopFunction(),
@@ -1089,7 +1111,54 @@ vi.mock("./features/app/hooks/useAppMenuEvents", () => ({
 }));
 
 vi.mock("./features/app/hooks/useWorkspaceCycling", () => ({
-  useWorkspaceCycling: () => undefined,
+  useWorkspaceCycling: () => ({
+    handleCycleAgent: vi.fn(),
+    handleCycleWorkspace: vi.fn(),
+  }),
+}));
+
+// T3 后 AppShellView 会真实挂载 layout nodes；startup 测试只验证 composition 生命周期。
+vi.mock("./features/layout/hooks/useLayoutNodes", () => ({
+  useLayoutNodes: () => ({
+    sidebarNode: null,
+    messagesNode: null,
+    composerNode: null,
+    approvalToastsNode: null,
+    updateToastNode: null,
+    errorToastsNode: null,
+    globalRuntimeNoticeDockNode: null,
+    homeNode: null,
+    mainHeaderNode: null,
+    desktopTopbarLeftNode: null,
+    tabletNavNode: null,
+    tabBarNode: null,
+    rightPanelToolbarNode: null,
+    gitDiffPanelNode: null,
+    gitDiffViewerNode: null,
+    fileViewPanelNode: null,
+    noteCardsPanelNode: null,
+    fileComparePanelNode: null,
+    projectMapPanelNode: null,
+    intentCanvasPanelNode: null,
+    browserDockNode: null,
+    planPanelNode: null,
+    debugPanelNode: null,
+    debugPanelFullNode: null,
+    terminalDockNode: null,
+    compactEmptyCodexNode: null,
+    compactEmptySpecNode: null,
+    compactEmptyGitNode: null,
+    compactGitBackNode: null,
+    codeAnnotationBridgeProps: null,
+  }),
+}));
+
+vi.mock("./app-shell/assembly/appShellView", () => ({
+  AppShellView: () => null,
+}));
+// 兼容 re-export 路径
+vi.mock("./app-shell-parts/appShellView", () => ({
+  AppShellView: () => null,
 }));
 
 vi.mock("./features/app/hooks/useInterruptShortcut", () => ({
@@ -1215,6 +1284,12 @@ vi.mock("./app-shell-parts/renderAppShell", () => ({
     const renderCtx = domainContexts
       ? {
           ...(domainContexts.runtimeThreadContext ?? {}),
+          ...(domainContexts.sessionIdentityContext ?? {}),
+          ...(domainContexts.workspaceCatalogContext ?? {}),
+          ...(domainContexts.gitSurfaceContext ?? {}),
+          ...(domainContexts.modeRoutingContext ?? {}),
+          ...(domainContexts.accountSurfaceContext ?? {}),
+          ...(domainContexts.dictationSurfaceContext ?? {}),
           ...(domainContexts.workspaceNavigationContext ?? {}),
           ...(domainContexts.composerContext ?? {}),
           ...(domainContexts.layoutContext ?? {}),

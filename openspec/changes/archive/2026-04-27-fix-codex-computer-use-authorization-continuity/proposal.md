@@ -115,6 +115,6 @@
   - `src/i18n/locales/zh.part1.ts`
 - Docs / Specs:
   - `openspec/specs/**`
-  - `.trellis/spec/backend/computer-use-bridge.md`
-  - `.trellis/spec/frontend/computer-use-bridge.md`
+  - `dev-guidelines/backend/computer-use-bridge.md`
+  - `dev-guidelines/frontend/computer-use-bridge.md`
   - manual test matrix docs

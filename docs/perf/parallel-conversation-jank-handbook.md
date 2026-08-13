@@ -9,7 +9,7 @@ status: historical
 > **生命周期**：implemented / historical；七类风险模型仍可用于诊断，但路径、flags 和阈值必须按当前代码重验
 > **最后校准**：2026-08-03 · mossx `0.7.16`
 > **读者**：接手「客户端并行对话卡顿」问题的工程师 / QA / on-call。
-> **事实源**：`openspec/specs/parallel-conversation-runtime-residuals/spec.md`、`.trellis/spec/frontend/parallel-conversation-runtime-residuals.md`、当前 runtime evidence
+> **事实源**：`openspec/specs/parallel-conversation-runtime-residuals/spec.md`、`dev-guidelines/frontend/parallel-conversation-runtime-residuals.md`、当前 runtime evidence
 
 原诊断与修复 change 已归档到 `openspec/changes/archive/2026-06-14-fix-parallel-conversation-runtime-residuals-2026-06/`。本手册不是 active backlog；执行任何修复前先用当前 evidence 重新证明根因。
 
@@ -989,7 +989,7 @@ it('clears src when out of viewport', async () => {
   - `tasks.md` — 当时任务清单
   - `specs/parallel-conversation-runtime-residuals/spec.md` — 当时 delta contract
 - **主线 OpenSpec spec**:`openspec/specs/parallel-conversation-runtime-residuals/spec.md`
-- **Code-level rule**:`.trellis/spec/frontend/parallel-conversation-runtime-residuals.md`(沉淀)
+- **Code-level rule**:`dev-guidelines/frontend/parallel-conversation-runtime-residuals.md`(沉淀)
 - **复现脚本**:`scripts/perf-reproduce-jank.sh`
 - **历史执行进度**：`docs/perf/jank-fix-progress.md`（deprecated worksheet，只读，不再回填）
 - **修复提案归档**：`openspec/changes/archive/2026-06-14-fix-parallel-conversation-runtime-residuals-2026-06/`

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
+  ConversationItem,
   EngineType,
   MessageSendOptions,
   QueuedMessage,
@@ -7,7 +8,17 @@ import type {
   WorkspaceInfo,
 } from "../../../types";
 import {
+  ensureInteractiveInputHooks,
+  hadRecentInteractiveInput,
+} from "../../../utils/interactiveMainThread";
+import {
+  getStartupTraceSnapshot,
+  subscribeStartupTrace,
+} from "../../startup-orchestration/utils/startupTrace";
+import { isStartupForceEntered } from "../../startup-orchestration/utils/startupForceEnter";
+import {
   getSharedSendActiveAttemptId,
+  getSharedSendState,
   getSharedSendStateRevision,
   useSharedSendState,
 } from "../../shared-session/runtime/sharedSendStateStore";
@@ -19,6 +30,7 @@ import {
 import type { SharedSendState } from "../../shared-session/target/sendStateMachine";
 import {
   buildQueuedHandoffBubbleItem,
+  doesConversationItemMatchUserBubble,
   type QueuedHandoffBubble,
 } from "../utils/queuedHandoffBubble";
 import {
@@ -36,6 +48,108 @@ const OPENCODE_INFLIGHT_STALL_MS = 18_000;
 const FUSION_RESUME_TIMEOUT_MS = 48_000;
 const QUEUED_HANDOFF_BUBBLE_TTL_MS = 60_000;
 const DELIVERY_DIAGNOSTIC_LIMIT = 100;
+/**
+ * S1 安全版：后台 drain 并发上限（active 不占配额）。
+ * 事故教训：cap=3 会三路齐飞打爆主线程/引擎；默认 1。
+ */
+export const MAX_BACKGROUND_QUEUE_DRAIN = 1;
+/**
+ * 后台 auto-drain 总闸。安全版默认开启；
+ * 仍保留 test setter，便于单测隔离。
+ * 防重发三闸（completed-id / terminal-pulse / inFlight）必须始终开启，与本闸无关。
+ */
+let enableBackgroundQueueDrain = true;
+export function getEnableBackgroundQueueDrain(): boolean {
+  return enableBackgroundQueueDrain;
+}
+/** @internal test-only */
+export function __setEnableBackgroundQueueDrainForTests(enabled: boolean): void {
+  enableBackgroundQueueDrain = enabled;
+}
+/** @deprecated 使用 getEnableBackgroundQueueDrain()；保留导出名避免外部误引用常量快照 */
+export const ENABLE_BACKGROUND_QUEUE_DRAIN = true;
+/** native 成功后若 isProcessing 边沿丢失，超时清 inFlight（不重发，仅放行下一条）。 */
+const NATIVE_INFLIGHT_SETTLE_FALLBACK_MS = 3_000;
+
+/**
+ * 仅由「有队列 / inFlight 的 thread」状态拼出 drain 触发信号。
+ * 纯函数便于测试：无关会话 heartbeat 不得改变返回值。
+ *
+ * 写法要点（相对 dc97acd5c 对抗式门控的正确化）：
+ * - **不**再强制把 activeThreadId 塞进集合（无队列时 active 心跳会无意义刷新 signal）
+ * - 无任何 queue/inflight 时返回稳定 empty 信号，effect 不因 status 表 churn 重跑
+ */
+export function buildQueueDrainSignal(input: {
+  queuedByThread: Record<string, QueuedMessage[] | undefined>;
+  inFlightByThread: Record<string, QueuedMessage | null | undefined>;
+  activeThreadId: string | null;
+  threadStatusById?: Record<string, QueueThreadStatusSnapshot | undefined>;
+  isProcessing: boolean;
+  isReviewing: boolean;
+  isContextCompacting: boolean;
+  activeTerminalPulse: number;
+  hasPendingUserInput: boolean;
+  backgroundEnabled: boolean;
+}): string {
+  const ids = new Set<string>();
+  for (const [threadId, queue] of Object.entries(input.queuedByThread)) {
+    if ((queue?.length ?? 0) > 0) {
+      ids.add(threadId);
+    }
+  }
+  for (const [threadId, inflight] of Object.entries(input.inFlightByThread)) {
+    if (inflight) {
+      ids.add(threadId);
+    }
+  }
+  if (ids.size === 0) {
+    return `empty|bg:${input.backgroundEnabled ? 1 : 0}`;
+  }
+  const parts: string[] = [];
+  for (const threadId of [...ids].sort()) {
+    const status = input.threadStatusById?.[threadId];
+    // 非 active 且 status 未知时记为 busy(p1)，这样 status 首次落到 idle(p0)
+    // 时 signal 会变，后台 drain 才能被唤醒（否则永久静默 hold）。
+    const processing =
+      typeof status?.isProcessing === "boolean"
+        ? status.isProcessing
+        : threadId === input.activeThreadId
+          ? input.isProcessing
+          : true;
+    const reviewing =
+      typeof status?.isReviewing === "boolean"
+        ? status.isReviewing
+        : threadId === input.activeThreadId
+          ? input.isReviewing
+          : false;
+    const compacting =
+      typeof status?.isContextCompacting === "boolean"
+        ? status.isContextCompacting
+        : threadId === input.activeThreadId
+          ? input.isContextCompacting
+          : false;
+    const terminal =
+      typeof status?.terminalPulse === "number"
+        ? status.terminalPulse
+        : threadId === input.activeThreadId
+          ? input.activeTerminalPulse
+          : 0;
+    const queueLen = input.queuedByThread[threadId]?.length ?? 0;
+    const inflightId = input.inFlightByThread[threadId]?.id ?? "-";
+    parts.push(
+      `${threadId}:p${processing ? 1 : 0}:r${reviewing ? 1 : 0}:c${compacting ? 1 : 0}:t${terminal}:q${queueLen}:i${inflightId}`,
+    );
+  }
+  return `${parts.join("|")}|active:${input.activeThreadId ?? "-"}|pend:${input.hasPendingUserInput ? 1 : 0}|bg:${input.backgroundEnabled ? 1 : 0}`;
+}
+
+type QueueThreadStatusSnapshot = {
+  isProcessing?: boolean;
+  isReviewing?: boolean;
+  isContextCompacting?: boolean;
+  terminalPulse?: number;
+  continuationPulse?: number;
+};
 
 type UseQueuedSendOptions = {
   activeThreadId: string | null;
@@ -51,6 +165,15 @@ type UseQueuedSendOptions = {
   // messages as fresh turns and strand the pending answer. See handleSend +
   // the auto-flush effect below.
   hasPendingUserInput?: boolean;
+  /**
+   * Per-thread activity for S1 background drain. Missing non-active entries are
+   * treated as non-ready (hold) so we never blind-fire without status.
+   */
+  threadStatusById?: Record<string, QueueThreadStatusSnapshot | undefined>;
+  /** Active timeline items; used to clear Codex handoff once real user bubble exists. */
+  activeItems?: ConversationItem[];
+  /** Resolve workspace by id for owner-bound background dispatch. */
+  resolveWorkspace?: (workspaceId: string) => WorkspaceInfo | null;
   steerEnabled: boolean;
   activeWorkspace: WorkspaceInfo | null;
   activeEngine?: EngineType;
@@ -399,6 +522,9 @@ export function useQueuedSend({
   isReviewing,
   isContextCompacting = false,
   hasPendingUserInput = false,
+  threadStatusById,
+  activeItems = [],
+  resolveWorkspace,
   steerEnabled,
   activeWorkspace,
   activeEngine = "claude",
@@ -477,6 +603,104 @@ export function useQueuedSend({
   );
   const fusionDispatchingRef = useRef(new Set<string>());
   const queueDispatchingRef = useRef(new Set<string>());
+  /** 已成功 dispatch 的 queue item id，禁止回队后再次发送（防重发洪水）。 */
+  const completedQueueDispatchIdsRef = useRef(new Set<string>());
+  /** 避免 hasStarted 进 effect deps 造成自激；仅 settlement / opencode stall 读写。 */
+  const hasStartedByThreadRef = useRef<Record<string, boolean>>({});
+  /** native 成功但 processing 边沿可能丢失时的兜底计时。 */
+  const nativeInFlightSinceRef = useRef<Record<string, number>>({});
+  /** 最新 status 快照：drain 读 ref，不把整表 threadStatusById 放进 effect deps。 */
+  const threadStatusByIdRef = useRef(threadStatusById);
+  threadStatusByIdRef.current = threadStatusById;
+  const isProcessingRef = useRef(isProcessing);
+  isProcessingRef.current = isProcessing;
+  const isReviewingRef = useRef(isReviewing);
+  isReviewingRef.current = isReviewing;
+  const isContextCompactingRef = useRef(isContextCompacting);
+  isContextCompactingRef.current = isContextCompacting;
+  const activeTerminalPulseRef = useRef(activeTerminalPulse);
+  activeTerminalPulseRef.current = activeTerminalPulse;
+  const hasPendingUserInputRef = useRef(hasPendingUserInput);
+  hasPendingUserInputRef.current = hasPendingUserInput;
+  /**
+   * 产品化冷启门：startup-gate-ready（或 force-enter）之后，再等一小段无点击才放行 drain。
+   * 不是「对抗」关掉 S1，而是 drain 调度与启动门对齐；用户 handleSend/queueMessage 始终可用。
+   */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const isVitest =
+    typeof import.meta !== "undefined" &&
+    (import.meta as any).env?.MODE === "test";
+  const [queueDrainReleased, setQueueDrainReleased] = useState(() => {
+    if (isVitest) {
+      return true;
+    }
+    return (
+      Boolean(getStartupTraceSnapshot().milestones["startup-gate-ready"]) ||
+      isStartupForceEntered()
+    );
+  });
+  const queueDrainReleasedRef = useRef(queueDrainReleased);
+  queueDrainReleasedRef.current = queueDrainReleased;
+
+  useEffect(() => {
+    if (isVitest || queueDrainReleased) {
+      return;
+    }
+    ensureInteractiveInputHooks();
+    let cancelled = false;
+    let quietTimer: number | null = null;
+
+    const clearQuietTimer = () => {
+      if (quietTimer != null) {
+        window.clearTimeout(quietTimer);
+        quietTimer = null;
+      }
+    };
+
+    const tryRelease = (): boolean => {
+      if (cancelled) {
+        return false;
+      }
+      const gateOpen =
+        Boolean(getStartupTraceSnapshot().milestones["startup-gate-ready"]) ||
+        isStartupForceEntered();
+      if (!gateOpen) {
+        return false;
+      }
+      // gate 已开：仍等短静默，避免 unmask 瞬间与猛点叠 drain
+      if (hadRecentInteractiveInput(400)) {
+        clearQuietTimer();
+        quietTimer = window.setTimeout(() => {
+          void tryRelease();
+        }, 200);
+        return false;
+      }
+      setQueueDrainReleased(true);
+      return true;
+    };
+
+    if (tryRelease()) {
+      return () => {
+        cancelled = true;
+        clearQuietTimer();
+      };
+    }
+
+    const unsubTrace = subscribeStartupTrace(() => {
+      void tryRelease();
+    });
+    // 门未开时也轮询 force-enter / 晚到的 quiet
+    const pollTimer = window.setInterval(() => {
+      void tryRelease();
+    }, 250);
+
+    return () => {
+      cancelled = true;
+      clearQuietTimer();
+      unsubTrace();
+      window.clearInterval(pollTimer);
+    };
+  }, [isVitest, queueDrainReleased]);
 
   useEffect(() => {
     queuedByThreadRef.current = queuedByThread;
@@ -760,6 +984,8 @@ export function useQueuedSend({
           options === undefined ? undefined : structuredClone(options),
         sharedExecutionTarget,
         sharedPredecessorAttemptId,
+        ownerWorkspaceId: activeWorkspace?.id,
+        ownerThreadId: activeThreadId ?? undefined,
       };
     },
     [activeSharedSendState, activeThreadId, activeWorkspace, isSharedSession],
@@ -1018,19 +1244,54 @@ export function useQueuedSend({
   const dispatchQueuedMessage = useCallback(
     async (
       item: QueuedMessage,
-      options?: { targetThreadId?: string | null },
+      options?: {
+        targetThreadId?: string | null;
+        targetWorkspace?: WorkspaceInfo | null;
+        /** When true, never fall back to active-bound sendUserMessage. */
+        requireThreadTarget?: boolean;
+      },
     ): Promise<QueuedDispatchResult> => {
       const trimmed = item.text.trim();
+      // Explicit drain target wins; otherwise fall back to item owner / active.
+      const explicitTargetThreadId = options?.targetThreadId?.trim() || null;
+      const ownerThreadId =
+        explicitTargetThreadId ||
+        item.ownerThreadId?.trim() ||
+        activeThreadId?.trim() ||
+        "";
+      const ownerWorkspace =
+        options?.targetWorkspace ??
+        (item.ownerWorkspaceId
+          ? resolveWorkspace?.(item.ownerWorkspaceId) ?? null
+          : null) ??
+        (item.ownerWorkspaceId &&
+        activeWorkspace &&
+        activeWorkspace.id === item.ownerWorkspaceId
+          ? activeWorkspace
+          : null) ??
+        (ownerThreadId === activeThreadId || !explicitTargetThreadId
+          ? activeWorkspace
+          : null);
+
       const command = parseSlashCommand(trimmed);
       const commandEnabled = canExecuteSlashCommand(
         command,
         activeEngine,
-        activeThreadId,
+        ownerThreadId || activeThreadId,
       );
-      if (activeWorkspace && !activeWorkspace.connected) {
+      if (ownerWorkspace && !ownerWorkspace.connected) {
+        await connectWorkspace(ownerWorkspace);
+      } else if (
+        activeWorkspace &&
+        !activeWorkspace.connected &&
+        (!ownerThreadId || ownerThreadId === activeThreadId)
+      ) {
         await connectWorkspace(activeWorkspace);
       }
-      if (commandEnabled && command) {
+      // Slash / mode only when targeting active (or no explicit foreign target).
+      const targetsActive =
+        !ownerThreadId || ownerThreadId === activeThreadId;
+      if (commandEnabled && command && targetsActive) {
         const handled = await runSlashCommand(command, trimmed, item.sendOptions);
         if (handled) {
           return "dispatched";
@@ -1041,7 +1302,7 @@ export function useQueuedSend({
         !command &&
         (item.images?.length ?? 0) === 0 &&
         isImplicitModeQuery(trimmed);
-      if (implicitModeQuery) {
+      if (implicitModeQuery && targetsActive) {
         await startMode(trimmed);
         return "dispatched";
       }
@@ -1052,24 +1313,44 @@ export function useQueuedSend({
           }
         : item.sendOptions;
       const effectiveOptions = withCodexCollaborationMode(frozenTargetOptions);
-      const targetThreadId =
-        options?.targetThreadId?.trim() ??
-        (isSharedSession ? (activeThreadId?.trim() ?? "") : "");
+      const isBackgroundTarget =
+        options?.requireThreadTarget === true ||
+        Boolean(explicitTargetThreadId && explicitTargetThreadId !== activeThreadId);
+      const ownerIsShared =
+        ownerThreadId.startsWith("shared:") ||
+        (isSharedSession &&
+          (!explicitTargetThreadId || explicitTargetThreadId === activeThreadId));
+      // Preserve historical active handleSend path:
+      // - Shared always thread-send
+      // - Codex thread-send only when drain passes explicit targetThreadId
+      // - Background always thread-send (never active sendUserMessage)
       const shouldUseDirectThreadSend =
-        (isSharedSession || activeEngine === "codex") &&
-        Boolean(activeWorkspace && targetThreadId);
-      if (shouldUseDirectThreadSend && activeWorkspace) {
+        Boolean(ownerWorkspace && ownerThreadId) &&
+        (isBackgroundTarget ||
+          isSharedSession ||
+          ownerIsShared ||
+          (activeEngine === "codex" && Boolean(explicitTargetThreadId)));
+
+      if (shouldUseDirectThreadSend && ownerWorkspace && ownerThreadId) {
         const response = await sendUserMessageToThread(
-          activeWorkspace,
-          targetThreadId,
+          ownerWorkspace,
+          ownerThreadId,
           trimmed,
           item.images ?? [],
           effectiveOptions,
         );
-        return isSharedSession
+        // 仅 owner 为 Shared 时走 V2 classify；禁止用 active 的 isSharedSession
+        // 污染后台 native/codex 响应（否则 ambiguous → 回队 → 重发）。
+        return ownerIsShared
           ? classifySharedDispatchResult(response, item.sharedExecutionTarget)
           : "dispatched";
       }
+
+      if (isBackgroundTarget) {
+        // 不串线：后台/非 active 禁止落到 active sendUserMessage。
+        return "blocked";
+      }
+
       if (effectiveOptions) {
         await sendUserMessage(trimmed, item.images ?? [], effectiveOptions);
       } else {
@@ -1083,6 +1364,7 @@ export function useQueuedSend({
       activeWorkspace,
       connectWorkspace,
       isSharedSession,
+      resolveWorkspace,
       runSlashCommand,
       sendUserMessage,
       sendUserMessageToThread,
@@ -1606,34 +1888,95 @@ export function useQueuedSend({
     };
   }, [activeThreadId, queuedHandoffByThread]);
 
+  /**
+   * 每帧从「当前 props」抽出 signal 字符串（O(有队列会话数)）。
+   * effect 只依赖该字符串：无关会话 heartbeat 换 threadStatusById 引用但
+   * 相关 p/t 不变 → 字符串相同 → effect 不跑。
+   * 不再把 threadStatusById 对象放进 useMemo deps（避免无意义重算链）。
+   */
+  const queueDrainSignal = buildQueueDrainSignal({
+    queuedByThread,
+    inFlightByThread,
+    activeThreadId,
+    threadStatusById,
+    isProcessing,
+    isReviewing,
+    isContextCompacting,
+    activeTerminalPulse,
+    hasPendingUserInput,
+    backgroundEnabled:
+      getEnableBackgroundQueueDrain() && queueDrainReleased,
+  });
+
   useEffect(() => {
-    if (!activeThreadId || isSharedSession) {
+    // 启动门未放行 / 刚有点击：跳过 settlement 写状态（让出主线程）
+    if (!queueDrainReleasedRef.current || hadRecentInteractiveInput(300)) {
       return;
     }
-    const inFlight = inFlightByThread[activeThreadId];
-    if (!inFlight) {
-      return;
-    }
-    if (isProcessing || isReviewing) {
-      if (!hasStartedByThread[activeThreadId]) {
-        setHasStartedByThread((prev) => ({
-          ...prev,
-          [activeThreadId]: true,
-        }));
+    // Per-thread inFlight settlement（只用 ref 记 hasStarted，deps 不含 hasStarted state）。
+    const statusMap = threadStatusByIdRef.current;
+    let nextInFlight: Record<string, QueuedMessage | null> | null = null;
+    let touchHasStartedState = false;
+    const now = Date.now();
+    for (const [threadId, inFlight] of Object.entries(inFlightByThread)) {
+      if (!inFlight) {
+        continue;
       }
-      return;
+      if (threadId.startsWith("shared:")) {
+        continue;
+      }
+      if (isSharedSession && threadId === activeThreadId) {
+        continue;
+      }
+      const status = statusMap?.[threadId];
+      const processing =
+        typeof status?.isProcessing === "boolean"
+          ? status.isProcessing
+          : threadId === activeThreadId
+            ? isProcessingRef.current
+            : false;
+      const reviewing =
+        typeof status?.isReviewing === "boolean"
+          ? status.isReviewing
+          : threadId === activeThreadId
+            ? isReviewingRef.current
+            : false;
+      if (processing || reviewing) {
+        if (!hasStartedByThreadRef.current[threadId]) {
+          hasStartedByThreadRef.current[threadId] = true;
+          touchHasStartedState = true;
+        }
+        continue;
+      }
+      const started = hasStartedByThreadRef.current[threadId] === true;
+      const since = nativeInFlightSinceRef.current[threadId] ?? 0;
+      const completed = completedQueueDispatchIdsRef.current.has(inFlight.id);
+      const timedOut =
+        completed &&
+        since > 0 &&
+        now - since >= NATIVE_INFLIGHT_SETTLE_FALLBACK_MS;
+      if (started || timedOut) {
+        hasStartedByThreadRef.current[threadId] = false;
+        delete nativeInFlightSinceRef.current[threadId];
+        nextInFlight = {
+          ...(nextInFlight ?? inFlightByThread),
+          [threadId]: null,
+        };
+        touchHasStartedState = true;
+      }
     }
-    if (hasStartedByThread[activeThreadId]) {
-      setInFlightByThread((prev) => ({ ...prev, [activeThreadId]: null }));
-      setHasStartedByThread((prev) => ({ ...prev, [activeThreadId]: false }));
+    if (nextInFlight) {
+      setInFlightByThread(nextInFlight);
+    }
+    // 批量同步 opencode stall 用的 state，避免 settlement deps 含 hasStarted 自激。
+    if (touchHasStartedState) {
+      setHasStartedByThread({ ...hasStartedByThreadRef.current });
     }
   }, [
     activeThreadId,
-    hasStartedByThread,
     inFlightByThread,
-    isProcessing,
-    isReviewing,
     isSharedSession,
+    queueDrainSignal,
   ]);
 
   useEffect(() => {
@@ -1699,6 +2042,11 @@ export function useQueuedSend({
         return { ...prev, [activeThreadId]: null };
       });
       setHasStartedByThread((prev) => ({ ...prev, [activeThreadId]: false }));
+      // stall 重试允许再发：撤掉 completed 标记与 terminal 闸门。
+      completedQueueDispatchIdsRef.current.delete(inFlight.id);
+      queuedAfterTerminalPulseRef.current.delete(inFlight.id);
+      delete nativeInFlightSinceRef.current[activeThreadId];
+      hasStartedByThreadRef.current[activeThreadId] = false;
       prependQueuedMessage(activeThreadId, inFlight);
     }, OPENCODE_INFLIGHT_STALL_MS);
     return () => {
@@ -1714,165 +2062,442 @@ export function useQueuedSend({
     prependQueuedMessage,
   ]);
 
+  // Codex handoff: clear state once real user bubble is visible (not only skip-append).
+  // 用长度+末 id 信号代替 activeItems 全表依赖，避免流式每 delta 都跑 effect。
+  const activeItemsRef = useRef(activeItems);
+  activeItemsRef.current = activeItems;
+  const activeItemsTailSignal = `${activeItems.length}:${
+    activeItems[activeItems.length - 1]?.id ?? ""
+  }`;
   useEffect(() => {
-    if (!activeThreadId || isProcessing || isReviewing) {
+    if (!activeThreadId) {
       return;
     }
-    if (
-      isSharedSession &&
-      (activeSharedSendState !== "idle" || isContextCompacting)
-    ) {
+    const handoff = queuedHandoffByThread[activeThreadId];
+    if (!handoff) {
       return;
     }
-    // Hold the queue while an AskUserQuestion dialog is open: the CLI turn is
-    // blocked awaiting the answer even though isProcessing may read false, so
-    // flushing here would send the queued message as a fresh turn and strand
-    // the pending answer (→ 5-min MCP timeout). The queue drains after the
-    // dialog is settled and the turn resumes/ends.
-    if (hasPendingUserInput) {
+    const hasMatch = activeItemsRef.current.some((item) =>
+      doesConversationItemMatchUserBubble(item, handoff),
+    );
+    if (!hasMatch) {
       return;
     }
-    if (fusionByThread[activeThreadId]) {
+    setQueuedHandoffByThread((prev) => {
+      if (!prev[activeThreadId]) {
+        return prev;
+      }
+      return { ...prev, [activeThreadId]: null };
+    });
+  }, [activeItemsTailSignal, activeThreadId, queuedHandoffByThread]);
+
+  useEffect(() => {
+    // 启动门未放行：禁止 auto-drain（用户显式 handleSend/queueMessage 仍可用）
+    if (!queueDrainReleasedRef.current) {
       return;
     }
-    if (inFlightByThread[activeThreadId]) {
+    // 刚有点击：让出一帧级调度，不和 hit-test 硬撞
+    if (hadRecentInteractiveInput(300)) {
       return;
     }
-    const queue = queuedByThread[activeThreadId] ?? [];
-    if (queue.length === 0) {
-      return;
-    }
-    const threadId = activeThreadId;
-    const nextItem = queue[0];
-    if (!nextItem || nextItem.sharedDispatchState === "pending-ack") {
-      return;
-    }
-    const queueDispatchKey = `${activeThreadId}:${nextItem.id}`;
-    if (queueDispatchingRef.current.has(queueDispatchKey)) {
-      return;
-    }
-    const blockedAtSharedRevision =
-      queuedAfterSharedRevisionRef.current.get(nextItem.id);
-    if (
-      isSharedSession &&
-      activeWorkspace &&
-      blockedAtSharedRevision !== undefined &&
-      getSharedSendStateRevision(activeWorkspace.id, activeThreadId) <=
-        blockedAtSharedRevision
-    ) {
-      return;
-    }
-    const predecessorTerminalPulse =
-      queuedAfterTerminalPulseRef.current.get(nextItem.id);
-    if (
-      !isSharedSession &&
-      predecessorTerminalPulse !== undefined &&
-      activeTerminalPulse <= predecessorTerminalPulse
-    ) {
-      return;
-    }
-    const nextTrimmedText = nextItem.text.trim();
-    const shouldCreateHandoffBubble =
-      !isSharedSession &&
-      activeEngine === "codex" &&
-      !parseSlashCommand(nextTrimmedText) &&
-      !(
-        (nextItem.images?.length ?? 0) === 0 &&
-        isImplicitModeQuery(nextTrimmedText)
-      );
-    if (shouldCreateHandoffBubble) {
-      setQueuedHandoffByThread((prev) => ({
-        ...prev,
-        [threadId]: buildQueuedHandoffBubbleItem(nextItem),
-      }));
-    }
-    const dispatchItem: QueuedMessage = isSharedSession
-      ? { ...nextItem, sharedDispatchState: "pending-ack" }
-      : nextItem;
-    if (isSharedSession) {
-      replaceQueuedMessage(threadId, dispatchItem);
-    }
-    setInFlightByThread((prev) => ({ ...prev, [threadId]: dispatchItem }));
-    setHasStartedByThread((prev) => ({ ...prev, [threadId]: false }));
-    queuedAfterTerminalPulseRef.current.delete(nextItem.id);
-    queuedAfterSharedRevisionRef.current.delete(nextItem.id);
-    queueDispatchingRef.current.add(queueDispatchKey);
-    (async () => {
-      try {
-        const dispatchResult = await dispatchQueuedMessage(dispatchItem, {
-          targetThreadId:
-            isSharedSession || activeEngine === "codex" ? threadId : null,
-        });
-        const dispatchAccepted =
-          dispatchResult === "committed" ||
-          (!isSharedSession && dispatchResult === "dispatched");
-        if (dispatchAccepted) {
-          queuedAfterSharedRevisionRef.current.delete(nextItem.id);
-          setQueuedByThread((prev) => ({
-            ...prev,
-            [threadId]: (prev[threadId] ?? []).filter(
-              (entry) => entry.id !== nextItem.id,
-            ),
-          }));
-          if (isSharedSession) {
-            setInFlightByThread((prev) => ({ ...prev, [threadId]: null }));
-            setHasStartedByThread((prev) => ({ ...prev, [threadId]: false }));
-          }
-          return;
+    const readThreadProcessing = (threadId: string): boolean => {
+      const status = threadStatusByIdRef.current?.[threadId];
+      if (status && typeof status.isProcessing === "boolean") {
+        return status.isProcessing;
+      }
+      if (threadId === activeThreadId) {
+        return isProcessingRef.current;
+      }
+      // Missing non-active status → hold (do not blind-fire).
+      return true;
+    };
+    const readThreadReviewing = (threadId: string): boolean => {
+      const status = threadStatusByIdRef.current?.[threadId];
+      if (status && typeof status.isReviewing === "boolean") {
+        return status.isReviewing;
+      }
+      return threadId === activeThreadId ? isReviewingRef.current : false;
+    };
+    const readThreadCompacting = (threadId: string): boolean => {
+      const status = threadStatusByIdRef.current?.[threadId];
+      if (status && typeof status.isContextCompacting === "boolean") {
+        return status.isContextCompacting;
+      }
+      return threadId === activeThreadId
+        ? isContextCompactingRef.current
+        : false;
+    };
+    const readTerminalPulse = (threadId: string): number => {
+      const status = threadStatusByIdRef.current?.[threadId];
+      if (status && typeof status.terminalPulse === "number") {
+        return status.terminalPulse;
+      }
+      return threadId === activeThreadId ? activeTerminalPulseRef.current : 0;
+    };
+    const readPendingUserInput = (threadId: string): boolean =>
+      threadId === activeThreadId ? hasPendingUserInputRef.current : false;
+
+    const isThreadShared = (threadId: string): boolean =>
+      threadId.startsWith("shared:") ||
+      (isSharedSession && threadId === activeThreadId);
+
+    const resolveOwnerWorkspace = (
+      threadId: string,
+      item: QueuedMessage,
+    ): WorkspaceInfo | null => {
+      if (item.ownerWorkspaceId) {
+        const resolved = resolveWorkspace?.(item.ownerWorkspaceId) ?? null;
+        if (resolved) {
+          return resolved;
         }
-        if (isSharedSession && dispatchResult === "blocked") {
-          replaceQueuedMessage(threadId, {
-            ...dispatchItem,
-            sharedDispatchState: undefined,
-          });
-          if (activeWorkspace) {
-            queuedAfterSharedRevisionRef.current.set(
-              nextItem.id,
-              getSharedSendStateRevision(activeWorkspace.id, threadId),
-            );
-          }
+        if (activeWorkspace?.id === item.ownerWorkspaceId) {
+          return activeWorkspace;
         }
-        queuedAfterTerminalPulseRef.current.set(
-          nextItem.id,
-          activeTerminalPulse,
+      }
+      if (threadId === activeThreadId) {
+        return activeWorkspace;
+      }
+      return null;
+    };
+
+    const countBackgroundInFlight = (): number => {
+      let count = 0;
+      for (const [threadId, inflight] of Object.entries(inFlightByThread)) {
+        if (!inflight) {
+          continue;
+        }
+        if (threadId === activeThreadId) {
+          continue;
+        }
+        count += 1;
+      }
+      return count;
+    };
+
+    const tryDrainThread = (threadId: string): boolean => {
+      if (readThreadProcessing(threadId) || readThreadReviewing(threadId)) {
+        return false;
+      }
+      if (readPendingUserInput(threadId)) {
+        return false;
+      }
+      if (fusionByThread[threadId]) {
+        return false;
+      }
+      if (inFlightByThread[threadId]) {
+        return false;
+      }
+      const threadIsShared = isThreadShared(threadId);
+      if (threadIsShared) {
+        const ownerWsId =
+          (queuedByThread[threadId]?.[0]?.ownerWorkspaceId ??
+            (threadId === activeThreadId ? activeWorkspace?.id : undefined)) ||
+          "";
+        if (!ownerWsId) {
+          return false;
+        }
+        const sharedState = getSharedSendState(ownerWsId, threadId).state;
+        if (sharedState !== "idle" || readThreadCompacting(threadId)) {
+          return false;
+        }
+      }
+      const queue = queuedByThread[threadId] ?? [];
+      if (queue.length === 0) {
+        return false;
+      }
+      const nextItem = queue[0];
+      if (!nextItem || nextItem.sharedDispatchState === "pending-ack") {
+        return false;
+      }
+      // 已成功发出过的 id：直接丢弃，绝不重发（截图「你在干啥呢」洪水根治）。
+      if (completedQueueDispatchIdsRef.current.has(nextItem.id)) {
+        setQueuedByThread((prev) => ({
+          ...prev,
+          [threadId]: (prev[threadId] ?? []).filter(
+            (entry) => entry.id !== nextItem.id,
+          ),
+        }));
+        return false;
+      }
+      const queueDispatchKey = `${threadId}:${nextItem.id}`;
+      if (queueDispatchingRef.current.has(queueDispatchKey)) {
+        return false;
+      }
+      const ownerWorkspace = resolveOwnerWorkspace(threadId, nextItem);
+      const isBackground = threadId !== activeThreadId;
+      if (isBackground && !ownerWorkspace) {
+        // 不串线：无 owner 禁止 drain 到 active。
+        return false;
+      }
+      if (
+        isBackground &&
+        nextItem.ownerThreadId &&
+        nextItem.ownerThreadId !== threadId
+      ) {
+        return false;
+      }
+
+      const blockedAtSharedRevision =
+        queuedAfterSharedRevisionRef.current.get(nextItem.id);
+      if (
+        threadIsShared &&
+        ownerWorkspace &&
+        blockedAtSharedRevision !== undefined &&
+        getSharedSendStateRevision(ownerWorkspace.id, threadId) <=
+          blockedAtSharedRevision
+      ) {
+        return false;
+      }
+      const predecessorTerminalPulse =
+        queuedAfterTerminalPulseRef.current.get(nextItem.id);
+      const threadTerminalPulse = readTerminalPulse(threadId);
+      if (
+        !threadIsShared &&
+        predecessorTerminalPulse !== undefined &&
+        threadTerminalPulse <= predecessorTerminalPulse
+      ) {
+        return false;
+      }
+
+      const nextTrimmedText = nextItem.text.trim();
+      const shouldCreateHandoffBubble =
+        !threadIsShared &&
+        activeEngine === "codex" &&
+        !parseSlashCommand(nextTrimmedText) &&
+        !(
+          (nextItem.images?.length ?? 0) === 0 &&
+          isImplicitModeQuery(nextTrimmedText)
         );
-        setInFlightByThread((prev) => ({ ...prev, [threadId]: null }));
-        setHasStartedByThread((prev) => ({ ...prev, [threadId]: false }));
-        setQueuedHandoffByThread((prev) => ({ ...prev, [threadId]: null }));
-      } catch {
-        if (isSharedSession) {
+
+      // P0: optimistic dequeue for native (single owner). Shared keeps pending-ack in strip.
+      if (!threadIsShared) {
+        setQueuedByThread((prev) => ({
+          ...prev,
+          [threadId]: (prev[threadId] ?? []).filter(
+            (entry) => entry.id !== nextItem.id,
+          ),
+        }));
+      }
+      if (shouldCreateHandoffBubble) {
+        setQueuedHandoffByThread((prev) => ({
+          ...prev,
+          [threadId]: buildQueuedHandoffBubbleItem(nextItem),
+        }));
+      }
+      const dispatchItem: QueuedMessage = threadIsShared
+        ? {
+            ...nextItem,
+            sharedDispatchState: "pending-ack",
+            ownerThreadId: nextItem.ownerThreadId ?? threadId,
+            ownerWorkspaceId:
+              nextItem.ownerWorkspaceId ?? ownerWorkspace?.id,
+          }
+        : {
+            ...nextItem,
+            ownerThreadId: nextItem.ownerThreadId ?? threadId,
+            ownerWorkspaceId:
+              nextItem.ownerWorkspaceId ?? ownerWorkspace?.id,
+          };
+      if (threadIsShared) {
+        replaceQueuedMessage(threadId, dispatchItem);
+      }
+      setInFlightByThread((prev) => ({ ...prev, [threadId]: dispatchItem }));
+      hasStartedByThreadRef.current[threadId] = false;
+      setHasStartedByThread((prev) => ({ ...prev, [threadId]: false }));
+      delete nativeInFlightSinceRef.current[threadId];
+      // 注意：失败回队后靠 terminal-pulse 闸门；成功后才清除。
+      // 禁止在 dispatch 前 delete pulse，否则 fail/catch 回队会立刻无闸重发。
+      queueDispatchingRef.current.add(queueDispatchKey);
+
+      void (async () => {
+        const blockFurtherAutoDrain = () => {
+          // 用当前 pulse 卡住自动重试；需新的 terminal 边沿才允许再试。
+          const pulseNow =
+            threadStatusByIdRef.current?.[threadId]?.terminalPulse ??
+            (threadId === activeThreadId
+              ? activeTerminalPulseRef.current
+              : threadTerminalPulse);
           queuedAfterTerminalPulseRef.current.set(
             nextItem.id,
-            activeTerminalPulse,
+            Math.max(threadTerminalPulse, pulseNow),
           );
+        };
+        try {
+          const dispatchResult = await dispatchQueuedMessage(dispatchItem, {
+            targetThreadId: threadId,
+            targetWorkspace: ownerWorkspace,
+            requireThreadTarget:
+              isBackground || threadIsShared || activeEngine === "codex",
+          });
+          const dispatchAccepted =
+            dispatchResult === "committed" ||
+            (!threadIsShared && dispatchResult === "dispatched");
+          if (dispatchAccepted) {
+            // 成功：永远记 completed，禁止同 id 再发（防「你在干啥呢」洪水）。
+            completedQueueDispatchIdsRef.current.add(nextItem.id);
+            queuedAfterTerminalPulseRef.current.delete(nextItem.id);
+            queuedAfterSharedRevisionRef.current.delete(nextItem.id);
+            setQueuedByThread((prev) => ({
+              ...prev,
+              [threadId]: (prev[threadId] ?? []).filter(
+                (entry) => entry.id !== nextItem.id,
+              ),
+            }));
+            if (threadIsShared) {
+              // Shared：V2 commit 已确认，立刻清 inFlight。
+              delete nativeInFlightSinceRef.current[threadId];
+              hasStartedByThreadRef.current[threadId] = false;
+              setInFlightByThread((prev) => ({ ...prev, [threadId]: null }));
+              setHasStartedByThread((prev) => ({
+                ...prev,
+                [threadId]: false,
+              }));
+            } else {
+              // Native：保留 inFlight 防同线程连发；记录时间供 settlement 超时兜底。
+              const acceptedItemId = nextItem.id;
+              nativeInFlightSinceRef.current[threadId] = Date.now();
+              const statusNow = threadStatusByIdRef.current?.[threadId];
+              const alreadyProcessing =
+                typeof statusNow?.isProcessing === "boolean"
+                  ? statusNow.isProcessing
+                  : threadId === activeThreadId
+                    ? isProcessingRef.current
+                    : false;
+              if (alreadyProcessing) {
+                hasStartedByThreadRef.current[threadId] = true;
+                setHasStartedByThread((prev) => ({
+                  ...prev,
+                  [threadId]: true,
+                }));
+              }
+              // processing 边沿丢失时：超时清 inFlight（completed 已记，不会重发同 id）。
+              window.setTimeout(() => {
+                setInFlightByThread((prev) => {
+                  const current = prev[threadId];
+                  if (!current || current.id !== acceptedItemId) {
+                    return prev;
+                  }
+                  if (
+                    !completedQueueDispatchIdsRef.current.has(acceptedItemId)
+                  ) {
+                    return prev;
+                  }
+                  const status = threadStatusByIdRef.current?.[threadId];
+                  const stillProcessing =
+                    typeof status?.isProcessing === "boolean"
+                      ? status.isProcessing
+                      : threadId === activeThreadId
+                        ? isProcessingRef.current
+                        : false;
+                  if (stillProcessing) {
+                    return prev;
+                  }
+                  delete nativeInFlightSinceRef.current[threadId];
+                  hasStartedByThreadRef.current[threadId] = false;
+                  return { ...prev, [threadId]: null };
+                });
+              }, NATIVE_INFLIGHT_SETTLE_FALLBACK_MS);
+            }
+            return;
+          }
+          // Restore queue on failure (native was optimistically removed).
+          if (!threadIsShared) {
+            prependQueuedMessage(threadId, {
+              ...nextItem,
+              sharedDispatchState: undefined,
+            });
+            blockFurtherAutoDrain();
+          }
+          if (threadIsShared && dispatchResult === "blocked") {
+            replaceQueuedMessage(threadId, {
+              ...dispatchItem,
+              sharedDispatchState: undefined,
+            });
+            if (ownerWorkspace) {
+              queuedAfterSharedRevisionRef.current.set(
+                nextItem.id,
+                getSharedSendStateRevision(ownerWorkspace.id, threadId),
+              );
+            }
+          }
+          // Shared ambiguous：保持 pending-ack，禁止自动重放（原契约）。
+          delete nativeInFlightSinceRef.current[threadId];
+          hasStartedByThreadRef.current[threadId] = false;
+          setInFlightByThread((prev) => ({ ...prev, [threadId]: null }));
+          setHasStartedByThread((prev) => ({ ...prev, [threadId]: false }));
+          setQueuedHandoffByThread((prev) => ({ ...prev, [threadId]: null }));
+        } catch {
+          if (!threadIsShared) {
+            prependQueuedMessage(threadId, {
+              ...nextItem,
+              sharedDispatchState: undefined,
+            });
+            // native catch 必须写闸门，否则会无间隔重发洪水。
+            blockFurtherAutoDrain();
+          }
+          delete nativeInFlightSinceRef.current[threadId];
+          hasStartedByThreadRef.current[threadId] = false;
+          setInFlightByThread((prev) => ({ ...prev, [threadId]: null }));
+          setHasStartedByThread((prev) => ({ ...prev, [threadId]: false }));
+          setQueuedHandoffByThread((prev) => ({ ...prev, [threadId]: null }));
+        } finally {
+          queueDispatchingRef.current.delete(queueDispatchKey);
         }
-        setInFlightByThread((prev) => ({ ...prev, [threadId]: null }));
-        setHasStartedByThread((prev) => ({ ...prev, [threadId]: false }));
-        setQueuedHandoffByThread((prev) => ({ ...prev, [threadId]: null }));
-        if (!isSharedSession) {
-          // Native queue item 尚未删除；保持原位等待既有恢复策略。
-          return;
-        }
-      } finally {
-        queueDispatchingRef.current.delete(queueDispatchKey);
+      })();
+      return true;
+    };
+
+    const candidateThreadIds = new Set<string>();
+    for (const threadId of Object.keys(queuedByThread)) {
+      if ((queuedByThread[threadId] ?? []).length > 0) {
+        candidateThreadIds.add(threadId);
       }
-    })();
+    }
+    if (activeThreadId) {
+      candidateThreadIds.add(activeThreadId);
+    }
+
+    const ordered = [...candidateThreadIds].sort((a, b) => {
+      if (a === activeThreadId) {
+        return -1;
+      }
+      if (b === activeThreadId) {
+        return 1;
+      }
+      return a.localeCompare(b);
+    });
+
+    let backgroundStarted = 0;
+    const backgroundInFlight = countBackgroundInFlight();
+
+    for (const threadId of ordered) {
+      const isActive = threadId === activeThreadId;
+      if (!isActive && !getEnableBackgroundQueueDrain()) {
+        continue;
+      }
+      if (
+        !isActive &&
+        backgroundInFlight + backgroundStarted >= MAX_BACKGROUND_QUEUE_DRAIN
+      ) {
+        continue;
+      }
+      const started = tryDrainThread(threadId);
+      if (started && !isActive) {
+        backgroundStarted += 1;
+      }
+    }
   }, [
     activeEngine,
-    activeSharedSendState,
     activeThreadId,
-    activeTerminalPulse,
     activeWorkspace,
     dispatchQueuedMessage,
     fusionByThread,
-    hasPendingUserInput,
-    inFlightByThread,
-    isProcessing,
-    isReviewing,
-    isContextCompacting,
-    isSharedSession,
-    queuedByThread,
+    // queueDrainSignal 已覆盖：queued/inFlight 长度与 id、各相关 thread 的
+    // processing/terminal、active pending、bg 闸。禁止再依赖整表 threadStatusById。
+    queueDrainSignal,
+    prependQueuedMessage,
     replaceQueuedMessage,
+    resolveWorkspace,
     setQueuedByThread,
   ]);
 

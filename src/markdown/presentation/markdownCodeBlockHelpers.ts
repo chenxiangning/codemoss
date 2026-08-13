@@ -120,16 +120,27 @@ export function extractLatexContent(
   return inner || null;
 }
 
+function isMermaidLanguageTag(languageTag: string | null) {
+  if (!languageTag) {
+    return false;
+  }
+  const normalized = languageTag.trim().toLowerCase();
+  // File preview already treats `flowchart` as mermaid; keep message side aligned.
+  return normalized === "mermaid" || normalized === "flowchart";
+}
+
 export function extractMermaidContent(
   languageTag: string | null,
   value: string,
 ): string | null {
   // Case 1: react-markdown correctly parsed the language tag
-  if (languageTag === "mermaid" && value.trim()) {
+  if (isMermaidLanguageTag(languageTag) && value.trim()) {
     return value;
   }
   // Case 2: fenced marker leaked into the content (e.g. ```mermaid\n...\n```)
-  const fencedMatch = value.match(/^```mermaid\s*\n([\s\S]*?)(?:\n```\s*)?$/);
+  const fencedMatch = value.match(
+    /^```(?:mermaid|flowchart)\s*\n([\s\S]*?)(?:\n```\s*)?$/i,
+  );
   if (fencedMatch) {
     const inner = (fencedMatch[1] ?? "").trim();
     if (inner) return inner;

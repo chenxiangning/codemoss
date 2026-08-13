@@ -160,6 +160,82 @@ const memory = {
     "offlineStep2": "/plugin install claude-mem",
     "offlineStep3": "터미널에서 Claude Code 재시작",
     "offlineStep4": "ccgui 재시작"
+  },
+  "memoryPick": {
+    "regionLabel": "Memory reference pick",
+    "role": "Memory Reference",
+    "roleDesc": "Before send · local retrieval · model not called yet",
+    "roleDescReady": "Before send · match done · pick then send",
+    "match": {
+      "brand": "ccgui · matching project memory",
+      "sub": "Local retrieval in progress; pick when ready; no hits continue send…"
+    },
+    "listTitle": {
+      "always": "Always-on auto top(n) · related memories (adjustable)",
+      "pick": "Candidates for this turn"
+    },
+    "listHint": {
+      "empty": "No usable candidates. You can send without memory or dismiss.",
+      "always": "Always-on · preselect by score (default {{k}}, adjustable) · next turn keeps the same count",
+      "pick": "Pick this turn · none selected by default · open Detail for full text · this send only"
+    },
+    "empty": {
+      "timeout": "Retrieval timed out; no usable memory found.",
+      "error": "Retrieval failed; no usable memory found.",
+      "none": "No matching project memory."
+    },
+    "detail": "Detail",
+    "count": {
+      "empty": "0 candidates",
+      "always": "Always-on · selected {{n}} · auto-confirm in {{sec}}s · adjustable",
+      "pick": "Selected {{n}} · none by default"
+    },
+    "strategyTitle": "Strategy",
+    "mode": {
+      "pick": "Pick memory injection this turn",
+      "pickSub": "This send only · manual check",
+      "always": "Always-on auto top(n) memory injection",
+      "alwaysSub": "This session · preselect {{k}} by default (adjustable)"
+    },
+    "strategy": {
+      "kicker": "Current strategy",
+      "alwaysTitle": "Always-on auto top(n) (this session)",
+      "pickTitle": "Pick memory injection this turn",
+      "pick": {
+        "what": "What it does",
+        "what1": "Affects this send only; does not lock memory reference always-on.",
+        "what2": "Left list starts unselected; only checked items inject on confirm.",
+        "what3": "Open row Detail to verify full text before checking.",
+        "what4": "Zero checked is fine: send this turn without project memory.",
+        "when": "When to use",
+        "when1": "This question only needs a few conventions / pitfalls; auto Top3 may add noise.",
+        "when2": "You want to skim first instead of fully trusting rank order."
+      },
+      "always": {
+        "what": "What it does",
+        "what1": "Each turn this session preselects by score (default {{k}}); you can add/remove.",
+        "what2": "Confirm remembers the selected count; next send prefills the same count (still editable).",
+        "what3": "Auto-confirms in about 8s; cancel anytime or edit the list.",
+        "when": "When to use",
+        "when1": "Multi-turn same topic; you do not want to reselect from zero each turn.",
+        "when2": "You trust ranking but still want to tweak count."
+      }
+    },
+    "action": {
+      "confirmEmpty": "Send without memory",
+      "autoConfirming": "Auto-confirming…",
+      "confirm": "Confirm and send",
+      "cancelAutoConfirm": "Cancel auto-confirm",
+      "autoConfirmHint": "Client auto-confirms in {{sec}}s · cancellable",
+      "skip": "Skip selection, send now",
+      "dismiss": "Don't ask this session · turn off memory injection"
+    },
+    "detailScore": "Relevance",
+    "detailSummary": "Summary",
+    "detailBody": "Detail",
+    "detailLoading": "Loading…",
+    "detailClose": "Close",
+    "detailSelect": "Select this and close"
   }
 };
 

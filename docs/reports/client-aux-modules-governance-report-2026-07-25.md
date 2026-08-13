@@ -116,7 +116,7 @@ status: historical
 | curated-skills 基础设施与新 Skills Hub 并存 | `CuratedSkillIndicator` 已改 settings event 主通道 + visibility-gated 60s backstop；Extensions Skills 仍走独立 `skills_hub.rs` | 高频设置轮询已消失，两套 skill domain 边界仍需治理 | P1 | 🔶 事件化完成 | 明确 bundled curated skill 与用户安装 skill 的 ownership |
 | `skills_hub.rs` 新增即成 2995 行单体 | 测试模块前已有 130 个函数，同时负责 path 安全、registry、trash、GitHub fetch、安装同步、usage 扫描；两个 command 以 `String + serde_json::Value` 做总分发 | 一个协议字段改动会同时影响文件系统、网络、安装和 UI，编译期无法校验 action payload | P1 | 新增债务 | 按 registry/install/discovery/usage 拆模块；为 query/mutation 建 typed request/response |
 | `SkillsPage.jsx` 1855 行 / 27 `useState` | `c75922dec` 已为 >80 条 installed skills 增加 88px 固定行高 windowing，并补 sticky bulk actions；页面仍承载安装、仓库、搜索、更新、usage、trash 全流程 | 长列表 mount 风暴已止血，但单页状态与本地 vendor diff 继续扩大 | P1 | 部分修复 | 保留 windowing；按 My/Browse/mutation controller 拆分本地适配层 |
-| Skills vendored 偏差登记不完整 | `c75922dec` 修改 `SkillsPage.jsx` 215 行，但 `.trellis/spec/frontend/tokentracker-dashboard-vendored.md` 的“其他适配点”未登记 windowing/sticky toolbar | 下次同步 upstream 时可能把性能修复覆盖掉，或误判为无意 drift | P1 | 未做 | 在 vendored deviation 清单登记 commit、symbol、测试和同步策略 |
+| Skills vendored 偏差登记不完整 | `c75922dec` 修改 `SkillsPage.jsx` 215 行，但 `dev-guidelines/frontend/tokentracker-dashboard-vendored.md` 的“其他适配点”未登记 windowing/sticky toolbar | 下次同步 upstream 时可能把性能修复覆盖掉，或误判为无意 drift | P1 | 未做 | 在 vendored deviation 清单登记 commit、symbol、测试和同步策略 |
 | "对话→prompt/skill"一键沉淀缺失 | Messages 已新增 `PromptDistillDialog` 与 `usePromptDistillation`，可把对话存为 Prompt；存为 Skill 尚未实现 | Prompt 沉淀链路已打通，Skill 资产化仍需手工 | P2 | 🔶 部分完成 | 复用 distill contract 增加“存为 Skill” |
 
 ### 2. 多代理编排与任务管理（agent-orchestration / agent-catalog / parallel / tasks / kanban / plan）

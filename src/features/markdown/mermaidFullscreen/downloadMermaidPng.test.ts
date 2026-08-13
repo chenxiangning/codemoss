@@ -11,7 +11,7 @@ vi.mock("@tauri-apps/api/core", () => ({
   isTauri: isTauriMock,
 }));
 vi.mock("@tauri-apps/plugin-dialog", () => ({ save: saveMock }));
-vi.mock("@/services/tauri", () => ({
+vi.mock("@/services/tauri/mermaidExport", () => ({
   saveMermaidPngFile: saveMermaidPngFileMock,
 }));
 

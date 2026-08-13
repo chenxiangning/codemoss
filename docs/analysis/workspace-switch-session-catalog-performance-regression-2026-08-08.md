@@ -168,7 +168,7 @@ Settings 仍使用 exhaustive counts。长期应采用 metadata index、per-sour
 
 - Active behavior change：[`openspec/changes/fix-runtime-workspace-switch-main-thread-stall/`](../../openspec/changes/fix-runtime-workspace-switch-main-thread-stall/)
 - Catalog behavior contract：[`openspec/specs/workspace-session-catalog-projection/spec.md`](../../openspec/specs/workspace-session-catalog-projection/spec.md)
-- Code-level catalog guide：[`.trellis/spec/guides/workspace-session-catalog-contract.md`](../../.trellis/spec/guides/workspace-session-catalog-contract.md)
+- Code-level catalog guide：[`dev-guidelines/guides/workspace-session-catalog-contract.md`](../../dev-guidelines/guides/workspace-session-catalog-contract.md)
 - 冷启动同族问题：[`windows-cold-start-click-freeze-and-uiscale-0.8-2026-08-07.md`](./windows-cold-start-click-freeze-and-uiscale-0.8-2026-08-07.md)
 - Root render 历史 baseline：[`render-jank-knife-experiments-2026-07-08.md`](../perf/render-jank-knife-experiments-2026-07-08.md)
 - React update-loop 排查：[`react-185-maximum-update-depth-playbook.md`](./react-185-maximum-update-depth-playbook.md)

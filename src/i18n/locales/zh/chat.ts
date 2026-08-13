@@ -103,6 +103,9 @@ const chat = {
     commandsListUnavailableTitle: "命令列表不可用",
     commandsListUnavailableMessage:
       "加载斜杠指令失败：{{reason}}。命令补全可能不完整，稍后将自动重试。",
+    promptsListUnavailableTitle: "提示词列表不可用",
+    promptsListUnavailableMessage:
+      "加载自定义提示词失败：{{reason}}。! 补全可能不完整，请再次打开 ! 或创建提示词以重试。",
     pleaseWait: "请稍候...",
     retrying: "正在重试 ({{count}}/{{max}})...",
     removeAgent: "移除智能体",

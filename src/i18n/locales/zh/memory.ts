@@ -170,6 +170,97 @@ const memory = {
     offlineStep3: "重启终端 Claude Code",
     offlineStep4: "重启 ccgui 即可",
   },
+  memoryPick: {
+    regionLabel: "记忆参考挑选",
+    role: "记忆参考",
+    roleDesc: "发送前 · 本地检索 · 尚未调用模型",
+    roleDescReady: "发送前 · 匹配完成 · 请选择后发送",
+    match: {
+      brand: "ccgui · 正在匹配项目记忆",
+      sub: "本地检索中，有结果再选择注入；无结果将自动继续发送…",
+    },
+    listTitle: {
+      always: "整轮自动 top(n) · 相关记忆（可改勾选数量）",
+      pick: "本轮候选记忆",
+    },
+    listHint: {
+      empty: "暂无可用候选。可不带记忆发送，或关闭本 session 提示。",
+      always:
+        "整轮自动 · 按相关分预勾（默认 {{k}} 条，可增减）· 下次沿用相同数量",
+      pick: "本轮挑选 · 默认全不选 · 点「详情」看全文 · 仅本次发送",
+    },
+    empty: {
+      timeout: "检索超时，未找到可用记忆。",
+      error: "检索失败，未找到可用记忆。",
+      none: "没有匹配到项目记忆。",
+    },
+    /** 空/超时/失败可感 toast（发送不阻塞） */
+    toast: {
+      title: "记忆参考",
+      timeout: "记忆检索超时，已按原文发送（未注入记忆）",
+      noMatch: "未找到相关记忆，已按原文发送",
+      error: "记忆检索失败，已按原文发送",
+      noQueryTerms: "当前输入缺少可检索关键词，已按原文发送",
+    },
+    preview: {
+      always: "为本轮提问参考 · 一直开启 · {{n}} 条",
+      pick: "为本轮提问参考 · 本轮 · {{n}} 条",
+    },
+    detail: "详情",
+    count: {
+      empty: "候选 0 条",
+      always: "整轮自动 · 已选 {{n}} · 可改勾选",
+      alwaysCountdown:
+        "整轮自动 · 已选 {{n}} · {{sec}}s 后自动确认 · 可改勾选",
+      pick: "已选 {{n}} · 默认全不选",
+    },
+    strategyTitle: "策略",
+    mode: {
+      pick: "本轮挑选记忆注入",
+      pickSub: "仅本次 · 手动勾选",
+      always: "整轮开启自动top(n)记忆注入",
+      alwaysSub: "本 session · 默认预勾 {{k}} 条（可改）",
+    },
+    strategy: {
+      kicker: "当前策略",
+      alwaysTitle: "整轮开启自动top(n)记忆注入（本 session）",
+      pickTitle: "本轮挑选记忆注入",
+      pick: {
+        what: "做什么",
+        what1: "只影响这一次发送，不会把记忆参考锁成 session 常开。",
+        what2: "左侧列表默认全不选；你勾哪几条，确认后才注入模型。",
+        what3: "可点每行详情核对全文后再决定是否勾选。",
+        what4: "勾选 0 条也可以：等于本轮不带项目记忆发送。",
+        when: "什么时候用",
+        when1: "这次问题只和某几条约定 / 踩坑相关，怕自动 Top3 带噪声。",
+        when2: "想先扫一眼再决定，而不是把排序结果全权交给算法。",
+      },
+      always: {
+        what: "做什么",
+        what1: "本 session 内，每轮按相关分预勾（默认 {{k}} 条）；你可增减勾选。",
+        what2: "确认时记住勾选数量，下次发送按相同数量预勾（仍可改）。",
+        what3: "约 8s 后可自动确认；可随时取消自动确认或手改列表。",
+        when: "什么时候用",
+        when1: "连续多轮同一主题，不想每轮从零勾选。",
+        when2: "信任检索排序，又希望能微调条数。",
+      },
+    },
+    action: {
+      confirmEmpty: "不带记忆发送",
+      autoConfirming: "即将自动确认…",
+      confirm: "确认并发送",
+      cancelAutoConfirm: "取消自动确认",
+      autoConfirmHint: "客户端将在 {{sec}}s 后自动确认 · 可取消",
+      skip: "不选，直接发送",
+      dismiss: "本 session 不再提示 · 整轮关闭记忆注入",
+    },
+    detailScore: "相关",
+    detailSummary: "摘要",
+    detailBody: "详情",
+    detailLoading: "加载中…",
+    detailClose: "关闭",
+    detailSelect: "勾选本条并关闭",
+  },
 };
 
 export default memory;

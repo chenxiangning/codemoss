@@ -56,6 +56,16 @@ export type MemoryBrief = {
   elapsedMs: number;
   retrievalMode: ProjectMemoryRetrievalMode;
   semanticDiagnostics?: ProjectMemorySemanticDiagnostics;
+  /**
+   * Phase-2 对齐 Pick emptyReason（Brief 形状兼容扩展）。
+   * ok / no_query_terms / no_match / timeout / error
+   */
+  emptyReason?:
+    | "ok"
+    | "no_query_terms"
+    | "no_match"
+    | "timeout"
+    | "error";
 };
 
 export type MemoryScoutListFn = (params: {
@@ -205,6 +215,7 @@ export function buildMemoryBrief(params: {
       elapsedMs: params.elapsedMs ?? 0,
       retrievalMode,
       semanticDiagnostics,
+      emptyReason: queryTerms.length === 0 ? "no_query_terms" : "no_match",
     };
   }
 
@@ -231,6 +242,7 @@ export function buildMemoryBrief(params: {
       elapsedMs: params.elapsedMs ?? 0,
       retrievalMode,
       semanticDiagnostics,
+      emptyReason: queryTerms.length === 0 ? "no_query_terms" : "no_match",
     };
   }
 
@@ -245,6 +257,7 @@ export function buildMemoryBrief(params: {
     elapsedMs: params.elapsedMs ?? 0,
     retrievalMode,
     semanticDiagnostics,
+    emptyReason: "ok",
   };
 }
 
@@ -308,6 +321,7 @@ export async function scoutProjectMemory(params: {
       truncated: false,
       elapsedMs: Date.now() - startedAt,
       retrievalMode: "lexical",
+      emptyReason: "error",
     };
   }
 }

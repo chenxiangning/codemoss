@@ -189,6 +189,31 @@ describe("useGitPanelController git status polling visibility", () => {
 
     expect(getLastGitStatusPollingMode()).toBe("active");
   });
+
+  it("uses background polling in kanban appMode even when right panel is expanded", () => {
+    renderHook(() =>
+      useGitPanelController(
+        makeProps({
+          appMode: "kanban",
+          rightPanelCollapsed: false,
+        }),
+      ),
+    );
+
+    expect(getLastGitStatusPollingMode()).toBe("background");
+  });
+
+  it("uses background polling in extensions appMode", () => {
+    renderHook(() =>
+      useGitPanelController(
+        makeProps({
+          appMode: "extensions",
+        }),
+      ),
+    );
+
+    expect(getLastGitStatusPollingMode()).toBe("background");
+  });
 });
 
 describe("useGitPanelController preload behavior", () => {

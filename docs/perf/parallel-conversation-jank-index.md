@@ -26,7 +26,7 @@ status: historical
 | 2 | `parallel-conversation-jank-index.md` | 本文件,索引 + 速查 | 入口 |
 | 3 | `../../openspec/specs/parallel-conversation-runtime-residuals/spec.md` | 当前主线行为契约 | 写代码 / 测试前 |
 | 4 | `../../openspec/changes/archive/2026-06-14-fix-parallel-conversation-runtime-residuals-2026-06/` | 历史修复 proposal/design/tasks/delta | 追溯当时 P0 修复 |
-| 5 | `../../.trellis/spec/frontend/parallel-conversation-runtime-residuals.md` | code-level rule | 改相关代码前必读 |
+| 5 | `../../dev-guidelines/frontend/parallel-conversation-runtime-residuals.md` | code-level rule | 改相关代码前必读 |
 | 6 | `../../scripts/perf-reproduce-jank.sh` | 复现脚本 | 复现 + 验收基线 |
 | 7 | `jank-fix-progress.md` | 历史修复进度日志 | 对照旧实验，不续写当前事实 |
 
@@ -83,7 +83,7 @@ status: historical
 
 ## 6. 配套 Trellis guide(code-level rule)
 
-- `.trellis/spec/frontend/parallel-conversation-runtime-residuals.md`(新增,7 条 invariant + 5 条 "When Adding" 模式)
+- `dev-guidelines/frontend/parallel-conversation-runtime-residuals.md`(新增,7 条 invariant + 5 条 "When Adding" 模式)
 
 ## 7. 配套 commit / 提案(参考)
 

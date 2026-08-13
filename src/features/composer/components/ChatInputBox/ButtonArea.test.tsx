@@ -331,7 +331,7 @@ describe("ButtonArea custom model storage refresh", () => {
     ).toBeTruthy();
   });
 
-  it("selects single-send memory reference directly from the submenu", () => {
+  it("selects pick-this-turn memory reference directly from the submenu", () => {
     const onSetMemoryReferenceMode = vi.fn();
 
     render(
@@ -354,9 +354,9 @@ describe("ButtonArea custom model storage refresh", () => {
     // fallback text in the test environment.
     expect(screen.queryByRole("dialog")).toBeNull();
 
-    fireEvent.click(screen.getByRole("menuitem", { name: "单次引用" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "本轮挑选记忆注入" }));
 
-    expect(onSetMemoryReferenceMode).toHaveBeenCalledWith("single");
+    expect(onSetMemoryReferenceMode).toHaveBeenCalledWith("pick");
   });
 
   it("enables always-on memory reference from the submenu", () => {
@@ -377,7 +377,9 @@ describe("ButtonArea custom model storage refresh", () => {
 
     openMemoryReferenceMenu();
 
-    fireEvent.click(screen.getByRole("menuitem", { name: "常开引用" }));
+    fireEvent.click(
+      screen.getByRole("menuitem", { name: "整轮开启自动top(n)记忆注入" }),
+    );
 
     expect(onSetMemoryReferenceMode).toHaveBeenCalledWith("always");
   });
@@ -402,9 +404,37 @@ describe("ButtonArea custom model storage refresh", () => {
     const trigger = openMemoryReferenceMenu();
     expect(trigger.textContent).toContain("composer.memoryReferenceAlwaysOn");
 
-    fireEvent.click(screen.getByRole("menuitem", { name: "关闭" }));
+    fireEvent.click(
+      screen.getByRole("menuitem", { name: "整轮关闭记忆注入" }),
+    );
 
     expect(onSetMemoryReferenceMode).toHaveBeenCalledWith("off");
+  });
+
+  it("shows restore entry when dismissed and restores via callback", () => {
+    const onRestoreMemoryReference = vi.fn();
+    render(
+      <ButtonArea
+        currentProvider="codex"
+        models={[]}
+        selectedModel=""
+        hasInputContent
+        onSubmit={vi.fn()}
+        shortcutActions={[]}
+        memoryReferenceMode="pick"
+        memoryReferenceDismissed
+        onSetMemoryReferenceMode={vi.fn()}
+        onRestoreMemoryReference={onRestoreMemoryReference}
+      />,
+    );
+
+    openMemoryReferenceMenu();
+
+    fireEvent.click(
+      screen.getByRole("menuitem", { name: "恢复记忆参考" }),
+    );
+
+    expect(onRestoreMemoryReference).toHaveBeenCalled();
   });
 
   it("keeps the stop action clickable while advisory stream phase changes", () => {

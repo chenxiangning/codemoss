@@ -1,5 +1,0 @@
-{"file": ".claude/commands/trellis/finish-work.md", "reason": "Finish work checklist"}
-{"file": ".claude/commands/trellis/check.md", "reason": "Code quality check spec"}
-{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "review tests, errors, async races and large-file gate"}
-{"file": ".trellis/spec/frontend/multi-repository-git-commit-workspace.md", "reason": "review repository identity and single/multi parity"}
-{"file": ".trellis/spec/frontend/hook-guidelines.md", "reason": "review stale response and partial failure handling"}

@@ -1,5 +1,0 @@
-{"file": ".trellis/workflow.md", "reason": "Project workflow and conventions"}
-{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend development guide"}
-{"file": ".trellis/spec/frontend/directory-structure.md", "reason": "确认 feature-local 文件落位"}
-{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "约束 props、accessibility 与 CSS contract"}
-{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "约束 focused tests 与质量 gate"}

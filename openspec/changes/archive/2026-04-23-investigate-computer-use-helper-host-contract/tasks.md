@@ -24,6 +24,6 @@
 
 ## 5. Documentation, Spec Sync, And Rollback
 
-- [x] 5.1 同步 `.trellis/spec/**/computer-use-bridge.md` 或等价 implementation guideline，记录 direct exec 禁止项、host-contract evidence schema 与 Windows unsupported 边界；验证方式：spec diff review。
+- [x] 5.1 同步 `dev-guidelines/**/computer-use-bridge.md` 或等价 implementation guideline，记录 direct exec 禁止项、host-contract evidence schema 与 Windows unsupported 边界；验证方式：spec diff review。
 - [x] 5.2 运行 OpenSpec strict validate、Rust targeted tests、frontend targeted tests、`npm run typecheck`、`npm run lint`、`npm run check:runtime-contracts`；验证方式：命令输出全部通过或明确记录已知阻塞。
 - [x] 5.3 准备回滚说明：关闭 host-contract flag 后仅保留 Phase 2 diagnostics-only，不影响 discovery/status、Codex、MCP、chat；验证方式：final report 明确 rollback path。

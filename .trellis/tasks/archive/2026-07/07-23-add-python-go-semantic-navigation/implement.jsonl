@@ -1,7 +1,0 @@
-{"file": ".trellis/workflow.md", "reason": "Project workflow and conventions"}
-{"file": ".trellis/spec/backend/index.md", "reason": "Backend development guide"}
-{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend development guide"}
-{"file": "openspec/changes/add-python-go-semantic-navigation/design.md", "reason": "OpenSpec implementation design"}
-{"file": "openspec/changes/add-python-go-semantic-navigation/specs/file-view-code-intelligence-navigation/spec.md", "reason": "Python/Go semantic navigation behavior contract"}
-{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "Language server lifecycle executable contract"}
-{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Cross-layer compatibility contract"}

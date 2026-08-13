@@ -40,26 +40,28 @@
   backdrop-filter: none;
 }
 
-/* Card */
+/* Card：幕布扁平，无重描边/阴影（overlay 本身已有 backdrop） */
 .user-input-question-card.ask-user-question-card {
   position: relative;
   width: min(920px, calc(100vw - 48px));
   max-height: 80vh;
   overflow-y: auto;
   background: var(--surface-card-strong);
-  border: 1px solid var(--border-stronger);
+  border: none;
   border-radius: 16px;
   padding: 14px 16px 16px;
   display: flex;
   flex-direction: column;
   gap: 10px;
-  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 12px 40px color-mix(in srgb, #000 18%, transparent);
   animation: askDialogSlideIn 0.2s ease-out;
 }
 
 .ask-user-question-card.is-time-warning {
-  border-color: var(--warning-text, #e2a308);
-  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.3), 0 0 0 1px var(--warning-text, #e2a308);
+  border: none;
+  box-shadow:
+    0 12px 40px color-mix(in srgb, #000 18%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--warning-text, #e2a308) 55%, transparent);
 }
 
 @keyframes askDialogSlideIn {
@@ -124,11 +126,15 @@
   animation: askDialogSlideIn 0.2s ease-out;
 }
 
-/* Progress row */
+/* Progress row：与 request-user-input 分段控件同构 */
 .user-input-question-tabs.ask-user-question-tabs {
-  display: flex;
-  align-items: stretch;
-  gap: 6px;
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  gap: 0;
+  padding: 3px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--text-primary) 5.5%, transparent);
 }
 
 @keyframes askTimerPulse {
@@ -176,27 +182,28 @@
   gap: 8px;
   min-width: 0;
   padding: 8px 10px;
-  border: 1px solid var(--border-subtle);
+  border: none;
   border-radius: 11px;
-  background: var(--surface-card-muted);
+  background: color-mix(in srgb, var(--text-primary) 5%, transparent);
   cursor: pointer;
-  transition: border-color 0.15s, background 0.15s;
+  transition: background 0.15s;
   text-align: left;
-  min-height: 74px;
+  min-height: 0;
 }
 
 .user-input-question-option.ask-user-question-option:hover {
-  border-color: color-mix(in srgb, var(--primary, #7a9dcc) 50%, transparent);
-  background: color-mix(in srgb, var(--primary, #7a9dcc) 6%, transparent);
+  border: none;
+  background: color-mix(in srgb, var(--text-primary) 8%, transparent);
 }
 
 .user-input-question-option.ask-user-question-option.is-selected {
-  border-color: rgba(77, 163, 255, 0.7);
-  background: rgba(77, 163, 255, 0.12);
+  border: none;
+  background: color-mix(in srgb, var(--accent, #4da3ff) 16%, transparent);
 }
 
 .user-input-question-option.ask-user-question-option.is-other {
-  border-style: dashed;
+  border: none;
+  background: color-mix(in srgb, var(--primary, #7a9dcc) 8%, transparent);
 }
 
 .user-input-question-option-label.ask-user-question-option-label {

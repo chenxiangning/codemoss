@@ -54,5 +54,5 @@ Git Diff changed-file 右键菜单已经统一 Stage、Unstage 与 Discard，但
 
 - Frontend: `GitDiffPanelTypes.ts`、`GitDiffPanel.tsx`、`GitDiffPanelFileContextMenu.ts`、`useLayoutNodes.tsx` 及 focused tests。
 - Behavior specs: `git-panel-diff-view`、`file-history-view`。
-- Trellis executable contract: `.trellis/spec/frontend/multi-repository-git-commit-workspace.md` 与 `.trellis/spec/frontend/file-history-view.md`。
+- Trellis executable contract: `dev-guidelines/frontend/multi-repository-git-commit-workspace.md` 与 `dev-guidelines/frontend/file-history-view.md`。
 - API/dependencies: 无新增或 breaking change；仅增加 optional React callback。

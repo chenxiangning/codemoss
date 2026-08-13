@@ -1,6 +1,6 @@
 import { isTauri } from "@tauri-apps/api/core";
 import { save } from "@tauri-apps/plugin-dialog";
-import { saveMermaidPngFile } from "@/services/tauri";
+import { saveMermaidPngFile } from "@/services/tauri/mermaidExport";
 
 const TARGET_PNG_SCALE = 2;
 const MAX_PNG_DIMENSION = 16_384;

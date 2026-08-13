@@ -1,7 +1,0 @@
-{"file": ".trellis/workflow.md", "reason": "Project workflow and conventions"}
-{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend development guide"}
-{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "Typed props、component responsibility 与 focused test 规范"}
-{"file": ".trellis/spec/frontend/hook-guidelines.md", "reason": "useEffect selection 收敛与 state reference 规范"}
-{"file": ".trellis/spec/frontend/type-safety.md", "reason": "ModelOption 与 nullable modelId 类型边界"}
-{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "复用 shared catalog，避免平行 merge 逻辑"}
-{"file": "openspec/changes/align-kanban-codex-model-catalog/design.md", "reason": "已确认的数据流与 selection fallback 设计"}

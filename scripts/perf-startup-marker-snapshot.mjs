@@ -1,11 +1,25 @@
 #!/usr/bin/env node
 
+/**
+ * P2-4 cold-start markers pipeline.
+ *
+ * Reads a source snapshot (window.__CCGUI_STARTUP_PERF__ dump or renderer
+ * diagnostics log) and writes a normalized startup-markers artifact.
+ *
+ * Default output: `.artifacts/perf/cold-start-YYYYMMDD/startup-markers.json`
+ * (date overridable with --date=YYYYMMDD).
+ *
+ * When markers are missing, exits 0 with an explicit unsupported payload unless
+ * --strict is passed (then non-zero). This satisfies the cold-start todolist
+ * rule: firstPaint/firstInteractive must not stay silently null forever —
+ * either populated or formally unsupported + follow-up.
+ */
+
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 
 const DEFAULT_INPUT_PATH = ".artifacts/startup-marker-source.json";
-const DEFAULT_OUTPUT_PATH = ".artifacts/startup-markers.json";
 
 function getArgValue(name) {
   const index = process.argv.indexOf(name);
@@ -14,6 +28,14 @@ function getArgValue(name) {
   }
   const prefix = `${name}=`;
   return process.argv.find((arg) => arg.startsWith(prefix))?.slice(prefix.length) ?? null;
+}
+
+function todayStamp() {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, "0");
+  const d = String(now.getDate()).padStart(2, "0");
+  return `${y}${m}${d}`;
 }
 
 function isRecord(value) {
@@ -64,10 +86,11 @@ function normalizeSnapshot(snapshot) {
     return null;
   }
   return {
-    schemaVersion: snapshot.schemaVersion === "1.0" ? "1.0" : "1.0",
+    schemaVersion: "1.0",
     source: "startup-perf-markers",
     markers,
     platform: typeof snapshot.platform === "string" ? snapshot.platform.slice(0, 80) : "unknown",
+    status: "ok",
   };
 }
 
@@ -98,6 +121,22 @@ function extractStartupSnapshot(input) {
   return null;
 }
 
+function unsupportedSnapshot(reason) {
+  return {
+    schemaVersion: "1.0",
+    source: "startup-perf-markers",
+    markers: [
+      { name: "first-paint", atMs: null },
+      { name: "first-interactive", atMs: null },
+    ],
+    platform: "unknown",
+    status: "unsupported",
+    unsupportedReason: reason,
+    followUp:
+      "Enable VITE_ENABLE_PERF_BASELINE=1 in a non-production build, dump window.__CCGUI_STARTUP_PERF__ (or perf.startup.markers diagnostics) to --input, then re-run npm run perf:cold-start:startup-markers",
+  };
+}
+
 async function writeJson(path, value) {
   const absolutePath = resolve(process.cwd(), path);
   await mkdir(dirname(absolutePath), { recursive: true });
@@ -105,22 +144,46 @@ async function writeJson(path, value) {
 }
 
 async function main() {
+  const strict = process.argv.includes("--strict");
+  const verbose = process.argv.includes("--verbose");
+  const dateStamp = getArgValue("--date") ?? todayStamp();
   const inputPath = getArgValue("--input") ?? DEFAULT_INPUT_PATH;
-  const outputPath = getArgValue("--output") ?? DEFAULT_OUTPUT_PATH;
-  const input = existsSync(resolve(process.cwd(), inputPath))
-    ? JSON.parse(await readFile(resolve(process.cwd(), inputPath), "utf-8"))
+  const defaultOutput = `.artifacts/perf/cold-start-${dateStamp}/startup-markers.json`;
+  const outputPath = getArgValue("--output") ?? defaultOutput;
+
+  const absoluteInput = resolve(process.cwd(), inputPath);
+  const input = existsSync(absoluteInput)
+    ? JSON.parse(await readFile(absoluteInput, "utf-8"))
     : null;
-  const snapshot = extractStartupSnapshot(input);
+
+  let snapshot = input ? extractStartupSnapshot(input) : null;
   if (!snapshot) {
-    throw new Error(`No startup marker snapshot found in ${inputPath}`);
+    const reason = input == null
+      ? `missing input file: ${inputPath}`
+      : `no startup marker snapshot found in ${inputPath}`;
+    snapshot = unsupportedSnapshot(reason);
+    await writeJson(outputPath, snapshot);
+    if (verbose) {
+      console.info(`startup marker snapshot written (unsupported): ${outputPath}`);
+      console.info(reason);
+    }
+    if (strict) {
+      process.exitCode = 1;
+      console.error(`[perf-startup-marker-snapshot] ${reason}`);
+    } else {
+      console.info(`[perf-startup-marker-snapshot] unsupported: ${reason}`);
+      console.info(`[perf-startup-marker-snapshot] wrote ${outputPath}`);
+    }
+    return;
   }
+
   await writeJson(outputPath, snapshot);
-  if (process.argv.includes("--verbose")) {
-    console.info(`startup marker snapshot written: ${outputPath}`);
+  if (verbose || !strict) {
+    console.info(`[perf-startup-marker-snapshot] wrote ${outputPath}`);
   }
 }
 
 main().catch((error) => {
-  console.error(error instanceof Error ? error.message : String(error));
+  console.error("[perf-startup-marker-snapshot]", error instanceof Error ? error.message : error);
   process.exitCode = 1;
 });

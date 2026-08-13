@@ -69,7 +69,7 @@
   - `src/features/messages/components/messagesTimelineVirtualization.ts`
   - `src/styles/messages.part1-shell.css`
   - `src/styles/messages.history-sticky.css`
-  - `.trellis/spec/frontend/messages-streaming-render-contract.md`
+  - `dev-guidelines/frontend/messages-streaming-render-contract.md`
 - Affected tests:
   - Focused Vitest coverage under `src/features/messages/components/**`
 - APIs / dependencies:

@@ -10,7 +10,8 @@ use super::{
     delete_opencode_session_from_datastore, ensure_engine_enabled, extract_turn_result_text,
     filter_opencode_sessions_for_workspace, is_likely_foreign_model_for_gemini,
     is_likely_legacy_claude_model_id, is_valid_claude_model_for_passthrough, merge_opencode_agents,
-    next_gemini_routed_item_id, normalize_provider_key, opencode_data_candidate_roots,
+    gemini_agent_completion_item_id, next_gemini_routed_item_id, normalize_provider_key,
+    opencode_data_candidate_roots,
     opencode_session_candidate_paths, parse_imported_session_id, parse_json_value,
     parse_opencode_agent_list, parse_opencode_auth_providers, parse_opencode_debug_config_agents,
     parse_opencode_help_commands, parse_opencode_mcp_servers, parse_opencode_session_list,
@@ -1098,6 +1099,38 @@ fn gemini_routing_does_not_split_on_other_lane_events() {
 
     assert_eq!(text_1, "gemini-item-2");
     assert_eq!(text_1_after_other, "gemini-item-2");
+}
+
+#[test]
+fn gemini_agent_completion_item_id_matches_streamed_text_lane_after_delta() {
+    let base_item_id = "kimi-item-1";
+    let mut state = GeminiRenderRoutingState::default();
+
+    let streamed_id = next_gemini_routed_item_id(&mut state, GeminiRenderLane::Text, base_item_id);
+    state.saw_text_delta = true;
+    // TurnCompleted arrives as Other lane; completion id must still equal text lane.
+    let _other = next_gemini_routed_item_id(&mut state, GeminiRenderLane::Other, base_item_id);
+    let completion_id = gemini_agent_completion_item_id(&state, base_item_id);
+
+    assert_eq!(streamed_id, "kimi-item-1");
+    assert_eq!(completion_id, streamed_id);
+}
+
+#[test]
+fn gemini_agent_completion_item_id_reconstructs_after_tool_clears_active_text() {
+    let base_item_id = "grok-item-1";
+    let mut state = GeminiRenderRoutingState::default();
+
+    let text_1 = next_gemini_routed_item_id(&mut state, GeminiRenderLane::Text, base_item_id);
+    let _tool = next_gemini_routed_item_id(&mut state, GeminiRenderLane::Tool, base_item_id);
+    let text_2 = next_gemini_routed_item_id(&mut state, GeminiRenderLane::Text, base_item_id);
+    let _tool_again = next_gemini_routed_item_id(&mut state, GeminiRenderLane::Tool, base_item_id);
+    // active_text_item_id cleared by Tool; reconstruct last text run.
+    let completion_id = gemini_agent_completion_item_id(&state, base_item_id);
+
+    assert_eq!(text_1, "grok-item-1");
+    assert_eq!(text_2, "grok-item-1:text-2");
+    assert_eq!(completion_id, text_2);
 }
 
 #[test]

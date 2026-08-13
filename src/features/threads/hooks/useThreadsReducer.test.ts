@@ -727,6 +727,64 @@ describe("threadReducer", () => {
     }
   });
 
+  it("reconciles optimistic slash-skill bubble when command-tag user message arrives after tools", () => {
+    const typed =
+      "/aimax:code-review 审查PR1635，并告诉我她解决了什么问题，我应不应该合并\n\n我是一位100岁太奶";
+    const transcript = [
+      "<command-message>aimax:code-review</command-message>",
+      "<command-name>/aimax:code-review</command-name>",
+      "<command-args>审查PR1635，并告诉我她解决了什么问题，我应不应该合并",
+      "",
+      "我是一位100岁太奶</command-args>",
+    ].join("\n");
+    const base: ThreadState = {
+      ...initialState,
+      itemsByThread: {
+        "thread-1": [
+          {
+            id: "optimistic-user-1",
+            kind: "message",
+            role: "user",
+            text: typed,
+          },
+          {
+            id: "tool-bash-group-1",
+            kind: "tool",
+            toolType: "bash",
+            title: "批量终端",
+            detail: "",
+            status: "completed",
+          },
+        ],
+      },
+      threadsByWorkspace: {
+        "ws-1": [{ id: "thread-1", name: "Agent 1", updatedAt: 1 }],
+      },
+    };
+
+    const next = threadReducer(base, {
+      type: "upsertItem",
+      workspaceId: "ws-1",
+      threadId: "thread-1",
+      item: {
+        id: "user-skill-1",
+        kind: "message",
+        role: "user",
+        text: transcript,
+      },
+      hasCustomName: false,
+    });
+
+    const items = next.itemsByThread["thread-1"] ?? [];
+    const userItems = items.filter(
+      (item) => item.kind === "message" && item.role === "user",
+    );
+    expect(userItems).toHaveLength(1);
+    expect(userItems[0]?.id).toBe("user-skill-1");
+    expect(items.map((item) => item.id)).toContain("tool-bash-group-1");
+    expect(items.map((item) => item.id)).not.toContain("optimistic-user-1");
+  });
+
   it("does not drop earlier optimistic user bubbles when incoming real user is unmatched", () => {
     const base: ThreadState = {
       ...initialState,

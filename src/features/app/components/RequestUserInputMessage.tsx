@@ -389,20 +389,6 @@ export function RequestUserInputMessage({
     return onSubmit(targetRequest, response);
   };
 
-  const dismissRequest = (
-    targetRequest: RequestUserInputRequest,
-    targetRequestKey: string,
-  ) => {
-    if (!onDismiss) {
-      return undefined;
-    }
-    const settlementOptions = getSettlementOptions(targetRequestKey);
-    if (settlementOptions) {
-      return onDismiss(targetRequest, settlementOptions);
-    }
-    return onDismiss(targetRequest);
-  };
-
   const handleOptionToggle = (
     questionId: string,
     optionKey: string,
@@ -574,16 +560,12 @@ export function RequestUserInputMessage({
     collapseActiveRequestLocally();
   };
 
-  const settleSkippedRequest = async (
+  const buildAllSkippedQuestionIds = (
     targetRequest: RequestUserInputRequest,
-    targetRequestKey: string,
   ) => {
-    if (!onDismiss) {
-      settleRequestLocally(targetRequestKey);
-      return;
-    }
-    await dismissRequest(targetRequest, targetRequestKey);
-    settleRequestLocally(targetRequestKey);
+    return targetRequest.params.questions
+      .map((question) => question.id)
+      .filter((questionId) => questionId.trim().length > 0);
   };
 
   const handleSkip = async (
@@ -593,23 +575,26 @@ export function RequestUserInputMessage({
     setSubmitError(null);
     setIsSubmitting(true);
     try {
-      const answers = buildAnswers();
-      if (
+      // Skip MUST use the same runtime path as submit (not dismiss-only local hide).
+      // Empty answers + skippedQuestionIds unblocks MCP and writes durable audit.
+      const answers =
+        targetRequest === activeRequest ? buildAnswers() : {};
+      const preservePartial =
         targetRequest === activeRequest &&
-        shouldPreservePartialAnswersOnSkip(answers)
-      ) {
-        await submitRequest(
-          targetRequest,
-          {
-            answers,
-            skippedQuestionIds: buildSkippedQuestionIds(),
-          },
-          targetRequestKey,
-        );
-        settleRequestLocally(targetRequestKey);
-        return;
-      }
-      await settleSkippedRequest(targetRequest, targetRequestKey);
+        shouldPreservePartialAnswersOnSkip(answers);
+      const skippedQuestionIds = preservePartial
+        ? buildSkippedQuestionIds()
+        : buildAllSkippedQuestionIds(targetRequest);
+      // onSubmit is required; skip always goes through submit with skippedQuestionIds.
+      await submitRequest(
+        targetRequest,
+        {
+          answers: preservePartial ? answers : {},
+          ...(skippedQuestionIds.length > 0 ? { skippedQuestionIds } : {}),
+        },
+        targetRequestKey,
+      );
+      settleRequestLocally(targetRequestKey);
     } catch {
       setSubmitError(t("approval.submitFailed"));
       expandRequestLocally(targetRequestKey);

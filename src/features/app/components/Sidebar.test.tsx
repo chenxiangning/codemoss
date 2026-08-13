@@ -3085,4 +3085,90 @@ describe("Sidebar", () => {
     expect(await screen.findByText("Shared Session")).toBeTruthy();
   });
 
+  it("enables long-press reorder on collapse controls without a separate grip column", () => {
+    const workspaces = [
+      {
+        id: "ws-a",
+        name: "alpha",
+        path: "/tmp/alpha",
+        connected: true,
+        kind: "main" as const,
+        settings: { sidebarCollapsed: true, groupId: "g1", sortOrder: 0 },
+      },
+      {
+        id: "ws-b",
+        name: "beta",
+        path: "/tmp/beta",
+        connected: true,
+        kind: "main" as const,
+        settings: { sidebarCollapsed: true, groupId: "g1", sortOrder: 1 },
+      },
+    ];
+    const { container } = render(
+      <Sidebar
+        {...baseProps}
+        workspaces={workspaces}
+        groupedWorkspaces={[
+          {
+            id: "g1",
+            name: "开源项目",
+            workspaces,
+          },
+        ]}
+        onReorderWorkspaces={vi.fn()}
+      />,
+    );
+
+    expect(container.querySelector(".workspace-sortable-list")).not.toBeNull();
+    expect(container.querySelectorAll(".workspace-drag-handle")).toHaveLength(0);
+    expect(container.querySelectorAll(".workspace-card.is-reorderable")).toHaveLength(2);
+    expect(container.querySelectorAll(".workspace-collapse-toggle.is-reorder-entry")).toHaveLength(
+      2,
+    );
+  });
+
+  it("disables long-press reorder when callback is missing or the group has one project", () => {
+    const alone = {
+      id: "ws-a",
+      name: "alpha",
+      path: "/tmp/alpha",
+      connected: true,
+      kind: "main" as const,
+      settings: { sidebarCollapsed: true, groupId: null, sortOrder: 0 },
+    };
+    const pair = [
+      alone,
+      {
+        id: "ws-b",
+        name: "beta",
+        path: "/tmp/beta",
+        connected: true,
+        kind: "main" as const,
+        settings: { sidebarCollapsed: true, groupId: null, sortOrder: 1 },
+      },
+    ];
+
+    const withoutCallback = render(
+      <Sidebar
+        {...baseProps}
+        workspaces={pair}
+        groupedWorkspaces={[{ id: null, name: "Ungrouped", workspaces: pair }]}
+      />,
+    );
+    expect(
+      withoutCallback.container.querySelectorAll(".workspace-card.is-reorderable"),
+    ).toHaveLength(0);
+    withoutCallback.unmount();
+
+    const single = render(
+      <Sidebar
+        {...baseProps}
+        workspaces={[alone]}
+        groupedWorkspaces={[{ id: null, name: "Ungrouped", workspaces: [alone] }]}
+        onReorderWorkspaces={vi.fn()}
+      />,
+    );
+    expect(single.container.querySelectorAll(".workspace-card.is-reorderable")).toHaveLength(0);
+  });
+
 });

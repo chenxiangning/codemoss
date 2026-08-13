@@ -365,13 +365,22 @@ export function normalizeAskUserQuestionHistoryItems(items: ConversationItem[]) 
   const askTemplatesByToolId = new Map<string, AskUserQuestionTemplate[]>();
   const askToolIndexById = new Map<string, number>();
   const existingSubmittedToolIds = new Set<string>();
+  // FE may already have written submitted audits before tool_result lands.
+  // Count them so we do not render a second "已提交" card from the same answer.
+  let preExistingSubmittedBudget = 0;
 
   for (const item of items) {
     if (item.kind === "tool" && item.toolType === "requestUserInputSubmitted") {
+      preExistingSubmittedBudget += 1;
       const submittedId = item.id;
-      const prefix = "request-user-input-submitted-";
-      if (submittedId.startsWith(prefix) && submittedId.length > prefix.length) {
-        existingSubmittedToolIds.add(submittedId.slice(prefix.length));
+      const prefixes = [
+        "request-user-input-submitted-",
+        "user-input-answer-",
+      ];
+      for (const prefix of prefixes) {
+        if (submittedId.startsWith(prefix) && submittedId.length > prefix.length) {
+          existingSubmittedToolIds.add(submittedId.slice(prefix.length));
+        }
       }
     }
   }
@@ -404,6 +413,13 @@ export function normalizeAskUserQuestionHistoryItems(items: ConversationItem[]) 
     parsedAnswer: AskUserQuestionAnswerParseResult,
   ) => {
     if (existingSubmittedToolIds.has(matchedToolId)) {
+      return;
+    }
+    // FE already recorded a submitted audit for this answer wave — keep it,
+    // only mark the tool id consumed so later history parse stays aligned.
+    if (preExistingSubmittedBudget > 0) {
+      preExistingSubmittedBudget -= 1;
+      existingSubmittedToolIds.add(matchedToolId);
       return;
     }
     existingSubmittedToolIds.add(matchedToolId);

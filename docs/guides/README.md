@@ -10,7 +10,7 @@ status: active
 ## Workflow
 
 - [Workflow 指南索引](workflow/README.md)
-- [OpenSpec + Trellis 协作手册](workflow/openspec-trellis-playbook.md)
+- [OpenSpec 协作手册](workflow/openspec-playbook.md)
 - [Codex collaboration mode enforcement](workflow/codex-collaboration-mode-enforcement.md)
 - [Curated skill onboarding](workflow/curated-skill-onboarding.md)
 

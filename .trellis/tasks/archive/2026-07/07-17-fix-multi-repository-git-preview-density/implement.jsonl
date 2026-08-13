@@ -1,5 +1,0 @@
-{"file": ".trellis/workflow.md", "reason": "Project workflow and conventions"}
-{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend development guide"}
-{"file": "openspec/changes/fix-multi-repository-git-preview-density/design.md", "reason": "repository-scoped preview design"}
-{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "frontend component rules"}
-{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "optional repository scope contract"}

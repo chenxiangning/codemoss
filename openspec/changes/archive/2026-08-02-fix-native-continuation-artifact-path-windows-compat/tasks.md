@@ -25,7 +25,7 @@
 ## 3. Contract Sync And Verification
 
 - [x] 3.1 [P0][依赖 1.1、1.2] 更新
-      `.trellis/spec/backend/native-provider-continuation-contract.md`：写明 artifact
+      `dev-guidelines/backend/native-provider-continuation-contract.md`：写明 artifact
       存储路径 MUST 使用 platform-safe key、logical `sessionId` 不得直接作为路径段、
       读取 MUST 兼容 legacy `{sessionId}` 布局。
 - [x] 3.2 [P0][依赖 3.1] 执行 `openspec validate

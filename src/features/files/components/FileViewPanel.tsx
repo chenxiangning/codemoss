@@ -3072,11 +3072,13 @@ export function FileViewPanel({
           </button>
         ) : null}
         <OpenAppMenu
-          path={absolutePath}
+          path={absolutePath || workspacePath}
+          activeFilePath={absolutePath}
           openTargets={openTargets}
           selectedOpenAppId={selectedOpenAppId}
           onSelectOpenAppId={onSelectOpenAppId}
           iconById={openAppIconById}
+          menuPlacement="up"
         />
       </div>
     </div>

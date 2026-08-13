@@ -1,4 +1,10 @@
 //! Read Gemini CLI session history from ~/.gemini/{tmp,history}/**/chats/session-*.json
+//!
+//! Performance notes:
+//! - Load peeks `sessionId` from the file head and only fully parses the match
+//!   (never re-parses every workspace session just to open one).
+//! - Load also budgets oversized string fields (inline images / tool dumps) before
+//!   returning messages to the renderer.
 
 use chrono::DateTime;
 use regex::Regex;
@@ -8,9 +14,13 @@ use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 use tokio::fs;
+use tokio::io::AsyncReadExt;
 use tokio::time::timeout;
 
 const LOCAL_SESSION_SCAN_TIMEOUT: Duration = Duration::from_secs(60);
+const GEMINI_SESSION_ID_PEEK_BYTES: usize = 8 * 1024;
+const GEMINI_STRING_FIELD_BYTE_BUDGET: usize = 64 * 1024;
+const GEMINI_OMITTED_PAYLOAD_SENTINEL: &str = "__ccgui_omitted_large_gemini_payload__";
 
 fn normalize_session_id(session_id: &str) -> Result<String, String> {
     let normalized = session_id.trim();
@@ -1181,10 +1191,80 @@ async fn read_json(path: &Path) -> Result<Value, String> {
     })
 }
 
-async fn resolve_workspace_session_files(
+/// Peek `sessionId` from the head of a Gemini session JSON without loading the
+/// full multi-MB messages array.
+async fn peek_gemini_session_id(path: &Path) -> Option<String> {
+    let mut file = fs::File::open(path).await.ok()?;
+    let mut buf = vec![0u8; GEMINI_SESSION_ID_PEEK_BYTES];
+    let n = file.read(&mut buf).await.ok()?;
+    let head = String::from_utf8_lossy(&buf[..n]);
+    // Prefer exact key match near file start.
+    for key in ["\"sessionId\"", "\"session_id\""] {
+        if let Some(idx) = head.find(key) {
+            let after = &head[idx + key.len()..];
+            let after = after.trim_start();
+            let after = after.strip_prefix(':')?.trim_start();
+            let after = after.strip_prefix('"')?;
+            let end = after.find('"')?;
+            let id = after[..end].trim();
+            if !id.is_empty() {
+                return Some(id.to_string());
+            }
+        }
+    }
+    None
+}
+
+fn budget_gemini_string(value: &str) -> String {
+    if value.len() <= GEMINI_STRING_FIELD_BYTE_BUDGET {
+        return value.to_string();
+    }
+    if value.contains("data:image") || value.contains("base64") {
+        return GEMINI_OMITTED_PAYLOAD_SENTINEL.to_string();
+    }
+    let truncated: String = value.chars().take(GEMINI_STRING_FIELD_BYTE_BUDGET).collect();
+    format!(
+        "{}…[truncated {} chars]",
+        truncated,
+        value
+            .chars()
+            .count()
+            .saturating_sub(GEMINI_STRING_FIELD_BYTE_BUDGET)
+    )
+}
+
+fn sanitize_gemini_value_for_ui(value: Value) -> Value {
+    match value {
+        Value::String(text) => Value::String(budget_gemini_string(&text)),
+        Value::Array(items) => Value::Array(
+            items
+                .into_iter()
+                .map(sanitize_gemini_value_for_ui)
+                .collect(),
+        ),
+        Value::Object(map) => {
+            let mut out = serde_json::Map::new();
+            for (key, nested) in map {
+                // Drop pure inline image blobs that the canvas rarely needs on restore.
+                if key == "inlineData" || key == "inline_data" {
+                    if let Some(data) = nested.get("data").and_then(|v| v.as_str()) {
+                        if data.len() > GEMINI_STRING_FIELD_BYTE_BUDGET {
+                            continue;
+                        }
+                    }
+                }
+                out.insert(key, sanitize_gemini_value_for_ui(nested));
+            }
+            Value::Object(out)
+        }
+        other => other,
+    }
+}
+
+async fn resolve_workspace_session_paths(
     workspace_path: &Path,
     custom_home: Option<&str>,
-) -> Vec<(PathBuf, Value)> {
+) -> Vec<PathBuf> {
     let base_dir = resolve_gemini_base_dir(custom_home);
     let workspace_variants = build_workspace_path_variants(workspace_path);
     if workspace_variants.is_empty() {
@@ -1204,6 +1284,17 @@ async fn resolve_workspace_session_files(
         if !matches_workspace_path(&project_root, &workspace_variants) {
             continue;
         }
+        matched.push(file);
+    }
+    matched
+}
+
+async fn resolve_workspace_session_files(
+    workspace_path: &Path,
+    custom_home: Option<&str>,
+) -> Vec<(PathBuf, Value)> {
+    let mut matched = Vec::new();
+    for file in resolve_workspace_session_paths(workspace_path, custom_home).await {
         let Ok(value) = read_json(&file).await else {
             continue;
         };
@@ -1241,6 +1332,26 @@ pub async fn load_gemini_session(
     custom_home: Option<&str>,
 ) -> Result<GeminiSessionLoadResult, String> {
     let normalized_session_id = normalize_session_id(session_id)?;
+    let paths = timeout(
+        LOCAL_SESSION_SCAN_TIMEOUT,
+        resolve_workspace_session_paths(workspace_path, custom_home),
+    )
+    .await
+    .map_err(|_| "Gemini session scan timed out".to_string())?;
+
+    for path in paths {
+        let Some(peeked_id) = peek_gemini_session_id(&path).await else {
+            continue;
+        };
+        if peeked_id.trim() != normalized_session_id {
+            continue;
+        }
+        let value = read_json(&path).await?;
+        let sanitized = sanitize_gemini_value_for_ui(value);
+        return Ok(parse_messages_from_value(&sanitized));
+    }
+
+    // Fallback: full parse when peek failed (malformed head / unusual layout).
     let matched_files =
         resolve_workspace_session_files_with_timeout(workspace_path, custom_home).await?;
     for (_path, value) in matched_files {
@@ -1251,7 +1362,8 @@ pub async fn load_gemini_session(
             .trim()
             .to_string();
         if current_session_id == normalized_session_id {
-            return Ok(parse_messages_from_value(&value));
+            let sanitized = sanitize_gemini_value_for_ui(value);
+            return Ok(parse_messages_from_value(&sanitized));
         }
     }
     Err(format!(
@@ -1267,6 +1379,29 @@ pub async fn delete_gemini_session(
     custom_home: Option<&str>,
 ) -> Result<(), String> {
     let normalized_session_id = normalize_session_id(session_id)?;
+    let paths = timeout(
+        LOCAL_SESSION_SCAN_TIMEOUT,
+        resolve_workspace_session_paths(workspace_path, custom_home),
+    )
+    .await
+    .map_err(|_| "Gemini session scan timed out".to_string())?;
+    for path in paths {
+        let Some(peeked_id) = peek_gemini_session_id(&path).await else {
+            continue;
+        };
+        if peeked_id.trim() != normalized_session_id {
+            continue;
+        }
+        fs::remove_file(&path).await.map_err(|error| {
+            format!(
+                "[IO_ERROR] Failed to delete Gemini session file {}: {}",
+                path.display(),
+                error
+            )
+        })?;
+        return Ok(());
+    }
+
     let matched_files =
         resolve_workspace_session_files_with_timeout(workspace_path, custom_home).await?;
     for (path, value) in matched_files {

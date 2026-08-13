@@ -37,6 +37,7 @@ import type {
   WorkspaceInfo,
 } from "../../../types";
 import { loadSettingsStyles } from "../../../styles/featureStyleLoaders";
+import { useFeatureStylesReady } from "../../../styles/useFeatureStylesReady";
 import wxqImage from "../../../assets/wxq.png";
 import { buildShortcutValue } from "../../../utils/shortcuts";
 import { clampUiScale } from "../../../utils/uiScale";
@@ -101,6 +102,7 @@ import { DetachedExternalChangeToggles } from "./settings-view/sections/Detached
 import { WebServiceSettings } from "./settings-view/sections/WebServiceSettings";
 import { EmailSenderSettings } from "./settings-view/sections/EmailSenderSettings";
 import { DictationSection } from "./settings-view/sections/DictationSection";
+import { EmbedModelSection } from "./settings-view/sections/EmbedModelSection";
 import { ExperimentalToggleRow } from "./settings-view/components/ExperimentalToggleRow";
 import { BasicBehaviorSection } from "./settings-view/sections/BasicBehaviorSection";
 import {
@@ -351,9 +353,9 @@ export function SettingsView({
   initialSection,
   initialHighlightTarget,
 }: SettingsViewProps) {
-  useEffect(() => {
-    void loadSettingsStyles();
-  }, []);
+  // Block first paint of settings until styles are ready (avoids FOUC).
+  // i18n settings.* keys now ship with the full locale pack at startup.
+  const settingsStylesReady = useFeatureStylesReady(loadSettingsStyles);
   const { t } = useTranslation();
   const runCodexDoctor = onRunCodexDoctor ?? onRunDoctor;
   const [activeSection, setActiveSection] =
@@ -1296,19 +1298,34 @@ export function SettingsView({
     void handleCommitOpenApps(next, nextSelected);
   };
 
-  const handleAddOpenApp = () => {
+  const handleAddOpenApp = (initial?: Partial<OpenAppDraft>): string => {
+    const kind = initial?.kind ?? "app";
+    const preferredId = initial?.id?.trim();
+    const id =
+      preferredId && !openAppDrafts.some((item) => item.id === preferredId)
+        ? preferredId
+        : createOpenAppId();
     const newTarget: OpenAppDraft = {
-      id: createOpenAppId(),
-      label: t("settings.newApp"),
-      kind: "app",
-      appName: "",
-      command: null,
-      args: [],
-      argsText: "",
+      id,
+      label: initial?.label?.trim() || t("settings.newApp"),
+      kind,
+      appName:
+        kind === "app"
+          ? (initial?.appName ?? "")
+          : kind === "finder"
+            ? null
+            : (initial?.appName ?? null),
+      command:
+        kind === "command"
+          ? (initial?.command ?? "")
+          : (initial?.command ?? null),
+      args: initial?.args ?? [],
+      argsText: initial?.argsText ?? "",
     };
     const next = [...openAppDrafts, newTarget];
     setOpenAppDrafts(next);
     void handleCommitOpenApps(next, newTarget.id);
+    return newTarget.id;
   };
 
   const handleSelectOpenAppDefault = (id: string) => {
@@ -1742,6 +1759,11 @@ export function SettingsView({
           title: t("settings.dictationTitle"),
           description: t("settings.dictationDescription"),
         };
+      case "memory":
+        return {
+          title: t("settings.sidebarMemory"),
+          description: t("settings.memoryDescription"),
+        };
       case "git":
         return {
           title: t("settings.gitTitle"),
@@ -1775,6 +1797,10 @@ export function SettingsView({
         };
     }
   }, [activeSection, t]);
+
+  if (!settingsStylesReady) {
+    return null;
+  }
 
   return (
     <div className="settings-embedded">
@@ -1850,6 +1876,18 @@ export function SettingsView({
             <span className="codicon codicon-robot" aria-hidden />
             <span className="settings-nav-label">
               {t("settings.sidebarAgentPromptManagement")}
+            </span>
+          </button>
+          <button
+            type="button"
+            className={`settings-nav ${activeSection === "memory" ? "active" : ""}`}
+            onClick={() => setActiveSection("memory")}
+            aria-label={t("settings.sidebarMemory")}
+            title={t("settings.sidebarMemory")}
+          >
+            <span className="codicon codicon-library" aria-hidden />
+            <span className="settings-nav-label">
+              {t("settings.sidebarMemory")}
             </span>
           </button>
           <button
@@ -2377,6 +2415,7 @@ export function SettingsView({
             onCancelDictationDownload={onCancelDictationDownload}
             onRemoveDictationModel={onRemoveDictationModel}
           />
+          <EmbedModelSection active={activeSection === "memory"} t={t} />
           {activeSection === "git" && (
             <section className="settings-section">
               <DetachedExternalChangeToggles

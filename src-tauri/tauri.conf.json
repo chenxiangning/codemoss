@@ -1,8 +1,9 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "ccgui",
-  "version": "0.8.5",
+  "version": "0.8.9",
   "identifier": "com.zhukunpenglinyutong.ccgui",
+  "mainBinaryName": "cc-gui",
   "build": {
     "beforeDevCommand": "node scripts/tauri-dev-frontend.mjs",
     "devUrl": "http://localhost:1420",

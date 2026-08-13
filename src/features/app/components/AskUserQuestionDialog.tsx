@@ -179,8 +179,17 @@ export function AskUserQuestionDialog({
 
   const handleCancel = useCallback(() => {
     if (!visibleActiveRequest || !visibleRequestId) return;
-    // Submit empty answers to unblock the agent
-    void Promise.resolve(onSubmit(visibleActiveRequest, { answers: {} })).then(
+    // Skip must unblock the agent the same way as submit: empty answers +
+    // explicit skippedQuestionIds so MCP oneshot / resume always receives a result.
+    const skippedQuestionIds = visibleActiveRequest.params.questions
+      .map((question) => question.id)
+      .filter((questionId) => questionId.trim().length > 0);
+    void Promise.resolve(
+      onSubmit(visibleActiveRequest, {
+        answers: {},
+        ...(skippedQuestionIds.length > 0 ? { skippedQuestionIds } : {}),
+      }),
+    ).then(
       () => {
         markRequestSettledLocally(visibleRequestId);
       },

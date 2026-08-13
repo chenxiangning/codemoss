@@ -53,6 +53,8 @@ describe("useWorkspaceRestore", () => {
     expect(listThreadsForWorkspace).toHaveBeenCalledWith(activeWorkspace, {
       recoverySource: "workspace-restore",
       allowRuntimeReconnect: true,
+      startupHydrationMode: "first-paint",
+      preserveState: true,
     });
     expect(
       listThreadsForWorkspace.mock.calls.map((call) => call[0].id),
@@ -87,6 +89,8 @@ describe("useWorkspaceRestore", () => {
     expect(listThreadsForWorkspace).toHaveBeenCalledWith(activeWorkspace, {
       recoverySource: "workspace-restore",
       allowRuntimeReconnect: false,
+      startupHydrationMode: "first-paint",
+      preserveState: true,
     });
   });
 
@@ -128,6 +132,8 @@ describe("useWorkspaceRestore", () => {
       expect(listThreadsForWorkspace).toHaveBeenCalledWith(activeWorkspace, {
         recoverySource: "workspace-restore",
         allowRuntimeReconnect: true,
+        startupHydrationMode: "first-paint",
+        preserveState: true,
       });
     });
     expect(listThreadsForWorkspace).toHaveBeenCalledTimes(1);

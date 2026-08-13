@@ -1,7 +1,12 @@
 // @vitest-environment jsdom
 import { act, renderHook } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { RequestUserInputRequest } from "../../../types";
+import {
+  markUserInputRequestSettled,
+  resetUserInputSettlementTombstonesForTests,
+} from "../../../utils/userInputSettlementTombstone";
+import { requestUserInputIdentityKey } from "../../../utils/requestUserInputIdentity";
 import { useThreadUserInputEvents } from "./useThreadUserInputEvents";
 
 const baseRequest: RequestUserInputRequest = {
@@ -16,6 +21,14 @@ const baseRequest: RequestUserInputRequest = {
 };
 
 describe("useThreadUserInputEvents", () => {
+  beforeEach(() => {
+    resetUserInputSettlementTombstonesForTests();
+  });
+
+  afterEach(() => {
+    resetUserInputSettlementTombstonesForTests();
+  });
+
   it("adds requestUserInput into queue when request is not completed", () => {
     const dispatch = vi.fn();
     const { result } = renderHook(() => useThreadUserInputEvents({ dispatch }));
@@ -132,5 +145,18 @@ describe("useThreadUserInputEvents", () => {
       type: "addUserInputRequest",
       request: nextRuntimeRequest,
     });
+  });
+
+  it("ignores non-completed re-add after local settlement tombstone", () => {
+    const dispatch = vi.fn();
+    const { result } = renderHook(() => useThreadUserInputEvents({ dispatch }));
+
+    markUserInputRequestSettled(requestUserInputIdentityKey(baseRequest));
+
+    act(() => {
+      result.current(baseRequest);
+    });
+
+    expect(dispatch).not.toHaveBeenCalled();
   });
 });

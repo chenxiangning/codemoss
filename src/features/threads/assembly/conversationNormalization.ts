@@ -1,5 +1,6 @@
 import type { ConversationItem } from "../../../types";
 import { mergeNearDuplicateParagraphVariants } from "../../../utils/assistantDuplicateParagraphs";
+import { extractCommandMessageDisplayText } from "../../../utils/commandMessageTags";
 import type { ConversationFact } from "../contracts/conversationFactContract";
 
 export {
@@ -237,6 +238,20 @@ function extractLatestUserInputTextPreserveFormatting(text: string): string {
   return text.slice(markerIndex + lastMatch[0].length);
 }
 
+/**
+ * Slash-skill 提问有两种同源形态：
+ * 1) 用户输入 / 乐观气泡：`/aimax:code-review 审查PR…`
+ * 2) Claude transcript：`<command-message>…</command-message>` + `<command-args>…`
+ *    展示还原为 `aimax:code-review 审查PR…`（无前导 `/`）
+ * comparable 路径必须收敛，否则 optimistic 对账失败会出现双用户气泡。
+ */
+function normalizeSlashSkillCommandComparableText(text: string): string {
+  const unwrapped = extractCommandMessageDisplayText(text);
+  // 去掉首 token 的单个前导 `/`（/aimax:code-review → aimax:code-review），
+  // 不碰 `//` 注释或路径里后续斜杠。
+  return unwrapped.replace(/^\/(?!\/)(\S+)/, "$1");
+}
+
 export function normalizeComparableUserText(text: string): string {
   const latestUserInput = extractLatestUserInputTextPreserveFormatting(text);
   const normalized = stripSharedSessionContextSyncWrapper(
@@ -244,7 +259,10 @@ export function normalizeComparableUserText(text: string): string {
       stripModeFallbackBlock(stripInjectedProjectMemoryBlock(latestUserInput)),
     ),
   );
-  return splitInjectedNoteCardContext(normalized).text.replace(/\s+/g, " ").trim();
+  const withoutNoteCard = splitInjectedNoteCardContext(normalized).text;
+  return normalizeSlashSkillCommandComparableText(withoutNoteCard)
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 export function normalizeUserVisibleText(text: string): NormalizedConversationText {

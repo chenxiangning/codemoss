@@ -1,5 +1,8 @@
 import type { ConversationItem } from "../../../types";
-import type { HistoryLoader } from "../contracts/conversationCurtainContracts";
+import type {
+  HistoryLoader,
+  NormalizedHistorySnapshot,
+} from "../contracts/conversationCurtainContracts";
 import { normalizeHistorySnapshot } from "../contracts/conversationCurtainContracts";
 import { normalizeSharedSessionEngine } from "../../shared-session/utils/sharedSessionEngines";
 import {
@@ -32,6 +35,9 @@ import {
   type HistoryLoadingProgressListener,
 } from "../utils/historyLoadingProgress";
 
+/** Soft wait for projection on open; after this, return V0 and finish merge in background. */
+export const DEFAULT_SHARED_PROJECTION_TIMEOUT_MS = 12_000;
+
 type SharedHistoryLoaderOptions = {
   workspaceId: string;
   loadSharedSession: (
@@ -43,10 +49,60 @@ type SharedHistoryLoaderOptions = {
     threadId: string,
   ) => Promise<SharedProjectionItem[]>;
   onProgress?: HistoryLoadingProgressListener;
+  /** Override soft timeout (ms). Tests inject short values. */
+  projectionTimeoutMs?: number;
+  /**
+   * Projection finished after Phase-A returned (timeout path).
+   * Caller MUST guard with resume generation / active thread and avoid
+   * clobbering an in-flight live turn.
+   */
+  onProjectionMerged?: (snapshot: NormalizedHistorySnapshot) => void;
 };
 
 function asString(value: unknown) {
   return typeof value === "string" ? value : value == null ? "" : String(value);
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+/**
+ * Wait for work up to timeoutMs. On timeout, resolve with pending promise still running
+ * so caller can attach background handlers without cancelling IPC.
+ */
+async function raceWithSoftTimeout<T>(
+  work: Promise<T>,
+  timeoutMs: number,
+): Promise<
+  | { kind: "done"; value: T }
+  | { kind: "timeout"; pending: Promise<T> }
+> {
+  let settled = false;
+  const pending = work.then(
+    (value) => {
+      settled = true;
+      return value;
+    },
+    (error) => {
+      settled = true;
+      throw error;
+    },
+  );
+  const raced = await Promise.race([
+    pending.then((value) => ({ kind: "done" as const, value })),
+    sleep(timeoutMs).then(() => ({ kind: "timeout" as const })),
+  ]);
+  if (raced.kind === "done") {
+    return raced;
+  }
+  if (settled) {
+    // Finished in the same tick as timeout — prefer the result.
+    return { kind: "done", value: await pending };
+  }
+  return { kind: "timeout", pending };
 }
 
 export function createSharedHistoryLoader({
@@ -54,6 +110,8 @@ export function createSharedHistoryLoader({
   loadSharedSession,
   loadSharedProjection,
   onProgress,
+  projectionTimeoutMs = DEFAULT_SHARED_PROJECTION_TIMEOUT_MS,
+  onProjectionMerged,
 }: SharedHistoryLoaderOptions): HistoryLoader {
   const report: HistoryLoadingProgressListener = (progress) => {
     onProgress?.(normalizeHistoryLoadingProgress(progress));
@@ -116,69 +174,133 @@ export function createSharedHistoryLoader({
         ? (response?.items as ConversationItem[])
         : [];
       report(buildSharedHistorySessionProgress("done", legacyItems.length));
-      let items = legacyItems;
-      if (isSharedProjectionDataSourceEnabled()) {
-        report(buildSharedHistoryProjectionProgress("start"));
-        try {
-          const sharedProjection = await loadSharedProjection(
-            workspaceId,
-            threadId,
-          );
-          const agentRunId = findCanonicalAgentRunId(sharedProjection);
-          if (agentRunId) {
-            registerAgentConversationEvidence(
-              workspaceId,
-              threadId,
-              agentRunId,
-            );
-          }
-          const projectedItems =
-            resolveSharedConversationItems(sharedProjection) ?? [];
-          report(
-            buildSharedHistoryProjectionProgress("done", projectedItems.length),
-          );
-          report(buildSharedHistoryMergeProgress("start"));
-          items =
-            legacyItems.length > 0
-              ? mergeHistoryProjectionItems(legacyItems, projectedItems, {
-                  workspaceId,
-                  threadId,
-                  engine: normalizedSelectedEngine,
-                })
-              : projectedItems;
-          report(buildSharedHistoryMergeProgress("done", items.length));
-        } catch (error) {
-          console.warn(
-            legacyItems.length > 0
-              ? `[shared-projection] load failed; using V0 snapshot for ${threadId}`
-              : `[shared-projection] load failed; no V0 snapshot available for ${threadId}`,
-            error,
-          );
-          if (legacyItems.length === 0) {
-            throw error;
-          }
-          report(buildSharedHistoryMergeProgress("done", legacyItems.length));
-        }
-      } else {
-        report(buildSharedHistoryProjectionProgress("skip"));
-        report(buildSharedHistoryMergeProgress("done", items.length));
-      }
-      report(buildSharedHistoryFinalizeProgress());
-      return normalizeHistorySnapshot({
-        engine: normalizedSelectedEngine,
-        workspaceId,
-        threadId,
-        items,
-        meta: {
+
+      const buildSnapshot = (items: ConversationItem[]) =>
+        normalizeHistorySnapshot({
+          engine: normalizedSelectedEngine,
           workspaceId,
           threadId,
-          engine: normalizedSelectedEngine,
-          activeTurnId: null,
-          isThinking: false,
-          heartbeatPulse: null,
-          historyRestoredAtMs: Date.now(),
-        },
-      });
+          items,
+          meta: {
+            workspaceId,
+            threadId,
+            engine: normalizedSelectedEngine,
+            activeTurnId: null,
+            isThinking: false,
+            heartbeatPulse: null,
+            historyRestoredAtMs: Date.now(),
+          },
+        });
+
+      const phaseASnapshot = buildSnapshot(legacyItems);
+
+      if (!isSharedProjectionDataSourceEnabled()) {
+        report(buildSharedHistoryProjectionProgress("skip"));
+        report(buildSharedHistoryMergeProgress("done", legacyItems.length));
+        report(buildSharedHistoryFinalizeProgress());
+        return phaseASnapshot;
+      }
+
+      const runProjectionMerge = async (): Promise<NormalizedHistorySnapshot> => {
+        report(buildSharedHistoryProjectionProgress("start"));
+        const sharedProjectionRaw = await loadSharedProjection(
+          workspaceId,
+          threadId,
+        );
+        const sharedProjection = Array.isArray(sharedProjectionRaw)
+          ? sharedProjectionRaw
+          : [];
+        // Squad evidence must come from canonical rows only — presentation-only
+        // / prose must not invent agentRun bindings (parity with canvas fidelity).
+        const agentRunId = findCanonicalAgentRunId(
+          sharedProjection.filter(
+            (item) =>
+              (item as { fidelity?: string }).fidelity !== "presentation-only",
+          ),
+        );
+        if (agentRunId) {
+          registerAgentConversationEvidence(
+            workspaceId,
+            threadId,
+            agentRunId,
+          );
+        }
+        const projectedItems =
+          resolveSharedConversationItems(sharedProjection) ?? [];
+        report(
+          buildSharedHistoryProjectionProgress("done", projectedItems.length),
+        );
+        report(buildSharedHistoryMergeProgress("start"));
+        const items =
+          legacyItems.length > 0
+            ? mergeHistoryProjectionItems(legacyItems, projectedItems, {
+                workspaceId,
+                threadId,
+                engine: normalizedSelectedEngine,
+              })
+            : projectedItems;
+        report(buildSharedHistoryMergeProgress("done", items.length));
+        report(buildSharedHistoryFinalizeProgress());
+        return buildSnapshot(items);
+      };
+
+      // Empty V0: wait for projection within soft timeout; fail closed if missing.
+      if (legacyItems.length === 0) {
+        try {
+          const hard = await raceWithSoftTimeout(
+            runProjectionMerge(),
+            projectionTimeoutMs,
+          );
+          if (hard.kind === "done") {
+            return hard.value;
+          }
+          void hard.pending.catch(() => undefined);
+          throw new Error(
+            `shared-projection timed out after ${projectionTimeoutMs}ms with empty V0 for ${threadId}`,
+          );
+        } catch (error) {
+          console.warn(
+            `[shared-projection] load failed; no V0 snapshot available for ${threadId}`,
+            error,
+          );
+          throw error;
+        }
+      }
+
+      // Non-empty V0: wait up to soft timeout; then unblock with V0 and merge later.
+      try {
+        const raced = await raceWithSoftTimeout(
+          runProjectionMerge(),
+          projectionTimeoutMs,
+        );
+        if (raced.kind === "done") {
+          return raced.value;
+        }
+        console.warn(
+          `[shared-projection] soft-timeout ${projectionTimeoutMs}ms; using V0 for ${threadId} (background merge continues)`,
+        );
+        // Phase-A ready: finish curtain progress without waiting for projection.
+        report(buildSharedHistoryFinalizeProgress());
+        void raced.pending
+          .then((merged) => {
+            onProjectionMerged?.(merged);
+          })
+          .catch((error) => {
+            console.warn(
+              `[shared-projection] background load failed after V0 ready for ${threadId}`,
+              error,
+            );
+          });
+        return phaseASnapshot;
+      } catch (error) {
+        console.warn(
+          `[shared-projection] load failed; using V0 snapshot for ${threadId}`,
+          error,
+        );
+        report(buildSharedHistoryMergeProgress("done", legacyItems.length));
+        report(buildSharedHistoryFinalizeProgress());
+        return phaseASnapshot;
+      }
     },
   };
 }

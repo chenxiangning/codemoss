@@ -89,6 +89,17 @@ export type CodingPlanBalanceSnapshot = {
   items: CodingPlanBalanceItem[];
 };
 
+/** Sub2API 等中转站用量摘要（配额 HUD 多行） */
+export type CodingPlanUsageSummary = {
+  totalRequests?: number | null;
+  /** 已格式化金额，如 `0.014363` */
+  totalActualCost?: string | null;
+  totalInputTokens?: number | null;
+  totalOutputTokens?: number | null;
+  totalTokens?: number | null;
+  averageDurationMs?: number | null;
+};
+
 export type CodingPlanQuotaSnapshot = {
   source: string;
   /** api | cli | official_runtime */
@@ -99,6 +110,10 @@ export type CodingPlanQuotaSnapshot = {
   windows: CodingPlanQuotaWindow[];
   /** 余额型额度；百分比供应商为 null/省略 */
   balance?: CodingPlanBalanceSnapshot | null;
+  /** Sub2API 用量摘要 */
+  usageSummary?: CodingPlanUsageSummary | null;
+  /** 中转 origin，如 `https://fufei.mossx.ai`；UI 展示 `{siteOrigin}+sub2api` */
+  siteOrigin?: string | null;
   queriedAt: number;
 };
 

@@ -1,13 +1,15 @@
 # Windows 本机 `cc-gui.exe` 启动卡死调研
 
-> **日期**：2026-08-05  
+> **日期**：2026-08-05（撰写），2026-08-10（最终解决）  
+> **最终状态**：✅ **已完全解决**。全链路记录见 [`cold-start-click-freeze-postmortem-2026-08-10.md`](./cold-start-click-freeze-postmortem-2026-08-10.md)  
 > **机器**：本地 Windows（用户 CXN）  
 > **现象**：打开 `ccgui` / `cc-gui.exe` 后窗口假死，长时间无 UI  
-> **状态**：**根因已确认**；修复代码已在本机落地（OpenSpec change `fix-windows-ui-scale-webview2-hang`）；**未 git commit**；settings 可保持 `uiScale:0.8` 做验收  
 > **平台**：Windows（WebView2）已证实；macOS（WKWebView）未见；Linux（WebKitGTK）无 hang 证据  
 > **实现入口**：`src/utils/applyUiScale.ts` + `useUiScaleShortcuts.ts`；规格见 `openspec/changes/fix-windows-ui-scale-webview2-hang/`
 >
-> **⏩ 2026-08-06 后续（平台结论已过期，以此为准）**：现场反馈 **macOS `uiScale=0.9` 同样卡死**，上文 §0.3「Mac 未见同症」系样本不足。修复策略已升级为 **三端统一 CSS transform scale、全平台 native zoom 只钉 1**，并新增启动看门狗（上次非 100% 启动未证明健康 → 本次临时 100% + runtime notice，不改写用户设置）。另有「Windows App 100% + 系统缩放 120% 卡死」一例，zoom API 理论无法解释，疑似另有 fractional-scale 敏感点，待真机 profiling 单独排查。见 OpenSpec change `fix-ui-scale-native-zoom-freeze-all-platforms`。
+> **⏩ 2026-08-06 后续（平台结论已过期，以此为准）**：现场反馈 **macOS `uiScale=0.9` 同样卡死**，上文 §0.3「Mac 未见同症」系样本不足。修复策略已升级为 **三端统一 CSS scale、全平台 native zoom 钉 1**，并新增启动看门狗。见 OpenSpec change `fix-ui-scale-native-zoom-freeze-all-platforms`。
+>
+> **⏩ 2026-08-10 最终修复**：追加根因——冷启首帧 useEffect 中 `apply(1)` 无条件写入 20+ CSS 属性 → Blink 全文档布局回算阻塞 compositor hit-test。改为条件清除（`hasResidualScaleStyle` 守卫），冷启首帧零 CSS 写入。见 [`cold-start-click-freeze-postmortem-2026-08-10.md`](./cold-start-click-freeze-postmortem-2026-08-10.md)。
 
 ---
 

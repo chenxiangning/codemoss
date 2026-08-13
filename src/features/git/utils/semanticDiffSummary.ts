@@ -160,6 +160,7 @@ function isSpecPath(path: string) {
   const lower = path.toLowerCase();
   return (
     lower.startsWith("openspec/") ||
+    lower.startsWith("dev-guidelines/") ||
     lower.startsWith(".trellis/spec/") ||
     lower.includes("/specs/") ||
     lower.endsWith("/spec.md")

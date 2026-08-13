@@ -1,4 +1,6 @@
 import type { MouseEvent as ReactMouseEvent, ReactNode } from "react";
+import { loadTerminalStyles } from "../../../styles/featureStyleLoaders";
+import { useFeatureStylesReady } from "../../../styles/useFeatureStylesReady";
 import type { TerminalTab } from "../hooks/useTerminalTabs";
 
 type TerminalDockProps = {
@@ -24,7 +26,11 @@ export function TerminalDock({
   onResizeStart,
   terminalNode,
 }: TerminalDockProps) {
+  const stylesReady = useFeatureStylesReady(loadTerminalStyles, isOpen);
   if (!isOpen) {
+    return null;
+  }
+  if (!stylesReady) {
     return null;
   }
 

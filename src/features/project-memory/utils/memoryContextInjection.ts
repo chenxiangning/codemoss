@@ -396,6 +396,8 @@ export type InjectionResult = {
   injectedChars: number;
   retrievalMs: number;
   previewText: string | null;
+  /** 可选：纯 pack 块（不含用户原文），用于写回用户气泡以展示注入摘要卡 */
+  packBlock?: string | null;
   disabledReason:
     | "switch_off"
     | "empty_result"

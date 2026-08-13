@@ -211,7 +211,9 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
       onForkQuickStart,
       squadSurface,
       memoryReferenceMode = 'off',
+      memoryReferenceDismissed = false,
       onSetMemoryReferenceMode,
+      onRestoreMemoryReference,
       attachments: externalAttachments,
       hasContextAttachment = false,
       placeholder = '', // Will be passed from parent via t('chat.inputPlaceholder')
@@ -1886,7 +1888,9 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
               onCodexReviewQuickStart={onCodexReviewQuickStart}
               onForkQuickStart={onForkQuickStart}
               memoryReferenceMode={memoryReferenceMode}
+              memoryReferenceDismissed={memoryReferenceDismissed}
               onSetMemoryReferenceMode={onSetMemoryReferenceMode}
+              onRestoreMemoryReference={onRestoreMemoryReference}
               onSubmit={handleSubmit}
               onStop={onStop}
               onModeSelect={handleModeSelect}

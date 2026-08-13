@@ -125,19 +125,19 @@ Before touching code, read the specific project guidelines required by `AGENTS.m
 
 ```bash
 cat AGENTS.md
-cat .trellis/spec/frontend/index.md
-cat .trellis/spec/backend/index.md
-cat .trellis/spec/guides/index.md
-cat .trellis/spec/frontend/directory-structure.md
-cat .trellis/spec/frontend/component-guidelines.md
-cat .trellis/spec/frontend/hook-guidelines.md
-cat .trellis/spec/frontend/quality-guidelines.md
-cat .trellis/spec/frontend/type-safety.md
-cat .trellis/spec/backend/directory-structure.md
-cat .trellis/spec/backend/error-handling.md
-cat .trellis/spec/backend/quality-guidelines.md
-cat .trellis/spec/guides/cross-layer-thinking-guide.md
-cat .trellis/spec/guides/code-reuse-thinking-guide.md
+cat dev-guidelines/frontend/index.md
+cat dev-guidelines/backend/index.md
+cat dev-guidelines/guides/index.md
+cat dev-guidelines/frontend/directory-structure.md
+cat dev-guidelines/frontend/component-guidelines.md
+cat dev-guidelines/frontend/hook-guidelines.md
+cat dev-guidelines/frontend/quality-guidelines.md
+cat dev-guidelines/frontend/type-safety.md
+cat dev-guidelines/backend/directory-structure.md
+cat dev-guidelines/backend/error-handling.md
+cat dev-guidelines/backend/quality-guidelines.md
+cat dev-guidelines/guides/cross-layer-thinking-guide.md
+cat dev-guidelines/guides/code-reuse-thinking-guide.md
 ```
 
 ---

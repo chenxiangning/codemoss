@@ -69,7 +69,7 @@ transport。
   `src-tauri/src/shared_context/compiler.rs`、`src-tauri/src/native_continuation/commands.rs`
   及对应 tests。
 - Frontend：`src/features/app/components/ProviderContinuationDialog.tsx`、locale 与 focused tests。
-- Contract：`.trellis/spec/backend/native-provider-continuation-contract.md` 与本 change delta。
+- Contract：`dev-guidelines/backend/native-provider-continuation-contract.md` 与本 change delta。
 - IPC 字段与数据库 schema 保持兼容；不新增 runtime dependency。
 
 ## 验收标准

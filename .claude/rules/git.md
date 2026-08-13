@@ -8,7 +8,7 @@
 - 常用 type：`feat`、`fix`、`refactor`、`docs`、`test`、`chore`、`perf`、`style`、`ci`、`build`
 - subject 聚焦一个可审查目的，结尾不加句号
 - 禁止 emoji、`WIP`、AI 生成署名、密钥、token 或内部敏感 URL
-- commit 前按变更范围执行 `$finish-work`；成功 commit 后必须继续执行 Trellis session record
+- commit 前按变更范围完成 lint / typecheck / 相关测试，并确认 OpenSpec 与 `dev-guidelines/**` 需要同步时已同步
 
 示例：
 

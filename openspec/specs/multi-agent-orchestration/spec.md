@@ -5,7 +5,7 @@
 固化 Shared Session 多 CLI 协作编排（Plan → Approve → Implement → Review）的
 cross-layer 行为合同：outcome 字符上限、Inspector 展示契约、降级 settle。
 
-可执行落点与常量表见 `.trellis/spec/multi-agent/contracts.md`。
+可执行落点与常量表见 `dev-guidelines/multi-agent/contracts.md`。
 设计文档：`docs/architecture/multi-engine-collaboration-orchestration-design.md`。
 
 ## Requirements

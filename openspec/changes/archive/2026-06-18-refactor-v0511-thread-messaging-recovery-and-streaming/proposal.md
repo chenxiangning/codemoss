@@ -12,7 +12,7 @@
 ## 目标与边界
 
 - 抽离 `useThreadMessaging` 内的 stale thread binding recovery / fresh continuation / fork 段为子 hook `useCodexMessageRecovery`,主 hook 调用方零改动。
-- 在 `.trellis/spec/frontend/hook-guidelines.md` 下沉淀「batch vs urgent dispatch 决策表」;新增 `shouldUrgentlyDispatchReasoningDelta` 谓词,允许 `appendReasoningContentDelta` 在 `flush.reason === "first-token"` 时走急派,稳态仍走 batch。
+- 在 `dev-guidelines/frontend/hook-guidelines.md` 下沉淀「batch vs urgent dispatch 决策表」;新增 `shouldUrgentlyDispatchReasoningDelta` 谓词,允许 `appendReasoningContentDelta` 在 `flush.reason === "first-token"` 时走急派,稳态仍走 batch。
 - 接入开发机真实跑分,为 allowlisted runtime diagnostics 升级 measured evidence,并显式报告 `proxyRatio`。
 - 把 `perf:archive-readiness` 的"proxy 占比 > 50%"列入 **warn soft-launch**,本轮不得写入 `hardFailures`;后续版本若要升 hard,必须另开 change 更新 gate contract。
 
@@ -39,7 +39,7 @@
 
 ### Refactor: 流式派发决策表
 
-- 在 `.trellis/spec/frontend/hook-guidelines.md` 写入「batch vs urgent dispatch 决策矩阵」段落,锁定当前 3 个谓词的判定依据。
+- 在 `dev-guidelines/frontend/hook-guidelines.md` 写入「batch vs urgent dispatch 决策矩阵」段落,锁定当前 3 个谓词的判定依据。
 - 新增 `shouldUrgentlyDispatchReasoningDelta(event, flushReason)` 谓词,仅在 `event.operation === "appendReasoningContentDelta" && flushReason === "first-token"` 时返回 `true`。
 - 修改 `useThreadItemEvents.ts:799-800` 与 `:868` 处的 urgent 判断,纳入 `shouldUrgentlyDispatchReasoningDelta`。
 - 新增 `src/features/threads/hooks/useThreadItemEvents.first-token-reasoning-delta.test.ts`,锁定 first-token reasoning 急派行为。

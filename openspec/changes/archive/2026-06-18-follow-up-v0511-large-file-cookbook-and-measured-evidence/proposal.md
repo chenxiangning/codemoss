@@ -24,7 +24,7 @@
 
 - `src/services/tauri.ts` 拆出 `src/services/tauri/session.ts` / `permission.ts` / `appServer.ts`。
 - `FileTreePanel.tsx` 抽出 `useFileTreeViewState.ts` 与 `FileTreeRefreshControls.tsx`。
-- `.trellis/spec/backend/codex-provider-scoped-runtime.md` 增加 recovery cookbook。
+- `dev-guidelines/backend/codex-provider-scoped-runtime.md` 增加 recovery cookbook。
 - `scripts/perf-v0511-runtime-evidence.ts` 增加更多 measured producer,并更新 tests / docs perf artifacts。
 
 ## Impact

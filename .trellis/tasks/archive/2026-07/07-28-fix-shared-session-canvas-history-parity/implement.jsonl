@@ -1,7 +1,0 @@
-{"file": ".trellis/workflow.md", "reason": "Project workflow and conventions"}
-{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend development guide"}
-{"file": ".trellis/spec/frontend/state-management.md", "reason": "realtime store 与 snapshot persistence 边界"}
-{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "focused regression tests 与性能门禁"}
-{"file": ".trellis/spec/frontend/type-safety.md", "reason": "ConversationItem 与 frozen target 类型安全"}
-{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "realtime → assembler → persistence → history 数据流"}
-{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "复用 Native assembler"}

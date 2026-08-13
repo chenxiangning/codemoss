@@ -31,6 +31,7 @@ import {
 } from "../../../components/ui/RendererContextMenu";
 import { appendRendererDiagnostic } from "../../../services/rendererDiagnostics";
 import { MessagesTimeline } from "./MessagesTimeline";
+import { MemoryPickGateHost } from "../../project-memory/components/MemoryPickGateHost";
 import { MessagesAnchorRail } from "./conversation/MessagesAnchorRail";
 import { ScrollControl, type ConversationScrollEdge } from "./conversation/ScrollControl";
 import {
@@ -1750,6 +1751,10 @@ export const MessagesCore = memo(function MessagesCore({
         />
         {timelineLeadingNode}
         <MessagesTimeline {...timelineModels} />
+        {/* 与 .messages-full 同宽同中（勿复用 min-height:100% 的 messages-full） */}
+        <div className="memory-pick-gate-slot">
+          <MemoryPickGateHost workspaceId={workspaceId} threadId={threadId} />
+        </div>
         {timelineTrailingNode}
         {/* jetbrains messagesEndRef：两步追底的 scrollIntoView 锚点；无视觉高度。 */}
         <div ref={messagesEndRef} className="messages-end-sentinel" aria-hidden="true" />

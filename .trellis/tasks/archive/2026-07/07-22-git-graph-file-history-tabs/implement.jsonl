@@ -1,6 +1,0 @@
-{"file": ".trellis/workflow.md", "reason": "Project workflow and conventions"}
-{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend development guide"}
-{"file": ".trellis/spec/frontend/file-history-view.md", "reason": "File History UI 与数据边界"}
-{"file": ".trellis/spec/frontend/hook-guidelines.md", "reason": "controller hook state transitions"}
-{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "Git History tabs 与 accessibility"}
-{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "复用 FileHistoryView"}

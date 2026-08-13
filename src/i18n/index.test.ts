@@ -22,11 +22,16 @@ describe("i18n dynamic locale loading", () => {
     expect(i18n.language).toBe("zh");
     expect(i18n.hasResourceBundle("zh", "translation")).toBe(true);
     expect(i18n.hasResourceBundle("en", "translation")).toBe(false);
+    // Full pack must resolve shell + settings keys (P2-3 regression guard).
+    expect(i18n.t("files.loadingFiles")).not.toBe("files.loadingFiles");
+    expect(i18n.t("settings.sidebarBasic")).not.toBe("settings.sidebarBasic");
 
     await i18n.changeLanguage("en");
 
     expect(i18n.language).toBe("en");
     expect(i18n.hasResourceBundle("en", "translation")).toBe(true);
+    expect(i18n.t("files.loadingFiles")).not.toBe("files.loadingFiles");
+    expect(i18n.t("settings.sidebarBasic")).not.toBe("settings.sidebarBasic");
   });
 
   it("loads a newly shipped translation bundle on switch", async () => {

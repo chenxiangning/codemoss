@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { AppSettings } from "../../../types";
 import i18n from "../../../i18n";
 import { pushErrorToast } from "../../../services/toasts";
@@ -16,11 +16,7 @@ import {
   CODEX_AUTO_COMPACTION_THRESHOLD_DEFAULT_PERCENT,
   normalizeCodexAutoCompactionThresholdPercent,
 } from "../../codex/constants/codexAutoCompactionThreshold";
-import {
-  clampUiScale,
-  sanitizeUiScale,
-  UI_SCALE_DEFAULT,
-} from "../../../utils/uiScale";
+import { UI_SCALE_DEFAULT } from "../../../utils/uiScale";
 import {
   DEFAULT_CODE_FONT_FAMILY,
   DEFAULT_UI_FONT_FAMILY,
@@ -49,6 +45,7 @@ import {
   DEFAULT_DOCK_ICON_ID,
   sanitizeDockIconId,
 } from "../../theme/utils/dockIcon";
+import { traceStartupCommand } from "../../startup-orchestration/utils/startupTrace";
 
 const allowedThemes = new Set(["system", "light", "dark", "dim", "custom"]);
 const allowedCanvasWidthModes = new Set(["narrow", "wide"]);
@@ -431,9 +428,8 @@ function normalizeAppSettings(
     systemProxyUrl: settings.systemProxyUrl?.trim()
       ? settings.systemProxyUrl.trim()
       : null,
-    uiScale: options?.fallbackUiScaleToDefault
-      ? sanitizeUiScale(settings.uiScale)
-      : clampUiScale(settings.uiScale),
+    // Permanently locked to 100% — ignore legacy disk values (0.8 / 0.9 / …).
+    uiScale: UI_SCALE_DEFAULT,
     theme: allowedThemes.has(settings.theme) ? settings.theme : "system",
     dockIconId: sanitizeDockIconId(settings.dockIconId),
     lightThemePresetId: sanitizeLightThemePresetId(settings.lightThemePresetId),
@@ -590,39 +586,51 @@ function areAppSettingsEqual(a: AppSettings, b: AppSettings): boolean {
 export function useAppSettings() {
   const [settings, setSettings] = useState<AppSettings>(defaultSettings);
   const [isLoading, setIsLoading] = useState(true);
+  const initialSettingsRequestRef = useRef<Promise<AppSettings> | null>(null);
+  const recoveryNoticeRequestRef = useRef<ReturnType<
+    typeof takeSettingsRecoveryNotice
+  > | null>(null);
 
   useEffect(() => {
     let active = true;
-    void (async () => {
-      try {
-        const response = await getAppSettings();
-        if (active) {
-          const allowLegacyUserMsgColorFallback =
-            (response as Partial<AppSettings>).userMsgColor == null;
-          const normalized = normalizeAppSettings(
-            {
-              ...defaultSettings,
-              ...response,
-            },
-            {
-              allowLegacyUserMsgColorFallback,
-              fallbackUiScaleToDefault: true,
-              upgradeWarmTtlToDefaultOnLoad: true,
-            },
-          );
-          setSettings(normalized);
-          // Restore app icon after cold start (macOS Dock; Win/Linux window/taskbar).
+    const request = initialSettingsRequestRef.current ??=
+      traceStartupCommand("get_app_settings", "global", getAppSettings);
+    void request
+      .then((response) => {
+        if (!active) {
+          return;
+        }
+        const allowLegacyUserMsgColorFallback =
+          (response as Partial<AppSettings>).userMsgColor == null;
+        const normalized = normalizeAppSettings(
+          {
+            ...defaultSettings,
+            ...response,
+          },
+          {
+            allowLegacyUserMsgColorFallback,
+            fallbackUiScaleToDefault: true,
+            upgradeWarmTtlToDefaultOnLoad: true,
+          },
+        );
+        setSettings(normalized);
+        // The bundled default icon is already installed by native window creation.
+        // Only a persisted custom choice needs a cold-start replay.
+        if (sanitizeDockIconId(normalized.dockIconId) !== DEFAULT_DOCK_ICON_ID) {
           void applyDockIconPreference(normalized.dockIconId).catch((error) => {
             console.error("[useAppSettings] failed to apply dock icon", error);
           });
         }
-        // Startup quarantine happens before the webview loads, so getAppSettings
-        // resolves successfully even when settings.json was corrupted. The one-shot
-        // recovery notice is the only signal for that path; take semantics keep the
-        // toast to a single display even across hook remounts.
-        try {
-          const notice = await takeSettingsRecoveryNotice();
-          if (active && notice) {
+
+        // Recovery notice is secondary startup work. Start it without awaiting,
+        // so it cannot extend isLoading; the ref also deduplicates StrictMode replay.
+        const noticeRequest = recoveryNoticeRequestRef.current ??=
+          takeSettingsRecoveryNotice();
+        void noticeRequest
+          .then((notice) => {
+            if (!active || !notice) {
+              return;
+            }
             pushErrorToast({
               title:
                 i18n.t("settings.settingsRecoveredTitle", {
@@ -640,15 +648,21 @@ export function useAppSettings() {
                       "设置文件已损坏且自动备份失败，已回退到默认设置。",
                   }) || "设置文件已损坏且自动备份失败，已回退到默认设置。",
             });
-          }
-        } catch (noticeError) {
-          // A failed notice fetch must never break the successful settings load.
-          console.error(
-            "[useAppSettings] failed to fetch settings recovery notice",
-            noticeError,
-          );
+          })
+          .catch((noticeError) => {
+            if (!active) {
+              return;
+            }
+            console.error(
+              "[useAppSettings] failed to fetch settings recovery notice",
+              noticeError,
+            );
+          });
+      })
+      .catch((error) => {
+        if (!active) {
+          return;
         }
-      } catch (error) {
         // Defaults stay in place if loading settings fails, but the failure must be
         // visible: a corrupted settings file silently resets user preferences otherwise.
         console.error(
@@ -667,12 +681,12 @@ export function useAppSettings() {
             }) ||
             "无法从后端读取应用设置，已临时使用默认设置。请检查客户端与后端的连接状态。",
         });
-      } finally {
+      })
+      .finally(() => {
         if (active) {
           setIsLoading(false);
         }
-      }
-    })();
+      });
     return () => {
       active = false;
     };

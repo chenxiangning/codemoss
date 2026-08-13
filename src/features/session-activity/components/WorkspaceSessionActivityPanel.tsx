@@ -41,6 +41,8 @@ import type {
   SessionActivitySessionSummary,
   WorkspaceSessionActivityViewModel,
 } from "../types";
+import { loadSessionActivityStyles } from "../../../styles/featureStyleLoaders";
+import { useFeatureStylesReady } from "../../../styles/useFeatureStylesReady";
 
 type WorkspaceSessionActivityPanelProps = CodeAnnotationBridgeProps & {
   workspaceId: string | null;
@@ -946,6 +948,7 @@ export function WorkspaceSessionActivityPanel({
   onRemoveCodeAnnotation,
   codeAnnotations,
 }: WorkspaceSessionActivityPanelProps) {
+  const stylesReady = useFeatureStylesReady(loadSessionActivityStyles);
   const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState<ActivityTab>("all");
   const [expandedExpandableIds, setExpandedExpandableIds] = useState<Record<string, true>>({});
@@ -2354,6 +2357,10 @@ export function WorkspaceSessionActivityPanel({
       </article>
     );
   };
+
+  if (!stylesReady) {
+    return null;
+  }
 
   return (
     <div className="session-activity-panel" ref={panelRootRef}>

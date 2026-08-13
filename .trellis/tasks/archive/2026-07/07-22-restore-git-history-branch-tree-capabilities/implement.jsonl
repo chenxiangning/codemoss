@@ -1,7 +1,0 @@
-{"file": ".trellis/workflow.md", "reason": "Project workflow and conventions"}
-{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend development guide"}
-{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "branch tree component、CSS selector 与 accessibility contract"}
-{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "回归修复与 focused test gate"}
-{"file": ".trellis/spec/frontend/type-safety.md", "reason": "GitBranchListItem strict type contract"}
-{"file": "openspec/changes/restore-git-history-branch-tree-capabilities/design.md", "reason": "confirmed implementation decisions"}
-{"file": "openspec/changes/restore-git-history-branch-tree-capabilities/specs/git-history-panel/spec.md", "reason": "behavior acceptance contract"}

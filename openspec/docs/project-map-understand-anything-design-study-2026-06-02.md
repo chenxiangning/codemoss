@@ -974,7 +974,7 @@ Project Map 不应只扫描源码。mossx 的真实工程知识分布在：
 ```text
 - src/**
 - openspec/**
-- .trellis/spec/**
+- dev-guidelines/**
 - .trellis/tasks/**
 - AGENTS.md
 - README / docs

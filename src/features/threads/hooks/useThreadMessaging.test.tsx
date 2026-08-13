@@ -19,6 +19,7 @@ import {
   interruptTurn,
   listGeminiSessions,
   loadClaudeSession,
+  projectMemoryCaptureTurnInput,
   resolveEnabledBuiltInAgent,
   sendUserMessage,
 } from "../../../services/tauri";
@@ -738,6 +739,71 @@ describe("useThreadMessaging", () => {
         threadId: "550e8400-e29b-41d4-a716-446655440000",
       }),
     );
+  });
+
+  it("captures project-memory input on Shared V2 committed path with runtimeTurnId", async () => {
+    const sharedThreadId = "shared:thread-memory-capture";
+    const onInputMemoryCaptured = vi.fn();
+    selectNextTarget("ws-1", sharedThreadId, {
+      engine: "claude",
+      providerProfileId: "provider-a",
+      modelCatalogEntryId: "settings-main",
+      providerProfileNameSnapshot: "Provider A",
+      providerProfileSource: "managed",
+      model: "claude-provider-model",
+      reasoning: { effort: "high" },
+    });
+    vi.mocked(sendSharedSessionTurnRouted).mockResolvedValueOnce({
+      result: { turn: { id: "runtime-turn-memory" } },
+      nativeThreadId: "claude:native-session-memory",
+      runtimeTurnId: "runtime-turn-memory",
+      v2: {
+        attemptId: "attempt-memory",
+        logicalTurnId: "logical-turn-memory",
+        committed: true,
+        duplicate: false,
+      },
+    });
+    vi.mocked(projectMemoryCaptureTurnInput).mockResolvedValueOnce({
+      id: "memory-shared-1",
+    } as never);
+    const { result } = makeThreadMessagingHook("claude", {
+      activeThreadId: sharedThreadId,
+      threadEngineById: { [sharedThreadId]: "claude" },
+      onInputMemoryCaptured,
+    });
+
+    await act(async () => {
+      await result.current.sendUserMessageToThread(
+        workspace,
+        sharedThreadId,
+        "shared memory input capture",
+      );
+    });
+
+    await waitFor(() => {
+      expect(projectMemoryCaptureTurnInput).toHaveBeenCalledWith(
+        expect.objectContaining({
+          workspaceId: "ws-1",
+          userInput: "shared memory input capture",
+          threadId: sharedThreadId,
+          turnId: "runtime-turn-memory",
+          engine: "claude",
+        }),
+      );
+    });
+    await waitFor(() => {
+      expect(onInputMemoryCaptured).toHaveBeenCalledWith(
+        expect.objectContaining({
+          workspaceId: "ws-1",
+          threadId: sharedThreadId,
+          turnId: "runtime-turn-memory",
+          inputText: "shared memory input capture",
+          memoryId: "memory-shared-1",
+          engine: "claude",
+        }),
+      );
+    });
   });
 
   it("does not revive a canonically committed Shared V2 turn from its response", async () => {

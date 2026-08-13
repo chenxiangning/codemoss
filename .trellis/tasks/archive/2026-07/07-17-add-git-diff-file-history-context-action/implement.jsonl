@@ -1,5 +1,0 @@
-{"file": ".trellis/workflow.md", "reason": "Project workflow and conventions"}
-{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend development guide"}
-{"file": ".trellis/spec/frontend/file-history-view.md", "reason": "FileHistoryTarget 与 repository/path identity contract"}
-{"file": ".trellis/spec/frontend/multi-repository-git-commit-workspace.md", "reason": "single/multi repository changed-file action scope"}
-{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "React props、i18n 与 context menu 组件规范"}

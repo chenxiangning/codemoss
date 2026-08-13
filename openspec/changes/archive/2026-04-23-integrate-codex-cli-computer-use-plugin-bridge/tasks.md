@@ -18,7 +18,7 @@
 ## 4. Specs And Tests
 
 - [x] 4.1 Add Rust tests for CLI cache descriptor priority, static activation verification and handoff classification.
-- [x] 4.2 Update `.trellis/spec/backend/computer-use-bridge.md`.
+- [x] 4.2 Update `dev-guidelines/backend/computer-use-bridge.md`.
 
 ## 5. Validation
 

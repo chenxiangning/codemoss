@@ -1,4 +1,0 @@
-{"file": ".trellis/workflow.md", "reason": "Project workflow and conventions"}
-{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend development guide"}
-{"file": ".trellis/spec/frontend/hook-guidelines.md", "reason": "React effect dependency 与 stable callback 规范"}
-{"file": ".trellis/spec/frontend/state-management.md", "reason": "semantic state 与 pre-dispatch guard 契约"}

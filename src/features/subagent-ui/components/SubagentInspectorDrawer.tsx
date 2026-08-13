@@ -3,6 +3,8 @@ import { useTranslation } from "react-i18next";
 import X from "lucide-react/dist/esm/icons/x";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { loadSubagentStyles } from "../../../styles/featureStyleLoaders";
+import { useFeatureStylesReady } from "../../../styles/useFeatureStylesReady";
 import { useActiveCanvasSelector } from "../../layout/hooks/activeCanvasStore";
 import { EngineTaskOutputInspector } from "../../engine-task-output/components/EngineTaskOutputInspector";
 import { useEngineTaskOutputSnapshot } from "../../engine-task-output/hooks/useEngineTaskOutputSnapshot";
@@ -33,6 +35,7 @@ export const SubagentInspectorDrawer = memo(function SubagentInspectorDrawer({
   workspaceId = null,
   workspacePath = null,
 }: SubagentInspectorDrawerProps) {
+  const stylesReady = useFeatureStylesReady(loadSubagentStyles);
   const { t } = useTranslation();
   const card = useSubagentInspectorSelection();
   const parentThreadId = useActiveCanvasSelector((snapshot) => snapshot.threadId);
@@ -131,6 +134,9 @@ export const SubagentInspectorDrawer = memo(function SubagentInspectorDrawer({
   });
 
   if (!card) {
+    return null;
+  }
+  if (!stylesReady) {
     return null;
   }
 

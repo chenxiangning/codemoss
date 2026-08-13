@@ -174,12 +174,16 @@ jobs:
 
       - name: Build app bundle
         env:
-          APPLE_SIGNING_IDENTITY: ${{ vars.CODESIGN_IDENTITY }}
+          # Intentionally omit APPLE_SIGNING_IDENTITY so Tauri does not codesign
+          # mid-bundle. Multi-bin nested signing order is flaky on Intel runners
+          # (cc_gui_daemon subcomponent). We re-sign inside-out in the next step.
           NODE_OPTIONS: "--max-old-space-size=8192"
         run: |
           set -euo pipefail
           # TAURI_SIGNING_PRIVATE_KEY expects base64-encoded minisign key
           export TAURI_SIGNING_PRIVATE_KEY="$TAURI_SIGNING_PRIVATE_KEY_B64"
+          # Ensure no Apple identity leaks in from the job env.
+          unset APPLE_SIGNING_IDENTITY || true
           npm run tauri -- build --bundles app
 
       - name: Bundle OpenSSL and re-sign
@@ -301,6 +305,8 @@ jobs:
       - name: build AppImage
         env:
           NODE_OPTIONS: "--max-old-space-size=8192"
+          # Keep symbols for updater/plugin markers; matches package.json build:appimage.
+          NO_STRIP: "1"
         run: |
           set -euo pipefail
           # TAURI_SIGNING_PRIVATE_KEY expects base64-encoded minisign key

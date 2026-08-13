@@ -44,8 +44,9 @@ fi
 libssl="${openssl_prefix}/lib/libssl.3.dylib"
 libcrypto="${openssl_prefix}/lib/libcrypto.3.dylib"
 frameworks_dir="${app_path}/Contents/Frameworks"
-bin_path="${app_path}/Contents/MacOS/cc-gui"
-daemon_path="${app_path}/Contents/MacOS/cc_gui_daemon"
+macos_dir="${app_path}/Contents/MacOS"
+bin_path="${macos_dir}/cc-gui"
+daemon_path="${macos_dir}/cc_gui_daemon"
 
 if [[ ! -f "${libssl}" || ! -f "${libcrypto}" ]]; then
   echo "OpenSSL dylibs not found at ${openssl_prefix}/lib"
@@ -66,17 +67,23 @@ if [[ -n "${crypto_ref}" && "${crypto_ref}" != "@rpath/libcrypto.3.dylib" ]]; th
   install_name_tool -change "${crypto_ref}" "@rpath/libcrypto.3.dylib" "${frameworks_dir}/libssl.3.dylib"
 fi
 
-# Fix binary references dynamically
-for bin in "${bin_path}" "${daemon_path}"; do
-  [[ -f "${bin}" ]] || continue
+# Fix binary references dynamically (helpers first, then main).
+bins_to_fix=()
+if [[ -f "${daemon_path}" ]]; then
+  bins_to_fix+=("${daemon_path}")
+fi
+if [[ -f "${bin_path}" ]]; then
+  bins_to_fix+=("${bin_path}")
+fi
 
-  ssl_ref=$(otool -L "${bin}" | grep 'libssl' | awk '{print $1}')
+for bin in "${bins_to_fix[@]}"; do
+  ssl_ref=$(otool -L "${bin}" | grep 'libssl' | awk '{print $1}' || true)
   if [[ -n "${ssl_ref}" && "${ssl_ref}" != "@rpath/libssl.3.dylib" ]]; then
     echo "Fixing $(basename "${bin}") -> libssl reference: ${ssl_ref}"
     install_name_tool -change "${ssl_ref}" "@rpath/libssl.3.dylib" "${bin}"
   fi
 
-  crypto_ref=$(otool -L "${bin}" | grep 'libcrypto' | awk '{print $1}')
+  crypto_ref=$(otool -L "${bin}" | grep 'libcrypto' | awk '{print $1}' || true)
   if [[ -n "${crypto_ref}" && "${crypto_ref}" != "@rpath/libcrypto.3.dylib" ]]; then
     echo "Fixing $(basename "${bin}") -> libcrypto reference: ${crypto_ref}"
     install_name_tool -change "${crypto_ref}" "@rpath/libcrypto.3.dylib" "${bin}"
@@ -97,8 +104,7 @@ for lib in "${frameworks_dir}/libssl.3.dylib" "${frameworks_dir}/libcrypto.3.dyl
     verify_failed=1
   fi
 done
-for bin in "${bin_path}" "${daemon_path}"; do
-  [[ -f "${bin}" ]] || continue
+for bin in "${bins_to_fix[@]}"; do
   if otool -L "${bin}" | grep -E 'libssl|libcrypto' | grep -v '@rpath' | grep -q '/opt/\|/usr/local/'; then
     echo "ERROR: ${bin} still has absolute references:"
     otool -L "${bin}" | grep -E 'libssl|libcrypto' | grep '/opt/\|/usr/local/'
@@ -111,12 +117,40 @@ if [[ ${verify_failed} -eq 1 ]]; then
 fi
 echo "All library references verified OK."
 
-codesign --force --options runtime --timestamp --sign "${identity}" "${frameworks_dir}/libcrypto.3.dylib"
-codesign --force --options runtime --timestamp --sign "${identity}" "${frameworks_dir}/libssl.3.dylib"
-codesign --force --options runtime --timestamp --sign "${identity}" "${codesign_entitlements[@]}" "${bin_path}"
-if [[ -f "${daemon_path}" ]]; then
-  codesign --force --options runtime --timestamp --sign "${identity}" "${codesign_entitlements[@]}" "${daemon_path}"
-fi
-codesign --force --options runtime --timestamp --sign "${identity}" "${codesign_entitlements[@]}" "${app_path}"
+sign_file() {
+  local target="$1"
+  shift || true
+  echo "codesign: ${target}"
+  codesign --force --options runtime --timestamp --sign "${identity}" "$@" "${target}"
+}
 
+# Inside-out: dylibs → helper executables → main executable → .app
+sign_file "${frameworks_dir}/libcrypto.3.dylib"
+sign_file "${frameworks_dir}/libssl.3.dylib"
+
+# Helpers first (daemon / any non-main executables), then main, then .app.
+# Signing the main binary or .app while nested helpers are unsigned fails on
+# some Intel codesign toolchains ("code object is not signed at all / In subcomponent").
+if [[ -d "${macos_dir}" ]]; then
+  for helper in "${macos_dir}"/*; do
+    [[ -f "${helper}" ]] || continue
+    base="$(basename "${helper}")"
+    if [[ "${base}" == "cc-gui" ]]; then
+      continue
+    fi
+    if [[ -x "${helper}" ]] || file "${helper}" | grep -q 'Mach-O'; then
+      sign_file "${helper}" "${codesign_entitlements[@]}"
+    fi
+  done
+fi
+
+if [[ ! -f "${bin_path}" ]]; then
+  echo "ERROR: main binary not found at ${bin_path}"
+  exit 1
+fi
+sign_file "${bin_path}" "${codesign_entitlements[@]}"
+sign_file "${app_path}" "${codesign_entitlements[@]}"
+
+echo "Verifying signatures..."
+codesign --verify --deep --strict --verbose=2 "${app_path}"
 echo "Bundled OpenSSL dylibs and re-signed ${app_path}"

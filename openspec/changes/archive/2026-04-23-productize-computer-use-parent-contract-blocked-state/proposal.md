@@ -24,7 +24,7 @@
 - `host_incompatible` 后的 next-step 文案从“重试 activation”切到“调查宿主契约”；调查完成且结论为 `requires_official_parent` / `handoff_unavailable` 后，隐藏重复 diagnostics CTA。
 - official parent evidence 区域增加 stop-condition copy：候选 evidence 不代表 runtime enabled；缺少官方 handoff 时只能保持 diagnostics-only。
 - 测试覆盖三段状态：初始 blocked、activation host incompatible、host-contract requires official parent final verdict。
-- 同步 `.trellis/spec/frontend/computer-use-bridge.md` 与 OpenSpec delta specs。
+- 同步 `dev-guidelines/frontend/computer-use-bridge.md` 与 OpenSpec delta specs。
 
 ## 技术方案对比
 
@@ -53,7 +53,7 @@
 - Frontend: `src/features/computer-use/components/ComputerUseStatusCard.tsx` 增加派生 verdict 与行动门禁。
 - Frontend tests: `ComputerUseStatusCard.test.tsx` 覆盖 verdict copy 与按钮隐藏。
 - i18n: `src/i18n/locales/en.part1.ts`、`src/i18n/locales/zh.part1.ts` 增加用户可读文案。
-- Specs: 更新 OpenSpec delta 与 `.trellis/spec/frontend/computer-use-bridge.md`。
+- Specs: 更新 OpenSpec delta 与 `dev-guidelines/frontend/computer-use-bridge.md`。
 
 ## 验收标准
 

@@ -37,4 +37,59 @@ describe("feature style loader contracts", () => {
     expect(vendorLoader).toContain('import("./settings.part2.vendor-models.css")');
     expect(vendorLoader).not.toContain('import("./settings.css")');
   });
+
+  it("exposes P1-1 deferred startup CSS loaders", () => {
+    for (const name of [
+      "loadTerminalStyles",
+      "loadPlanStyles",
+      "loadToolBlockStyles",
+      "loadStatusPanelStyles",
+      "loadSubagentStyles",
+      "loadSessionActivityStyles",
+      "loadDebugStyles",
+      "loadWorktreeModalStyles",
+      "loadCloneModalStyles",
+    ]) {
+      expect(loaderSource).toContain(`export function ${name}`);
+    }
+    expect(loaderSource).toContain('import("./terminal.css")');
+    expect(loaderSource).toContain('import("./tool-blocks.css")');
+    expect(loaderSource).toContain('import("./status-panel.css")');
+  });
 });
+
+describe("bootstrap critical CSS surface (P1-1)", () => {
+  it("keeps deferred surfaces out of bootstrap.ts static imports", () => {
+    const bootstrapSource = readFileSync(
+      new URL("../bootstrap.ts", import.meta.url),
+      "utf8",
+    );
+    for (const deferred of [
+      "terminal.css",
+      "plan.css",
+      "tool-blocks.css",
+      "tool-call-block.css",
+      "status-panel.css",
+      "multi-agent.css",
+      "session-activity.css",
+      "debug.css",
+      "worktree-modal.css",
+      "clone-modal.css",
+    ]) {
+      expect(bootstrapSource).not.toContain(`import "./styles/${deferred}"`);
+    }
+    for (const critical of [
+      "globals.css",
+      "sidebar.css",
+      "home.css",
+      "composer.css",
+      "messages.css",
+      // Chat column host layout (ConversationInspectorSplit) — must stay critical
+      "subagent-ui.css",
+      "scrollbars.css",
+    ]) {
+      expect(bootstrapSource).toContain(critical);
+    }
+  });
+});
+

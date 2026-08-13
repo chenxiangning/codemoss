@@ -1,5 +1,0 @@
-{"file": ".trellis/workflow.md", "reason": "Project workflow and conventions"}
-{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend development guide"}
-{"file": "openspec/changes/remove-project-map-orchestration-center/proposal.md", "reason": "OpenSpec scope and hard boundaries"}
-{"file": "openspec/changes/remove-project-map-orchestration-center/design.md", "reason": "S4/S5 deletion procedure and gates"}
-{"file": "openspec/changes/remove-project-map-orchestration-center/tasks.md", "reason": "Task checklist and current progress"}

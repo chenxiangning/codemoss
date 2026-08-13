@@ -4,7 +4,7 @@ schema: spec-driven
 context: |
   Project: ccgui (mossx repository) - 多 AI 集成桌面应用
   Product version: package.json.version=0.7.5; src-tauri/tauri.conf.json.version=0.7.5; src-tauri/Cargo.toml.version=0.3.0 is Rust crate metadata
-  Tooling baseline: OpenSpec CLI 1.3.1; Trellis CLI/project templates 0.4.0
+  Tooling baseline: OpenSpec CLI 1.3.1
   Tech stack manifest: @tauri-apps/cli ^2.9.6 + Rust + React 19.2.7 + TypeScript ~5.8.3 + Vite ^7.0.4
   Domain: AI 对话助手、项目记忆管理、多引擎集成（当前注册 Claude Code、Codex CLI、Gemini CLI、OpenCode runtime adapter；OpenCode/Gemini retirement 仍由 active migration 跟踪）
   Architecture:
@@ -18,7 +18,7 @@ context: |
     - Legacy project context remains in openspec/project.md for detailed audit history; this config context is the injected planning context for OpenSpec 1.3.x.
   Conventions:
     - Behavior changes MUST start from an OpenSpec change under openspec/changes/<change-id>/.
-    - Trellis tasks MUST reference exactly one OpenSpec change when implementation work is tracked.
+    - Implementation rules live under dev-guidelines/** and MUST stay aligned with shipped code.
     - New capabilities SHOULD use spec-hub-* when they belong to the Spec Hub domain; spec-platform-* is legacy-only.
     - Archive gate requires strict validation, synced main specs, and explicit closure evidence; user-authorized manual QA waivers MUST remain documented with unchecked manual tasks.
     - Use --skip-specs only when main specs were already synced and the equivalence has been verified.

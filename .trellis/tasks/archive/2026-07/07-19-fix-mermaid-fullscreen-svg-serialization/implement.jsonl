@@ -1,5 +1,0 @@
-{"file": ".trellis/workflow.md", "reason": "Project workflow and conventions"}
-{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend development guide"}
-{"file": ".trellis/spec/frontend/directory-structure.md", "reason": "保持 markdown feature-local helper 与同目录测试布局"}
-{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Focused regression 与最小 diff 门禁"}
-{"file": "openspec/changes/fix-mermaid-fullscreen-svg-serialization/design.md", "reason": "XML-safe serialization implementation decision"}

@@ -87,6 +87,7 @@ describe("projectMemorySemanticRetrieval", () => {
 
   it("does not treat test providers as production semantic capability", async () => {
     const result = await retrieveProjectMemorySemanticCandidates({
+      allowOnTheFlyIndex: true,
       workspaceId: "ws-1",
       query: "之前分析过 springboot-demo 吗",
       memories: [makeMemory()],
@@ -100,6 +101,7 @@ describe("projectMemorySemanticRetrieval", () => {
 
   it("performs exact scan and returns semantic candidates when explicitly allowed", async () => {
     const result = await retrieveProjectMemorySemanticCandidates({
+      allowOnTheFlyIndex: true,
       workspaceId: "ws-1",
       query: "之前分析过 springboot-demo 吗",
       memories: [
@@ -204,6 +206,7 @@ describe("projectMemorySemanticRetrieval", () => {
 
     for (const item of cases) {
       const result = await retrieveProjectMemorySemanticCandidates({
+        allowOnTheFlyIndex: true,
         workspaceId: "ws-1",
         query: item.query,
         memories,
@@ -260,6 +263,48 @@ describe("projectMemorySemanticRetrieval", () => {
     expect(index.records.map((record) => record.memoryId)).toEqual(["kept"]);
   });
 
+  it("exact lexical match is not diluted below 1.0 by hybrid weights", () => {
+    const hello = makeMemory({
+      id: "hello",
+      title: "你好",
+      summary: "你好",
+      userInput: "你好",
+      tags: [],
+      assistantResponse: "",
+      detail: "",
+      cleanText: "",
+    });
+    const ranked = hybridRerankProjectMemories({
+      memories: [hello],
+      query: "你好",
+      semanticMatches: [{ memory: hello, vectorScore: 0.35 }],
+      topK: 3,
+    });
+    expect(ranked).toHaveLength(1);
+    expect(ranked[0]?.score.lexicalScore).toBeGreaterThanOrEqual(0.999);
+    expect(ranked[0]?.score.finalScore).toBeGreaterThanOrEqual(0.999);
+  });
+
+  it("drops weak semantic-only matches below min vector score", () => {
+    const weak = makeMemory({
+      id: "weak",
+      title: "无关文档",
+      summary: "完全无关",
+      tags: ["x"],
+      userInput: "abc",
+      assistantResponse: "",
+      detail: "",
+      cleanText: "",
+    });
+    const ranked = hybridRerankProjectMemories({
+      memories: [weak],
+      query: "撒欢撒欢撒欢",
+      semanticMatches: [{ memory: weak, vectorScore: 0.22 }],
+      topK: 5,
+    });
+    expect(ranked).toHaveLength(0);
+  });
+
   it("hybrid rerank keeps lexical candidates when semantic score is absent", () => {
     const lexical = makeMemory({
       id: "lexical",
@@ -284,9 +329,11 @@ describe("projectMemorySemanticRetrieval", () => {
       topK: 2,
     });
 
-    expect(ranked.map((entry) => entry.memory.id)).toEqual(["semantic", "lexical"]);
-    expect(ranked[0]?.retrievalMode).toBe("semantic");
-    expect(ranked[1]?.retrievalMode).toBe("lexical");
+    // 词面全中「JWT 配置」finalScore 抬升为 1.0，应排在纯语义弱文档之前
+    expect(ranked.map((entry) => entry.memory.id)).toEqual(["lexical", "semantic"]);
+    expect(ranked[0]?.retrievalMode).toBe("lexical");
+    expect(ranked[0]?.score.finalScore).toBeGreaterThanOrEqual(0.999);
+    expect(ranked[1]?.retrievalMode).toBe("semantic");
   });
 
   it("scans 10k local records with bounded diagnostics and no payload dumps", async () => {
@@ -303,6 +350,7 @@ describe("projectMemorySemanticRetrieval", () => {
     );
 
     const result = await retrieveProjectMemorySemanticCandidates({
+      allowOnTheFlyIndex: true,
       workspaceId: "ws-1",
       query: "之前分析过 springboot-demo 吗",
       memories,

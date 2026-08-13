@@ -87,6 +87,98 @@ fn build_mode_blocked_signal_from_error_maps_claude_file_change_denial_to_approv
 }
 
 #[test]
+fn outside_allowlist_read_synthesizes_directory_grant_approval() {
+    let session = ClaudeSession::new("test-workspace".to_string(), test_workspace_path(), None);
+    let outside_path = format!(
+        "{}/.claude/CLAUDE.md",
+        dirs::home_dir()
+            .unwrap_or_else(|| std::env::temp_dir())
+            .to_string_lossy()
+    );
+    session.register_pending_tool("turn-grant", "tool-read-1", "Read", None);
+    session.cache_tool_name("tool-read-1", "Read");
+    session.cache_tool_input_value(
+        "tool-read-1",
+        &json!({
+            "file_path": outside_path,
+        }),
+    );
+
+    let converted = session.convert_event(
+        "turn-grant",
+        &json!({
+            "type": "user",
+            "message": {
+                "role": "user",
+                "content": [{
+                    "type": "tool_result",
+                    "tool_use_id": "tool-read-1",
+                    "content": format!(
+                        "Read was blocked for security because the path is outside the allowed working directories for this session: {outside_path}"
+                    ),
+                    "is_error": true
+                }]
+            }
+        }),
+    );
+    // Approval is side-emitted; convert may return None when grant is emitted.
+    let _ = converted;
+
+    // Drain broadcast for ApprovalRequest
+    let mut receiver = session.subscribe();
+    // Re-trigger via maybe path by converting again with fresh pending state
+    session.register_pending_tool("turn-grant-2", "tool-read-2", "Read", None);
+    session.cache_tool_name("tool-read-2", "Read");
+    session.cache_tool_input_value(
+        "tool-read-2",
+        &json!({
+            "file_path": outside_path,
+        }),
+    );
+    let _ = session.convert_event(
+        "turn-grant-2",
+        &json!({
+            "type": "user",
+            "message": {
+                "role": "user",
+                "content": [{
+                    "type": "tool_result",
+                    "tool_use_id": "tool-read-2",
+                    "content": format!(
+                        "Path is outside the allowed working directories: {outside_path}"
+                    ),
+                    "is_error": true
+                }]
+            }
+        }),
+    );
+
+    let mut found_grant = false;
+    while let Ok(envelope) = receiver.try_recv() {
+        if let EngineEvent::ApprovalRequest {
+            tool_name, input, ..
+        } = envelope.event
+        {
+            if tool_name == "DirectoryGrant" {
+                found_grant = true;
+                let input = input.expect("grant input");
+                assert_eq!(
+                    input.get("grantKind").and_then(|v| v.as_str()),
+                    Some("directory")
+                );
+                assert!(
+                    input
+                        .get("suggestedRoot")
+                        .and_then(|v| v.as_str())
+                        .is_some_and(|root| !root.is_empty())
+                );
+            }
+        }
+    }
+    assert!(found_grant, "expected DirectoryGrant approval request");
+}
+
+#[test]
 fn build_mode_blocked_signal_from_error_maps_claude_command_denial() {
     let session = ClaudeSession::new("test-workspace".to_string(), test_workspace_path(), None);
     session.register_pending_tool("turn-a", "tool-bash-1", "Bash", None);

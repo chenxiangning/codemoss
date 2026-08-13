@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import type { CustomCommandOption, DebugEntry } from "../../../types";
 import { getClaudeCommandsList, getOpenCodeCommandsList, startClaudeCommandsWatch, stopClaudeCommandsWatch } from "../../../services/tauri";
 import type { EngineType } from "../../../types";
+import { scheduleCatalogIdlePrewarm } from "../../startup-orchestration/utils/scheduleCatalogIdlePrewarm";
 import { startupOrchestrator } from "../../startup-orchestration/utils/startupOrchestrator";
 import { subscribeClaudeCommandsChanged } from "../../../services/events";
 import { setVisibilityGatedInterval } from "../../../services/visibilityGatedInterval";
@@ -177,8 +178,17 @@ export function useCustomCommands({
   }, [activeEngine, logCommandError, onDebug, reportCommandsFailure, workspaceId]);
 
   useEffect(() => {
-    refreshCommands("idle-prewarm");
-  }, [refreshCommands]);
+    // P1-3: Claude commands are workspace-scoped; skip until a workspace is active.
+    // OpenCode commands are global and may prewarm after the gate window (P1-4).
+    if (activeEngine !== "opencode" && !workspaceId) {
+      return;
+    }
+    return scheduleCatalogIdlePrewarm({
+      run: () => {
+        void refreshCommands("idle-prewarm");
+      },
+    });
+  }, [activeEngine, refreshCommands, workspaceId]);
 
   // Rust commands watcher 生命周期跟随当前 workspace 作用域；
   // 对同一作用域重复 start 在 Rust 侧幂等。opencode 走独立命令源，不挂此 watcher。

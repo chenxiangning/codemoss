@@ -1,4 +1,0 @@
-{"file": ".claude/commands/trellis/finish-work.md", "reason": "Finish work checklist"}
-{"file": ".claude/commands/trellis/check.md", "reason": "Code quality check spec"}
-{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Validate tests, lint, typecheck and large-file gate"}
-{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "Review menu accessibility and theme behavior"}

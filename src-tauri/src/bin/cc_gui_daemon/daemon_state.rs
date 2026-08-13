@@ -1738,7 +1738,13 @@ impl DaemonState {
                             } else {
                                 accumulated_agent_text.clone()
                             };
-                            if !completed_text.trim().is_empty() && !render_state.saw_text_delta {
+                            // Always emit agentMessage item/completed (Claude-parity) so
+                            // project-memory fusion runs after TextDelta streaming.
+                            if !completed_text.trim().is_empty() {
+                                let completion_item_id = gemini_agent_completion_item_id(
+                                    &render_state,
+                                    &item_id_clone,
+                                );
                                 event_sink.emit_app_server_event(AppServerEvent {
                                     workspace_id: event.workspace_id().to_string(),
                                     message: json!({
@@ -1746,7 +1752,7 @@ impl DaemonState {
                                         "params": {
                                             "threadId": &current_thread_id,
                                             "item": {
-                                                "id": &routed_item_id,
+                                                "id": completion_item_id,
                                                 "type": "agentMessage",
                                                 "text": completed_text,
                                                 "status": "completed",
@@ -1987,7 +1993,13 @@ impl DaemonState {
                             } else {
                                 accumulated_agent_text.clone()
                             };
-                            if !completed_text.trim().is_empty() && !render_state.saw_text_delta {
+                            // Always emit agentMessage item/completed (Claude-parity) so
+                            // project-memory fusion runs after TextDelta streaming.
+                            if !completed_text.trim().is_empty() {
+                                let completion_item_id = gemini_agent_completion_item_id(
+                                    &render_state,
+                                    &item_id_clone,
+                                );
                                 event_sink.emit_app_server_event(AppServerEvent {
                                     workspace_id: event.workspace_id().to_string(),
                                     message: json!({
@@ -1995,7 +2007,7 @@ impl DaemonState {
                                         "params": {
                                             "threadId": &current_thread_id,
                                             "item": {
-                                                "id": &routed_item_id,
+                                                "id": completion_item_id,
                                                 "type": "agentMessage",
                                                 "text": completed_text,
                                                 "status": "completed",
@@ -2227,7 +2239,13 @@ impl DaemonState {
                             } else {
                                 accumulated_agent_text.clone()
                             };
-                            if !completed_text.trim().is_empty() && !render_state.saw_text_delta {
+                            // Always emit agentMessage item/completed (Claude-parity) so
+                            // project-memory fusion runs after TextDelta streaming.
+                            if !completed_text.trim().is_empty() {
+                                let completion_item_id = gemini_agent_completion_item_id(
+                                    &render_state,
+                                    &item_id_clone,
+                                );
                                 event_sink.emit_app_server_event(AppServerEvent {
                                     workspace_id: event.workspace_id().to_string(),
                                     message: json!({
@@ -2235,7 +2253,7 @@ impl DaemonState {
                                         "params": {
                                             "threadId": &current_thread_id,
                                             "item": {
-                                                "id": &routed_item_id,
+                                                "id": completion_item_id,
                                                 "type": "agentMessage",
                                                 "text": completed_text,
                                                 "status": "completed",
@@ -2952,7 +2970,7 @@ impl DaemonState {
                     .max(1);
                 let local_result = tokio::time::timeout(
                     Duration::from_millis(CODEX_DAEMON_LOCAL_THREAD_LIST_TIMEOUT_MS),
-                    local_usage::list_codex_session_summaries_for_workspace(
+                    local_usage::list_codex_session_previews_for_workspace(
                         &self.workspaces,
                         &workspace_id,
                         requested_scan_limit,

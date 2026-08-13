@@ -46,7 +46,7 @@ This change tightens that boundary: backend readiness confirmation gets a bounde
   - `src/features/messages/components/Messages.tsx`
   - focused Vitest coverage for recovery and live behavior
 - Implementation rules:
-  - `.trellis/spec/frontend/hook-guidelines.md` is updated so future work does not reintroduce silent fresh replacement for native `thread-start` drafts.
+  - `dev-guidelines/frontend/hook-guidelines.md` is updated so future work does not reintroduce silent fresh replacement for native `thread-start` drafts.
 
 ## Acceptance
 

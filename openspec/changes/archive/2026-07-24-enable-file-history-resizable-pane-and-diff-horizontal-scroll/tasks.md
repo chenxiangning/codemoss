@@ -17,7 +17,7 @@
 
 ## 4. Spec Sync
 
-- [x] 4.1 在 `.trellis/spec/frontend/file-history-view.md` §3 Contracts 增加「3 resizable regions」与「diff horizontal scroll」要求行；§6 Tests Required 增加 layout 与 resize 断言。 [P0][I][O: file-history-view.md][V: openspec validate]
+- [x] 4.1 在 `dev-guidelines/frontend/file-history-view.md` §3 Contracts 增加「3 resizable regions」与「diff horizontal scroll」要求行；§6 Tests Required 增加 layout 与 resize 断言。 [P0][I][O: file-history-view.md][V: openspec validate]
 
 ## 5. Tests
 
@@ -41,7 +41,7 @@
 
 - [x] 8.1 扩展 `WorkspaceReadOnlyDiffCompare` 支持 optional resizable columns，并保证默认 50/50、clamp [0.2, 0.8]、双击复位和 cleanup。 [P0][V: component test]
 - [x] 8.2 Git 中间区域 preview 保留既有 toolbar controls；split text body 使用 shared aligned compare；unified/image/binary/PR 保持原 renderer。 [P0][V: layout hook/component test]
-- [x] 8.3 更新 `.trellis/spec/frontend/file-history-view.md` 与相关 CSS contract，记录 shared renderer 和 smooth drag 约束。 [P1][V: contract test]
+- [x] 8.3 更新 `dev-guidelines/frontend/file-history-view.md` 与相关 CSS contract，记录 shared renderer 和 smooth drag 约束。 [P1][V: contract test]
 
 ## 9. Review Closure Gates
 

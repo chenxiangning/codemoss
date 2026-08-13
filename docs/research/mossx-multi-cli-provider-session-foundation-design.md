@@ -3661,7 +3661,7 @@ User Fork / Provider Continuation
 - [`engine-per-session-provider-binding` spec](../../openspec/specs/engine-per-session-provider-binding/spec.md)
 - [`subagent-session-tree-navigation` spec](../../openspec/specs/subagent-session-tree-navigation/spec.md)
 - [`claude-fork-session-support` spec](../../openspec/specs/claude-fork-session-support/spec.md)
-- [`Workspace Session Catalog Contract`](../../.trellis/spec/guides/workspace-session-catalog-contract.md)
+- [`Workspace Session Catalog Contract`](../../dev-guidelines/guides/workspace-session-catalog-contract.md)
 - [`src-tauri/Cargo.toml`](../../src-tauri/Cargo.toml)
 - [`shared_sessions.rs`](../../src-tauri/src/shared_sessions.rs)
 - [`agent_event_bus.rs`](../../src-tauri/src/engine/agent_event_bus.rs)

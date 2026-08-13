@@ -1433,6 +1433,103 @@ describe("useAppServerEvents", () => {
     });
   });
 
+  it("still fuses project memory when shared terminal projection succeeds after delta", async () => {
+    const handlers: Handlers = {
+      onAgentMessageDelta: vi.fn(),
+      onAgentMessageCompleted: vi.fn(),
+      onNormalizedRealtimeEvent: vi.fn(),
+      onTurnCompleted: vi.fn(),
+    };
+    const executionTargetSnapshot = {
+      engine: "claude" as const,
+      providerProfileId: "provider-shared-memory",
+      modelCatalogEntryId: "catalog-shared-memory",
+      model: "claude-model",
+      reasoning: null,
+      providerProfileNameSnapshot: "Provider Shared Memory",
+      providerProfileSource: "managed" as const,
+      runtimeCapabilityFingerprint: null,
+    };
+    const { root } = await mount(handlers, {
+      useNormalizedRealtimeAdapters: true,
+    });
+
+    await act(async () => {
+      listener?.({
+        workspace_id: "ws-shared-memory-fusion",
+        message: {
+          method: "item/agentMessage/delta",
+          params: {
+            threadId: "shared:thread-memory",
+            nativeThreadId: "native-memory",
+            turnId: "runtime-memory-turn",
+            itemId: "assistant-memory",
+            delta: "shared assistant reply",
+            sharedOwner: {
+              sharedSessionId: "thread-memory",
+              sharedThreadId: "shared:thread-memory",
+              nativeThreadId: "native-memory",
+              runtimeTurnId: "runtime-memory-turn",
+              attemptId: "attempt-memory",
+              bindingKey: "claude:provider-shared-memory",
+              engine: "claude",
+              executionTargetSnapshot,
+            },
+          },
+        },
+      });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    await act(async () => {
+      listener?.({
+        workspace_id: "ws-shared-memory-fusion",
+        message: {
+          method: "turn/completed",
+          params: {
+            threadId: "shared:thread-memory",
+            turnId: "runtime-memory-turn",
+            result: { text: "shared assistant reply" },
+            sharedOwner: {
+              sharedSessionId: "thread-memory",
+              sharedThreadId: "shared:thread-memory",
+              nativeThreadId: "native-memory",
+              runtimeTurnId: "runtime-memory-turn",
+              attemptId: "attempt-memory",
+              bindingKey: "claude:provider-shared-memory",
+              engine: "claude",
+              executionTargetSnapshot,
+            },
+          },
+        },
+      });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    expect(handlers.onNormalizedRealtimeEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        threadId: "shared:thread-memory",
+        operation: "completeAgentMessage",
+      }),
+    );
+    expect(handlers.onAgentMessageCompleted).toHaveBeenCalledWith({
+      workspaceId: "ws-shared-memory-fusion",
+      threadId: "shared:thread-memory",
+      itemId: expect.any(String),
+      text: "shared assistant reply",
+      turnId: "runtime-memory-turn",
+    });
+    expect(handlers.onTurnCompleted).toHaveBeenCalledWith(
+      "ws-shared-memory-fusion",
+      "shared:thread-memory",
+      "runtime-memory-turn",
+    );
+
+    await act(async () => {
+      root.unmount();
+    });
+  });
+
   it("settles shared terminal final onto the existing Codex assistant item", async () => {
     const handlers: Handlers = {
       onAgentMessageCompleted: vi.fn(),
@@ -3950,7 +4047,15 @@ describe("useAppServerEvents", () => {
         }),
       }),
     );
-    expect(handlers.onAgentMessageCompleted).not.toHaveBeenCalled();
+    // Project-memory fusion requires onAgentMessageCompleted even when canvas
+    // projection already succeeded via onNormalizedRealtimeEvent.
+    expect(handlers.onAgentMessageCompleted).toHaveBeenCalledWith({
+      workspaceId: "ws-shared-terminal",
+      threadId: "shared:thread-terminal",
+      itemId: "runtime-terminal",
+      text: "terminal response",
+      turnId: "runtime-terminal",
+    });
     expect(handlers.onTurnCompleted).toHaveBeenCalledWith(
       "ws-shared-terminal",
       "shared:thread-terminal",

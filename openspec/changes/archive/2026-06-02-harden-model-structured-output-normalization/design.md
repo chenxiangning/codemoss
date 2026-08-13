@@ -67,7 +67,7 @@ Implemented code facts:
 - Main Project Map generation now calls `parseModelStructuredJsonObject` with `isProjectMapAiPayloadShape` before applying `ProjectMapAiPayload`.
 - Project Map organizer now calls the same normalization layer with `isOrganizerPayloadShape` and performs one JSON-only repair attempt before failing closed.
 - Organizer parsing remains provider-agnostic; no Claude/MiniMax/Codex/Gemini branch was introduced.
-- Frontend implementation memory was captured in `.trellis/spec/frontend/model-structured-output.md`, and the trigger was linked from `.trellis/spec/frontend/index.md` and `.trellis/spec/frontend/quality-guidelines.md`.
+- Frontend implementation memory was captured in `dev-guidelines/frontend/model-structured-output.md`, and the trigger was linked from `dev-guidelines/frontend/index.md` and `dev-guidelines/frontend/quality-guidelines.md`.
 
 Compatibility notes:
 

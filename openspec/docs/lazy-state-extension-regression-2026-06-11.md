@@ -6,8 +6,8 @@
 
 后续 AI / 任何 contributor 重新评估"压缩 startup bundle"或"按 activation 触发加载"时，**必须**先读：
 
-- `.trellis/spec/frontend/quality-guidelines.md` —— *CodeMirror State-Coupled Extensions 不可跨越 Lazy Boundary* 章节（Hard Rule）
-- `.trellis/spec/frontend/index.md` —— Pre-Development Checklist 中的 CodeMirror 拆分提示
+- `dev-guidelines/frontend/quality-guidelines.md` —— *CodeMirror State-Coupled Extensions 不可跨越 Lazy Boundary* 章节（Hard Rule）
+- `dev-guidelines/frontend/index.md` —— Pre-Development Checklist 中的 CodeMirror 拆分提示
 
 ## 触发场景的判断标准
 
@@ -84,4 +84,4 @@
 - 失败时的具体改动：`useFileSearchExtension` hook（`src/features/files/components/FileCodeMirrorEditorImpl.tsx`）、`ensureSearchCommandsLoaded` helper（`src/features/files/hooks/useFileNavigation.ts`）。
 - 失败时新增的测试：`src/features/files/components/findInFile.lazy-search.test.tsx`（已删除）。
 - 失败时新引入的 props 透传：`isFindInFileOpen` / `markFindInFileOpened`（已撤回）。
-- 治理回写：`.trellis/spec/frontend/quality-guidelines.md` 末尾 *CodeMirror State-Coupled Extensions 不可跨越 Lazy Boundary* 章节。
+- 治理回写：`dev-guidelines/frontend/quality-guidelines.md` 末尾 *CodeMirror State-Coupled Extensions 不可跨越 Lazy Boundary* 章节。

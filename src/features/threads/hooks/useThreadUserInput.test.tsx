@@ -4,6 +4,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import i18n, { i18nReady } from "../../../i18n";
 import type { RequestUserInputRequest, RequestUserInputResponse } from "../../../types";
 import { respondToUserInputRequest } from "../../../services/tauri";
+import { requestUserInputIdentityKey } from "../../../utils/requestUserInputIdentity";
+import {
+  isUserInputRequestSettled,
+  resetUserInputSettlementTombstonesForTests,
+} from "../../../utils/userInputSettlementTombstone";
 import { useThreadUserInput } from "./useThreadUserInput";
 
 vi.mock("../../../services/tauri", () => ({
@@ -34,11 +39,13 @@ const request: RequestUserInputRequest = {
 describe("useThreadUserInput", () => {
   beforeEach(async () => {
     vi.clearAllMocks();
+    resetUserInputSettlementTombstonesForTests();
     await i18nReady;
     await i18n.changeLanguage("en");
   });
 
   afterEach(async () => {
+    resetUserInputSettlementTombstonesForTests();
     await i18nReady;
     await i18n.changeLanguage("zh");
   });
@@ -101,7 +108,7 @@ describe("useThreadUserInput", () => {
         workspaceId: "ws-1",
         threadId: "thread-1",
         item: expect.objectContaining({
-          id: "user-input-answer-req-1",
+          id: "request-user-input-submitted-req-1",
           kind: "tool",
           toolType: "requestUserInputSubmitted",
           title: "18-25岁 (Recommended)",
@@ -134,6 +141,9 @@ describe("useThreadUserInput", () => {
       workspaceId: "ws-1",
       request,
     });
+    expect(isUserInputRequestSettled(requestUserInputIdentityKey(request))).toBe(
+      true,
+    );
   });
 
   it("keeps request when submit fails", async () => {
@@ -170,7 +180,7 @@ describe("useThreadUserInput", () => {
     });
   });
 
-  it("settles a dismissed request through the runtime without adding a submitted audit item", async () => {
+  it("settles a dismissed request with skippedQuestionIds and durable submitted audit", async () => {
     const dispatch = vi.fn();
     vi.mocked(respondToUserInputRequest).mockResolvedValue(undefined as never);
 
@@ -187,6 +197,7 @@ describe("useThreadUserInput", () => {
       {
         threadId: "thread-1",
         turnId: "turn-1",
+        skippedQuestionIds: ["age"],
       },
     );
     expect(dispatch).toHaveBeenNthCalledWith(1, {
@@ -209,17 +220,29 @@ describe("useThreadUserInput", () => {
         }),
       }),
     );
-    expect(dispatch).toHaveBeenNthCalledWith(3, {
+    expect(dispatch).toHaveBeenNthCalledWith(
+      3,
+      expect.objectContaining({
+        type: "upsertItem",
+        workspaceId: "ws-1",
+        threadId: "thread-1",
+        item: expect.objectContaining({
+          id: "request-user-input-submitted-req-1",
+          kind: "tool",
+          toolType: "requestUserInputSubmitted",
+          status: "completed",
+        }),
+        hasCustomName: true,
+      }),
+    );
+    expect(dispatch).toHaveBeenNthCalledWith(4, {
       type: "removeUserInputRequest",
       requestId: "req-1",
       workspaceId: "ws-1",
       request,
     });
-    expect(dispatch).not.toHaveBeenCalledWith(
-      expect.objectContaining({
-        type: "upsertItem",
-        item: expect.objectContaining({ toolType: "requestUserInputSubmitted" }),
-      }),
+    expect(isUserInputRequestSettled(requestUserInputIdentityKey(request))).toBe(
+      true,
     );
   });
 
@@ -242,6 +265,7 @@ describe("useThreadUserInput", () => {
       {
         threadId: "thread-1",
         turnId: "turn-1",
+        skippedQuestionIds: ["age"],
       },
     );
     expect(dispatch).toHaveBeenNthCalledWith(2, {
@@ -250,12 +274,38 @@ describe("useThreadUserInput", () => {
       isProcessing: false,
       timestamp: expect.any(Number),
     });
-    expect(dispatch).toHaveBeenNthCalledWith(3, {
-      type: "removeUserInputRequest",
-      requestId: "req-1",
-      workspaceId: "ws-1",
-      request,
-    });
+    expect(dispatch).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "removeUserInputRequest",
+        requestId: "req-1",
+        workspaceId: "ws-1",
+        request,
+      }),
+    );
+    expect(isUserInputRequestSettled(requestUserInputIdentityKey(request))).toBe(
+      true,
+    );
+  });
+
+  it("does not tombstone non-stale submit failures so retry remains possible", async () => {
+    const dispatch = vi.fn();
+    vi.mocked(respondToUserInputRequest).mockRejectedValue(
+      new Error("network blip"),
+    );
+
+    const { result } = renderHook(() => useThreadUserInput({ dispatch }));
+
+    await expect(
+      act(async () => {
+        await result.current.handleUserInputSubmit(request, {
+          answers: { age: { answers: ["18-25岁 (Recommended)"] } },
+        });
+      }),
+    ).rejects.toThrow(/network blip/i);
+
+    expect(isUserInputRequestSettled(requestUserInputIdentityKey(request))).toBe(
+      false,
+    );
   });
 
   it("settles a stale timeout request when cancel reaches an already timed out Claude prompt", async () => {
@@ -277,6 +327,7 @@ describe("useThreadUserInput", () => {
       {
         threadId: "thread-1",
         turnId: "turn-1",
+        skippedQuestionIds: ["age"],
       },
     );
     expect(dispatch).toHaveBeenNthCalledWith(1, {
@@ -291,15 +342,30 @@ describe("useThreadUserInput", () => {
       isProcessing: false,
       timestamp: expect.any(Number),
     });
-    expect(dispatch).toHaveBeenNthCalledWith(3, {
+    expect(dispatch).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "upsertItem",
+        item: expect.objectContaining({
+          toolType: "askuserquestion",
+          status: "completed",
+        }),
+      }),
+    );
+    expect(dispatch).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "upsertItem",
+        item: expect.objectContaining({
+          toolType: "requestUserInputSubmitted",
+          status: "completed",
+        }),
+      }),
+    );
+    expect(dispatch).toHaveBeenCalledWith({
       type: "removeUserInputRequest",
       requestId: "req-1",
       workspaceId: "ws-1",
       request,
     });
-    expect(dispatch).not.toHaveBeenCalledWith(
-      expect.objectContaining({ type: "upsertItem" }),
-    );
   });
 
   it("settles a timed-out submit when runtime reports the request is already stale", async () => {
@@ -349,15 +415,21 @@ describe("useThreadUserInput", () => {
       isProcessing: false,
       timestamp: expect.any(Number),
     });
-    expect(dispatch).toHaveBeenNthCalledWith(3, {
+    expect(dispatch).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "upsertItem",
+        item: expect.objectContaining({
+          toolType: "askuserquestion",
+          status: "completed",
+        }),
+      }),
+    );
+    expect(dispatch).toHaveBeenCalledWith({
       type: "removeUserInputRequest",
       requestId: "req-1",
       workspaceId: "ws-1",
       request,
     });
-    expect(dispatch).not.toHaveBeenCalledWith(
-      expect.objectContaining({ type: "upsertItem" }),
-    );
   });
 
   it("keeps empty submit retryable when workspace disconnects", async () => {
@@ -529,7 +601,7 @@ describe("useThreadUserInput", () => {
       expect.objectContaining({
         type: "upsertItem",
         item: expect.objectContaining({
-          id: "user-input-answer-attempt-1-req-1",
+          id: "request-user-input-submitted-attempt-1-req-1",
         }),
       }),
     );

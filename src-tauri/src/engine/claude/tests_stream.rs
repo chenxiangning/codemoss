@@ -225,6 +225,65 @@ async fn ask_user_question_registers_and_clears_pending_request() {
         .expect("respond success");
 
     assert!(!session.has_pending_user_input(&request_id));
+
+    // Re-conversion of the same tool_id must emit completed and not re-pending.
+    let replay = session
+        .convert_ask_user_question_to_request("tool-ask-1", &input, "turn-1")
+        .expect("replay convert");
+    match replay {
+        EngineEvent::RequestUserInput {
+            completed: true,
+            request_id: replay_id,
+            ..
+        } => {
+            assert_eq!(replay_id, request_id);
+        }
+        other => panic!("expected completed RequestUserInput, got {:?}", other),
+    }
+    assert!(
+        !session.has_pending_user_input(&request_id),
+        "settled request must not re-enter pending map"
+    );
+}
+
+#[tokio::test]
+async fn respond_to_user_input_marks_settled_and_blocks_native_reentry() {
+    let session = ClaudeSession::new("test-workspace".to_string(), test_workspace_path(), None);
+    let input = json!({
+        "questions": [
+            {
+                "header": "方向",
+                "question": "继续吗？",
+                "options": [{ "label": "继续", "description": "" }]
+            }
+        ]
+    });
+    let event = session
+        .convert_ask_user_question_to_request("tool-settled-1", &input, "turn-settled")
+        .expect("initial convert");
+    let request_id = match event {
+        EngineEvent::RequestUserInput { request_id, .. } => request_id,
+        other => panic!("unexpected event: {:?}", other),
+    };
+
+    session
+        .respond_to_user_input(
+            request_id.clone(),
+            json!({ "answers": { "q-0": { "answers": ["继续"] } } }),
+        )
+        .await
+        .expect("respond");
+
+    let replay = session
+        .convert_ask_user_question_to_request("tool-settled-1", &input, "turn-settled")
+        .expect("replay");
+    assert!(matches!(
+        replay,
+        EngineEvent::RequestUserInput {
+            completed: true,
+            ..
+        }
+    ));
 }
 
 #[test]
@@ -335,6 +394,78 @@ async fn respond_to_user_input_settles_note_only_mcp_answer() {
     assert!(
         !session.has_any_pending_user_input(),
         "pending request should be consumed on settle"
+    );
+}
+
+#[tokio::test]
+async fn respond_to_user_input_recovers_sole_mcp_waiter_on_request_id_mismatch() {
+    // FE history reopen can rehydrate a different request_id than the live MCP waiter.
+    // Skip/submit must still unblock the sole waiter so the CLI continues.
+    let session = ClaudeSession::new("test-workspace".to_string(), test_workspace_path(), None);
+    let waiter_id = "ask-live-waiter";
+    let (tx, rx) = tokio::sync::oneshot::channel::<String>();
+    if let Ok(mut waiters) = session.mcp_answer_waiters.lock() {
+        waiters.insert(waiter_id.to_string(), tx);
+    }
+    let mismatched_fe_id = "tool-history-rehydrated-id";
+    assert!(
+        session.has_pending_user_input(&json!(mismatched_fe_id)),
+        "sole MCP waiter must route even when FE request_id mismatches"
+    );
+
+    session
+        .respond_to_user_input(
+            json!(mismatched_fe_id),
+            json!({ "answers": {}, "skippedQuestionIds": ["q-0"] }),
+        )
+        .await
+        .expect("mismatched skip must recover sole MCP waiter");
+
+    let answer = rx.await.expect("sole MCP waiter must receive skip text");
+    assert!(
+        answer.to_ascii_lowercase().contains("skipped"),
+        "skip text expected, got: {answer}"
+    );
+    assert!(
+        !session.has_pending_user_input(&json!(waiter_id)),
+        "waiter must be consumed after recovery"
+    );
+}
+
+#[tokio::test]
+async fn respond_to_user_input_delivers_mcp_answer_even_without_pending_entry() {
+    // Regression: skip/cancel can race so pending is cleared while the MCP oneshot
+    // waiter remains. respond must still unblock ask_via_mcp (else CLI hangs and
+    // FE card disappears → "dead" turn + history zombie).
+    let session = ClaudeSession::new("test-workspace".to_string(), test_workspace_path(), None);
+    let request_id = "ask-mcp-orphan-waiter";
+    let (tx, rx) = tokio::sync::oneshot::channel::<String>();
+    if let Ok(mut waiters) = session.mcp_answer_waiters.lock() {
+        waiters.insert(request_id.to_string(), tx);
+    }
+    assert!(
+        session.has_pending_user_input(&json!(request_id)),
+        "MCP waiter alone must still route as pending for respond_to_server_request"
+    );
+
+    session
+        .respond_to_user_input(
+            json!(request_id),
+            json!({ "answers": {}, "skippedQuestionIds": ["q-0"] }),
+        )
+        .await
+        .expect("orphan MCP waiter must accept skip");
+
+    let answer = rx
+        .await
+        .expect("orphan MCP waiter must receive skip text");
+    assert!(
+        answer.to_ascii_lowercase().contains("skipped"),
+        "skip text expected, got: {answer}"
+    );
+    assert!(
+        !session.has_pending_user_input(&json!(request_id)),
+        "waiter should be consumed after settle"
     );
 }
 

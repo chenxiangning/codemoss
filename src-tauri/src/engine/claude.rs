@@ -455,8 +455,15 @@ pub struct ClaudeSession {
     last_emitted_text_by_turn: StdMutex<HashMap<String, String>>,
     /// Pending AskUserQuestion requests: request_id -> turn_id
     pending_user_inputs: StdMutex<HashMap<String, String>>,
+    /// Request ids that already completed settlement (accepted/skip/timeout).
+    /// Used to suppress native tool_use re-conversion and resume re-entry.
+    settled_user_input_request_ids: StdMutex<HashSet<String>>,
     /// Pending synthetic Claude approval requests: request_id -> turn_id
     pending_approval_requests: StdMutex<HashMap<String, String>>,
+    /// Session L1 allowlist roots beyond workspace (startup --add-dir + grants).
+    session_allowed_roots: StdMutex<Vec<PathBuf>>,
+    /// DirectoryGrant pending metadata: request_id -> suggested root path.
+    pending_directory_grants: StdMutex<HashMap<String, PathBuf>>,
     /// Synthetic approval summaries accumulated per turn for final completion reporting
     synthetic_approval_summaries_by_turn:
         StdMutex<HashMap<String, Vec<SyntheticApprovalSummaryEntry>>>,
@@ -755,7 +762,10 @@ impl ClaudeSession {
             pending_tools: StdMutex::new(Vec::new()),
             last_emitted_text_by_turn: StdMutex::new(HashMap::new()),
             pending_user_inputs: StdMutex::new(HashMap::new()),
+            settled_user_input_request_ids: StdMutex::new(HashSet::new()),
             pending_approval_requests: StdMutex::new(HashMap::new()),
+            session_allowed_roots: StdMutex::new(Vec::new()),
+            pending_directory_grants: StdMutex::new(HashMap::new()),
             synthetic_approval_summaries_by_turn: StdMutex::new(HashMap::new()),
             approval_notify_by_turn: StdMutex::new(HashMap::new()),
             approval_resume_message_by_turn: StdMutex::new(HashMap::new()),
@@ -1242,6 +1252,25 @@ impl ClaudeSession {
                 if spec_path.is_absolute() && spec_path != self.workspace_path.as_path() {
                     cmd.arg("--add-dir");
                     cmd.arg(spec_root);
+                    // Keep L1 in sync with startup --add-dir so grant UI does not re-prompt.
+                    let _ = self.grant_session_directory_root(spec_path);
+                }
+            }
+
+            // Runtime DirectoryGrant roots (session L1) → Claude CLI --add-dir on each launch.
+            for granted_root in self.session_add_dir_args() {
+                let granted_path = Path::new(&granted_root);
+                if granted_path.is_absolute() && granted_path != self.workspace_path.as_path() {
+                    // Avoid duplicating custom_spec_root.
+                    let already_spec = params
+                        .custom_spec_root
+                        .as_ref()
+                        .map(|value| value.trim() == granted_root.as_str())
+                        .unwrap_or(false);
+                    if !already_spec {
+                        cmd.arg("--add-dir");
+                        cmd.arg(granted_root);
+                    }
                 }
             }
 
@@ -2032,8 +2061,15 @@ impl ClaudeSession {
                         }
 
                         self.flush_buffered_text_delta(turn_id, &mut pending_text_delta);
-                        let is_user_input_request =
-                            matches!(&unified_event, EngineEvent::RequestUserInput { .. });
+                        // Only incomplete asks enter kill+resume wait; completed
+                        // lifecycle events (timeout / re-settled replay) must not block.
+                        let is_user_input_request = matches!(
+                            &unified_event,
+                            EngineEvent::RequestUserInput {
+                                completed: false,
+                                ..
+                            }
+                        );
 
                         self.emit_turn_event_with_stream_timing(
                             turn_id,

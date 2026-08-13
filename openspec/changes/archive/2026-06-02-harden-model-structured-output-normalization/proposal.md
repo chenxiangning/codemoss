@@ -72,7 +72,7 @@ Code facts:
 - `src/services/modelStructuredOutput.ts` owns provider-agnostic extraction, lenient repair, validator-gated parsing, and parse error classification.
 - `src/features/project-map/services/projectMapGenerationWorker.ts` uses the shared parser for Project Map generation payloads.
 - `src/features/project-map/services/projectMapNodeOrganizer.ts` uses the shared parser and one JSON-only repair attempt for organizer payloads.
-- `.trellis/spec/frontend/model-structured-output.md` captures the future implementation rule so raw model output is not directly parsed by feature code.
+- `dev-guidelines/frontend/model-structured-output.md` captures the future implementation rule so raw model output is not directly parsed by feature code.
 
 Validation evidence:
 

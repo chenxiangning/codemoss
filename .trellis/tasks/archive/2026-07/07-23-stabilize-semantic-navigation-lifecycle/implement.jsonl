@@ -1,7 +1,0 @@
-{"file": ".trellis/workflow.md", "reason": "Project workflow and conventions"}
-{"file": ".trellis/spec/backend/index.md", "reason": "Backend development guide"}
-{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend development guide"}
-{"file": "openspec/changes/stabilize-semantic-navigation-lifecycle/", "type": "directory", "reason": "OpenSpec behavior, design, and task source of truth"}
-{"file": ".trellis/spec/frontend/hook-guidelines.md", "reason": "Async prewarm cleanup and bridge contract"}
-{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "Language server ownership and session lock contract"}
-{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "UI-service-command-runtime mapping"}

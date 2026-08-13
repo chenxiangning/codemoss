@@ -1,5 +1,0 @@
-{"file": ".trellis/workflow.md", "reason": "Project workflow and conventions"}
-{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend development guide"}
-{"file": ".trellis/spec/frontend/state-management.md", "reason": "History-loading presentation state single source of truth"}
-{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Frontend regression quality gate"}
-{"file": "openspec/changes/fix-codex-pending-draft-history-loading/design.md", "reason": "Confirmed implementation design"}

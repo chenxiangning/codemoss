@@ -39,6 +39,7 @@ import {
 } from "../utils/fileMarkdownDocument";
 import { highlightLine } from "../../../utils/syntax";
 import { CodeBlockLanguageBadge } from "../../../markdown/presentation/codeBlockLanguageIcon";
+import { normalizeMermaidSource } from "../../../markdown/presentation/normalizeMermaidSource";
 import {
   isThemeMutationAttribute,
   mapAppearanceToMermaidTheme,
@@ -940,7 +941,9 @@ function FileMarkdownMermaidBlock({
         });
 
         const id = `${idRef.current}-${hashStableString(renderCacheKey)}`;
-        const { svg } = await mermaid.render(id, value);
+        // Quote unsafe flowchart labels before render; Source tab keeps original.
+        const renderSource = normalizeMermaidSource(value);
+        const { svg } = await mermaid.render(id, renderSource);
         if (!cancelled) {
           writeCachedMermaidRender(renderCacheKey, svg);
           lastSuccessfulSvgRef.current = svg;

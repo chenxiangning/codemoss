@@ -1,5 +1,0 @@
-{"file": ".trellis/workflow.md", "reason": "Project workflow and conventions"}
-{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend development guide"}
-{"file": ".trellis/spec/frontend/directory-structure.md", "reason": "Feature slice directory ownership and test co-location"}
-{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Behavior-preserving refactor and large-file constraints"}
-{"file": ".trellis/spec/frontend/type-safety.md", "reason": "Import and type-only dependency safety"}

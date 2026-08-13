@@ -31,7 +31,7 @@ import { pushErrorToast } from "../../../services/toasts";
 import { DEFAULT_OPEN_APP_TARGETS } from "../constants";
 import { useOpenAppIcons } from "../hooks/useOpenAppIcons";
 import { getLaunchScriptIcon } from "../utils/launchScriptIcons";
-import { openPathInTarget } from "../utils/openApp";
+import { openPathInTarget, resolveOpenAppPath } from "../utils/openApp";
 import { GENERIC_APP_ICON, getKnownOpenAppIcon } from "../utils/openAppIcons";
 
 type WorkspaceGroupSection = {
@@ -44,6 +44,8 @@ type MainHeaderProps = {
   workspace: WorkspaceInfo;
   parentName?: string | null;
   worktreePath?: string | null;
+  /** Currently open editor file (workspace-relative or absolute). Apps open this; finder keeps folder. */
+  activeFilePath?: string | null;
   openTargets: OpenAppTarget[];
   openAppIconById: Record<string, string>;
   selectedOpenAppId: string;
@@ -102,6 +104,7 @@ function MainHeaderImpl({
   workspace,
   parentName = null,
   worktreePath = null,
+  activeFilePath = null,
   openTargets,
   openAppIconById,
   selectedOpenAppId,
@@ -279,7 +282,11 @@ function MainHeaderImpl({
   const handleOpenPinnedTarget = useCallback(
     async (target: OpenAppTarget) => {
       try {
-        await openPathInTarget(resolvedWorktreePath, target);
+        const path = resolveOpenAppPath(target, {
+          workspacePath: resolvedWorktreePath,
+          activeFilePath,
+        });
+        await openPathInTarget(path, target);
       } catch (openError) {
         pushErrorToast({
           title: t("errors.couldntOpenWorkspace"),
@@ -288,7 +295,7 @@ function MainHeaderImpl({
         });
       }
     },
-    [resolvedWorktreePath, t],
+    [activeFilePath, resolvedWorktreePath, t],
   );
   // 处理项目选择
   const handleSelectProject = (workspaceId: string) => {
@@ -524,6 +531,7 @@ function MainHeaderImpl({
         {showOpenAppMenu ? (
           <OpenAppMenu
             path={resolvedWorktreePath}
+            activeFilePath={activeFilePath}
             openTargets={openTargets}
             selectedOpenAppId={selectedOpenAppId}
             onSelectOpenAppId={onSelectOpenAppId}

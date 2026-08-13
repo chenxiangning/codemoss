@@ -159,6 +159,41 @@ export async function getOpenAppIcon(appName: string): Promise<string | null> {
   return invoke<string | null>("get_open_app_icon", { appName });
 }
 
+export type OpenAppPresetProbeResult = {
+  id: string;
+  installed: boolean;
+  resolvedPath?: string | null;
+};
+
+export type OpenAppTargetProbeResult = {
+  status: "ok" | "missing" | "broken" | string;
+  installed: boolean;
+  resolvedPath?: string | null;
+};
+
+/**
+ * Lazy one-shot probe for Open With presets. Must only run when the
+ * settings "Open in" section is active — never on cold start.
+ */
+export async function probeOpenAppPresets(): Promise<OpenAppPresetProbeResult[]> {
+  return invoke<OpenAppPresetProbeResult[]>("probe_open_app_presets");
+}
+
+/**
+ * Probe a single configured open target (settings re-verify / auto health).
+ */
+export async function probeOpenAppTarget(input: {
+  kind: string;
+  appName?: string | null;
+  command?: string | null;
+}): Promise<OpenAppTargetProbeResult> {
+  return invoke<OpenAppTargetProbeResult>("probe_open_app_target", {
+    kind: input.kind,
+    appName: input.appName ?? null,
+    command: input.command ?? null,
+  });
+}
+
 export async function readPanelLockPasswordFile(): Promise<string | null> {
   return invoke<string | null>("client_panel_lock_password_read");
 }

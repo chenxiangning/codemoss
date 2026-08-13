@@ -1,7 +1,16 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type MouseEvent,
+} from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import ChevronDown from "lucide-react/dist/esm/icons/chevron-down";
+import ChevronRight from "lucide-react/dist/esm/icons/chevron-right";
 import ChevronUp from "lucide-react/dist/esm/icons/chevron-up";
 import RefreshCw from "lucide-react/dist/esm/icons/refresh-cw";
 import LoaderCircle from "lucide-react/dist/esm/icons/loader-circle";
@@ -14,6 +23,7 @@ import { trackHotspot } from "../../../../services/perfBaseline/hotspotTracker";
 import { useRenderHotspot } from "../../../../services/perfBaseline/useRenderHotspot";
 import type { ConversationItem } from "../../../../types";
 import { useLiveAssistantText } from "../../../threads/hooks/useLiveAssistantText";
+import { resolveResidualLiveAssistantDisplayText } from "../../../threads/utils/liveAssistantTextChannel";
 import { isLiveTextExternalizationEnabled } from "../../../threads/utils/realtimePerfFlags";
 import {
   noteThreadLiveRowRenderMeasured,
@@ -38,6 +48,9 @@ import {
 import { Markdown } from "../../components/Markdown";
 import { IntentCanvasContextSummaryCard } from "../../components/context/IntentCanvasContextSummaryCard";
 import { NoteCardContextSummaryCard } from "../../components/context/NoteCardContextSummaryCard";
+import "../../../../styles/memory-pick-gate.css";
+import appLogo from "../../../../assets/icon.png";
+import { MEMORY_CONTEXT_SUMMARY_PREFIX } from "../../../project-memory/utils/memoryMarkers";
 import {
   analyzeStreamingMarkdownComplexity,
   analyzeStreamingMarkdownComplexityDelta,
@@ -151,9 +164,11 @@ function shouldUseLongFoldedMarkdownStreamingSurface(
   );
 }
 
-const STREAMING_PLAIN_TEXT_COLLAPSE_THRESHOLD = 20_000;
-const STREAMING_PLAIN_TEXT_HEAD_CHARS = 4_000;
-const STREAMING_PLAIN_TEXT_TAIL_CHARS = 2_000;
+// 流式中过长正文更早切到 lightweight / 折叠 head+tail，压低 Markdown 重解析成本。
+// 不裁剪列表长度（STREAMING_VISIBLE_WINDOW 仍为 0），避免 stick-to-bottom 高度跳变。
+const STREAMING_PLAIN_TEXT_COLLAPSE_THRESHOLD = 8_000;
+const STREAMING_PLAIN_TEXT_HEAD_CHARS = 3_000;
+const STREAMING_PLAIN_TEXT_TAIL_CHARS = 1_500;
 
 function resolveStreamingPlainTextCollapsedView({
   text,
@@ -223,6 +238,16 @@ export const MessageRow = memo(function MessageRow({
   });
   const [memorySummaryExpanded, setMemorySummaryExpanded] = useState(false);
   const [memoryPayloadDialogOpen, setMemoryPayloadDialogOpen] = useState(false);
+  /** 记忆挑选历史卡 · 单条详情弹窗（对齐闸门内详情样式，按需拉 detail） */
+  const [memoryRecordDetail, setMemoryRecordDetail] = useState<{
+    title: string;
+    summary?: string;
+    detail?: string;
+    memoryId: string;
+    score?: number;
+    source?: string;
+    detailLoading?: boolean;
+  } | null>(null);
   const [isAgentBadgeExpanded, setIsAgentBadgeExpanded] = useState(false);
   const [inspectedTaskOutput, setInspectedTaskOutput] =
     useState<EngineTaskOutputSnapshot | null>(null);
@@ -231,23 +256,26 @@ export const MessageRow = memo(function MessageRow({
     snapshot: inspectedTaskOutput,
   });
   useEffect(() => {
-    if (!memoryPayloadDialogOpen) {
+    if (!memoryPayloadDialogOpen && !memoryRecordDetail) {
       return undefined;
     }
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         setMemoryPayloadDialogOpen(false);
+        setMemoryRecordDetail(null);
       }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
     };
-  }, [memoryPayloadDialogOpen]);
+  }, [memoryPayloadDialogOpen, memoryRecordDetail]);
   // A4 live-text 外部化：流式中的 assistant 行订阅 liveAssistantTextChannel
   // （通道自首条 delta 起全量累计，item.text 仅为建壳首段），后续 delta 只驱动
   // 本行小树渲染。非流式行/flag 关闭时订阅为空、零开销；终稿落地或中断 drain
   // 后通道条目清除，本行自然切回读 item.text。
+  // 若 settle 竞态导致 isStreaming 已关、通道仍有更长全文，peek residual 避免
+  // 界面只剩建壳首字（「这」/「已」/「**」），重开历史才恢复。
   const liveAssistantTextEntry = useLiveAssistantText(
     threadId,
     LIVE_TEXT_EXTERNALIZATION_ENABLED && isStreaming && item.role === "assistant",
@@ -286,8 +314,20 @@ export const MessageRow = memo(function MessageRow({
     parsedUserTextContent,
     imageItems,
   } = staticPresentation;
+  const residualLiveAssistantText =
+    canUseLiveAssistantText &&
+    LIVE_TEXT_EXTERNALIZATION_ENABLED &&
+    !isStreaming &&
+    item.role === "assistant" &&
+    threadId
+      ? resolveResidualLiveAssistantDisplayText(
+          threadId,
+          item.id,
+          staticDisplayText,
+        )
+      : null;
   const displayText = canUseLiveAssistantText
-    ? liveAssistantText ?? staticDisplayText
+    ? liveAssistantText ?? residualLiveAssistantText ?? staticDisplayText
     : staticDisplayText;
   const hasText = displayText.trim().length > 0;
   // jetbrains 同帧 stick：流式正文不再 useDeferredValue，避免「字先长高、钉底晚一帧」闪一下。
@@ -811,6 +851,29 @@ export const MessageRow = memo(function MessageRow({
   ) {
     return null;
   }
+  // 历史时序：隐藏「仅含记忆上下文摘要」的 assistant 幽灵行。
+  // 实时/历史统一只在用户气泡下一行展示注入卡（pack 在用户消息里）。
+  const assistantTextTrimmed =
+    item.role === "assistant" && typeof item.text === "string"
+      ? item.text.trim()
+      : "";
+  const isMemoryPickSummaryOnlyAssistant =
+    item.role === "assistant" &&
+    assistantTextTrimmed.startsWith(MEMORY_CONTEXT_SUMMARY_PREFIX) &&
+    imageItems.length === 0 &&
+    deferredImageItems.length === 0 &&
+    !showActiveRuntimeReconnectCard &&
+    !turnBadge &&
+    !agentTaskNotification &&
+    (Boolean(resolvedMemorySummary?.source?.includes("memory-pick")) ||
+      (resolvedMemorySummary?.records ?? []).some(
+        (record) => record.source === "memory-pick",
+      ) ||
+      assistantTextTrimmed.includes("记忆挑选") ||
+      assistantTextTrimmed.includes("#1 |"));
+  if (isMemoryPickSummaryOnlyAssistant) {
+    return null;
+  }
   const memoryPayloadDialogNode =
     memoryPayloadDialogOpen && memorySummaryRawPayload && typeof document !== "undefined"
       ? createPortal(
@@ -901,99 +964,433 @@ export const MessageRow = memo(function MessageRow({
         document.body,
       )
       : null;
+
+  const memoryRecordDetailDialogNode =
+    memoryRecordDetail && typeof document !== "undefined"
+      ? createPortal(
+          <div
+            className="memory-pick-gate memory-pick-gate__dialog-overlay"
+            role="presentation"
+            onClick={() => setMemoryRecordDetail(null)}
+          >
+            <div
+              className="memory-pick-gate__dialog"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby={`${item.id}-memory-record-detail-title`}
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="memory-pick-gate__dialog-head">
+                <h3 id={`${item.id}-memory-record-detail-title`}>
+                  {memoryRecordDetail.title}
+                </h3>
+                <p className="memory-pick-gate__dialog-sub">
+                  {[
+                    memoryRecordDetail.source || "memory-pick",
+                    memoryRecordDetail.memoryId,
+                    typeof memoryRecordDetail.score === "number"
+                      ? memoryRecordDetail.score.toFixed(2)
+                      : null,
+                  ]
+                    .filter(Boolean)
+                    .join(" · ")}
+                </p>
+              </div>
+              <div className="memory-pick-gate__dialog-body">
+                <div className="memory-pick-gate__dialog-meta">
+                  {typeof memoryRecordDetail.score === "number" ? (
+                    <span>
+                      {t("messages.memoryInjectDetailScore", {
+                        defaultValue: "相关",
+                      })}{" "}
+                      {memoryRecordDetail.score.toFixed(2)}
+                    </span>
+                  ) : null}
+                  <span>memory-pick</span>
+                  <span>#Memory</span>
+                  <span>#Pick</span>
+                </div>
+                {memoryRecordDetail.detailLoading ? (
+                  <p className="memory-pick-gate__dialog-loading">
+                    {t("messages.memoryInjectDetailLoading", {
+                      defaultValue: "加载中…",
+                    })}
+                  </p>
+                ) : (
+                  <Markdown
+                    className="markdown memory-pick-gate__dialog-markdown"
+                    value={
+                      memoryRecordDetail.detail?.trim() ||
+                      memoryRecordDetail.summary?.trim() ||
+                      t("messages.memoryInjectDetailEmpty", {
+                        defaultValue: "暂无更多详情",
+                      })
+                    }
+                    workspaceId={workspaceId}
+                    codeBlockStyle="message"
+                    codeBlockCopyUseModifier={codeBlockCopyUseModifier}
+                    onOpenFileLink={onOpenFileLink}
+                    onOpenFileLinkMenu={onOpenFileLinkMenu}
+                  />
+                )}
+              </div>
+              <div className="memory-pick-gate__dialog-foot">
+                <button
+                  type="button"
+                  className="memory-pick-gate__btn"
+                  onClick={() => setMemoryRecordDetail(null)}
+                >
+                  {t("messages.memoryContextCloseDetails", {
+                    defaultValue: "关闭",
+                  })}
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )
+      : null;
+  const isMemoryPickEmptyStatus =
+    resolvedMemorySummary?.source === "memory-pick-empty";
+  const isMemoryPickSummary =
+    !isMemoryPickEmptyStatus &&
+    (Boolean(resolvedMemorySummary?.source?.includes("memory-pick")) ||
+      memorySummaryRecords.some((record) => record.source === "memory-pick"));
+  const memoryInjectCount =
+    memorySummaryRecords.length > 0
+      ? memorySummaryRecords.length
+      : (resolvedMemorySummary?.lines.length ?? 0);
+  const memoryInjectPreviewTitles = memorySummaryRecords
+    .slice(0, 2)
+    .map((record) => record.title || record.memoryId)
+    .filter(Boolean)
+    .join(" · ");
+  const injectModeToken = resolvedMemorySummary?.injectModeLabel;
+  const memoryInjectModeLabel =
+    injectModeToken === "always" || injectModeToken === "一直开启"
+      ? t("messages.memoryInjectModeAlways", {
+          defaultValue: "整轮开启自动top(n)记忆注入",
+        })
+      : injectModeToken === "pick" ||
+          injectModeToken === "本轮挑选" ||
+          isMemoryPickSummary
+        ? t("messages.memoryInjectModePick", {
+            defaultValue: "本轮挑选记忆注入",
+          })
+        : resolvedMemorySummary?.source === "manual-selection"
+          ? t("messages.memoryContextSourceManual")
+          : t("messages.memoryContextSourceMemoryReference");
+
+  // 与「已处理 · 思考 N 次 ›」同构：文案 + chevron + 底部分割线；色系跟正文 token
+  const memoryInjectToggleLabel = [
+    t("messages.memoryInjectSummaryLabel", {
+      defaultValue: "已注入 {{count}} 条项目记忆",
+      count: memoryInjectCount,
+    }),
+    memoryInjectModeLabel,
+    memoryInjectPreviewTitles
+      ? `${memoryInjectPreviewTitles}${
+          memoryInjectCount > 2
+            ? t("messages.memoryInjectSummaryMore", {
+                defaultValue: " 等 {{count}} 条",
+                count: memoryInjectCount,
+              })
+            : ""
+        }`
+      : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
+  const memoryPickEmptyStatusLabel = isMemoryPickEmptyStatus
+    ? [
+        resolvedMemorySummary?.lines[0] ||
+          t("memoryPick.toast.title", { defaultValue: "记忆参考" }),
+        resolvedMemorySummary?.lines[1] ||
+          resolvedMemorySummary?.preview ||
+          t("memoryPick.toast.noMatch", {
+            defaultValue: "未找到相关记忆，已按原文发送",
+          }),
+      ]
+        .filter(Boolean)
+        .join(" · ")
+    : null;
+
   const memorySummaryNode = resolvedMemorySummary ? (
     <>
-      <div className="memory-context-summary-card">
-        <button
-          type="button"
-          className="memory-context-summary-toggle"
-          onClick={() => setMemorySummaryExpanded((current) => !current)}
-          aria-expanded={memorySummaryExpanded}
+      {isMemoryPickEmptyStatus ? (
+        <div
+          className="memory-pick-empty-status"
+          role="status"
+          aria-label={memoryPickEmptyStatusLabel ?? undefined}
         >
-          <span className="memory-context-summary-title">
-            {t("messages.memoryContextSummary")}
+          <span className="memory-pick-empty-status-logo" aria-hidden>
+            <img
+              src={appLogo}
+              alt=""
+              className="memory-pick-empty-status-logo-img"
+              draggable={false}
+            />
           </span>
-          <span className="memory-context-summary-count">
-            {t("messages.memoryContextSummaryCount", {
-              count: resolvedMemorySummary.lines.length,
-            })}
-          </span>
-          {memorySummaryExpanded ? (
-            <ChevronUp size={14} aria-hidden />
-          ) : (
-            <ChevronDown size={14} aria-hidden />
-          )}
-        </button>
-        {memorySummaryExpanded && (
-          <div className="memory-context-summary-content">
-            {memorySummaryRecords.length > 0 ? (
-              <div className="memory-context-summary-record-list">
-                {memorySummaryRecords.map((record) => {
-                  const sourceLabel = record.source === "manual-selection"
-                    ? t("messages.memoryContextSourceManual")
-                    : record.source === "memory-scout"
-                      ? t("messages.memoryContextSourceMemoryReference")
-                      : (record.source || t("messages.memoryContextSourceUnknown"));
-                  return (
-                    <div
-                      key={`${item.id}-${record.displayIndex}-${record.index}-${record.memoryId}`}
-                      className="memory-context-summary-record"
-                    >
-                      <span className="memory-context-summary-record-index">
-                        {record.displayIndex}
-                      </span>
-                      <span className="memory-context-summary-record-copy">
-                        <span className="memory-context-summary-record-title">
-                          {record.title || record.memoryId}
-                        </span>
-                        <span className="memory-context-summary-record-meta">
-                          {t("messages.memoryContextRecordMeta", {
-                            source: sourceLabel,
-                            index: record.index,
-                          })}
-                        </span>
-                      </span>
-                    </div>
-                  );
+          <span className="memory-pick-empty-status-text">
+            <span className="memory-pick-empty-status-brand">
+              {resolvedMemorySummary.lines[0] ||
+                t("memoryPick.toast.title", { defaultValue: "记忆参考" })}
+            </span>
+            <span className="memory-pick-empty-status-sep" aria-hidden>
+              ·
+            </span>
+            <span className="memory-pick-empty-status-msg">
+              {resolvedMemorySummary.lines[1] ||
+                resolvedMemorySummary.preview ||
+                t("memoryPick.toast.noMatch", {
+                  defaultValue: "未找到相关记忆，已按原文发送",
                 })}
-              </div>
-            ) : (
-              <Markdown
-                value={resolvedMemorySummary.markdown ?? resolvedMemorySummary.lines.join("\n\n")}
-                className="markdown memory-context-summary-markdown"
-                workspaceId={workspaceId}
-                codeBlockStyle="message"
-                codeBlockCopyUseModifier={codeBlockCopyUseModifier}
-                onOpenFileLink={onOpenFileLink}
-                onOpenFileLinkMenu={onOpenFileLinkMenu}
+            </span>
+          </span>
+        </div>
+      ) : isMemoryPickSummary && memorySummaryRecords.length > 0 ? (
+        <div
+          className={`memory-inject-summary${
+            memorySummaryExpanded ? " is-expanded" : " is-collapsed"
+          }`}
+        >
+          <button
+            type="button"
+            className={`memory-inject-summary-toggle${
+              memorySummaryExpanded ? " is-expanded" : " is-collapsed"
+            }`}
+            onClick={() => setMemorySummaryExpanded((current) => !current)}
+            aria-expanded={memorySummaryExpanded}
+            aria-label={memoryInjectToggleLabel}
+          >
+            <span className="memory-inject-summary-toggle-copy">
+              <span className="memory-inject-summary-label">
+                {memoryInjectToggleLabel}
+              </span>
+              <ChevronRight
+                className="memory-inject-summary-chevron"
+                size={14}
+                strokeWidth={2}
+                aria-hidden
               />
+            </span>
+            <span className="memory-inject-summary-rule" aria-hidden />
+          </button>
+          {memorySummaryExpanded ? (
+            <div className="memory-inject-summary-body">
+              {memorySummaryRecords.map((record, index) => {
+                const recTitle = record.title || record.memoryId;
+                const recTooltip = [recTitle, record.summary]
+                  .filter(Boolean)
+                  .join(" — ");
+                const openMemoryRecordDetail = (event: MouseEvent) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  const base = {
+                    title: recTitle,
+                    summary: record.summary,
+                    memoryId: record.memoryId,
+                    score: record.score,
+                    source: record.source,
+                    detailLoading: true as const,
+                  };
+                  setMemoryRecordDetail(base);
+                  // 异步补全 detail，对齐闸门内详情体验
+                  void import(
+                    "../../../project-memory/services/projectMemoryFacade",
+                  )
+                    .then(({ projectMemoryFacade }) => {
+                      if (!workspaceId) {
+                        return null;
+                      }
+                      return projectMemoryFacade
+                        .get(record.memoryId, workspaceId)
+                        .catch(() => null);
+                    })
+                    .then((full) => {
+                      setMemoryRecordDetail((prev) => {
+                        if (!prev || prev.memoryId !== record.memoryId) {
+                          return prev;
+                        }
+                        if (!full) {
+                          return { ...prev, detailLoading: false };
+                        }
+                        return {
+                          ...prev,
+                          detailLoading: false,
+                          title: full.title || prev.title,
+                          summary: full.summary || prev.summary,
+                          detail:
+                            full.detail ||
+                            full.cleanText ||
+                            full.rawText ||
+                            prev.summary,
+                        };
+                      });
+                    });
+                };
+                return (
+                  <div
+                    key={`${item.id}-${record.displayIndex}-${record.memoryId}`}
+                    className="memory-inject-rec"
+                  >
+                    <span className="memory-inject-rec-idx">
+                      {String(index + 1).padStart(2, "0")}
+                    </span>
+                    <button
+                      type="button"
+                      className="memory-inject-rec-title"
+                      title={recTooltip}
+                      onClick={openMemoryRecordDetail}
+                    >
+                      {recTitle}
+                    </button>
+                    <button
+                      type="button"
+                      className="memory-inject-rec-detail"
+                      onClick={openMemoryRecordDetail}
+                    >
+                      {t("messages.memoryInjectDetail", {
+                        defaultValue: "详情",
+                      })}
+                    </button>
+                    {typeof record.score === "number" ? (
+                      <span className="memory-inject-rec-score">
+                        {record.score.toFixed(2)}
+                      </span>
+                    ) : null}
+                  </div>
+                );
+              })}
+            </div>
+          ) : null}
+        </div>
+      ) : (
+        <div className="memory-context-summary-card">
+          <button
+            type="button"
+            className="memory-context-summary-toggle"
+            onClick={() => setMemorySummaryExpanded((current) => !current)}
+            aria-expanded={memorySummaryExpanded}
+          >
+            <span className="memory-context-summary-title">
+              {t("messages.memoryContextSummary")}
+            </span>
+            <span className="memory-context-summary-count">
+              {t("messages.memoryContextSummaryCount", {
+                count: resolvedMemorySummary.lines.length,
+              })}
+            </span>
+            {memorySummaryExpanded ? (
+              <ChevronUp size={14} aria-hidden />
+            ) : (
+              <ChevronDown size={14} aria-hidden />
             )}
-            {memorySummaryRawPayload ? (
-              <button
-                type="button"
-                className="memory-context-summary-detail-button"
-                onClick={() => setMemoryPayloadDialogOpen(true)}
-              >
-                {t("messages.memoryContextViewSentDetails")}
-              </button>
-            ) : null}
-          </div>
-        )}
-      </div>
+          </button>
+          {memorySummaryExpanded && (
+            <div className="memory-context-summary-content">
+              {memorySummaryRecords.length > 0 ? (
+                <div className="memory-context-summary-record-list">
+                  {memorySummaryRecords.map((record) => {
+                    const sourceLabel =
+                      record.source === "manual-selection"
+                        ? t("messages.memoryContextSourceManual")
+                        : record.source === "memory-scout"
+                          ? t("messages.memoryContextSourceMemoryReference")
+                          : record.source === "memory-pick"
+                            ? t("messages.memoryContextSourceMemoryPick", {
+                                defaultValue: t(
+                                  "messages.memoryContextSourceMemoryReference",
+                                ),
+                              })
+                            : record.source ||
+                              t("messages.memoryContextSourceUnknown");
+                    return (
+                      <div
+                        key={`${item.id}-${record.displayIndex}-${record.index}-${record.memoryId}`}
+                        className="memory-context-summary-record"
+                      >
+                        <span className="memory-context-summary-record-index">
+                          {record.displayIndex}
+                        </span>
+                        <span className="memory-context-summary-record-copy">
+                          <span className="memory-context-summary-record-title">
+                            {record.title || record.memoryId}
+                          </span>
+                          <span className="memory-context-summary-record-meta">
+                            {t("messages.memoryContextRecordMeta", {
+                              source: sourceLabel,
+                              index: record.index,
+                            })}
+                          </span>
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <Markdown
+                  value={
+                    resolvedMemorySummary.markdown ??
+                    resolvedMemorySummary.lines.join("\n\n")
+                  }
+                  className="markdown memory-context-summary-markdown"
+                  workspaceId={workspaceId}
+                  codeBlockStyle="message"
+                  codeBlockCopyUseModifier={codeBlockCopyUseModifier}
+                  onOpenFileLink={onOpenFileLink}
+                  onOpenFileLinkMenu={onOpenFileLinkMenu}
+                />
+              )}
+              {memorySummaryRawPayload ? (
+                <button
+                  type="button"
+                  className="memory-context-summary-detail-button"
+                  onClick={() => setMemoryPayloadDialogOpen(true)}
+                >
+                  {t("messages.memoryContextViewSentDetails")}
+                </button>
+              ) : null}
+            </div>
+          )}
+        </div>
+      )}
       {memoryPayloadDialogNode}
+      {memoryRecordDetailDialogNode}
     </>
   ) : null;
   if (!memorySummaryNode && !noteCardSummaryNode && !browserContextSummaryNode && !intentCanvasContextSummaryNode && !codeAnnotationContextNode && !shouldRenderBubble) {
     return null;
   }
+  // 用户行：气泡在上，注入摘要在下一行左侧（与实时时序一致）；助手行：摘要在正文前
   const stackedContent = memorySummaryNode || noteCardSummaryNode || browserContextSummaryNode || intentCanvasContextSummaryNode || codeAnnotationContextNode ? (
-    <div className={`message-context-stack${item.role === "user" ? " is-user" : ""}`}>
-      {memorySummaryNode}
-      {codeAnnotationContextNode}
-      {browserContextSummaryNode}
-      {intentCanvasContextSummaryNode}
-      {noteCardSummaryNode}
-      {shouldRenderBubble ? bubbleNode : null}
+    <div
+      className={`message-context-stack${item.role === "user" ? " is-user" : ""}${
+        isMemoryPickSummary && memorySummaryRecords.length > 0
+          ? " has-memory-inject"
+          : ""
+      }`}
+    >
+      {item.role === "user" ? (
+        <>
+          {shouldRenderBubble ? bubbleNode : null}
+          {memorySummaryNode}
+          {codeAnnotationContextNode}
+          {browserContextSummaryNode}
+          {intentCanvasContextSummaryNode}
+          {noteCardSummaryNode}
+        </>
+      ) : (
+        <>
+          {memorySummaryNode}
+          {codeAnnotationContextNode}
+          {browserContextSummaryNode}
+          {intentCanvasContextSummaryNode}
+          {noteCardSummaryNode}
+          {shouldRenderBubble ? bubbleNode : null}
+        </>
+      )}
     </div>
   ) : bubbleNode;
 

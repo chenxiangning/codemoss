@@ -18,6 +18,10 @@ import {
   type TurnDiagnosticState,
 } from "./threadEventDiagnostics";
 import type { ThreadAction } from "./useThreadsReducer";
+import {
+  clearLiveAssistantText,
+  peekLiveAssistantText,
+} from "../utils/liveAssistantTextChannel";
 
 type EmitTurnDiagnostic = (
   label: string,
@@ -176,6 +180,22 @@ export function useThreadTurnSettlementReconciliation({
         activeTurnId: null,
       });
       dispatch({ type: "clearCodexSilentSuspected", threadId: input.threadId });
+      // markProcessing(false) 前落 live 全文，避免 residual cleanup 只关流式却留下建壳首字。
+      {
+        const liveEntry = peekLiveAssistantText(input.threadId);
+        if (liveEntry?.text) {
+          dispatch({
+            type: "completeAgentMessage",
+            workspaceId: input.workspaceId,
+            threadId: input.threadId,
+            itemId: liveEntry.itemId,
+            text: liveEntry.text,
+            hasCustomName: true,
+            timestamp: Date.now(),
+          });
+          clearLiveAssistantText(input.threadId);
+        }
+      }
       markProcessing(input.threadId, false);
       setActiveTurnId(input.threadId, null);
       emitTurnDiagnostic("three-evidence-reconciliation-cleanup-applied", {

@@ -260,7 +260,7 @@ Not sure where to start? Browse the [Issues](https://github.com/zhukunpenglinyut
 
 - [AGENTS.md](AGENTS.md) — the entry point for repository rules (required reading if you develop this project with AI assistance).
 - [Documentation hub](docs/README.md) — architecture, performance, plans, research, and dated evidence with explicit truth boundaries.
-- [.trellis/spec/](.trellis/spec/) — detailed frontend and backend implementation specs.
+- [dev-guidelines/](dev-guidelines/) — detailed frontend and backend implementation specs.
 - [OpenSpec workspace](openspec/README.md) — behavior specs, workflow, and governance overview.
 - [Main capability spec index](openspec/specs/README.md) — all synced mainline behavior contracts.
 - [Active proposal index](openspec/changes/README.md) — current changes, progress, closure gates, and artifact links.

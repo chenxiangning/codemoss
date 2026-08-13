@@ -2,8 +2,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // 用可捕获的假实现替换 rendererDiagnostics,避免碰真实持久化 store。
-const { appendMock, exportState } = vi.hoisted(() => ({
+const { appendMock, appendVolatileMock, exportState } = vi.hoisted(() => ({
   appendMock: vi.fn(),
+  appendVolatileMock: vi.fn(),
   exportState: {
     entries: [] as Array<{
       timestamp: number;
@@ -15,6 +16,7 @@ const { appendMock, exportState } = vi.hoisted(() => ({
 
 vi.mock("../rendererDiagnostics", () => ({
   appendRendererDiagnostic: appendMock,
+  appendVolatileRendererDiagnostic: appendVolatileMock,
   exportRendererDiagnostics: () => exportState.entries,
 }));
 
@@ -88,8 +90,10 @@ describe("frameDropMonitor", () => {
     now = 1000; // 起点远大于节流窗,模拟应用已运行一段时间
     rafCallbacks = [];
     appendMock.mockClear();
+    appendVolatileMock.mockClear();
     __resetPerfContextBridgeForTests();
     __resetFrameDropMonitorForTests();
+    __resetHotspotTrackerForTests();
     vi.spyOn(performance, "now").mockImplementation(() => now);
     vi.spyOn(window, "requestAnimationFrame").mockImplementation(
       (cb: FrameRequestCallback) => {
@@ -97,7 +101,9 @@ describe("frameDropMonitor", () => {
         return rafCallbacks.length;
       },
     );
-    vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => undefined);
+    vi.spyOn(window, "cancelAnimationFrame").mockImplementation(
+      () => undefined,
+    );
   });
 
   afterEach(() => {
@@ -143,6 +149,57 @@ describe("frameDropMonitor", () => {
         maxDetail: "ops=12",
       }),
     ]);
+    expect(appendVolatileMock).not.toHaveBeenCalled();
+  });
+
+  it("keeps warn frame drops in memory without a durable diagnostic", () => {
+    startFrameDropMonitor();
+    advance(0);
+    advance(72);
+
+    expect(appendVolatileMock).toHaveBeenCalledWith(
+      "perf.frame-drop",
+      expect.objectContaining({ deltaMs: 72, level: "warn" }),
+    );
+    expect(
+      appendMock.mock.calls.some((call) => call[0] === "perf.frame-drop"),
+    ).toBe(false);
+  });
+
+  it("keeps diagnostics-owned severe frames volatile to prevent feedback", () => {
+    __resetHotspotTrackerForTests();
+    recordHotspotSample("diagnostics-persist", 110, "entries=1200");
+    recordHotspotSample(
+      "client-store-write",
+      95,
+      "diagnostics:diagnostics.rendererLifecycleLog",
+    );
+    startFrameDropMonitor();
+    advance(0);
+    advance(140);
+
+    expect(appendVolatileMock).toHaveBeenCalledWith(
+      "perf.frame-drop",
+      expect.objectContaining({ deltaMs: 140, level: "severe" }),
+    );
+    expect(
+      appendMock.mock.calls.some((call) => call[0] === "perf.frame-drop"),
+    ).toBe(false);
+  });
+
+  it("durably samples severe frames at most once per cooldown", () => {
+    startFrameDropMonitor();
+    advance(0);
+    advance(120);
+    advance(600);
+
+    expect(
+      appendMock.mock.calls.filter((call) => call[0] === "perf.frame-drop"),
+    ).toHaveLength(1);
+    expect(appendVolatileMock).toHaveBeenCalledWith(
+      "perf.frame-drop",
+      expect.objectContaining({ level: "severe" }),
+    );
   });
 
   it("does not report normal ~16ms frames", () => {
@@ -150,9 +207,9 @@ describe("frameDropMonitor", () => {
     advance(0);
     advance(16);
     advance(16);
-    expect(
-      appendMock.mock.calls.some((c) => c[0] === "perf.frame-drop"),
-    ).toBe(false);
+    expect(appendMock.mock.calls.some((c) => c[0] === "perf.frame-drop")).toBe(
+      false,
+    );
   });
 
   it("throttles bursts of frame drops within the min interval", () => {
@@ -171,9 +228,9 @@ describe("frameDropMonitor", () => {
     startFrameDropMonitor();
     advance(0);
     advance(6000); // 睡眠/挂起恢复后的第一帧
-    expect(
-      appendMock.mock.calls.some((c) => c[0] === "perf.frame-drop"),
-    ).toBe(false);
+    expect(appendMock.mock.calls.some((c) => c[0] === "perf.frame-drop")).toBe(
+      false,
+    );
     const gap = appendMock.mock.calls.find((c) => c[0] === "perf.suspend-gap");
     expect(gap?.[1]).toMatchObject({ gapMs: 6000 });
   });
@@ -203,7 +260,8 @@ describe("frameDropMonitor", () => {
   it("records longtask unsupported when the entry type is unavailable", () => {
     const original = (globalThis as { PerformanceObserver?: unknown })
       .PerformanceObserver;
-    delete (globalThis as { PerformanceObserver?: unknown }).PerformanceObserver;
+    delete (globalThis as { PerformanceObserver?: unknown })
+      .PerformanceObserver;
     appendMock.mockClear();
     startLongTaskObserver();
     expect(

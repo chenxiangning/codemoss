@@ -5,7 +5,7 @@
 ## 先看哪里
 
 - 仓库级规则入口：[`../AGENTS.md`](../AGENTS.md)
-- 若正在修改规则入口、文档治理边界或 ignore policy：[`../.trellis/spec/guides/project-instruction-layering-guide.md`](../.trellis/spec/guides/project-instruction-layering-guide.md)
+- 若正在修改规则入口、文档治理边界或 ignore policy：[`../dev-guidelines/guides/project-instruction-layering-guide.md`](../dev-guidelines/guides/project-instruction-layering-guide.md)
 - 工作区总览与治理状态：[`project.md`](project.md)
 - 当前提案与执行状态：[`changes/README.md`](changes/README.md)
 - 主 capability specs：[`specs/README.md`](specs/README.md)
@@ -45,7 +45,7 @@ python3 .claude/skills/osp-openspec-sync/scripts/validate-consistency.py --proje
 ## 维护边界
 
 - 仓库级入口、规则优先级、全局 gate 统一维护在 `AGENTS.md`
-- 规则分层与“改哪里”的边界说明维护在 `.trellis/spec/guides/project-instruction-layering-guide.md`
+- 规则分层与“改哪里”的边界说明维护在 `dev-guidelines/guides/project-instruction-layering-guide.md`
 - `openspec/README.md` 只做导航和使用入口
 - 详细治理说明、快照统计、active backlog 与审计历史统一维护在 `openspec/project.md`
 - active / archived proposal 的逐项链接统一维护在 `openspec/changes/README.md` 与 `openspec/changes/archive/README.md`

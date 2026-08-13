@@ -55,7 +55,7 @@ Phase 2.5 已经证明官方 `SkyComputerUseClient` helper 本身签名可信，
 - Backend command registry: 如需新增 command，统一在 `src-tauri/src/command_registry.rs` 注册并复用 single-flight guard。
 - Frontend service/types: `src/services/tauri.ts`、`src/services/tauri/computerUse.ts`、`src/types.ts` 同步 typed contract。
 - Frontend UI: `src/features/computer-use/**` 展示 official parent handoff evidence，但不改变 runtime tool availability。
-- Specs/docs: 更新 `openspec/specs/**` delta 与 `.trellis/spec/**/computer-use-bridge.md`。
+- Specs/docs: 更新 `openspec/specs/**` delta 与 `dev-guidelines/**/computer-use-bridge.md`。
 
 ## 验收标准
 

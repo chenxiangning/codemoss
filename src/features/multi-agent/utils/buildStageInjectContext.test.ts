@@ -79,6 +79,76 @@ describe("buildStageInjectContext", () => {
     expect(ctx.pipe.filter((p) => p.sectionId === "upstream")).toHaveLength(0);
   });
 
+  it("first stage surfaces mainCanvas section from requestText digest", () => {
+    const requestText = [
+      "【主幕对话上下文】",
+      "<main-canvas-context>",
+      "以下为主幕布触发协作前的已有对话摘录（供本环节理解背景；勿整段复读）：",
+      "[user] 你好啊",
+      "[assistant] 你好",
+      "</main-canvas-context>",
+      "",
+      "写个打油诗",
+    ].join("\n");
+    const ctx = buildStageInjectContext(
+      projection({
+        requestText,
+        userVisibleText: "写个打油诗",
+        stages: [
+          stage({
+            id: "plan",
+            title: "任务拆解和规划",
+            rolePrompt: "请产出计划",
+            status: "running",
+          }),
+        ],
+      }),
+      0,
+    );
+    expect(ctx.sections.map((s) => s.id)).toEqual([
+      "mainCanvas",
+      "user",
+      "role",
+    ]);
+    expect(ctx.sections.find((s) => s.id === "mainCanvas")?.body).toContain(
+      "[user] 你好啊",
+    );
+    expect(ctx.sections.find((s) => s.id === "user")?.body).toBe("写个打油诗");
+    expect(ctx.pipe[0]?.sectionId).toBe("mainCanvas");
+  });
+
+  it("non-first stage does not show mainCanvas section", () => {
+    const requestText = [
+      "【主幕对话上下文】",
+      "<main-canvas-context>",
+      "[user] 背景",
+      "</main-canvas-context>",
+      "",
+      "写诗",
+    ].join("\n");
+    const ctx = buildStageInjectContext(
+      projection({
+        requestText,
+        userVisibleText: "写诗",
+        stages: [
+          stage({
+            id: "plan",
+            status: "succeeded",
+            shortOutcome: "ok",
+          }),
+          stage({
+            id: "implement",
+            title: "实现",
+            status: "running",
+            rolePrompt: "实现",
+          }),
+        ],
+      }),
+      1,
+    );
+    expect(ctx.sections.map((s) => s.id)).not.toContain("mainCanvas");
+  });
+
   it("prefers userVisibleText over requestText", () => {
     const ctx = buildStageInjectContext(
       projection({

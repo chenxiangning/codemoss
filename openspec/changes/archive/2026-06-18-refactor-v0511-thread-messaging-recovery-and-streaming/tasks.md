@@ -9,7 +9,7 @@
 
 ## 2. 流式派发决策表
 
-- [x] 在 `.trellis/spec/frontend/hook-guidelines.md` 写入「batch vs urgent dispatch 决策矩阵」段落
+- [x] 在 `dev-guidelines/frontend/hook-guidelines.md` 写入「batch vs urgent dispatch 决策矩阵」段落
 - [x] 新增 `shouldUrgentlyDispatchReasoningDelta(event, flushReason)` 谓词
 - [x] 修改 `useThreadItemEvents.ts:799-800` 与 `:868`,纳入 reasoning delta first-token 急派分支
 - [x] 新增 `useThreadItemEvents.first-token-reasoning-delta.test.ts`,锁定 first-token reasoning 急派行为
@@ -43,7 +43,7 @@
 
 ## 6. Codex recovery cookbook — 拆出
 
-- [x] `.trellis/spec/backend/codex-provider-scoped-runtime.md` 故障剧本移入 follow-up
+- [x] `dev-guidelines/backend/codex-provider-scoped-runtime.md` 故障剧本移入 follow-up
 - [x] `staleRecoveryClassification.reasonCode` / `staleReason` / `userAction` 字段语义移入 follow-up
 - [x] "GEMINI / CLAUDE 接入模板" 移入 follow-up
 - [x] `codex-stale-thread-binding-recovery` cookbook spec delta 移入 follow-up

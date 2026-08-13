@@ -1,5 +1,7 @@
 import { useTranslation } from "react-i18next";
 import type { TurnPlan } from "../../../types";
+import { loadPlanStyles } from "../../../styles/featureStyleLoaders";
+import { useFeatureStylesReady } from "../../../styles/useFeatureStylesReady";
 import { resolvePlanStepStatusForDisplay } from "../../threads/utils/threadNormalize";
 
 type PlanPanelProps = {
@@ -36,7 +38,11 @@ export function PlanPanel({
   isCodexEngine = false,
   onClose,
 }: PlanPanelProps) {
+  const stylesReady = useFeatureStylesReady(loadPlanStyles);
   const { t } = useTranslation();
+  if (!stylesReady) {
+    return null;
+  }
   const progress = plan ? formatProgress(plan) : "";
   const steps = plan?.steps ?? [];
   const showEmpty = !steps.length && !plan?.explanation;

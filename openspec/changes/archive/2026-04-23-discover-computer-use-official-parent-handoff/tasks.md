@@ -21,7 +21,7 @@
 
 - [x] 4.1 增加 ordinary workflow guard，确认 status refresh、settings save、chat send、MCP 管理不会触发 handoff discovery；验证：targeted tests / existing service tests。
 - [x] 4.2 更新 macOS manual test matrix，覆盖当前第三方宿主下的 no-crash、candidate evidence、unavailable conclusion；验证：文档包含步骤、期望字段、停止条件。
-- [x] 4.3 同步 `.trellis/spec/**/computer-use-bridge.md`，记录 handoff discovery schema、asset boundary、Windows unsupported 与 rollback path；验证：spec diff review。
+- [x] 4.3 同步 `dev-guidelines/**/computer-use-bridge.md`，记录 handoff discovery schema、asset boundary、Windows unsupported 与 rollback path；验证：spec diff review。
 
 ## 5. Validation And Archive Readiness
 

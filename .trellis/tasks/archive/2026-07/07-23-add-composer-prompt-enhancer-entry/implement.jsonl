@@ -1,5 +1,0 @@
-{"file": ".trellis/workflow.md", "reason": "Project workflow and conventions"}
-{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend development guide"}
-{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "Composer component、i18n 与 accessibility contract"}
-{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Composer control surface geometry 与测试门禁"}
-{"file": "openspec/changes/add-composer-prompt-enhancer-entry/", "type": "directory", "reason": "Behavior contract 与实施任务"}

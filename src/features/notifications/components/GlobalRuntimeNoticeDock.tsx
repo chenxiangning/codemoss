@@ -1,6 +1,13 @@
 import CircleAlert from "lucide-react/dist/esm/icons/circle-alert";
 import CircleCheck from "lucide-react/dist/esm/icons/circle-check";
-import { useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+} from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import {
@@ -106,6 +113,10 @@ function resolveSidebarPanelPlacement(anchorRect: DOMRect): SidebarPanelPlacemen
   };
 }
 
+function isEventInsideNode(target: EventTarget | null, node: Node | null): boolean {
+  return Boolean(node && target instanceof Node && node.contains(target));
+}
+
 export function GlobalRuntimeNoticeDock({
   notices,
   visibility,
@@ -116,6 +127,7 @@ export function GlobalRuntimeNoticeDock({
 }: GlobalRuntimeNoticeDockProps) {
   const { t } = useTranslation();
   const shellRef = useRef<HTMLDivElement | null>(null);
+  const panelRef = useRef<HTMLElement | null>(null);
   const [isSidebarPlacement, setIsSidebarPlacement] = useState(false);
   const [sidebarPanelPlacement, setSidebarPanelPlacement] =
     useState<SidebarPanelPlacement | null>(null);
@@ -172,6 +184,36 @@ export function GlobalRuntimeNoticeDock({
     };
   }, [isMinimized, isSidebarPlacement]);
 
+  // 展开时：点击面板外空白 / Escape 均可收起（portal 面板不在 shell 内，需同时看 panelRef）
+  useEffect(() => {
+    if (isMinimized) {
+      return;
+    }
+
+    const handlePointerDown = (event: MouseEvent) => {
+      if (
+        isEventInsideNode(event.target, panelRef.current) ||
+        isEventInsideNode(event.target, shellRef.current)
+      ) {
+        return;
+      }
+      onMinimize();
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        onMinimize();
+      }
+    };
+
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isMinimized, onMinimize]);
+
   const renderedRows = useMemo(
     () =>
       visibleNotices.map((notice) => {
@@ -193,6 +235,7 @@ export function GlobalRuntimeNoticeDock({
 
   const expandedDockNode = (
     <section
+      ref={panelRef}
       className={`global-runtime-notice-dock${isSidebarPlacement ? " is-sidebar-popover" : ""}${sidebarPanelPlacement ? " is-portal" : ""}`}
       role="region"
       aria-label={t("runtimeNotice.title")}

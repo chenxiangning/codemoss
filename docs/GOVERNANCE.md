@@ -13,7 +13,7 @@ status: active
 
 1. 当前可执行代码、测试与配置。
 2. `openspec/**` 中的 behavior spec、proposal、design 与 tasks。
-3. `.trellis/spec/**` 中的 implementation rule 与 executable contract。
+3. `dev-guidelines/**` 中的 implementation rule 与 executable contract。
 4. `docs/**` 中的指南、参考、分析、计划、研究与报告。
 
 `docs/**` 不得覆盖更高优先级事实源。涉及当前行为的文档必须链接到可核对的代码、测试或规范。
@@ -47,7 +47,7 @@ status: active
 | `deprecated` | 已废弃或仅为 compatibility redirect | 必须说明替代入口；`retired` 统一归入此值 |
 | `generated` | 由工具生成的只读产物 | 必须注明 generator 或上游数据源，不手工维护 |
 
-`draft` 是 authoring state，不是 published lifecycle。草稿应留在 OpenSpec change、Trellis task 或本地 workspace；进入 `docs/` 发布时必须选择上表中的正式值。
+`draft` 是 authoring state，不是 published lifecycle。草稿应留在 OpenSpec change 或本地 workspace；进入 `docs/` 发布时必须选择上表中的正式值。
 
 不得使用 `retired`、`current`、`done`、`archived` 等同义值。历史目录位置不能代替 lifecycle marker。
 
@@ -77,7 +77,7 @@ status: active
 ## 5. 索引与可发现性
 
 - `docs/README.md` 是唯一顶层入口。
-- 每个 current section 必须提供 `README.md`；`.trellis/spec/**` 按项目约定使用 `index.md`。
+- 每个 current section 必须提供 `README.md`；`dev-guidelines/**` 按项目约定使用 `index.md`。
 - 每份 Markdown 必须从 `docs/README.md` 经本地链接图可达。
 - 迁移高 fan-out 文档时，旧路径保留 `deprecated` redirect stub；低引用历史材料可直接进入 `archive/`。
 - 新增、移动、归档文档时，同一变更内更新相关 section index 与顶层索引。
@@ -113,4 +113,4 @@ npm run check:docs
 - 任意层级不存在 `.DS_Store`。
 - 根目录只包含治理入口、品牌资源和 compatibility stubs。
 
-门禁通过只代表结构闭环，不替代代码、OpenSpec 与 Trellis contract 的语义核对。
+门禁通过只代表结构闭环，不替代代码、OpenSpec 与 `dev-guidelines/**` contract 的语义核对。

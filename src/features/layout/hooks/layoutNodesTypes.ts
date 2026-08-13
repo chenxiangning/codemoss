@@ -224,6 +224,11 @@ export type LayoutNodesFlatOptions = {
   onAddWorkspace: () => void;
   onSelectHome: () => void;
   onSelectWorkspace: (workspaceId: string) => void;
+  /** Sidebar within-group project reorder; persists sortOrder for the listed ids. */
+  onReorderWorkspaces?: (input: {
+    groupId: string | null;
+    orderedWorkspaceIds: string[];
+  }) => void | Promise<void>;
   onConnectWorkspace: (workspace: WorkspaceInfo) => Promise<void>;
   onAddAgent: (
     workspace: WorkspaceInfo,
@@ -866,6 +871,7 @@ export type ChromeLayoutNodesOptions = Pick<
   | "onAddWorkspace"
   | "onSelectHome"
   | "onSelectWorkspace"
+  | "onReorderWorkspaces"
   | "onConnectWorkspace"
   | "onAddAgent"
   | "engineOptions"

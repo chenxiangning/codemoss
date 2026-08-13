@@ -1,5 +1,7 @@
 import { useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
+import { loadCloneModalStyles } from "../../../styles/featureStyleLoaders";
+import { useFeatureStylesReady } from "../../../styles/useFeatureStylesReady";
 
 type ClonePromptProps = {
   workspaceName: string;
@@ -30,6 +32,7 @@ export function ClonePrompt({
   onConfirm,
   isBusy = false,
 }: ClonePromptProps) {
+  const stylesReady = useFeatureStylesReady(loadCloneModalStyles);
   const { t } = useTranslation();
   const inputRef = useRef<HTMLInputElement | null>(null);
 
@@ -41,6 +44,10 @@ export function ClonePrompt({
   const canCreate = copyName.trim().length > 0 && copiesFolder.trim().length > 0;
   const showSuggested =
     Boolean(suggestedCopiesFolder) && copiesFolder.trim().length === 0;
+
+  if (!stylesReady) {
+    return null;
+  }
 
   return (
     <div className="clone-modal" role="dialog" aria-modal="true">

@@ -2,6 +2,8 @@ mod classification;
 pub(crate) mod commands;
 mod compat;
 mod diagnostics;
+pub(crate) mod embed;
+pub(crate) mod embed_index;
 mod model;
 mod projection;
 mod search;

@@ -1,6 +1,0 @@
-{"file": ".trellis/workflow.md", "reason": "Project workflow and conventions"}
-{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend development guide"}
-{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "Composer picker component contract"}
-{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Focused regression and quality gates"}
-{"file": ".trellis/spec/frontend/type-safety.md", "reason": "ProviderId union and strict narrowing"}
-{"file": ".trellis/spec/backend/provider-scoped-model-catalog.md", "reason": "Provider-scoped model catalog contract"}

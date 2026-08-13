@@ -1026,6 +1026,54 @@ impl ClaudeSession {
         }
     }
 
+    /// Whether absolute path is inside workspace or session L1 grant roots.
+    pub(super) fn is_path_in_session_allowlist(&self, absolute_path: &str) -> bool {
+        use crate::engine::session_directory_grant::{
+            canonicalize_for_grant, path_is_within_any_root, path_is_within_root,
+        };
+        let Ok(candidate) = canonicalize_for_grant(absolute_path) else {
+            return false;
+        };
+        if path_is_within_root(&candidate, &self.workspace_path) {
+            return true;
+        }
+        let roots = self
+            .session_allowed_roots
+            .lock()
+            .map(|guard| guard.clone())
+            .unwrap_or_default();
+        path_is_within_any_root(&candidate, &roots)
+    }
+
+    /// Add a grant root to L1. Returns the canonical root string.
+    pub(super) fn grant_session_directory_root(
+        &self,
+        root: &std::path::Path,
+    ) -> Result<String, String> {
+        use crate::engine::session_directory_grant::canonicalize_for_grant;
+        let canonical = canonicalize_for_grant(&root.to_string_lossy())?;
+        let display = canonical.to_string_lossy().to_string();
+        if let Ok(mut roots) = self.session_allowed_roots.lock() {
+            if !roots.iter().any(|existing| existing == &canonical) {
+                roots.push(canonical);
+            }
+        }
+        Ok(display)
+    }
+
+    /// Extra roots to pass as Claude CLI `--add-dir` on subsequent launches.
+    pub(super) fn session_add_dir_args(&self) -> Vec<String> {
+        self.session_allowed_roots
+            .lock()
+            .map(|roots| {
+                roots
+                    .iter()
+                    .map(|path| path.to_string_lossy().to_string())
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
     pub async fn respond_to_approval_request(
         &self,
         request_id: Value,
@@ -1034,14 +1082,21 @@ impl ClaudeSession {
         let Some(request_key) = normalize_claude_request_id_key(&request_id) else {
             return Err("invalid request_id for Claude approval".to_string());
         };
-        let decision = match result {
-            Value::String(value) => value.trim().to_ascii_lowercase(),
-            Value::Object(map) => map
-                .get("decision")
-                .and_then(Value::as_str)
-                .map(|value| value.trim().to_ascii_lowercase())
-                .filter(|value| !value.is_empty())
-                .ok_or_else(|| "invalid result for Claude approval".to_string())?,
+        let (decision, grant_scope) = match result {
+            Value::String(value) => (value.trim().to_ascii_lowercase(), None),
+            Value::Object(map) => {
+                let decision = map
+                    .get("decision")
+                    .and_then(Value::as_str)
+                    .map(|value| value.trim().to_ascii_lowercase())
+                    .filter(|value| !value.is_empty())
+                    .ok_or_else(|| "invalid result for Claude approval".to_string())?;
+                let scope = map
+                    .get("scope")
+                    .and_then(Value::as_str)
+                    .and_then(crate::engine::session_directory_grant::DirectoryGrantScope::parse);
+                (decision, scope)
+            }
             _ => return Err("invalid result for Claude approval".to_string()),
         };
         if decision != "accept" && decision != "decline" {
@@ -1058,6 +1113,75 @@ impl ClaudeSession {
                 "unknown request_id for Claude approval: {request_key}"
             ));
         };
+
+        // DirectoryGrant path (L1 expand) — distinct from in-root file apply.
+        let pending_grant_root = self
+            .pending_directory_grants
+            .lock()
+            .ok()
+            .and_then(|mut grants| grants.remove(&request_key));
+        if let Some(grant_root) = pending_grant_root {
+            let scope = grant_scope
+                .unwrap_or(crate::engine::session_directory_grant::DirectoryGrantScope::Session);
+            if decision == "accept" {
+                let granted = self.grant_session_directory_root(&grant_root)?;
+                // once: still add for remainder of process so auto-retry / next tool in same turn can work;
+                // true single-shot revoke is deferred (see design open questions).
+                let summary = format!(
+                    "Directory grant accepted (scope={}). Root added to session allowlist: {granted}. Claude CLI cannot always hot-expand allowed dirs mid-process; retry the original tool or send the next message so `--add-dir` can take effect.",
+                    scope.as_str()
+                );
+                self.emit_tool_completion(&turn_id, &request_key, Some(summary.clone()), None);
+                self.push_synthetic_approval_summary(
+                    &turn_id,
+                    self.summarize_non_file_approval(summary.clone(), true),
+                );
+            } else {
+                let message = format!(
+                    "Directory grant declined. Path remains outside this session's allowed working directories. To expand manually, restart with --add-dir {:?} or open that folder as the workspace.",
+                    grant_root
+                );
+                self.emit_tool_completion(
+                    &turn_id,
+                    &request_key,
+                    Some(message.clone()),
+                    Some(message.clone()),
+                );
+                self.push_synthetic_approval_summary(
+                    &turn_id,
+                    self.summarize_non_file_approval(message, false),
+                );
+            }
+            if self.pending_approval_request_count_for_turn(&turn_id) == 0 {
+                let approval_entries = self.take_synthetic_approval_entries(&turn_id);
+                let aggregated_summary =
+                    format_synthetic_approval_completion_text(&approval_entries).unwrap_or_else(
+                        || {
+                            if decision == "accept" {
+                                "Directory grant resolved.".to_string()
+                            } else {
+                                "Directory grant declined.".to_string()
+                            }
+                        },
+                    );
+                if self.has_approval_resume_waiter_for_turn(&turn_id) {
+                    let resume_message =
+                        format_synthetic_approval_resume_message(&approval_entries);
+                    self.store_approval_resume_message(&turn_id, resume_message);
+                } else {
+                    self.finalize_synthetic_approval_turn(
+                        &turn_id,
+                        json!({
+                            "directoryGrantResolved": true,
+                            "approved": decision == "accept",
+                            "scope": scope.as_str(),
+                            "text": aggregated_summary,
+                        }),
+                    );
+                }
+            }
+            return Ok(());
+        }
 
         let tool_name = self.peek_tool_name(&request_key).unwrap_or_default();
         let is_file_change = matches!(

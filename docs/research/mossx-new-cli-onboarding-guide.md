@@ -78,6 +78,7 @@ status: active
 | D7 🔵 | `src/conversation-presentation/presentationProfile.ts` + `src/features/threads/assembly/conversationMigrationGates.ts` | 渲染节奏/throttle profile 与 assembly 迁移 gate | 缺省走 fallback profile，通常可接受；需要专属节奏时才加 |
 | D8 🔵 | `src/utils/threadItems.ts` | canonical item 归一化；一般免改，仅参照 codex generated-image / serverLabel 特例 | 只有新引擎有私制品类时才动 |
 | D9 🔵 | `TokenIndicator.tsx` / `ContextBar.tsx` | usage 展示；通用 `usedTokens/maxTokens` 路径自动可用 | 专属 usage 卡片（如 ClaudeContextCard）按需接线 |
+| D10 🔵 | User Input elicitation（AskUserQuestion / requestUserInput） | 需要中途问用户时：emit `item/tool/requestUserInput` + 结算走 `respond_to_server_request`；**UI 只挂** `RequestUserInputMessage` / `RequestUserInputSubmittedBlock`（禁止 per-engine 弹层） | 漏 emit → 永远无卡；自造 UI → 样式/结算分叉；静默 Ok 不交付 waiter → 跳过/提交后 CLI 永久 loading。能力矩阵：[`../reference/conversation/user-input-elicitation-capability-matrix.md`](../reference/conversation/user-input-elicitation-capability-matrix.md) |
 
 自检（哨兵）：`rg -n '"<new-engine>"' src/features/messages src/features/threads src/conversation-presentation src/features/app/hooks/useAppServerEvents.ts` —— 返回不应为空；再跑 `pnpm vitest run src/features/threads/adapters/realtimeAdapters.test.ts src/features/threads/loaders` 验证 live/history parity。
 

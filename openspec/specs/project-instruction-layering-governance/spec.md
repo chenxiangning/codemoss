@@ -28,14 +28,14 @@ The project entry document SHALL remain a minimal operational entrypoint instead
 #### Scenario: Session-start guidance uses minimal required context
 
 - **WHEN** a new AI or human collaborator starts work in the repository
-- **THEN** the project entry document SHALL provide a minimal reading path that starts from itself and then points to the relevant `.trellis/spec/**` or `openspec/**` documents by concern
+- **THEN** the project entry document SHALL provide a minimal reading path that starts from itself and then points to the relevant `dev-guidelines/**` or `openspec/**` documents by concern
 - **AND** it SHALL NOT instruct default full-tree reading of unrelated rule directories as the primary path
 
 #### Scenario: Implementation detail remains outside AGENTS
 
 - **WHEN** detailed frontend, backend, or cross-layer implementation constraints are needed
-- **THEN** the project entry document SHALL point to `.trellis/spec/**` instead of reproducing the detailed rules inline
-- **AND** updates to those implementation rules SHALL be made in `.trellis/spec/**` first
+- **THEN** the project entry document SHALL point to `dev-guidelines/**` instead of reproducing the detailed rules inline
+- **AND** updates to those implementation rules SHALL be made in `dev-guidelines/**` first
 
 ### Requirement: Session-Start Injection MUST Stay Minimal And Pointer-Oriented
 
@@ -50,7 +50,7 @@ Host adapter session-start hooks SHALL inject only the minimum repository contex
 #### Scenario: Session-start points to rule indexes instead of inlining them
 
 - **WHEN** host adapters inject repository guidance for a new session
-- **THEN** the injected context SHALL point to `.trellis/spec/frontend/index.md`, `.trellis/spec/backend/index.md`, `.trellis/spec/guides/index.md`, and the relevant OpenSpec entry documents as read-on-demand surfaces
+- **THEN** the injected context SHALL point to `dev-guidelines/frontend/index.md`, `dev-guidelines/backend/index.md`, `dev-guidelines/guides/index.md`, and the relevant OpenSpec entry documents as read-on-demand surfaces
 - **AND** it SHALL NOT inline the full正文 of multiple spec index files as the default session-start payload
 
 ### Requirement: OpenSpec Main Specs MUST Preserve Human-Readable Hygiene

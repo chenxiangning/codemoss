@@ -57,6 +57,7 @@ export function StageInjectContextHeader({
 
   const labels = useMemo(
     () => ({
+      mainCanvas: t("multiAgent.inspector.inject.pipeMainCanvas"),
       user: t("multiAgent.inspector.inject.pipeUser"),
       approvalNote: t("multiAgent.inspector.inject.pipeNote"),
       role: t("multiAgent.inspector.inject.pipeRole"),
@@ -146,6 +147,8 @@ export function StageInjectContextHeader({
 
   const sectionTitle = (id: InjectSectionId, upstreamTitle?: string | null) => {
     switch (id) {
+      case "mainCanvas":
+        return t("multiAgent.inspector.inject.sectionMainCanvas");
       case "user":
         return t("multiAgent.inspector.inject.sectionUser");
       case "approvalNote":
@@ -215,6 +218,11 @@ export function StageInjectContextHeader({
                   ? t("multiAgent.inspector.inject.collapseBody")
                   : t("multiAgent.inspector.inject.expandBody")}
               </button>
+            ) : null}
+            {sec.id === "mainCanvas" ? (
+              <div className="ma-inject-sec-meta">
+                {t("multiAgent.inspector.inject.mainCanvasMeta")}
+              </div>
             ) : null}
             {sec.id === "approvalNote" ? (
               <div className="ma-inject-sec-meta">

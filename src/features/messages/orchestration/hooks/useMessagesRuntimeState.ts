@@ -222,8 +222,17 @@ export function useMessagesRuntimeState({
   );
   const assistantFinalizingCandidateId =
     latestLiveSourceAssistantMessageId ?? latestAssistantMessageId;
+  // live-text externalization：isThinking 关掉后若立刻 isStreaming=false，
+  // MessageRow 会切回 item.text（常为建壳首字）。Claude/Codex 已有 finalizing
+  // 窗口；Grok/Kimi/Gemini/OpenCode 同样走 live 通道，必须对齐，否则结束后
+  // 只剩「这」「已」「**」直到重开历史（见 live settle full-text fix）。
   const supportsAssistantFinalizingWindow =
-    activeEngine === "claude" || activeEngine === "codex";
+    activeEngine === "claude" ||
+    activeEngine === "codex" ||
+    activeEngine === "gemini" ||
+    activeEngine === "grok" ||
+    activeEngine === "kimi" ||
+    activeEngine === "opencode";
   const isAssistantCompletionFrame =
     supportsAssistantFinalizingWindow &&
     previousAssistantScopeKeyRef.current === renderScopeKey &&

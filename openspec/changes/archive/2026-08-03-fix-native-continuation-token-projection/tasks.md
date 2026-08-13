@@ -13,7 +13,7 @@
 ## 3. Product Semantics And Contracts
 
 - [x] 3.1 [P1][依赖 2.3] 输入 preview Token estimates，输出“可移植历史 → 续接包”语义；更新 locale/component focused Vitest。
-- [x] 3.2 [P0][依赖全部实现] 更新 `.trellis/spec/backend/native-provider-continuation-contract.md`，同步 effective window、transport-independent budget、non-empty spine executable contract。
+- [x] 3.2 [P0][依赖全部实现] 更新 `dev-guidelines/backend/native-provider-continuation-contract.md`，同步 effective window、transport-independent budget、non-empty spine executable contract。
 
 ## 4. Verification
 

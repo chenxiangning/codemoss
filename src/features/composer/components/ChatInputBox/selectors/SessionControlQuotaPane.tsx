@@ -1,5 +1,8 @@
 import { useTranslation } from "react-i18next";
-import type { SessionOverviewQuotaView } from "../../../../status-panel/utils/sessionOverviewViewModel";
+import type {
+  SessionOverviewQuotaView,
+  SessionOverviewUsageSummaryView,
+} from "../../../../status-panel/utils/sessionOverviewViewModel";
 import { formatRelativeTime } from "../../../../../utils/time";
 
 export type SessionControlQuotaPaneProps = {
@@ -21,6 +24,107 @@ function formatQuotaReset(
   return `${t(labelKey)} ${formatRelativeTime(resetMs)}`;
 }
 
+/** 紧凑 Token：6608 → 6.6K，19675 → 19.7K，2.4e9 → 2.4B */
+export function formatCompactTokenCount(value: number): string {
+  if (!Number.isFinite(value) || value < 0) {
+    return "0";
+  }
+  if (value < 1000) {
+    return String(Math.round(value));
+  }
+  if (value < 1_000_000) {
+    const k = value / 1000;
+    const text = k >= 100 ? k.toFixed(0) : k.toFixed(1);
+    return `${text.replace(/\.0$/, "")}K`;
+  }
+  if (value < 1_000_000_000) {
+    const m = value / 1_000_000;
+    const text = m >= 100 ? m.toFixed(0) : m.toFixed(1);
+    return `${text.replace(/\.0$/, "")}M`;
+  }
+  const b = value / 1_000_000_000;
+  const text = b >= 100 ? b.toFixed(0) : b.toFixed(2);
+  return `${text.replace(/\.?0+$/, "")}B`;
+}
+
+/** 毫秒 → 秒展示：3885 → 3.89s（统一 2 位小数） */
+export function formatAverageDurationMs(ms: number): string {
+  if (!Number.isFinite(ms) || ms < 0) {
+    return "—";
+  }
+  const seconds = ms / 1000;
+  return `${seconds.toFixed(2)}s`;
+}
+
+function UsageSummaryRows({
+  summary,
+  t,
+}: {
+  summary: SessionOverviewUsageSummaryView;
+  t: (key: string, options?: Record<string, unknown>) => string;
+}) {
+  const rows: Array<{ key: string; label: string; value: string }> = [];
+  if (summary.totalRequests != null) {
+    rows.push({
+      key: "requests",
+      label: t("composer.quotaTotalRequests", { defaultValue: "总计请求" }),
+      value: String(summary.totalRequests),
+    });
+  }
+  if (summary.totalActualCost) {
+    rows.push({
+      key: "cost",
+      label: t("composer.quotaTotalCost", { defaultValue: "累计消费" }),
+      value: `$${summary.totalActualCost}`,
+    });
+  }
+  if (
+    summary.totalInputTokens != null ||
+    summary.totalOutputTokens != null
+  ) {
+    const input =
+      summary.totalInputTokens != null
+        ? formatCompactTokenCount(summary.totalInputTokens)
+        : "—";
+    const output =
+      summary.totalOutputTokens != null
+        ? formatCompactTokenCount(summary.totalOutputTokens)
+        : "—";
+    rows.push({
+      key: "io",
+      label: t("composer.quotaInputOutput", { defaultValue: "输入 / 输出" }),
+      value: `${input} / ${output}`,
+    });
+  }
+  if (summary.totalTokens != null) {
+    rows.push({
+      key: "tokens",
+      label: t("composer.quotaTotalTokens", { defaultValue: "累计 Token" }),
+      value: formatCompactTokenCount(summary.totalTokens),
+    });
+  }
+  if (summary.averageDurationMs != null) {
+    rows.push({
+      key: "latency",
+      label: t("composer.quotaAvgLatency", { defaultValue: "平均响应" }),
+      value: formatAverageDurationMs(summary.averageDurationMs),
+    });
+  }
+  if (rows.length === 0) {
+    return null;
+  }
+  return (
+    <>
+      {rows.map((row) => (
+        <div key={row.key} className="composer-session-hud-quota-row">
+          <span className="composer-session-hud-quota-key">{row.label}</span>
+          <span className="composer-session-hud-quota-val">{row.value}</span>
+        </div>
+      ))}
+    </>
+  );
+}
+
 /**
  * Right-rail Quota summary for Session Control HUD.
  * Presentational only — binds SessionOverviewQuotaView from overview pipeline.
@@ -37,14 +141,21 @@ export function SessionControlQuotaPane({
     quota.providerLabel?.trim() ||
     t("composer.quotaProvider", { defaultValue: "Provider" });
 
+  // 中转供应商 label 形如 `{origin} {source}`（含 http(s)），标题勿整串塞进「xx 套餐额度」
+  const isRelayProvider =
+    !!quota.providerLabel &&
+    (quota.providerLabel.startsWith("http://") ||
+      quota.providerLabel.startsWith("https://"));
   const title =
     quota.source === "official_cli"
       ? t("statusPanel.sessionOverview.quota.codexTitle")
-      : quota.source === "coding_plan" && quota.providerLabel
-        ? t("statusPanel.sessionOverview.quota.codingPlanTitle", {
-            provider: quota.providerLabel,
-          })
-        : t("composer.quotaWindow", { defaultValue: "Quota window" });
+      : quota.source === "coding_plan" && isRelayProvider
+        ? t("composer.quotaWindow", { defaultValue: "配额窗口" })
+        : quota.source === "coding_plan" && quota.providerLabel
+          ? t("statusPanel.sessionOverview.quota.codingPlanTitle", {
+              provider: quota.providerLabel,
+            })
+          : t("composer.quotaWindow", { defaultValue: "Quota window" });
 
   const primaryWindow = quota.windows[0] ?? null;
   const secondaryWindow = quota.windows[1] ?? null;
@@ -60,30 +171,37 @@ export function SessionControlQuotaPane({
     return { height, tip };
   });
 
-  const isBalanceOnly =
+  const hasUsageDetail = quota.usageSummary != null;
+  const isBalanceOrUsageOnly =
     !loading &&
     quota.windows.length === 0 &&
-    quota.hasCredits &&
+    (quota.hasCredits || hasUsageDetail) &&
     (quota.source === "coding_plan" || quota.source === "official_cli");
 
   const emptyMessage = (() => {
     if (loading) {
       return t("statusPanel.sessionOverview.quota.loading");
     }
-    if (quota.source === "error" || quota.error) {
-      return t("statusPanel.sessionOverview.quota.error", {
-        message: quota.error ?? "—",
+    // 友好文案直接展示（后端已替换 404/鉴权等原始错误）
+    if (quota.error) {
+      return quota.error;
+    }
+    if (quota.source === "error") {
+      return t("statusPanel.sessionOverview.quota.notSupported", {
+        defaultValue: "暂不支持额度查询",
       });
     }
     if (quota.source === "unsupported") {
-      return t("statusPanel.sessionOverview.quota.unsupported", {
-        engine: quota.providerLabel ?? "—",
-      });
+      return (
+        quota.error ??
+        t("statusPanel.sessionOverview.quota.notSupported", {
+          defaultValue: "暂不支持额度查询",
+        })
+      );
     }
+    // none：官方无额度块 / 无可查 plan
     if (quota.source === "none") {
-      return t("statusPanel.sessionOverview.quota.unsupported", {
-        engine: quota.providerLabel ?? "—",
-      });
+      return t("statusPanel.sessionOverview.quota.codingPlanEmpty");
     }
     if (quota.source === "official_cli") {
       return t("statusPanel.sessionOverview.quota.codexEmpty");
@@ -127,18 +245,23 @@ export function SessionControlQuotaPane({
         ) : null}
       </div>
 
-      {isBalanceOnly ? (
+      {isBalanceOrUsageOnly ? (
         <div className="composer-session-hud-quota-metrics">
-          <div className="composer-session-hud-quota-row">
-            <span className="composer-session-hud-quota-key">
-              {t("usage.credits")}
-            </span>
-            <span className="composer-session-hud-quota-val">
-              {quota.creditsUnlimited
-                ? t("usage.unlimited")
-                : (quota.creditsBalance ?? "—")}
-            </span>
-          </div>
+          {quota.hasCredits ? (
+            <div className="composer-session-hud-quota-row">
+              <span className="composer-session-hud-quota-key">
+                {t("usage.credits")}
+              </span>
+              <span className="composer-session-hud-quota-val">
+                {quota.creditsUnlimited
+                  ? t("usage.unlimited")
+                  : (quota.creditsBalance ?? "—")}
+              </span>
+            </div>
+          ) : null}
+          {quota.usageSummary ? (
+            <UsageSummaryRows summary={quota.usageSummary} t={t} />
+          ) : null}
           <div className="composer-session-hud-quota-row">
             <span className="composer-session-hud-quota-key">
               {t("composer.quotaProvider", { defaultValue: "Provider" })}
@@ -167,6 +290,21 @@ export function SessionControlQuotaPane({
                 {primaryReset ?? "--"}
               </span>
             </div>
+            {quota.hasCredits ? (
+              <div className="composer-session-hud-quota-row">
+                <span className="composer-session-hud-quota-key">
+                  {t("usage.credits")}
+                </span>
+                <span className="composer-session-hud-quota-val">
+                  {quota.creditsUnlimited
+                    ? t("usage.unlimited")
+                    : (quota.creditsBalance ?? "—")}
+                </span>
+              </div>
+            ) : null}
+            {quota.usageSummary ? (
+              <UsageSummaryRows summary={quota.usageSummary} t={t} />
+            ) : null}
             <div className="composer-session-hud-quota-row">
               <span className="composer-session-hud-quota-key">
                 {t("composer.quotaProvider", { defaultValue: "Provider" })}
@@ -213,21 +351,6 @@ export function SessionControlQuotaPane({
                   )}
                 </div>
               ) : null}
-            </div>
-          ) : null}
-
-          {quota.hasCredits ? (
-            <div className="composer-session-hud-quota-secondary">
-              <div className="composer-session-hud-quota-row">
-                <span className="composer-session-hud-quota-key">
-                  {t("usage.credits")}
-                </span>
-                <span className="composer-session-hud-quota-val">
-                  {quota.creditsUnlimited
-                    ? t("usage.unlimited")
-                    : (quota.creditsBalance ?? "—")}
-                </span>
-              </div>
             </div>
           ) : null}
 

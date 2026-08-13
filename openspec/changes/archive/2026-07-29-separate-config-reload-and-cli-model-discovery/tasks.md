@@ -18,7 +18,7 @@
 
 ## 4. Contract And Incremental Verification
 
-- [x] 4.1 [P1, depends: 2.3,3.3] 更新 `.trellis/spec/backend/provider-scoped-model-catalog.md` 的双动作、CLI-only 与 Shared binding contract；输入：OpenSpec deltas；输出：executable contract；验证：人工 diff 审计。
+- [x] 4.1 [P1, depends: 2.3,3.3] 更新 `dev-guidelines/backend/provider-scoped-model-catalog.md` 的双动作、CLI-only 与 Shared binding contract；输入：OpenSpec deltas；输出：executable contract；验证：人工 diff 审计。
 - [x] 4.2 [P0, depends: 1.3,2.3,3.3] 运行受影响 Vitest、focused Rust tests、changed-file lint、runtime contract 与 Rust bins check；额外执行 repo typecheck 并记录非本变更 blocker；输入：changed files；输出：增量通过证据；验证：目标命令 exit code 0。
 - [x] 4.3 [P1, depends: 4.1,4.2] 执行 OpenSpec strict validation、implementation/spec consistency review，并记录未运行全量测试的用户授权；输入：artifacts + diff；输出：verification evidence；验证：change strict validation 通过。
 
