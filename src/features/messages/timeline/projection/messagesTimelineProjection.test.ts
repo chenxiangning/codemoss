@@ -280,4 +280,71 @@ describe("messagesTimelineProjection", () => {
     expect(rows.filter((row) => row.kind === "historyRecoveryFailure")).toHaveLength(1);
     expect(rows.some((row) => row.kind === "emptyState")).toBe(false);
   });
+
+  it("parks a collapsed trailing-phase header before its visible tail anchor", () => {
+    const entries = groupToolItems([
+      {
+        id: "user-anchor",
+        kind: "message",
+        role: "user",
+        text: "你好",
+      },
+      {
+        id: "tail-tool-1",
+        kind: "tool",
+        toolType: "fileRead",
+        title: "Read a.ts",
+        detail: "a.ts",
+        status: "completed",
+        output: "",
+      },
+      {
+        id: "tail-tool-2",
+        kind: "tool",
+        toolType: "fileRead",
+        title: "Read b.ts",
+        detail: "b.ts",
+        status: "completed",
+        output: "",
+      },
+    ]);
+    const rows = buildTimelineProjectionRows({
+      activeUserInputAnchorItemId: null,
+      approvalVisible: false,
+      claudeDockedReasoningItemIds: [],
+      processPhaseChips: [
+        {
+          phaseKey: "trailing:user-anchor",
+          count: 5,
+          expanded: false,
+          durationMs: null,
+          breakdown: { reasoningCount: 0, toolCount: 5, exploreCount: 0 },
+          insertBeforeItemId: "tool-hidden-1",
+          assistantItemId: "trailing:user-anchor",
+          collapsedAnchorItemId: "tail-tool-1",
+          hiddenItemIds: ["tool-hidden-1", "tool-hidden-2"],
+        },
+      ],
+      effectiveItemsCount: 3,
+      groupedEntries: entries,
+      hasVisibleUserInputRequest: false,
+      hiddenClaudeReasoningOnly: false,
+      historyRecoveryFailureVisible: false,
+      isHistoryLoading: false,
+      isThinking: true,
+      shouldRenderUserInputAtTail: false,
+    });
+
+    const chipIndex = rows.findIndex((row) => row.kind === "liveMiddleCollapsed");
+    const tailIndex = rows.findIndex(
+      (row) => row.kind === "entry" && row.itemIds.includes("tail-tool-1"),
+    );
+    expect(chipIndex).toBeGreaterThanOrEqual(0);
+    expect(chipIndex).toBe(tailIndex - 1);
+    expect(rows[chipIndex]).toMatchObject({
+      kind: "liveMiddleCollapsed",
+      phaseKey: "trailing:user-anchor",
+      expanded: false,
+    });
+  });
 });

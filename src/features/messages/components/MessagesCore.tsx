@@ -1046,6 +1046,7 @@ export const MessagesCore = memo(function MessagesCore({
           (typeof lastDurationMs === "number" && lastDurationMs >= 0 ? lastDurationMs : null),
         insertBeforeItemId: phase.insertBeforeItemId,
         assistantItemId: phase.assistantItemId,
+        collapsedAnchorItemId: phase.collapsedAnchorItemId,
         hiddenItemIds: phase.hiddenItemIds,
       })),
     [lastDurationMs, processPhases],

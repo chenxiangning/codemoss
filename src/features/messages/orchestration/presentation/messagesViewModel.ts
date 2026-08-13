@@ -1,6 +1,7 @@
 import type { ConversationItem, RequestUserInputRequest } from "../../../../types";
 import type { PresentationProfile } from "../../../../conversation-presentation/presentationProfile";
-import { shouldHideToolItemForRender } from "../../utils/groupToolItems";
+import { groupToolItems, shouldHideToolItemForRender } from "../../utils/groupToolItems";
+import type { GroupedEntry } from "../../utils/groupToolItems";
 import type { MessagesEngine } from "../../utils/messagesRenderUtils";
 import {
   countRenderableCollapsedEntries,
@@ -62,6 +63,11 @@ export type ProcessPhaseCollapse = {
    * (first tool/reasoning/explore of the phase) so collapse stays at the top.
    */
   insertBeforeItemId: string;
+  /**
+   * Trailing live phase has no assistant prose yet: the collapsed header is
+   * placed immediately before this still-visible tail item instead.
+   */
+  collapsedAnchorItemId?: string;
   count: number;
   breakdown: ProcessPhaseBreakdown;
   durationMs: number | null;
@@ -438,12 +444,32 @@ function collectTurnProcessItemsForFinalAssistant(
 }
 
 /**
+ * Live 尾部过程的滚动折叠窗口：assistant 正文未落地前，过长的工具/思考串
+ * 会刷屏。计数按幕布卡片（连续同类工具合并的「批量」卡算 1 条，不按卡内
+ * 节点计），超过阈值后仅保留末尾若干张卡展开，其余硬卸载进「已处理」
+ * chip；正文落地后由回合级 phase 接管（下方主循环）。
+ *
+ * 设计边界（设计如此，勿扩散）：
+ * - 这两个常量只控制 trailing live 段的触发与保留窗口，不得复用到回合级
+ *   phase 折叠、chip 统计口径或任何其它折叠逻辑。
+ * - 不要暴露为设置项，不要按 engine 分化；需要调整时只改这里的值。
+ * - 卡片计数语义刻意与 chip 的「已处理 · N 步」细账统计解耦，两边各自独立。
+ */
+const TRAILING_PROCESS_COLLAPSE_THRESHOLD = 5;
+const TRAILING_PROCESS_VISIBLE_TAIL_COUNT = 3;
+
+function groupedEntryProcessItems(entry: GroupedEntry): ConversationItem[] {
+  return entry.kind === "item" ? [entry.item] : [...entry.items];
+}
+
+/**
  * Collapse the multi-step process of each user turn into a drawer above the
  * turn's final assistant prose. Trailing process without following text stays
- * fully expanded.
+ * fully expanded until it exceeds the rolling window threshold above.
  *
  * Performance model (hard unmount):
- * - Live open process (no following prose yet): fully mounted.
+ * - Live open process (no following prose yet): fully mounted until the rolling
+ *   window threshold trips, then older entries unmount into the chip.
  * - After final prose lands and phase collapses: process rows are removed from
  *   the timeline (summary chip only) so React trees are freed.
  * - User expands a phase: process rows remount (no long-lived instance cache).
@@ -526,6 +552,60 @@ export function resolveCollapsedTimelineItems(options: {
       expanded,
       hiddenItemIds,
     });
+  }
+
+  // Live 尾部滚动窗口：无正文收尾的长工具/思考串按阈值折叠，末尾保留
+  // TRAILING_PROCESS_VISIBLE_TAIL_COUNT 张卡可见，正文落地后由上方回合级
+  // phase 全量接管，trailing chip 自然消失。
+  let trailingBoundaryIndex = -1;
+  for (let cursor = canvasItems.length - 1; cursor >= 0; cursor -= 1) {
+    const candidate = canvasItems[cursor];
+    if (!candidate) {
+      continue;
+    }
+    if (isUserMessageItem(candidate) || isAssistantMessageWithVisibleText(candidate)) {
+      trailingBoundaryIndex = cursor;
+      break;
+    }
+  }
+  const trailingProcessItems = canvasItems
+    .slice(trailingBoundaryIndex + 1)
+    .filter(isCollapsibleProcessItem);
+  // 阈值与窗口都按幕布卡片计：连续同类工具合并成的「批量」卡算 1 条。
+  const trailingEntries = groupToolItems(trailingProcessItems);
+  if (trailingEntries.length > TRAILING_PROCESS_COLLAPSE_THRESHOLD) {
+    const hiddenTrailingItems = trailingEntries
+      .slice(0, trailingEntries.length - TRAILING_PROCESS_VISIBLE_TAIL_COUNT)
+      .flatMap(groupedEntryProcessItems);
+    const firstVisibleTailEntry =
+      trailingEntries[trailingEntries.length - TRAILING_PROCESS_VISIBLE_TAIL_COUNT];
+    const firstVisibleTailItem = firstVisibleTailEntry
+      ? groupedEntryProcessItems(firstVisibleTailEntry)[0]
+      : undefined;
+    const renderableCount = countRenderableCollapsedEntries(hiddenTrailingItems, activeEngine);
+    const firstHiddenItem = hiddenTrailingItems[0];
+    if (firstHiddenItem && firstVisibleTailItem && renderableCount >= 1) {
+      const boundaryItem = canvasItems[trailingBoundaryIndex];
+      const phaseKey = `trailing:${boundaryItem?.id ?? "start"}`;
+      const expanded = expandedPhaseKeys.has(phaseKey);
+      if (!expanded) {
+        for (const hiddenItem of hiddenTrailingItems) {
+          unmountedItemIds.add(hiddenItem.id);
+        }
+      }
+      phases.push({
+        phaseKey,
+        // 无正文锚点：sentinel 占位，折叠态落位走 collapsedAnchorItemId。
+        assistantItemId: phaseKey,
+        insertBeforeItemId: firstHiddenItem.id,
+        collapsedAnchorItemId: firstVisibleTailItem.id,
+        count: renderableCount,
+        breakdown: resolvePhaseBreakdown(hiddenTrailingItems, activeEngine),
+        durationMs: resolvePhaseDurationMs(hiddenTrailingItems),
+        expanded,
+        hiddenItemIds: hiddenTrailingItems.map((hiddenItem) => hiddenItem.id),
+      });
+    }
   }
 
   if (phases.length === 0) {

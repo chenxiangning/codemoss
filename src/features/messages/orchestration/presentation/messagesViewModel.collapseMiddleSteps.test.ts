@@ -605,3 +605,185 @@ describe("resolveVisibleMessageItems / collapse after hidden shell tools", () =>
     expect(expanded.phases[0]?.breakdown.reasoningCount).toBe(1);
   });
 });
+
+describe("resolveCollapsedTimelineItems trailing live window", () => {
+  it("keeps trailing process fully expanded at the threshold boundary", () => {
+    // 5 张卡（工具与思考交错，均不成组）→ 不触发折叠。
+    const items = [
+      user("u1"),
+      tool("t1"),
+      reasoning("r1"),
+      tool("t2"),
+      reasoning("r2"),
+      tool("t3"),
+    ];
+    const result = resolveCollapsedTimelineItems({
+      activeEngine: "claude",
+      timelineSourceItems: items,
+    });
+
+    expect(result.phases).toEqual([]);
+    expect(result.timelineItems.map((item) => item.id)).toEqual([
+      "u1",
+      "t1",
+      "r1",
+      "t2",
+      "r2",
+      "t3",
+    ]);
+  });
+
+  it("counts a consecutive batch card as one entry, not by its inner nodes", () => {
+    // 6 个连续 fileRead 合并成 1 张「批量读取」卡 → 卡数未超阈值，不折叠。
+    const items = [
+      user("u1"),
+      tool("t1"),
+      tool("t2"),
+      tool("t3"),
+      tool("t4"),
+      tool("t5"),
+      tool("t6"),
+    ];
+    const result = resolveCollapsedTimelineItems({
+      activeEngine: "claude",
+      timelineSourceItems: items,
+    });
+
+    expect(result.phases).toEqual([]);
+    expect(result.timelineItems.map((item) => item.id)).toEqual([
+      "u1",
+      "t1",
+      "t2",
+      "t3",
+      "t4",
+      "t5",
+      "t6",
+    ]);
+  });
+
+  it("folds older trailing cards into a chip and keeps the last 3 cards visible", () => {
+    // 6 张卡 > 阈值 5 → 折叠前 3 张，保留末尾 3 张。
+    const items = [
+      user("u1"),
+      tool("t1"),
+      reasoning("r1"),
+      tool("t2"),
+      reasoning("r2"),
+      tool("t3"),
+      reasoning("r3"),
+    ];
+    const result = resolveCollapsedTimelineItems({
+      activeEngine: "claude",
+      timelineSourceItems: items,
+    });
+
+    expect(result.phases).toHaveLength(1);
+    const phase = result.phases[0];
+    expect(phase?.phaseKey).toBe("trailing:u1");
+    expect(phase?.expanded).toBe(false);
+    expect(phase?.hiddenItemIds).toEqual(["t1", "r1", "t2"]);
+    expect(phase?.count).toBe(3);
+    expect(phase?.collapsedAnchorItemId).toBe("r2");
+    expect(result.timelineItems.map((item) => item.id)).toEqual([
+      "u1",
+      "r2",
+      "t3",
+      "r3",
+    ]);
+  });
+
+  it("folds a whole batch card as one hidden entry when the window trips", () => {
+    // 批量读取卡(3 节点) + 6 张单卡 = 7 张卡 → 批量卡整体进 chip。
+    const items = [
+      user("u1"),
+      tool("batch-1"),
+      tool("batch-2"),
+      tool("batch-3"),
+      reasoning("r0"),
+      tool("t1"),
+      reasoning("r1"),
+      tool("t2"),
+      reasoning("r2"),
+      tool("t3"),
+    ];
+    const result = resolveCollapsedTimelineItems({
+      activeEngine: "claude",
+      timelineSourceItems: items,
+    });
+
+    expect(result.phases).toHaveLength(1);
+    const phase = result.phases[0];
+    expect(phase?.hiddenItemIds).toEqual([
+      "batch-1",
+      "batch-2",
+      "batch-3",
+      "r0",
+      "t1",
+      "r1",
+    ]);
+    expect(phase?.collapsedAnchorItemId).toBe("t2");
+    expect(result.timelineItems.map((item) => item.id)).toEqual([
+      "u1",
+      "t2",
+      "r2",
+      "t3",
+    ]);
+  });
+
+  it("keeps trailing process mounted while the trailing chip is expanded", () => {
+    const items = [
+      user("u1"),
+      tool("t1"),
+      reasoning("r1"),
+      tool("t2"),
+      reasoning("r2"),
+      tool("t3"),
+      reasoning("r3"),
+    ];
+    const result = resolveCollapsedTimelineItems({
+      activeEngine: "claude",
+      expandedPhaseKeys: new Set(["trailing:u1"]),
+      timelineSourceItems: items,
+    });
+
+    expect(result.phases[0]?.expanded).toBe(true);
+    expect(result.timelineItems.map((item) => item.id)).toEqual([
+      "u1",
+      "t1",
+      "r1",
+      "t2",
+      "r2",
+      "t3",
+      "r3",
+    ]);
+  });
+
+  it("hands the trailing run to the turn phase once assistant prose lands", () => {
+    const items = [
+      user("u1"),
+      tool("t1"),
+      reasoning("r1"),
+      tool("t2"),
+      reasoning("r2"),
+      tool("t3"),
+      reasoning("r3"),
+      assistant("a1", "最终结论"),
+    ];
+    const result = resolveCollapsedTimelineItems({
+      activeEngine: "claude",
+      timelineSourceItems: items,
+    });
+
+    expect(result.phases).toHaveLength(1);
+    expect(result.phases[0]?.phaseKey).toBe("a1");
+    expect(result.phases[0]?.hiddenItemIds).toEqual([
+      "t1",
+      "r1",
+      "t2",
+      "r2",
+      "t3",
+      "r3",
+    ]);
+    expect(result.timelineItems.map((item) => item.id)).toEqual(["u1", "a1"]);
+  });
+});

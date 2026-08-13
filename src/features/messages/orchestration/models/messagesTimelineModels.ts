@@ -42,6 +42,8 @@ export type TimelineSnapshotModel = {
     };
     insertBeforeItemId: string;
     assistantItemId: string;
+    /** Trailing live phase: collapsed header anchors before this visible tail item. */
+    collapsedAnchorItemId?: string;
     hiddenItemIds: readonly string[];
   }>;
   effectiveItemsCount: number;

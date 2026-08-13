@@ -109,6 +109,8 @@ export type TimelineProcessPhaseChip = {
   insertBeforeItemId: string;
   /** Assistant prose this phase produced — used to place header when collapsed. */
   assistantItemId: string;
+  /** Trailing live phase has no prose anchor: place collapsed header before this visible tail item. */
+  collapsedAnchorItemId?: string;
   hiddenItemIds: readonly string[];
 };
 
@@ -155,20 +157,24 @@ export function buildTimelineProjectionRows(input: {
 
   const rows: TimelineProjectionRow[] = [];
 
+  const buildPhaseHeaderRow = (
+    phase: TimelineProcessPhaseChip,
+  ): TimelineProjectionRow => ({
+    kind: "liveMiddleCollapsed",
+    key: `process-phase:${phase.phaseKey}`,
+    phaseKey: phase.phaseKey,
+    count: phase.count,
+    expanded: phase.expanded,
+    durationMs: phase.durationMs,
+    breakdown: phase.breakdown,
+    insertBeforeItemId: phase.insertBeforeItemId,
+  });
+
   const pushPhaseHeader = (phase: TimelineProcessPhaseChip) => {
     if (insertedPhaseKeys.has(phase.phaseKey)) {
       return;
     }
-    rows.push({
-      kind: "liveMiddleCollapsed",
-      key: `process-phase:${phase.phaseKey}`,
-      phaseKey: phase.phaseKey,
-      count: phase.count,
-      expanded: phase.expanded,
-      durationMs: phase.durationMs,
-      breakdown: phase.breakdown,
-      insertBeforeItemId: phase.insertBeforeItemId,
-    });
+    rows.push(buildPhaseHeaderRow(phase));
     insertedPhaseKeys.add(phase.phaseKey);
   };
 
@@ -227,9 +233,19 @@ export function buildTimelineProjectionRows(input: {
   }
 
   // Fallback for phases whose anchor entry is outside the current window.
+  // Trailing live phases carry collapsedAnchorItemId (no prose anchor yet):
+  // park the header right before that still-visible tail item, not at the end.
   for (const phase of input.processPhaseChips ?? []) {
     if (phase.count >= 1 && !insertedPhaseKeys.has(phase.phaseKey)) {
-      pushPhaseHeader(phase);
+      const anchorIndex = phase.collapsedAnchorItemId
+        ? findTimelineProjectionRowIndexByItemId(rows, phase.collapsedAnchorItemId)
+        : -1;
+      if (anchorIndex >= 0) {
+        rows.splice(anchorIndex, 0, buildPhaseHeaderRow(phase));
+        insertedPhaseKeys.add(phase.phaseKey);
+      } else {
+        pushPhaseHeader(phase);
+      }
     }
   }
 
