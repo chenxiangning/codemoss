@@ -1370,7 +1370,7 @@ export const MessageRow = memo(function MessageRow({
         isMemoryPickSummary && memorySummaryRecords.length > 0
           ? " has-memory-inject"
           : ""
-      }`}
+      }${browserContextSummary ? " has-browser-excerpt" : ""}`}
     >
       {item.role === "user" ? (
         <>

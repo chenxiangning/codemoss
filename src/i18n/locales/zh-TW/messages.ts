@@ -140,6 +140,18 @@ const messages = {
     "memoryContextSummary": "記憶情境摘要",
     "memoryContextSummaryCount": "{{count}} 筆記憶",
     "browserContextSummary": "瀏覽器情境",
+    "browserContextExcerptCount": "網頁摘錄 {{count}}",
+    "browserContextExcerptToggle": "展開或收起網頁摘錄",
+    "browserContextExcerptKind": {
+      "paragraph": "段落",
+      "heading": "標題",
+      "button": "按鈕",
+      "link": "連結",
+      "list": "列表",
+      "image": "圖片",
+      "snapshot": "快照",
+      "excerpt": "摘錄"
+    },
     "browserContextSelectedElement": "已選取的頁面元素",
     "browserContextSelectedElementCount": "{{count}} 個已選取的頁面元素",
     "browserContextSelectedFacts": "已選取頁面元素事實",

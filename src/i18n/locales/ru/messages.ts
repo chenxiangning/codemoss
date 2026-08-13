@@ -140,6 +140,18 @@ const messages = {
     "memoryContextSummary": "Сводка контекста памяти",
     "memoryContextSummaryCount": "{{count}} воспоминаний",
     "browserContextSummary": "Контекст браузера",
+    "browserContextExcerptCount": "Веб-выдержки {{count}}",
+    "browserContextExcerptToggle": "Развернуть или свернуть веб-выдержки",
+    "browserContextExcerptKind": {
+      "paragraph": "Абзац",
+      "heading": "Заголовок",
+      "button": "Кнопка",
+      "link": "Ссылка",
+      "list": "Список",
+      "image": "Изображение",
+      "snapshot": "Снимок",
+      "excerpt": "Выдержка"
+    },
     "browserContextSelectedElement": "Выбранный элемент страницы",
     "browserContextSelectedElementCount": "{{count}} выбранных элементов страницы",
     "browserContextSelectedFacts": "Факты о выбранных элементах страницы",

@@ -222,6 +222,23 @@ export type BrowserUserAnnotationNearestElement = {
   sensitive: boolean;
 };
 
+export type BrowserSelectionLocate = {
+  documentX: number;
+  documentY: number;
+  viewportX: number;
+  viewportY: number;
+  width: number;
+  height: number;
+  scrollX: number;
+  scrollY: number;
+  listIndex: number | null;
+  listLength: number | null;
+  previousText: string | null;
+  nextText: string | null;
+  ancestorLabel: string | null;
+  cssPath: string | null;
+};
+
 export type BrowserUserAnnotation = {
   annotationId: string;
   observationId: string;
@@ -239,6 +256,7 @@ export type BrowserUserAnnotation = {
   region: BrowserUserAnnotationRegion | null;
   nearbyText: string | null;
   nearestElement: BrowserUserAnnotationNearestElement | null;
+  locate?: BrowserSelectionLocate | null;
   privacy: BrowserPrivacyReport;
   staleReasons: BrowserObservationStaleReason[];
   diagnostics: BrowserObservationDiagnostic[];
@@ -257,6 +275,7 @@ export type BrowserSelectedElementEvidence = {
     BrowserViewportState,
     "width" | "height" | "scrollX" | "scrollY" | "devicePixelRatio"
   >;
+  locate?: BrowserSelectionLocate | null;
   selectedAt: number;
 };
 

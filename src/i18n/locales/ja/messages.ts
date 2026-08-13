@@ -140,6 +140,18 @@ const messages = {
     "memoryContextSummary": "メモリコンテキストの概要",
     "memoryContextSummaryCount": "{{count}} 件のメモリ",
     "browserContextSummary": "ブラウザーコンテキスト",
+    "browserContextExcerptCount": "ウェブ抜粋 {{count}}",
+    "browserContextExcerptToggle": "ウェブ抜粋を開閉",
+    "browserContextExcerptKind": {
+      "paragraph": "段落",
+      "heading": "見出し",
+      "button": "ボタン",
+      "link": "リンク",
+      "list": "リスト",
+      "image": "画像",
+      "snapshot": "スナップショット",
+      "excerpt": "抜粋"
+    },
     "browserContextSelectedElement": "選択したページ要素",
     "browserContextSelectedElementCount": "{{count}} 個の選択したページ要素",
     "browserContextSelectedFacts": "選択したページ要素の情報",

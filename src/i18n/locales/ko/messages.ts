@@ -140,6 +140,18 @@ const messages = {
     "memoryContextSummary": "메모리 컨텍스트 요약",
     "memoryContextSummaryCount": "메모리 {{count}}개",
     "browserContextSummary": "브라우저 컨텍스트",
+    "browserContextExcerptCount": "웹 발췌 {{count}}",
+    "browserContextExcerptToggle": "웹 발췌 펼치기 또는 접기",
+    "browserContextExcerptKind": {
+      "paragraph": "단락",
+      "heading": "제목",
+      "button": "버튼",
+      "link": "링크",
+      "list": "목록",
+      "image": "이미지",
+      "snapshot": "스냅샷",
+      "excerpt": "발췌"
+    },
     "browserContextSelectedElement": "선택된 페이지 요소",
     "browserContextSelectedElementCount": "선택된 페이지 요소 {{count}}개",
     "browserContextSelectedFacts": "선택된 페이지 요소 정보",

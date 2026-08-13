@@ -3,6 +3,7 @@ import type {
   BrowserObservationDiagnostic,
   BrowserObservationStaleReason,
   BrowserSelectedElementEvidence,
+  BrowserSelectionLocate,
   BrowserUserAnnotation,
   BrowserUserAnnotationAnchorType,
   BrowserUserAnnotationNearestElement,
@@ -24,6 +25,7 @@ export type BrowserUserAnnotationInput = {
   region?: BrowserUserAnnotationRegion | null;
   nearbyText?: string | null;
   nearestElement?: BrowserUserAnnotationNearestElement | null;
+  locate?: BrowserSelectionLocate | null;
 };
 
 export type BrowserUserAnnotationContext = {
@@ -121,6 +123,7 @@ export function buildBrowserUserAnnotation(
   const sanitizedNote = sanitizeAnnotationText(input.userNote);
   const sanitizedNearbyText = sanitizeAnnotationText(input.nearbyText);
   const nearestElement = sanitizeNearestElement(input.nearestElement);
+  const locate = sanitizeSelectionLocate(input.locate);
   const redactedKinds = Array.from(new Set([
     ...sanitizedNote.privacy.redactedKinds,
     ...sanitizedNearbyText.privacy.redactedKinds,
@@ -145,9 +148,25 @@ export function buildBrowserUserAnnotation(
     region: input.region ?? null,
     nearbyText: sanitizedNearbyText.text,
     nearestElement,
+    locate,
     privacy,
     staleReasons: input.observation.staleReasons,
     diagnostics: input.observation.diagnostics,
+  };
+}
+
+function sanitizeSelectionLocate(
+  locate: BrowserSelectionLocate | null | undefined,
+): BrowserSelectionLocate | null {
+  if (!locate) {
+    return null;
+  }
+  return {
+    ...locate,
+    previousText: sanitizeAnnotationText(locate.previousText).text,
+    nextText: sanitizeAnnotationText(locate.nextText).text,
+    ancestorLabel: sanitizeAnnotationText(locate.ancestorLabel).text,
+    cssPath: sanitizeAnnotationText(locate.cssPath).text,
   };
 }
 
@@ -187,7 +206,34 @@ export function buildBrowserUserAnnotationFromSelectedElement(input: {
       selectorHint: element.selectorHint,
       sensitive: element.sensitive,
     },
+    locate: element.locate ?? deriveLocateFromViewport(element),
   });
+}
+
+function deriveLocateFromViewport(
+  element: BrowserSelectedElementEvidence,
+): BrowserSelectionLocate | null {
+  if (!element.bounds) {
+    return null;
+  }
+  const scrollX = element.viewport.scrollX ?? 0;
+  const scrollY = element.viewport.scrollY ?? 0;
+  return {
+    documentX: scrollX + element.bounds.x,
+    documentY: scrollY + element.bounds.y,
+    viewportX: element.bounds.x,
+    viewportY: element.bounds.y,
+    width: element.bounds.width,
+    height: element.bounds.height,
+    scrollX,
+    scrollY,
+    listIndex: null,
+    listLength: null,
+    previousText: null,
+    nextText: null,
+    ancestorLabel: null,
+    cssPath: null,
+  };
 }
 
 export function formatBrowserUserAnnotationEvidence(

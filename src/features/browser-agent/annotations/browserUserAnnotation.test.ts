@@ -208,6 +208,14 @@ describe("BrowserUserAnnotation", () => {
       label: "This domain is for use in documentation examples.",
       selectorHint: "p",
     });
+    expect(annotation.locate).toMatchObject({
+      documentX: 254,
+      documentY: 510,
+      viewportX: 254,
+      viewportY: 510,
+      width: 742,
+      height: 112,
+    });
     expect(formatBrowserUserAnnotationEvidence(annotation)).toContain("w=742 h=112");
   });
 

@@ -233,6 +233,8 @@ describe("buildBrowserEvidenceViewModel", () => {
     expect(viewModel.selectedElements).toHaveLength(2);
     expect(viewModel.selectedElement).toMatchObject({
       title: "刷新数据",
+      body: "刷新数据",
+      kind: "button",
       elementName: "button",
       role: "button",
       meta: "button · role=button · 78x36",
@@ -241,6 +243,8 @@ describe("buildBrowserEvidenceViewModel", () => {
     });
     expect(viewModel.selectedElements[1]).toMatchObject({
       title: "JSON",
+      body: "JSON",
+      kind: "button",
       elementName: "button",
       role: "button",
       meta: "button · role=button · 86x36",
@@ -248,7 +252,199 @@ describe("buildBrowserEvidenceViewModel", () => {
       sourceTitle: "Codex GPT 模型降智雷达",
     });
     expect(viewModel.selectedElement?.copySafeText).toContain("- selector: button");
+    expect(viewModel.selectedElement?.copySafeText).toContain("- documentPosition:");
+    expect(viewModel.selectedElement?.copySafeText).toContain(
+      "user pointed at this exact page target",
+    );
     expect(viewModel.selectedElement?.copySafeText).not.toContain("Large unrelated");
+  });
+
+  it("expands a short selected title with the matching readable block body", () => {
+    const attachment = buildBrowserContextAttachment(makeSnapshot());
+    attachment.readableBlocks = [
+      {
+        blockId: "user-md",
+        role: "other",
+        text: "mall/api/user.md 修改\n校验用户资料接口的空指针，并补齐失败回包。",
+        score: 800,
+        truncated: false,
+      },
+    ];
+    attachment.annotations = [
+      {
+        annotationId: "selection-file",
+        observationId: attachment.observation.observationId,
+        browserSessionId: attachment.browserSessionId,
+        workspaceId: attachment.workspaceId,
+        createdAt: 1200,
+        url: attachment.url,
+        title: attachment.title,
+        anchor: "element",
+        userNote: "mall/api/user.md 修改",
+        viewport: {
+          width: 1280,
+          height: 720,
+          scrollX: 0,
+          scrollY: 0,
+          devicePixelRatio: 2,
+        },
+        region: {
+          x: 24,
+          y: 80,
+          width: 400,
+          height: 28,
+        },
+        nearbyText: "mall/api/user.md 修改",
+        nearestElement: {
+          role: "listitem",
+          label: "mall/api/user.md 修改",
+          placeholder: null,
+          hrefOrigin: null,
+          selectorHint: "li",
+          sensitive: false,
+        },
+        privacy: attachment.privacy,
+        staleReasons: [],
+        diagnostics: [],
+      },
+    ];
+
+    const viewModel = buildBrowserEvidenceViewModel(attachment);
+
+    expect(viewModel.selectedElement).toMatchObject({
+      title: "mall/api/user.md 修改",
+      kind: "list",
+    });
+    expect(viewModel.selectedElement?.body).toContain("补齐失败回包");
+    expect(viewModel.selectedElement?.copySafeText).toContain("补齐失败回包");
+    expect(viewModel.selectedElement?.copySafeText).toContain("- documentPosition:");
+  });
+
+  it("sends list neighbors and document coordinates as the pointed target", () => {
+    const attachment = buildBrowserContextAttachment(makeSnapshot());
+    attachment.annotations = [
+      {
+        annotationId: "selection-locate",
+        observationId: attachment.observation.observationId,
+        browserSessionId: attachment.browserSessionId,
+        workspaceId: attachment.workspaceId,
+        createdAt: 1200,
+        url: attachment.url,
+        title: attachment.title,
+        anchor: "element",
+        userNote: "mall/api/user.md 修改",
+        viewport: {
+          width: 1280,
+          height: 720,
+          scrollX: 0,
+          scrollY: 640,
+          devicePixelRatio: 2,
+        },
+        region: {
+          x: 32,
+          y: 180,
+          width: 524,
+          height: 58,
+        },
+        nearbyText: "mall/api/user.md 修改",
+        nearestElement: {
+          role: "listitem",
+          label: "mall/api/user.md 修改",
+          placeholder: null,
+          hrefOrigin: null,
+          selectorHint: "li:nth-of-type(3)",
+          sensitive: false,
+        },
+        locate: {
+          documentX: 32,
+          documentY: 820,
+          viewportX: 32,
+          viewportY: 180,
+          width: 524,
+          height: 58,
+          scrollX: 0,
+          scrollY: 640,
+          listIndex: 3,
+          listLength: 4,
+          previousText: "docs/changelog.md 新增",
+          nextText: "assets/icons.svg 移除",
+          ancestorLabel: "文件修改 (4个)",
+          cssPath: "section > ul > li:nth-of-type(3)",
+        },
+        privacy: attachment.privacy,
+        staleReasons: [],
+        diagnostics: [],
+      },
+    ];
+
+    const viewModel = buildBrowserEvidenceViewModel(attachment);
+
+    expect(viewModel.selectedElement?.copySafeText).toContain("- documentPosition: x=32 y=820");
+    expect(viewModel.selectedElement?.copySafeText).toContain("- inList: 3 of 4");
+    expect(viewModel.selectedElement?.copySafeText).toContain("- previous: docs/changelog.md 新增");
+    expect(viewModel.selectedElement?.copySafeText).toContain("- next: assets/icons.svg 移除");
+    expect(viewModel.selectedElement?.copySafeText).toContain("- ancestor: 文件修改 (4个)");
+    expect(viewModel.selectedElement?.copySafeText).toContain(
+      "- cssPath: section > ul > li:nth-of-type(3)",
+    );
+  });
+
+  it("dedupes identical selected annotations when rendering excerpt rows", () => {
+    const attachment = buildBrowserContextAttachment(makeSnapshot());
+    const repeatedAnnotation = {
+      annotationId: "selection-repeat-1",
+      observationId: attachment.observation.observationId,
+      browserSessionId: attachment.browserSessionId,
+      workspaceId: attachment.workspaceId,
+      createdAt: 1200,
+      url: attachment.url,
+      title: attachment.title,
+      anchor: "element" as const,
+      userNote: "一段正文B：折叠状态下，只保留文件修改",
+      viewport: {
+        width: 1280,
+        height: 720,
+        scrollX: 0,
+        scrollY: 0,
+        devicePixelRatio: 2,
+      },
+      region: {
+        x: 24,
+        y: 80,
+        width: 400,
+        height: 28,
+      },
+      nearbyText: "一段正文B：折叠状态下，只保留文件修改",
+      nearestElement: {
+        role: "paragraph",
+        label: "一段正文B：折叠状态下，只保留文件修改",
+        placeholder: null,
+        hrefOrigin: null,
+        selectorHint: "p",
+        sensitive: false,
+      },
+      privacy: attachment.privacy,
+      staleReasons: [],
+      diagnostics: [],
+    };
+    attachment.annotations = [
+      repeatedAnnotation,
+      {
+        ...repeatedAnnotation,
+        annotationId: "selection-repeat-2",
+        createdAt: 1300,
+      },
+      {
+        ...repeatedAnnotation,
+        annotationId: "selection-repeat-3",
+        createdAt: 1400,
+      },
+    ];
+
+    const viewModel = buildBrowserEvidenceViewModel(attachment);
+
+    expect(viewModel.selectedElements).toHaveLength(1);
+    expect(viewModel.selectedElements[0]?.title).toContain("一段正文B");
   });
 
   it("keeps degraded diagnostics visible instead of hiding limitations", () => {

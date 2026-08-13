@@ -4,7 +4,10 @@ import type {
   BrowserContextAttachment,
   BrowserSelectedElementEvidence,
 } from "../types";
-import { buildBrowserUserAnnotationFromSelectedElement } from "../annotations";
+import {
+  buildBrowserUserAnnotationFromSelectedElement,
+  upsertBrowserUserAnnotation,
+} from "../annotations";
 import {
   buildBrowserContextAttachment,
   isBrowserContextAttachmentStale,
@@ -129,10 +132,7 @@ export function appendSelectedElementAnnotation(
     currentAttachment && browserAttachmentContextMatches(currentAttachment, attachment)
       ? currentAttachment.annotations ?? []
       : [];
-  const annotations = [
-    ...previousAnnotations.filter((item) => item.annotationId !== annotation.annotationId),
-    annotation,
-  ].sort((left, right) => left.createdAt - right.createdAt);
+  const annotations = upsertBrowserUserAnnotation(previousAnnotations, annotation);
   return {
     ...attachment,
     annotations,

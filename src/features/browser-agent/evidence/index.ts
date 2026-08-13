@@ -9,5 +9,6 @@ export type {
   BrowserEvidenceSectionState,
   BrowserEvidenceViewModel,
   BrowserEvidenceViewModelSection,
+  BrowserExcerptKind,
   BrowserSelectedElementPreview,
 } from "./browserEvidenceViewModel";

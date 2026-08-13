@@ -127,4 +127,22 @@ describe("appendSelectedElementAnnotation", () => {
     ]);
     expect(secondAttachment.elementCounts.annotations).toBe(2);
   });
+
+  it("replaces a repeated click on the same element instead of appending another row", () => {
+    const firstAttachment = appendSelectedElementAnnotation(
+      buildBrowserContextAttachment(makeSnapshot("snapshot-1")),
+      selectedElement("assets/icons.svg 移除", 1200, 24),
+      null,
+    );
+    const secondAttachment = appendSelectedElementAnnotation(
+      buildBrowserContextAttachment(makeSnapshot("snapshot-2")),
+      selectedElement("assets/icons.svg 移除", 1800, 26),
+      firstAttachment,
+    );
+
+    expect(secondAttachment.annotations).toHaveLength(1);
+    expect(secondAttachment.annotations?.[0]?.userNote).toBe("assets/icons.svg 移除");
+    expect(secondAttachment.annotations?.[0]?.createdAt).toBe(1800);
+    expect(secondAttachment.elementCounts.annotations).toBe(1);
+  });
 });

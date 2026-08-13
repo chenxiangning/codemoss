@@ -423,7 +423,7 @@ export function formatBrowserContextPrompt(
     `pageType: ${attachment.pageType ?? "unknown"}`,
     `sourceKind: ${selectedElements.length > 0 ? "browser_selected_elements_with_page_snapshot" : "browser_visible_page_snapshot"}`,
     selectedElements.length > 0
-      ? "usageHint: the user selected one or more specific page elements; answer from selectedElements first in selection order, then use the page snapshot only as surrounding context."
+      ? "usageHint: the user pointed at selectedElements in order; treat documentPosition, inList, previous/next, and cssPath as the exact target. Answer that target first, then use the page snapshot only as surrounding context."
       : "usageHint: answer questions about the current page from this browser context first; do not switch to CLI/API/raw fetch unless the user explicitly asks for raw/API data or this context is degraded/insufficient.",
     "imageHint: visualEvidence describes visible images/figures/attachments from the browser page; use labels, alt text, origin, and nearby text as clues, but do not invent unseen image contents.",
     "visualSourceHint: DOM visual clues, OCR text, and screenshot references are separate evidence sources; screenshot refs are metadata only unless modelPayloadAllowed=true.",

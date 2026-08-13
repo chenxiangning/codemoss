@@ -140,6 +140,18 @@ const messages = {
     "memoryContextSummary": "मेमोरी संदर्भ सारांश",
     "memoryContextSummaryCount": "{{count}} मेमोरी",
     "browserContextSummary": "ब्राउज़र संदर्भ",
+    "browserContextExcerptCount": "वेब अंश {{count}}",
+    "browserContextExcerptToggle": "वेब अंश खोलें या बंद करें",
+    "browserContextExcerptKind": {
+      "paragraph": "अनुच्छेद",
+      "heading": "शीर्षक",
+      "button": "बटन",
+      "link": "लिंक",
+      "list": "सूची",
+      "image": "छवि",
+      "snapshot": "स्नैपशॉट",
+      "excerpt": "अंश"
+    },
     "browserContextSelectedElement": "चयनित पेज एलिमेंट",
     "browserContextSelectedElementCount": "{{count}} चयनित पेज एलिमेंट",
     "browserContextSelectedFacts": "चयनित पेज एलिमेंट तथ्य",

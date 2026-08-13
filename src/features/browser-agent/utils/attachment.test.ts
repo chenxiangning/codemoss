@@ -350,6 +350,8 @@ describe("browser attachment utilities", () => {
     const prompt = formatBrowserContextPrompt(attachment);
 
     expect(prompt).toContain("sourceKind: browser_selected_elements_with_page_snapshot");
+    expect(prompt).toContain("documentPosition, inList, previous/next, and cssPath");
+    expect(prompt).toContain("- documentPosition:");
     expect(prompt.indexOf("selectedElements:")).toBeLessThan(prompt.indexOf("summary:"));
     expect(prompt.indexOf("Selection 1:")).toBeLessThan(prompt.indexOf("Selection 2:"));
     expect(prompt).toContain("- text: 刷新数据");

@@ -119,11 +119,11 @@ function withSelectedButton(attachment: BrowserContextAttachment): BrowserContex
     annotations: [
       {
         annotationId: "selection-1",
-        observationId: attachment.observation.observationId,
-        browserSessionId: attachment.browserSessionId,
-        workspaceId: attachment.workspaceId,
+        observationId: "browser-observation-1",
+        browserSessionId: "browser-session-1",
+        workspaceId: "workspace-1",
         createdAt: 120,
-        url: attachment.url,
+        url: "https://ai.17nas.com/tools/codex-iq/",
         title: "Codex GPT 模型降智雷达",
         anchor: "element",
         userNote: "刷新数据",
@@ -154,10 +154,6 @@ function withSelectedButton(attachment: BrowserContextAttachment): BrowserContex
         diagnostics: [],
       },
     ],
-    elementCounts: {
-      ...attachment.elementCounts,
-      annotations: 1,
-    },
   };
 }
 
@@ -169,11 +165,11 @@ function withSelectedButtonAndLink(attachment: BrowserContextAttachment): Browse
       ...(selectedButton.annotations ?? []),
       {
         annotationId: "selection-2",
-        observationId: attachment.observation.observationId,
-        browserSessionId: attachment.browserSessionId,
-        workspaceId: attachment.workspaceId,
+        observationId: "browser-observation-1",
+        browserSessionId: "browser-session-1",
+        workspaceId: "workspace-1",
         createdAt: 130,
-        url: attachment.url,
+        url: "https://ai.17nas.com/tools/codex-iq/",
         title: "Codex GPT 模型降智雷达",
         anchor: "element",
         userNote: "JSON",
@@ -216,7 +212,7 @@ describe("BrowserContextPreview", () => {
     cleanup();
   });
 
-  it("shows evidence details in the composer preview card", () => {
+  it("uses the excerpt fold instead of the blue summary card", () => {
     render(
       <BrowserContextPreview
         attachment={makeAttachment()}
@@ -226,18 +222,18 @@ describe("BrowserContextPreview", () => {
       />,
     );
 
-    expect(screen.getByText("Visual clues 1")).toBeTruthy();
+    expect(screen.getByText("Browser context")).toBeTruthy();
+    expect(screen.getByText("Snapshot")).toBeTruthy();
+    expect(screen.queryByText("Visual clues 1")).toBeNull();
+    expect(screen.queryByText("Show capture details")).toBeNull();
     expect(screen.queryByText(/Issue body says deleted files/)).toBeNull();
-    fireEvent.click(screen.getByText("Show capture details"));
 
-    expect(screen.getByText("Primary content")).toBeTruthy();
-    expect(screen.getAllByText(/strikethrough/).length).toBeGreaterThan(0);
-    expect(screen.getByText(/图一属于删除文件/)).toBeTruthy();
-    expect(screen.getByText(/issue screenshot/)).toBeTruthy();
-    expect(screen.getByText(/diff display screenshot/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /Issue #642/ }));
+
+    expect(screen.getByText(/Issue body says deleted files should use strikethrough/)).toBeTruthy();
   });
 
-  it("prioritizes selected element evidence over full-page snapshot text", () => {
+  it("lists selected excerpts as one-line titles above the composer", () => {
     render(
       <BrowserContextPreview
         attachment={withSelectedButton(makeAttachment())}
@@ -247,21 +243,15 @@ describe("BrowserContextPreview", () => {
       />,
     );
 
-    expect(screen.getByText("Selected page element")).toBeTruthy();
+    expect(screen.getByText("Web excerpts 1")).toBeTruthy();
     expect(screen.getByText("刷新数据")).toBeTruthy();
-    expect(screen.getByText("button · role=button · 78x36")).toBeTruthy();
-    expect(screen.getByText("x=1557 y=537 w=78 h=36")).toBeTruthy();
-    expect(screen.getByText("Selector button")).toBeTruthy();
+    expect(screen.getByText("Button")).toBeTruthy();
+    expect(screen.queryByText("button · role=button · 78x36")).toBeNull();
     expect(screen.queryByText(/LATEST DETECTION/)).toBeNull();
     expect(screen.queryByText("Headings 15")).toBeNull();
-
-    fireEvent.click(screen.getByText("Show capture details"));
-
-    expect(screen.getByText(/Selected browser element/)).toBeTruthy();
-    expect(screen.getAllByText(/LATEST DETECTION/).length).toBeGreaterThan(0);
   });
 
-  it("shows multiple selected elements without replacing the earlier selection", () => {
+  it("keeps multiple selected excerpts in selection order", () => {
     render(
       <BrowserContextPreview
         attachment={withSelectedButtonAndLink(makeAttachment())}
@@ -271,16 +261,10 @@ describe("BrowserContextPreview", () => {
       />,
     );
 
-    expect(screen.getByText("2 selected page elements")).toBeTruthy();
-    expect(screen.getByText(/1\. 刷新数据 · button · role=button · 78x36/)).toBeTruthy();
-    expect(screen.getByText(/2\. JSON · button · role=button · 86x36/)).toBeTruthy();
+    expect(screen.getByText("Web excerpts 2")).toBeTruthy();
+    expect(screen.getByText("刷新数据")).toBeTruthy();
+    expect(screen.getByText("JSON")).toBeTruthy();
     expect(screen.queryByText(/LATEST DETECTION/)).toBeNull();
-
-    fireEvent.click(screen.getByText("Show capture details"));
-
-    expect(screen.getAllByText(/Selected browser element/).length).toBeGreaterThanOrEqual(2);
-    expect(screen.getAllByText(/selector: button/).length).toBeGreaterThan(0);
-    expect(screen.getByText(/selector: button\.json/)).toBeTruthy();
   });
 
   it("marks expired browser snapshots with the high-contrast expired state", () => {

@@ -1868,6 +1868,7 @@ pub(crate) async fn start_browser_agent_element_select(
     let script = browser_element_selector_script(
         session.browser_session_id.as_str(),
         session.workspace_id.as_str(),
+        None,
     );
     webview.eval(&script).map_err(|error| error.to_string())
 }

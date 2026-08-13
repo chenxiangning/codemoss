@@ -140,6 +140,18 @@ const messages = {
     "memoryContextSummary": "Résumé du contexte mémoire",
     "memoryContextSummaryCount": "{{count}} mémoires",
     "browserContextSummary": "Contexte du navigateur",
+    "browserContextExcerptCount": "Extraits web {{count}}",
+    "browserContextExcerptToggle": "Déplier ou replier les extraits web",
+    "browserContextExcerptKind": {
+      "paragraph": "Paragraphe",
+      "heading": "Titre",
+      "button": "Bouton",
+      "link": "Lien",
+      "list": "Liste",
+      "image": "Image",
+      "snapshot": "Instantané",
+      "excerpt": "Extrait"
+    },
     "browserContextSelectedElement": "Élément de page sélectionné",
     "browserContextSelectedElementCount": "{{count}} éléments de page sélectionnés",
     "browserContextSelectedFacts": "Faits de l'élément de page sélectionné",
