@@ -12,6 +12,7 @@
 
 ### 2026-08-13
 
+- [`2026-08-13-fix-pi-session-continuity-and-sidebar`](2026-08-13-fix-pi-session-continuity-and-sidebar/proposal.md) — user accepted，已同步 `pi-thread-session-continuity`、`pi-session-history`；Native Pi 续聊同一 jsonl + Session Index 侧栏历史
 - [`2026-08-13-harden-shared-cli-session-index-visibility`](2026-08-13-harden-shared-cli-session-index-visibility/proposal.md) — verified implementation，已同步 `shared-session-thread`、`workspace-sidebar-session-loading`；Session Index 首屏同 IPC durable Shared hide，V2 失败 fail-closed，early-paint 保留 `shared:*`
 
 ### 2026-08-08

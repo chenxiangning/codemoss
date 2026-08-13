@@ -9,6 +9,7 @@ import {
   listGeminiSessions,
   listGrokSessions,
   listKimiSessions,
+  listPiSessions,
   listWorkspaceSessions,
   listThreadTitles,
   listThreads,
@@ -40,6 +41,7 @@ vi.mock("../../../services/tauri", () => ({
   listClaudeSessions: vi.fn(),
   listGeminiSessions: vi.fn(),
   listKimiSessions: vi.fn(),
+  listPiSessions: vi.fn(),
   listGrokSessions: vi.fn(),
   listSessionIndexForWorkspace: vi.fn(async () => ({
     data: [],

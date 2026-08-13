@@ -64,6 +64,7 @@ export type GeminiSessionSummary = {
 
 // Kimi session summaries share the Gemini summary shape (id/message/updatedAt/size).
 export type KimiSessionSummary = GeminiSessionSummary;
+export type PiSessionSummary = GeminiSessionSummary;
 
 // Grok：在 Gemini 形状上扩展 parent / sessionKind（子代理树）
 export type GrokSessionSummary = GeminiSessionSummary & {
@@ -276,6 +277,12 @@ export function inferThreadEngineSource(
     return "kimi";
   }
   if (
+    normalized.startsWith("pi:") ||
+    normalized.startsWith("pi-pending-")
+  ) {
+    return "pi";
+  }
+  if (
     normalized.startsWith("opencode:") ||
     normalized.startsWith("opencode-pending-")
   ) {
@@ -291,6 +298,7 @@ export function isPendingThreadId(threadId: string): boolean {
     normalized.startsWith("gemini-pending-") ||
     normalized.startsWith("grok-pending-") ||
     normalized.startsWith("kimi-pending-") ||
+    normalized.startsWith("pi-pending-") ||
     normalized.startsWith("opencode-pending-") ||
     normalized.startsWith("codex-pending-")
   );
@@ -1503,6 +1511,33 @@ export function mergeKimiSessionSummaries(
   });
 }
 
+export function normalizePiSessionSummaries(
+  value: unknown,
+): GeminiSessionSummary[] {
+  return normalizeGeminiSessionSummaries(value);
+}
+
+export function mergePiSessionSummaries(
+  baseSummaries: ThreadSummary[],
+  piSessions: GeminiSessionSummary[],
+  workspaceId: string,
+  mappedTitles: Record<string, string>,
+  getCustomName: (workspaceId: string, threadId: string) => string | undefined,
+  hiddenSharedBindingIds?: ReadonlySet<string>,
+): ThreadSummary[] {
+  return mergeNativeCliSessionSummaries({
+    baseSummaries,
+    sessions: piSessions,
+    idPrefix: "pi",
+    engineSource: "pi",
+    fallbackTitle: "PI Session",
+    workspaceId,
+    mappedTitles,
+    getCustomName,
+    hiddenSharedBindingIds,
+  });
+}
+
 export function mergeGrokSessionSummaries(
   baseSummaries: ThreadSummary[],
   grokSessions: GrokSessionSummary[],
@@ -1540,6 +1575,7 @@ function normalizeCatalogEngine(
     case "gemini":
     case "grok":
     case "kimi":
+    case "pi":
     case "opencode":
       return engine;
     default:
@@ -1652,9 +1688,11 @@ export function mergeCodexCatalogSessionSummaries(
             ? "Grok Session"
             : engineSource === "kimi"
               ? "Kimi Session"
-              : engineSource === "opencode"
-                ? "OpenCode Session"
-                : "Codex Session";
+              : engineSource === "pi"
+                ? "PI Session"
+                : engineSource === "opencode"
+                  ? "OpenCode Session"
+                  : "Codex Session";
     const continuationSourceName = session.sourceSessionId
       ? mergedById.get(session.sourceSessionId)?.name?.trim()
       : null;

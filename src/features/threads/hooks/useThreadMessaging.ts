@@ -39,6 +39,7 @@ import {
   listGeminiSessions as listGeminiSessionsService,
   listGrokSessions as listGrokSessionsService,
   listKimiSessions as listKimiSessionsService,
+  listPiSessions as listPiSessionsService,
 } from "../../../services/tauri";
 import { sendSharedSessionTurnRouted } from "../../shared-session/runtime/sendSharedSessionTurn";
 import {
@@ -242,6 +243,7 @@ import {
   pickLikelyGeminiSessionId,
   pickLikelyGrokSessionId,
   pickLikelyKimiSessionId,
+  pickLikelyPiSessionId,
   primeThreadStreamLatencyForSend,
   resolveCollaborationModeIdFromPayload,
   resolveRecoverableCodexFirstPacketTimeout,
@@ -525,6 +527,7 @@ export function useThreadMessaging({
     geminiSessionIdByPendingThreadRef,
     grokSessionIdByPendingThreadRef,
     kimiSessionIdByPendingThreadRef,
+    piSessionIdByPendingThreadRef,
     isClaudePendingThreadAwaitingNativeSession,
     isThreadIdCompatibleWithEngine,
     normalizeEngineSelection,
@@ -2513,10 +2516,18 @@ export function useThreadMessaging({
                               ? (kimiSessionIdByPendingThreadRef.current.get(
                                   threadId,
                                 ) ?? null)
-                              : resolvedEngine === "opencode" &&
-                                  isOpenCodeSession
-                                ? threadId.slice("opencode:".length)
-                                : null;
+                              : resolvedEngine === "pi" &&
+                                  threadId.startsWith("pi:")
+                                ? threadId.slice("pi:".length)
+                                : resolvedEngine === "pi" &&
+                                    threadId.startsWith("pi-pending-")
+                                  ? (piSessionIdByPendingThreadRef.current.get(
+                                      threadId,
+                                    ) ?? null)
+                                  : resolvedEngine === "opencode" &&
+                                      isOpenCodeSession
+                                    ? threadId.slice("opencode:".length)
+                                    : null;
           const shouldAttachCliSpecRootHint =
             realSessionId === null && Boolean(customSpecRoot);
 
@@ -2829,6 +2840,48 @@ export function useThreadMessaging({
                     threadId,
                     sessionId: responseSessionId,
                     source: "kimiSessionListFallback",
+                  },
+                });
+              }
+            }
+            if (
+              resolvedEngine === "pi" &&
+              threadId.startsWith("pi-pending-")
+            ) {
+              let responseSessionId =
+                extractSessionIdFromEngineSendResponse(response);
+              if (!responseSessionId) {
+                const workspacePath = workspace.path?.trim();
+                if (workspacePath) {
+                  try {
+                    const sessions = await listPiSessionsService(
+                      workspacePath,
+                      6,
+                    );
+                    responseSessionId = pickLikelyPiSessionId(
+                      sessions,
+                      sendRequestedAt - 120_000,
+                    );
+                  } catch {
+                    responseSessionId = null;
+                  }
+                }
+              }
+              if (responseSessionId) {
+                piSessionIdByPendingThreadRef.current.set(
+                  threadId,
+                  responseSessionId,
+                );
+                onDebug?.({
+                  id: `${Date.now()}-client-pi-session-cache`,
+                  timestamp: Date.now(),
+                  source: "client",
+                  label: "thread/session cached",
+                  payload: {
+                    workspaceId: workspace.id,
+                    threadId,
+                    sessionId: responseSessionId,
+                    source: "piSessionListFallback",
                   },
                 });
               }
@@ -3169,6 +3222,7 @@ export function useThreadMessaging({
       geminiSessionIdByPendingThreadRef,
       grokSessionIdByPendingThreadRef,
       kimiSessionIdByPendingThreadRef,
+      piSessionIdByPendingThreadRef,
       getCustomName,
       getThreadEngine,
       isClaudePendingThreadAwaitingNativeSession,

@@ -44,6 +44,7 @@
 
 ## Active backlog notes（2026-08-08）
 
+- **已归档** `fix-pi-session-continuity-and-sidebar` → `archive/2026-08-13-fix-pi-session-continuity-and-sidebar`：Native Pi 续聊同一 jsonl + Session Index 侧栏历史；用户 2026-08-13 手测通过。
 - **新增并落地** `fix-history-open-tail-first`（2026-08-13）：中断/失败长会话打开从头刷到最新；hydrate 改 tail-first；顶上芯片分页加载更早；迟到 projection atomic；用户手测有效果。
 - **已归档** `harden-shared-cli-session-index-visibility` → `archive/2026-08-13-harden-shared-cli-session-index-visibility`：Session Index 同 IPC durable Shared hide + fail-closed + 保留 `shared:*`；主 specs 已同步。
 - **新增并落地** `fix-native-parallel-provider-model-isolation`（2026-08-12）：并行 Native 不同供应商后历史会话 residual model（MiniMax-M3 打 DeepSeek）→ 扩展 `claudeManagedRuntimeModel` residual；vitest 24+73 绿；Shared 零改；待手测、不 commit。

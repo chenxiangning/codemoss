@@ -1,6 +1,6 @@
 # OpenSpec Main Specs 索引
 
-`openspec/specs/*/spec.md` 是已经同步进入 mainline 的 capability behavior truth。当前索引覆盖 **492** 个 capability，并按 capability id 首字母分组。
+`openspec/specs/*/spec.md` 是已经同步进入 mainline 的 capability behavior truth。当前索引覆盖 **494** 个 capability，并按 capability id 首字母分组。
 
 ## 使用边界
 
@@ -394,6 +394,8 @@
 - [parallel-conversation-runtime-residuals](./parallel-conversation-runtime-residuals/spec.md)
 - [performance-compatibility-diagnostics](./performance-compatibility-diagnostics/spec.md)
 - [persistent-state-governance](./persistent-state-governance/spec.md)
+- [pi-session-history](./pi-session-history/spec.md)
+- [pi-thread-session-continuity](./pi-thread-session-continuity/spec.md)
 - [policy-decision-audit-surface](./policy-decision-audit-surface/spec.md)
 - [pr-ai-content-generation](./pr-ai-content-generation/spec.md)
 - [project-canvas-code-graph-import](./project-canvas-code-graph-import/spec.md)

@@ -27,6 +27,7 @@ vi.mock("../../../services/tauri", async (importOriginal) => {
     listGeminiSessions: vi.fn(async () => []),
     listGrokSessions: vi.fn(async () => []),
     listKimiSessions: vi.fn(async () => []),
+    listPiSessions: vi.fn(async () => []),
     getOpenCodeSessionList: vi.fn(async () => []),
     listWorkspaceSessions: vi.fn(async () => ({
       data: [],

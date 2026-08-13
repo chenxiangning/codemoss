@@ -87,6 +87,7 @@ vi.mock("../../../services/tauri", () => ({
   listGeminiSessions: vi.fn().mockResolvedValue([]),
   listGrokSessions: vi.fn().mockResolvedValue([]),
   listKimiSessions: vi.fn().mockResolvedValue([]),
+  listPiSessions: vi.fn().mockResolvedValue([]),
   listClaudeSessions: vi.fn().mockResolvedValue([]),
   listSessionIndexForWorkspace: vi.fn().mockResolvedValue({
     data: [],

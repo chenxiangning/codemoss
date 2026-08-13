@@ -7,6 +7,7 @@ import {
   loadGeminiSession as loadGeminiSessionService,
   loadGrokSession as loadGrokSessionService,
   loadKimiSession as loadKimiSessionService,
+  loadPiSession as loadPiSessionService,
   resumeThread as resumeThreadService,
 } from "../../../services/tauri";
 import {
@@ -23,6 +24,7 @@ import {
 import { parseGeminiHistoryMessages } from "../loaders/geminiHistoryParser";
 import { parseGrokHistoryMessages } from "../loaders/grokHistoryParser";
 import { parseKimiHistoryMessages } from "../loaders/kimiHistoryParser";
+import { parsePiHistoryMessages } from "../loaders/piHistoryParser";
 import {
   hydrateHistory,
   mergeHistoryProjectionItems,
@@ -1471,6 +1473,38 @@ export function useThreadActionsResumeThreadForWorkspace(
             });
           } catch {
             // Failed to load Kimi session history — not fatal
+          }
+        }
+        loadedThreadsRef.current[threadId] = true;
+        return threadId;
+      }
+      if (threadId.startsWith("pi:")) {
+        dispatch({
+          type: "ensureThread",
+          workspaceId,
+          threadId,
+          engine: "pi",
+        });
+        if (workspacePath && !loadedThreadsRef.current[threadId]) {
+          const realSessionId = threadId.slice("pi:".length);
+          try {
+            const result = await loadPiSessionService(
+              workspacePath,
+              realSessionId,
+            );
+            const messagesData =
+              (result as { messages?: unknown }).messages ?? result;
+            const items = parsePiHistoryMessages(messagesData);
+            if (items.length > 0) {
+              await applyHydratedItems(threadId, items);
+            }
+            dispatch({
+              type: "setThreadHistoryRestoredAt",
+              threadId,
+              timestamp: Date.now(),
+            });
+          } catch {
+            // Failed to load PI session history — not fatal
           }
         }
         loadedThreadsRef.current[threadId] = true;

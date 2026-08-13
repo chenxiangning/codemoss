@@ -70,6 +70,7 @@ vi.mock("../../../services/tauri", () => ({
   listGeminiSessions: vi.fn(),
   listGrokSessions: vi.fn(),
   listKimiSessions: vi.fn(),
+  listPiSessions: vi.fn(),
 }));
 
 vi.mock("../../project-memory/services/projectMemoryFacade", () => ({

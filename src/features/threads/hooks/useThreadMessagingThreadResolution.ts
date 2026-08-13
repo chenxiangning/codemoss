@@ -96,6 +96,9 @@ export function useThreadMessagingThreadResolution({
   const kimiSessionIdByPendingThreadRef = useRef<Map<string, string>>(
     new Map(),
   );
+  const piSessionIdByPendingThreadRef = useRef<Map<string, string>>(
+    new Map(),
+  );
 
   const normalizeEngineSelection = useCallback(
     (engine: ThreadEngine | undefined): ThreadEngine =>
@@ -337,6 +340,7 @@ export function useThreadMessagingThreadResolution({
     geminiSessionIdByPendingThreadRef,
     grokSessionIdByPendingThreadRef,
     kimiSessionIdByPendingThreadRef,
+    piSessionIdByPendingThreadRef,
     isClaudePendingThreadAwaitingNativeSession,
     isThreadIdCompatibleWithEngine,
     normalizeEngineSelection,

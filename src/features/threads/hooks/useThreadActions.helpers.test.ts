@@ -16,6 +16,7 @@ import {
   mergeGeminiSessionSummaries,
   mergeGrokSessionSummaries,
   mergeKimiSessionSummaries,
+  mergePiSessionSummaries,
   mergeThreadSummaryPreservingStableIdentity,
   resolveThreadSourceMeta,
   seedLastGoodEngineIntoMerged,
@@ -1188,6 +1189,40 @@ describe("useThreadActions.helpers", () => {
       hidden,
     );
     expect(merged.map((row) => row.id)).toEqual(["kimi:ok"]);
+  });
+
+  it("mergePiSessionSummaries adds disk sessions without duplicating live rows", () => {
+    const merged = mergePiSessionSummaries(
+      [
+        {
+          id: "pi:live-1",
+          name: "Live 你好",
+          updatedAt: 30,
+          engineSource: "pi",
+        },
+      ],
+      [
+        {
+          sessionId: "live-1",
+          firstMessage: "你好",
+          updatedAt: 20,
+        },
+        {
+          sessionId: "disk-2",
+          firstMessage: "你在干什么",
+          updatedAt: 10,
+        },
+      ],
+      "ws-1",
+      {},
+      () => undefined,
+    );
+    expect(merged.map((row) => row.id).sort()).toEqual([
+      "pi:disk-2",
+      "pi:live-1",
+    ]);
+    expect(merged.find((row) => row.id === "pi:live-1")?.updatedAt).toBe(30);
+    expect(merged.find((row) => row.id === "pi:disk-2")?.engineSource).toBe("pi");
   });
 
 });

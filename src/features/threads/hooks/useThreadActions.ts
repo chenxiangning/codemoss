@@ -12,6 +12,7 @@ import type {
   GeminiSessionSummary,
   GrokSessionSummary,
   KimiSessionSummary,
+  PiSessionSummary,
 } from "./useThreadActions.helpers";
 import { useThreadActionsSessionRuntime } from "./useThreadActionsSessionRuntime";
 import { useThreadActionsSessionCatalog } from "./useThreadActionsSessionCatalog";
@@ -72,6 +73,10 @@ export function useThreadActions({
     Record<string, { fetchedAt: number; sessions: KimiSessionSummary[] }>
   >({});
   const kimiRefreshAttemptedRef = useRef<Record<string, boolean>>({});
+  const piSessionCacheRef = useRef<
+    Record<string, { fetchedAt: number; sessions: PiSessionSummary[] }>
+  >({});
+  const piRefreshAttemptedRef = useRef<Record<string, boolean>>({});
   const grokSessionCacheRef = useRef<
     Record<string, { fetchedAt: number; sessions: GrokSessionSummary[] }>
   >({});
@@ -232,6 +237,8 @@ export function useThreadActions({
     grokSessionCacheRef,
     kimiRefreshAttemptedRef,
     kimiSessionCacheRef,
+    piRefreshAttemptedRef,
+    piSessionCacheRef,
     latestThreadsByWorkspaceRef,
     loadActiveProjectCatalogSessions,
     loadArchivedSessionMap,

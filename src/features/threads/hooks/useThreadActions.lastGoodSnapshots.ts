@@ -18,6 +18,7 @@ export const THREAD_ENGINE_SOURCES: ThreadEngineSource[] = [
   "gemini",
   "grok",
   "kimi",
+  "pi",
 ];
 
 export function findCatalogSourceStatusForEngine(

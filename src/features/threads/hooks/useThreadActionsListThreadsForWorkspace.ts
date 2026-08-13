@@ -14,6 +14,7 @@ import {
   listGeminiSessions as listGeminiSessionsService,
   listGrokSessions as listGrokSessionsService,
   listKimiSessions as listKimiSessionsService,
+  listPiSessions as listPiSessionsService,
   getOpenCodeSessionList as getOpenCodeSessionListService,
   listSessionIndexForWorkspace as listSessionIndexForWorkspaceService,
 } from "../../../services/tauri";
@@ -65,10 +66,12 @@ import {
   mergeGeminiSessionSummaries,
   mergeGrokSessionSummaries,
   mergeKimiSessionSummaries,
+  mergePiSessionSummaries,
   mergeThreadSummaryPreservingStableIdentity,
   normalizeGeminiSessionSummaries,
   normalizeGrokSessionSummaries,
   normalizeKimiSessionSummaries,
+  normalizePiSessionSummaries,
   normalizeThreadListPartialSource,
   resolveThreadSourceMeta,
   seedLastGoodClaudeIntoMerged,
@@ -84,6 +87,7 @@ import {
   type GeminiSessionSummary,
   type GrokSessionSummary,
   type KimiSessionSummary,
+  type PiSessionSummary,
 } from "./useThreadActions.helpers";
 import { buildPartialHistoryDiagnostic } from "../utils/stabilityDiagnostics";
 import { buildThreadDebugCorrelation } from "../utils/threadDebugCorrelation";
@@ -99,6 +103,8 @@ import {
   GROK_SESSION_FETCH_TIMEOUT_MS,
   KIMI_SESSION_CACHE_TTL_MS,
   KIMI_SESSION_FETCH_TIMEOUT_MS,
+  PI_SESSION_CACHE_TTL_MS,
+  PI_SESSION_FETCH_TIMEOUT_MS,
   NATIVE_SESSION_LIST_FETCH_TIMEOUT_MS,
   OPENCODE_FULL_CATALOG_FETCH_TIMEOUT_MS,
   THREAD_LIST_LIVE_REQUEST_TIMEOUT_MS,
@@ -152,6 +158,8 @@ export type UseListThreadsForWorkspaceOptions = {
   grokSessionCacheRef: MutableRefObject<CachedSessions<GrokSessionSummary>>;
   kimiRefreshAttemptedRef: MutableRefObject<Record<string, boolean>>;
   kimiSessionCacheRef: MutableRefObject<CachedSessions<KimiSessionSummary>>;
+  piRefreshAttemptedRef: MutableRefObject<Record<string, boolean>>;
+  piSessionCacheRef: MutableRefObject<CachedSessions<PiSessionSummary>>;
   latestThreadsByWorkspaceRef: MutableRefObject<Record<string, ThreadSummary[]>>;
   loadActiveProjectCatalogSessions: (
     workspaceId: string,
@@ -194,6 +202,8 @@ export function useListThreadsForWorkspace({
   grokSessionCacheRef,
   kimiRefreshAttemptedRef,
   kimiSessionCacheRef,
+  piRefreshAttemptedRef,
+  piSessionCacheRef,
   latestThreadsByWorkspaceRef,
   loadActiveProjectCatalogSessions,
   loadArchivedSessionMap,
@@ -565,6 +575,20 @@ export function useListThreadsForWorkspace({
         const hasFreshKimiCache =
           !!cachedKimi &&
           Date.now() - cachedKimi.fetchedAt <= KIMI_SESSION_CACHE_TTL_MS;
+        const hasPiSignal =
+          existingThreads.some(
+            (thread) =>
+              thread.engineSource === "pi" ||
+              thread.id.startsWith("pi:") ||
+              thread.id.startsWith("pi-pending-"),
+          ) ||
+          activeThreadId.startsWith("pi:") ||
+          activeThreadId.startsWith("pi-pending-") ||
+          Object.keys(mappedTitles).some((id) => id.startsWith("pi:"));
+        const cachedPi = piSessionCacheRef.current[workspace.id];
+        const hasFreshPiCache =
+          !!cachedPi &&
+          Date.now() - cachedPi.fetchedAt <= PI_SESSION_CACHE_TTL_MS;
         const hasGrokSignal =
           existingThreads.some(
             (thread) =>
@@ -1433,6 +1457,19 @@ export function useListThreadsForWorkspace({
             hiddenSharedBindingIds,
           );
         }
+        if (hasFreshPiCache && cachedPi.sessions.length > 0) {
+          allSummaries = mergePiSessionSummaries(
+            allSummaries,
+            cachedPi.sessions.filter(
+              (session) =>
+                !hiddenSharedBindingIds.has(`pi:${session.sessionId}`),
+            ),
+            workspace.id,
+            mappedTitles,
+            getCustomName,
+            hiddenSharedBindingIds,
+          );
+        }
         // fix-shared-session-target-race-and-merge T5b：
         // 仅当 list 空/失败（catch→[]）时，用 previous frame existingThreads 补回 shared:。
         // 非空 list 视为权威全集：不得把「已删除但不在 list 中」的 shared 复活。
@@ -1777,6 +1814,12 @@ export function useListThreadsForWorkspace({
           isLatestThreadListRequest() &&
           includeEngineDiskLists &&
           (hasKimiSignal || !!cachedKimi || !hasAttemptedKimiRefresh);
+        const hasAttemptedPiRefresh =
+          piRefreshAttemptedRef.current[workspace.id] === true;
+        const shouldRefreshPiSessions =
+          isLatestThreadListRequest() &&
+          includeEngineDiskLists &&
+          (hasPiSignal || !!cachedPi || !hasAttemptedPiRefresh);
         const hasAttemptedGrokRefresh =
           grokRefreshAttemptedRef.current[workspace.id] === true;
         const shouldRefreshGrokSessions =
@@ -1953,6 +1996,99 @@ export function useListThreadsForWorkspace({
                 freshHiddenSharedBindingIds,
               ),
               nativeOwnerToSharedKimi,
+            );
+            const visibleNextSummaries = applySessionArchiveState(
+              stripHiddenSharedBindingSummaries(
+                nextSummaries,
+                freshHiddenSharedBindingIds,
+              ),
+              await archivedSessionMapPromise,
+            );
+            const unchanged =
+              visibleNextSummaries.length === baselineSummaries.length &&
+              visibleNextSummaries.every((entry, index) => {
+                const prev = baselineSummaries[index];
+                return (
+                  !!prev &&
+                  prev.id === entry.id &&
+                  prev.name === entry.name &&
+                  prev.updatedAt === entry.updatedAt &&
+                  prev.engineSource === entry.engineSource &&
+                  prev.threadKind === entry.threadKind &&
+                  (prev.parentThreadId ?? null) === (entry.parentThreadId ?? null)
+                );
+              });
+            if (!unchanged && isLatestThreadListRequest()) {
+              dispatch({
+                type: "setThreads",
+                workspaceId: workspace.id,
+                threads: visibleNextSummaries,
+              });
+              latestThreadsByWorkspaceRef.current = {
+                ...latestThreadsByWorkspaceRef.current,
+                [workspace.id]: visibleNextSummaries,
+              };
+            }
+          })();
+        }
+        if (shouldRefreshPiSessions) {
+          void (async () => {
+            piRefreshAttemptedRef.current[workspace.id] = true;
+            const piResult = await withTimeout(
+              listPiSessionsService(workspace.path, 50),
+              PI_SESSION_FETCH_TIMEOUT_MS,
+            );
+            if (!isLatestThreadListRequest()) {
+              return;
+            }
+            if (piResult === null) {
+              onDebug?.({
+                id: `${Date.now()}-client-pi-session-timeout`,
+                timestamp: Date.now(),
+                source: "client",
+                label: "thread/list pi timeout",
+                payload: {
+                  workspaceId: workspace.id,
+                  timeoutMs: PI_SESSION_FETCH_TIMEOUT_MS,
+                },
+              });
+              return;
+            }
+            const normalizedPiSessions = normalizePiSessionSummaries(piResult);
+            piSessionCacheRef.current[workspace.id] = {
+              fetchedAt: Date.now(),
+              sessions: normalizedPiSessions,
+            };
+            const currentSnapshot =
+              latestThreadsByWorkspaceRef.current[workspace.id] ?? [];
+            const baselineSummaries =
+              currentSnapshot.length > 0 ? currentSnapshot : allSummaries;
+            const sharedSessionsForPiHide = normalizeSharedSessionSummaries(
+              (await withTimeout(
+                listSharedSessionsService(workspace.id).catch(() => []),
+                NATIVE_SESSION_LIST_FETCH_TIMEOUT_MS,
+              )) ?? [],
+            );
+            if (!isLatestThreadListRequest()) {
+              return;
+            }
+            const freshHiddenSharedBindingIds = expandHiddenSharedBindingIds([
+              ...sharedSessionsForPiHide.flatMap(
+                (session) => session.nativeThreadIds,
+              ),
+              ...hiddenSharedBindingIds,
+              ...getCollabWorkerNativeHideIds(),
+            ]);
+            const nextSummaries = mergePiSessionSummaries(
+              baselineSummaries,
+              normalizedPiSessions.filter(
+                (session) =>
+                  !freshHiddenSharedBindingIds.has(`pi:${session.sessionId}`),
+              ),
+              workspace.id,
+              mappedTitles,
+              getCustomName,
+              freshHiddenSharedBindingIds,
             );
             const visibleNextSummaries = applySessionArchiveState(
               stripHiddenSharedBindingSummaries(

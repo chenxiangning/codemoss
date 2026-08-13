@@ -1765,6 +1765,31 @@ describe("useThreadMessaging", () => {
     );
   });
 
+  it("continues finalized pi session with native thread id", async () => {
+    const { result } = makeThreadMessagingHook("pi", {
+      activeThreadId: "pi:019ffb7b-dedc-7b36-8d2f-f85f35501036",
+      ensuredThreadId: "pi:019ffb7b-dedc-7b36-8d2f-f85f35501036",
+    });
+
+    await act(async () => {
+      await result.current.sendUserMessageToThread(
+        workspace,
+        "pi:019ffb7b-dedc-7b36-8d2f-f85f35501036",
+        "1+1",
+      );
+    });
+
+    expect(engineSendMessage).toHaveBeenCalledWith(
+      "ws-1",
+      expect.objectContaining({
+        engine: "pi",
+        continueSession: true,
+        sessionId: "019ffb7b-dedc-7b36-8d2f-f85f35501036",
+        threadId: "pi:019ffb7b-dedc-7b36-8d2f-f85f35501036",
+      }),
+    );
+  });
+
   it("continues finalized claude session with native thread id", async () => {
     const { result } = makeThreadMessagingHook("claude", {
       activeThreadId: "claude:session-native-1",

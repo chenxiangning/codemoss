@@ -31,6 +31,14 @@ describe("sessionIndexThreadSummaries", () => {
         updatedAt: 1,
       }),
     ).toBe("kimi:k1");
+    expect(
+      sessionIndexRowToThreadId({
+        engine: "pi",
+        sessionId: "019ffb7b-dedc-7b36-8d2f-f85f35501036",
+        title: "你在干什么",
+        updatedAt: 1,
+      }),
+    ).toBe("pi:019ffb7b-dedc-7b36-8d2f-f85f35501036");
   });
 
   it("builds thread summaries with custom titles", () => {

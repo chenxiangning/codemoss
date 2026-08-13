@@ -617,6 +617,20 @@ pub(crate) fn gemini_home_fingerprint() -> String {
     mtime_fingerprint(&home)
 }
 
+pub(crate) fn pi_home_fingerprint() -> String {
+    let home = std::env::var("PI_CODING_AGENT_DIR")
+        .ok()
+        .map(PathBuf::from)
+        .or_else(|| dirs::home_dir().map(|home| home.join(".pi").join("agent")))
+        .unwrap_or_else(|| PathBuf::from(".pi/agent"));
+    let sessions = home.join("sessions");
+    format!(
+        "{}|{}",
+        mtime_fingerprint(&home),
+        mtime_fingerprint(&sessions)
+    )
+}
+
 pub(crate) fn grok_home_fingerprint() -> String {
     let home = std::env::var("GROK_HOME")
         .ok()
@@ -702,6 +716,39 @@ pub(crate) fn rows_from_grok_summaries(
                 workspace_path: Some(workspace_key.clone()),
                 physical_path: None,
                 parent_session_id: session.parent_session_id.clone(),
+                size_bytes: session.file_size_bytes,
+            }
+        })
+        .collect()
+}
+
+pub(crate) fn rows_from_pi_summaries(
+    workspace_path: &Path,
+    sessions: &[crate::engine::pi_history::PiSessionSummary],
+) -> Vec<SessionIndexRow> {
+    let workspace_key = normalize_path_key(&workspace_path.to_string_lossy());
+    sessions
+        .iter()
+        .map(|session| {
+            let title = {
+                let trimmed = session.first_message.trim();
+                if trimmed.is_empty() {
+                    "PI Session".to_string()
+                } else {
+                    truncate_title(trimmed, 80)
+                }
+            };
+            SessionIndexRow {
+                engine: "pi".into(),
+                session_id: session.session_id.clone(),
+                title,
+                native_title: None,
+                updated_at: session.updated_at,
+                created_at: Some(session.created_at).filter(|value| *value > 0),
+                cwd: Some(workspace_key.clone()),
+                workspace_path: Some(workspace_key.clone()),
+                physical_path: None,
+                parent_session_id: None,
                 size_bytes: session.file_size_bytes,
             }
         })
@@ -871,5 +918,28 @@ mod tests {
         assert!(!second.contains_key("gone"));
 
         let _ = std::fs::remove_dir_all(&temp);
+    }
+
+    #[test]
+    fn rows_from_pi_summaries_prefix_engine_and_title() {
+        let rows = rows_from_pi_summaries(
+            Path::new("/Users/chenxiangning/code/AI/reach/ai-reach"),
+            &[crate::engine::pi_history::PiSessionSummary {
+                session_id: "019ffb7b-dedc-7b36-8d2f-f85f35501036".into(),
+                first_message: "你在干什么".into(),
+                updated_at: 10,
+                created_at: 9,
+                message_count: 2,
+                file_size_bytes: Some(128),
+                engine: Some("pi".into()),
+                canonical_session_id: None,
+                attribution_status: None,
+            }],
+        );
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].engine, "pi");
+        assert_eq!(rows[0].session_id, "019ffb7b-dedc-7b36-8d2f-f85f35501036");
+        assert_eq!(rows[0].title, "你在干什么");
+        assert_eq!(rows[0].size_bytes, Some(128));
     }
 }
