@@ -14,6 +14,7 @@ import {
   listGrokSessions,
   listKimiSessions,
   listPiSessions,
+  invalidateSessionIndexForWorkspace,
   listSessionIndexForWorkspace,
   listThreadTitles,
   listWorkspaceSessionArchiveEvidence,
@@ -45,6 +46,7 @@ vi.mock("../../../services/tauri", () => ({
   listGrokSessions: vi.fn(),
   listKimiSessions: vi.fn(),
   listPiSessions: vi.fn(),
+  invalidateSessionIndexForWorkspace: vi.fn(),
   listSessionIndexForWorkspace: vi.fn(),
   getOpenCodeSessionList: vi.fn(),
   listWorkspaceSessions: vi.fn(),
@@ -110,6 +112,7 @@ export function resetUseThreadActionsTestMocks() {
   vi.mocked(listGrokSessions).mockResolvedValue([]);
   vi.mocked(listKimiSessions).mockResolvedValue([]);
   vi.mocked(listPiSessions).mockResolvedValue([]);
+  vi.mocked(invalidateSessionIndexForWorkspace).mockResolvedValue(0);
   vi.mocked(listSessionIndexForWorkspace).mockResolvedValue({
     data: [],
     source: "session-index",

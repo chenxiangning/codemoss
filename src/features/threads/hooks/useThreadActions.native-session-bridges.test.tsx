@@ -14,6 +14,8 @@ import {
   listWorkspaceSessions,
   listClaudeSessions,
   listGeminiSessions,
+  listPiSessions,
+  listSessionIndexForWorkspace,
   loadClaudeSession,
   loadGeminiSession,
   loadCodexSession,
@@ -141,6 +143,140 @@ describe("useThreadActions native session bridges", () => {
     vi.mocked(trashWorkspaceItem).mockResolvedValue(undefined);
     vi.mocked(writeWorkspaceFile).mockResolvedValue(undefined);
     vi.mocked(loadSidebarSnapshot).mockReturnValue(null);
+    vi.mocked(listPiSessions).mockResolvedValue([]);
+    vi.mocked(listSessionIndexForWorkspace).mockResolvedValue({
+      data: [],
+      source: "session-index",
+      synced: false,
+      engines: [],
+      visibility: {
+        available: true,
+        freshness: "verified",
+        hiddenNativeIds: [],
+      },
+    });
+  });
+
+  it("projects indexed pi rows on first-paint even when shared visibility is pending", async () => {
+    vi.mocked(listThreads).mockResolvedValue({
+      result: {
+        data: [],
+        nextCursor: null,
+      },
+    });
+    vi.mocked(listClaudeSessions).mockResolvedValue([]);
+    vi.mocked(getOpenCodeSessionList).mockResolvedValue([]);
+    vi.mocked(listSessionIndexForWorkspace).mockResolvedValue({
+      data: [
+        {
+          engine: "pi",
+          sessionId: "019ffbb7-dc52-739b-a97e-c77ba0048dbb",
+          title: "干啥腻",
+          updatedAt: 1_786_634_567_000,
+        },
+        {
+          engine: "claude",
+          sessionId: "claude-1",
+          title: "old claude",
+          updatedAt: 1_730_000_000_000,
+        },
+      ],
+      source: "session-index",
+      synced: false,
+      engines: ["pi", "claude"],
+      visibility: {
+        available: false,
+        freshness: "unavailable",
+        reason: "visibility-unavailable",
+        hiddenNativeIds: [],
+      },
+    });
+
+    const { result, dispatch } = renderActions();
+
+    await act(async () => {
+      await result.current.listThreadsForWorkspace(workspace, {
+        startupHydrationMode: "first-paint",
+      });
+    });
+
+    await waitFor(() => {
+      expect(dispatch).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "setThreads",
+          workspaceId: "ws-1",
+          threads: expect.arrayContaining([
+            expect.objectContaining({
+              id: "pi:019ffbb7-dc52-739b-a97e-c77ba0048dbb",
+              name: "干啥腻",
+              engineSource: "pi",
+            }),
+          ]),
+        }),
+      );
+    });
+  });
+
+  it("merges pi disk sessions on first-paint when session index has no pi rows", async () => {
+    vi.mocked(listThreads).mockResolvedValue({
+      result: {
+        data: [],
+        nextCursor: null,
+      },
+    });
+    vi.mocked(listClaudeSessions).mockResolvedValue([]);
+    vi.mocked(getOpenCodeSessionList).mockResolvedValue([]);
+    vi.mocked(listSessionIndexForWorkspace).mockResolvedValue({
+      data: [
+        {
+          engine: "claude",
+          sessionId: "claude-1",
+          title: "old claude",
+          updatedAt: 1_730_000_000_000,
+        },
+      ],
+      source: "session-index",
+      synced: false,
+      engines: ["claude"],
+      visibility: {
+        available: true,
+        freshness: "verified",
+        hiddenNativeIds: [],
+      },
+    });
+    vi.mocked(listPiSessions).mockResolvedValue([
+      {
+        sessionId: "019ffb98-e96c-7914-aeac-52d5744c65de",
+        firstMessage: "1+1",
+        updatedAt: 1_786_632_530_387,
+      },
+    ]);
+
+    const { result, dispatch } = renderActions();
+
+    await act(async () => {
+      await result.current.listThreadsForWorkspace(workspace, {
+        startupHydrationMode: "first-paint",
+      });
+    });
+
+    await waitFor(() => {
+      expect(listPiSessions).toHaveBeenCalledWith("/tmp/codex", 50);
+      expect(dispatch).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "setThreads",
+          workspaceId: "ws-1",
+          threads: expect.arrayContaining([
+            expect.objectContaining({
+              id: "pi:019ffb98-e96c-7914-aeac-52d5744c65de",
+              name: "1+1",
+              updatedAt: 1_786_632_530_387,
+              engineSource: "pi",
+            }),
+          ]),
+        }),
+      );
+    });
   });
 
   it("falls back to claude sessions when codex thread list remains not connected after retry", async () => {

@@ -396,13 +396,13 @@ async fn sync_session_index_core(
     )
     .await?;
 
-    let gemini = sync_gemini_engine(workspace_path.clone(), limit, force).await;
+    let (gemini, grok, pi) = tokio::join!(
+        sync_gemini_engine(workspace_path.clone(), limit, force),
+        sync_grok_engine(workspace_path.clone(), limit, force),
+        sync_pi_engine(workspace_path.clone(), limit, force),
+    );
     merge_writer(&mut aggregated, gemini);
-
-    let grok = sync_grok_engine(workspace_path.clone(), limit, force).await;
     merge_writer(&mut aggregated, grok);
-
-    let pi = sync_pi_engine(workspace_path.clone(), limit, force).await;
     merge_writer(&mut aggregated, pi);
 
     let opencode =
@@ -474,22 +474,22 @@ pub async fn list_session_index_for_workspace(
     let mut engines = Vec::new();
 
     if sync_if_needed || force_sync {
-        let needs_sync = force_sync || {
-            let path_for_check = path_str.clone();
-            tokio::task::spawn_blocking(move || {
+        let path_for_check = path_str.clone();
+        let index_empty = force_sync
+            || tokio::task::spawn_blocking(move || {
                 let connection = open_connection()?;
                 let existing = list_for_workspace_path(&connection, &path_for_check, 1)?;
                 Ok::<bool, String>(existing.is_empty())
             })
             .await
-            .map_err(|error| error.to_string())??
-        };
-
-        if needs_sync || force_sync {
-            let report =
-                sync_session_index_core(&state, &workspace_id, limit, force_sync || needs_sync)
-                    .await?;
-            synced = !report.skipped_fresh || needs_sync;
+            .map_err(|error| error.to_string())??;
+        // Warm first-paint must hit SQLite in milliseconds. Do not block the
+        // list on PI/Gemini/Grok rescan — that exceeds the 2.5s first-paint
+        // timeout and the sidebar keeps last-good without native PI rows.
+        // Incremental rescan belongs to forceSessionIndexSync.
+        if force_sync || index_empty {
+            let report = sync_session_index_core(&state, &workspace_id, limit, force_sync).await?;
+            synced = !report.skipped_fresh || index_empty;
             sync_ms = Some(report.duration_ms);
             partial_source = report.partial_source;
             engines = report.engines;

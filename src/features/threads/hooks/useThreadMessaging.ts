@@ -40,6 +40,7 @@ import {
   listGrokSessions as listGrokSessionsService,
   listKimiSessions as listKimiSessionsService,
   listPiSessions as listPiSessionsService,
+  invalidateSessionIndexForWorkspace as invalidateSessionIndexForWorkspaceService,
 } from "../../../services/tauri";
 import { sendSharedSessionTurnRouted } from "../../shared-session/runtime/sendSharedSessionTurn";
 import {
@@ -2872,6 +2873,13 @@ export function useThreadMessaging({
                   threadId,
                   responseSessionId,
                 );
+                if (
+                  typeof invalidateSessionIndexForWorkspaceService === "function"
+                ) {
+                  void invalidateSessionIndexForWorkspaceService(
+                    workspace.id,
+                  ).catch(() => undefined);
+                }
                 onDebug?.({
                   id: `${Date.now()}-client-pi-session-cache`,
                   timestamp: Date.now(),

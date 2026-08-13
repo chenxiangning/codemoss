@@ -55,6 +55,7 @@ vi.mock("../../../services/tauri", () => ({
   listGeminiSessions: vi.fn(),
   listKimiSessions: vi.fn(),
   listPiSessions: vi.fn(),
+  invalidateSessionIndexForWorkspace: vi.fn(),
   listGrokSessions: vi.fn(),
   loadClaudeSession: vi.fn(),
   engineSendMessage: vi.fn(),

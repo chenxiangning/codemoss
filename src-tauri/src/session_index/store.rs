@@ -1,5 +1,5 @@
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use rusqlite::{params, Connection, OptionalExtension};
@@ -292,6 +292,38 @@ pub(crate) fn source_is_fresh(
     }
     let age = now_ms().saturating_sub(last_sync_ms);
     Ok(age <= max_age_ms)
+}
+
+/// List-level stale check for async engines (PI / Gemini / Grok).
+/// Missing source, invalidated (`last_sync_ms == 0`), or fingerprint mismatch.
+/// Does **not** use the intra-burst age window — restart must not full-scan
+/// Claude/Codex just because 8s elapsed.
+pub(crate) fn engine_source_needs_incremental_sync(
+    connection: &Connection,
+    engine: &str,
+    workspace_path: &Path,
+    fingerprint: &str,
+) -> Result<bool, String> {
+    let source_key = format!(
+        "{}:{}",
+        engine.trim().to_ascii_lowercase(),
+        normalize_path_key(&workspace_path.to_string_lossy())
+    );
+    let row = connection
+        .query_row(
+            "SELECT fingerprint, last_sync_ms FROM session_index_sources WHERE source_key = ?1",
+            [&source_key],
+            |row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?)),
+        )
+        .optional()
+        .map_err(|error| error.to_string())?;
+    let Some((stored_fp, last_sync_ms)) = row else {
+        return Ok(true);
+    };
+    if last_sync_ms <= 0 {
+        return Ok(true);
+    }
+    Ok(stored_fp != fingerprint)
 }
 
 pub(crate) fn list_for_workspace_path(

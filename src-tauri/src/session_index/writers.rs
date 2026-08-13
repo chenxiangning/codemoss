@@ -618,17 +618,34 @@ pub(crate) fn gemini_home_fingerprint() -> String {
 }
 
 pub(crate) fn pi_home_fingerprint() -> String {
-    let home = std::env::var("PI_CODING_AGENT_DIR")
-        .ok()
-        .map(PathBuf::from)
-        .or_else(|| dirs::home_dir().map(|home| home.join(".pi").join("agent")))
-        .unwrap_or_else(|| PathBuf::from(".pi/agent"));
-    let sessions = home.join("sessions");
-    format!(
-        "{}|{}",
-        mtime_fingerprint(&home),
-        mtime_fingerprint(&sessions)
-    )
+    let sessions = crate::engine::pi_history::resolve_pi_sessions_root(None);
+    let home = sessions
+        .parent()
+        .map(Path::to_path_buf)
+        .unwrap_or_else(|| sessions.clone());
+    let mut parts = vec![mtime_fingerprint(&home), mtime_fingerprint(&sessions)];
+    // New jsonl lives in sessions/<encoded-cwd>/; parent mtime often stays
+    // unchanged, so include each cwd-dir fingerprint.
+    if let Ok(entries) = fs::read_dir(&sessions) {
+        let mut child_prints = Vec::new();
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if !path.is_dir() {
+                continue;
+            }
+            let name = path
+                .file_name()
+                .map(|value| value.to_string_lossy().into_owned())
+                .unwrap_or_default();
+            if name.starts_with('.') {
+                continue;
+            }
+            child_prints.push(format!("{name}:{}", mtime_fingerprint(&path)));
+        }
+        child_prints.sort();
+        parts.extend(child_prints);
+    }
+    parts.join("|")
 }
 
 pub(crate) fn grok_home_fingerprint() -> String {
@@ -818,7 +835,7 @@ pub(crate) fn invalidate_workspace_sources(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use super::super::store::DDL;
+    use super::super::store::{engine_source_needs_incremental_sync, DDL};
     use serde_json::json;
 
     #[test]
@@ -941,5 +958,75 @@ mod tests {
         assert_eq!(rows[0].session_id, "019ffb7b-dedc-7b36-8d2f-f85f35501036");
         assert_eq!(rows[0].title, "你在干什么");
         assert_eq!(rows[0].size_bytes, Some(128));
+    }
+
+    #[test]
+    fn pi_fingerprint_changes_when_cwd_subdir_gets_new_jsonl() {
+        let dir = std::env::temp_dir().join(format!(
+            "pi-fp-{}",
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        ));
+        let sessions = dir.join("sessions");
+        let cwd = sessions.join("--tmp-ws--");
+        std::fs::create_dir_all(&cwd).expect("mkdir");
+        std::fs::write(cwd.join("a.jsonl"), "x").expect("write a");
+        let previous = std::env::var("PI_CODING_AGENT_DIR").ok();
+        std::env::set_var("PI_CODING_AGENT_DIR", &dir);
+        let first = pi_home_fingerprint();
+        std::thread::sleep(std::time::Duration::from_millis(30));
+        std::fs::write(cwd.join("b.jsonl"), "y").expect("write b");
+        let second = pi_home_fingerprint();
+        match previous {
+            Some(value) => std::env::set_var("PI_CODING_AGENT_DIR", value),
+            None => std::env::remove_var("PI_CODING_AGENT_DIR"),
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+        assert_ne!(first, second, "cwd jsonl must change PI fingerprint");
+    }
+
+    #[test]
+    fn incremental_sync_helper_treats_missing_mismatch_and_invalidate() {
+        let connection = Connection::open_in_memory().expect("db");
+        connection.execute_batch(DDL).expect("ddl");
+        let workspace = Path::new("/tmp/ccgui-pi-stale-ws");
+        assert!(engine_source_needs_incremental_sync(
+            &connection,
+            "pi",
+            workspace,
+            "fp-a",
+        )
+        .expect("missing"));
+        mark_source_synced(&connection, "pi:/tmp/ccgui-pi-stale-ws", "fp-a", 1)
+            .expect("mark");
+        assert!(!engine_source_needs_incremental_sync(
+            &connection,
+            "pi",
+            workspace,
+            "fp-a",
+        )
+        .expect("match"));
+        assert!(engine_source_needs_incremental_sync(
+            &connection,
+            "pi",
+            workspace,
+            "fp-b",
+        )
+        .expect("mismatch"));
+        connection
+            .execute(
+                "UPDATE session_index_sources SET last_sync_ms = 0 WHERE source_key = ?1",
+                ["pi:/tmp/ccgui-pi-stale-ws"],
+            )
+            .expect("invalidate");
+        assert!(engine_source_needs_incremental_sync(
+            &connection,
+            "pi",
+            workspace,
+            "fp-a",
+        )
+        .expect("invalidated"));
     }
 }

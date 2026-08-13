@@ -47,6 +47,22 @@ export function sessionIndexRowToThreadId(row: SessionIndexRow): string | null {
   return `${prefix}${sessionId}`;
 }
 
+export function filterSessionIndexRowsByEngine(
+  rows: SessionIndexRow[],
+  engine: string,
+): SessionIndexRow[] {
+  const wanted = engine.trim().toLowerCase();
+  if (!wanted) {
+    return [];
+  }
+  return rows.filter(
+    (row) =>
+      String(row.engine ?? "")
+        .trim()
+        .toLowerCase() === wanted,
+  );
+}
+
 export function sessionIndexRowsToThreadSummaries(
   rows: SessionIndexRow[],
   options: {

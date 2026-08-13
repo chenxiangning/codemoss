@@ -17,6 +17,7 @@ import {
   engineInterrupt,
   engineSendMessage,
   interruptTurn,
+  invalidateSessionIndexForWorkspace,
   listGeminiSessions,
   loadClaudeSession,
   projectMemoryCaptureTurnInput,
@@ -1788,6 +1789,31 @@ describe("useThreadMessaging", () => {
         threadId: "pi:019ffb7b-dedc-7b36-8d2f-f85f35501036",
       }),
     );
+  });
+
+  it("invalidates session index after pending pi send caches native id", async () => {
+    vi.mocked(engineSendMessage).mockResolvedValue({
+      sessionId: "019ffb98-e96c-7914-aeac-52d5744c65de",
+      result: { turn: { id: "turn-pi-1" } },
+    });
+    vi.mocked(invalidateSessionIndexForWorkspace).mockResolvedValue(1);
+
+    const { result } = makeThreadMessagingHook("pi", {
+      activeThreadId: "pi-pending-abc",
+      ensuredThreadId: "pi-pending-abc",
+    });
+
+    await act(async () => {
+      await result.current.sendUserMessageToThread(
+        workspace,
+        "pi-pending-abc",
+        "1+1",
+      );
+    });
+
+    await waitFor(() => {
+      expect(invalidateSessionIndexForWorkspace).toHaveBeenCalledWith("ws-1");
+    });
   });
 
   it("continues finalized claude session with native thread id", async () => {

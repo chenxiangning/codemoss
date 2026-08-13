@@ -18,7 +18,10 @@ import {
   getOpenCodeSessionList as getOpenCodeSessionListService,
   listSessionIndexForWorkspace as listSessionIndexForWorkspaceService,
 } from "../../../services/tauri";
-import { sessionIndexRowsToThreadSummaries } from "./sessionIndexThreadSummaries";
+import {
+  filterSessionIndexRowsByEngine,
+  sessionIndexRowsToThreadSummaries,
+} from "./sessionIndexThreadSummaries";
 import {
   expandVisibilityHideSet,
   isFullyVerifiedSharedNativeVisibility,
@@ -379,6 +382,20 @@ export function useListThreadsForWorkspace({
               .catch(() => null),
             sessionIndexTimeoutMs,
           );
+          // First-paint 2.5s can expire if a writer is still running. Retry a
+          // warm read so already-indexed native PI rows still reach the sidebar.
+          if (sessionIndexPage === null && isFirstPaintHydration && !forceIndexSync) {
+            sessionIndexPage = await withTimeout(
+              listSessionIndexForWorkspaceService(workspace.id, {
+                limit: sessionIndexLimit,
+                syncIfNeeded: false,
+                forceSync: false,
+              })
+                .then((page) => page ?? null)
+                .catch(() => null),
+              800,
+            );
+          }
         }
         {
           const abandoned = abandonIfStale();
@@ -454,6 +471,29 @@ export function useListThreadsForWorkspace({
           !canProjectIndexNatives
         ) {
           rememberPartialSource("shared-visibility-unavailable");
+          const piIndexSummaries = sessionIndexRowsToThreadSummaries(
+            filterSessionIndexRowsByEngine(sessionIndexPage.data, "pi"),
+            {
+              workspaceId: workspace.id,
+              mappedTitles: {},
+              getCustomName,
+              hiddenSharedBindingIds: earlyPaintHideSet,
+            },
+          );
+          const earlyPiSummaries = mergePreservedSharedThreadsForIndexFirstPaint(
+            piIndexSummaries,
+            threadsByWorkspace[workspace.id],
+            getLastGoodThreadSummariesWithoutDeleted(),
+          );
+          if (earlyPiSummaries.length > 0 && isLatestThreadListRequest()) {
+            dispatch({
+              type: "setThreads",
+              workspaceId: workspace.id,
+              threads: earlyPiSummaries,
+            });
+            earlyIndexPaintApplied = true;
+            appliedThreadListUpdate = true;
+          }
           onDebug?.({
             id: `${Date.now()}-client-session-index-visibility-pending`,
             timestamp: Date.now(),
@@ -462,6 +502,7 @@ export function useListThreadsForWorkspace({
             payload: {
               workspaceId: workspace.id,
               reason: indexVisibility?.reason ?? "visibility-unavailable",
+              piRowCount: piIndexSummaries.length,
             },
           });
         } else if (sessionIndexPage === null) {
@@ -934,6 +975,20 @@ export function useListThreadsForWorkspace({
             getLastGoodThreadSummariesWithoutDeleted().forEach((summary) => {
               if (!mergedById.has(summary.id)) {
                 mergedById.set(summary.id, summary);
+              }
+            });
+            sessionIndexRowsToThreadSummaries(
+              filterSessionIndexRowsByEngine(sessionIndexPage.data ?? [], "pi"),
+              {
+                workspaceId: workspace.id,
+                mappedTitles,
+                getCustomName,
+                hiddenSharedBindingIds,
+              },
+            ).forEach((summary) => {
+              const prev = mergedById.get(summary.id);
+              if (!prev || summary.updatedAt >= prev.updatedAt) {
+                mergedById.set(summary.id, prev ? { ...summary, name: prev.name || summary.name } : summary);
               }
             });
           } else {
@@ -1816,10 +1871,21 @@ export function useListThreadsForWorkspace({
           (hasKimiSignal || !!cachedKimi || !hasAttemptedKimiRefresh);
         const hasAttemptedPiRefresh =
           piRefreshAttemptedRef.current[workspace.id] === true;
+        const indexHasPiRows = Boolean(
+          sessionIndexPage?.data?.some((row) => {
+            const engine = String(row.engine ?? "")
+              .trim()
+              .toLowerCase();
+            return engine === "pi";
+          }),
+        );
         const shouldRefreshPiSessions =
           isLatestThreadListRequest() &&
-          includeEngineDiskLists &&
-          (hasPiSignal || !!cachedPi || !hasAttemptedPiRefresh);
+          ((includeEngineDiskLists &&
+            (hasPiSignal || !!cachedPi || !hasAttemptedPiRefresh)) ||
+            (isFirstPaintHydration &&
+              !indexHasPiRows &&
+              !hasAttemptedPiRefresh));
         const hasAttemptedGrokRefresh =
           grokRefreshAttemptedRef.current[workspace.id] === true;
         const shouldRefreshGrokSessions =

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  filterSessionIndexRowsByEngine,
   mergeSessionIndexRowsIntoSummaries,
   sessionIndexRowToThreadId,
   sessionIndexRowsToThreadSummaries,
@@ -39,6 +40,28 @@ describe("sessionIndexThreadSummaries", () => {
         updatedAt: 1,
       }),
     ).toBe("pi:019ffb7b-dedc-7b36-8d2f-f85f35501036");
+  });
+
+  it("filters session index rows by engine for sidebar projection", () => {
+    const rows = filterSessionIndexRowsByEngine(
+      [
+        {
+          engine: "claude",
+          sessionId: "c1",
+          title: "claude",
+          updatedAt: 1,
+        },
+        {
+          engine: "pi",
+          sessionId: "p1",
+          title: "干啥腻",
+          updatedAt: 2,
+        },
+      ],
+      "pi",
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.sessionId).toBe("p1");
   });
 
   it("builds thread summaries with custom titles", () => {
