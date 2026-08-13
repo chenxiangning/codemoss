@@ -2796,7 +2796,8 @@ $bmp.Save($ms, [System.Drawing.Imaging.ImageFormat]::Png)
 [Convert]::ToBase64String($ms.ToArray())
 "#
     );
-    let output = std::process::Command::new("powershell")
+    // std_command 携带 CREATE_NO_WINDOW：避免每次图标提取闪现控制台窗口。
+    let output = crate::utils::std_command("powershell")
         .args(["-NoProfile", "-NonInteractive", "-Command", &script])
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
@@ -3149,7 +3150,8 @@ fn command_resolvable_on_path(name: &str) -> bool {
     }
     #[cfg(windows)]
     {
-        std::process::Command::new("where")
+        // std_command 携带 CREATE_NO_WINDOW：避免打开方式探测闪现控制台窗口。
+        crate::utils::std_command("where")
             .arg(name)
             .stdin(Stdio::null())
             .stdout(Stdio::null())
