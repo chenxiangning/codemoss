@@ -256,7 +256,11 @@ pub(crate) fn merge_managed_codexignore(existing: &str) -> String {
         if end_index >= begin_index {
             let after_end = end_index + MANAGED_CODEXIGNORE_END.len();
             let prefix = existing[..begin_index].trim_end();
-            let suffix = existing[after_end..].trim_start_matches(['\r', '\n']);
+            let suffix = if after_end <= existing.len() {
+                existing[after_end..].trim_start_matches(['\r', '\n'])
+            } else {
+                ""
+            };
             let mut merged = String::new();
             if !prefix.is_empty() {
                 merged.push_str(prefix);
