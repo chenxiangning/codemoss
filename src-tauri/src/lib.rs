@@ -261,6 +261,7 @@ pub fn run() {
             let state = state::AppState::load(&app.handle());
             app.manage(state);
             renderer_stability::spawn_renderer_heartbeat_watchdog(app.handle().clone());
+            crate::session_index::importer::spawn_session_index_importer(app.handle().clone());
             {
                 // Start the in-process AskUserQuestion MCP server so mid-turn
                 // structured asks work in default/acceptEdits (not just plan mode).

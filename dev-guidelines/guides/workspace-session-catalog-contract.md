@@ -70,7 +70,7 @@ await listSessionIndexForWorkspace(workspaceId, { syncIfNeeded: false });
 
 Session Management 默认 Bounded；「扫描全部」必须二次确认。启动 / focus / 侧栏 hydrate 禁止 `scanMode=exhaustive`。
 
-侧栏 first-paint MUST：按已注册引擎循环读取 Index + Shared 列表 → **一次** `setThreads({ mode: "replace" })` → return。MUST NOT 再跑 titles 之后的 catalog / `list_*_sessions` / Codex live 翻页。后续非 replace 的 `setThreads` MUST 按 id 合并，不得删掉已在侧栏的引擎行（删除走 tombstone）。外部 CLI 会话导入是独立守护进程，不在本路径。
+侧栏 first-paint MUST：按已注册引擎循环读取 Index + Shared 列表 → **一次** `setThreads({ mode: "replace" })` → return。MUST NOT 再跑 titles 之后的 catalog / `list_*_sessions` / Codex live 翻页。后续非 replace 的 `setThreads` MUST 按 id 合并，不得删掉已在侧栏的引擎行（删除走 tombstone）。外部 CLI 会话由 App 内 `session_index` importer 间隔导入（有界 writers、`force=false`、tombstone 不复活）；导入后只再 SELECT，不扫盘。
 
 ### 3. Contracts
 

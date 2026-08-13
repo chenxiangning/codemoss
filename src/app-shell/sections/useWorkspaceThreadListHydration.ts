@@ -7,6 +7,7 @@ import {
 } from "react";
 import { useRenderScheduler } from "../../hooks/useRenderScheduler";
 import type { MutableRefObject } from "react";
+import { listen } from "@tauri-apps/api/event";
 import type { WorkspaceInfo } from "../../types";
 import {
   startupOrchestrator,
@@ -577,6 +578,7 @@ export function useWorkspaceThreadListHydration({
         preserveState?: boolean;
         force?: boolean;
         deletedThreadIds?: string[];
+        startupHydrationMode?: "first-paint" | "full-catalog";
       },
     ) => {
       const workspace = workspacesById.get(workspaceId);
@@ -589,12 +591,9 @@ export function useWorkspaceThreadListHydration({
         hydratedThreadListWorkspaceIdsRef.current.has(workspaceId);
       const fullyHydrated =
         fullyHydratedThreadListWorkspaceIdsRef.current.has(workspaceId);
-      // first-paint if UI never ready; else full-catalog until fully done.
-      const kind: ThreadHydrationKind = force
-        ? "full-catalog"
-        : !uiHydrated
-          ? "first-paint"
-          : "full-catalog";
+      const kind: ThreadHydrationKind =
+        options?.startupHydrationMode ??
+        (force ? "full-catalog" : !uiHydrated ? "first-paint" : "full-catalog");
       // Cold-start: only active workspace may hydrate until gate-ready.
       // User force refresh may target any workspace after gate; during cold-start
       // force still restricted to active to avoid dual-scan storms.
@@ -634,7 +633,11 @@ export function useWorkspaceThreadListHydration({
         return;
       }
       const hasHydratedThreadList =
-        kind === "first-paint" ? uiHydrated : fullyHydrated;
+        options?.startupHydrationMode === "first-paint"
+          ? false
+          : kind === "first-paint"
+            ? uiHydrated
+            : fullyHydrated;
       const isHydratingThreadList =
         hydratingThreadListWorkspaceIdsRef.current.has(workspaceId);
       if (
@@ -961,6 +964,37 @@ export function useWorkspaceThreadListHydration({
       cancelPendingIndexSync();
     };
   }, [cancelPendingIndexSync]);
+
+  useEffect(() => {
+    let disposed = false;
+    let unlisten: (() => void) | undefined;
+    void listen<{ workspaceIds?: string[]; upserted?: number }>(
+      "session-index-imported",
+      (event) => {
+        const ids = event.payload?.workspaceIds ?? [];
+        ids.forEach((workspaceId) => {
+          ensureWorkspaceThreadListLoaded(workspaceId, {
+            preserveState: true,
+            startupHydrationMode: "first-paint",
+          });
+        });
+      },
+    )
+      .then((fn) => {
+        if (disposed) {
+          void fn();
+          return;
+        }
+        unlisten = () => {
+          void fn();
+        };
+      })
+      .catch(() => undefined);
+    return () => {
+      disposed = true;
+      unlisten?.();
+    };
+  }, [ensureWorkspaceThreadListLoaded]);
 
   return {
     ensureWorkspaceThreadListLoaded,

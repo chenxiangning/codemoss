@@ -7,6 +7,7 @@
 //! - Full multi-engine catalog projection remains Session Management / explicit refresh.
 
 pub(crate) mod commands;
+pub(crate) mod importer;
 mod shared_visibility;
 mod store;
 mod writers;

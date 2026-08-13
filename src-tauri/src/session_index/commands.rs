@@ -376,7 +376,7 @@ async fn sync_opencode_engine(
     })
 }
 
-async fn sync_session_index_core(
+pub(crate) async fn sync_session_index_core(
     state: &AppState,
     workspace_id: &str,
     limit: usize,
