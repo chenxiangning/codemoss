@@ -272,7 +272,7 @@ const messages = {
     "anchorUserTitle": "使用者 #{{index}}",
     "backToTop": "回到頂部",
     "backToBottom": "回到底部",
-    "showEarlierMessages": "顯示 {{count}} 則較早的訊息",
+    "showEarlierMessages": "上方還有 {{count}} 則，點擊載入更早",
     "liveControls": "即時畫布控制項",
     "liveAutoFollowToggle": "焦點跟隨",
     "liveAutoFollowEnable": "啟用焦點跟隨最新輸出",

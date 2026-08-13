@@ -11,6 +11,7 @@
 
 | Change | Progress | Current gate | Artifacts |
 | ------ | -------: | ------------ | --------- |
+| [`fix-history-open-tail-first`](fix-history-open-tail-first/proposal.md) | implemented / user accepted | 长会话 tail-first 首屏 + 芯片分页加载更早；迟到 projection 禁止从头刷；用户手测有效果 | [proposal](fix-history-open-tail-first/proposal.md) · [design](fix-history-open-tail-first/design.md) · [tasks](fix-history-open-tail-first/tasks.md) · [specs](fix-history-open-tail-first/specs/) |
 | [`fix-browser-dock-tab-webview-context-menu`](fix-browser-dock-tab-webview-context-menu/proposal.md) | implemented / review requested | 单一 embedded renderer + child-WebView 菜单 bridge + theme-token transfer；用户已验收全部工作区变更；**不 commit** | [proposal](fix-browser-dock-tab-webview-context-menu/proposal.md) |
 | [`refine-browser-excerpt-curtain-and-locate`](refine-browser-excerpt-curtain-and-locate/proposal.md) | implemented / review green | 网页摘录 V3 细线 + 点选去重 + locate 进模型；87 vitest + toolbar rust 绿；**commit 不含 Dock tab 菜单** | [proposal](refine-browser-excerpt-curtain-and-locate/proposal.md) · [design](refine-browser-excerpt-curtain-and-locate/design.md) · [tasks](refine-browser-excerpt-curtain-and-locate/tasks.md) · [specs](refine-browser-excerpt-curtain-and-locate/specs/) · [verification](refine-browser-excerpt-curtain-and-locate/verification.md) |
 | [`fix-native-parallel-provider-model-isolation`](fix-native-parallel-provider-model-isolation/proposal.md) | implemented / await human check | 并行 Native 跨供应商 model residual（MiniMax→DeepSeek 400）：扩展 residual 启发式 + vitest 钉死；Shared 零改；**不 commit，交用户验收** | [proposal](fix-native-parallel-provider-model-isolation/proposal.md) · [design](fix-native-parallel-provider-model-isolation/design.md) · [tasks](fix-native-parallel-provider-model-isolation/tasks.md) · [specs](fix-native-parallel-provider-model-isolation/specs/) |
@@ -43,6 +44,7 @@
 
 ## Active backlog notes（2026-08-08）
 
+- **新增并落地** `fix-history-open-tail-first`（2026-08-13）：中断/失败长会话打开从头刷到最新；hydrate 改 tail-first；顶上芯片分页加载更早；迟到 projection atomic；用户手测有效果。
 - **已归档** `harden-shared-cli-session-index-visibility` → `archive/2026-08-13-harden-shared-cli-session-index-visibility`：Session Index 同 IPC durable Shared hide + fail-closed + 保留 `shared:*`；主 specs 已同步。
 - **新增并落地** `fix-native-parallel-provider-model-isolation`（2026-08-12）：并行 Native 不同供应商后历史会话 residual model（MiniMax-M3 打 DeepSeek）→ 扩展 `claudeManagedRuntimeModel` residual；vitest 24+73 绿；Shared 零改；待手测、不 commit。
 - **验收通过** `fix-askuserquestion-settlement-tombstone`（2026-08-12）：幽灵重弹/skip 卡死/双已提交卡 + 幕布扁平 UI；用户手测通过；能力矩阵见 `docs/reference/conversation/user-input-elicitation-capability-matrix.md`。

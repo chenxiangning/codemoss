@@ -325,7 +325,7 @@ const messages = {
     anchorUserTitle: "用户 #{{index}}",
     backToTop: "回到顶部",
     backToBottom: "回到底部",
-    showEarlierMessages: "显示之前的 {{count}} 条消息",
+    showEarlierMessages: "上方还有 {{count}} 条，点击加载更早",
     liveControls: "实时幕布控制",
     liveAutoFollowToggle: "焦点跟随",
     liveAutoFollowEnable: "开启焦点跟随到最新输出",

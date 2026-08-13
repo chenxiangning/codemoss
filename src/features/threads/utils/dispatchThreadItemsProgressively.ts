@@ -4,75 +4,78 @@ import type { ConversationItem } from "../../../types";
 export const THREAD_ITEMS_PROGRESSIVE_BATCH_SIZE = 80;
 
 export type ThreadItemsDispatch = (action: {
-  type: "setThreadItems";
+  type: "setThreadItems" | "prependThreadItems";
   threadId: string;
   items: ConversationItem[];
 }) => void;
 
+export type DispatchThreadItemsMode = "tail-first" | "atomic";
+
+export type DispatchThreadItemsResult = {
+  displayedCount: number;
+  remainingOlderCount: number;
+};
+
 export type DispatchThreadItemsProgressivelyOptions = {
-  /** Items per paint. Defaults to {@link THREAD_ITEMS_PROGRESSIVE_BATCH_SIZE}. */
+  /** Items per first-paint window. Defaults to {@link THREAD_ITEMS_PROGRESSIVE_BATCH_SIZE}. */
   batchSize?: number;
   /**
+   * `tail-first` (default): paint the newest window only.
+   * `atomic`: write the full list in one `setThreadItems` (fork / late merge).
+   */
+  mode?: DispatchThreadItemsMode;
+  /**
    * Yield between batches so the browser can paint. Defaults to a macrotask
-   * (`setTimeout(0)`). Tests may pass a no-op or resolved promise.
+   * (`setTimeout(0)`). Kept for callers/tests; tail-first first-paint no longer loops.
    */
   yieldBetweenBatches?: () => Promise<void>;
   /** Abort progressive expansion when the resume request is superseded. */
   shouldContinue?: () => boolean;
 };
 
-function defaultYieldBetweenBatches(): Promise<void> {
-  return new Promise((resolve) => {
-    setTimeout(resolve, 0);
-  });
+function emptyResult(): DispatchThreadItemsResult {
+  return { displayedCount: 0, remainingOlderCount: 0 };
 }
 
 /**
  * Dispatch history items into the thread store without one multi-thousand-item
- * main-thread commit. Small lists use a single `setThreadItems`; large lists
- * paint a prefix first, then expand until complete.
+ * main-thread commit. Large lists first-paint the newest window; older rows stay
+ * with the caller for on-demand prepend.
  */
 export async function dispatchThreadItemsProgressively(
   dispatch: ThreadItemsDispatch,
   threadId: string,
   items: ConversationItem[],
   options?: DispatchThreadItemsProgressivelyOptions,
-): Promise<void> {
+): Promise<DispatchThreadItemsResult> {
   const batchSize = Math.max(
     1,
     options?.batchSize ?? THREAD_ITEMS_PROGRESSIVE_BATCH_SIZE,
   );
-  const yieldBetweenBatches =
-    options?.yieldBetweenBatches ?? defaultYieldBetweenBatches;
   const shouldContinue = options?.shouldContinue ?? (() => true);
+  const mode = options?.mode ?? "tail-first";
 
   if (items.length === 0) {
-    return;
+    return emptyResult();
   }
 
-  if (items.length <= batchSize) {
-    if (!shouldContinue()) {
-      return;
-    }
+  if (!shouldContinue()) {
+    return emptyResult();
+  }
+
+  if (mode === "atomic" || items.length <= batchSize) {
     dispatch({ type: "setThreadItems", threadId, items });
-    return;
+    return { displayedCount: items.length, remainingOlderCount: 0 };
   }
 
-  let end = batchSize;
-  while (true) {
-    if (!shouldContinue()) {
-      return;
-    }
-    const sliceEnd = Math.min(end, items.length);
-    dispatch({
-      type: "setThreadItems",
-      threadId,
-      items: items.slice(0, sliceEnd),
-    });
-    if (sliceEnd >= items.length) {
-      return;
-    }
-    await yieldBetweenBatches();
-    end += batchSize;
-  }
+  const displayedCount = batchSize;
+  dispatch({
+    type: "setThreadItems",
+    threadId,
+    items: items.slice(-displayedCount),
+  });
+  return {
+    displayedCount,
+    remainingOlderCount: items.length - displayedCount,
+  };
 }

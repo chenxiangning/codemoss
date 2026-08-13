@@ -347,7 +347,7 @@ const messages = {
     anchorUserTitle: "User #{{index}}",
     backToTop: "Back to top",
     backToBottom: "Back to bottom",
-    showEarlierMessages: "Show {{count}} earlier messages",
+    showEarlierMessages: "{{count}} earlier messages above — click to load more",
     liveControls: "Live canvas controls",
     liveAutoFollowToggle: "Focus follow",
     liveAutoFollowEnable: "Enable focus follow for latest output",

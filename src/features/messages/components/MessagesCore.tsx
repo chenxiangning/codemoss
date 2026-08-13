@@ -76,12 +76,20 @@ import {
 import {
   buildMessageActionTargets,
   buildMessagesScrollKey,
+  readHistoryExpansionScrollSnapshot,
   resolveActiveUserInputRequest,
   resolveActiveMessageAnchor,
   resolveCollapsedTimelineItems,
   resolveVisibleMessageItems,
+  restoreHistoryExpansionScrollPosition,
+  type HistoryExpansionScrollSnapshot,
   type MessageActionTargets,
 } from "../orchestration/presentation/messagesViewModel";
+import {
+  getPendingOlderHistoryRemainingCount,
+  hasPendingOlderHistory,
+} from "../../threads/utils/pendingOlderHistory";
+import { requestOlderHistory } from "../../threads/utils/olderHistoryRequestBridge";
 import {
   DEFAULT_RENDER_LOOP_GUARD_BUDGET,
   resolveIdempotentRenderLoopGuard,
@@ -531,6 +539,45 @@ export const MessagesCore = memo(function MessagesCore({
     threadId,
   });
   const scrollKey = rawScrollKey;
+  const olderHistoryRestoreRef = useRef<HistoryExpansionScrollSnapshot | null>(
+    null,
+  );
+  const [olderHistoryRestoreToken, setOlderHistoryRestoreToken] = useState(0);
+  const pendingOlderHistoryCount = threadId
+    ? getPendingOlderHistoryRemainingCount(threadId)
+    : 0;
+  const tryLoadOlderHistoryPage = useCallback(() => {
+    if (!threadId) {
+      return false;
+    }
+    if (!hasPendingOlderHistory(threadId)) {
+      return false;
+    }
+    // 用户点芯片 = 主动回看。只 pauseFollow，不改吸底判定/RO/followSignal。
+    pauseFollow();
+    olderHistoryRestoreRef.current = readHistoryExpansionScrollSnapshot(
+      containerRef.current,
+    );
+    const applied = requestOlderHistory(threadId);
+    if (!applied) {
+      olderHistoryRestoreRef.current = null;
+      return false;
+    }
+    setOlderHistoryRestoreToken((token) => token + 1);
+    return true;
+  }, [containerRef, pauseFollow, threadId]);
+  useLayoutEffect(() => {
+    if (olderHistoryRestoreToken === 0) {
+      return;
+    }
+    const snapshot = olderHistoryRestoreRef.current;
+    const container = containerRef.current;
+    olderHistoryRestoreRef.current = null;
+    if (!snapshot || !container) {
+      return;
+    }
+    restoreHistoryExpansionScrollPosition(container, snapshot);
+  }, [containerRef, olderHistoryRestoreToken]);
   const historyOpenedScopeRef = useRef<string | null>(null);
   const {
     closeFileLinkMenu,
@@ -1287,8 +1334,11 @@ export const MessagesCore = memo(function MessagesCore({
     ],
   );
   const handleShowAllHistoryItems = useCallback(() => {
+    if (tryLoadOlderHistoryPage()) {
+      return;
+    }
     revealAllHistoryItems("manual");
-  }, [revealAllHistoryItems]);
+  }, [revealAllHistoryItems, tryLoadOlderHistoryPage]);
   useLayoutEffect(() => {
     if (!showAllHistoryItems) {
       discardPendingHistoryExpansion();
@@ -1314,7 +1364,7 @@ export const MessagesCore = memo(function MessagesCore({
     showAllHistoryItems,
   ]);
   // 跟随/释放/re-arm 全部由 useMessagesCanvasFollow 的容器监听自持；
-  // 这里的 onScroll 只驱动锚点轨道高亮。
+  // 这里的 onScroll 只驱动锚点轨道高亮。禁止在滚动里加载更早历史，避免和吸底抢 scrollTop。
   const handleCanvasScroll = useCallback(() => {
     scheduleAnchorUpdate("scroll");
   }, [scheduleAnchorUpdate]);
@@ -1641,7 +1691,8 @@ export const MessagesCore = memo(function MessagesCore({
       suppressedUserNoteCardContextMessageIds,
       turnFileChangesByBoundaryId,
       turnTargetBadgeVisibleItemIds,
-      visibleCollapsedHistoryItemCount: presentationCollapsedHistoryItemCount,
+      visibleCollapsedHistoryItemCount:
+        presentationCollapsedHistoryItemCount + pendingOlderHistoryCount,
     },
     live: {
       heartbeatPulse: timelineHeartbeatPulse,
