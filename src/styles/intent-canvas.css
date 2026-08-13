@@ -32,6 +32,7 @@
   gap: 10px;
   padding: 10px;
   overflow: auto;
+  background: var(--surface-messages);
 }
 
 .intent-canvas-eyebrow {
@@ -61,7 +62,7 @@
 
 .intent-canvas-manager-hero {
   display: grid;
-  grid-template-columns: minmax(0, 0.78fr) minmax(220px, 1fr) auto;
+  grid-template-columns: auto minmax(180px, 1fr) auto;
   align-items: center;
   gap: 10px;
   padding: 6px 12px;
@@ -97,7 +98,7 @@
 
 .intent-canvas-manager-hero p,
 .intent-canvas-card p,
-.intent-canvas-card-tile p,
+.intent-canvas-home-card-body p,
 .intent-canvas-empty-state p {
   margin: 0;
   color: var(--intent-canvas-muted);
@@ -112,7 +113,6 @@
 .intent-canvas-manager-hero p {
   display: block;
   overflow: hidden;
-  max-width: 280px;
   font-size: 13px;
   line-height: 1.2;
   text-overflow: ellipsis;
@@ -137,29 +137,50 @@
 
 .intent-canvas-manager-hero .intent-canvas-manager-actions button,
 .intent-canvas-manager-hero .intent-canvas-manager-count {
-  min-height: 32px;
+  min-height: 30px;
   padding: 5px 8px;
   border: 0;
-  border-radius: 6px;
+  border-radius: 8px;
   background: transparent;
   box-shadow: none;
+}
+
+.intent-canvas-manager-hero .intent-canvas-manager-actions button.is-icon {
+  width: 30px;
+  justify-content: center;
+  padding: 0;
+  color: var(--intent-canvas-muted);
+}
+
+.intent-canvas-manager-hero .intent-canvas-manager-actions button.is-icon svg {
+  width: 15px;
+  height: 15px;
 }
 
 .intent-canvas-manager-hero .intent-canvas-manager-actions button:hover,
 .intent-canvas-manager-hero .intent-canvas-manager-count:hover {
-  color: var(--text-accent);
-  background: color-mix(in srgb, var(--intent-canvas-accent), transparent 90%);
+  color: var(--intent-canvas-strong);
+  background: color-mix(in srgb, var(--intent-canvas-control-hover), transparent 30%);
 }
 
 .intent-canvas-manager-hero .intent-canvas-manager-actions button.is-primary {
-  color: var(--text-accent);
-  background: transparent;
+  gap: 5px;
+  padding: 5px 14px;
+  border-radius: 999px;
+  color: var(--bg-primary);
+  background: var(--text-primary);
+  font-weight: 700;
   box-shadow: none;
 }
 
+.intent-canvas-manager-hero .intent-canvas-manager-actions button.is-primary svg {
+  width: 14px;
+  height: 14px;
+}
+
 .intent-canvas-manager-hero .intent-canvas-manager-actions button.is-primary:hover {
-  color: #fff;
-  background: var(--intent-canvas-accent);
+  color: var(--bg-primary);
+  background: var(--text-strong);
 }
 
 .intent-canvas-manager button,
@@ -250,117 +271,279 @@
   white-space: nowrap;
 }
 
-.intent-canvas-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 8px;
-}
-
-.intent-canvas-manager > .intent-canvas-grid {
+.intent-canvas-eras {
+  display: flex;
   flex: 1;
+  flex-direction: column;
+  gap: 26px;
   align-content: start;
   min-height: 0;
 }
 
-.intent-canvas-card-tile,
+.intent-canvas-era {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr);
+  gap: 18px;
+}
+
+.intent-canvas-era-rail {
+  padding-top: 2px;
+  text-align: right;
+}
+
+.intent-canvas-era-rail h3 {
+  margin: 0 0 2px;
+  color: var(--intent-canvas-muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.intent-canvas-era.is-latest .intent-canvas-era-rail h3 {
+  color: var(--intent-canvas-strong);
+}
+
+.intent-canvas-era-agg {
+  display: block;
+  color: var(--text-faint);
+  font-size: 11px;
+}
+
+.intent-canvas-era-cleanup {
+  display: block;
+  margin-top: 6px;
+  color: var(--intent-canvas-warning);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.intent-canvas-era-select {
+  margin-top: 4px;
+  min-height: 24px !important;
+  padding: 2px 8px !important;
+  font-size: 11px !important;
+}
+
+.intent-canvas-era-deck {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 12px;
+  padding-left: 18px;
+  border-left: 1px solid var(--intent-canvas-border);
+}
+
+.intent-canvas-era-deck::before {
+  content: "";
+  position: absolute;
+  left: -4.5px;
+  top: 6px;
+  width: 8px;
+  height: 8px;
+  border: 1.5px solid var(--intent-canvas-border);
+  border-radius: 999px;
+  background: var(--surface-messages);
+}
+
+.intent-canvas-era.is-latest .intent-canvas-era-deck::before {
+  border-color: var(--text-accent);
+  background: var(--text-accent);
+}
+
+.intent-canvas-era.is-stale .intent-canvas-era-deck {
+  border-left-style: dashed;
+}
+
+.intent-canvas-era.is-stale .intent-canvas-home-card {
+  opacity: 0.72;
+}
+
+.intent-canvas-era.is-stale .intent-canvas-home-card:hover {
+  opacity: 1;
+}
+
+.intent-canvas-home-card,
 .intent-canvas-empty-state,
 .intent-canvas-loading,
 .intent-canvas-warning,
 .intent-canvas-error {
   border: 1px solid var(--intent-canvas-border-muted);
-  border-radius: 24px;
+  border-radius: 10px;
   background: var(--intent-canvas-surface);
   box-shadow: 0 16px 46px rgba(0, 0, 0, 0.12);
 }
 
-.intent-canvas-card-tile {
+.intent-canvas-home-card {
   position: relative;
   overflow: visible;
 }
 
-.intent-canvas-card-tile.is-selected {
+.intent-canvas-home-card:hover {
+  border-color: var(--intent-canvas-border);
+}
+
+.intent-canvas-home-card.is-selected {
   border-color: color-mix(in srgb, var(--intent-canvas-accent), transparent 24%);
   box-shadow:
     0 0 0 2px color-mix(in srgb, var(--intent-canvas-accent), transparent 80%),
     0 16px 46px rgba(0, 0, 0, 0.12);
 }
 
-.intent-canvas-card-tile::before {
-  content: "";
+.intent-canvas-home-card-selection {
   position: absolute;
-  inset: 0 0 auto;
-  height: 4px;
-  border-radius: 24px 24px 0 0;
-  background: linear-gradient(90deg, #2563eb, #14b8a6, #f59e0b);
-}
-
-.intent-canvas-card-selection {
-  position: absolute;
-  top: 11px;
-  right: 12px;
+  top: 8px;
+  right: 8px;
   z-index: 3;
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  min-height: 24px;
-  padding: 2px 6px;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
   border-radius: 7px;
-  color: var(--intent-canvas-muted);
   background: color-mix(in srgb, var(--intent-canvas-surface-strong), transparent 8%);
-  font-size: 11px;
-  font-weight: 900;
+  opacity: 0;
   cursor: pointer;
+  transition: opacity 120ms ease;
 }
 
-.intent-canvas-card-selection input {
-  width: 13px;
-  height: 13px;
+.intent-canvas-home-card:hover .intent-canvas-home-card-selection,
+.intent-canvas-home-card:focus-within .intent-canvas-home-card-selection,
+.intent-canvas-home-card.is-selected .intent-canvas-home-card-selection,
+.intent-canvas-home-card:has(.intent-canvas-action-popover-shell) .intent-canvas-home-card-selection {
+  opacity: 1;
+}
+
+.intent-canvas-home-card-selection input {
+  width: 14px;
+  height: 14px;
   margin: 0;
   accent-color: var(--intent-canvas-accent);
 }
 
-.intent-canvas-card-open {
+.intent-canvas-home-card-open {
   width: 100%;
-  min-height: 136px;
   flex-direction: column;
   align-items: flex-start !important;
   justify-content: flex-start !important;
-  padding: 13px 14px 38px !important;
+  padding: 0 !important;
   border: 0 !important;
-  border-radius: 24px !important;
+  border-radius: 10px !important;
   text-align: left;
   background: transparent !important;
   box-shadow: none !important;
 }
 
-.intent-canvas-card-mode {
-  color: var(--text-accent);
-  font-size: 11px;
-  font-weight: 800;
-  text-transform: uppercase;
+.intent-canvas-thumb {
+  display: block;
+  width: 100%;
+  height: 88px;
+  overflow: hidden;
+  border-bottom: 1px solid var(--intent-canvas-border-muted);
+  border-radius: 10px 10px 0 0;
+  color: var(--intent-canvas-muted);
+  background: var(--intent-canvas-surface-muted);
 }
 
-.intent-canvas-card-open h3 {
-  max-width: calc(100% - 104px);
-  margin: 4px 0 2px;
+.intent-canvas-thumb-svg,
+.intent-canvas-thumb-placeholder {
+  display: block;
+}
+
+.intent-canvas-thumb svg {
+  display: block;
+  width: 100%;
+  height: 88px;
+}
+
+.intent-canvas-home-card-body {
+  display: block;
+  width: 100%;
+  padding: 9px 12px 7px;
+}
+
+.intent-canvas-home-card-body h3 {
+  margin: 0 0 2px;
   color: var(--intent-canvas-strong);
-  font-size: 17px;
-  letter-spacing: -0.03em;
+  font-size: 13px;
+  font-weight: 700;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.intent-canvas-card-open p {
-  display: -webkit-box;
+.intent-canvas-home-card-body p {
+  margin: 0;
+  color: var(--text-faint);
+  font-size: 11px;
   overflow: hidden;
-  font-size: 12px;
-  line-height: 1.35;
-  -webkit-line-clamp: 1;
-  -webkit-box-orient: vertical;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.intent-canvas-card-open dl,
+.intent-canvas-stale-tag {
+  margin-left: 6px;
+  color: var(--intent-canvas-warning);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.intent-canvas-home-card-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 12px;
+  border-top: 1px solid var(--intent-canvas-border-muted);
+}
+
+.intent-canvas-foot-spacer {
+  flex: 1;
+}
+
+.intent-canvas-mode-badge {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: 6px;
+  color: var(--intent-canvas-muted);
+  background: var(--intent-canvas-control);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.intent-canvas-mode-badge.is-architect {
+  color: var(--text-accent);
+}
+
+.intent-canvas-mode-badge.is-spotlight {
+  color: var(--intent-canvas-warning);
+}
+
+.intent-canvas-mode-badge.is-file {
+  color: var(--intent-canvas-subtle);
+}
+
+.intent-canvas-stat-inline {
+  color: var(--text-faint);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.intent-canvas-stat-inline b {
+  color: var(--intent-canvas-muted);
+  font-weight: 600;
+}
+
+.intent-canvas-time {
+  color: var(--text-faint);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
 .intent-canvas-metrics {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -369,14 +552,12 @@
   margin: auto 0 6px;
 }
 
-.intent-canvas-card-open dl div,
 .intent-canvas-metrics div {
   padding: 6px 8px;
   border-radius: 10px;
   background: var(--intent-canvas-control);
 }
 
-.intent-canvas-card-open dt,
 .intent-canvas-metrics dt {
   color: var(--intent-canvas-muted);
   font-size: 10px;
@@ -384,7 +565,6 @@
   text-transform: uppercase;
 }
 
-.intent-canvas-card-open dd,
 .intent-canvas-metrics dd {
   margin: 1px 0 0;
   color: var(--intent-canvas-strong);
@@ -392,30 +572,33 @@
   font-weight: 900;
 }
 
-.intent-canvas-card-updated {
-  color: var(--intent-canvas-muted);
-  font-size: 11px;
-  font-weight: 800;
-}
-
 .intent-canvas-card-actions {
   position: absolute;
-  top: 43px;
-  right: 13px;
+  top: 8px;
+  right: 36px;
   bottom: auto;
   left: auto;
   justify-content: flex-end;
-  gap: 4px;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.intent-canvas-home-card:hover .intent-canvas-card-actions,
+.intent-canvas-home-card:focus-within .intent-canvas-card-actions,
+.intent-canvas-home-card:has(.intent-canvas-action-popover-shell) .intent-canvas-card-actions {
+  opacity: 1;
 }
 
 .intent-canvas-card-actions button {
-  width: 28px;
-  height: 28px;
-  min-height: 28px;
+  width: 26px;
+  height: 26px;
+  min-height: 26px;
   padding: 0;
   border: 0;
-  border-radius: 8px;
-  background: transparent;
+  border-radius: 7px;
+  color: var(--intent-canvas-muted);
+  background: color-mix(in srgb, var(--intent-canvas-surface-strong), transparent 8%);
   box-shadow: none;
 }
 
@@ -436,7 +619,7 @@
 .intent-canvas-action-popover-shell {
   position: absolute;
   right: 10px;
-  top: 78px;
+  top: 40px;
   z-index: 20;
   width: min(360px, calc(100vw - 32px));
   max-width: calc(100% - 20px);
@@ -1158,12 +1341,20 @@
     -webkit-box-orient: vertical;
   }
 
-  .intent-canvas-grid {
+  .intent-canvas-era {
     grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
   }
 
-  .intent-canvas-card-open h3 {
-    max-width: calc(100% - 96px);
+  .intent-canvas-era-rail {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    text-align: left;
+  }
+
+  .intent-canvas-era-deck {
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .intent-canvas-action-popover-shell {

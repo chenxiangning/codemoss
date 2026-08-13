@@ -24,6 +24,7 @@ import type {
   IntentCanvasWorkspaceRef,
 } from "../types";
 import { asString, asStringArray, isRecord } from "../utils/json";
+import { buildIntentCanvasThumbnailSvg } from "../utils/thumbnail";
 import {
   buildIntentCanvasAiContext,
   createInitialIntentCanvasScene,
@@ -554,6 +555,7 @@ function normalizeIndexEntry(value: unknown): IntentCanvasIndexEntry | null {
     linkedProjectMapNodeCount: normalizeCount(value.linkedProjectMapNodeCount),
     linkedThreadCount: normalizeCount(value.linkedThreadCount),
     elementCount: normalizeCount(value.elementCount),
+    thumbnailSvg: asString(value.thumbnailSvg) ?? undefined,
   };
 }
 
@@ -726,7 +728,11 @@ export async function saveIntentCanvasDocument(
     JSON.stringify(nextDocument, null, 2),
   );
   const indexResult = await loadIntentCanvasIndex(workspaceId);
-  const nextEntry = buildIndexEntry(nextDocument);
+  const thumbnailSvg = await buildIntentCanvasThumbnailSvg(nextDocument.scene);
+  const nextEntry: IntentCanvasIndexEntry = {
+    ...buildIndexEntry(nextDocument),
+    ...(thumbnailSvg ? { thumbnailSvg } : {}),
+  };
   const nextEntries = [
     nextEntry,
     ...indexResult.value.filter((entry) => entry.id !== nextDocument.id),

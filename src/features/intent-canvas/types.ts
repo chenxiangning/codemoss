@@ -296,6 +296,8 @@ export type IntentCanvasIndexEntry = {
   linkedProjectMapNodeCount: number;
   linkedThreadCount: number;
   elementCount: number;
+  /** 列表卡片缩略图（保存时生成；旧 index 缺省，超预算不写）。 */
+  thumbnailSvg?: string;
 };
 
 export type IntentCanvasIndexFile = {

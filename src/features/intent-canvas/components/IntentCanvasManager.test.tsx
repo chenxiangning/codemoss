@@ -2,9 +2,10 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { IntentCanvasManager } from "./IntentCanvasManager";
-import type { IntentCanvasDocument, IntentCanvasOpenRequest } from "../types";
+import type { IntentCanvasDocument, IntentCanvasIndexEntry, IntentCanvasOpenRequest } from "../types";
 import {
   createIntentCanvasDocument,
+  loadIntentCanvasDocument,
   loadIntentCanvasIndex,
   saveIntentCanvasDocument,
 } from "../services/intentCanvasStorage";
@@ -78,6 +79,117 @@ function createCanvasDocument(): IntentCanvasDocument {
     aiAnnotations: [],
   };
 }
+
+function createIndexEntry(overrides: Partial<IntentCanvasIndexEntry> = {}): IntentCanvasIndexEntry {
+  return {
+    id: "canvas-one",
+    title: "Canvas One",
+    mode: "architect",
+    summary: "summary",
+    updatedAt: new Date().toISOString(),
+    createdAt: new Date().toISOString(),
+    path: "canvas-one.json",
+    linkedFileCount: 0,
+    linkedProjectMapNodeCount: 0,
+    linkedThreadCount: 0,
+    elementCount: 5,
+    ...overrides,
+  };
+}
+
+describe("IntentCanvasManager list home", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(loadIntentCanvasDocument).mockResolvedValue(createCanvasDocument());
+  });
+
+  it("groups cards into eras with rail labels and a stale badge", async () => {
+    const staleUpdatedAt = new Date(Date.now() - 70 * 24 * 60 * 60 * 1000).toISOString();
+    vi.mocked(loadIntentCanvasIndex).mockResolvedValue({
+      value: [
+        createIndexEntry({ id: "recent", title: "Recent Canvas" }),
+        createIndexEntry({ id: "old", title: "Old Canvas", updatedAt: staleUpdatedAt }),
+      ],
+      warnings: [],
+    });
+
+    render(
+      <IntentCanvasManager
+        activeWorkspace={{ id: "workspace-1", name: "Workspace" } as any}
+        activeThreadId={null}
+      />,
+    );
+
+    await screen.findByText("Recent Canvas");
+    expect(screen.getByText("Old Canvas")).toBeTruthy();
+    expect(screen.getByText("intentCanvas.manager.eraWeek")).toBeTruthy();
+    expect(screen.getByText("intentCanvas.manager.eraStale")).toBeTruthy();
+    // 旧画布无缩略图缓存 → 占位图形 + 「N 天未动」角标。
+    expect(screen.getByText("intentCanvas.manager.staleInactive")).toBeTruthy();
+    expect(document.querySelector(".intent-canvas-thumb-placeholder")).toBeTruthy();
+  });
+
+  it("renders a cached thumbnail and selects a whole era", async () => {
+    vi.mocked(loadIntentCanvasIndex).mockResolvedValue({
+      value: [
+        createIndexEntry({
+          id: "recent",
+          title: "Recent Canvas",
+          thumbnailSvg: '<svg viewBox="0 0 10 10"><rect width="10" height="10"/></svg>',
+        }),
+        createIndexEntry({
+          id: "old",
+          title: "Old Canvas",
+          updatedAt: new Date(Date.now() - 70 * 24 * 60 * 60 * 1000).toISOString(),
+        }),
+      ],
+      warnings: [],
+    });
+
+    render(
+      <IntentCanvasManager
+        activeWorkspace={{ id: "workspace-1", name: "Workspace" } as any}
+        activeThreadId={null}
+      />,
+    );
+
+    await screen.findByText("Recent Canvas");
+    const recentCard = screen.getByText("Recent Canvas").closest(".intent-canvas-home-card");
+    expect(recentCard?.querySelector(".intent-canvas-thumb-svg svg")).toBeTruthy();
+    expect(recentCard?.querySelector(".intent-canvas-thumb-placeholder")).toBeNull();
+
+    fireEvent.click(screen.getByText("intentCanvas.manager.selectEra"));
+
+    await screen.findByText("intentCanvas.manager.selectedCount");
+  });
+
+  it("surfaces the broken-anchor badge once lazy detection resolves", async () => {
+    const staleUpdatedAt = new Date(Date.now() - 70 * 24 * 60 * 60 * 1000).toISOString();
+    const brokenDocument = createCanvasDocument();
+    brokenDocument.semanticGraphs = [
+      {
+        graphId: "graph-1",
+        createdAt: "2026-06-06T00:00:00.000Z",
+        nodes: [{ id: "node-1", label: "Gone", kind: "file", unresolved: true }],
+        edges: [],
+      },
+    ];
+    vi.mocked(loadIntentCanvasIndex).mockResolvedValue({
+      value: [createIndexEntry({ id: "old", title: "Old Canvas", updatedAt: staleUpdatedAt })],
+      warnings: [],
+    });
+    vi.mocked(loadIntentCanvasDocument).mockResolvedValue(brokenDocument);
+
+    render(
+      <IntentCanvasManager
+        activeWorkspace={{ id: "workspace-1", name: "Workspace" } as any}
+        activeThreadId={null}
+      />,
+    );
+
+    await screen.findByText("intentCanvas.manager.staleAnchorsBroken");
+  });
+});
 
 describe("IntentCanvasManager", () => {
   beforeEach(() => {
