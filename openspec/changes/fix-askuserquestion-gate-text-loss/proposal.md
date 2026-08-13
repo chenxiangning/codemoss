@@ -1,6 +1,6 @@
 ## Why
 
-Transcript-mined evidence (454 gate calls, 56 errors across the fleet) surfaced a regression: when
+Evidence from local usage logs (454 AskUserQuestion gate calls, 56 of them erroring): when
 the assistant streams text before an `AskUserQuestion` gate fires mid-turn, that pre-gate text
 never renders. The user sees only the option card; the turn's final (post-gate) message renders
 fine.

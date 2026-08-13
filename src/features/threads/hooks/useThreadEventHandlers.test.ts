@@ -596,6 +596,22 @@ describe("useThreadEventHandlers diagnostics", () => {
       hasCustomName: true,
     });
     expect(options.markProcessing).toHaveBeenCalledWith("thread-1", false);
+
+    // Ordering is the actual contract, not just that both happened: the tail
+    // must reach the reducer while the item is still streaming. Once
+    // markProcessing(false) lands, isStreaming is off and the drain is too
+    // late to be reconciled onto the same assistant item.
+    const drainCall = options.dispatch.mock.calls.findIndex(
+      ([action]) => action?.type === "appendAgentDelta",
+    );
+    const settleCall = options.markProcessing.mock.calls.findIndex(
+      ([, processing]) => processing === false,
+    );
+    expect(drainCall).toBeGreaterThanOrEqual(0);
+    expect(settleCall).toBeGreaterThanOrEqual(0);
+    expect(
+      options.dispatch.mock.invocationCallOrder[drainCall],
+    ).toBeLessThan(options.markProcessing.mock.invocationCallOrder[settleCall]);
   });
 
   it("marks codex foreground turns as suspected after the bounded no-progress window", () => {

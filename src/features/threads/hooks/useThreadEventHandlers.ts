@@ -123,6 +123,10 @@ export function useThreadEventHandlers({
   const flushDeferredTurnCompletionRef = useRef<
     ((threadId: string, source: DeferredCompletionFlushSource) => void) | null
   >(null);
+  // `flushPendingRealtimeEvents` is destructured from `useThreadItemEvents`
+  // below, after the gate-settlement callback is defined, so it can only be
+  // reached through a ref (same pattern as flushDeferredTurnCompletionRef).
+  const flushPendingRealtimeEventsRef = useRef<(() => void) | null>(null);
   const assistantSnapshotIngressLengthRef = useRef<Map<string, number>>(new Map());
   const quarantinedCodexTurnsRef = useRef<Map<string, CodexQuarantinedTurn>>(new Map());
   const cleanupThreadTransientRefs = useCallback(
@@ -1143,6 +1147,14 @@ export function useThreadEventHandlers({
       // 正文永久丢失（AskUserQuestion 属于完成态转换，需遵守与 terminal
       // settlement / incrementAgentSegment 相同的 drain-before-boundary 约定）。
       if (workspaceId) {
+        // Converge anything still sitting in the batched realtime delta queue
+        // first. Agent-text deltas are buffered (non-urgent for native Claude
+        // threads), so draining without this can dispatch the tail before the
+        // assistant item exists - and appendAgentDelta would then create a
+        // second item, putting the tail after the ask card. Every sibling
+        // boundary (turn completed / error / stalled, durable shared
+        // settlement) flushes first for the same reason.
+        flushPendingRealtimeEventsRef.current?.();
         const liveTextTail = drainLiveAssistantTextTail(threadId);
         if (liveTextTail) {
           dispatch({
@@ -2452,6 +2464,7 @@ export function useThreadEventHandlers({
     [emitTurnDiagnostic, getThreadLifecycleSnapshot, settleCompletedTurn],
   );
   flushDeferredTurnCompletionRef.current = flushDeferredTurnCompletionIfReady;
+  flushPendingRealtimeEventsRef.current = flushPendingRealtimeEvents;
 
   const onTurnCompletedTracked = useCallback(
     (workspaceId: string, threadId: string, turnId: string) => {
