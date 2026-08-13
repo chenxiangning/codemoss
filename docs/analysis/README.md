@@ -18,10 +18,11 @@ status: active
 - [Native vs Shared CLI explained](./native-vs-shared-cli-explained.md) — Active product/engineering guide。
 - [Shared create / open local catalog stale mapping](./shared-create-local-catalog-stale-mapping-2026-08-08.md) — Active fix reference；Shared 创建权威 catalog + 打开历史文案/图标 mapping 同源。
 - [Workspace switch session catalog performance regression](./workspace-switch-session-catalog-performance-regression-2026-08-08.md) — Active incident analysis；校准 v0.7.16/v0.8.0 commits、exhaustive projection 主根因、首轮修复证伪与性能治理顺序。
-- [React #185 Maximum Update Depth playbook](./react-185-maximum-update-depth-playbook.md) — Active troubleshooting runbook；最新 case `C-20260805-01`（0.7.16 Messages canvas 空集合 thrash / `App-BG-8EZ_F`；前案 C-20260804-01..03）。
+- [React #185 / ErrorBoundary Crash playbook](./react-185-maximum-update-depth-playbook.md) — Active troubleshooting runbook；主线 `#185` + 并列家族 `RangeError` 栈溢出（AP-08）；最新 case `C-20260811-01`（0.8.6 Markdown table row count / #1066；前案 C-20260805-01 等）。
 
 ## Resolved incidents and closure evidence
 
+- [Cold-start click freeze postmortem](./cold-start-click-freeze-postmortem-2026-08-10.md) — **Resolved 2026-08-10**；6 天全链路追踪，三层根因模型，最终通过 `applyUiScale` 条件 CSS 清除根治。关联：`windows-cold-start-click-freeze-and-uiscale-0.8-2026-08-07.md`、`windows-ccgui-startup-hang-2026-08-05.md`。
 - [Shared session model picker native fallback](./shared-session-model-picker-native-fallback-2026-08-02.md) — Resolved 2026-08-03；identity、optimistic persistence 与 stale hydrate protection 已闭环。
 - [Unify conversation canvas review](./unify-conversation-canvas-review-2026-08-01.md) — Implemented review/closure evidence。
 

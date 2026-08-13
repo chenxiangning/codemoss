@@ -1,9 +1,0 @@
-{"file": ".trellis/workflow.md", "reason": "Project workflow and conventions"}
-{"file": ".trellis/spec/backend/index.md", "reason": "Backend development guide"}
-{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend development guide"}
-{"file": ".trellis/spec/backend/provider-scoped-model-catalog.md", "reason": "Provider-scoped catalog 与 Shared Picker 核心契约"}
-{"file": ".trellis/spec/backend/codex-provider-scoped-runtime.md", "reason": "Codex Provider runtime/session key 与 daemon parity"}
-{"file": ".trellis/spec/backend/shared-session-v2-send-contract.md", "reason": "Shared Target Picker 与 immutable target 边界"}
-{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "双 icon accessibility 与 selector UI"}
-{"file": ".trellis/spec/frontend/hook-guidelines.md", "reason": "async cache/in-flight/stale guard"}
-{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Frontend/Tauri/Rust contract mapping"}

@@ -596,6 +596,21 @@ fn next_gemini_routed_item_id(
     routed_item_id
 }
 
+/// Prefer the last text-lane item id so synthetic `item/completed` upserts the
+/// same assistant bubble as streamed TextDelta (Claude-parity; avoids double bubbles).
+fn gemini_agent_completion_item_id(
+    state: &GeminiRenderRoutingState,
+    base_item_id: &str,
+) -> String {
+    if let Some(id) = state.active_text_item_id.as_ref() {
+        return id.clone();
+    }
+    match state.text_run_index {
+        0 | 1 => base_item_id.to_string(),
+        n => format!("{base_item_id}:text-{n}"),
+    }
+}
+
 fn spawn_with_client(
     event_sink: DaemonEventSink,
     client_version: String,

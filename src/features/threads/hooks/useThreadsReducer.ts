@@ -54,7 +54,11 @@ import {
 import { isOptimisticUserMessageId } from "../utils/queuedHandoffBubble";
 import { isClaudeForkThreadId } from "../utils/claudeForkThread";
 import { resolvePendingThreadIdForSession } from "../utils/threadPendingResolution";
-import { isSameRequestUserInput } from "../../../utils/requestUserInputIdentity";
+import {
+  isSameRequestUserInput,
+  requestUserInputIdentityKey,
+} from "../../../utils/requestUserInputIdentity";
+import { isUserInputRequestSettled } from "../../../utils/userInputSettlementTombstone";
 import {
   isProcessingGeneratedImageItem,
 } from "../utils/generatedImagePlaceholder";
@@ -2475,6 +2479,13 @@ export function threadReducer(state: ThreadState, action: ThreadAction): ThreadS
         ),
       };
     case "addUserInputRequest": {
+      // Gate history reopen / late replay: settled identities must not re-enter the queue.
+      if (isUserInputRequestSettled(requestUserInputIdentityKey(action.request))) {
+        return state;
+      }
+      if (action.request.params.completed === true) {
+        return state;
+      }
       const exists = state.userInputRequests.some(
         (item) => isSameRequestUserInput(item, action.request),
       );

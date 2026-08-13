@@ -66,4 +66,4 @@ Codex 最近的 runtime guard 与 churn 修复已经能把 managed runtime 留�
 - Specs / tasks:
   - `openspec/specs/conversation-lifecycle-contract/spec.md`
   - `openspec/changes/fix-codex-stale-thread-binding-recovery/**`
-  - `.trellis/spec/frontend/state-management.md`
+  - `dev-guidelines/frontend/state-management.md`

@@ -47,6 +47,18 @@ vi.mock("../../../services/tauri", () => ({
   getOpenCodeSessionList: vi.fn(),
   listWorkspaceSessions: vi.fn(),
   listWorkspaceSessionArchiveEvidence: vi.fn(),
+  listSessionIndexForWorkspace: vi.fn(async () => ({
+    data: [],
+    source: "session-index",
+    synced: false,
+    engines: [],
+  })),
+  syncSessionIndexForWorkspace: vi.fn(async () => ({
+    upserted: 0,
+    engines: [],
+    durationMs: 0,
+    skippedFresh: true,
+  })),
   loadClaudeSession: vi.fn(),
   loadGeminiSession: vi.fn(),
   loadCodexSession: vi.fn(),

@@ -1,6 +1,6 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import type { ApprovalRequest, WorkspaceInfo } from "../../../types";
+import type { ApprovalRequest, DirectoryGrantScope, WorkspaceInfo } from "../../../types";
 import { getApprovalCommandInfo } from "../../../utils/approvalRules";
 
 type ApprovalToastsProps = {
@@ -69,6 +69,9 @@ function shouldHideApprovalParamEntry(key: string, value: unknown): boolean {
 }
 
 function getToolLabel(method: string, t: (key: string) => string): string {
+  if (method.includes("directoryGrant")) {
+    return t("approval.directoryGrant");
+  }
   if (method.includes("fileChange")) {
     return t("approval.fileChanges");
   }
@@ -76,6 +79,41 @@ function getToolLabel(method: string, t: (key: string) => string): string {
     return t("approval.commandExecution");
   }
   return t("approval.genericApproval");
+}
+
+function isDirectoryGrantRequest(request: ApprovalRequest): boolean {
+  return request.method.includes("directoryGrant");
+}
+
+function getDirectoryGrantRoot(params: Record<string, unknown>): string | null {
+  for (const record of getApprovalCandidateRecords(params)) {
+    for (const key of ["suggestedRoot", "suggested_root", "canonicalPath", "canonical_path", "path"]) {
+      const value = record[key];
+      if (typeof value === "string" && value.trim()) {
+        return value.trim();
+      }
+    }
+  }
+  return null;
+}
+
+function getDirectoryGrantDefaultScope(params: Record<string, unknown>): DirectoryGrantScope {
+  for (const record of getApprovalCandidateRecords(params)) {
+    const raw = record.scope ?? record.defaultScope ?? record.default_scope;
+    if (raw === "once" || raw === "session" || raw === "workspace") {
+      return raw;
+    }
+  }
+  return "session";
+}
+
+function isDirectoryGrantSensitive(params: Record<string, unknown>): boolean {
+  for (const record of getApprovalCandidateRecords(params)) {
+    if (record.isSensitiveRoot === true || record.is_sensitive_root === true) {
+      return true;
+    }
+  }
+  return false;
 }
 
 function getApprovalPath(params: Record<string, unknown>): string | null {
@@ -128,6 +166,9 @@ function getApprovalToolName(params: Record<string, unknown>): string | null {
 }
 
 function getApprovalKindIcon(method: string): string {
+  if (method.includes("directoryGrant")) {
+    return "codicon codicon-folder";
+  }
   if (method.includes("fileChange")) {
     return "codicon codicon-files";
   }
@@ -152,6 +193,18 @@ export function ApprovalToasts({
   );
 
   const primaryRequest = approvals[approvals.length - 1];
+  const primaryIsDirectoryGrant = primaryRequest
+    ? isDirectoryGrantRequest(primaryRequest)
+    : false;
+  const [directoryGrantScope, setDirectoryGrantScope] = useState<DirectoryGrantScope>("session");
+
+  useEffect(() => {
+    if (!primaryRequest || !isDirectoryGrantRequest(primaryRequest)) {
+      return;
+    }
+    setDirectoryGrantScope(getDirectoryGrantDefaultScope(primaryRequest.params ?? {}));
+  }, [primaryRequest]);
+
   const batchEligibleApprovals = useMemo(
     () =>
       primaryRequest?.method.includes("fileChange")
@@ -160,6 +213,19 @@ export function ApprovalToasts({
     [approvals, primaryRequest],
   );
   const batchCount = batchEligibleApprovals.length;
+
+  const resolveDecisionRequest = (request: ApprovalRequest): ApprovalRequest => {
+    if (!isDirectoryGrantRequest(request)) {
+      return request;
+    }
+    return {
+      ...request,
+      params: {
+        ...(request.params ?? {}),
+        scope: directoryGrantScope,
+      },
+    };
+  };
 
   useEffect(() => {
     if (!primaryRequest) {
@@ -181,12 +247,12 @@ export function ApprovalToasts({
         return;
       }
       event.preventDefault();
-      onDecision(primaryRequest, "accept");
+      onDecision(resolveDecisionRequest(primaryRequest), "accept");
     };
 
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [onDecision, primaryRequest]);
+  }, [directoryGrantScope, onDecision, primaryRequest]);
 
   if (!approvals.length) {
     return null;
@@ -225,22 +291,28 @@ export function ApprovalToasts({
       {[primaryRequest].map((request) => {
         const workspaceName = workspaceLabels.get(request.workspace_id);
         const params = request.params ?? {};
-        const commandInfo = getApprovalCommandInfo(params);
-        const approvalPath = getApprovalPath(params);
+        const isDirectoryGrant = isDirectoryGrantRequest(request);
+        const commandInfo = isDirectoryGrant ? null : getApprovalCommandInfo(params);
+        const approvalPath = isDirectoryGrant
+          ? getDirectoryGrantRoot(params)
+          : getApprovalPath(params);
         const approvalMessage = getApprovalMessage(params);
         const approvalToolName = getApprovalToolName(params);
-        const entries = Object.entries(params).filter(([key, value]) => {
-          if (shouldHideApprovalParamEntry(key, value)) {
-            return false;
-          }
-          if (approvalPath && value === approvalPath) {
-            return false;
-          }
-          if (commandInfo && (key === "command" || key === "cmd")) {
-            return false;
-          }
-          return value !== undefined && value !== null && value !== "";
-        });
+        const directorySensitive = isDirectoryGrant && isDirectoryGrantSensitive(params);
+        const entries = isDirectoryGrant
+          ? []
+          : Object.entries(params).filter(([key, value]) => {
+              if (shouldHideApprovalParamEntry(key, value)) {
+                return false;
+              }
+              if (approvalPath && value === approvalPath) {
+                return false;
+              }
+              if (commandInfo && (key === "command" || key === "cmd")) {
+                return false;
+              }
+              return value !== undefined && value !== null && value !== "";
+            });
         return (
           <div
             key={`${request.workspace_id}-${request.request_id}`}
@@ -298,11 +370,64 @@ export function ApprovalToasts({
               {approvalPath ? (
                 <div className="approval-toast-detail approval-toast-detail-spotlight">
                   <div className="approval-toast-detail-label">
-                    {t("approval.filePathLabel")}
+                    {isDirectoryGrant
+                      ? t("approval.directoryRootLabel")
+                      : t("approval.filePathLabel")}
                   </div>
                   <div className="approval-toast-detail-value approval-toast-path-value">
-                    <span className="codicon codicon-file approval-toast-inline-icon" aria-hidden />
+                    <span
+                      className={`codicon ${isDirectoryGrant ? "codicon-folder" : "codicon-file"} approval-toast-inline-icon`}
+                      aria-hidden
+                    />
                     <span>{approvalPath}</span>
+                  </div>
+                </div>
+              ) : null}
+              {isDirectoryGrant ? (
+                <div className="approval-toast-detail">
+                  <div className="approval-toast-detail-label">
+                    {t("approval.grantScopeLabel")}
+                  </div>
+                  <div
+                    className="approval-toast-detail-value"
+                    style={{ display: "flex", flexDirection: "column", gap: 6 }}
+                  >
+                    {(
+                      [
+                        ["once", "approval.grantScopeOnce"],
+                        ["session", "approval.grantScopeSession"],
+                        ["workspace", "approval.grantScopeWorkspace"],
+                      ] as const
+                    ).map(([value, labelKey]) => (
+                      <label
+                        key={value}
+                        style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}
+                      >
+                        <input
+                          type="radio"
+                          name={`directory-grant-scope-${request.request_id}`}
+                          checked={directoryGrantScope === value}
+                          onChange={() => setDirectoryGrantScope(value)}
+                        />
+                        <span>{t(labelKey)}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+              {directorySensitive ? (
+                <div className="approval-toast-detail approval-toast-note-block">
+                  <div className="approval-toast-detail-label">{t("approval.noteLabel")}</div>
+                  <div className="approval-toast-detail-value">
+                    {t("approval.grantSensitiveHint")}
+                  </div>
+                </div>
+              ) : null}
+              {isDirectoryGrant ? (
+                <div className="approval-toast-detail approval-toast-note-block">
+                  <div className="approval-toast-detail-label">{t("approval.noteLabel")}</div>
+                  <div className="approval-toast-detail-value">
+                    {t("approval.grantNextTurnHint")}
                   </div>
                 </div>
               ) : null}
@@ -343,7 +468,7 @@ export function ApprovalToasts({
                     </div>
                   );
                 })
-              ) : !approvalPath && !commandInfo && !approvalMessage ? (
+              ) : !approvalPath && !commandInfo && !approvalMessage && !isDirectoryGrant ? (
                 <div className="approval-toast-detail approval-toast-detail-empty">
                   {t("approval.noExtraDetails")}
                 </div>
@@ -353,11 +478,11 @@ export function ApprovalToasts({
               <button
                 type="button"
                 className="secondary"
-                onClick={() => onDecision(request, "decline")}
+                onClick={() => onDecision(resolveDecisionRequest(request), "decline")}
               >
                 {t("approval.decline")}
               </button>
-              {batchCount > 1 && onApproveBatch ? (
+              {batchCount > 1 && onApproveBatch && !primaryIsDirectoryGrant ? (
                 <button
                   type="button"
                   className="secondary"
@@ -379,7 +504,7 @@ export function ApprovalToasts({
               <button
                 type="button"
                 className="primary"
-                onClick={() => onDecision(request, "accept")}
+                onClick={() => onDecision(resolveDecisionRequest(request), "accept")}
               >
                 {t("approval.approveEnter")}
               </button>

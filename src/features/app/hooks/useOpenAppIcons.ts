@@ -1,54 +1,51 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { getOpenAppIcon } from "../../../services/tauri";
 import type { OpenAppTarget } from "../../../types";
-import { getKnownOpenAppIcon } from "../utils/openAppIcons";
+import { resolveOpenAppIconLookupKey } from "../utils/openAppIcons";
 
 type OpenAppIconMap = Record<string, string>;
 
 type ResolvedAppTarget = {
   id: string;
-  appName: string;
+  /** Lookup key for host icon extraction (path or app name). */
+  iconKey: string;
 };
 
 type UseOpenAppIconsOptions = {
   enabled?: boolean;
 };
 
-function detectMacOS(): boolean {
-  if (typeof navigator === "undefined") {
-    return false;
-  }
-  const platform =
-    (navigator as Navigator & { userAgentData?: { platform?: string } }).userAgentData
-      ?.platform ?? navigator.platform ?? "";
-  return platform.toLowerCase().includes("mac");
-}
-
+/**
+ * Always try OS icon extraction for app/command targets when settings are active.
+ * Built-in glyphs are only UI fallbacks — real logos come from the host.
+ * Never runs on cold start (gated by `enabled`).
+ */
 export function useOpenAppIcons(
   openTargets: OpenAppTarget[],
   options?: UseOpenAppIconsOptions,
 ): OpenAppIconMap {
-  const isMacOS = detectMacOS();
   const enabled = options?.enabled ?? true;
   const iconCacheRef = useRef<Map<string, string>>(new Map());
+  const missCacheRef = useRef<Set<string>>(new Set());
   const inFlightRef = useRef<Map<string, Promise<string | null>>>(new Map());
   const [iconById, setIconById] = useState<OpenAppIconMap>({});
 
   const appTargets = useMemo<ResolvedAppTarget[]>(
     () =>
       openTargets
-        .filter((target) => target.kind === "app" && !getKnownOpenAppIcon(target.id))
-        .map((target) => ({
-          id: target.id,
-          appName: (target.appName || target.label || "").trim(),
-        }))
-        .filter((target) => target.appName.length > 0),
+        .map((target) => {
+          const iconKey = resolveOpenAppIconLookupKey(target);
+          if (!iconKey) {
+            return null;
+          }
+          return { id: target.id, iconKey };
+        })
+        .filter((item): item is ResolvedAppTarget => item != null),
     [openTargets],
   );
 
   useEffect(() => {
-    if (!enabled || !isMacOS || appTargets.length === 0) {
-      setIconById({});
+    if (!enabled || appTargets.length === 0) {
       return;
     }
 
@@ -58,33 +55,38 @@ export function useOpenAppIcons(
       const nextIcons: OpenAppIconMap = {};
 
       await Promise.all(
-        appTargets.map(async ({ id, appName }) => {
-          const cached = iconCacheRef.current.get(appName);
+        appTargets.map(async ({ id, iconKey }) => {
+          const cached = iconCacheRef.current.get(iconKey);
           if (cached) {
             nextIcons[id] = cached;
             return;
           }
+          if (missCacheRef.current.has(iconKey)) {
+            return;
+          }
 
-          let request = inFlightRef.current.get(appName);
+          let request = inFlightRef.current.get(iconKey);
           if (!request) {
-            request = getOpenAppIcon(appName)
+            request = getOpenAppIcon(iconKey)
               .catch(() => null)
               .finally(() => {
-                inFlightRef.current.delete(appName);
+                inFlightRef.current.delete(iconKey);
               });
-            inFlightRef.current.set(appName, request);
+            inFlightRef.current.set(iconKey, request);
           }
 
           const icon = await request;
           if (icon) {
-            iconCacheRef.current.set(appName, icon);
+            iconCacheRef.current.set(iconKey, icon);
             nextIcons[id] = icon;
+          } else {
+            missCacheRef.current.add(iconKey);
           }
         }),
       );
 
-      if (!cancelled) {
-        setIconById(nextIcons);
+      if (!cancelled && Object.keys(nextIcons).length > 0) {
+        setIconById((prev) => ({ ...prev, ...nextIcons }));
       }
     };
 
@@ -93,7 +95,7 @@ export function useOpenAppIcons(
     return () => {
       cancelled = true;
     };
-  }, [appTargets, enabled, isMacOS]);
+  }, [appTargets, enabled]);
 
   return iconById;
 }

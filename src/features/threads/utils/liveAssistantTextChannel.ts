@@ -217,6 +217,56 @@ export function peekLiveAssistantText(
 }
 
 /**
+ * 判断某 assistant 行是否应消费当前线程 live 通道（含结束后 residual）。
+ * reducer 会对 id 做 segment / canonicalize，事件层 itemId 与 item.id 常不一致。
+ */
+export function doesLiveAssistantTextMatchItem(
+  liveItemId: string,
+  messageItemId: string,
+): boolean {
+  const liveId = liveItemId.trim();
+  const messageId = messageItemId.trim();
+  if (!liveId || !messageId) {
+    return false;
+  }
+  if (liveId === messageId) {
+    return true;
+  }
+  // base → base-seg-N
+  if (messageId.startsWith(`${liveId}-seg-`)) {
+    return true;
+  }
+  // base-seg-N 事件层仍写 base 时（少见）
+  if (liveId.startsWith(`${messageId}-seg-`)) {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * 非流式行的 residual 正文：通道仍有更长全文、而 durable item 只有建壳碎片时，
+ * 先继续展示通道全文，避免 isStreaming 关掉瞬间只剩首字。
+ */
+export function resolveResidualLiveAssistantDisplayText(
+  threadId: string,
+  messageItemId: string,
+  durableText: string,
+): string | null {
+  const entry = entriesByThread.get(threadId);
+  if (!entry?.text) {
+    return null;
+  }
+  if (!doesLiveAssistantTextMatchItem(entry.itemId, messageItemId)) {
+    return null;
+  }
+  const durable = durableText ?? "";
+  if (entry.text.length <= durable.length) {
+    return null;
+  }
+  return entry.text;
+}
+
+/**
  * 为 complete/settle 选择应写入 durable state 的终稿。
  *
  * A4 路径下 reducer 往往只有建壳首段（例如 Markdown 的 `**`），全文在通道里。

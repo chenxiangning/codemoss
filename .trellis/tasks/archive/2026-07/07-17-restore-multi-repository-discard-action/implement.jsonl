@@ -1,3 +1,0 @@
-{"file": ".trellis/workflow.md", "reason": "Project workflow and conventions"}
-{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend development guide"}
-{"file": ".trellis/spec/frontend/multi-repository-git-commit-workspace.md", "reason": "多仓 repository-scoped mutation 与 UI contract"}

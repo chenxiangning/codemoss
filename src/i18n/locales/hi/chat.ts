@@ -103,6 +103,8 @@ const chat = {
     "commandsListUnavailableTitle": "कमांड अनुपलब्ध",
     "commandsListUnavailableMessage":
       "स्लैश कमांड लोड करने में विफल: {{reason}}। कमांड ऑटोकम्प्लीट अधूरा हो सकता है; स्वचालित रूप से पुनः प्रयास किया जाएगा।",
+    "promptsListUnavailableTitle": "प्रॉम्प्ट उपलब्ध नहीं",
+    "promptsListUnavailableMessage": "कस्टम प्रॉम्प्ट लोड करने में विफल: {{reason}}। ! पूर्णता अधूरी हो सकती है; पुनः प्रयास के लिए ! फिर खोलें या प्रॉम्प्ट बनाएँ।",
     "pleaseWait": "कृपया प्रतीक्षा करें...",
     "retrying": "पुनः प्रयास ({{count}}/{{max}})...",
     "removeAgent": "agent हटाएं",

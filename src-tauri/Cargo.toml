@@ -63,6 +63,8 @@ encoding_rs = "0.8"
 lettre = { version = "0.11.21", default-features = false, features = ["smtp-transport", "builder", "tokio1-rustls-tls", "hostname"] }
 imap = { version = "3.0.0-alpha.15", default-features = false, features = ["rustls-tls"] }
 mailparse = "0.16.1"
+# ONNX embedding（ort）已移除：ort-sys 无 x86_64-apple-darwin 预编译，阻断 Intel macOS 打包。
+# 命令面仍在 project_memory/embed.rs（health=unavailable → lexical）；后续若恢复需另选可跨 Intel 的 runtime。
 
 [target."cfg(not(any(target_os = \"android\", target_os = \"ios\")))".dependencies]
 tauri-plugin-updater = "2"
@@ -78,10 +80,13 @@ windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_UI_Wind
 
 [target."cfg(target_os = \"macos\")".dependencies]
 objc2 = "0.6"
-objc2-app-kit = { version = "0.3", features = ["NSAppearance", "NSApplication", "NSImage", "NSResponder", "NSWindow", "objc2-core-foundation"] }
-objc2-foundation = { version = "0.3", features = ["NSString"] }
+objc2-app-kit = { version = "0.3", features = ["NSAppearance", "NSApplication", "NSDockTile", "NSImage", "NSResponder", "NSWindow", "objc2-core-foundation"] }
+objc2-foundation = { version = "0.3", features = ["NSString", "NSProcessInfo", "NSUUID", "NSDictionary", "NSError", "NSBundle", "NSURL"] }
 objc2-av-foundation = { version = "0.3", features = ["AVCaptureDevice", "AVMediaFormat"] }
 block2 = "0.6"
+# Modern UserNotifications path (see system_notification.rs). Required because
+# tauri-plugin-notification desktop uses deprecated NSUserNotificationCenter.
+objc2-user-notifications = "0.3"
 
 # Binary size: strip + fat LTO + size-biased opt (whisper.cpp C code keeps its own -O3).
 # No panic="abort": tokio task isolation relies on unwinding; a task panic must not kill the app.

@@ -1,6 +1,0 @@
-{"file": ".trellis/workflow.md", "reason": "Project workflow and conventions"}
-{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend development guide"}
-{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "FileViewPanel menu、props 与 accessibility 规范"}
-{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "File editor regression 与 focused test 规范"}
-{"file": ".trellis/spec/frontend/type-safety.md", "reason": "Shortcut definitions 与 strict TypeScript 规范"}
-{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "共享 shortcut source 防 drift"}

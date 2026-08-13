@@ -1068,6 +1068,16 @@ export function mergeCompletedAgentText(
     return normalizedCompleted;
   }
 
+  // live-text settle 竞态：provider complete 可能只带回建壳首字，而 durable 已
+  // 有更长正文。禁止把全文缩回「这」「已」「**」。
+  if (
+    existing.length > normalizedCompleted.length &&
+    (existing.startsWith(normalizedCompleted) ||
+      (normalizedCompleted.length <= 8 && existing.includes(normalizedCompleted)))
+  ) {
+    return existing;
+  }
+
   const earlyBodyEcho = collapseEarlyBodyEchoAfterLongerDraft(
     existing,
     normalizedCompleted,

@@ -55,4 +55,4 @@ Shared Session 在 `liveTextExternalization` 开启时只把首个 assistant del
 - `src/features/threads/assembly/conversationAssembler.ts`
 - Shared realtime/history focused tests
 - 当前受影响的 append-only Shared snapshot 数据
-- `.trellis/spec/frontend/messages-streaming-render-contract.md`
+- `dev-guidelines/frontend/messages-streaming-render-contract.md`

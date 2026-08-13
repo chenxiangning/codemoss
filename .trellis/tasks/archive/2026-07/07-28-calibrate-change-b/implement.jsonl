@@ -1,5 +1,0 @@
-{"file": ".trellis/workflow.md", "reason": "Project workflow and conventions"}
-{"file": ".trellis/spec/backend/index.md", "reason": "Backend development guide"}
-{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend development guide"}
-{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Shared target payload and recovery boundary"}
-{"file": ".trellis/spec/backend/provider-scoped-model-catalog.md", "reason": "Provider-scoped target identity"}

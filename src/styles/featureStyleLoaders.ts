@@ -123,6 +123,14 @@ export function loadKanbanStyles() {
   ]);
 }
 
+/** Extensions 面板 + TokenTracker 仪表盘壳层样式（非首屏路径）。 */
+export function loadExtensionsStyles() {
+  return loadStyles([
+    () => import("./extensions.css"),
+    () => import("./tokentracker-dashboard.css"),
+  ]);
+}
+
 export function loadBrowserAgentStyles() {
   return loadStyles([
     () => import("./browser-agent-window.css"),
@@ -164,5 +172,77 @@ export function loadImageFullscreenStyles() {
 export function loadMessagesOutlineFloaterStyles() {
   return loadStyles([
     () => import("./messages-outline-floater.css"),
+  ]);
+}
+
+/** Terminal dock / panel — non-Home cold-start surface (P1-1). */
+export function loadTerminalStyles() {
+  return loadStyles([
+    () => import("./terminal.css"),
+  ]);
+}
+
+/** Plan strip / plan panel (P1-1). */
+export function loadPlanStyles() {
+  return loadStyles([
+    () => import("./plan.css"),
+  ]);
+}
+
+/** Tool call blocks in conversation timeline (P1-1). */
+export function loadToolBlockStyles() {
+  return loadStyles([
+    () => import("./tool-blocks-shell.css"),
+    () => import("./tool-blocks.css"),
+    () => import("./tool-call-block.css"),
+  ]);
+}
+
+/** Status panel + engine task output + plan list tabs (P1-1). */
+export function loadStatusPanelStyles() {
+  return loadStyles([
+    () => import("./status-panel.css"),
+    () => import("./engine-task-output.css"),
+    () => import("./status-panel.responsive.css"),
+    () => import("./status-panel.plan-list.css"),
+  ]);
+}
+
+/**
+ * Multi-agent collab surface extras (P1-1).
+ * NOTE: subagent-ui.css must stay in bootstrap — it owns the always-on
+ * ConversationInspectorSplit chat column layout (see bootstrap.ts).
+ */
+export function loadSubagentStyles() {
+  return loadStyles([
+    () => import("./multi-agent.css"),
+  ]);
+}
+
+/** Workspace session activity right rail (P1-1). */
+export function loadSessionActivityStyles() {
+  return loadStyles([
+    () => import("./session-activity.css"),
+  ]);
+}
+
+/** Debug panel (P1-1). */
+export function loadDebugStyles() {
+  return loadStyles([
+    () => import("./debug.css"),
+  ]);
+}
+
+/** Worktree create modal (P1-1). */
+export function loadWorktreeModalStyles() {
+  return loadStyles([
+    () => import("./worktree-modal.css"),
+  ]);
+}
+
+/** Clone agent modal (P1-1). */
+export function loadCloneModalStyles() {
+  return loadStyles([
+    () => import("./clone-modal.css"),
   ]);
 }

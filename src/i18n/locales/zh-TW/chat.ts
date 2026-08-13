@@ -103,6 +103,8 @@ const chat = {
     "commandsListUnavailableTitle": "命令列表不可用",
     "commandsListUnavailableMessage":
       "載入斜線指令失敗：{{reason}}。命令補全可能不完整，稍後將自動重試。",
+    "promptsListUnavailableTitle": "提示詞列表不可用",
+    "promptsListUnavailableMessage": "載入自訂提示詞失敗：{{reason}}。! 補全可能不完整，請再次開啟 ! 或建立提示詞以重試。",
     "pleaseWait": "請稍候…",
     "retrying": "重試中（{{count}}/{{max}}）…",
     "removeAgent": "移除 agent",

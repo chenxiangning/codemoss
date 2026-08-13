@@ -737,9 +737,11 @@ export const ModelSelect = memo(({
     hasTargetGroups && executionTarget?.engine
       ? executionTarget.engine
       : currentProvider;
-  const currentModelLabel = currentModel
-    ? getModelLabel(currentModel, selectedModelProvider)
-    : t('models.selectModel');
+  const modelResolved = Boolean(currentModel);
+  // 未解析到已选模型时：固定占位 loading，禁止用「选择模型」空缺再闪成真名（冷启/切会话 UX）
+  const currentModelLabel = modelResolved
+    ? getModelLabel(currentModel!, selectedModelProvider)
+    : t('models.loading', { defaultValue: '加载中' });
   const hasConfigActions = Boolean(onAddModel || onRefreshConfig);
 
   const isGroupCurrent = (group: PickerModelGroup): boolean =>
@@ -1031,21 +1033,40 @@ export const ModelSelect = memo(({
   const trigger = (
     <button
       className={triggerVariant === 'readiness' ? 'composer-readiness-target composer-readiness-target-button' : 'selector-button'}
-      title={t('chat.currentModel', { model: currentModelLabel })}
-      aria-label={t('chat.currentModel', { model: currentModelLabel })}
+      title={
+        modelResolved
+          ? t('chat.currentModel', { model: currentModelLabel })
+          : t('models.loading', { defaultValue: '加载中' })
+      }
+      aria-label={
+        modelResolved
+          ? t('chat.currentModel', { model: currentModelLabel })
+          : t('models.loading', { defaultValue: '加载中' })
+      }
+      aria-busy={!modelResolved}
+      data-model-loading={modelResolved ? undefined : 'true'}
+      // 加载中不展开菜单；宽度跟内容走，避免与 ModeSelect 之间被撑空
+      disabled={!modelResolved}
     >
       {triggerVariant === 'readiness' ? (
         <>
           <span className="composer-readiness-icon" aria-hidden="true">
-            <ModelIcon
-              provider={selectedModelProvider}
-              model={currentModel}
-              modelIdForIcon={getModelIconId(
-                currentModel,
-                selectedModelProvider,
-              )}
-              size={16}
-            />
+            {modelResolved ? (
+              <ModelIcon
+                provider={selectedModelProvider}
+                model={currentModel}
+                modelIdForIcon={getModelIconId(
+                  currentModel,
+                  selectedModelProvider,
+                )}
+                size={16}
+              />
+            ) : (
+              <span
+                className="codicon codicon-loading selector-refresh-icon-spinning"
+                style={{ fontSize: 14 }}
+              />
+            )}
           </span>
           <span className="composer-readiness-model">
             {currentModelLabel}
@@ -1053,17 +1074,27 @@ export const ModelSelect = memo(({
         </>
       ) : (
         <>
-          <ModelIcon
-            provider={selectedModelProvider}
-            model={currentModel}
-            modelIdForIcon={getModelIconId(
-              currentModel,
-              selectedModelProvider,
-            )}
-            size={12}
-          />
+          {modelResolved ? (
+            <ModelIcon
+              provider={selectedModelProvider}
+              model={currentModel}
+              modelIdForIcon={getModelIconId(
+                currentModel,
+                selectedModelProvider,
+              )}
+              size={12}
+            />
+          ) : (
+            <span
+              className="codicon codicon-loading selector-refresh-icon-spinning"
+              style={{ fontSize: 12 }}
+              aria-hidden
+            />
+          )}
           <span className="selector-button-text">{currentModelLabel}</span>
-          <span className={`codicon codicon-chevron-${isOpen ? 'up' : 'down'}`} style={{ fontSize: '10px', marginLeft: '2px' }} />
+          {modelResolved ? (
+            <span className={`codicon codicon-chevron-${isOpen ? 'up' : 'down'}`} style={{ fontSize: '10px', marginLeft: '2px' }} />
+          ) : null}
         </>
       )}
     </button>

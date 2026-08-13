@@ -240,6 +240,8 @@ export function useGitPanelController({
   prDiffsError,
   onOpenEditorLayoutRequest,
   onOpenGitHistoryRequest,
+  /** 非对话/Git 相关模式时降级轮询与 preload，减少无关根成本。 */
+  appMode = "chat",
 }: {
   activeWorkspace: WorkspaceInfo | null;
   gitDiffPreloadEnabled: boolean;
@@ -254,6 +256,7 @@ export function useGitPanelController({
   prDiffsError: string | null;
   onOpenEditorLayoutRequest?: () => void;
   onOpenGitHistoryRequest?: () => void;
+  appMode?: "chat" | "kanban" | "gitHistory" | "extensions";
 }) {
   const [centerMode, setCenterMode] = useState<CenterMode>("chat");
   const [fileCompareSession, setFileCompareSession] =
@@ -319,13 +322,18 @@ export function useGitPanelController({
   const currentFileTabsState = fileTabsByWorkspace[fileTabWorkspaceKey];
   const openFileTabs = currentFileTabsState?.openTabs ?? EMPTY_FILE_TABS;
   const activeEditorFilePath = currentFileTabsState?.activeFilePath ?? null;
-  const isGitStatusPollingActive = isCompact
-    ? compactTab === "git"
-    : centerMode === "diff" ||
-      (!rightPanelCollapsed &&
-        (filePanelMode === "git" ||
-          filePanelMode === "files" ||
-          filePanelMode === "search"));
+  // kanban / extensions 全屏模式不展示 chat 右栏 Git 面板：只保留 background 兜底。
+  // gitHistory / chat 仍按可见性决定 active 轮询。
+  const isGitSurfaceMode = appMode === "chat" || appMode === "gitHistory";
+  const isGitStatusPollingActive =
+    isGitSurfaceMode &&
+    (isCompact
+      ? compactTab === "git"
+      : centerMode === "diff" ||
+        (!rightPanelCollapsed &&
+          (filePanelMode === "git" ||
+            filePanelMode === "files" ||
+            filePanelMode === "search")));
 
   const { status: gitStatus, refresh: refreshGitStatus } = useGitStatus(
     activeWorkspace,
@@ -419,10 +427,12 @@ export function useGitPanelController({
 
   const preloadedWorkspaceIdsRef = useRef<Set<string>>(new Set());
   const diffUiVisible =
-    centerMode === "diff" ||
-    (isCompact ? compactTab === "git" : gitPanelMode === "diff");
+    isGitSurfaceMode &&
+    (centerMode === "diff" ||
+      (isCompact ? compactTab === "git" : gitPanelMode === "diff"));
   const shouldPreloadDiffs = Boolean(
-    gitDiffPreloadEnabled &&
+    isGitSurfaceMode &&
+      gitDiffPreloadEnabled &&
       activeWorkspace &&
       !preloadedWorkspaceIdsRef.current.has(activeWorkspace.id) &&
       shouldAutoPreloadDiffs(gitStatus.files),

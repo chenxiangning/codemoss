@@ -2533,6 +2533,11 @@ button.ma-hist-toggle:hover .ma-hist-title {
 }
 
 /* 标签：色块浅底 + 字色与正文混色，浅色/深色都够对比 */
+.ma-inject-tag.is-mainCanvas {
+  background: color-mix(in srgb, var(--ma-cyan, #22d3ee) 16%, var(--ma-card));
+  color: color-mix(in srgb, var(--ma-cyan, #22d3ee) 50%, var(--ma-txt));
+}
+
 .ma-inject-tag.is-user {
   background: color-mix(in srgb, var(--ma-blue) 16%, var(--ma-card));
   color: color-mix(in srgb, var(--ma-blue) 55%, var(--ma-txt));

@@ -23,7 +23,7 @@ The repository SHALL make the boundary between stable governance guidance and ge
 #### Scenario: Stable docs remain in canonical governance layers
 
 - **WHEN** a collaborator needs project rules or workflow guidance
-- **THEN** the canonical sources SHALL be `AGENTS.md`, `.trellis/spec/**`, and `openspec/**`
+- **THEN** the canonical sources SHALL be `AGENTS.md`, `dev-guidelines/**`, and `openspec/**`
 - **AND** generated runtime state directories SHALL NOT be referenced as normative guidance sources
 
 #### Scenario: Local agent artifacts use local-only storage semantics

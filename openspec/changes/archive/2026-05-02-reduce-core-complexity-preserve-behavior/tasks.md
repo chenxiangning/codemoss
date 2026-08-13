@@ -1,6 +1,6 @@
 ## 1. Baseline And Scope Control
 
-- [x] 1.1 [P0][depends:none][I: current large-file watchlist, `package.json` scripts, `.trellis/spec/**`][O: baseline note for touched hotspots and validation commands][V: `npm run check:large-files:near-threshold`] Capture the starting large-file warning set and identify P0/P1 hotspots that this change is allowed to touch.
+- [x] 1.1 [P0][depends:none][I: current large-file watchlist, `package.json` scripts, `dev-guidelines/**`][O: baseline note for touched hotspots and validation commands][V: `npm run check:large-files:near-threshold`] Capture the starting large-file warning set and identify P0/P1 hotspots that this change is allowed to touch.
 - [x] 1.2 [P0][depends:1.1][I: `src/services/tauri.ts`, `src/features/threads/**`, `src-tauri/src/{codex,backend,runtime,computer_use}/**`][O: explicit write-scope list per batch][V: code review against scope list] Define allowed write scopes for bridge, threads, backend runtime, UI, CSS, and tests so implementation does not drift into feature work.
 - [x] 1.3 [P0][depends:1.2][I: current service exports and command registry][O: compatibility inventory for frontend exports and Tauri commands][V: `rg` checks for export names and command registrations] Record the public compatibility surfaces that must remain unchanged.
 
@@ -37,8 +37,8 @@
 
 ## 6. Cross-Layer And Spec Synchronization
 
-- [x] 6.1 [P0][depends:2.4,3.4,4.4][I: extracted bridge/thread/backend boundaries][O: cross-layer review notes][V: checklist against `.trellis/spec/guides/cross-layer-thinking-guide.md`] Review whether frontend service, Tauri command, runtime event, and backend payload contracts still align.
-- [x] 6.2 [P1][depends:6.1][I: reusable patterns discovered during extraction][O: updated Trellis code-level spec if needed][V: spec review] Update `.trellis/spec/**` only when a durable implementation rule emerges from the refactor.
+- [x] 6.1 [P0][depends:2.4,3.4,4.4][I: extracted bridge/thread/backend boundaries][O: cross-layer review notes][V: checklist against `dev-guidelines/guides/cross-layer-thinking-guide.md`] Review whether frontend service, Tauri command, runtime event, and backend payload contracts still align.
+- [x] 6.2 [P1][depends:6.1][I: reusable patterns discovered during extraction][O: updated Trellis code-level spec if needed][V: spec review] Update `dev-guidelines/**` only when a durable implementation rule emerges from the refactor.
 - [x] 6.3 [P1][depends:6.1][I: large-file governance result][O: documented large-file delta][V: `npm run check:large-files:near-threshold`] Record whether warning count decreased, stayed flat, or increased with justification.
 
 ## 7. Full Regression Gate

@@ -55,7 +55,8 @@
 .button-area-readiness-surface {
   display: flex;
   align-items: center;
-  flex: 0 1 auto;
+  /* 勿 flex-grow：否则模型位与 ModeSelect 之间被撑出大块空白 */
+  flex: 0 0 auto;
   min-width: 0;
 }
 
@@ -75,7 +76,13 @@
    strip its banner chrome (radius, border, band background, padding) so it
    reads as an inline control strip in the primary row. */
 .button-area-readiness-surface .composer-readiness-bar {
-  flex: 1 1 auto;
+  /* 覆盖 banners.css 的 1fr 网格：否则模型位与 ModeSelect 之间被撑出大块空白 */
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  column-gap: 8px;
+  flex: 0 0 auto;
+  width: auto;
   min-height: 32px;
   padding: 0;
   border-bottom: none;

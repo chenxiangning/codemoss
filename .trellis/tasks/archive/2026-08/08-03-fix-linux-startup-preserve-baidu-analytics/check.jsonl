@@ -1,6 +1,0 @@
-{"file": ".claude/commands/trellis/finish-work.md", "reason": "Finish work checklist"}
-{"file": ".claude/commands/trellis/check.md", "reason": "Code quality check spec"}
-{"file": "openspec/changes/fix-linux-startup-preserve-baidu-analytics/design.md", "reason": "authoritative behavior and compatibility decisions"}
-{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "frontend review gate"}
-{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "backend review gate"}
-{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "mapping and fallback review"}

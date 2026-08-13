@@ -283,7 +283,7 @@ These tests prove the bug. They MAY fail before implementation and MUST pass aft
 - [x] 15.4 Sync proposal and code-spec documentation with the corrected authority model.
   - `proposal.md` records the post-fix calibration that assistant completion is content evidence only.
   - `design.md` risk/compatibility rows reject assistant-driven deferred flush.
-  - `.trellis/spec/frontend/parallel-conversation-runtime-residuals.md` records the executable terminal authority matrix.
+  - `dev-guidelines/frontend/parallel-conversation-runtime-residuals.md` records the executable terminal authority matrix.
 
 ## 16. Deferred Completion Scoped Reconciliation
 

@@ -18,7 +18,7 @@
 
 ## 2. Recovery cookbook
 
-Document these fields in `.trellis/spec/backend/codex-provider-scoped-runtime.md`:
+Document these fields in `dev-guidelines/backend/codex-provider-scoped-runtime.md`:
 
 ```yaml
 staleRecoveryClassification:

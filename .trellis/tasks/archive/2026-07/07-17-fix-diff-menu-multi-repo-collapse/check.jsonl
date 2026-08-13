@@ -1,6 +1,0 @@
-{"file": ".claude/commands/trellis/finish-work.md", "reason": "Finish work checklist"}
-{"file": ".claude/commands/trellis/check.md", "reason": "Code quality check spec"}
-{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "Frontend component, accessibility, and Git file-list contracts."}
-{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Focused test and quality gates."}
-{"file": ".trellis/spec/frontend/type-safety.md", "reason": "Maintain strict TypeScript and precise local types."}
-{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "Reuse the existing DiffSection collapse contract."}

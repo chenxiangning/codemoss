@@ -7,15 +7,17 @@ status: active
 > [!NOTE]
 > **Lifecycle: Active troubleshooting runbook.** Historical case log 必须区分 fixed-in-code、manually verified 与 unverified；记录中的待提交/待验证占位不构成 current backlog。
 
-# React #185 Maximum Update Depth Playbook
+# React #185 / ErrorBoundary Crash Playbook
 
 > **文档性质**：可追加 living playbook（依据文档），不是一次性事故报告。
-> **用途**：冷启动 / 渲染过程中再次出现 React `#185`（`Maximum update depth exceeded`）时，按本文件诊断、归类、修复与归档。
+> **用途**：冷启动 / 渲染过程中再次出现 **全局 ErrorBoundary 白屏** 时，按本文件诊断、归类、修复与归档。主线仍是 React `#185`（`Maximum update depth exceeded`）；自 2026-08-11 起同步收录同源报告面的 **`RangeError: Maximum call stack size exceeded`（AP-08 无界树遍历）**——二者 UI 表现相同，栈与根因完全不同，禁止混修。
 > **事实边界**：行为以当前代码 + OpenSpec main specs 为准；本文件记录诊断协议与历史 case，不自动证明 `HEAD` 已全部收敛。
 
 ---
 
 ## 1. 错误是什么
+
+### 1.1 React #185（主线）
 
 | 字段 | 含义 |
 |------|------|
@@ -30,6 +32,19 @@ status: active
 - 完整说明：<https://react.dev/errors/185>
 - 本仓库报告分类：`classifyErrorBoundaryError` → `react-maximum-update-depth`
 
+### 1.2 RangeError 调用栈溢出（并列家族，非 #185）
+
+| 字段 | 含义 |
+|------|------|
+| Production message | `RangeError: Maximum call stack size exceeded` |
+| 完整语义 | JS 调用栈耗尽（递归过深 / 环引用递归） |
+| 触发条件 | 同步渲染路径上 **无界递归**（常见：`Array.reduce` 回调里再调自身） |
+| 用户表现 | 同样全局 `ErrorBoundary`；`errorClass: RangeError`（**不是** `react-maximum-update-depth`） |
+| 典型栈指纹 | `at m` → `Array.reduce` → `at m` → `Array.reduce` 循环 |
+| 典型 case | §5 `C-20260811-01`（Markdown table row count） |
+
+**分流铁律**：先看 `errorClass` / 首行 error message。`#185` 走 AP-01…07；`RangeError` + reduce 自递归走 **AP-08**，禁止去改 setState limit 或 useModels。
+
 ---
 
 ## 2. 诊断协议（以后必走）
@@ -37,7 +52,7 @@ status: active
 ### 2.1 收集证据（content-safe）
 
 1. ErrorBoundary 完整报告（含 `generatedAt` / `appVersion` / componentStack / stack）
-2. 是否冷启动 / 切换 workspace / 流式结算 / 打开 Settings
+2. 是否冷启动 / 切换 workspace / 流式结算 / 打开 Settings / **多代理执行**
 3. reload 是否恢复
 4. 若有 production bundle 哈希（如 `App-BhVHLEiP.js`），与本地 `dist/assets` 对齐
 5. **禁止**把 prompt / message / 文件内容写入 case 记录
@@ -45,8 +60,10 @@ status: active
 ### 2.2 反查 minified stack
 
 1. 用 `function XXX(` 在对应 chunk 中定位 mangled 组件名
-2. 用栈帧 `file:line:col` 截取附近代码，优先找 `useLayoutEffect` / `useEffect` + `setState`
-3. componentStack 最内层通常是真正在循环写 state 的组件；外层多为 AppShell / router
+2. 用栈帧 `file:line:col` 截取附近代码：
+   - `#185`：优先找 `useLayoutEffect` / `useEffect` + `setState`
+   - `RangeError`：优先找 **自递归** 的 `reduce` / `map` / `forEach` / 树 walk
+3. componentStack 最内层通常是真正在循环写 state 的组件或正在渲染的 Markdown 岛；外层多为 AppShell / router
 
 ### 2.3 复现门禁
 
@@ -55,15 +72,17 @@ status: active
 - 语义等价 state 反复 commit 不得出现 `#185`
 - 真实 observable 变化仍须发布
 - 有界 tick 后 state 收敛
+- **AP-08**：circular children / 超深节点 **不得** `RangeError`；正常浅表 table 行数仍正确
 
 ### 2.4 修复优先级（强制）
 
 | 优先级 | 做法 | 何时用 |
 |--------|------|--------|
-| **P0 根因** | 合并双写、统一纯函数语义、幂等 commit | 默认 |
+| **P0 根因** | 合并双写、统一纯函数语义、幂等 commit；或 **去掉无用遍历 + 有界递归** | 默认 |
 | P1 结构 | 派生值改 `useMemo`，不落 React state | derived projection |
 | ❌ 禁止 | 提高 React update limit、ErrorBoundary 吞错自动 reload 当修 | 掩盖根因 |
 | ❌ 禁止 | 清理用户 local store 当“修复” | 不可复现、不可回归 |
+| ❌ 禁止 | 用 `try/catch` 吞掉栈溢出却继续无界递归 | 掩盖 AP-08 |
 
 ---
 
@@ -78,6 +97,7 @@ status: active
 | AP-05 | **async refresh 把 selection 放进 deps** | selection 变 → refresh 重建 → 再写 selection | snapshot ref 读最新值 |
 | AP-06 | **第三方 ref / presence 版本抖动** | Radix ScrollArea / Tooltip 在 React 19 下 ref loop | 稳定 ref identity 或换实现 |
 | AP-07 | **useSyncExternalStore + 不稳定 selector / 非稳定 getSnapshot** | 内联 selector 进 useMemo deps，或 getSnapshot 每次 new 对象 | selector/isEqual 经 ref；getSnapshot 语义相等回缓存引用；对象切片强制 shallowEqual |
+| AP-08 | **无界树递归（reduce/map 自调用）** | `RangeError: Maximum call stack`；栈呈 `fn → reduce → fn` 循环 | ① 用不到结果时禁止遍历；② `WeakSet` 断环 + depth cap；③ 优先迭代 |
 
 ---
 
@@ -357,6 +377,57 @@ status: active
 - external store snapshot 的**空数组字段**必须是模块级单例或 stabilize 后的 previous；禁止 layout/render 路径 `?? []` / 临时 `[]` 直写 store。
 - 列表字段若语义是「成员集合」，在 setSnapshot 前用成员 Object.is 稳定引用；不能只靠 store 侧 shallowEqual 事后挡（它挡不住新数组壳）。
 
+### C-20260811-01 — Markdown table row count 无界递归 RangeError（0.8.6 multi-agent）
+
+| 字段 | 内容 |
+|------|------|
+| **状态** | fixed（结构加固 + 可执行 regression；待修后构建手测 multi-agent） |
+| **现象** | 多代理执行任务时全局 Application Error；`errorClass: RangeError`；`RangeError: Maximum call stack size exceeded`；reload 可恢复 |
+| **Bundle / 栈** | `appVersion: 0.8.6`；Windows WebView2；`App-DVqGO_5y.js`（与 mac release zip 的 `App-BZaBy42y.js` 哈希不同，属同版本异构包）；stack 指纹 `m → Array.reduce → m` 循环；componentStack 落在 App 渲染树（Markdown 岛一带） |
+| **Issue** | [desktop-cc-gui#1066](https://github.com/zhukunpenglinyutong/desktop-cc-gui/issues/1066) |
+| **Owner** | 主：`src/markdown/presentation/markdownHeavyIslands.ts` `countMarkdownTableRowsFromNode`；辅：`src/markdown/components/Markdown.tsx` `table` 组件 |
+| **触发条件** | 渲染含 table 的 Markdown（多代理 worker 输出高密度表格时更易踩中）；hast-like `children` **环引用**或异常深嵌套时必炸；正常浅表 table **不**必现 |
+| **根因（AP-08）** | ① `countMarkdownTableRowsFromNode` 用 `children.reduce(..., count(child))` **无界自递归**，无 `WeakSet` / depth cap；② `Markdown.tsx` 在 **kill-switch 已关闭**（`MARKDOWN_HEAVY_ISLAND_DEFER_ENABLED=false`）时仍 **先 count 再短路**——计数结果永远用不上，副作用却会炸栈 |
+| **与 #185 关系** | **同 ErrorBoundary 白屏、不同根因**。`errorClass` 是 `RangeError` 不是 `react-maximum-update-depth`；禁止按 AP-01…07 去改 setState |
+| **修复** | 见下 |
+| **回归** | `src/markdown/presentation/markdownHeavyIslands.test.ts`：正常 3 行；circular 不 throw；超深不 throw；kill-switch 关闭时 `shouldCountMarkdownTableRowsForDefer` 恒 false |
+| **Review 要点** | 见下 |
+
+**修复要点（C-20260811-01）**
+
+| 机制 | 实现 |
+|------|------|
+| 用不到不遍历（P0） | `shouldCountMarkdownTableRowsForDefer`：仅 `MARKDOWN_HEAVY_ISLAND_DEFER_ENABLED && shouldDeferMarkdownHeavyIslands` 为真才 count |
+| 调用点短路 | `Markdown.tsx` `table`：先 gate，再 `count`，再 `shouldDeferMarkdownTable` |
+| 有界递归（defense-in-depth） | `WeakSet` 断环；`MARKDOWN_TABLE_ROW_COUNT_MAX_DEPTH=64`；超深/环分支计 0 不抛 |
+| 栈形清晰 | `reduce` 自调用改为 `for` + bounded helper（语义不变） |
+
+**对抗式 review 结论（C-20260811-01）**
+
+| 检视项 | 结论 |
+|--------|------|
+| 是否掩盖根因 | 否：P0 去掉无用遍历；有界 walk 防止 kill-switch 重开后复炸 |
+| 业务不变量 | 当前 kill-switch 关闭时 **永远** 直接 `<table>`（与修前 defer 决策一致，从不进入 Deferred） |
+| 行数语义 | 环/超深返回 0 → 未来 re-enable defer 时可能少 defer，**优于**白屏；正常 hast table 深度 ≪ 64，行数不变 |
+| 生产栈 1:1 | `App-DVqGO_5y` 未入库；0.8.6 mac zip 中等价符号为 `Zye`/`Ht`（`tagName==="tr"` + `children.reduce` 自调用）；指纹充分 |
+| 残余风险 | ① 其它自递归 reduce（如 folder `countFolderSessions`）未本 PR 扩 scope；② kill-switch re-enable 后需再验大表 defer 阈值 |
+| 不扩 scope | 不改 ErrorBoundary 分类、不改 Messages/Composer、不碰 multi-agent 业务 |
+
+**代码入口（C-20260811-01）**
+
+| 路径 | 角色 |
+|------|------|
+| `src/markdown/presentation/markdownHeavyIslands.ts` | 有界 count + `shouldCountMarkdownTableRowsForDefer` |
+| `src/markdown/presentation/markdownHeavyIslands.test.ts` | circular / deep / normal / gate 回归 |
+| `src/markdown/components/Markdown.tsx` | table 渲染路径短路 |
+| 本文 §5 C-20260811-01 | 诊断与 review 留痕 |
+
+**Guardrail（C-20260811-01 / AP-08）**
+
+- 渲染热路径上对任意 tree 的 `reduce/map` 自递归：必须 **depth cap + cycle guard**，或改为迭代。
+- **kill-switch / feature flag 关闭时禁止仍执行其前置昂贵/危险副作用**（含树遍历、IO、序列化）。
+- ErrorBoundary 报告若 `errorClass: RangeError` 且 stack 含 `Array.reduce` 自调用，按 AP-08 处理，勿当 #185。
+
 ---
 
 ## 6. 新 Case 追加模板
@@ -394,6 +465,8 @@ status: active
 - [x] **B9** Composer extract effect 去自订阅 + setComposerText 稳定 + target 等价 hydrate（C-20260804-02）
 - [x] **B10** Composer rewind reset pre-dispatch guard + semantic capability deps（C-20260804-03）
 - [x] **B11** Messages canvas snapshot 空集合 / list stabilize + scope reset pre-dispatch（C-20260805-01 / App-BG-8EZ_F）
+- [x] **B12** Markdown table row count 有界递归 + kill-switch 关闭禁止遍历（C-20260811-01 / AP-08 / #1066）
+- [ ] **B13** 其它渲染热路径自递归 reduce（如 folder `countFolderSessions`）按需补 cycle/depth guard（不阻塞 C-20260811-01）
 ---
 
 ## 8. 历史相关入口（索引，非完整列表）
@@ -414,6 +487,7 @@ OpenSpec / 代码中已出现的 #185 类修复（便于对照，**不等于本 
 - Composer rewind reset：`src/features/composer/components/Composer.tsx` + `Composer.rewind-confirm.test.tsx`（C-20260804-03 / AP-04）
 - Messages canvas snapshot：`src/features/layout/hooks/activeCanvasStore.ts` + `useLayoutNodes.tsx` + Messages scope reset（C-20260805-01 / AP-02）
 - Shared target store：`src/features/shared-session/target/targetStore.ts`（C-20260804-02 / AP-02）
+- Markdown heavy table count / AP-08：`src/markdown/presentation/markdownHeavyIslands.ts` + `Markdown.tsx`（C-20260811-01）
 
 ### 8.1 开发自检（改 selection / canvas / layout setState 时勾选）
 
@@ -427,6 +501,8 @@ OpenSpec / 代码中已出现的 #185 类修复（便于对照，**不等于本 
 - [ ] **snapshot 空数组是否模块单例 / stabilize**（禁止 `?? []` 直写 activeCanvasStore）？
 - [ ] 是否补了可执行 regression（Vitest），而不是只靠冷启手测？
 - [ ] passive effect reset 是否在调用 setter **之前**判断 semantic equality，而非只靠 updater 返回 `prev`？
+- [ ] **树 walk / `reduce` 自递归是否有 depth cap + cycle guard**（AP-08）？
+- [ ] **feature flag / kill-switch 关闭时是否仍执行其前置危险副作用**（应短路）？
 
 ---
 
@@ -445,3 +521,4 @@ OpenSpec / 代码中已出现的 #185 类修复（便于对照，**不等于本 
 | 2026-08-05 | C-20260805-01：`App-BG-8EZ_F` 0.7.16 Messages canvas 空集合 thrash + scope reset pre-dispatch |
 | 2026-08-04 | C-20260804-02：`App-DjQ3UnSh` 0.7.16 手测仍炸——Composer extract deps 断环 + target 等价 hydrate + phase 等价值 |
 | 2026-08-04 | C-20260804-03：`App-C2u7zJPh` rewind reset passive effect——pre-dispatch guard + semantic capability deps |
+| 2026-08-12 | C-20260811-01 / AP-08：Markdown table row count `RangeError`（#1066）；playbook 扩到 ErrorBoundary 双家族分流 |

@@ -19,7 +19,7 @@
 
 ## 4. Contract And Regression Gate（P1）
 
-- [x] 4.1 同步 `.trellis/spec/backend/native-provider-continuation-contract.md` 的 prepare/single-confirm/progress/minimal-bootstrap contract；依赖：1-3；验证：文档 signatures 与实际 DTO/commands 一致。
+- [x] 4.1 同步 `dev-guidelines/backend/native-provider-continuation-contract.md` 的 prepare/single-confirm/progress/minimal-bootstrap contract；依赖：1-3；验证：文档 signatures 与实际 DTO/commands 一致。
 - [x] 4.2 运行 focused Vitest、Rust tests、`npm run typecheck`、`npm run check:runtime-contracts`；依赖：1-3；结果：54 个 focused Vitest、12 个 native continuation tests、1 个 Claude bootstrap profile test、TypeScript typecheck、target ESLint、Rust target rustfmt、`cargo check --all-targets` 与 runtime contracts 全部通过。
 - [x] 4.3 运行 `openspec validate streamline-native-provider-continuation --strict --no-interactive` 与相关全局 strict validation；依赖：4.1、4.2；结果：本 change strict validation 通过；全库 475/477 通过，剩余两个既存 change 因无 delta 失败，与本 change 无关。
 - [ ] 4.4 Desktop 手工验证 Claude → Codex 与 Codex → Claude，记录 prepare/bootstrap elapsed time、single-confirm、progress、source preservation 与 recovery；依赖：4.2；验证：人工验收证据，无法连接真实 Provider 时保持未勾选并明确 waiver。

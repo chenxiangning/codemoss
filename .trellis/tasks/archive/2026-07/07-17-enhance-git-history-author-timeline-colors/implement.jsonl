@@ -1,7 +1,0 @@
-{"file": ".trellis/workflow.md", "reason": "Project workflow and conventions"}
-{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend development guide"}
-{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "遵循 feature-scoped class、pure helper 与 focused test 规范"}
-{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "遵循 TypeScript、测试与质量门禁"}
-{"file": "openspec/changes/enhance-git-history-author-timeline-colors/design.md", "reason": "author identity、deterministic palette 与 virtualized projection 决策"}
-{"file": "src/features/git-history/components/git-history-panel/components/GitHistoryPanelView.tsx", "reason": "现有 virtualized commit row render pattern"}
-{"file": "src/styles/git-history.part1.css", "reason": "现有 graph dot、line、selection selector contract"}

@@ -18,6 +18,6 @@
 
 ## 4. 契约、质量与交付
 
-- [x] 4.1 [P0, depends: 1.*,2.*,3.*] 更新 `.trellis/spec` executable contract、任务清单/人工验收说明；写明 control-plane 隔离、error matrix、Good/Base/Bad cases 与断言点。
+- [x] 4.1 [P0, depends: 1.*,2.*,3.*] 更新 `dev-guidelines` executable contract、任务清单/人工验收说明；写明 control-plane 隔离、error matrix、Good/Base/Bad cases 与断言点。
 - [x] 4.2 [P0, depends: 4.1] 运行 targeted Rust/Vitest、typecheck、scoped lint、runtime contracts 与 OpenSpec strict validation；记录命令和结果。
 - [x] 4.3 [P0, depends: 4.2] 执行 cross-layer/code reuse/performance review，修复发现项，完成 OpenSpec verification 并提交。

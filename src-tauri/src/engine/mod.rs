@@ -29,6 +29,7 @@ pub(crate) mod codex_prompt_service;
 pub mod commands;
 pub(crate) mod error_mapper;
 pub mod events;
+pub mod session_directory_grant;
 pub mod gemini;
 pub mod gemini_history;
 pub(crate) mod gemini_proxy_guard;

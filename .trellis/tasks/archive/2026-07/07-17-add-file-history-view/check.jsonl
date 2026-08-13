@@ -1,6 +1,0 @@
-{"file": ".claude/commands/trellis/finish-work.md", "reason": "Finish work checklist"}
-{"file": ".claude/commands/trellis/check.md", "reason": "Code quality check spec"}
-{"file": "openspec/changes/add-file-history-view/tasks.md", "reason": "implementation checklist"}
-{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "frontend quality gate"}
-{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "backend quality gate"}
-{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "reuse review"}

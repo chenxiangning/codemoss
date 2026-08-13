@@ -1,8 +1,0 @@
-{"file": ".claude/commands/trellis/finish-work.md", "reason": "Finish work checklist"}
-{"file": ".claude/commands/trellis/check.md", "reason": "Code quality check spec"}
-{"file": ".trellis/spec/frontend/type-safety.md", "reason": "strict TS and boundary mapping"}
-{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "component contracts and large component refactor"}
-{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "refactor review gates"}
-{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "shared scope contract"}
-{"file": "openspec/changes/restore-git-history-type-safety/design.md", "reason": "approved design"}
-{"file": "openspec/changes/restore-git-history-type-safety/specs/git-history-panel/spec.md", "reason": "behavior contract"}

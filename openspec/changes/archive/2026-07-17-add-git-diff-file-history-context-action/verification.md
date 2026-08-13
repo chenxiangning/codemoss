@@ -54,8 +54,8 @@
 - Design followed: typed callback passthrough, row-owned target mapping, clicked-only History, read/write availability split, parent-owned menu and stale guard.
 - No new dependency, Tauri command, daemon payload, global event, duplicated File History renderer, `console.log`, `any`, or non-null assertion was introduced.
 - Trellis executable contracts updated in:
-  - `.trellis/spec/frontend/file-history-view.md`
-  - `.trellis/spec/frontend/multi-repository-git-commit-workspace.md`
+  - `dev-guidelines/frontend/file-history-view.md`
+  - `dev-guidelines/frontend/multi-repository-git-commit-workspace.md`
 
 ## Final Assessment
 

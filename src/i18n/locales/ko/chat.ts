@@ -103,6 +103,8 @@ const chat = {
     "commandsListUnavailableTitle": "명령을 사용할 수 없음",
     "commandsListUnavailableMessage":
       "슬래시 명령을 불러오지 못했습니다: {{reason}}. 명령 자동 완성이 불완전할 수 있으며, 자동으로 다시 시도합니다.",
+    "promptsListUnavailableTitle": "프롬프트를 사용할 수 없음",
+    "promptsListUnavailableMessage": "사용자 지정 프롬프트를 불러오지 못했습니다: {{reason}}. ! 자동완성이 불완전할 수 있습니다. ! 를 다시 열거나 프롬프트를 만들어 재시도하세요.",
     "pleaseWait": "잠시 기다려 주세요...",
     "retrying": "다시 시도 중 ({{count}}/{{max}})...",
     "removeAgent": "에이전트 제거",

@@ -1,4 +1,0 @@
-{"file": ".claude/commands/trellis/finish-work.md", "reason": "Finish work checklist"}
-{"file": ".claude/commands/trellis/check.md", "reason": "Code quality check spec"}
-{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "检查 focused diff、tests 与 no-regression gate"}
-{"file": "openspec/changes/align-codex-context-indicator-footer/specs/composer-context-dual-view/spec.md", "reason": "验证 provider、placement 与 interaction contract"}

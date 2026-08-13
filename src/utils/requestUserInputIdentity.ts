@@ -23,8 +23,11 @@ export function isSameRequestUserInput(
 export function requestUserInputConversationItemId(
   request: RequestUserInputRequest,
 ): string {
+  // Align with history normalizer prefix so tool_result cannot create a second
+  // "已提交" card for the same ask (`request-user-input-submitted-<id>`).
   const attemptId = request.shared_runtime_owner?.attemptId;
+  const requestId = String(request.request_id);
   return attemptId
-    ? `user-input-answer-${attemptId}-${String(request.request_id)}`
-    : `user-input-answer-${String(request.request_id)}`;
+    ? `request-user-input-submitted-${attemptId}-${requestId}`
+    : `request-user-input-submitted-${requestId}`;
 }

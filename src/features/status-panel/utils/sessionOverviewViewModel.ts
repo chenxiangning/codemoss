@@ -40,9 +40,18 @@ export type SessionOverviewQuotaWindowView = {
   resetsAt: number | null;
 };
 
+export type SessionOverviewUsageSummaryView = {
+  totalRequests: number | null;
+  totalActualCost: string | null;
+  totalInputTokens: number | null;
+  totalOutputTokens: number | null;
+  totalTokens: number | null;
+  averageDurationMs: number | null;
+};
+
 export type SessionOverviewQuotaView = {
   source: SessionOverviewQuotaSource;
-  /** 展示用供应商名：codex / kimi / minimax / zhipu */
+  /** 展示用供应商名：codex / kimi / minimax / zhipu / sub2api */
   providerLabel: string | null;
   showRemaining: boolean;
   planType: string | null;
@@ -50,6 +59,8 @@ export type SessionOverviewQuotaView = {
   creditsBalance: string | null;
   creditsUnlimited: boolean;
   hasCredits: boolean;
+  /** Sub2API 用量明细行 */
+  usageSummary: SessionOverviewUsageSummaryView | null;
   error: string | null;
   loading: boolean;
 };
@@ -62,6 +73,15 @@ export type CodingPlanBalanceInput = {
     grantedBalance?: string | null;
     toppedUpBalance?: string | null;
   }>;
+};
+
+export type CodingPlanUsageSummaryInput = {
+  totalRequests?: number | null;
+  totalActualCost?: string | null;
+  totalInputTokens?: number | null;
+  totalOutputTokens?: number | null;
+  totalTokens?: number | null;
+  averageDurationMs?: number | null;
 };
 
 export type CodingPlanQuotaInput = {
@@ -77,6 +97,9 @@ export type CodingPlanQuotaInput = {
   }>;
   /** 余额型（DeepSeek 等）；与 windows 二选一或并存 */
   balance?: CodingPlanBalanceInput | null;
+  usageSummary?: CodingPlanUsageSummaryInput | null;
+  /** 中转站 origin（变量，非写死文案） */
+  siteOrigin?: string | null;
 } | null;
 
 /** 共享会话多供应商：每条目独立查额度。 */
@@ -270,6 +293,39 @@ function buildCodingPlanWindows(
   });
 }
 
+/** 金额字符串保留 2 位小数（95878.280174 → 95878.28） */
+export function formatMoneyTwoDecimals(raw: string): string {
+  const trimmed = raw.trim();
+  if (!trimmed) {
+    return "0.00";
+  }
+  const n = Number(trimmed.replace(/,/g, ""));
+  if (!Number.isFinite(n)) {
+    return trimmed;
+  }
+  return n.toFixed(2);
+}
+
+/**
+ * 供应商展示：`{真实站点 origin} {source}`（空格分隔，两边都是变量）
+ * 例：`https://fufei.mossx.ai sub2api` / `https://ai.td.ee new_api`
+ * 禁止写死「站点接口」/「sub2api」文案，禁止用 `+` 连接。
+ */
+export function formatRelayProviderLabel(
+  source: string,
+  siteOrigin?: string | null,
+): string {
+  const kind = source.trim();
+  const origin = (siteOrigin ?? "").trim().replace(/\/+$/, "");
+  if (origin && kind) {
+    return `${origin} ${kind}`;
+  }
+  if (origin) {
+    return origin;
+  }
+  return kind || source;
+}
+
 function formatBalanceCredits(
   balance: CodingPlanBalanceInput | null | undefined,
 ): { hasCredits: boolean; creditsBalance: string | null } {
@@ -280,7 +336,8 @@ function formatBalanceCredits(
   const parts = items
     .map((item) => {
       const currency = normalizeOptionalText(item.currency) ?? "UNKNOWN";
-      const total = normalizeOptionalText(item.totalBalance) ?? "0";
+      const totalRaw = normalizeOptionalText(item.totalBalance) ?? "0";
+      const total = formatMoneyTwoDecimals(totalRaw);
       return `${currency} ${total}`;
     })
     .filter(Boolean);
@@ -293,14 +350,78 @@ function formatBalanceCredits(
   };
 }
 
-/** 供应商额度成功：有百分比窗口或有余额条目 */
+function hasUsageSummaryPayload(
+  summary: CodingPlanUsageSummaryInput | null | undefined,
+): boolean {
+  if (!summary) {
+    return false;
+  }
+  return (
+    summary.totalRequests != null ||
+    (typeof summary.totalActualCost === "string" &&
+      summary.totalActualCost.trim().length > 0) ||
+    summary.totalInputTokens != null ||
+    summary.totalOutputTokens != null ||
+    summary.totalTokens != null ||
+    summary.averageDurationMs != null
+  );
+}
+
+/** 供应商额度成功：有百分比窗口、余额条目或 Sub2API 用量摘要 */
 function hasProviderQuotaPayload(
   codingPlan: NonNullable<CodingPlanQuotaInput>,
 ): boolean {
   return (
     codingPlan.windows.length > 0 ||
-    (codingPlan.balance?.items?.length ?? 0) > 0
+    (codingPlan.balance?.items?.length ?? 0) > 0 ||
+    hasUsageSummaryPayload(codingPlan.usageSummary)
   );
+}
+
+function emptyQuotaView(
+  partial: Partial<SessionOverviewQuotaView> &
+    Pick<SessionOverviewQuotaView, "source" | "showRemaining">,
+): SessionOverviewQuotaView {
+  return {
+    providerLabel: null,
+    planType: null,
+    windows: [],
+    creditsBalance: null,
+    creditsUnlimited: false,
+    hasCredits: false,
+    usageSummary: null,
+    error: null,
+    loading: false,
+    ...partial,
+  };
+}
+
+function mapUsageSummary(
+  summary: CodingPlanUsageSummaryInput | null | undefined,
+): SessionOverviewUsageSummaryView | null {
+  if (!hasUsageSummaryPayload(summary)) {
+    return null;
+  }
+  const costRaw = normalizeOptionalText(summary?.totalActualCost ?? null);
+  return {
+    totalRequests:
+      typeof summary?.totalRequests === "number" ? summary.totalRequests : null,
+    totalActualCost: costRaw ? formatMoneyTwoDecimals(costRaw) : null,
+    totalInputTokens:
+      typeof summary?.totalInputTokens === "number"
+        ? summary.totalInputTokens
+        : null,
+    totalOutputTokens:
+      typeof summary?.totalOutputTokens === "number"
+        ? summary.totalOutputTokens
+        : null,
+    totalTokens:
+      typeof summary?.totalTokens === "number" ? summary.totalTokens : null,
+    averageDurationMs:
+      typeof summary?.averageDurationMs === "number"
+        ? summary.averageDurationMs
+        : null,
+  };
 }
 
 function buildProviderCodingPlanQuota(
@@ -310,13 +431,17 @@ function buildProviderCodingPlanQuota(
   const credits = formatBalanceCredits(codingPlan.balance ?? null);
   return {
     source: "coding_plan",
-    providerLabel: codingPlan.source,
+    providerLabel: formatRelayProviderLabel(
+      codingPlan.source,
+      codingPlan.siteOrigin,
+    ),
     showRemaining: usageShowRemaining,
     planType: normalizeOptionalText(codingPlan.planLabel ?? null),
     windows: buildCodingPlanWindows(codingPlan, usageShowRemaining),
     creditsBalance: credits.creditsBalance,
     creditsUnlimited: false,
     hasCredits: credits.hasCredits,
+    usageSummary: mapUsageSummary(codingPlan.usageSummary),
     error: null,
     loading: false,
   };
@@ -359,6 +484,7 @@ function buildOfficialCliQuota(
     creditsBalance,
     creditsUnlimited,
     hasCredits,
+    usageSummary: null,
     error: null,
     loading: false,
   };
@@ -379,33 +505,20 @@ export function buildSessionOverviewQuota(
   codingPlanQuotaLoading = false,
 ): SessionOverviewQuotaView {
   if (engine == null) {
-    return {
+    return emptyQuotaView({
       source: "none",
-      providerLabel: null,
       showRemaining: usageShowRemaining,
-      planType: null,
-      windows: [],
-      creditsBalance: null,
-      creditsUnlimited: false,
-      hasCredits: false,
-      error: null,
       loading: codingPlanQuotaLoading,
-    };
+    });
   }
 
   if (codingPlanQuotaLoading && !codingPlanQuota) {
-    return {
+    return emptyQuotaView({
       source: "coding_plan",
       providerLabel: engine,
       showRemaining: usageShowRemaining,
-      planType: null,
-      windows: [],
-      creditsBalance: null,
-      creditsUnlimited: false,
-      hasCredits: false,
-      error: null,
       loading: true,
-    };
+    });
   }
 
   // 供应商额度优先（百分比 windows 或余额 balance；含 Codex/Claude 配 DeepSeek/MiniMax）
@@ -434,18 +547,11 @@ export function buildSessionOverviewQuota(
 
   // 官方 Claude 等：无 plan 块
   if (codingPlanQuota?.source === "none") {
-    return {
+    return emptyQuotaView({
       source: "none",
       providerLabel: engine,
       showRemaining: usageShowRemaining,
-      planType: null,
-      windows: [],
-      creditsBalance: null,
-      creditsUnlimited: false,
-      hasCredits: false,
-      error: null,
-      loading: false,
-    };
+    });
   }
 
   if (!codingPlanQuota) {
@@ -453,18 +559,11 @@ export function buildSessionOverviewQuota(
     if (engine === "codex") {
       return buildOfficialCliQuota(rateLimits, usageShowRemaining, "codex");
     }
-    return {
+    return emptyQuotaView({
       source: "empty",
       providerLabel: engine,
       showRemaining: usageShowRemaining,
-      planType: null,
-      windows: [],
-      creditsBalance: null,
-      creditsUnlimited: false,
-      hasCredits: false,
-      error: null,
-      loading: false,
-    };
+    });
   }
 
   if (
@@ -472,38 +571,34 @@ export function buildSessionOverviewQuota(
     codingPlanQuota.source === "empty_credentials" ||
     codingPlanQuota.source === "empty"
   ) {
-    return {
+    return emptyQuotaView({
       source:
         codingPlanQuota.source === "unsupported" ? "unsupported" : "empty",
-      providerLabel: codingPlanQuota.source,
+      providerLabel: formatRelayProviderLabel(
+        codingPlanQuota.source,
+        codingPlanQuota.siteOrigin,
+      ),
       showRemaining: usageShowRemaining,
-      planType: null,
-      windows: [],
-      creditsBalance: null,
-      creditsUnlimited: false,
-      hasCredits: false,
-      // unsupported 对非官方中转才展示 error；empty 不吓人
+      // unsupported 展示友好 error；empty_credentials 也展示（如缺 key）
       error:
-        codingPlanQuota.source === "unsupported"
+        codingPlanQuota.source === "unsupported" ||
+        codingPlanQuota.source === "empty_credentials"
           ? (codingPlanQuota.error ?? null)
           : null,
-      loading: false,
-    };
+    });
   }
 
+  // Sub2API / New API 失败：error 已是用户文案；供应商行仍带 origin
   if (!codingPlanQuota.success) {
-    return {
+    return emptyQuotaView({
       source: "error",
-      providerLabel: codingPlanQuota.source,
+      providerLabel: formatRelayProviderLabel(
+        codingPlanQuota.source,
+        codingPlanQuota.siteOrigin,
+      ),
       showRemaining: usageShowRemaining,
-      planType: null,
-      windows: [],
-      creditsBalance: null,
-      creditsUnlimited: false,
-      hasCredits: false,
-      error: codingPlanQuota.error ?? "quota query failed",
-      loading: false,
-    };
+      error: codingPlanQuota.error ?? "额度查询失败，请稍后重试",
+    });
   }
 
   // success 但无 windows（官方 runtime 空窗口）

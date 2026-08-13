@@ -208,8 +208,10 @@ async function buildMacOS(arch, options = {}) {
   exec(`rm -f ${TAURI_DIR}/target/${target}/release/cc-gui`, { ignoreError: true });
   exec(`rm -rf ${TAURI_DIR}/target/${target}/release/bundle`, { ignoreError: true });
 
-  // Build the app
-  const buildEnv = arch === "arm64" ? "" : `X86_64_APPLE_DARWIN_OPENSSL_DIR=${CONFIG.openssl.x64} `;
+  // Build the app without Apple codesign mid-bundle (nested helper order is flaky
+  // on Intel). Post-sign via macos-fix-openssl.sh / explicit codesign below.
+  const opensslEnv = arch === "arm64" ? "" : `X86_64_APPLE_DARWIN_OPENSSL_DIR=${CONFIG.openssl.x64} `;
+  const buildEnv = `${opensslEnv}env -u APPLE_SIGNING_IDENTITY `;
   exec(`${buildEnv}npm run tauri -- build --target ${target} --bundles app`);
 
   // For universal builds, merge daemon binary
@@ -256,13 +258,13 @@ async function buildMacOS(arch, options = {}) {
         exec(`install_name_tool -change ${CONFIG.openssl.arm64}/lib/libcrypto.3.dylib @rpath/libcrypto.3.dylib "${binPath}"`, { ignoreError: true });
       }
 
-      // Sign all components
+      // Inside-out: dylibs → helpers → main → .app
       const identity = CONFIG.codesignIdentity;
       const entitlements = CONFIG.entitlements;
-      exec(`codesign --force --options runtime --sign "${identity}" --entitlements "${entitlements}" --timestamp "${frameworksPath}/libcrypto.3.dylib"`);
-      exec(`codesign --force --options runtime --sign "${identity}" --entitlements "${entitlements}" --timestamp "${frameworksPath}/libssl.3.dylib"`);
-      exec(`codesign --force --options runtime --sign "${identity}" --entitlements "${entitlements}" --timestamp "${bundlePath}/Contents/MacOS/cc-gui"`);
+      exec(`codesign --force --options runtime --sign "${identity}" --timestamp "${frameworksPath}/libcrypto.3.dylib"`);
+      exec(`codesign --force --options runtime --sign "${identity}" --timestamp "${frameworksPath}/libssl.3.dylib"`);
       exec(`codesign --force --options runtime --sign "${identity}" --entitlements "${entitlements}" --timestamp "${bundlePath}/Contents/MacOS/cc_gui_daemon"`);
+      exec(`codesign --force --options runtime --sign "${identity}" --entitlements "${entitlements}" --timestamp "${bundlePath}/Contents/MacOS/cc-gui"`);
       exec(`codesign --force --options runtime --sign "${identity}" --entitlements "${entitlements}" --timestamp "${bundlePath}"`);
     } else {
       // Use existing script for single-arch builds

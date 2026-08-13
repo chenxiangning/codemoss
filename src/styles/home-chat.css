@@ -612,23 +612,10 @@
   display: none;
 }
 
-.home-chat-composer-host .input-editable-wrapper {
-  padding: 22px 24px 14px;
-  min-height: 93px;
-  max-height: 288px;
-}
-
-.home-chat-composer-host .input-editable {
-  min-height: calc(1.5em * 1);
-  color: var(--text-primary);
-  font-size: 15px;
-  line-height: 1.5;
-}
-
-.home-chat-composer-host .input-editable:empty::before {
-  color: var(--input-placeholder);
-  font-size: inherit;
-}
+/* Input area geometry intentionally inherits shared ChatInputBox styles
+   (.input-editable-wrapper / .input-editable in input-area.css) so Home and
+   conversation composer stay pixel-consistent. Do not reintroduce larger
+   padding / min-height here. */
 
 .home-chat-composer-host .composer-readiness-bar {
   min-height: var(--home-chat-control-band-height);
@@ -1052,16 +1039,6 @@
     --home-chat-control-band-height: 40px;
   }
 
-  .home-chat-composer-host .input-editable-wrapper {
-    padding: 20px 18px 12px;
-    min-height: 84px;
-  }
-
-  .home-chat-composer-host .input-editable {
-    font-size: 14px;
-    min-height: calc(1.48em * 1);
-  }
-
   .home-chat-composer-host .button-area {
     padding: 3px 12px;
   }
@@ -1113,12 +1090,6 @@
 
   .home-chat-composer-host {
     --home-chat-control-band-height: 38px;
-  }
-
-  .home-chat-composer-host .input-editable-wrapper {
-    padding: 18px 14px 10px;
-    min-height: 74px;
-    max-height: 240px;
   }
 
   .home-chat-composer-host .button-area {

@@ -5,7 +5,7 @@ import Ellipsis from "lucide-react/dist/esm/icons/ellipsis";
 import { TooltipIconButton } from "../../../components/ui/tooltip-icon-button";
 import { pushErrorToast } from "../../../services/toasts";
 import type { OpenAppTarget } from "../../../types";
-import { openPathInTarget } from "../utils/openApp";
+import { openPathInTarget, resolveOpenAppPath } from "../utils/openApp";
 import { useOpenAppIcons } from "../hooks/useOpenAppIcons";
 import {
   DEFAULT_OPEN_APP_ID,
@@ -32,7 +32,13 @@ export type OpenAppMenuExtraAction = {
 };
 
 type OpenAppMenuProps = {
+  /** Workspace / folder fallback path (also used for file-manager targets). */
   path: string;
+  /**
+   * Currently focused file (absolute or workspace-relative).
+   * App/command targets prefer this over `path`.
+   */
+  activeFilePath?: string | null;
   openTargets: OpenAppTarget[];
   selectedOpenAppId: string;
   onSelectOpenAppId: (id: string) => void;
@@ -42,6 +48,8 @@ type OpenAppMenuProps = {
   /** 勾选后外显到顶栏的条目 id；配合 onTogglePinned 启用勾选框 */
   pinnedIds?: string[];
   onTogglePinned?: (id: string) => void;
+  /** Footer menus open upward so they aren't clipped. */
+  menuPlacement?: "up" | "down";
 };
 
 const EMPTY_OPEN_APP_ICON_BY_ID: Record<string, string> = {};
@@ -50,6 +58,7 @@ const EMPTY_PINNED_IDS: string[] = [];
 
 export function OpenAppMenu({
   path,
+  activeFilePath = null,
   openTargets,
   selectedOpenAppId,
   onSelectOpenAppId,
@@ -58,6 +67,7 @@ export function OpenAppMenu({
   extraActions = EMPTY_OPEN_APP_EXTRA_ACTIONS,
   pinnedIds = EMPTY_PINNED_IDS,
   onTogglePinned,
+  menuPlacement = "down",
 }: OpenAppMenuProps) {
   const { t } = useTranslation();
   const [openMenuOpen, setOpenMenuOpen] = useState(false);
@@ -151,7 +161,11 @@ export function OpenAppMenu({
 
   const openWithTarget = async (target: OpenTarget) => {
     try {
-      await openPathInTarget(path, target.target);
+      const resolvedPath = resolveOpenAppPath(target.target, {
+        workspacePath: path,
+        activeFilePath,
+      });
+      await openPathInTarget(resolvedPath, target.target);
     } catch (error) {
       reportOpenError(error, target);
     }
@@ -264,7 +278,12 @@ export function OpenAppMenu({
   }
 
   return (
-    <div className="open-app-menu" ref={openMenuRef}>
+    <div
+      className={`open-app-menu${openMenuOpen ? " is-open" : ""}${
+        menuPlacement === "up" ? " is-menu-up" : ""
+      }`}
+      ref={openMenuRef}
+    >
       <div className={`open-app-button${iconOnly ? " is-icon-only" : ""}`}>
         <button
           type="button"
@@ -298,7 +317,11 @@ export function OpenAppMenu({
         <button
           type="button"
           className={`ghost main-header-action open-app-toggle${iconOnly ? " is-icon-only" : ""}`}
-          onClick={() => setOpenMenuOpen((prev) => !prev)}
+          onClick={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            setOpenMenuOpen((prev) => !prev);
+          }}
           data-tauri-drag-region="false"
           aria-haspopup="menu"
           aria-expanded={openMenuOpen}

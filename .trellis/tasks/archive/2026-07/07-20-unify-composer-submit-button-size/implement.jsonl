@@ -1,5 +1,0 @@
-{"file": ".trellis/workflow.md", "reason": "Project workflow and conventions"}
-{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend development guide"}
-{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "Composer control surface geometry and Home override contract"}
-{"file": "src/features/composer/components/ChatInputBox/styles/buttons.css", "reason": "Canonical 26px submit/stop action geometry"}
-{"file": "src/styles/home-chat.css", "reason": "Home scoped responsive override containing the drift"}

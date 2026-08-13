@@ -1,7 +1,0 @@
-{"file": ".trellis/workflow.md", "reason": "Project workflow and conventions"}
-{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend development guide"}
-{"file": ".trellis/spec/frontend/directory-structure.md", "reason": "目录与 feature slice 落位约束"}
-{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "组件拆分、props 与 memo contract"}
-{"file": ".trellis/spec/frontend/hook-guidelines.md", "reason": "controller hook 与副作用 cleanup 约束"}
-{"file": ".trellis/spec/frontend/messages-streaming-render-contract.md", "reason": "stable snapshot 与 live row 分轨硬约束"}
-{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "行为保持、测试与 large-file gate"}

@@ -1,5 +1,0 @@
-{"file": ".claude/commands/trellis/finish-work.md", "reason": "Finish work checklist"}
-{"file": ".claude/commands/trellis/check.md", "reason": "Code quality check spec"}
-{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "审查 TypeScript、测试与禁止项"}
-{"file": "openspec/changes/enhance-git-history-author-timeline-colors/specs/git-commit-history/spec.md", "reason": "核对 stable author timeline accent 行为"}
-{"file": "src/features/git-history/components/GitHistoryPanel.test.tsx", "reason": "核对 component regression coverage"}

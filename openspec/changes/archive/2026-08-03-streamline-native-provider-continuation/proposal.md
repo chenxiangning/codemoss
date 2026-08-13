@@ -54,7 +54,7 @@
 
 - Frontend：`ProviderContinuationDialog`、`useSidebarMenus`、Tauri service DTO、events 与 i18n。
 - Backend：`native_continuation` commands、command registry、Claude continuation-only command profile / command builder。
-- Contract：`openspec/specs/native-provider-continuation/spec.md` 的 delta，以及 `.trellis/spec/backend/native-provider-continuation-contract.md` 的实现同步。
+- Contract：`openspec/specs/native-provider-continuation/spec.md` 的 delta，以及 `dev-guidelines/backend/native-provider-continuation-contract.md` 的实现同步。
 - Dependencies：不新增依赖；复用现有 Dialog、Progress、Tauri event hub 与 Claude CLI 原生 flags。
 
 ## 验收标准

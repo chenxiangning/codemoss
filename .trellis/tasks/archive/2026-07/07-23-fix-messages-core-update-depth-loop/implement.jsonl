@@ -1,6 +1,0 @@
-{"file": ".trellis/workflow.md", "reason": "Project workflow and conventions"}
-{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend development guide"}
-{"file": "openspec/changes/fix-messages-core-update-depth-loop/design.md", "reason": "OpenSpec implementation design"}
-{"file": "openspec/changes/fix-messages-core-update-depth-loop/specs/client-renderer-stability-under-pressure/spec.md", "reason": "Behavior contract"}
-{"file": "src/features/quick-switcher/hooks/useQuickSwitcherRecentFiles.ts", "reason": "Root feedback owner"}
-{"file": "src/features/quick-switcher/hooks/useQuickSwitcherRecentFiles.test.tsx", "reason": "Referential stability regression"}

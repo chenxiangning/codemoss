@@ -291,9 +291,6 @@ export function ProjectMemoryPanel({
       userInput: t("memory.turnUserInput"),
       assistantResponse: t("memory.turnAssistantResponse"),
       assistantThinkingSummary: t("memory.turnAssistantThinkingSummary"),
-      threadId: "threadId",
-      turnId: "turnId",
-      engine: "engine",
     });
   }, [selectedItem, t]);
 
@@ -530,9 +527,6 @@ export function ProjectMemoryPanel({
       userInput: t("memory.turnUserInput"),
       assistantResponse: t("memory.turnAssistantResponse"),
       assistantThinkingSummary: t("memory.turnAssistantThinkingSummary"),
-      threadId: "threadId",
-      turnId: "turnId",
-      engine: "engine",
     });
     try {
       if (!navigator.clipboard) {
@@ -604,9 +598,6 @@ export function ProjectMemoryPanel({
           userInput: t("memory.turnUserInput"),
           assistantResponse: t("memory.turnAssistantResponse"),
           assistantThinkingSummary: t("memory.turnAssistantThinkingSummary"),
-          threadId: "threadId",
-          turnId: "turnId",
-          engine: "engine",
         }),
         tags: selectedItem.tags,
         importance: selectedItem.importance,

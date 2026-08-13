@@ -2,24 +2,23 @@ import {
   detectRendererPlatform,
   type RendererPlatform,
 } from "./rendererPlatform";
-import { clampUiScale } from "./uiScale";
+import { clampUiScale, UI_SCALE_DEFAULT } from "./uiScale";
 
 export type ApplyUiScaleTarget = {
   root: HTMLElement;
-  setNativeZoom?: (factor: number) => Promise<void>;
   platform: RendererPlatform;
 };
 
 /**
- * Apply uiScale without native WebView zoom ≠1.
+ * Apply uiScale — permanently locked to identity (100%).
  *
- * Field evidence (Windows WebView2, 2026-08):
+ * Field evidence (Windows WebView2 / macOS WKWebView, 2026-08):
  * 1. setZoom(uiScale≠1) freezes the renderer (multi-GB).
  * 2. body { transform:scale + width/height:100/scale% } also freezes when
  *    combined with cold-start list hydration + early pointer input.
- *
- * Current strategy: CSS `zoom` only (layout-participating, no expanded
- * pre-transform surface). Native zoom is pinned to 1 once per session.
+ * 3. Product decision: UI scale feature removed; callers may still pass a
+ *    number, but this module always clears residual scale styles and never
+ *    applies zoom ≠ 1 (legacy settings included).
  *
  * Shell: html/body/#root/.app use a % height chain (base.css), not 100vh.
  */
@@ -51,6 +50,7 @@ export function resolveCssZoomLayoutTarget(root: HTMLElement): HTMLElement {
   return root;
 }
 
+/** Unconditionally clear all scale-related inline properties. */
 function clearScaleLayoutStyles(el: HTMLElement): void {
   el.style.zoom = "";
   el.style.transform = "";
@@ -64,44 +64,31 @@ function clearScaleLayoutStyles(el: HTMLElement): void {
   el.style.bottom = "";
 }
 
-/**
- * CSS zoom only. Always strips residual transform/fill from older builds.
- */
-function setScaleLayoutStyles(el: HTMLElement, scale: number): void {
-  el.style.transform = "";
-  el.style.transformOrigin = "";
-  el.style.width = "";
-  el.style.height = "";
-  el.style.position = "";
-  el.style.top = "";
-  el.style.left = "";
-  el.style.right = "";
-  el.style.bottom = "";
+function applyCssPageScaleStyles(
+  root: HTMLElement,
+  scale: number,
+  platform: RendererPlatform,
+): void {
+  // Scale is permanently locked to identity. Always take the full clear path
+  // so residual zoom/transform from older builds (or hot-reload) is removed on
+  // every platform.
+  void platform;
+  void scale;
 
-  if (scale === 1) {
-    el.style.zoom = "";
-    return;
+  if (root.style.getPropertyValue("--ui-scale")) {
+    root.style.removeProperty("--ui-scale");
   }
-
-  el.style.zoom = String(scale);
-}
-
-function applyCssPageScaleStyles(root: HTMLElement, scale: number): void {
-  root.style.setProperty("--ui-scale", String(scale));
 
   const layout = resolveCssZoomLayoutTarget(root);
   if (layout !== root) {
     clearScaleLayoutStyles(root);
   }
-  setScaleLayoutStyles(layout, scale);
+  clearScaleLayoutStyles(layout);
+  // Identity: zoom stays empty (no style.zoom write).
 }
 
-/** After first successful pin to 1, skip further setZoom(1). */
-let nativeIdentityPinned = false;
-
 /** @internal test helper */
-export function resetUiScaleNativePinForTests(): void {
-  nativeIdentityPinned = false;
+export function resetApplyUiScaleQueueForTests(): void {
   applyQueue = Promise.resolve();
   applyGeneration = 0;
 }
@@ -110,7 +97,7 @@ let applyQueue: Promise<void> = Promise.resolve();
 let applyGeneration = 0;
 
 /**
- * Serialise applies so rapid shortcut spam cannot reorder CSS/native writes.
+ * Serialise applies so concurrent callers cannot reorder CSS writes.
  * Stale generations are skipped after they reach the head of the queue.
  */
 export function enqueueApplyUiScale(
@@ -132,21 +119,16 @@ export async function applyUiScale(
   scale: number,
   target: ApplyUiScaleTarget,
 ): Promise<void> {
-  const next = clampUiScale(scale);
-
-  applyCssPageScaleStyles(target.root, next);
-  if (target.setNativeZoom && !nativeIdentityPinned) {
-    await target.setNativeZoom(1);
-    nativeIdentityPinned = true;
-  }
+  // Hard lock: ignore requested scale; always identity.
+  void scale;
+  applyCssPageScaleStyles(target.root, UI_SCALE_DEFAULT, target.platform);
 }
 
-/** Convenience for production hook: detect platform + optional native zoom. */
+/** Convenience for production hook: detect platform and clear residual scale. */
 export async function applyUiScaleToDocument(
   scale: number,
   options?: {
     root?: HTMLElement;
-    setNativeZoom?: (factor: number) => Promise<void>;
     platform?: RendererPlatform;
     /** default true — use serial queue */
     enqueue?: boolean;
@@ -158,7 +140,6 @@ export async function applyUiScaleToDocument(
   }
   const target: ApplyUiScaleTarget = {
     root,
-    setNativeZoom: options?.setNativeZoom,
     platform: options?.platform ?? detectRendererPlatform(),
   };
   if (options?.enqueue === false) {

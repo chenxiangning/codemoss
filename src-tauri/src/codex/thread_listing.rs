@@ -17,6 +17,7 @@ const UNIFIED_CODEX_CURSOR_PREFIX: &str = "codex-unified:";
 const UNIFIED_CODEX_MAX_THREADS: usize = 5_000;
 const UNIFIED_CODEX_MAX_PAGES: usize = 200;
 const UNIFIED_CODEX_PAGE_SIZE: u32 = 200;
+const UNIFIED_CODEX_SCAN_LOOKAHEAD: usize = 20;
 const LOCAL_SESSION_SCAN_FALLBACK_TIMEOUT_MS: u64 = 5_000;
 const LOCAL_SESSION_SCAN_UNAVAILABLE_PARTIAL_SOURCE: &str = "local-session-scan-unavailable";
 const LIVE_THREAD_LIST_UNAVAILABLE_PARTIAL_SOURCE: &str = "live-thread-list-unavailable";
@@ -58,6 +59,17 @@ fn parse_unified_codex_cursor(cursor: Option<&str>) -> usize {
 
 fn build_unified_codex_cursor(offset: usize) -> Value {
     Value::String(format!("{UNIFIED_CODEX_CURSOR_PREFIX}{offset}"))
+}
+
+pub(crate) fn resolve_unified_codex_scan_limit(
+    page_offset: usize,
+    requested_limit: usize,
+) -> usize {
+    page_offset
+        .saturating_add(requested_limit)
+        .saturating_add(1)
+        .saturating_add(UNIFIED_CODEX_SCAN_LOOKAHEAD)
+        .clamp(1, UNIFIED_CODEX_MAX_THREADS)
 }
 
 pub(super) fn select_unified_codex_partial_source<'a>(
@@ -642,9 +654,10 @@ async fn resolve_workspace_path(state: &AppState, workspace_id: &str) -> Result<
         .ok_or_else(|| "workspace not found".to_string())
 }
 
-async fn load_all_live_codex_thread_entries(
+async fn load_bounded_live_codex_thread_entries(
     state: &AppState,
     workspace_id: &str,
+    requested_scan_limit: usize,
 ) -> Result<Vec<Value>, String> {
     let mut all_entries = Vec::new();
     let mut cursor: Option<String> = None;
@@ -652,6 +665,11 @@ async fn load_all_live_codex_thread_entries(
 
     loop {
         pages_fetched += 1;
+        let remaining = requested_scan_limit.saturating_sub(all_entries.len());
+        if remaining == 0 {
+            break;
+        }
+        let page_size = remaining.min(UNIFIED_CODEX_PAGE_SIZE as usize) as u32;
         let response = match timeout(
             Duration::from_millis(LIST_THREADS_LIVE_TIMEOUT_MS),
             codex_core::list_threads_core(
@@ -659,7 +677,7 @@ async fn load_all_live_codex_thread_entries(
                 workspace_id.to_string(),
                 None,
                 cursor.clone(),
-                Some(UNIFIED_CODEX_PAGE_SIZE),
+                Some(page_size),
             ),
         )
         .await
@@ -696,7 +714,8 @@ async fn load_all_live_codex_thread_entries(
         };
 
         all_entries.extend(thread_list_response_entries(&response));
-        if all_entries.len() >= UNIFIED_CODEX_MAX_THREADS {
+        if all_entries.len() >= requested_scan_limit {
+            all_entries.truncate(requested_scan_limit);
             break;
         }
 
@@ -727,10 +746,13 @@ pub(crate) async fn build_unified_codex_thread_page(
 ) -> Result<Value, String> {
     let requested_limit = limit.unwrap_or(50).clamp(1, 200) as usize;
     let page_offset = parse_unified_codex_cursor(cursor.as_deref());
+    let requested_scan_limit = resolve_unified_codex_scan_limit(page_offset, requested_limit);
     let workspace_path = resolve_workspace_path(state, workspace_id).await?;
 
     let (live_entries, live_partial_source) = if live_enabled {
-        match load_all_live_codex_thread_entries(state, workspace_id).await {
+        match load_bounded_live_codex_thread_entries(state, workspace_id, requested_scan_limit)
+            .await
+        {
             Ok(entries) => (entries, None),
             Err(error) => {
                 log::debug!(
@@ -752,7 +774,7 @@ pub(crate) async fn build_unified_codex_thread_page(
         Vec<LocalUsageSessionSummary>,
         HashSet<String>,
         Option<&str>,
-    ) = match load_local_codex_session_summaries(state, workspace_id, usize::MAX).await {
+    ) = match load_local_codex_session_summaries(state, workspace_id, requested_scan_limit).await {
         Ok((_, sessions)) => {
             let session_ids = collect_codex_session_identifiers(&sessions);
             cache_workspace_session_identifiers(workspace_id, &session_ids);
@@ -787,7 +809,7 @@ pub(crate) async fn build_unified_codex_thread_page(
         &local_sessions,
         &workspace_session_ids,
         &workspace_path,
-        UNIFIED_CODEX_MAX_THREADS,
+        requested_scan_limit,
     );
 
     if merged_entries.is_empty() {
@@ -835,7 +857,7 @@ async fn load_local_codex_session_summaries(
 ) -> Result<(String, Vec<LocalUsageSessionSummary>), String> {
     timeout(
         Duration::from_millis(LOCAL_SESSION_SCAN_FALLBACK_TIMEOUT_MS),
-        local_usage::list_codex_session_summaries_for_workspace(
+        local_usage::list_codex_session_previews_for_workspace(
             &state.workspaces,
             workspace_id,
             requested_limit,

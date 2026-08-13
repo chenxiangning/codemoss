@@ -28,4 +28,4 @@
 - [x] 5.2 [P0，依赖 5.1] 修复 Codex `BatchedTauriEventSink`：terminal flush 同 sink、同 workspace predecessors 后追加 terminal，其他 workspace 保持 queued；通过 focused Rust tests 验证 ordering、isolation 与 stats
 - [x] 5.3 [P0，依赖 5.2] 为 unified `appServerEventBackpressure` 增加 optional causal barrier key，只对 app-server settlement terminal 启用；通过 focused unit tests 验证 batch/single ordering、urgent bypass 与 workspace isolation
 - [x] 5.4 [P0，依赖 5.3] 增加 frontend integration regression，覆盖 `delta → item/completed → turn/completed` 与 Shared projected identity，证明 terminal guard 前 final content 已 dispatch
-- [x] 5.5 [P0，依赖 5.4] 同步 `.trellis/spec` 与 performance design，运行 focused Rust/Vitest、typecheck、定向 ESLint、format/diff/OpenSpec strict checks；不运行全量测试
+- [x] 5.5 [P0，依赖 5.4] 同步 `dev-guidelines` 与 performance design，运行 focused Rust/Vitest、typecheck、定向 ESLint、format/diff/OpenSpec strict checks；不运行全量测试

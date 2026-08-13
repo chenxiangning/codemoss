@@ -258,6 +258,106 @@ fn read_grok_config_document(path: &Path) -> (String, toml::Table, Option<String
     }
 }
 
+fn model_entry_has_credentials(table: &toml::Table) -> bool {
+    table
+        .get("base_url")
+        .and_then(|x| x.as_str())
+        .map(|s| !s.trim().is_empty())
+        .unwrap_or(false)
+        || table
+            .get("api_key")
+            .and_then(|x| x.as_str())
+            .map(|s| !s.trim().is_empty())
+            .unwrap_or(false)
+}
+
+fn extract_base_url_api_key_from_model_table(table: &toml::Table) -> (String, String) {
+    let base_url = table
+        .get("base_url")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .trim()
+        .to_string();
+    let api_key = table
+        .get("api_key")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .trim()
+        .to_string();
+    (base_url, api_key)
+}
+
+/// 从已解析的 Grok config.toml 表中抽取 default model 的 base_url + api_key。
+/// 兼容：`models.default` 与 `[model.<key>]` 键名不一致（例如 default=`grok-4.5` 但表键为 `grok`）。
+pub(crate) fn extract_base_url_api_key_from_grok_toml(doc: &toml::Table) -> (String, String) {
+    let default_model = doc
+        .get("models")
+        .and_then(|v| v.as_table())
+        .and_then(|models| models.get("default"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .trim()
+        .to_string();
+
+    let Some(model_table) = doc.get("model").and_then(|v| v.as_table()) else {
+        return (String::new(), String::new());
+    };
+
+    // 1) 精确键：model.<default>
+    if !default_model.is_empty() {
+        if let Some(table) = model_table
+            .get(&default_model)
+            .and_then(|v| v.as_table())
+        {
+            if model_entry_has_credentials(table) {
+                return extract_base_url_api_key_from_model_table(table);
+            }
+        }
+        // 2) model 字段值 == default
+        for value in model_table.values() {
+            let Some(table) = value.as_table() else {
+                continue;
+            };
+            let model_name = table
+                .get("model")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .trim();
+            if model_name == default_model && model_entry_has_credentials(table) {
+                return extract_base_url_api_key_from_model_table(table);
+            }
+        }
+    }
+
+    // 3) 任意带凭据的 model 条目
+    for value in model_table.values() {
+        let Some(table) = value.as_table() else {
+            continue;
+        };
+        if model_entry_has_credentials(table) {
+            return extract_base_url_api_key_from_model_table(table);
+        }
+    }
+
+    (String::new(), String::new())
+}
+
+/// 从 `$GROK_HOME/config.toml` / `~/.grok/config.toml` 读取当前 default model 的 base_url + api_key。
+/// Local provider（`__local_config_toml__`）额度查询依赖此路径：用户可能直接改 toml 指向中转站。
+pub(crate) fn read_local_grok_base_url_and_key() -> Result<(String, String), String> {
+    let path = grok_config_toml_path()?;
+    let (status, doc, diagnostic) = read_grok_config_document(&path);
+    if status == "io-error" || status == "malformed" {
+        return Err(diagnostic.unwrap_or_else(|| {
+            format!("Failed to read Grok config.toml ({status})")
+        }));
+    }
+    if status == "missing" {
+        return Ok((String::new(), String::new()));
+    }
+    Ok(extract_base_url_api_key_from_grok_toml(&doc))
+}
+
 #[tauri::command]
 pub(crate) async fn vendor_get_current_grok_config() -> Result<GrokCurrentConfig, String> {
     let path = grok_config_toml_path()?;
@@ -635,6 +735,47 @@ mod tests {
         assert!(section.providers.is_empty());
         assert!(section.current.is_none());
         let _: HashMap<String, Value> = section.providers;
+    }
+
+    #[test]
+    fn extract_base_url_when_default_key_matches_table() {
+        // TOML 中带点的表键必须加引号，否则 grok-4.5 会被解析成嵌套路径
+        let doc: toml::Table = toml::from_str(
+            r#"
+[models]
+default = "grok-4.5"
+
+[model."grok-4.5"]
+model = "grok-4.5"
+base_url = "https://fufei.mossx.ai/v1"
+api_key = "sk-relay-test"
+"#,
+        )
+        .expect("parse");
+        let (base, key) = extract_base_url_api_key_from_grok_toml(&doc);
+        assert_eq!(base, "https://fufei.mossx.ai/v1");
+        assert_eq!(key, "sk-relay-test");
+    }
+
+    #[test]
+    fn extract_base_url_when_default_name_differs_from_table_key() {
+        // 用户真实形态：default=grok-4.5，表键为 model.grok
+        let doc: toml::Table = toml::from_str(
+            r#"
+[models]
+default = "grok-4.5"
+
+[model.grok]
+model = "grok-4.5"
+base_url = "https://fufei.mossx.ai/v1"
+api_key = "sk-relay-test"
+api_backend = "responses"
+"#,
+        )
+        .expect("parse");
+        let (base, key) = extract_base_url_api_key_from_grok_toml(&doc);
+        assert_eq!(base, "https://fufei.mossx.ai/v1");
+        assert_eq!(key, "sk-relay-test");
     }
 
     #[test]

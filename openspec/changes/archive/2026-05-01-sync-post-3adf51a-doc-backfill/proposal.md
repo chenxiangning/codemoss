@@ -6,7 +6,7 @@
 
 - 有代码提交但没有独立提案，例如 Windows user-local CLI install discovery、自定义 slash command 残留、tooltip 残留、空会话回退保护等。
 - 有提案但后续补丁扩展了真实边界，例如 Claude plugin skill discovery 后又支持 symlink skill directories，terminal shell path 后又补充示例文案。
-- 主 `openspec/specs/**` 与 `.trellis/spec/**` 尚未完全反映最新代码事实，后续 AI 容易按旧 contract 回退。
+- 主 `openspec/specs/**` 与 `dev-guidelines/**` 尚未完全反映最新代码事实，后续 AI 容易按旧 contract 回退。
 
 本 change 只做文档与规范回写，确保从该基准 commit 到当前 HEAD 的行为变更都能追溯到 OpenSpec capability 或 Trellis code-spec。
 
@@ -17,7 +17,7 @@
 - 建立 `3adf51a..HEAD` 的功能变更索引，明确哪些提交已经由既有 change 覆盖，哪些需要补充 delta。
 - 为缺失或不完整的行为契约补充 OpenSpec delta specs，并同步必要的主 specs。
 - 更新项目快照，让 `openspec/project.md` 反映当前 active changes、capability 数量和最新同步事实。
-- 更新 `.trellis/spec/**` 中与最新代码事实相关的 executable contract，尤其是 cross-layer、quality gate、skill discovery、terminal shell 和 conversation lifecycle。
+- 更新 `dev-guidelines/**` 中与最新代码事实相关的 executable contract，尤其是 cross-layer、quality gate、skill discovery、terminal shell 和 conversation lifecycle。
 
 ### 边界
 
@@ -124,6 +124,6 @@
   - `openspec/specs/**`
   - `openspec/project.md`
 - Trellis:
-  - `.trellis/spec/**`
+  - `dev-guidelines/**`
 - Runtime:
   - 无代码影响。

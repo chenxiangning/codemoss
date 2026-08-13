@@ -105,6 +105,9 @@ jobs:
         run: npm ci
       - name: Runtime contracts
         run: npm run check:runtime-contracts
+      - name: AppShell structure governance
+        # T5.6：显式步骤（check:runtime-contracts 已含 governance；保留可读性）
+        run: npm run check:app-shell:governance
       - name: Messages boundaries
         run: npm run check:messages-boundaries
       - name: Engine capability matrix

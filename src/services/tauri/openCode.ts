@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { traceStartupCommand, type StartupWorkspaceScope } from "../../features/startup-orchestration/utils/startupTrace";
+import { createAsyncResultCache } from "../asyncResultCache";
 
 function workspaceScope(workspaceId: string): StartupWorkspaceScope {
   return { workspaceId };
@@ -32,6 +33,40 @@ async function withInvokeTimeout<T>(
   }
 }
 
+export type OpenCodeSessionListEntry = {
+  sessionId: string;
+  title: string;
+  updatedLabel: string;
+  updatedAt?: number | null;
+};
+
+/** Soft TTL so focus-refresh / second full-catalog does not re-spawn OpenCode CLI. */
+export const OPENCODE_SESSION_LIST_CACHE_TTL_MS = 60_000;
+
+type OpenCodeSessionListLoadOutcome = {
+  entries: OpenCodeSessionListEntry[];
+  /** Timeout empties must not populate the TTL cache. */
+  cacheable: boolean;
+};
+
+const openCodeSessionListOutcomeCache =
+  createAsyncResultCache<OpenCodeSessionListLoadOutcome>({
+    ttlMs: OPENCODE_SESSION_LIST_CACHE_TTL_MS,
+  });
+
+export function invalidateOpenCodeSessionListCache(workspaceId?: string): void {
+  if (workspaceId && workspaceId.trim()) {
+    openCodeSessionListOutcomeCache.invalidate(workspaceId.trim());
+    return;
+  }
+  openCodeSessionListOutcomeCache.clear();
+}
+
+/** @internal */
+export function resetOpenCodeSessionListCacheForTests(): void {
+  openCodeSessionListOutcomeCache.clear();
+}
+
 /**
  * Expected OpenCode CLI unavailability for discovery / catalog prewarm.
  * Missing / disabled / unsafe CLI must resolve as empty data — not as a
@@ -58,45 +93,74 @@ export type GetOpenCodeSessionListOptions = {
    * full wall-clock in command cost rank.
    */
   timeoutMs?: number;
+  /** Skip TTL hit (still joins in-flight). */
+  bypassCache?: boolean;
 };
 
 export async function getOpenCodeSessionList(
   workspaceId: string,
   options?: GetOpenCodeSessionListOptions,
 ) {
-  return traceStartupInvoke(
-    "opencode_session_list",
-    workspaceScope(workspaceId),
+  const id = workspaceId.trim();
+  if (!id) {
+    return [] as OpenCodeSessionListEntry[];
+  }
+
+  // Cache hits skip startup command trace so command-cost rank stays honest.
+  if (!options?.bypassCache) {
+    const cached = openCodeSessionListOutcomeCache.get(id);
+    if (cached?.cacheable) {
+      return cached.entries;
+    }
+  }
+
+  const outcome = await openCodeSessionListOutcomeCache.getOrLoad(
+    id,
     async () => {
       try {
-        const invokePromise = invoke<
-          Array<{
-            sessionId: string;
-            title: string;
-            updatedLabel: string;
-            updatedAt?: number | null;
-          }>
-        >("opencode_session_list", { workspaceId });
-        if (
-          typeof options?.timeoutMs === "number" &&
-          Number.isFinite(options.timeoutMs) &&
-          options.timeoutMs > 0
-        ) {
-          const budgeted = await withInvokeTimeout(
-            invokePromise,
-            options.timeoutMs,
-          );
-          return budgeted ?? [];
+        const entries = await traceStartupInvoke(
+          "opencode_session_list",
+          workspaceScope(id),
+          async (): Promise<OpenCodeSessionListEntry[] | null> => {
+            const invokePromise = invoke<OpenCodeSessionListEntry[]>(
+              "opencode_session_list",
+              { workspaceId: id },
+            );
+            if (
+              typeof options?.timeoutMs === "number" &&
+              Number.isFinite(options.timeoutMs) &&
+              options.timeoutMs > 0
+            ) {
+              return withInvokeTimeout(invokePromise, options.timeoutMs);
+            }
+            return invokePromise;
+          },
+        );
+        if (entries === null) {
+          return {
+            entries: [] as OpenCodeSessionListEntry[],
+            cacheable: false,
+          };
         }
-        return await invokePromise;
+        return { entries, cacheable: true };
       } catch (error) {
         if (isOpenCodeCliUnavailableError(error)) {
-          return [];
+          return {
+            entries: [] as OpenCodeSessionListEntry[],
+            cacheable: true,
+          };
         }
         throw error;
       }
     },
+    {
+      bypassCache: options?.bypassCache,
+      // Only persist successful CLI outcomes (including authoritative empty).
+      cacheResult: (value) => value.cacheable,
+    },
   );
+
+  return outcome.entries;
 }
 
 export async function getOpenCodeStats(workspaceId: string, days?: number | null) {

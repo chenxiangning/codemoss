@@ -198,7 +198,7 @@ Index use can be disabled provider-by-provider. Bounded hydration should remain 
   - `SearchEvidenceBuffer` class：append-only，`push / all / last / clear / size`
   - 工厂函数：`createSearchEvidenceBuffer / recordSearchEvidence / takeLastEvidence`
   - 工具：`sumProviderCandidates / providerIdToKind`
-  - 文档化：metrics **必须 content-safe**（与 `.trellis/spec/frontend/quality-guidelines.md` "search performance metrics are bounded and content-safe" 规则一致）
+  - 文档化：metrics **必须 content-safe**（与 `dev-guidelines/frontend/quality-guidelines.md` "search performance metrics are bounded and content-safe" 规则一致）
 - 新增 `src/features/search/perf/evidence.test.ts` — 7 个测试覆盖 buffer 行为、sum 工具、provider id 映射
 - 新增 `src/features/search/perf/evidence.fixture.test.ts` — **representative fixture**：
   - 复用 `SEARCH_PERF_BASELINE_GLOBAL`（8 workspaces × 1500 files），跑 `computeUnifiedSearchResults` 收集 evidence

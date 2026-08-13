@@ -1,6 +1,0 @@
-{"file": ".trellis/workflow.md", "reason": "Project workflow and conventions"}
-{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend development guide"}
-{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "Git header component、accessibility、i18n 与 CSS contract"}
-{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "focused regression test 与最小变更 gate"}
-{"file": ".trellis/spec/frontend/multi-repository-git-commit-workspace.md", "reason": "multi-repository status 与 commit workspace contract"}
-{"file": "openspec/changes/restore-multi-repository-status-refresh/design.md", "reason": "已确认的 aggregate refresh design"}

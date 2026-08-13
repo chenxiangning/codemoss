@@ -243,7 +243,9 @@ export function ChatInputBoxFooter({
   onCodexReviewQuickStart,
   onForkQuickStart,
   memoryReferenceMode,
+  memoryReferenceDismissed,
   onSetMemoryReferenceMode,
+  onRestoreMemoryReference,
   onSubmit,
   onStop,
   onModeSelect,
@@ -309,7 +311,9 @@ export function ChatInputBoxFooter({
   onCodexReviewQuickStart?: () => void;
   onForkQuickStart?: () => void;
   memoryReferenceMode?: MemoryReferenceMode;
+  memoryReferenceDismissed?: boolean;
   onSetMemoryReferenceMode?: (mode: MemoryReferenceMode) => void;
+  onRestoreMemoryReference?: () => void;
   onSubmit: () => void;
   onStop?: () => void;
   onModeSelect?: (mode: PermissionMode) => void;
@@ -549,7 +553,9 @@ export function ChatInputBoxFooter({
         onCodexReviewQuickStart={onCodexReviewQuickStart}
         onForkQuickStart={onForkQuickStart}
         memoryReferenceMode={memoryReferenceMode}
+        memoryReferenceDismissed={memoryReferenceDismissed}
         onSetMemoryReferenceMode={onSetMemoryReferenceMode}
+        onRestoreMemoryReference={onRestoreMemoryReference}
         onSubmit={onSubmit}
         onStop={onStop}
         onModeSelect={onModeSelect}

@@ -22,7 +22,7 @@ The message pipeline already separates latest live rows from deferred parent tim
 
 1. Add local equality guards around `Set`-backed expanded state updates.
    - Alternative: central reducer for all `Messages` UI state. Rejected because the current failure is localized and a reducer rewrite has higher regression risk.
-   - Rationale: `.trellis/spec/frontend/quality-guidelines.md` already requires `Set` / `Map` cleanup effects to return the previous reference when content is unchanged.
+   - Rationale: `dev-guidelines/frontend/quality-guidelines.md` already requires `Set` / `Map` cleanup effects to return the previous reference when content is unchanged.
 
 2. Keep existing refs and live/deferred split intact.
    - Alternative: remove latest reasoning auto-expand. Rejected because that changes visible streaming behavior and weakens the existing live conversation UX.

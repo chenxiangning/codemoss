@@ -1,4 +1,0 @@
-{"file": ".trellis/workflow.md", "reason": "Project workflow and conventions"}
-{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend development guide"}
-{"file": ".trellis/spec/frontend/directory-structure.md", "reason": "Preserve test co-location while reducing Explorer clutter"}
-{"file": ".trellis/spec/guides/project-instruction-layering-guide.md", "reason": "Workspace editor configuration boundary"}

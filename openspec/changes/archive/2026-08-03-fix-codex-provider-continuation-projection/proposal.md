@@ -75,7 +75,7 @@ capability-driven transport contract。
 - Frontend：`src/utils/contextProtocol.ts`、`src/features/messages/**`、
   `src/features/layout/hooks/**`、`src/features/app/hooks/useSidebarMenus.test.tsx`
   及相关 focused tests。
-- Contracts：`.trellis/spec/backend/native-provider-continuation-contract.md` 与本 change delta。
+- Contracts：`dev-guidelines/backend/native-provider-continuation-contract.md` 与本 change delta。
 - IPC shape 与依赖不变；不新增数据库 schema。
 
 ## 验收标准

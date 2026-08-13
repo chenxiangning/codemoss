@@ -23,7 +23,6 @@ const GLOBAL_RUNTIME_NOTICE_DOCK_VISIBILITY_KEY = "globalRuntimeNoticeDock.visib
 // 慢速兜底：主通道是 Rust 差量 emit 的 runtime-pool-changed 事件；
 // 60s 门控轮询只用于防事件丢失后的漂移收敛。
 const GLOBAL_RUNTIME_NOTICE_RUNTIME_BACKSTOP_MS = 60_000;
-const STARTUP_COMMAND_SUCCESS_DEDUPE_BUCKET_MS = 30000;
 let lastMirroredStartupTraceSequence = 0;
 
 export type GlobalRuntimeNoticeDockVisibility = "minimized" | "expanded";
@@ -169,16 +168,6 @@ function resolveStartupTaskNoticePayload(
   lifecycleState: Extract<StartupTraceEvent, { type: "task" }>["lifecycleState"],
 ): StartupNoticePayload | null {
   switch (lifecycleState) {
-    case "started":
-      return {
-        severity: "info",
-        messageKey: "runtimeNotice.startup.taskStarted",
-      };
-    case "completed":
-      return {
-        severity: "info",
-        messageKey: "runtimeNotice.startup.taskCompleted",
-      };
     case "failed":
       return {
         severity: "error",
@@ -194,63 +183,21 @@ function resolveStartupTaskNoticePayload(
         severity: "warning",
         messageKey: "runtimeNotice.startup.taskDegraded",
       };
-    case "cancelled":
-      return {
-        severity: "warning",
-        messageKey: "runtimeNotice.startup.taskCancelled",
-      };
-    case "queued":
+    default:
       return null;
   }
 }
 
 function resolveStartupCommandNoticePayload(
   status: Extract<StartupTraceEvent, { type: "command" }>["status"],
-): StartupNoticePayload {
-  return status === "failed"
-    ? {
-        severity: "error",
-        messageKey: "runtimeNotice.startup.commandFailed",
-      }
-    : {
-        severity: "info",
-        messageKey: "runtimeNotice.startup.commandCompleted",
-      };
-}
-
-function resolveStartupMilestoneNoticePayload(
-  milestone: Extract<StartupTraceEvent, { type: "milestone" }>["milestone"],
 ): StartupNoticePayload | null {
-  switch (milestone) {
-    case "shell-ready":
-      return {
-        severity: "info",
-        messageKey: "runtimeNotice.startup.shellReady",
-      };
-    case "input-ready":
-      return {
-        severity: "info",
-        messageKey: "runtimeNotice.startup.inputReady",
-      };
-    case "active-workspace-ready":
-      return {
-        severity: "info",
-        messageKey: "runtimeNotice.startup.activeWorkspaceReady",
-      };
-    case "startup-gate-ready":
-      // Internal Windows click-gate signal only — no user-facing notice.
-      return null;
+  if (status !== "failed") {
+    return null;
   }
-}
-
-function resolveStartupCommandDedupeKey(event: Extract<StartupTraceEvent, { type: "command" }>) {
-  if (event.status === "completed") {
-    const workspaceKey =
-      typeof event.workspaceScope === "object" ? event.workspaceScope.workspaceId : "global";
-    const bucket = Math.floor(Date.now() / STARTUP_COMMAND_SUCCESS_DEDUPE_BUCKET_MS);
-    return `startup:command:${event.commandLabel}:completed:${workspaceKey}:${bucket}`;
-  }
-  return `startup:command:${event.commandLabel}:${event.status}:${event.sequence}`;
+  return {
+    severity: "error",
+    messageKey: "runtimeNotice.startup.commandFailed",
+  };
 }
 
 function pushStartupTraceRuntimeNotice(
@@ -280,6 +227,9 @@ function pushStartupTraceRuntimeNotice(
 
   if (event.type === "command") {
     const noticePayload = resolveStartupCommandNoticePayload(event.status);
+    if (!noticePayload) {
+      return;
+    }
     pushGlobalRuntimeNotice({
       severity: noticePayload.severity,
       category: "diagnostic",
@@ -289,25 +239,9 @@ function pushStartupTraceRuntimeNotice(
         workspace: resolveStartupWorkspaceLabel(event.workspaceScope, resolveWorkspaceLabelById),
         durationMs: Math.round(event.durationMs),
       },
-      dedupeKey: resolveStartupCommandDedupeKey(event),
-      mergeStrategy: event.status === "completed" ? "buffer" : "last",
+      dedupeKey: `startup:command:${event.commandLabel}:failed:${event.sequence}`,
     });
-    return;
   }
-
-  const noticePayload = resolveStartupMilestoneNoticePayload(event.milestone);
-  if (!noticePayload) {
-    return;
-  }
-  pushGlobalRuntimeNotice({
-    severity: noticePayload.severity,
-    category: "bootstrap",
-    messageKey: noticePayload.messageKey,
-    messageParams: {
-      milestone: event.milestone,
-    },
-    dedupeKey: `startup:milestone:${event.milestone}:${event.sequence}`,
-  });
 }
 
 function resetMirroredStartupTraceSequenceIfTraceWasReset(
@@ -464,7 +398,7 @@ export function useGlobalRuntimeNoticeDock(workspaces: readonly WorkspaceInfo[] 
   }, []);
 
   useEffect(() => {
-    const mirrorStartupTrace = () => {
+    const mirrorAbnormalStartupEvents = () => {
       const snapshot = getStartupTraceSnapshot();
       resetMirroredStartupTraceSequenceIfTraceWasReset(snapshot.events);
       for (const event of snapshot.events) {
@@ -479,8 +413,8 @@ export function useGlobalRuntimeNoticeDock(workspaces: readonly WorkspaceInfo[] 
       }
     };
 
-    mirrorStartupTrace();
-    return subscribeStartupTrace(mirrorStartupTrace);
+    mirrorAbnormalStartupEvents();
+    return subscribeStartupTrace(mirrorAbnormalStartupEvents);
   }, []);
 
   useEffect(() => {

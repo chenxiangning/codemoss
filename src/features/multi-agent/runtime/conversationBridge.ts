@@ -9,6 +9,10 @@ import {
   multiAgentPendingUserItemId,
   multiAgentUserItemId,
 } from "../utils/canvasItems";
+import {
+  collabDisplayTitle,
+  stripMainCanvasContextBlock,
+} from "./mainCanvasContextInjection";
 
 export const MULTI_AGENT_CONVERSATION_ITEM_EVENT =
   "ccgui:multi-agent-conversation-item";
@@ -143,7 +147,7 @@ export function formatTerminalOrchMarkdown(
   const last = stages[stages.length - 1]?.settledAt;
   const dur = formatDurationMs(first, last) ?? "—";
   const title =
-    projection.requestText.trim().slice(0, 42) ||
+    collabDisplayTitle(projection, 42) ||
     maT("multiAgent.card.fallbackTitle", { defaultValue: "协作编排" });
   const mark =
     projection.status === "succeeded"
@@ -302,9 +306,11 @@ export function emitReplanConversationItems(
 ): void {
   if (typeof window === "undefined") return;
   const note = replanNote?.trim() ?? "";
-  const excerptBase = requestText.trim().slice(0, 160);
+  // 展示用：去掉主幕 digest 注入，避免把 model 全文泄漏到主幕
+  const displayTask = stripMainCanvasContextBlock(requestText);
+  const excerptBase = displayTask.slice(0, 160);
   const excerpt =
-    excerptBase + (requestText.trim().length > 160 ? "…" : "");
+    excerptBase + (displayTask.length > 160 ? "…" : "");
   emitItem(workspaceId, threadId, {
     id: `agent:${runId}:replan-user`,
     kind: "message",

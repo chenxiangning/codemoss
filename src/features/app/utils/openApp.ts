@@ -2,6 +2,39 @@ import type { AppSettings, OpenAppTarget } from "../../../types";
 import { DEFAULT_OPEN_APP_ID } from "../constants";
 import { getClientStoreSync } from "../../../services/clientStorage";
 import { openWorkspaceIn, revealInFileManager } from "../../../services/tauri";
+import {
+  isAbsoluteFsPath,
+  joinWorkspaceAbsolutePath,
+} from "../../../utils/workspacePaths";
+
+/**
+ * Resolve which path to hand to an open-with target.
+ * - file manager (finder): always workspace / folder context
+ * - app / command: prefer the currently open file when available
+ */
+export function resolveOpenAppPath(
+  target: Pick<OpenAppTarget, "kind">,
+  options: {
+    workspacePath: string;
+    activeFilePath?: string | null;
+  },
+): string {
+  const workspacePath = options.workspacePath.trim();
+  if (target.kind === "finder") {
+    return workspacePath;
+  }
+  const active = options.activeFilePath?.trim() ?? "";
+  if (!active) {
+    return workspacePath;
+  }
+  if (isAbsoluteFsPath(active)) {
+    return active;
+  }
+  if (!workspacePath) {
+    return active;
+  }
+  return joinWorkspaceAbsolutePath(workspacePath, active);
+}
 
 export async function openPathInTarget(
   path: string,

@@ -138,7 +138,7 @@ The proposal, design, tasks, delta spec, and this verification artifact were man
 ### 5. Knowledge Capture
 
 - [x] Updated OpenSpec proposal/design/spec/tasks/verification.
-- [x] Updated `.trellis/spec/frontend/quality-guidelines.md` and index.
+- [x] Updated `dev-guidelines/frontend/quality-guidelines.md` and index.
 - [x] Added executable regression coverage.
 - [ ] No `src/templates/markdown/spec/` tree exists in this repository, so template sync is not applicable.
 - [x] Code commit and mandatory Trellis session record completed before PR publication.

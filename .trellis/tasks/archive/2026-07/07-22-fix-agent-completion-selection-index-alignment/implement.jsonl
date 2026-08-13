@@ -1,5 +1,0 @@
-{"file": ".trellis/workflow.md", "reason": "Project workflow and conventions"}
-{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend development guide"}
-{"file": ".trellis/spec/frontend/hook-guidelines.md", "reason": "shared completion hook contract"}
-{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "frontend regression gate"}
-{"file": "openspec/changes/fix-agent-completion-selection-index-alignment/design.md", "reason": "approved implementation design"}

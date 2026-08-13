@@ -45,7 +45,7 @@ filesystem path segment，而 `safe_segment` 只拦截 `/` 与 `\`，未覆盖 W
     变体）；仍应用于 `artifact_id` 等裸 segment。
   - 增加 regression tests：带冒号 `session_id` 的 round-trip、目录名不含 `:`、
     legacy fallback 读取、`safe_segment` 加固矩阵。
-- `.trellis/spec/backend/native-provider-continuation-contract.md`：补充 artifact
+- `dev-guidelines/backend/native-provider-continuation-contract.md`：补充 artifact
   存储路径 key 与 legacy 兼容读取的 executable contract。
 - `openspec/changes/README.md`：登记本 change 的 active proposal 行。
 
@@ -88,7 +88,7 @@ filesystem path segment，而 `safe_segment` 只拦截 `/` 与 `\`，未覆盖 W
 ## Impact
 
 - Backend：`src-tauri/src/shared_context/artifact_store.rs`（唯一生产代码改动点）。
-- Contract：`.trellis/spec/backend/native-provider-continuation-contract.md` 与本
+- Contract：`dev-guidelines/backend/native-provider-continuation-contract.md` 与本
   change 的 delta spec。
 - Dependencies：无新增；IPC payload shape 不变；frontend 零改动。
 

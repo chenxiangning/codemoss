@@ -1,5 +1,0 @@
-{"file": ".trellis/workflow.md", "reason": "Project workflow and conventions"}
-{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend development guide"}
-{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "组件、样式、可访问性规范"}
-{"file": ".trellis/spec/backend/native-provider-continuation-contract.md", "reason": "Provider Continuation Canvas projection contract"}
-{"file": "src/features/shared-session/components/ProviderContinuationContextCard.tsx", "reason": "现有组件实现"}

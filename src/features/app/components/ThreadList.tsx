@@ -407,6 +407,8 @@ const ThreadRowItem = memo(function ThreadRowItem({
       tooltipSide="top" tooltipAlign="start" tooltipSideOffset={4}
       tooltipClassName="max-w-[400px] break-words" tooltipDisabled={isDeleteConfirmOpen}
       tooltipDelay={THREAD_ROW_TOOLTIP_DELAY_MS}
+      // Short titles that fully fit should not show the hover bubble.
+      tooltipOverflowSelector=".thread-name"
       type="button"
       className={rowClassName}
       style={indentStyle} aria-expanded={isSubagentParent ? !isSubagentParentCollapsed : undefined}

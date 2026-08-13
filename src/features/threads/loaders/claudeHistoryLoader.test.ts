@@ -1889,7 +1889,9 @@ describe("createClaudeHistoryLoader", () => {
     }
   });
 
-  it("hydrates claude pending askuserquestion into snapshot userInputQueue", async () => {
+  it("does not rehydrate trailing incomplete askuserquestion into interactive userInputQueue", async () => {
+    // Hang/skip without tool_result leaves Ask as last item. History reopen must not
+    // invent a zombie card (request_id cannot match a live waiter after reload).
     const loader = createClaudeHistoryLoader({
       workspaceId: "ws-claude-ask",
       workspacePath: "/tmp/ws-claude-ask",
@@ -1920,30 +1922,47 @@ describe("createClaudeHistoryLoader", () => {
 
     const snapshot = await loader.load("claude:session-ask-pending");
     expect(snapshot.engine).toBe("claude");
-    expect(snapshot.userInputQueue).toEqual([
-      {
-        workspace_id: "ws-claude-ask",
-        request_id: "tool-ask-pending-1",
-        params: {
-          thread_id: "claude:session-ask-pending",
-          turn_id: "",
-          item_id: "tool-ask-pending-1",
-          questions: [
-            {
-              id: "project-type",
-              header: "项目类型",
-              question: "请选择项目类型",
-              isOther: true,
-              isSecret: false,
-              options: [
-                { label: "Web应用", description: "前端应用" },
-                { label: "服务端", description: "后端服务" },
+    expect(snapshot.userInputQueue).toEqual([]);
+    const askItem = snapshot.items.find(
+      (item) => item.kind === "tool" && item.id === "tool-ask-pending-1",
+    );
+    expect(askItem).toMatchObject({
+      kind: "tool",
+      status: "failed",
+    });
+  });
+
+  it("does not rehydrate mcp__ccgui__AskUserQuestion into interactive userInputQueue", async () => {
+    const loader = createClaudeHistoryLoader({
+      workspaceId: "ws-claude-mcp-ask",
+      workspacePath: "/tmp/ws-claude-mcp-ask",
+      loadClaudeSession: vi.fn().mockResolvedValue({
+        messages: [
+          {
+            kind: "tool",
+            id: "toolu-mcp-1",
+            tool_name: "mcp__ccgui__AskUserQuestion",
+            tool_input: {
+              questions: [
+                {
+                  id: "q-0",
+                  header: "可选偏好",
+                  question: "是否启用实验功能 X？",
+                  multiSelect: false,
+                  options: [
+                    { label: "启用", description: "打开 X" },
+                    { label: "不启用", description: "保持默认" },
+                  ],
+                },
               ],
             },
-          ],
-        },
-      },
-    ]);
+          },
+        ],
+      }),
+    });
+
+    const snapshot = await loader.load("claude:session-mcp-ask");
+    expect(snapshot.userInputQueue).toEqual([]);
   });
 
   it("emits fallback warnings when workspace path is unavailable", async () => {

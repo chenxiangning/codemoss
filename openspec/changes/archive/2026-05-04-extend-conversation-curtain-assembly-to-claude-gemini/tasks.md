@@ -1,7 +1,7 @@
 ## 1. Spec and guideline alignment
 
 - [x] 1.1 Validate this OpenSpec change with `openspec validate extend-conversation-curtain-assembly-to-claude-gemini --strict`.
-- [x] 1.2 Review `.trellis/spec/frontend/*` and update conversation curtain / streaming profile guidance after implementation decisions are proven.
+- [x] 1.2 Review `dev-guidelines/frontend/*` and update conversation curtain / streaming profile guidance after implementation decisions are proven.
 
 ## 2. Shared normalization and assembler tests
 

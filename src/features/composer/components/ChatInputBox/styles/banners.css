@@ -31,6 +31,13 @@
 
 .composer-readiness-target-group {
   flex-wrap: nowrap;
+  flex: 0 0 auto;
+}
+
+/* activity 摘要勿抢水平空间，否则会把 ModeSelect 顶到右侧留下大空洞 */
+.composer-readiness-activity {
+  flex: 0 1 auto;
+  max-width: 40%;
 }
 
 .composer-readiness-model-select {

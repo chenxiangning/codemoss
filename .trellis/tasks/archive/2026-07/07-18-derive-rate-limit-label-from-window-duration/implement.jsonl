@@ -1,5 +1,0 @@
-{"file": ".trellis/workflow.md", "reason": "Project workflow and conventions"}
-{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend development guide"}
-{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "Usage UI component contract"}
-{"file": ".trellis/spec/frontend/type-safety.md", "reason": "RateLimitWindowInfo type contract"}
-{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "Shared label formatter reuse"}

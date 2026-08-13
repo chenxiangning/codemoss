@@ -20,6 +20,10 @@ import {
   isSubagentTool,
   resolveSubagentSessionThreadId,
 } from "../../subagent-ui";
+import {
+  expandHiddenSharedBindingIds,
+  lookupSharedOwnerByNativeParent,
+} from "../../shared-session/runtime/sharedSessionSummaries";
 
 export type WorkspaceGroupSection = {
   id: string | null;
@@ -410,26 +414,21 @@ export function buildClaudeLiveSubagentRows(
   });
 
   // Shared 父会话：把仍挂在 hidden native owner 下的子线程改挂到 shared:
+  // 与 list remap 共用 lookup（raw / engine: 变体）。
   if (parent.threadKind === "shared" || activeThreadId.startsWith("shared:")) {
-    const nativeOwners = new Set<string>();
-    (parent.nativeThreadIds ?? []).forEach((raw) => {
-      const id = raw.trim();
-      if (!id) return;
-      nativeOwners.add(id);
-      if (!id.includes(":")) {
-        nativeOwners.add(`grok:${id}`);
-        nativeOwners.add(`codex:${id}`);
-        nativeOwners.add(`claude:${id}`);
-        nativeOwners.add(`kimi:${id}`);
+    const nativeToShared = new Map<string, string>();
+    expandHiddenSharedBindingIds(parent.nativeThreadIds ?? []).forEach((nativeId) => {
+      if (!nativeToShared.has(nativeId)) {
+        nativeToShared.set(nativeId, activeThreadId);
       }
     });
-    if (nativeOwners.size > 0) {
+    if (nativeToShared.size > 0) {
       threads.forEach((thread) => {
         const currentParent = thread.parentThreadId?.trim() || "";
         if (!currentParent || currentParent === activeThreadId) {
           return;
         }
-        if (!nativeOwners.has(currentParent)) {
+        if (lookupSharedOwnerByNativeParent(currentParent, nativeToShared) !== activeThreadId) {
           return;
         }
         if (linkedChildren.some((row) => row.id === thread.id)) {

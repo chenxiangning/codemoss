@@ -405,6 +405,17 @@ impl ClaudeSession {
             format!("ask-{:016x}", hasher.finish())
         };
 
+        // Already settled (user answered / skipped): emit completed lifecycle only.
+        // Do not re-register pending or re-enter kill+resume wait.
+        if self.is_user_input_request_settled(&request_id) {
+            return Some(EngineEvent::RequestUserInput {
+                workspace_id: self.workspace_id.clone(),
+                request_id: Value::String(request_id),
+                questions: Value::Array(Vec::new()),
+                completed: true,
+            });
+        }
+
         if let Ok(mut pending) = self.pending_user_inputs.lock() {
             pending.insert(request_id.clone(), turn_id.to_string());
         }
@@ -415,6 +426,41 @@ impl ClaudeSession {
             questions: Value::Array(questions),
             completed: false,
         })
+    }
+
+    const SETTLED_USER_INPUT_REQUEST_ID_CAP: usize = 2048;
+
+    fn is_user_input_request_settled(&self, request_id_key: &str) -> bool {
+        self.settled_user_input_request_ids
+            .lock()
+            .ok()
+            .map(|set| set.contains(request_id_key))
+            .unwrap_or(false)
+    }
+
+    fn mark_user_input_request_settled(&self, request_id_key: &str) {
+        if request_id_key.is_empty() {
+            return;
+        }
+        if let Ok(mut set) = self.settled_user_input_request_ids.lock() {
+            if set.len() >= Self::SETTLED_USER_INPUT_REQUEST_ID_CAP && !set.contains(request_id_key)
+            {
+                set.clear();
+            }
+            set.insert(request_id_key.to_string());
+        }
+    }
+
+    fn emit_user_input_request_completed(&self, turn_id: &str, request_id_key: &str) {
+        self.emit_turn_event(
+            turn_id,
+            EngineEvent::RequestUserInput {
+                workspace_id: self.workspace_id.clone(),
+                request_id: Value::String(request_id_key.to_string()),
+                questions: Value::Array(Vec::new()),
+                completed: true,
+            },
+        );
     }
 
     fn normalize_request_id_key(request_id: &Value) -> Option<String> {
@@ -438,11 +484,21 @@ impl ClaudeSession {
             Some(value) => value,
             None => return false,
         };
-        self.pending_user_inputs
+        let in_pending = self
+            .pending_user_inputs
             .lock()
             .ok()
             .map(|pending| pending.contains_key(&request_id_key))
-            .unwrap_or(false)
+            .unwrap_or(false);
+        if in_pending {
+            return true;
+        }
+        let waiters = match self.mcp_answer_waiters.lock() {
+            Ok(value) => value,
+            Err(_) => return false,
+        };
+        // Exact waiter key, or sole outstanding MCP ask (identity recovery for skip/submit).
+        waiters.contains_key(&request_id_key) || waiters.len() == 1
     }
 
     #[cfg(test)]
@@ -821,36 +877,62 @@ impl ClaudeSession {
         // Strict request_id matching prevents cross-turn answer routing
         // when multiple AskUserQuestion prompts are pending.
         let request_id_key = normalized_request_id.unwrap_or_default();
-        let turn_id = {
+        let answer_text = format_ask_user_answer(&result);
+
+        // Always drop pending for this id if present (MCP or native).
+        let pending_turn_id = {
             let mut pending = self
                 .pending_user_inputs
                 .lock()
                 .map_err(|_| "pending_user_inputs lock poisoned".to_string())?;
-            pending.remove(&request_id_key).ok_or_else(|| {
-                format!("unknown request_id for AskUserQuestion: {}", request_id_key)
-            })?
+            pending.remove(&request_id_key)
         };
 
-        // Format the answer and store it for the target turn only.
-        let answer_text = format_ask_user_answer(&result);
+        // MCP-origin (B2): prefer exact waiter match first.
+        // If FE request_id drifts from the waiter key (history rehydrate / race),
+        // fall back to the sole MCP waiter so skip/submit never leave the CLI hung.
+        let mcp_delivery = self
+            .take_mcp_answer_waiter(&request_id_key)
+            .map(|sender| (request_id_key.clone(), sender))
+            .or_else(|| self.take_sole_mcp_answer_waiter());
 
-        // MCP-origin request (B2): deliver the answer by resolving the waiting
-        // MCP tool call. No kill/`--resume` — the CLI turn continues natively
-        // with the tool_result in hand.
-        if let Some(sender) = self.take_mcp_answer_waiter(&request_id_key) {
+        if let Some((delivered_request_id, sender)) = mcp_delivery {
+            let turn_id = pending_turn_id.unwrap_or_else(|| {
+                self.active_turn_id()
+                    .map(|id| id.as_str().to_string())
+                    .unwrap_or_default()
+            });
             let (answer_count, non_empty_answer_count, has_skipped_questions) =
                 Self::summarize_user_input_response(&result);
             log::info!(
-                "Claude engine: AskUserQuestion (MCP) response accepted (request_id={}, turn_id={}, answer_count={}, non_empty_answer_count={}, has_skipped_questions={})",
+                "Claude engine: AskUserQuestion (MCP) response accepted (request_id={}, delivered_request_id={}, turn_id={}, answer_count={}, non_empty_answer_count={}, has_skipped_questions={}, orphan_recovered={})",
                 request_id_key,
+                delivered_request_id,
                 turn_id,
                 answer_count,
                 non_empty_answer_count,
-                has_skipped_questions
+                has_skipped_questions,
+                delivered_request_id != request_id_key
             );
             let _ = sender.send(answer_text);
+            self.mark_user_input_request_settled(&request_id_key);
+            self.mark_user_input_request_settled(&delivered_request_id);
+            if !turn_id.is_empty() {
+                self.emit_user_input_request_completed(&turn_id, &delivered_request_id);
+                if delivered_request_id != request_id_key {
+                    self.emit_user_input_request_completed(&turn_id, &request_id_key);
+                }
+            }
             return Ok(());
         }
+
+        let Some(turn_id) = pending_turn_id else {
+            return Err(format!(
+                "unknown request_id for AskUserQuestion: {}",
+                request_id_key
+            ));
+        };
+
         let (answer_count, non_empty_answer_count, has_skipped_questions) =
             Self::summarize_user_input_response(&result);
         log::info!(
@@ -865,11 +947,13 @@ impl ClaudeSession {
             map.insert(turn_id.clone(), answer_text);
         }
         if let Ok(mut map) = self.user_input_request_id_by_turn.lock() {
-            map.insert(turn_id.clone(), request_id_key);
+            map.insert(turn_id.clone(), request_id_key.clone());
         }
 
         // Signal only the matching turn's stdout loop to resume.
         self.get_or_create_user_input_notify(&turn_id).notify_one();
+        self.mark_user_input_request_settled(&request_id_key);
+        self.emit_user_input_request_completed(&turn_id, &request_id_key);
 
         Ok(())
     }
@@ -913,13 +997,30 @@ impl ClaudeSession {
 
         // Pull the request_id back out of the event so we can register the waiter
         // under the same key the frontend answer will arrive with.
-        let request_id = match &event {
-            EngineEvent::RequestUserInput { request_id, .. } => request_id
-                .as_str()
-                .map(ToOwned::to_owned)
-                .ok_or_else(|| "RequestUserInput request_id was not a string".to_string())?,
+        let (request_id, already_settled) = match &event {
+            EngineEvent::RequestUserInput {
+                request_id,
+                completed,
+                ..
+            } => {
+                let id = request_id
+                    .as_str()
+                    .map(ToOwned::to_owned)
+                    .ok_or_else(|| "RequestUserInput request_id was not a string".to_string())?;
+                (id, *completed)
+            }
             _ => return Err("expected RequestUserInput event".to_string()),
         };
+
+        // Settled identity re-entry: emit completed lifecycle only and return a
+        // continue prompt so the CLI MCP call cannot hang forever without a waiter.
+        if already_settled {
+            self.emit_turn_event(turn_id, event);
+            return Ok(
+                "The user already answered or skipped this AskUserQuestion. Do not ask the same question again; continue the original task using the available context and reasonable assumptions."
+                    .to_string(),
+            );
+        }
 
         let (tx, rx) = tokio::sync::oneshot::channel::<String>();
         if let Ok(mut waiters) = self.mcp_answer_waiters.lock() {
@@ -949,17 +1050,10 @@ impl ClaudeSession {
                 if let Ok(mut pending) = self.pending_user_inputs.lock() {
                     pending.remove(&request_id);
                 }
+                self.mark_user_input_request_settled(&request_id);
                 // Tell the frontend to dismiss the now-dead dialog (completed=true
                 // is the removal signal). Without this the card lingers forever.
-                self.emit_turn_event(
-                    turn_id,
-                    EngineEvent::RequestUserInput {
-                        workspace_id: self.workspace_id.clone(),
-                        request_id: Value::String(request_id.clone()),
-                        questions: Value::Array(Vec::new()),
-                        completed: true,
-                    },
-                );
+                self.emit_user_input_request_completed(turn_id, &request_id);
                 return Err(format!(
                     "AskUserQuestion timed out after {} minutes",
                     ASK_USER_QUESTION_TIMEOUT_SECS / 60
@@ -980,6 +1074,21 @@ impl ClaudeSession {
             .lock()
             .ok()
             .and_then(|mut waiters| waiters.remove(request_id))
+    }
+
+    /// Recovery: when FE request_id no longer matches the waiter key but there is
+    /// exactly one outstanding MCP AskUserQuestion, deliver to that waiter so
+    /// skip/submit cannot leave `mcp__ccgui__AskUserQuestion` spinning forever.
+    fn take_sole_mcp_answer_waiter(
+        &self,
+    ) -> Option<(String, tokio::sync::oneshot::Sender<String>)> {
+        let mut waiters = self.mcp_answer_waiters.lock().ok()?;
+        if waiters.len() != 1 {
+            return None;
+        }
+        let key = waiters.keys().next()?.clone();
+        let sender = waiters.remove(&key)?;
+        Some((key, sender))
     }
 
     fn clear_mcp_answer_waiter(&self, request_id: &str) {

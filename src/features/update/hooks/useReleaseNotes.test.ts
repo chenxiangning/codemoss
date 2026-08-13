@@ -1,158 +1,208 @@
-import { describe, expect, it } from "vitest";
+// @vitest-environment jsdom
+import { act, renderHook } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { getVersion } from "@tauri-apps/api/app";
+import {
+  getClientStoreSync,
+  writeClientStoreValue,
+} from "../../../services/clientStorage";
+import type { ReleaseNotesEntry } from "../utils/changelogParser";
+
+vi.mock("@tauri-apps/api/app", () => ({
+  getVersion: vi.fn(),
+}));
+
+vi.mock("../../../services/clientStorage", () => ({
+  getClientStoreSync: vi.fn(),
+  writeClientStoreValue: vi.fn(),
+}));
+
+vi.mock("../utils/releaseNotesCatalog", () => ({
+  catalogToStubEntries: vi.fn((items: Array<{ version: string; tagName: string; id: string; title: string; dateLabel: string }>) =>
+    items.map((item) => ({
+      ...item,
+      englishBody: "",
+      chineseBody: "",
+    })),
+  ),
+  loadReleaseNotesIndex: vi.fn(),
+  loadReleaseNotesEntry: vi.fn(),
+}));
+
 import {
   findReleaseIndex,
   normalizeReleaseVersion,
   parseChangelogEntries,
-  type ReleaseNotesEntry,
+  RELEASE_NOTES_AUTO_OPEN_DELAY_MS,
+  useReleaseNotes,
 } from "./useReleaseNotes";
+import {
+  loadReleaseNotesEntry,
+  loadReleaseNotesIndex,
+} from "../utils/releaseNotesCatalog";
 
-const changelogSampleH5EnglishFirst = `
-# Changelog
+const getVersionMock = vi.mocked(getVersion);
+const getClientStoreSyncMock = vi.mocked(getClientStoreSync);
+const writeClientStoreValueMock = vi.mocked(writeClientStoreValue);
+const loadIndexMock = vi.mocked(loadReleaseNotesIndex);
+const loadEntryMock = vi.mocked(loadReleaseNotesEntry);
 
----
+const sampleEntry: ReleaseNotesEntry = {
+  id: "0.8.8",
+  tagName: "v0.8.8",
+  version: "0.8.8",
+  title: "v0.8.8",
+  dateLabel: "2026/08/12",
+  englishBody: "English body",
+  chineseBody: "中文正文",
+};
 
-##### **2026年3月3日（v0.2.2）**
+function mockCatalogReady() {
+  loadIndexMock.mockResolvedValue({
+    generatedAt: "2026-08-12T00:00:00.000Z",
+    source: "CHANGELOG.md",
+    sourceSha256: "test",
+    entryCount: 1,
+    entries: [
+      {
+        id: sampleEntry.id,
+        tagName: sampleEntry.tagName,
+        version: sampleEntry.version,
+        title: sampleEntry.title,
+        dateLabel: sampleEntry.dateLabel,
+        file: "entries/0.8.8.json",
+      },
+    ],
+  });
+  loadEntryMock.mockResolvedValue(sampleEntry);
+}
 
-English:
-
-✨ Features
-- Add release notes modal
-
-中文：
-
-✨ Features
-- 新增版本记录弹窗
-
----
-
-##### **2026年3月2日（v0.2.1）**
-
-English:
-- Previous release
-
-中文：
-- 上一个版本
-`;
-
-/** Matches current repo CHANGELOG: ### headings, 中文 before English. */
-const changelogSampleH3ChineseFirst = `
-# Changelog
-
----
-
-### **2026年8月4日（v0.7.16）**
-
-中文：
-
-✨ Features
-- Git Graph 工作台更密
-
-English:
-
-✨ Features
-- Denser Git Graph workbench
-
----
-
-### **2026年8月3日（v0.7.15）**
-
-中文：
-- 上一版中文
-
-English:
-- Previous English
-`;
-
-describe("normalizeReleaseVersion", () => {
-  it("strips leading v prefix and trims whitespace", () => {
-    expect(normalizeReleaseVersion(" v0.2.4 ")).toBe("0.2.4");
-    expect(normalizeReleaseVersion("V1.0.0")).toBe("1.0.0");
+describe("useReleaseNotes public re-exports", () => {
+  it("exposes normalizeReleaseVersion", () => {
+    expect(normalizeReleaseVersion("v1.2.3")).toBe("1.2.3");
   });
 
-  it("returns null for empty values", () => {
-    expect(normalizeReleaseVersion("")).toBeNull();
-    expect(normalizeReleaseVersion("   ")).toBeNull();
-    expect(normalizeReleaseVersion(null)).toBeNull();
-  });
-});
+  it("exposes parseChangelogEntries", () => {
+    const entries = parseChangelogEntries(`
+### **2026年1月1日（v1.0.0）**
 
-describe("parseChangelogEntries", () => {
-  it("extracts bilingual sections from ##### headings (English first)", () => {
-    const entries = parseChangelogEntries(changelogSampleH5EnglishFirst);
+English:
+- hello
 
-    expect(entries).toHaveLength(2);
-    expect(entries[0]).toEqual(
-      expect.objectContaining({
-        tagName: "v0.2.2",
-        version: "0.2.2",
-        dateLabel: "2026/03/03",
-      }),
-    );
-    expect(entries[0]?.englishBody).toContain("Add release notes modal");
-    expect(entries[0]?.chineseBody).toContain("新增版本记录弹窗");
-    expect(entries[0]?.englishBody).not.toContain("新增版本记录弹窗");
-    expect(entries[0]?.chineseBody).not.toContain("Add release notes modal");
+中文：
+- 你好
+`);
+    expect(entries).toHaveLength(1);
+    expect(entries[0]?.version).toBe("1.0.0");
   });
 
-  it("parses ### headings with 中文 section before English", () => {
-    const entries = parseChangelogEntries(changelogSampleH3ChineseFirst);
-
-    expect(entries).toHaveLength(2);
-    expect(entries[0]).toEqual(
-      expect.objectContaining({
-        tagName: "v0.7.16",
-        version: "0.7.16",
-        dateLabel: "2026/08/04",
-      }),
-    );
-    expect(entries[0]?.chineseBody).toContain("Git Graph 工作台更密");
-    expect(entries[0]?.englishBody).toContain("Denser Git Graph workbench");
-    expect(entries[0]?.chineseBody).not.toContain("Denser Git Graph workbench");
-    expect(entries[0]?.englishBody).not.toContain("Git Graph 工作台更密");
-    expect(entries[1]?.version).toBe("0.7.15");
-  });
-});
-
-describe("findReleaseIndex", () => {
-  it("matches current version when present", () => {
+  it("exposes findReleaseIndex", () => {
     const entries: ReleaseNotesEntry[] = [
       {
-        id: "0.2.2",
-        tagName: "v0.2.2",
-        version: "0.2.2",
-        title: "v0.2.2",
-        dateLabel: "2026/03/03",
-        englishBody: "",
-        chineseBody: "",
-      },
-      {
-        id: "0.2.1",
-        tagName: "v0.2.1",
-        version: "0.2.1",
-        title: "v0.2.1",
-        dateLabel: "2026/03/02",
+        id: "1.0.0",
+        tagName: "v1.0.0",
+        version: "1.0.0",
+        title: "v1.0.0",
+        dateLabel: "2026/01/01",
         englishBody: "",
         chineseBody: "",
       },
     ];
+    expect(findReleaseIndex(entries, "1.0.0")).toBe(0);
+  });
+});
 
-    expect(findReleaseIndex(entries, "0.2.1")).toBe(1);
-    expect(findReleaseIndex(entries, "v0.2.2")).toBe(0);
+describe("useReleaseNotes auto-open + lastSeen", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.clearAllMocks();
+    mockCatalogReady();
+    getVersionMock.mockResolvedValue("0.8.8");
+    getClientStoreSyncMock.mockReturnValue(null);
   });
 
-  it("falls back to latest when no match exists", () => {
-    const entries: ReleaseNotesEntry[] = [
-      {
-        id: "0.2.2",
-        tagName: "v0.2.2",
-        version: "0.2.2",
-        title: "v0.2.2",
-        dateLabel: "2026/03/03",
-        englishBody: "",
-        chineseBody: "",
-      },
-    ];
-    expect(findReleaseIndex(entries, "9.9.9")).toBe(0);
-    expect(findReleaseIndex(entries, null)).toBe(0);
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("delays auto-open by RELEASE_NOTES_AUTO_OPEN_DELAY_MS on version bump", async () => {
+    const { result } = renderHook(() => useReleaseNotes());
+
+    // Flush getVersion().then(...) so the 2s timer is armed.
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(result.current.isOpen).toBe(false);
+    expect(loadIndexMock).not.toHaveBeenCalled();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(RELEASE_NOTES_AUTO_OPEN_DELAY_MS - 1);
+    });
+    expect(result.current.isOpen).toBe(false);
+    expect(loadIndexMock).not.toHaveBeenCalled();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
+    // openReleaseNotes is async: flush microtasks after the timer fires.
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(result.current.isOpen).toBe(true);
+    expect(result.current.loading).toBe(false);
+    expect(loadIndexMock).toHaveBeenCalledTimes(1);
+    expect(loadEntryMock).toHaveBeenCalledWith("0.8.8", false);
+    expect(writeClientStoreValueMock).toHaveBeenCalledWith(
+      "app",
+      "releaseNotesLastSeenVersion",
+      "0.8.8",
+    );
+  });
+
+  it("does not auto-open when lastSeen already matches current version", async () => {
+    getClientStoreSyncMock.mockReturnValue("0.8.8");
+
+    const { result } = renderHook(() => useReleaseNotes());
+
+    await act(async () => {
+      await Promise.resolve();
+      await vi.advanceTimersByTimeAsync(RELEASE_NOTES_AUTO_OPEN_DELAY_MS + 50);
+      await Promise.resolve();
+    });
+
+    expect(result.current.isOpen).toBe(false);
+    expect(loadIndexMock).not.toHaveBeenCalled();
+  });
+
+  it("writes lastSeen when content is successfully shown (not only on close)", async () => {
+    const { result } = renderHook(() => useReleaseNotes({ enabled: false }));
+
+    await act(async () => {
+      await result.current.openReleaseNotes({ preferredVersion: "0.8.8" });
+    });
+
+    expect(result.current.isOpen).toBe(true);
+    expect(result.current.loading).toBe(false);
+    expect(result.current.activeEntry?.version).toBe("0.8.8");
+    expect(writeClientStoreValueMock).toHaveBeenCalledWith(
+      "app",
+      "releaseNotesLastSeenVersion",
+      "0.8.8",
+    );
+  });
+
+  it("does not write lastSeen when open fails to load", async () => {
+    loadIndexMock.mockRejectedValue(new Error("index missing"));
+    const { result } = renderHook(() => useReleaseNotes({ enabled: false }));
+
+    await act(async () => {
+      await result.current.openReleaseNotes({ preferredVersion: "0.8.8" });
+    });
+
+    expect(result.current.error).toContain("index missing");
+    expect(writeClientStoreValueMock).not.toHaveBeenCalled();
   });
 });

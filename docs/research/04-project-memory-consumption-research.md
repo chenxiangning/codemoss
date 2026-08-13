@@ -16,6 +16,8 @@ status: superseded
 **状态**: Historical Proposal + Implemented/Evolved；“待实施”只代表 2026-02 原始窗口
 
 > **2026-08-01 校准**：消费链已实现且已多轮演进。现行入口是“手动选择优先 + 用户显式开启 Memory Reference”，默认不做静默自动相关性注入；single 在一次发送后关闭，always 保持；Memory Scout 失败/超时/空结果时不阻塞发送。注入格式已从本文早期 summary 设想演进为带 provenance 的 Retrieval Pack，并在 timeline 以独立关联资源展示。
+>
+> **2026-08-10 校准**：发送前 **Memory Pick Gate** 已落地（`add-memory-pick-gate`）；Pick 路径检索仍以 lexical 为主，semantic/hybrid 模块未完整接线。MemOS 升级对照与 Phase-2（匹配/可感/语义转接）决策见 [`06-memos-vs-mossx-memory-upgrade-research-2026-08-10.md`](./06-memos-vs-mossx-memory-upgrade-research-2026-08-10.md)。
 
 ## 0. Current behavior delta
 

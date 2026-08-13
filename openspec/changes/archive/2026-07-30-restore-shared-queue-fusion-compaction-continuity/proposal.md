@@ -69,5 +69,5 @@ Shared Session V2 当前把所有 non-idle 状态的提交统一阻断，导致 
 
 - Backend：`src-tauri/src/backend/app_server_*`、`shared_runtime_coordinator.rs`、Shared V2 persistence/commands、engine capability routing。
 - Frontend：Shared send state/admission、`useQueuedSend`、Shared Composer compaction projection、Tauri service mapping。
-- Specs：上述五个 capability delta 与 `.trellis/spec/backend/shared-session-v2-send-contract.md` executable contract。
+- Specs：上述五个 capability delta 与 `dev-guidelines/backend/shared-session-v2-send-contract.md` executable contract。
 - Dependencies：无新增依赖；沿用 SQLite、Tokio、React state store 与现有 V2 commands。

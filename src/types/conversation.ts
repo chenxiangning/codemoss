@@ -40,6 +40,10 @@ export type MemoryPresentationRecord = {
   memoryId: string;
   source: string;
   title: string;
+  /** 可选摘要（记忆挑选历史卡） */
+  summary?: string;
+  /** 可选相关分 */
+  score?: number;
 };
 
 export type MemoryPresentationPack = {
@@ -308,6 +312,12 @@ export type QueuedMessage = {
   sharedPredecessorAttemptId?: string | null;
   /** 已开始 Shared V2 handoff、但尚未拿到 canonical commit ACK。 */
   sharedDispatchState?: "pending-ack";
+  /**
+   * Enqueue 时绑定的 owner，后台 drain 必须按此派发，禁止串到 active session。
+   * 旧队列项可能缺失；缺失时仅允许在仍为 active 且 id 匹配时发送。
+   */
+  ownerWorkspaceId?: string;
+  ownerThreadId?: string;
 };
 
 export type IntentCanvasContextCount = {

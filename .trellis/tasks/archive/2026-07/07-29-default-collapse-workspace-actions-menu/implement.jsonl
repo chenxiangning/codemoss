@@ -1,5 +1,0 @@
-{"file": ".trellis/workflow.md", "reason": "Project workflow and conventions"}
-{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend development guide"}
-{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "React component, accessibility, i18n and styling contract"}
-{"file": ".trellis/spec/frontend/state-management.md", "reason": "Transient UI state belongs in local component state"}
-{"file": "src/features/app/components/SidebarWorkspaceMenuOverlay.tsx", "reason": "Existing workspace menu rendering and interaction pattern"}

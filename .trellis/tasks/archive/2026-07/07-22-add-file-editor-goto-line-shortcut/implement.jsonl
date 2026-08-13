@@ -1,5 +1,0 @@
-{"file": ".trellis/workflow.md", "reason": "Project workflow and conventions"}
-{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend development guide"}
-{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "modal component, i18n, accessibility contract"}
-{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "focused behavior test and large-file gate"}
-{"file": "openspec/changes/add-file-editor-goto-line-shortcut/design.md", "reason": "approved implementation design"}

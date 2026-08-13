@@ -1,9 +1,0 @@
-{"file": ".claude/commands/trellis/finish-work.md", "reason": "Finish work checklist"}
-{"file": ".claude/commands/trellis/check.md", "reason": "Code quality check spec"}
-{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Frontend quality gate 与 regression review checklist"}
-{"file": ".trellis/spec/frontend/type-safety.md", "reason": "TypeScript strict 检查"}
-{"file": "openspec/changes/hide-startup-gate-overlay/specs/client-startup-orchestration/spec.md", "reason": "验收实现是否满足 behavior contract"}
-{"file": "src/features/settings/components/settings-view/sections/OtherSection.test.tsx", "reason": "验证设置开关默认值与 localStorage persistence"}
-{"file": "src/features/startup-orchestration/utils/startupGateOverlayTestFlag.ts", "reason": "验证 default-off persistence boundary"}
-{"file": "src/router.test.tsx", "reason": "验证 main/detached route coverage"}
-{"file": "src/app-shell-parts/appShellDomainContexts.test.ts", "reason": "验证 raw context keys 与 ownership catalog 精确对齐"}

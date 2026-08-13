@@ -1,5 +1,4 @@
-# Project-scoped Codex defaults for Trellis workflows.
-# Codex loads this after ~/.codex/config.toml when you work in this project.
+# Project-scoped Codex defaults for this repository.
+# Trellis workflow adapters have been removed; keep only lightweight project notes.
 
-# Keep AGENTS.md as the primary project instruction file.
-project_doc_fallback_filenames = ["AGENTS.md"]
+# Prefer reading AGENTS.md and openspec/ for repository rules and delivery gates.

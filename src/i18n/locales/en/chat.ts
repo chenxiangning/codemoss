@@ -112,6 +112,9 @@ const chat = {
     commandsListUnavailableTitle: "Commands unavailable",
     commandsListUnavailableMessage:
       "Failed to load slash commands: {{reason}}. Command completion may be incomplete; it will retry automatically.",
+    promptsListUnavailableTitle: "Prompts unavailable",
+    promptsListUnavailableMessage:
+      "Failed to load custom prompts: {{reason}}. Prompt completion may be incomplete; open ! again or create a prompt to retry.",
     pleaseWait: "Please wait...",
     retrying: "Retrying ({{count}}/{{max}})...",
     removeAgent: "Remove agent",

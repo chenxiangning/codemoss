@@ -11,7 +11,7 @@ status: implemented
 > **类型**：架构战略文档（Strategic Architecture）
 > **生命周期**：accepted；核心治理切片已实现并归档，百分比 readiness 为历史评估，不是当前 release KPI
 > **最后校准**：2026-08-03 · mossx `0.7.16`
-> **关联文档**：`docs/architecture/`、`.trellis/workflow.md`、`openspec/project.md`、`openspec/changes/archive/2026-05-28-stabilize-core-runtime-and-realtime-contracts/`
+> **关联文档**：`docs/architecture/`、`dev-guidelines/**`、`openspec/project.md`、`openspec/changes/archive/2026-05-28-stabilize-core-runtime-and-realtime-contracts/`
 
 ---
 

@@ -14,6 +14,7 @@ import {
   stageStatusText,
   stageTargetLabel,
 } from "../utils/format";
+import { collabDisplayTitle } from "../runtime/mainCanvasContextInjection";
 
 /** 图3 样式：终态历史折叠卡（主幕布时间线内嵌） */
 export function HistoryFoldCard({
@@ -37,7 +38,7 @@ export function HistoryFoldCard({
   const last = stages[stages.length - 1]?.settledAt;
   const dur = formatDurationMs(first, last) ?? "—";
   const title =
-    projection.requestText.trim().slice(0, 36) ||
+    collabDisplayTitle(projection, 36) ||
     t("multiAgent.card.roundTitle", { n: roundIndex + 1 });
   const flow = stages.map((stage) => stage.title || stage.id).join(" → ");
   const statusKey =

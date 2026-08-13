@@ -7,4 +7,4 @@
 ## 2. Cross-Surface Regression
 
 - [x] 2.1 [P0][依赖 1.1、1.2] 输入 pinned continuation Family，输出与普通 workspace list 相同的默认折叠和展开交互；更新 `PinnedThreadList.test.tsx`。
-- [x] 2.2 [P0][依赖全部实现] 同步 `.trellis/spec/backend/native-provider-continuation-contract.md`，执行 focused Vitest、`npm run typecheck`、lint、runtime contracts 与 OpenSpec strict validation。
+- [x] 2.2 [P0][依赖全部实现] 同步 `dev-guidelines/backend/native-provider-continuation-contract.md`，执行 focused Vitest、`npm run typecheck`、lint、runtime contracts 与 OpenSpec strict validation。

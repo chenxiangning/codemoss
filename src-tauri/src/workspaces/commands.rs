@@ -2758,25 +2758,458 @@ pub(crate) async fn clear_detached_external_change_monitor(
     .await
 }
 
-#[tauri::command]
-pub(crate) async fn get_open_app_icon(app_name: String) -> Result<Option<String>, String> {
+#[cfg(windows)]
+fn get_windows_associated_icon_png_data_url(path: &str) -> Option<String> {
+    let trimmed = path.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    let path_buf = std::path::PathBuf::from(trimmed);
+    if !path_buf.is_file() {
+        return None;
+    }
+    // Escape for PowerShell single-quoted literal.
+    let escaped = trimmed.replace('\'', "''");
+    let script = format!(
+        r#"
+Add-Type -AssemblyName System.Drawing
+$path = '{escaped}'
+if (-not (Test-Path -LiteralPath $path)) {{ exit 1 }}
+$icon = [System.Drawing.Icon]::ExtractAssociatedIcon($path)
+if ($null -eq $icon) {{ exit 2 }}
+$bmp = $icon.ToBitmap()
+$ms = New-Object System.IO.MemoryStream
+$bmp.Save($ms, [System.Drawing.Imaging.ImageFormat]::Png)
+[Convert]::ToBase64String($ms.ToArray())
+"#
+    );
+    let output = std::process::Command::new("powershell")
+        .args(["-NoProfile", "-NonInteractive", "-Command", &script])
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let encoded = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if encoded.is_empty() {
+        return None;
+    }
+    Some(format!("data:image/png;base64,{encoded}"))
+}
+
+#[cfg(windows)]
+fn resolve_windows_icon_source(app_name: &str) -> Option<String> {
+    let trimmed = app_name.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    let as_path = std::path::Path::new(trimmed);
+    if as_path.is_file() {
+        return Some(trimmed.to_string());
+    }
+    for candidate in open_app_command_candidates(trimmed) {
+        let path = std::path::Path::new(&candidate);
+        if path.is_file() {
+            return Some(candidate);
+        }
+    }
+    None
+}
+
+fn get_open_app_icon_sync(app_name: &str) -> Option<String> {
+    let trimmed = app_name.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
     #[cfg(target_os = "macos")]
     {
-        let trimmed = app_name.trim().to_string();
-        if trimmed.is_empty() {
-            return Ok(None);
+        return get_open_app_icon_inner(trimmed);
+    }
+    #[cfg(windows)]
+    {
+        let source = resolve_windows_icon_source(trimmed)?;
+        return get_windows_associated_icon_png_data_url(&source);
+    }
+    #[cfg(all(not(target_os = "macos"), not(windows)))]
+    {
+        let _ = trimmed;
+        None
+    }
+}
+
+#[tauri::command]
+pub(crate) async fn get_open_app_icon(app_name: String) -> Result<Option<String>, String> {
+    let trimmed = app_name.trim().to_string();
+    if trimmed.is_empty() {
+        return Ok(None);
+    }
+    tokio::task::spawn_blocking(move || get_open_app_icon_sync(&trimmed))
+        .await
+        .map_err(|err| err.to_string())
+}
+
+/// One-shot preset probe for Open With settings (lazy; not called at cold start).
+#[derive(Debug, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct OpenAppPresetProbe {
+    pub id: String,
+    pub installed: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub resolved_path: Option<String>,
+}
+
+/// Fixed catalog of preset ids + default app names used for probe.
+/// Keep in sync with frontend `OPEN_APP_PRESET_CATALOG` app entries.
+const OPEN_APP_PRESET_PROBE_TABLE: &[(&str, &str)] = &[
+    ("vscode", "Visual Studio Code"),
+    ("cursor", "Cursor"),
+    ("zed", "Zed"),
+    ("sublime", "Sublime Text"),
+    ("ghostty", "Ghostty"),
+    ("antigravity", "Antigravity"),
+    ("notepad", "notepad"),
+];
+
+fn looks_like_absolute_fs_path(value: &str) -> bool {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return false;
+    }
+    if trimmed.starts_with('/') || trimmed.starts_with('~') {
+        return true;
+    }
+    // Windows drive / UNC
+    let bytes = trimmed.as_bytes();
+    if bytes.len() >= 3
+        && bytes[0].is_ascii_alphabetic()
+        && bytes[1] == b':'
+        && (bytes[2] == b'\\' || bytes[2] == b'/')
+    {
+        return true;
+    }
+    trimmed.starts_with("\\\\")
+}
+
+fn expand_user_home_path(value: &str) -> std::path::PathBuf {
+    let trimmed = value.trim();
+    if trimmed == "~" {
+        return dirs::home_dir().unwrap_or_else(|| std::path::PathBuf::from("~"));
+    }
+    if let Some(rest) = trimmed
+        .strip_prefix("~/")
+        .or_else(|| trimmed.strip_prefix("~\\"))
+    {
+        if let Some(home) = dirs::home_dir() {
+            return home.join(rest);
         }
-        let result = tokio::task::spawn_blocking(move || get_open_app_icon_inner(&trimmed))
-            .await
-            .map_err(|err| err.to_string())?;
-        return Ok(result);
+    }
+    std::path::PathBuf::from(trimmed)
+}
+
+fn path_exists_as_launch_target(value: &str) -> bool {
+    let path = expand_user_home_path(value);
+    path.is_file() || path.is_dir()
+}
+
+fn probe_macos_app_bundle(app_name: &str) -> Option<String> {
+    let trimmed = app_name.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    // Absolute / home-relative path first (Browse results).
+    if looks_like_absolute_fs_path(trimmed) {
+        let path = expand_user_home_path(trimmed);
+        if path.exists() {
+            return Some(path.to_string_lossy().to_string());
+        }
+        return None;
+    }
+    let bundle_name = if trimmed.ends_with(".app") {
+        trimmed.to_string()
+    } else {
+        format!("{trimmed}.app")
+    };
+
+    let mut roots = vec![
+        std::path::PathBuf::from("/Applications"),
+        std::path::PathBuf::from("/System/Applications"),
+    ];
+    if let Some(home) = dirs::home_dir() {
+        roots.push(home.join("Applications"));
+    }
+
+    for root in roots {
+        let path = root.join(&bundle_name);
+        if path.is_dir() {
+            return Some(path.to_string_lossy().to_string());
+        }
+    }
+    None
+}
+
+/// Probe a single configured open target (lazy; settings only).
+#[derive(Debug, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct OpenAppTargetProbeResult {
+    /// `ok` | `missing` | `broken`
+    pub status: String,
+    pub installed: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub resolved_path: Option<String>,
+}
+
+fn probe_open_app_target_sync(
+    kind: &str,
+    app_name: Option<&str>,
+    command: Option<&str>,
+) -> OpenAppTargetProbeResult {
+    let kind = kind.trim();
+    if kind.eq_ignore_ascii_case("finder") {
+        return OpenAppTargetProbeResult {
+            status: "ok".to_string(),
+            installed: true,
+            resolved_path: None,
+        };
+    }
+
+    if kind.eq_ignore_ascii_case("command") {
+        let cmd = command.map(str::trim).unwrap_or("");
+        if cmd.is_empty() {
+            return OpenAppTargetProbeResult {
+                status: "broken".to_string(),
+                installed: false,
+                resolved_path: None,
+            };
+        }
+        if looks_like_absolute_fs_path(cmd) {
+            if path_exists_as_launch_target(cmd) {
+                return OpenAppTargetProbeResult {
+                    status: "ok".to_string(),
+                    installed: true,
+                    resolved_path: Some(expand_user_home_path(cmd).to_string_lossy().to_string()),
+                };
+            }
+            return OpenAppTargetProbeResult {
+                status: "broken".to_string(),
+                installed: false,
+                resolved_path: None,
+            };
+        }
+        #[cfg(target_os = "macos")]
+        {
+            let ok = command_resolvable_on_path_macos(cmd);
+            return OpenAppTargetProbeResult {
+                status: if ok {
+                    "ok".to_string()
+                } else {
+                    "missing".to_string()
+                },
+                installed: ok,
+                resolved_path: if ok { Some(cmd.to_string()) } else { None },
+            };
+        }
+        #[cfg(not(target_os = "macos"))]
+        {
+            if command_resolvable_on_path(cmd) {
+                return OpenAppTargetProbeResult {
+                    status: "ok".to_string(),
+                    installed: true,
+                    resolved_path: Some(cmd.to_string()),
+                };
+            }
+            return OpenAppTargetProbeResult {
+                status: "missing".to_string(),
+                installed: false,
+                resolved_path: None,
+            };
+        }
+    }
+
+    // kind == app
+    let name = app_name.map(str::trim).unwrap_or("");
+    if name.is_empty() {
+        return OpenAppTargetProbeResult {
+            status: "broken".to_string(),
+            installed: false,
+            resolved_path: None,
+        };
+    }
+
+    if looks_like_absolute_fs_path(name) {
+        if path_exists_as_launch_target(name) {
+            return OpenAppTargetProbeResult {
+                status: "ok".to_string(),
+                installed: true,
+                resolved_path: Some(expand_user_home_path(name).to_string_lossy().to_string()),
+            };
+        }
+        return OpenAppTargetProbeResult {
+            status: "broken".to_string(),
+            installed: false,
+            resolved_path: None,
+        };
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        if let Some(resolved) = probe_macos_app_bundle(name) {
+            return OpenAppTargetProbeResult {
+                status: "ok".to_string(),
+                installed: true,
+                resolved_path: Some(resolved),
+            };
+        }
+        return OpenAppTargetProbeResult {
+            status: "missing".to_string(),
+            installed: false,
+            resolved_path: None,
+        };
     }
 
     #[cfg(not(target_os = "macos"))]
     {
-        let _ = app_name;
-        Ok(None)
+        for candidate in open_app_command_candidates(name) {
+            let path = std::path::Path::new(&candidate);
+            if path.is_file() {
+                return OpenAppTargetProbeResult {
+                    status: "ok".to_string(),
+                    installed: true,
+                    resolved_path: Some(candidate),
+                };
+            }
+            if command_resolvable_on_path(&candidate) {
+                return OpenAppTargetProbeResult {
+                    status: "ok".to_string(),
+                    installed: true,
+                    resolved_path: Some(candidate),
+                };
+            }
+        }
+        OpenAppTargetProbeResult {
+            status: "missing".to_string(),
+            installed: false,
+            resolved_path: None,
+        }
     }
+}
+
+#[cfg(target_os = "macos")]
+fn command_resolvable_on_path_macos(name: &str) -> bool {
+    if name.is_empty() || name.contains('/') {
+        return false;
+    }
+    std::process::Command::new("which")
+        .arg(name)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .map(|status| status.success())
+        .unwrap_or(false)
+}
+
+/// Probe one configured open target. Intended for settings UI re-verify clicks.
+#[tauri::command]
+pub(crate) async fn probe_open_app_target(
+    kind: String,
+    app_name: Option<String>,
+    command: Option<String>,
+) -> Result<OpenAppTargetProbeResult, String> {
+    tokio::task::spawn_blocking(move || {
+        probe_open_app_target_sync(
+            &kind,
+            app_name.as_deref(),
+            command.as_deref(),
+        )
+    })
+    .await
+    .map_err(|err| err.to_string())
+}
+
+#[cfg(not(target_os = "macos"))]
+fn command_resolvable_on_path(name: &str) -> bool {
+    if name.is_empty() || name.contains('/') || name.contains('\\') {
+        return false;
+    }
+    #[cfg(windows)]
+    {
+        std::process::Command::new("where")
+            .arg(name)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .map(|status| status.success())
+            .unwrap_or(false)
+    }
+    #[cfg(all(not(windows), not(target_os = "macos")))]
+    {
+        std::process::Command::new("which")
+            .arg(name)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .map(|status| status.success())
+            .unwrap_or(false)
+    }
+}
+
+fn probe_open_app_preset_sync(id: &str, app_name: &str) -> OpenAppPresetProbe {
+    #[cfg(target_os = "macos")]
+    {
+        let resolved = probe_macos_app_bundle(app_name);
+        return OpenAppPresetProbe {
+            id: id.to_string(),
+            installed: resolved.is_some(),
+            resolved_path: resolved,
+        };
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        // Prefer known install paths / CLI aliases (Windows/Linux).
+        for candidate in open_app_command_candidates(app_name) {
+            let path = std::path::Path::new(&candidate);
+            if path.is_file() {
+                return OpenAppPresetProbe {
+                    id: id.to_string(),
+                    installed: true,
+                    resolved_path: Some(candidate),
+                };
+            }
+            if command_resolvable_on_path(&candidate) {
+                return OpenAppPresetProbe {
+                    id: id.to_string(),
+                    installed: true,
+                    resolved_path: Some(candidate),
+                };
+            }
+        }
+        OpenAppPresetProbe {
+            id: id.to_string(),
+            installed: false,
+            resolved_path: None,
+        }
+    }
+}
+
+fn probe_open_app_presets_sync() -> Vec<OpenAppPresetProbe> {
+    OPEN_APP_PRESET_PROBE_TABLE
+        .iter()
+        .map(|(id, app_name)| probe_open_app_preset_sync(id, app_name))
+        .collect()
+}
+
+/// Probe curated Open With presets once. Call only when settings "Open in" is active.
+#[tauri::command]
+pub(crate) async fn probe_open_app_presets() -> Result<Vec<OpenAppPresetProbe>, String> {
+    tokio::task::spawn_blocking(probe_open_app_presets_sync)
+        .await
+        .map_err(|err| err.to_string())
 }
 
 #[cfg(test)]
@@ -2793,6 +3226,39 @@ mod tests {
     use super::open_app_command_candidates;
     #[cfg(target_os = "macos")]
     use std::path::Path;
+
+    #[test]
+    fn probe_open_app_presets_sync_returns_catalog_entries() {
+        let results = super::probe_open_app_presets_sync();
+        assert!(!results.is_empty());
+        assert!(results.iter().any(|item| item.id == "vscode"));
+        assert!(results.iter().any(|item| item.id == "cursor"));
+    }
+
+    #[test]
+    fn probe_open_app_target_finder_is_ok() {
+        let result = super::probe_open_app_target_sync("finder", None, None);
+        assert_eq!(result.status, "ok");
+        assert!(result.installed);
+    }
+
+    #[test]
+    fn probe_open_app_target_empty_app_is_broken() {
+        let result = super::probe_open_app_target_sync("app", Some("  "), None);
+        assert_eq!(result.status, "broken");
+        assert!(!result.installed);
+    }
+
+    #[test]
+    fn probe_open_app_target_missing_absolute_path_is_broken() {
+        let result = super::probe_open_app_target_sync(
+            "app",
+            Some("/definitely/not/an/app/that/exists-mossx-probe.app"),
+            None,
+        );
+        assert_eq!(result.status, "broken");
+        assert!(!result.installed);
+    }
 
     #[test]
     fn normalize_new_window_path_trims_and_drops_empty_values() {

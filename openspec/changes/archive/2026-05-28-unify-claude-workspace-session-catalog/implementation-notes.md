@@ -157,8 +157,8 @@ cache 失败策略：
 
 Trellis 长期约束已落库：
 
-- `.trellis/spec/guides/workspace-session-catalog-contract.md`
-- `.trellis/spec/guides/index.md`
+- `dev-guidelines/guides/workspace-session-catalog-contract.md`
+- `dev-guidelines/guides/index.md`
 
 ## 8. Review 校准记录（2026-05-22）
 

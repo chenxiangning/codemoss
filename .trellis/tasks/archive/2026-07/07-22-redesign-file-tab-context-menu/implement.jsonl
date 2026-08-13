@@ -1,8 +1,0 @@
-{"file": ".trellis/workflow.md", "reason": "Project workflow and conventions"}
-{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend development guide"}
-{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "File tab menu component and accessibility contract"}
-{"file": ".trellis/spec/frontend/hook-guidelines.md", "reason": "Tab state action and pending Git Blame intent"}
-{"file": ".trellis/spec/frontend/state-management.md", "reason": "Atomic workspace and detached tab state transitions"}
-{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Tests and frontend quality gates"}
-{"file": ".trellis/spec/frontend/type-safety.md", "reason": "Shared menu type extension"}
-{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "Reuse RendererContextMenu and existing Git/detached flows"}

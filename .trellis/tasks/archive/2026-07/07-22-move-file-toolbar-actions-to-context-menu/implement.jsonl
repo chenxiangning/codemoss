@@ -1,5 +1,0 @@
-{"file": ".trellis/workflow.md", "reason": "Project workflow and conventions"}
-{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend development guide"}
-{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "FileViewPanel component and accessibility contracts"}
-{"file": ".trellis/spec/frontend/state-management.md", "reason": "Context menu transient state boundaries"}
-{"file": ".trellis/spec/frontend/type-safety.md", "reason": "Typed menu item and editor selection contracts"}

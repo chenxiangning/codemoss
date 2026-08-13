@@ -17,6 +17,8 @@ export type ProjectMemoryEmbeddingProviderScope = "production" | "test";
 export type ProjectMemoryEmbeddingProviderHealth = {
   status: Extract<ProjectMemorySemanticStatus, "available" | "unavailable" | "error">;
   reason?: string;
+  /** 模型文件缺失时可触发前端自动下载到 app data dir */
+  downloadable?: boolean;
 };
 
 export type ProjectMemoryEmbeddingProvider = {
@@ -86,6 +88,16 @@ type BuildIndexParams = {
 type RetrieveParams = BuildIndexParams & {
   query: string;
   topK?: number;
+  /**
+   * 预加载的持久 index（旁路 embed-index.v1.json）。
+   * 提供时跳过全量 buildProjectMemoryEmbeddingIndex；空数组视为无语义命中。
+   */
+  indexRecords?: ProjectMemoryEmbeddingIndexRecord[];
+  /**
+   * 仅测试/显式允许：无 indexRecords 时在检索路径当场 build index。
+   * 生产默认 false，避免每查全量 embed 导致 3～5s 卡顿。
+   */
+  allowOnTheFlyIndex?: boolean;
 };
 
 type ScoredMemoryInput = {
@@ -100,6 +112,15 @@ const SEMANTIC_WEIGHTS = {
   importance: 0.04,
   recency: 0.02,
 };
+
+/**
+ * 纯语义命中的最低余弦分。低于此的「弱相似」不进候选，避免乱搜硬凑 Top-N。
+ * all-MiniLM 弱相关常见 0.2–0.35，真相关多 ≥0.45。
+ */
+export const MIN_SEMANTIC_VECTOR_SCORE = 0.45;
+
+/** hybrid 最终分最低门槛（与词面 RELEVANCE_THRESHOLD 对齐量级） */
+export const MIN_HYBRID_FINAL_SCORE = 0.22;
 
 function compactText(value: string | null | undefined) {
   return (value ?? "").replace(/\s+/g, " ").trim();
@@ -297,7 +318,9 @@ function scanProjectMemoryEmbeddingIndex(params: {
   records: ProjectMemoryEmbeddingIndexRecord[];
   memoriesById: Map<string, ProjectMemoryItem>;
   topK: number;
+  minVectorScore?: number;
 }) {
+  const minVector = params.minVectorScore ?? MIN_SEMANTIC_VECTOR_SCORE;
   return params.records
     .map((record) => {
       const memory = params.memoriesById.get(record.memoryId);
@@ -309,7 +332,10 @@ function scanProjectMemoryEmbeddingIndex(params: {
         vectorScore: Math.max(0, dotProduct(params.queryVector, record.vector)),
       };
     })
-    .filter((entry): entry is { memory: ProjectMemoryItem; vectorScore: number } => entry !== null)
+    .filter(
+      (entry): entry is { memory: ProjectMemoryItem; vectorScore: number } =>
+        entry !== null && entry.vectorScore >= minVector,
+    )
     .sort((left, right) => right.vectorScore - left.vectorScore || left.memory.id.localeCompare(right.memory.id))
     .slice(0, params.topK);
 }
@@ -373,12 +399,16 @@ function scoreCandidate(params: {
   const importance = importanceBoost(params.memory);
   const recency = recencyBoost(params.memory, params.newestUpdatedAt);
   const vector = params.vectorScore ?? 0;
-  const finalScore =
+  let finalScore =
     vector * SEMANTIC_WEIGHTS.vector +
     lexicalScore * SEMANTIC_WEIGHTS.lexical +
     score * SEMANTIC_WEIGHTS.tag +
     importance * SEMANTIC_WEIGHTS.importance +
     recency * SEMANTIC_WEIGHTS.recency;
+  // 词面全中（如「你好」对「你好」）：综合分不得低于词面分，避免 hybrid 稀释成 ~0.5
+  if (lexicalScore >= 0.999) {
+    finalScore = Math.max(finalScore, lexicalScore);
+  }
   return {
     vectorScore: params.vectorScore,
     lexicalScore,
@@ -436,6 +466,15 @@ export function hybridRerankProjectMemories(params: {
         }),
       };
     })
+    // 保留：有足够词面，或足够强的向量；再卡 finalScore
+    .filter((candidate) => {
+      const { lexicalScore, vectorScore, finalScore } = candidate.score;
+      const lexicalOk = lexicalScore >= 0.2;
+      const vectorOk =
+        vectorScore != null && vectorScore >= MIN_SEMANTIC_VECTOR_SCORE;
+      if (!lexicalOk && !vectorOk) return false;
+      return finalScore >= MIN_HYBRID_FINAL_SCORE || lexicalScore >= 0.999;
+    })
     .sort(
       (left, right) =>
         right.score.finalScore - left.score.finalScore ||
@@ -459,16 +498,57 @@ export async function retrieveProjectMemorySemanticCandidates(
   }
 
   try {
-    const index = await buildProjectMemoryEmbeddingIndex(params);
-    if (index.records.length === 0) {
+    let records: ProjectMemoryEmbeddingIndexRecord[];
+    let indexStatus: ProjectMemorySemanticStatus = "available";
+    let indexFallback: string | null = null;
+
+    if (params.indexRecords !== undefined) {
+      // 持久 index：仅保留仍存在且未 stale 的记录；不在检索时全量 embed
+      const memoryById = new Map(params.memories.map((m) => [m.id, m]));
+      records = params.indexRecords.filter((record) => {
+        const memory = memoryById.get(record.memoryId);
+        if (!memory) return false;
+        return !isProjectMemoryEmbeddingRecordStale({
+          memory,
+          record,
+          provider: params.provider,
+        });
+      });
+      if (records.length === 0) {
+        indexStatus = "unavailable";
+        indexFallback = "empty_or_stale_index";
+      }
+    } else if (params.allowOnTheFlyIndex) {
+      // 仅测试 / 显式允许：检索路径当场建 index（生产禁止，防 3～5s 卡顿）
+      const index = await buildProjectMemoryEmbeddingIndex(params);
+      records = index.records;
+      indexStatus = index.status;
+      indexFallback = index.fallbackReason;
+    } else {
+      // 生产默认：无持久 index 则不做语义（诚实 lexical 由调用方保留）
       return {
-        status: index.status,
+        status: "unavailable",
         candidates: [],
         diagnostics: {
-          status: index.status,
+          status: "unavailable",
           providerId: params.provider.providerId,
           modelId: params.provider.modelId,
-          fallbackReason: index.fallbackReason,
+          fallbackReason: "no_persisted_index",
+          scannedCount: 0,
+          candidateCount: 0,
+        },
+      };
+    }
+
+    if (records.length === 0) {
+      return {
+        status: indexStatus,
+        candidates: [],
+        diagnostics: {
+          status: indexStatus,
+          providerId: params.provider.providerId,
+          modelId: params.provider.modelId,
+          fallbackReason: indexFallback,
           scannedCount: 0,
           candidateCount: 0,
         },
@@ -485,7 +565,7 @@ export async function retrieveProjectMemorySemanticCandidates(
           providerId: params.provider.providerId,
           modelId: params.provider.modelId,
           fallbackReason: "query_dimension_mismatch",
-          scannedCount: index.records.length,
+          scannedCount: records.length,
           candidateCount: 0,
         },
       };
@@ -495,7 +575,7 @@ export async function retrieveProjectMemorySemanticCandidates(
     const memoriesById = new Map(params.memories.map((memory) => [memory.id, memory]));
     const semanticMatches = scanProjectMemoryEmbeddingIndex({
       queryVector,
-      records: index.records,
+      records,
       memoriesById,
       topK,
     });
@@ -505,7 +585,7 @@ export async function retrieveProjectMemorySemanticCandidates(
       semanticMatches,
       topK,
     });
-    const status = index.status === "indexing" ? "indexing" : "available";
+    const status = indexStatus === "indexing" ? "indexing" : "available";
     return {
       status,
       candidates,
@@ -513,8 +593,8 @@ export async function retrieveProjectMemorySemanticCandidates(
         status,
         providerId: params.provider.providerId,
         modelId: params.provider.modelId,
-        fallbackReason: index.fallbackReason,
-        scannedCount: index.records.length,
+        fallbackReason: indexFallback,
+        scannedCount: records.length,
         candidateCount: candidates.length,
       },
     };

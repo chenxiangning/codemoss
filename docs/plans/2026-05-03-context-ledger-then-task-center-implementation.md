@@ -20,7 +20,7 @@ status: implemented
 
 **Execution Tasks:**
 - Completed dependency: Context Ledger changes are archived under `openspec/changes/archive/2026-05-03-*` and main specs now contain `context-ledger-*`.
-- Historical execution container: [05-03-task-center-phase1 PRD](../../.trellis/tasks/05-03-task-center-phase1/prd.md).
+- Historical execution container: former Trellis task `05-03-task-center-phase1`（仓库已卸载 Trellis；原 PRD 不再入库）。
 
 ---
 

@@ -1,7 +1,0 @@
-{"file": ".trellis/workflow.md", "reason": "Project workflow and conventions"}
-{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend development guide"}
-{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "component ownership and stable props/refs"}
-{"file": ".trellis/spec/frontend/hook-guidelines.md", "reason": "effect cleanup and scoped lifecycle"}
-{"file": ".trellis/spec/frontend/messages-streaming-render-contract.md", "reason": "live row isolation and stable timeline identity"}
-{"file": ".trellis/spec/frontend/state-management.md", "reason": "separate owner update frequencies"}
-{"file": ".trellis/spec/frontend/type-safety.md", "reason": "typed owner models"}

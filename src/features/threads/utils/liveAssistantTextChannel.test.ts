@@ -10,6 +10,7 @@ import {
   renameLiveAssistantTextThread,
   resetLiveAssistantTextChannelForTests,
   resolveLiveAssistantSettlementText,
+  resolveResidualLiveAssistantDisplayText,
   subscribeLiveAssistantText,
   updateLiveAssistantTextSnapshot,
 } from "./liveAssistantTextChannel";
@@ -199,6 +200,26 @@ describe("liveAssistantTextChannel", () => {
     );
     // 不 clear 通道（由调用方负责）
     expect(peekLiveAssistantText("t1")?.text).toBe(full);
+  });
+
+  it("exposes residual live text for segmented item ids after streaming ends", () => {
+    appendLiveAssistantText("t1", "item-1", "这");
+    appendLiveAssistantText("t1", "item-1", "是正常现象，不是识别错了。");
+    const full = "这是正常现象，不是识别错了。";
+    expect(
+      resolveResidualLiveAssistantDisplayText("t1", "item-1-seg-2", "这"),
+    ).toBe(full);
+    expect(
+      resolveResidualLiveAssistantDisplayText("t1", "item-1", "这"),
+    ).toBe(full);
+    // 更长 durable 时不覆盖
+    expect(
+      resolveResidualLiveAssistantDisplayText("t1", "item-1", full),
+    ).toBeNull();
+    // 不匹配的历史行不消费
+    expect(
+      resolveResidualLiveAssistantDisplayText("t1", "other-item", "这"),
+    ).toBeNull();
   });
 
   it("returns null from drain when nothing beyond the shell has accumulated", () => {

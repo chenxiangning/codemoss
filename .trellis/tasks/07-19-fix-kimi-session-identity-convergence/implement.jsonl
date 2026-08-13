@@ -1,6 +1,0 @@
-{"file": ".trellis/workflow.md", "reason": "Project workflow and conventions"}
-{"file": ".trellis/spec/backend/index.md", "reason": "Backend development guide"}
-{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend development guide"}
-{"file": ".trellis/spec/frontend/parallel-conversation-runtime-residuals.md", "reason": "Kimi realtime lifecycle identity and terminal settlement contract"}
-{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Frontend-backend session identity contract"}
-{"file": "openspec/changes/add-kimi-engine/design.md", "reason": "Approved canonical identity design"}

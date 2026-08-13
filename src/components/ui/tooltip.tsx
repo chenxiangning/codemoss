@@ -15,16 +15,26 @@ const DEFAULT_TOOLTIP_DELAY_MS = 500
 const TOOLTIP_POPUP_CLASS_NAME =
   "z-50 relative flex h-(--popup-height,auto) w-(--popup-width,auto) origin-(--transform-origin) text-balance rounded-md border bg-popover not-dark:bg-clip-padding text-popover-foreground text-xs shadow-md/5 px-(--viewport-inline-padding) py-1 [--viewport-inline-padding:--spacing(2)] transition-[width,height,scale,opacity] before:pointer-events-none before:absolute before:inset-0 before:rounded-[calc(var(--radius-md)-1px)] before:shadow-[0_1px_--theme(--color-black/4%)] data-ending-style:scale-98 data-starting-style:scale-98 data-ending-style:opacity-0 data-starting-style:opacity-0 data-instant:duration-0 dark:before:shadow-[0_-1px_--theme(--color-white/6%)]"
 
+/**
+ * Ambient provider marker. Each Tooltip used to wrap its own Provider, which
+ * multiplied to hundreds of Provider instances on cold Home (P2-2 Tooltip×N).
+ * Prefer a single tree-level TooltipProvider; standalone tooltips still fall
+ * back to a one-off Provider for back-compat.
+ */
+const TooltipAmbientContext = React.createContext(false)
+
 function TooltipProvider({
   delayDuration = DEFAULT_TOOLTIP_DELAY_MS,
   ...props
 }: React.ComponentProps<typeof TooltipPrimitive.Provider>) {
   return (
-    <TooltipPrimitive.Provider
-      data-slot="tooltip-provider"
-      delayDuration={delayDuration}
-      {...props}
-    />
+    <TooltipAmbientContext.Provider value={true}>
+      <TooltipPrimitive.Provider
+        data-slot="tooltip-provider"
+        delayDuration={delayDuration}
+        {...props}
+      />
+    </TooltipAmbientContext.Provider>
   )
 }
 
@@ -41,12 +51,21 @@ function Tooltip({
   disabled?: boolean
   delayDuration?: number
 }) {
-  // Canonical shadcn wraps each Tooltip in its own Provider so consumers can
-  // render <Tooltip> standalone (Radix Root throws without a Provider ancestor,
-  // unlike the previous base-ui implementation).
+  const hasAmbientProvider = React.useContext(TooltipAmbientContext)
+  const root = (
+    <TooltipPrimitive.Root
+      data-slot="tooltip"
+      delayDuration={delayDuration}
+      {...props}
+    />
+  )
+  // P2-2: reuse ambient Provider when present (one Provider for the whole tree).
+  if (hasAmbientProvider) {
+    return root
+  }
   return (
     <TooltipProvider delayDuration={delayDuration}>
-      <TooltipPrimitive.Root data-slot="tooltip" {...props} />
+      {root}
     </TooltipProvider>
   )
 }

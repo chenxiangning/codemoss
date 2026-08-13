@@ -9,6 +9,49 @@ describe("ApprovalToasts", () => {
     cleanup();
   });
 
+  it("renders directory grant card with scope options and sends scope on accept", () => {
+    const onDecision = vi.fn();
+    const approvals: ApprovalRequest[] = [
+      {
+        workspace_id: "ws-1",
+        request_id: "req-grant-1",
+        method: "item/directoryGrant/requestApproval",
+        params: {
+          threadId: "claude:thread-1",
+          suggestedRoot: "/Users/me/.claude",
+          grantKind: "directory",
+          defaultScope: "session",
+          isSensitiveRoot: true,
+          message: "Path is outside allowed working directories",
+        },
+      },
+    ];
+
+    render(
+      <ApprovalToasts
+        approvals={approvals}
+        workspaces={[{ id: "ws-1", name: "demo", path: "/tmp/demo" } as never]}
+        onDecision={onDecision}
+        variant="inline"
+      />,
+    );
+
+    expect(screen.getByText("approval.directoryGrant")).toBeTruthy();
+    expect(screen.getByText("/Users/me/.claude")).toBeTruthy();
+    expect(screen.getByText("approval.grantSensitiveHint")).toBeTruthy();
+
+    fireEvent.click(screen.getByLabelText("approval.grantScopeWorkspace"));
+    fireEvent.click(screen.getByRole("button", { name: "approval.approveEnter" }));
+
+    expect(onDecision).toHaveBeenCalledWith(
+      expect.objectContaining({
+        request_id: "req-grant-1",
+        params: expect.objectContaining({ scope: "workspace" }),
+      }),
+      "accept",
+    );
+  });
+
   it("shows batch approve action when approvals share the same thread without turn id", () => {
     const approvals: ApprovalRequest[] = [
       {

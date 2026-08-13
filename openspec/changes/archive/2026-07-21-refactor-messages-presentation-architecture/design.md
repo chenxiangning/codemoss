@@ -1,6 +1,6 @@
 ## Context
 
-当前 messages render pipeline 保护了两条关键性能轨道：stable parent timeline snapshot 与 row-level live override。核心组件同时承载 presentation derivation、scroll orchestration、timeline projection、virtualization/hydration、row dispatch、rich row rendering 和 diagnostics，导致文件规模与 props surface 持续扩大。重构必须以现有 `.trellis/spec/frontend/messages-streaming-render-contract.md` 和 render-jank baseline 为约束，而不是重新发明 streaming architecture。
+当前 messages render pipeline 保护了两条关键性能轨道：stable parent timeline snapshot 与 row-level live override。核心组件同时承载 presentation derivation、scroll orchestration、timeline projection、virtualization/hydration、row dispatch、rich row rendering 和 diagnostics，导致文件规模与 props surface 持续扩大。重构必须以现有 `dev-guidelines/frontend/messages-streaming-render-contract.md` 和 render-jank baseline 为约束，而不是重新发明 streaming architecture。
 
 ## Goals / Non-Goals
 

@@ -1,7 +1,0 @@
-{"file": ".trellis/workflow.md", "reason": "Project workflow and conventions"}
-{"file": ".trellis/spec/backend/index.md", "reason": "Backend development guide"}
-{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend development guide"}
-{"file": "openspec/changes/assemble-shared-canonical-facts/design.md", "reason": "A2 canonical ingress dark-launch contract"}
-{"file": "openspec/changes/project-shared-canonical-conversation/design.md", "reason": "A3 projection and isolation contract"}
-{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "SharedEventWriter durability and recovery"}
-{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Tauri command and frontend mapping"}

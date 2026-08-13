@@ -1,7 +1,0 @@
-{"file": ".trellis/workflow.md", "reason": "Project workflow and conventions"}
-{"file": ".trellis/spec/backend/index.md", "reason": "Backend development guide"}
-{"file": ".trellis/spec/backend/error-handling.md", "reason": "async mutex 临界区最小化与错误路径要求"}
-{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "atomic persistence 与并发写顺序"}
-{"file": ".trellis/spec/backend/linux-native-baidu-analytics.md", "reason": "Linux native analytics 和 visitor identity contract"}
-{"file": "openspec/changes/fix-linux-startup-preserve-baidu-analytics/design.md", "reason": "已批准 behavior design 与 follow-up 并发语义"}
-{"file": "src-tauri/src/baidu_tongji.rs", "reason": "目标实现和 focused tests"}

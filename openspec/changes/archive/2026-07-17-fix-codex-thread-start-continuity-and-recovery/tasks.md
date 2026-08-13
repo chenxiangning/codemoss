@@ -32,7 +32,7 @@
 - [x] 5.1 Add OpenSpec deltas for `codex-stale-thread-binding-recovery`.
 - [x] 5.2 Add OpenSpec deltas for `conversation-runtime-stability`.
 - [x] 5.3 Add OpenSpec delta for `long-list-virtualization-performance`.
-- [x] 5.4 Update `.trellis/spec/frontend/hook-guidelines.md` so future hook work preserves native `thread-start` recovery semantics.
+- [x] 5.4 Update `dev-guidelines/frontend/hook-guidelines.md` so future hook work preserves native `thread-start` recovery semantics.
 
 ## 6. Verification
 

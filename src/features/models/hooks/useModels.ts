@@ -486,6 +486,7 @@ export function useModels({
   const hasUserSelectedModel = useRef(false);
   const hasUserSelectedEffort = useRef(false);
   const lastWorkspaceId = useRef<string | null>(null);
+  const catalogOwnerLeaseRef = useRef<{ superseded: boolean } | null>(null);
   /** catalog/preferred epoch 熔断：同 epoch 超限 apply 直接停，防冷启 #185 白屏 */
   const selectionApplyEpochRef = useRef<string | null>(null);
   const selectionApplyCountRef = useRef(0);
@@ -674,6 +675,13 @@ export function useModels({
     if (workspaceId === lastWorkspaceId.current) {
       return;
     }
+    const previousWorkspaceId = lastWorkspaceId.current;
+    if (previousWorkspaceId) {
+      startupOrchestrator.cancelTask(
+        `model-catalog:${previousWorkspaceId}`,
+        "stale",
+      );
+    }
     hasUserSelectedModel.current = false;
     hasUserSelectedEffort.current = false;
     lastWorkspaceId.current = workspaceId;
@@ -692,6 +700,30 @@ export function useModels({
       selectedEffort: null,
     };
     setCatalogReadyForWorkspace(false);
+  }, [workspaceId]);
+
+  useEffect(() => {
+    if (catalogOwnerLeaseRef.current) {
+      catalogOwnerLeaseRef.current.superseded = true;
+    }
+    const ownerLease = { superseded: false };
+    catalogOwnerLeaseRef.current = ownerLease;
+    if (!workspaceId) {
+      return;
+    }
+    return () => {
+      // StrictMode immediately replays this effect. Defer the ownership check
+      // to a microtask so only a real unmount releases the catalog slot.
+      queueMicrotask(() => {
+        if (ownerLease.superseded) {
+          return;
+        }
+        startupOrchestrator.cancelTask(
+          `model-catalog:${workspaceId}`,
+          "stale",
+        );
+      });
+    };
   }, [workspaceId]);
 
   const setSelectedModelId = useCallback(

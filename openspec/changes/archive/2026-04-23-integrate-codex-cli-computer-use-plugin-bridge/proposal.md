@@ -52,7 +52,7 @@
 ## Impact
 
 - Backend: `src-tauri/src/computer_use/mod.rs`、`src-tauri/src/computer_use/platform/macos.rs`。
-- Specs: `openspec/specs/**`、`.trellis/spec/backend/computer-use-bridge.md`。
+- Specs: `openspec/specs/**`、`dev-guidelines/backend/computer-use-bridge.md`。
 - Tests: Rust `computer_use` tests。
 
 ## 验收标准

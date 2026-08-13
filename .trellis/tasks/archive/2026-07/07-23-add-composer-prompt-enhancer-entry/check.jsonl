@@ -1,5 +1,0 @@
-{"file": ".claude/commands/trellis/finish-work.md", "reason": "Finish work checklist"}
-{"file": ".claude/commands/trellis/check.md", "reason": "Code quality check spec"}
-{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "检查 accessibility、i18n 与组件边界"}
-{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "检查 focused test 与 Composer control contract"}
-{"file": "openspec/changes/add-composer-prompt-enhancer-entry/", "type": "directory", "reason": "核对实现与 artifacts"}

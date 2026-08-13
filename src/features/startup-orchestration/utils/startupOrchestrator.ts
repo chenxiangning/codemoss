@@ -149,13 +149,14 @@ export class StartupOrchestrator {
     });
 
     this.inFlightByDedupeKey.set(descriptor.dedupeKey, promise);
+    const releaseInFlight = () => {
+      if (this.inFlightByDedupeKey.get(descriptor.dedupeKey) === promise) {
+        this.inFlightByDedupeKey.delete(descriptor.dedupeKey);
+      }
+    };
     promise.then(
-      () => {
-        this.inFlightByDedupeKey.delete(descriptor.dedupeKey);
-      },
-      () => {
-        this.inFlightByDedupeKey.delete(descriptor.dedupeKey);
-      },
+      releaseInFlight,
+      releaseInFlight,
     );
     return promise;
   }
@@ -165,8 +166,7 @@ export class StartupOrchestrator {
       if (!this.matchesWorkspace(queuedTask.descriptor.workspaceScope, workspaceId)) {
         continue;
       }
-      this.removeQueuedTask(queuedTask);
-      void this.settleWithFallback(queuedTask, reason, "cancelled");
+      this.cancelQueuedTask(queuedTask, reason);
     }
 
     for (const [dedupeKey, runningTask] of [
@@ -175,19 +175,29 @@ export class StartupOrchestrator {
       if (!this.matchesWorkspace(runningTask.descriptor.workspaceScope, workspaceId)) {
         continue;
       }
-      // Always signal abort so cooperative run() bodies can stop.
-      runningTask.abortController.abort();
-      this.cancelledGenerations.add(runningTask.generation);
-      // Resolve the waiter immediately + free concurrency so the next
-      // workspace scan can start. Orphan run bodies honor isStale.
-      runningTask.settleCancelled(reason);
-      if (!runningTask.concurrencyReleased) {
-        runningTask.concurrencyReleased = true;
-        this.runningByDedupeKey.delete(dedupeKey);
-        this.decrementRunning(runningTask.descriptor);
-      }
+      this.cancelRunningTask(dedupeKey, runningTask, reason);
     }
     this.drainQueue();
+  }
+
+  cancelTask(dedupeKey: string, reason: StartupFallbackReason = "stale") {
+    let cancelled = false;
+    const queuedTask = this.queue.find(
+      (task) => task.descriptor.dedupeKey === dedupeKey,
+    );
+    if (queuedTask) {
+      this.cancelQueuedTask(queuedTask, reason);
+      cancelled = true;
+    }
+    const runningTask = this.runningByDedupeKey.get(dedupeKey);
+    if (runningTask) {
+      this.cancelRunningTask(dedupeKey, runningTask, reason);
+      cancelled = true;
+    }
+    if (cancelled) {
+      this.drainQueue();
+    }
+    return cancelled;
   }
 
   /**
@@ -200,20 +210,12 @@ export class StartupOrchestrator {
    */
   cancelAllTasks(reason: StartupFallbackReason = "stale") {
     for (const queuedTask of [...this.queue]) {
-      this.removeQueuedTask(queuedTask);
-      void this.settleWithFallback(queuedTask, reason, "cancelled");
+      this.cancelQueuedTask(queuedTask, reason);
     }
     for (const [dedupeKey, runningTask] of [
       ...this.runningByDedupeKey.entries(),
     ]) {
-      runningTask.abortController.abort();
-      this.cancelledGenerations.add(runningTask.generation);
-      runningTask.settleCancelled(reason);
-      if (!runningTask.concurrencyReleased) {
-        runningTask.concurrencyReleased = true;
-        this.runningByDedupeKey.delete(dedupeKey);
-        this.decrementRunning(runningTask.descriptor);
-      }
+      this.cancelRunningTask(dedupeKey, runningTask, reason);
     }
   }
 
@@ -453,6 +455,32 @@ export class StartupOrchestrator {
     if (index >= 0) {
       this.queue.splice(index, 1);
     }
+  }
+
+  private cancelQueuedTask(
+    task: QueuedTask<unknown>,
+    reason: StartupFallbackReason,
+  ) {
+    this.removeQueuedTask(task);
+    this.inFlightByDedupeKey.delete(task.descriptor.dedupeKey);
+    void this.settleWithFallback(task, reason, "cancelled");
+  }
+
+  private cancelRunningTask(
+    dedupeKey: string,
+    task: RunningTask,
+    reason: StartupFallbackReason,
+  ) {
+    task.abortController.abort();
+    this.cancelledGenerations.add(task.generation);
+    task.settleCancelled(reason);
+    if (task.concurrencyReleased) {
+      return;
+    }
+    task.concurrencyReleased = true;
+    this.inFlightByDedupeKey.delete(dedupeKey);
+    this.runningByDedupeKey.delete(dedupeKey);
+    this.decrementRunning(task.descriptor);
   }
 
   private matchesWorkspace(scope: StartupWorkspaceScope, workspaceId: string) {

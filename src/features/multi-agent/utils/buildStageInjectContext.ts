@@ -3,8 +3,17 @@
  * 只读 projection 字段，不拼完整 worker prompt。
  */
 import type { AgentProjectionV1, AgentStageProjection } from "../types";
+import {
+  extractMainCanvasContextBody,
+  stripMainCanvasContextBlock,
+} from "../runtime/mainCanvasContextInjection";
 
-export type InjectSectionId = "user" | "approvalNote" | "upstream" | "role";
+export type InjectSectionId =
+  | "mainCanvas"
+  | "user"
+  | "approvalNote"
+  | "upstream"
+  | "role";
 
 export type InjectSection = {
   id: InjectSectionId;
@@ -35,6 +44,7 @@ export type StageInjectContext = {
 const UPSTREAM_PREVIEW_CHARS = 480;
 /** full 模式展示 cap（仍可 UI clamp；完整阅读用打开节点） */
 const UPSTREAM_FULL_PREVIEW_CHARS = 4000;
+const MAIN_CANVAS_PREVIEW_CHARS = 4000;
 
 function trimText(value: string | null | undefined): string {
   return (value ?? "").trim();
@@ -51,10 +61,11 @@ function stageFeedMode(
   return stage?.upstreamFeedMode === "full" ? "full" : "summary";
 }
 
+/** 用户任务：优先可见原文；fallback 时剥离主幕 digest 等注入块 */
 function userTaskText(projection: AgentProjectionV1): string {
-  return (
-    trimText(projection.userVisibleText) || trimText(projection.requestText)
-  );
+  const visible = trimText(projection.userVisibleText);
+  if (visible) return visible;
+  return stripMainCanvasContextBlock(projection.requestText);
 }
 
 function planPreview(projection: AgentProjectionV1): string {
@@ -88,6 +99,7 @@ export function buildStageInjectContext(
     user?: string;
     approvalNote?: string;
     role?: string;
+    mainCanvas?: string;
   },
 ): StageInjectContext {
   const stages = projection.stages ?? [];
@@ -100,6 +112,27 @@ export function buildStageInjectContext(
   const userLabel = labels?.user ?? "User";
   const noteLabel = labels?.approvalNote ?? "Approval note";
   const roleLabel = labels?.role ?? "This stage";
+  const mainCanvasLabel = labels?.mainCanvas ?? "Main canvas";
+
+  // 首段：主幕对话 digest（从 requestText 抽出）→ 人眼只在右栏看，不进主幕卡标题
+  if (stageIndex === 0) {
+    const mainBody = extractMainCanvasContextBody(projection.requestText);
+    if (mainBody) {
+      const body = capPreview(mainBody, MAIN_CANVAS_PREVIEW_CHARS);
+      sections.push({ id: "mainCanvas", body });
+      pipe.push({
+        id: "pipe-main-canvas",
+        sectionId: "mainCanvas",
+        label: mainCanvasLabel,
+        status: "done",
+      });
+      summaryParts.push(
+        mainCanvasLabel.length > 12
+          ? `${mainCanvasLabel.slice(0, 12)}…`
+          : mainCanvasLabel,
+      );
+    }
+  }
 
   const user = userTaskText(projection);
   if (user) {
@@ -179,7 +212,7 @@ export function buildStageInjectContext(
           });
         }
       }
-      summaryParts.push(upstreamTitle || "上游");
+      summaryParts.push(upstreamTitle || "Upstream");
     }
   }
 

@@ -82,7 +82,7 @@ Scanner 读取以下 evidence source：
 2. 后端实现只读 scanner 与 result types。
 3. 接入现有 host-contract diagnostics 或新增显式 command，但必须复用 single-flight guard。
 4. 前端展示 discovery result，并补齐 i18n。
-5. 更新 `.trellis/spec/**/computer-use-bridge.md`。
+5. 更新 `dev-guidelines/**/computer-use-bridge.md`。
 6. 运行 Rust/TS/Vitest/OpenSpec/large-file/doctor 验证。
 
 Rollback:

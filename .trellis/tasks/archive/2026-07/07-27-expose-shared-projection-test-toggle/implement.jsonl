@@ -1,4 +1,0 @@
-{"file": ".trellis/workflow.md", "reason": "Project workflow and conventions"}
-{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend development guide"}
-{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "Settings toggle、i18n 与 accessibility 规范"}
-{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "focused tests 与最小回归门禁"}

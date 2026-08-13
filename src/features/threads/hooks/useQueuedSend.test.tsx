@@ -13,7 +13,14 @@ import {
   resetSharedTargetStoreForTests,
   selectNextTarget,
 } from "../../shared-session/target/targetStore";
-import { useQueuedSend } from "./useQueuedSend";
+import {
+  __setEnableBackgroundQueueDrainForTests,
+  buildQueueDrainSignal,
+  useQueuedSend,
+} from "./useQueuedSend";
+
+/** renderHook 的 props 宽类型，避免 initialProps 字面量收窄导致 rerender 报错 */
+type QueuedSendHookProps = Parameters<typeof useQueuedSend>[0];
 
 const workspace: WorkspaceInfo = {
   id: "workspace-1",
@@ -99,11 +106,101 @@ function primeSharedRunning(threadId = "shared:thread-1"): void {
   dispatchSharedSendEvent(workspace.id, threadId, { type: "runtimeAck" });
 }
 
+describe("buildQueueDrainSignal", () => {
+  it("does not change when an unrelated thread's status churns", () => {
+    const base = {
+      queuedByThread: { "thread-a": [{ id: "q1", text: "hi", createdAt: 1 }] },
+      inFlightByThread: {},
+      activeThreadId: "thread-b",
+      isProcessing: false,
+      isReviewing: false,
+      isContextCompacting: false,
+      activeTerminalPulse: 0,
+      hasPendingUserInput: false,
+      backgroundEnabled: true,
+    };
+    const a = buildQueueDrainSignal({
+      ...base,
+      threadStatusById: {
+        "thread-a": { isProcessing: false, terminalPulse: 2 },
+        "thread-noise": { isProcessing: true, terminalPulse: 99 },
+      },
+    });
+    const b = buildQueueDrainSignal({
+      ...base,
+      threadStatusById: {
+        "thread-a": { isProcessing: false, terminalPulse: 2 },
+        "thread-noise": { isProcessing: true, terminalPulse: 100 },
+      },
+    });
+    expect(a).toBe(b);
+  });
+
+  it("changes when a queued thread becomes idle", () => {
+    const base = {
+      queuedByThread: { "thread-a": [{ id: "q1", text: "hi", createdAt: 1 }] },
+      inFlightByThread: {},
+      activeThreadId: "thread-b",
+      isProcessing: false,
+      isReviewing: false,
+      isContextCompacting: false,
+      activeTerminalPulse: 0,
+      hasPendingUserInput: false,
+      backgroundEnabled: true,
+    };
+    const busy = buildQueueDrainSignal({
+      ...base,
+      threadStatusById: {
+        "thread-a": { isProcessing: true, terminalPulse: 1 },
+      },
+    });
+    const idle = buildQueueDrainSignal({
+      ...base,
+      threadStatusById: {
+        "thread-a": { isProcessing: false, terminalPulse: 1 },
+      },
+    });
+    expect(busy).not.toBe(idle);
+  });
+
+  it("stays empty/stable when no queue and no inflight even if active status churns", () => {
+    const base = {
+      queuedByThread: {},
+      inFlightByThread: {},
+      activeThreadId: "thread-active",
+      isReviewing: false,
+      isContextCompacting: false,
+      hasPendingUserInput: false,
+      backgroundEnabled: true,
+    };
+    const a = buildQueueDrainSignal({
+      ...base,
+      isProcessing: true,
+      activeTerminalPulse: 1,
+      threadStatusById: {
+        "thread-active": { isProcessing: true, terminalPulse: 1 },
+      },
+    });
+    const b = buildQueueDrainSignal({
+      ...base,
+      isProcessing: false,
+      activeTerminalPulse: 9,
+      threadStatusById: {
+        "thread-active": { isProcessing: false, terminalPulse: 9 },
+      },
+    });
+    expect(a).toBe("empty|bg:1");
+    expect(b).toBe("empty|bg:1");
+  });
+});
+
 describe("useQueuedSend", () => {
   beforeEach(() => {
     resetClientStorageForTests();
     resetSharedSendStateStoreForTests();
     resetSharedTargetStoreForTests();
+    // S1 安全版默认开后台；个别用例显式关闸。
+    __setEnableBackgroundQueueDrainForTests(true);
   });
   it("sends queued messages one at a time after processing completes", async () => {
     const options = makeOptions();
@@ -507,33 +604,49 @@ describe("useQueuedSend", () => {
     ).toEqual(["stays on pending thread"]);
   });
 
-  it("retries queued send after failure", async () => {
+  it("retries queued send after failure only when terminal pulse advances", async () => {
+    const sendUserMessage = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("boom"))
+      .mockResolvedValueOnce(undefined);
     const options = makeOptions({
-      sendUserMessage: vi
-        .fn()
-        .mockRejectedValueOnce(new Error("boom"))
-        .mockResolvedValueOnce(undefined),
+      sendUserMessage,
+      activeTerminalPulse: 0,
     });
-    const { result } = renderHook((props) => useQueuedSend(props), {
-      initialProps: options,
-    });
+    const { result, rerender } = renderHook(
+      (props: Parameters<typeof useQueuedSend>[0]) => useQueuedSend(props),
+      { initialProps: options },
+    );
 
     await act(async () => {
       await result.current.queueMessage("Retry");
     });
-
     await act(async () => {
       await Promise.resolve();
+    });
+    // 失败后有 terminal-pulse 闸门，不会立刻连发。
+    expect(sendUserMessage).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      rerender({
+        ...options,
+        activeTerminalPulse: 1,
+        threadStatusById: {
+          "thread-1": { isProcessing: false, terminalPulse: 1 },
+        },
+      });
     });
     await act(async () => {
       await Promise.resolve();
     });
 
-    expect(options.sendUserMessage).toHaveBeenCalledTimes(2);
-    expect(options.sendUserMessage).toHaveBeenLastCalledWith("Retry", []);
+    expect(sendUserMessage).toHaveBeenCalledTimes(2);
+    expect(sendUserMessage).toHaveBeenLastCalledWith("Retry", []);
   });
 
-  it("queues messages per thread and only flushes the active thread", async () => {
+  it("holds non-active queue without status, flushes when focused and ready", async () => {
+    // 无 threadStatusById 时非 active 安全 hold（防 blind-fire）；回焦点后可 drain。
+    __setEnableBackgroundQueueDrainForTests(true);
     const options = makeOptions({ isProcessing: true });
     const { result, rerender } = renderHook(
       (props) => useQueuedSend(props),
@@ -551,6 +664,7 @@ describe("useQueuedSend", () => {
       await Promise.resolve();
     });
 
+    // 无 status 的非 active：hold，不串发到 thread-2。
     expect(options.sendUserMessage).not.toHaveBeenCalled();
 
     await act(async () => {
@@ -2019,5 +2133,362 @@ describe("useQueuedSend", () => {
 
     expect(options.sendUserMessage).toHaveBeenCalledTimes(2);
     vi.useRealTimers();
+  });
+
+  it("optimistically removes codex queue strip item when handoff starts", async () => {
+    const options = makeOptions({
+      activeEngine: "codex",
+      sendUserMessageToThread: vi.fn().mockResolvedValue(undefined),
+    });
+    const { result } = renderHook((props) => useQueuedSend(props), {
+      initialProps: options,
+    });
+
+    await act(async () => {
+      await result.current.queueMessage("先做一次相关内容本地提交吧.");
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(result.current.activeQueue).toHaveLength(0);
+    expect(result.current.activeQueuedHandoffBubble?.text).toBe(
+      "先做一次相关内容本地提交吧.",
+    );
+    expect(options.sendUserMessageToThread).toHaveBeenCalledTimes(1);
+  });
+
+  it("clears handoff state when active items already contain the user bubble", async () => {
+    const options = makeOptions({
+      activeEngine: "codex",
+      activeItems: [
+        {
+          id: "user-1",
+          kind: "message",
+          role: "user",
+          text: "Follow-up question",
+        },
+      ],
+      sendUserMessageToThread: vi.fn().mockResolvedValue(undefined),
+    });
+    const { result, rerender } = renderHook(
+      (props: QueuedSendHookProps) => useQueuedSend(props),
+      {
+        initialProps: {
+          ...options,
+          activeItems: [],
+        } as QueuedSendHookProps,
+      },
+    );
+
+    await act(async () => {
+      await result.current.queueMessage("Follow-up question");
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(result.current.activeQueuedHandoffBubble).not.toBeNull();
+
+    await act(async () => {
+      rerender(options as QueuedSendHookProps);
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(result.current.activeQueuedHandoffBubble).toBeNull();
+  });
+
+  it("does not background-drain when emergency gate is off", async () => {
+    __setEnableBackgroundQueueDrainForTests(false);
+    const workspaceB: WorkspaceInfo = {
+      id: "workspace-b",
+      name: "other",
+      path: "/tmp/other",
+      connected: true,
+      settings: { sidebarCollapsed: false },
+    };
+    const sendUserMessageToThread = vi.fn().mockResolvedValue(undefined);
+    const options = makeOptions({
+      activeThreadId: "thread-b",
+      activeEngine: "codex",
+      activeWorkspace: workspaceB,
+      isProcessing: false,
+      threadStatusById: {
+        "thread-a": { isProcessing: false, terminalPulse: 0 },
+        "thread-b": { isProcessing: false, terminalPulse: 0 },
+      },
+      resolveWorkspace: (id: string) =>
+        id === workspace.id ? workspace : id === workspaceB.id ? workspaceB : null,
+      sendUserMessageToThread,
+    });
+    const { result, rerender } = renderHook(
+      (props: QueuedSendHookProps) => useQueuedSend(props),
+      {
+        initialProps: {
+          ...options,
+          activeThreadId: "thread-a",
+          activeWorkspace: workspace,
+          isProcessing: true,
+          threadStatusById: {
+            "thread-a": { isProcessing: true, terminalPulse: 0 },
+            "thread-b": { isProcessing: false, terminalPulse: 0 },
+          },
+        } as QueuedSendHookProps,
+      },
+    );
+
+    await act(async () => {
+      await result.current.queueMessage("bg follow-up");
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(result.current.queuedByThread["thread-a"]?.[0]?.text).toBe(
+      "bg follow-up",
+    );
+
+    await act(async () => {
+      rerender(options as QueuedSendHookProps);
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    // 止血闸关闭：切走后不得后台发送。
+    expect(sendUserMessageToThread).not.toHaveBeenCalled();
+    expect(result.current.queuedByThread["thread-a"]?.[0]?.text).toBe(
+      "bg follow-up",
+    );
+  });
+
+  it("background-drains non-active queue only when gate is enabled", async () => {
+    __setEnableBackgroundQueueDrainForTests(true);
+    const workspaceB: WorkspaceInfo = {
+      id: "workspace-b",
+      name: "other",
+      path: "/tmp/other",
+      connected: true,
+      settings: { sidebarCollapsed: false },
+    };
+    const sendUserMessageToThread = vi.fn().mockResolvedValue(undefined);
+    const options = makeOptions({
+      activeThreadId: "thread-b",
+      activeEngine: "codex",
+      activeWorkspace: workspaceB,
+      isProcessing: false,
+      threadStatusById: {
+        "thread-a": { isProcessing: false, terminalPulse: 0 },
+        "thread-b": { isProcessing: false, terminalPulse: 0 },
+      },
+      resolveWorkspace: (id: string) =>
+        id === workspace.id ? workspace : id === workspaceB.id ? workspaceB : null,
+      sendUserMessageToThread,
+    });
+    const { result, rerender } = renderHook(
+      (props: QueuedSendHookProps) => useQueuedSend(props),
+      {
+        initialProps: {
+          ...options,
+          activeThreadId: "thread-a",
+          activeWorkspace: workspace,
+          isProcessing: true,
+          threadStatusById: {
+            "thread-a": { isProcessing: true, terminalPulse: 0 },
+            "thread-b": { isProcessing: false, terminalPulse: 0 },
+          },
+        } as QueuedSendHookProps,
+      },
+    );
+
+    await act(async () => {
+      await result.current.queueMessage("bg follow-up");
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      rerender(options as QueuedSendHookProps);
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(sendUserMessageToThread).toHaveBeenCalledWith(
+      workspace,
+      "thread-a",
+      "bg follow-up",
+      [],
+      undefined,
+    );
+  });
+
+  it("does not re-dispatch the same queue item after a failed send", async () => {
+    const sendUserMessage = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("network"))
+      .mockResolvedValue(undefined);
+    const options = makeOptions({
+      sendUserMessage,
+      isProcessing: false,
+      activeTerminalPulse: 0,
+    });
+    const { result, rerender } = renderHook(
+      (props: Parameters<typeof useQueuedSend>[0]) => useQueuedSend(props),
+      { initialProps: options },
+    );
+
+    await act(async () => {
+      await result.current.queueMessage("你在干啥呢");
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+    // first attempt failed
+    expect(sendUserMessage).toHaveBeenCalledTimes(1);
+
+    // heartbeat / status churn must not immediately re-fire the same item
+    await act(async () => {
+      rerender({
+        ...options,
+        threadStatusById: {
+          "thread-1": { isProcessing: false, terminalPulse: 0 },
+        },
+      });
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(sendUserMessage).toHaveBeenCalledTimes(1);
+
+    // only after terminal pulse advances may auto-drain retry
+    await act(async () => {
+      rerender({
+        ...options,
+        activeTerminalPulse: 1,
+        threadStatusById: {
+          "thread-1": { isProcessing: false, terminalPulse: 1 },
+        },
+      });
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(sendUserMessage).toHaveBeenCalledTimes(2);
+  });
+
+  it("never re-sends a successfully dispatched queue item id", async () => {
+    const sendUserMessage = vi.fn().mockResolvedValue(undefined);
+    const options = makeOptions({
+      sendUserMessage,
+      isProcessing: false,
+    });
+    const { result, rerender } = renderHook(
+      (props: Parameters<typeof useQueuedSend>[0]) => useQueuedSend(props),
+      { initialProps: options },
+    );
+
+    await act(async () => {
+      await result.current.queueMessage("唯一一次");
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(sendUserMessage).toHaveBeenCalledTimes(1);
+    const firstArgs = sendUserMessage.mock.calls[0];
+
+    // 模拟脏状态：同文案再次入队（新 id 可以发）；已成功的不应因 status 抖动重发。
+    await act(async () => {
+      rerender({
+        ...options,
+        isProcessing: false,
+        activeTerminalPulse: 5,
+        threadStatusById: {
+          "thread-1": { isProcessing: false, terminalPulse: 5 },
+        },
+      });
+    });
+    for (let i = 0; i < 5; i += 1) {
+      await act(async () => {
+        rerender({
+          ...options,
+          isProcessing: false,
+          activeTerminalPulse: 5 + i,
+          threadStatusById: {
+            "thread-1": {
+              isProcessing: false,
+              terminalPulse: 5 + i,
+              // 模拟无关 heartbeat 字段变化
+            },
+          },
+        });
+      });
+      await act(async () => {
+        await Promise.resolve();
+      });
+    }
+    // 没有新 queue item 时，不应再 send
+    expect(sendUserMessage).toHaveBeenCalledTimes(1);
+    expect(sendUserMessage.mock.calls[0]).toEqual(firstArgs);
+  });
+
+  it("does not cross-send background queue to the active workspace", async () => {
+    const workspaceB: WorkspaceInfo = {
+      id: "workspace-b",
+      name: "other",
+      path: "/tmp/other",
+      connected: true,
+      settings: { sidebarCollapsed: false },
+    };
+    const sendUserMessage = vi.fn().mockResolvedValue(undefined);
+    const sendUserMessageToThread = vi.fn().mockResolvedValue(undefined);
+    const options = makeOptions({
+      activeThreadId: "thread-b",
+      activeWorkspace: workspaceB,
+      activeEngine: "claude",
+      isProcessing: false,
+      // Missing status for thread-a → hold (no blind fire)
+      threadStatusById: {
+        "thread-b": { isProcessing: false },
+      },
+      resolveWorkspace: () => null,
+      sendUserMessage,
+      sendUserMessageToThread,
+    });
+    const { result, rerender } = renderHook(
+      (props: QueuedSendHookProps) => useQueuedSend(props),
+      {
+        initialProps: {
+          ...options,
+          activeThreadId: "thread-a",
+          activeWorkspace: workspace,
+          isProcessing: true,
+          threadStatusById: {
+            "thread-a": { isProcessing: true },
+            "thread-b": { isProcessing: false },
+          },
+          resolveWorkspace: (id: string) =>
+            id === workspace.id ? workspace : null,
+        } as QueuedSendHookProps,
+      },
+    );
+
+    await act(async () => {
+      await result.current.queueMessage("must stay on A");
+    });
+
+    await act(async () => {
+      rerender(options as QueuedSendHookProps);
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(sendUserMessage).not.toHaveBeenCalled();
+    expect(sendUserMessageToThread).not.toHaveBeenCalled();
+    expect(result.current.queuedByThread["thread-a"]?.[0]?.text).toBe(
+      "must stay on A",
+    );
   });
 });

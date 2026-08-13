@@ -43,14 +43,27 @@ const NOOP_MODE = (_mode: PermissionMode) => {};
 const NOOP_REASONING = (_effort: ReasoningEffort | null) => {};
 
 // Memory reference modes offered inside the vertical tool menu submenu.
+// 文案与幕布 MemoryPickGate 策略轨对齐（memoryPick.mode.pick / always）
 const MEMORY_REFERENCE_OPTIONS: ReadonlyArray<{
   mode: MemoryReferenceMode;
   labelKey: string;
   fallback: string;
 }> = [
-  { mode: 'off', labelKey: 'composer.memoryReferenceDisable', fallback: '关闭' },
-  { mode: 'single', labelKey: 'composer.memoryReferenceEnableSingle', fallback: '单次引用' },
-  { mode: 'always', labelKey: 'composer.memoryReferenceEnableAlways', fallback: '常开引用' },
+  {
+    mode: "off",
+    labelKey: "composer.memoryReferenceDisable",
+    fallback: "整轮关闭记忆注入",
+  },
+  {
+    mode: "pick",
+    labelKey: "composer.memoryReferenceEnablePick",
+    fallback: "本轮挑选记忆注入",
+  },
+  {
+    mode: "always",
+    labelKey: "composer.memoryReferenceEnableAlways",
+    fallback: "整轮开启自动top(n)记忆注入",
+  },
 ];
 
 const ENGINE_TYPES: ReadonlySet<string> = new Set([
@@ -127,7 +140,9 @@ export const ButtonArea = ({
   onCodexReviewQuickStart,
   onForkQuickStart,
   memoryReferenceMode = 'off',
+  memoryReferenceDismissed = false,
   onSetMemoryReferenceMode,
+  onRestoreMemoryReference,
   onSubmit,
   onStop,
   onModeSelect,
@@ -250,6 +265,8 @@ export const ButtonArea = ({
               planLabel: codingPlanSnapshot.planLabel,
               windows: codingPlanSnapshot.windows,
               balance: codingPlanSnapshot.balance ?? null,
+              usageSummary: codingPlanSnapshot.usageSummary ?? null,
+              siteOrigin: codingPlanSnapshot.siteOrigin ?? null,
             }
           : null,
         codingPlanLoading,
@@ -294,12 +311,17 @@ export const ButtonArea = ({
     }
   }, [isToolDockOpen, onRefreshAccountRateLimits]);
 
-  const memoryReferenceStateLabel =
-    memoryReferenceMode === 'always'
-      ? t('composer.memoryReferenceAlwaysOn')
-      : memoryReferenceMode === 'single'
-        ? t('composer.memoryReferenceSingleOn')
-        : t('composer.memoryReferenceToggle');
+  const memoryReferenceStateLabel = memoryReferenceDismissed
+    ? t("composer.memoryReferenceDismissed", {
+        defaultValue: "本会话已关闭参考",
+      })
+    : memoryReferenceMode === "always"
+      ? t("composer.memoryReferenceAlwaysOn")
+      : memoryReferenceMode === "pick" || memoryReferenceMode === "single"
+        ? t("composer.memoryReferencePickOn", {
+            defaultValue: "本轮挑选记忆注入",
+          })
+        : t("composer.memoryReferenceToggle");
 
   /**
    * Handle submit button click
@@ -460,11 +482,28 @@ export const ButtonArea = ({
                           </span>
                         </DropdownMenuSubTrigger>
                         <DropdownMenuSubContent className="composer-tool-menu-sub-content">
+                          {memoryReferenceDismissed && onRestoreMemoryReference ? (
+                            <DropdownMenuItem
+                              className="composer-tool-menu-option"
+                              onSelect={() => onRestoreMemoryReference()}
+                            >
+                              <span className="composer-tool-menu-option-body">
+                                <span className="composer-tool-menu-option-label">
+                                  {t("composer.memoryReferenceRestore", {
+                                    defaultValue: "恢复记忆参考",
+                                  })}
+                                </span>
+                              </span>
+                            </DropdownMenuItem>
+                          ) : null}
                           {MEMORY_REFERENCE_OPTIONS.map((option) => (
                             <DropdownMenuItem
                               key={option.mode}
                               className={`composer-tool-menu-option${
-                                memoryReferenceMode === option.mode ? ' is-selected' : ''
+                                !memoryReferenceDismissed &&
+                                memoryReferenceMode === option.mode
+                                  ? ' is-selected'
+                                  : ''
                               }`}
                               onSelect={() => onSetMemoryReferenceMode?.(option.mode)}
                             >
@@ -473,7 +512,8 @@ export const ButtonArea = ({
                                   {t(option.labelKey, { defaultValue: option.fallback })}
                                 </span>
                               </span>
-                              {memoryReferenceMode === option.mode && (
+                              {!memoryReferenceDismissed &&
+                                memoryReferenceMode === option.mode && (
                                 <span className="codicon codicon-check composer-tool-menu-option-check" aria-hidden="true" />
                               )}
                             </DropdownMenuItem>

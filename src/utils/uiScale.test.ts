@@ -6,39 +6,43 @@ import {
   matchUiScalePreset,
   sanitizeUiScale,
   UI_SCALE_DEFAULT,
+  UI_SCALE_LOCKED,
   UI_SCALE_MAX,
   UI_SCALE_MIN,
   UI_SCALE_PRESETS,
 } from "./uiScale";
 
-describe("uiScale utilities", () => {
-  it("clamps to supported range", () => {
-    expect(clampUiScale(UI_SCALE_MIN - 0.2)).toBe(UI_SCALE_MIN);
-    expect(clampUiScale(UI_SCALE_MAX + 0.2)).toBe(UI_SCALE_MAX);
+describe("uiScale utilities (locked to 100%)", () => {
+  it("exposes the hard lock constants", () => {
+    expect(UI_SCALE_LOCKED).toBe(true);
+    expect(UI_SCALE_MIN).toBe(1);
+    expect(UI_SCALE_MAX).toBe(1);
+    expect(UI_SCALE_DEFAULT).toBe(1);
+    expect(UI_SCALE_PRESETS).toEqual([1]);
   });
 
-  it("retains supported precision values", () => {
-    expect(clampUiScale(1.25)).toBe(1.25);
-    expect(clampUiScale(2.6)).toBe(2.6);
+  it("clampUiScale always returns identity for any input", () => {
+    expect(clampUiScale(0.8)).toBe(1);
+    expect(clampUiScale(0.9)).toBe(1);
+    expect(clampUiScale(1)).toBe(1);
+    expect(clampUiScale(1.25)).toBe(1);
+    expect(clampUiScale(2.6)).toBe(1);
+    expect(clampUiScale(Number.NaN)).toBe(1);
+    expect(clampUiScale(Number.POSITIVE_INFINITY)).toBe(1);
   });
 
-  it("sanitizes persisted invalid values to default", () => {
-    expect(sanitizeUiScale(Number.NaN)).toBe(UI_SCALE_DEFAULT);
-    expect(sanitizeUiScale(0.2)).toBe(UI_SCALE_DEFAULT);
-    expect(sanitizeUiScale(2.7)).toBe(UI_SCALE_DEFAULT);
+  it("sanitizeUiScale always returns identity for legacy / invalid values", () => {
+    expect(sanitizeUiScale(0.04)).toBe(1);
+    expect(sanitizeUiScale(0.9)).toBe(1);
+    expect(sanitizeUiScale(1.25)).toBe(1);
+    expect(sanitizeUiScale(Number.NaN)).toBe(1);
   });
 
-  it("exposes 80%–150% presets in 10% steps", () => {
-    expect(UI_SCALE_PRESETS).toEqual([0.8, 0.9, 1, 1.1, 1.2, 1.3, 1.4, 1.5]);
-    expect(formatUiScalePercentLabel(1.2)).toBe("120%");
+  it("select helpers only expose 100%", () => {
+    expect(formatUiScalePercentLabel(1.2)).toBe("100%");
     expect(matchUiScalePreset(1)).toBe(1);
-    expect(matchUiScalePreset(1.25)).toBeNull();
-  });
-
-  it("temporarily includes legacy values outside the preset grid", () => {
-    expect(listUiScaleSelectOptions(1)).toEqual([...UI_SCALE_PRESETS]);
-    expect(listUiScaleSelectOptions(1.25)).toEqual([
-      0.8, 0.9, 1, 1.1, 1.2, 1.25, 1.3, 1.4, 1.5,
-    ]);
+    expect(matchUiScalePreset(0.9)).toBeNull();
+    expect(listUiScaleSelectOptions(0.9)).toEqual([1]);
+    expect(listUiScaleSelectOptions(1.25)).toEqual([1]);
   });
 });

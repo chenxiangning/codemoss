@@ -35,7 +35,7 @@
 
 - [x] 6.1 [P0, depends: 5.x] `npm run lint && npm run typecheck && npm test`（focused 先行）；`npm run check:large-files`（vendored 大文件走 new-file baseline 豁免）；`npm run build` 确认 motion 等在异步 chunk。
 - [x] 6.2 [P0, depends: 6.1] 真实 `tokentracker serve` 下 `tauri dev` 端到端验证 + 截图 QA（对照参考图五卡片）。
-- [x] 6.3 [P1, depends: 6.2] OpenSpec strict validation；更新 `.trellis/spec/frontend/` 相关指引（vendored 目录约定）。
+- [x] 6.3 [P1, depends: 6.2] OpenSpec strict validation；更新 `dev-guidelines/frontend/` 相关指引（vendored 目录约定）。
 
 ## Verification Record
 

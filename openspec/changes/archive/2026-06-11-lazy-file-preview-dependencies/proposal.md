@@ -84,10 +84,10 @@
 
 本次撤回必须被视为 **永久** 而不是“之后再试一次”。任何后续 contributor / AI assistant 重新评估 `lazy-file-preview-dependencies` 涉及 `@codemirror/search` 拆出 startup 路径时：
 
-- **必须** 先读 `.trellis/spec/frontend/quality-guidelines.md` 末尾 *CodeMirror State-Coupled Extensions 不可跨越 Lazy Boundary* 章节（Hard Rule）。
+- **必须** 先读 `dev-guidelines/frontend/quality-guidelines.md` 末尾 *CodeMirror State-Coupled Extensions 不可跨越 Lazy Boundary* 章节（Hard Rule）。
 - **必须** 在 proposal / design 文件显式回答：本次修改是否触及 state-coupled extension（参考 `openspec/docs/lazy-state-extension-regression-2026-06-11.md` 的触发场景判断标准）？若触及，禁止合入。
 - **必须** 在 PR 描述里引用本 change ID（`lazy-file-preview-dependencies`）和回归备忘路径，否则 review 阶段直接拒收。
-- 该规则已注册到 `.trellis/spec/frontend/index.md` 的 Pre-Development Checklist，对应章节标题固定为“CodeMirror State-Coupled Extensions 不可跨越 Lazy Boundary”，禁止后续 AI 在不清楚原因的情况下删改。
+- 该规则已注册到 `dev-guidelines/frontend/index.md` 的 Pre-Development Checklist，对应章节标题固定为“CodeMirror State-Coupled Extensions 不可跨越 Lazy Boundary”，禁止后续 AI 在不清楚原因的情况下删改。
 
 ### 历史回归备忘
 

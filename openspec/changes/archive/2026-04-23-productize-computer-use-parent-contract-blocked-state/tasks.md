@@ -13,7 +13,7 @@
 
 - [x] 3.1 增加中英文 i18n 文案，避免硬编码用户可见文本。
 - [x] 3.2 更新 Computer Use status card tests，覆盖 verdict、CTA gating、candidate evidence-only。
-- [x] 3.3 同步 `.trellis/spec/frontend/computer-use-bridge.md`。
+- [x] 3.3 同步 `dev-guidelines/frontend/computer-use-bridge.md`。
 
 ## 4. Validation
 

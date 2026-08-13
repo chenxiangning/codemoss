@@ -1,7 +1,0 @@
-{"file": ".trellis/workflow.md", "reason": "Project workflow and conventions"}
-{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend development guide"}
-{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "File Editor header controls, i18n and accessibility"}
-{"file": ".trellis/spec/frontend/hook-guidelines.md", "reason": "Semantic navigation history orchestration and race handling"}
-{"file": ".trellis/spec/frontend/state-management.md", "reason": "Transient feature-local history ownership"}
-{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Focused tests and code quality gates"}
-{"file": "openspec/changes/add-file-editor-navigation-history/design.md", "reason": "Confirmed implementation design"}

@@ -26,7 +26,7 @@
 ## 3. Contract Sync And Verification
 
 - [x] 3.1 [P1][依赖 1.1、1.2、2.1、2.2] 更新
-  `.trellis/spec/backend/native-provider-continuation-contract.md`，写明 raw target identity、
+  `dev-guidelines/backend/native-provider-continuation-contract.md`，写明 raw target identity、
   legacy key alias、recursive Family 与 closed import envelope 的 executable contract。
 - [x] 3.2 [P0][依赖全部实现] 执行 focused Rust/Vitest、`npm run typecheck`、
   `npm run check:runtime-contracts`、lint 与

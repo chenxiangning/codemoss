@@ -33,7 +33,19 @@ export type FloatingTooltipButtonProps =
     tooltipClassName?: string;
     tooltipDelay?: number;
     tooltipDisabled?: boolean;
+    /**
+     * When set, the tooltip only opens if the matched descendant is
+     * horizontally truncated (`scrollWidth > clientWidth`). Useful for
+     * ellipsis labels where short text should not show a redundant bubble.
+     */
+    tooltipOverflowSelector?: string;
   };
+
+const OVERFLOW_EPSILON_PX = 1;
+
+function isHorizontallyTruncated(element: HTMLElement): boolean {
+  return element.scrollWidth - element.clientWidth > OVERFLOW_EPSILON_PX;
+}
 
 function isKeyboardFocus(element: HTMLElement): boolean {
   try {
@@ -121,6 +133,7 @@ export const FloatingTooltipButton = forwardRef<
     tooltipClassName,
     tooltipDelay = 200,
     tooltipDisabled = false,
+    tooltipOverflowSelector,
     type = "button",
     title,
     "aria-label": ariaLabel,
@@ -161,13 +174,23 @@ export const FloatingTooltipButton = forwardRef<
     clearOpenTimer();
     setOpen(false);
   }, [clearOpenTimer]);
+  const isOverflowTargetTruncated = useCallback(() => {
+    if (!tooltipOverflowSelector) return true;
+    const root = buttonRef.current;
+    if (!root) return false;
+    const target = root.querySelector(tooltipOverflowSelector);
+    if (!(target instanceof HTMLElement)) return false;
+    return isHorizontallyTruncated(target);
+  }, [tooltipOverflowSelector]);
   const scheduleOpen = useCallback(() => {
     clearOpenTimer();
     openTimerRef.current = window.setTimeout(() => {
       openTimerRef.current = null;
+      // Re-check at fire time: layout may have changed during the dwell.
+      if (!isOverflowTargetTruncated()) return;
       setOpen(true);
     }, tooltipDelay);
-  }, [clearOpenTimer, tooltipDelay]);
+  }, [clearOpenTimer, isOverflowTargetTruncated, tooltipDelay]);
 
   useEffect(() => clearOpenTimer, [clearOpenTimer]);
   useEffect(() => {
@@ -208,7 +231,8 @@ export const FloatingTooltipButton = forwardRef<
           if (
             !disabled &&
             !tooltipDisabled &&
-            isKeyboardFocus(event.currentTarget)
+            isKeyboardFocus(event.currentTarget) &&
+            isOverflowTargetTruncated()
           ) {
             clearOpenTimer();
             setOpen(true);

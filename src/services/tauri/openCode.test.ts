@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import {
   getOpenCodeSessionList,
   isOpenCodeCliUnavailableError,
+  resetOpenCodeSessionListCacheForTests,
 } from "./openCode";
 
 vi.mock("@tauri-apps/api/core", () => ({
@@ -39,6 +40,7 @@ describe("isOpenCodeCliUnavailableError", () => {
 describe("getOpenCodeSessionList", () => {
   beforeEach(() => {
     vi.mocked(invoke).mockReset();
+    resetOpenCodeSessionListCacheForTests();
   });
 
   it("returns sessions when OpenCode CLI is available", async () => {
@@ -62,6 +64,54 @@ describe("getOpenCodeSessionList", () => {
     expect(invoke).toHaveBeenCalledWith("opencode_session_list", {
       workspaceId: "ws-1",
     });
+  });
+
+  it("reuses TTL cache so a second list does not re-invoke CLI", async () => {
+    vi.mocked(invoke).mockResolvedValue([
+      {
+        sessionId: "s1",
+        title: "Demo",
+        updatedLabel: "1h ago",
+        updatedAt: 1,
+      },
+    ]);
+
+    await getOpenCodeSessionList("ws-1");
+    await getOpenCodeSessionList("ws-1");
+
+    expect(invoke).toHaveBeenCalledTimes(1);
+  });
+
+  it("coalesces concurrent lists into one in-flight invoke", async () => {
+    let resolveInvoke: ((value: unknown) => void) | undefined;
+    vi.mocked(invoke).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveInvoke = resolve;
+        }),
+    );
+
+    const a = getOpenCodeSessionList("ws-1");
+    const b = getOpenCodeSessionList("ws-1");
+    expect(invoke).toHaveBeenCalledTimes(1);
+
+    expect(resolveInvoke).toBeTypeOf("function");
+    resolveInvoke!([
+      {
+        sessionId: "s1",
+        title: "Demo",
+        updatedLabel: "1h ago",
+        updatedAt: 1,
+      },
+    ]);
+
+    await expect(a).resolves.toEqual([
+      expect.objectContaining({ sessionId: "s1" }),
+    ]);
+    await expect(b).resolves.toEqual([
+      expect.objectContaining({ sessionId: "s1" }),
+    ]);
+    expect(invoke).toHaveBeenCalledTimes(1);
   });
 
   it("treats missing OpenCode CLI as an empty session list (no throw)", async () => {
@@ -114,5 +164,31 @@ describe("getOpenCodeSessionList", () => {
     await expect(
       getOpenCodeSessionList("ws-1", { timeoutMs: 30 }),
     ).resolves.toEqual([]);
+  }, 5_000);
+
+  it("does not cache timeout empties so a later call can still load", async () => {
+    vi.mocked(invoke)
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            setTimeout(() => resolve([{ sessionId: "late" }]), 200);
+          }),
+      )
+      .mockResolvedValueOnce([
+        {
+          sessionId: "s1",
+          title: "Demo",
+          updatedLabel: "1h ago",
+          updatedAt: 1,
+        },
+      ]);
+
+    await expect(
+      getOpenCodeSessionList("ws-1", { timeoutMs: 20 }),
+    ).resolves.toEqual([]);
+    await expect(getOpenCodeSessionList("ws-1")).resolves.toEqual([
+      expect.objectContaining({ sessionId: "s1" }),
+    ]);
+    expect(invoke).toHaveBeenCalledTimes(2);
   }, 5_000);
 });

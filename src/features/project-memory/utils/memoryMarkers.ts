@@ -1,11 +1,21 @@
 import type { ProjectMemoryItem } from "../../../services/tauri";
 
 export const MEMORY_CONTEXT_SUMMARY_PREFIX = "【记忆上下文摘要】";
+/**
+ * 记忆参考空/超时/失败状态（主幕时间线轻量 status，非旧摘要卡）。
+ * 正文格式：
+ *   【记忆参考状态】
+ *   <emptyReason>
+ *   <title>
+ *   <message>
+ */
+export const MEMORY_PICK_STATUS_PREFIX = "【记忆参考状态】";
 
 const POLLUTION_MARKERS = [
   "<project-memory",
   "[对话记录]",
   MEMORY_CONTEXT_SUMMARY_PREFIX,
+  MEMORY_PICK_STATUS_PREFIX,
 ];
 
 function containsMarker(text: string): boolean {

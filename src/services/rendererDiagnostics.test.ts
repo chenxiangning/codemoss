@@ -75,7 +75,7 @@ describe("rendererDiagnostics", () => {
     );
   });
 
-  it("throttles rapid diagnostic appends into a single deferred persist", async () => {
+  it("batches rapid diagnostic appends behind the 30s durable window", async () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
     clientStorageMocks.isPreloaded.mockReturnValue(true);
     clientStorageMocks.getClientStoreSync.mockReturnValue([]);
@@ -89,6 +89,9 @@ describe("rendererDiagnostics", () => {
     expect(clientStorageMocks.writeClientStoreValue).toHaveBeenCalledTimes(1);
 
     vi.advanceTimersByTime(2_000);
+    expect(clientStorageMocks.writeClientStoreValue).toHaveBeenCalledTimes(1);
+
+    vi.advanceTimersByTime(28_000);
     expect(clientStorageMocks.writeClientStoreValue).toHaveBeenCalledTimes(2);
     const [, , persistedEntries] =
       clientStorageMocks.writeClientStoreValue.mock.calls[1] ?? [];
@@ -115,7 +118,7 @@ describe("rendererDiagnostics", () => {
     expect(clientStorageMocks.getClientStoreSync).toHaveBeenCalledTimes(2);
 
     diagnostics.appendRendererDiagnostic("incremental/second");
-    vi.advanceTimersByTime(2_000);
+    vi.advanceTimersByTime(30_000);
 
     expect(clientStorageMocks.getClientStoreSync).toHaveBeenCalledTimes(2);
     const [, , persistedEntries] =
@@ -172,6 +175,28 @@ describe("rendererDiagnostics", () => {
     const exported = diagnostics.exportRendererDiagnostics();
     const labels = exported.map((entry) => entry.label);
     expect(labels).toContain("export/pending");
+  });
+
+  it("keeps volatile diagnostics exportable without scheduling a durable write", async () => {
+    clientStorageMocks.isPreloaded.mockReturnValue(true);
+    clientStorageMocks.getClientStoreSync.mockReturnValue([]);
+    const diagnostics = await import("./rendererDiagnostics");
+
+    diagnostics.appendVolatileRendererDiagnostic("perf.frame-drop", {
+      deltaMs: 72,
+      level: "warn",
+    });
+
+    expect(clientStorageMocks.writeClientStoreValue).not.toHaveBeenCalled();
+    expect(diagnostics.exportRendererDiagnostics()).toEqual([
+      expect.objectContaining({
+        label: "perf.frame-drop",
+        payload: expect.objectContaining({ deltaMs: 72, level: "warn" }),
+      }),
+    ]);
+
+    diagnostics.clearRendererDiagnostics();
+    expect(diagnostics.exportRendererDiagnostics()).toEqual([]);
   });
 
   it("exposes a cheap diagnostics revision for polling UIs", async () => {
@@ -366,11 +391,15 @@ describe("rendererDiagnostics", () => {
     windowTarget.dispatchEvent(new Event("pagehide"));
 
     const immediateWrites = clientStorageMocks.writeClientStoreValue.mock.calls
-      .filter((call) => (call[3] as { immediate?: boolean } | undefined)?.immediate)
+      .filter(
+        (call) => (call[3] as { immediate?: boolean } | undefined)?.immediate,
+      )
       .map((call) => call[2] as Array<{ label: string }>);
     expect(immediateWrites).not.toHaveLength(0);
     expect(
-      immediateWrites.at(-1)?.some((entry) => entry.label === "window/pagehide"),
+      immediateWrites
+        .at(-1)
+        ?.some((entry) => entry.label === "window/pagehide"),
     ).toBe(true);
   });
 
@@ -385,7 +414,9 @@ describe("rendererDiagnostics", () => {
     documentTarget.dispatchEvent(new Event("visibilitychange"));
 
     const immediateWrites = clientStorageMocks.writeClientStoreValue.mock.calls
-      .filter((call) => (call[3] as { immediate?: boolean } | undefined)?.immediate)
+      .filter(
+        (call) => (call[3] as { immediate?: boolean } | undefined)?.immediate,
+      )
       .map((call) => call[2] as Array<{ label: string }>);
     expect(immediateWrites).not.toHaveLength(0);
     expect(
@@ -462,6 +493,71 @@ describe("rendererDiagnostics", () => {
           entry.payload.index === 1000 && entry.label === "perf.web-vital",
       ),
     ).toBe(true);
+  });
+
+  it("caps durable renderer diagnostics by serialized byte size", async () => {
+    const largePerfEntries = Array.from({ length: 1_000 }, (_, index) => ({
+      timestamp: 1_000 + index,
+      label: "perf.frame-drop",
+      payload: {
+        index,
+        samples: Array.from({ length: 40 }, (__, sampleIndex) => ({
+          sampleIndex,
+          durationMs: 100 + sampleIndex,
+        })),
+      },
+    }));
+    clientStorageMocks.isPreloaded.mockReturnValue(true);
+    clientStorageMocks.getClientStoreSync.mockReturnValue([
+      {
+        timestamp: 1,
+        label: "window/error",
+        payload: { reasonCode: "renderer-crash" },
+      },
+      ...largePerfEntries,
+    ]);
+    const diagnostics = await import("./rendererDiagnostics");
+
+    diagnostics.appendRendererDiagnostic("window/pageshow", {
+      persisted: false,
+    });
+
+    const [, , persistedValue] =
+      clientStorageMocks.writeClientStoreValue.mock.calls[0] ?? [];
+    const serialized = JSON.stringify(persistedValue);
+    expect(new TextEncoder().encode(serialized).byteLength).toBeLessThanOrEqual(
+      256 * 1024,
+    );
+    expect(
+      (persistedValue as Array<{ label: string }>).some(
+        (entry) => entry.label === "window/error",
+      ),
+    ).toBe(true);
+  });
+
+  it("drops a single normalized diagnostic that exceeds the byte budget", async () => {
+    const oversizedPayload = Object.fromEntries(
+      Array.from({ length: 40 }, (_, keyIndex) => [
+        `metric${keyIndex}`,
+        Array.from({ length: 40 }, () => "x".repeat(512)),
+      ]),
+    );
+    clientStorageMocks.isPreloaded.mockReturnValue(true);
+    clientStorageMocks.getClientStoreSync.mockReturnValue([
+      {
+        timestamp: 1,
+        label: "perf.oversized-sample",
+        payload: oversizedPayload,
+      },
+    ]);
+    const diagnostics = await import("./rendererDiagnostics");
+
+    const exported = diagnostics.exportRendererDiagnostics();
+
+    expect(
+      new TextEncoder().encode(JSON.stringify(exported)).byteLength,
+    ).toBeLessThanOrEqual(256 * 1024);
+    expect(exported).toEqual([]);
   });
 
   it("keeps realtime summaries and stream latency diagnostics in independent buckets", async () => {
@@ -782,6 +878,7 @@ describe("rendererDiagnostics", () => {
       textLength: 0,
     });
 
+    diagnostics.flushRendererDiagnosticsBuffer();
     expect(clientStorageMocks.writeClientStoreValue).toHaveBeenCalledTimes(2);
     dateNowSpy.mockRestore();
   });
@@ -865,6 +962,7 @@ describe("rendererDiagnostics", () => {
       textLength: 122,
     });
 
+    diagnostics.flushRendererDiagnosticsBuffer();
     expect(clientStorageMocks.writeClientStoreValue).toHaveBeenCalledTimes(2);
     dateNowSpy.mockRestore();
   });
@@ -1205,6 +1303,9 @@ describe("rendererDiagnostics", () => {
     }
     const rootElement = new TestHTMLElement({ width: 800, height: 600 });
     const bodyElement = new TestHTMLElement({ width: 800, height: 600 });
+    const clearIntervalSpy = vi.fn((handle: ReturnType<typeof setInterval>) => {
+      globalThis.clearInterval(handle);
+    });
     vi.stubGlobal("HTMLElement", TestHTMLElement);
     vi.stubGlobal("document", {
       body: bodyElement,
@@ -1215,7 +1316,7 @@ describe("rendererDiagnostics", () => {
       getElementById: (id: string) => (id === "root" ? rootElement : null),
     });
     vi.stubGlobal("window", {
-      clearInterval: globalThis.clearInterval,
+      clearInterval: clearIntervalSpy,
       location: { href: "tauri://localhost" },
       setInterval: globalThis.setInterval,
       getComputedStyle: () => ({
@@ -1254,6 +1355,8 @@ describe("rendererDiagnostics", () => {
         }),
       ],
     );
+    // maxReports=1 后必须停表，避免健康窗口仍周期性 getBoundingClientRect 强制回流。
+    expect(clearIntervalSpy).toHaveBeenCalled();
   });
 
   it("does not report a blank screen when the root has visible content", async () => {

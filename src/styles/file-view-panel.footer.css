@@ -255,6 +255,9 @@
   flex-shrink: 0;
   background: var(--surface-messages);
   min-height: 20px;
+  overflow: visible;
+  position: relative;
+  z-index: 5;
 }
 
 .fvp-navigation-mode {
@@ -287,6 +290,9 @@
   align-items: center;
   gap: 4px;
   flex-shrink: 0;
+  overflow: visible;
+  position: relative;
+  z-index: 6;
   justify-content: flex-end;
   min-width: 0;
 }
@@ -394,16 +400,24 @@
   border-color: transparent;
 }
 
+.fvp-footer .open-app-menu {
+  overflow: visible;
+  z-index: 8;
+}
+
 .fvp-footer .open-app-button {
   border-radius: 8px;
   border-color: transparent;
   box-shadow: none;
+  overflow: visible;
 }
 
 .fvp-footer .open-app-action,
 .fvp-footer .open-app-toggle {
-  min-height: 18px;
+  min-height: 22px;
   border: 0;
+  cursor: pointer;
+  pointer-events: auto;
 }
 
 .fvp-footer .open-app-action {
@@ -411,8 +425,9 @@
 }
 
 .fvp-footer .open-app-toggle {
-  padding: 2px 5px;
-  border-left: 0;
+  padding: 2px 8px;
+  min-width: 24px;
+  border-left: 1px solid var(--border-subtle);
 }
 
 .fvp-footer .open-app-label {

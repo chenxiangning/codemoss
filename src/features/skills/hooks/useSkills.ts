@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { DebugEntry, SkillOption, WorkspaceInfo } from "../../../types";
 import { getSkillsList } from "../../../services/tauri";
+import { scheduleCatalogIdlePrewarm } from "../../startup-orchestration/utils/scheduleCatalogIdlePrewarm";
 import { startupOrchestrator } from "../../startup-orchestration/utils/startupOrchestrator";
 
 type UseSkillsOptions = {
@@ -188,7 +189,15 @@ export function useSkills({
     if (lastFetchedKey.current === fetchKey) {
       return;
     }
-    refreshSkills("idle-prewarm");
+    // P1-3/P1-4: no workspace → skip; with workspace, defer past StartupGate.
+    return scheduleCatalogIdlePrewarm({
+      run: () => {
+        if (lastFetchedKey.current === fetchKey) {
+          return;
+        }
+        void refreshSkills("idle-prewarm");
+      },
+    });
   }, [fetchKey, isConnected, refreshSkills, workspaceId]);
 
   const skillOptions = useMemo(

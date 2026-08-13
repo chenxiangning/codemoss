@@ -1,5 +1,0 @@
-{"file": ".claude/commands/trellis/finish-work.md", "reason": "Finish work checklist"}
-{"file": ".claude/commands/trellis/check.md", "reason": "Code quality check spec"}
-{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "检查 UI/i18n contract"}
-{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "检查 focused regression"}
-{"file": "openspec/changes/replace-language-server-fallback-with-install-guidance/specs/file-view-code-intelligence-navigation/spec.md", "reason": "核对 acceptance contract"}

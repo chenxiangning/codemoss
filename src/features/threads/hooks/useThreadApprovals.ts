@@ -195,11 +195,18 @@ export function useThreadApprovals({
       if (decision === "accept") {
         markApprovalAsApplying(request);
       }
+      const scopeRaw = request.params?.scope ?? request.params?.defaultScope;
+      const grantScope =
+        request.method.includes("directoryGrant") &&
+        (scopeRaw === "once" || scopeRaw === "session" || scopeRaw === "workspace")
+          ? scopeRaw
+          : undefined;
       await respondToServerRequest(
         request.workspace_id,
         request.request_id,
         decision,
         sharedOwner,
+        grantScope ? { scope: grantScope } : undefined,
       );
       dispatch({
         type: "removeApproval",

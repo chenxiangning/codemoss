@@ -1,5 +1,0 @@
-{"file": ".trellis/workflow.md", "reason": "Project workflow and conventions"}
-{"file": ".trellis/spec/backend/index.md", "reason": "Backend development guide"}
-{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "共享 CLI discovery 与 Rust 回归门禁"}
-{"file": ".trellis/spec/backend/error-handling.md", "reason": "best-effort fallback 与错误边界"}
-{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "修复共享 resolver 避免 provider 特判"}

@@ -507,6 +507,57 @@
   margin-top: -1px;
 }
 
+.workspace-sortable-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  min-width: 0;
+}
+
+.workspace-sortable-list.is-reordering {
+  user-select: none;
+  cursor: grabbing;
+}
+
+.workspace-sortable-item {
+  min-width: 0;
+  transition: transform 0.12s ease;
+}
+
+.workspace-sortable-item.is-dragging,
+.workspace-card.is-dragging {
+  z-index: 2;
+  position: relative;
+}
+
+.workspace-card.is-dragging .workspace-row {
+  background: color-mix(in srgb, var(--surface-hover) 88%, transparent);
+  box-shadow: 0 4px 14px color-mix(in srgb, var(--text-strong) 10%, transparent);
+}
+
+.workspace-card.is-dragging {
+  opacity: 0.96;
+}
+
+/* Collapse control doubles as long-press drag entry (no extra handle column). */
+.workspace-collapse-toggle.is-reorder-entry {
+  touch-action: none;
+}
+
+.workspace-collapse-toggle.is-drag-handle {
+  cursor: grabbing;
+  color: var(--text-strong);
+  background: color-mix(in srgb, var(--surface-hover) 80%, transparent);
+}
+
+.workspace-collapse-toggle-drag-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+}
+
 .workspace-children {
   position: relative;
   display: grid;

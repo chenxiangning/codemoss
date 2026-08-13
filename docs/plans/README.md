@@ -13,6 +13,10 @@ status: active
 
 - [Shared Session recovery exit closure](./2026-08-04-shared-session-recovery-exit-closure.md) — P0：恢复出口闭环（跨平台）；**尚未** OpenSpec 化、未改代码。
 
+## Active execution plans
+
+- [AppShell 高内聚低耦合优化](./2026-08-11-app-shell-cohesion-optimization.md) — **活文档**：P0-0 度量 → bag 瘦身 → Host 子树化 → 物理模块化；完成 Todo 后必须回写进度与 Progress Log。
+
 ## Implemented historical plans
 
 - [Composer popup fix](./2026-02-10-composer-popup-fix.md)

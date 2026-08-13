@@ -11,5 +11,5 @@
 
 ## 3. Contract And Verification Closure
 
-- [x] 3.1 [P1, 依赖: 2.1/2.2/2.3] 输入最终实现，输出 `.trellis/spec/frontend/file-history-view.md` 与 `multi-repository-git-commit-workspace.md` executable contract增量；验证 signatures、matrix、Good/Base/Bad 与 required tests 完整。
+- [x] 3.1 [P1, 依赖: 2.1/2.2/2.3] 输入最终实现，输出 `dev-guidelines/frontend/file-history-view.md` 与 `multi-repository-git-commit-workspace.md` executable contract增量；验证 signatures、matrix、Good/Base/Bad 与 required tests 完整。
 - [x] 3.2 [P0, 依赖: 3.1] 输入全部 code/spec changes，输出 focused Vitest、lint、typecheck、large-file/native-menu、`git diff --check` 与 strict OpenSpec validation evidence；验证所有本变更 gate 通过或显式记录 unrelated baseline。

@@ -1,4 +1,0 @@
-{"file": ".claude/commands/trellis/finish-work.md", "reason": "Finish work checklist"}
-{"file": ".claude/commands/trellis/check.md", "reason": "Code quality check spec"}
-{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "focused/full tests、lint、line ratchet 与 review gate"}
-{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "复用既有 presentation/scroll utilities，避免 mega-controller"}

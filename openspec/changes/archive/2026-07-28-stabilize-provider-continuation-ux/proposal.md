@@ -57,5 +57,5 @@ Native Provider Continuation 当前把 Context bootstrap 当作普通用户 Turn
 
 - Backend：`src-tauri/src/native_continuation/**`、continuation operation persistence/history probe。
 - Frontend：Provider continuation Dialog/context projection、Messages metadata slot、Shared V2 send snapshot 与 badge projection。
-- Contracts：Tauri payload mapping、OpenSpec delta、`.trellis/spec/backend` executable contracts。
+- Contracts：Tauri payload mapping、OpenSpec delta、`dev-guidelines/backend` executable contracts。
 - 性能：新增 projection 只订阅稳定 metadata，不接入 delta 高频根 hook；无新依赖、无 OS-specific path。

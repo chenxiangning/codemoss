@@ -69,6 +69,7 @@ import {
 } from "../presentation/markdownLocalResources";
 import {
   countMarkdownTableRowsFromNode,
+  shouldCountMarkdownTableRowsForDefer,
   shouldDeferMarkdownTable,
 } from "../presentation/markdownHeavyIslands";
 import { useMarkdownStreamingValue } from "../hooks/useMarkdownStreamingValue";
@@ -379,8 +380,13 @@ export const Markdown = memo(function Markdown({
         );
       },
       table: ({ node, children }) => {
+        // kill-switch 关闭或本消息无需 heavy defer 时禁止树遍历：
+        // 旧路径会先 countMarkdownTableRowsFromNode 再短路，环/极深 hast 会 RangeError 炸 ErrorBoundary。
+        if (!shouldCountMarkdownTableRowsForDefer(shouldDeferMarkdownHeavyIslands)) {
+          return <table>{children}</table>;
+        }
         const rowCount = countMarkdownTableRowsFromNode(node);
-        if (!shouldDeferMarkdownHeavyIslands || !shouldDeferMarkdownTable(rowCount)) {
+        if (!shouldDeferMarkdownTable(rowCount)) {
           return <table>{children}</table>;
         }
         return (

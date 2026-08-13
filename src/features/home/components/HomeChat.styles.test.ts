@@ -89,4 +89,29 @@ describe("HomeChat styles", () => {
       /\.home-chat-composer-host \.submit-button\s*\{[^}]*(?:width|height)\s*:/s,
     );
   });
+
+  it("does not override shared input-area padding or min-height on Home composer", () => {
+    const homeCss = readFileSync(
+      resolve(process.cwd(), "src/styles/home-chat.css"),
+      "utf8",
+    );
+    const sharedInputCss = readFileSync(
+      resolve(
+        process.cwd(),
+        "src/features/composer/components/ChatInputBox/styles/input-area.css",
+      ),
+      "utf8",
+    );
+    const sharedWrapperRule =
+      sharedInputCss.match(/\.input-editable-wrapper\s*\{([\s\S]*?)\n\}/)?.[1] ??
+      "";
+
+    expect(sharedWrapperRule).toContain("padding: 12px 14px 10px;");
+    expect(homeCss).not.toMatch(
+      /\.home-chat-composer-host \.input-editable-wrapper\s*\{/s,
+    );
+    expect(homeCss).not.toMatch(
+      /\.home-chat-composer-host \.input-editable\s*\{/s,
+    );
+  });
 });

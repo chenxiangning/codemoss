@@ -72,7 +72,7 @@ The product needs a Codex-only compatibility boundary:
 ## Spec Sync
 
 - Behavior spec added at `openspec/changes/harden-codex-tui-compatible-user-agent/specs/codex-tui-compatible-user-agent/spec.md`.
-- Executable backend contract is captured in `.trellis/spec/backend/codex-provider-scoped-runtime.md` under the Codex app-server launch identity contract.
+- Executable backend contract is captured in `dev-guidelines/backend/codex-provider-scoped-runtime.md` under the Codex app-server launch identity contract.
 - Current code is the source of truth:
   - constants: `CODEX_TUI_COMPAT_CLIENT_NAME = "codex-tui"`, `FALLBACK_CODEX_TUI_COMPAT_VERSION = "0.137.0"`, `FALLBACK_TERM_PROGRAM = "Apple_Terminal"`, `FALLBACK_TERM_PROGRAM_VERSION = "470.2"`;
   - launch path: `spawn_workspace_session_once` applies terminal env hints before `codex app-server` args and optional `CODEX_HOME`;

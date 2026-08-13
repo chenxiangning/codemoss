@@ -139,6 +139,69 @@ describe("WorkspaceCard", () => {
     expect(collapseButton?.querySelector(".workspace-collapse-toggle-affordance-icon")).toBeTruthy();
   });
 
+  it("puts long-press reorder entry on the collapse button", () => {
+    const onPointerDown = vi.fn();
+    const { container } = render(
+      <WorkspaceCard
+        workspace={workspace}
+        isActive={false}
+        hasPrimaryActiveThread={false}
+        isCollapsed={false}
+        onShowWorkspaceMenu={vi.fn()}
+        onSelectWorkspace={vi.fn()}
+        onToggleWorkspaceCollapse={vi.fn()}
+        collapsePointerHandlers={{ onPointerDown }}
+      />,
+    );
+
+    const card = container.querySelector(".workspace-card");
+    const collapse = container.querySelector(".workspace-collapse-toggle");
+    expect(card?.classList.contains("is-reorderable")).toBe(true);
+    expect(collapse?.classList.contains("is-reorder-entry")).toBe(true);
+    expect(collapse?.getAttribute("title")).toContain("sidebar.longPressToReorder");
+    expect(container.querySelector(".workspace-drag-handle")).toBeNull();
+  });
+
+  it("switches the collapse control to a grip while dragging", () => {
+    const { container } = render(
+      <WorkspaceCard
+        workspace={workspace}
+        isActive={false}
+        hasPrimaryActiveThread={false}
+        isCollapsed={false}
+        onShowWorkspaceMenu={vi.fn()}
+        onSelectWorkspace={vi.fn()}
+        onToggleWorkspaceCollapse={vi.fn()}
+        isDragging
+        collapsePointerHandlers={{ onPointerDown: vi.fn() }}
+      />,
+    );
+
+    const collapse = container.querySelector(".workspace-collapse-toggle");
+    expect(collapse?.classList.contains("is-drag-handle")).toBe(true);
+    expect(container.querySelector(".workspace-collapse-toggle-drag-icon")).not.toBeNull();
+    expect(container.querySelector(".workspace-collapse-toggle-folder-icon")).toBeNull();
+  });
+
+  it("does not enable collapse reorder entry by default", () => {
+    const { container } = render(
+      <WorkspaceCard
+        workspace={workspace}
+        isActive={false}
+        hasPrimaryActiveThread={false}
+        isCollapsed={false}
+        onShowWorkspaceMenu={vi.fn()}
+        onSelectWorkspace={vi.fn()}
+        onToggleWorkspaceCollapse={vi.fn()}
+      />,
+    );
+
+    expect(container.querySelector(".workspace-collapse-toggle.is-reorder-entry")).toBeNull();
+    expect(container.querySelector(".workspace-card")?.classList.contains("is-reorderable")).toBe(
+      false,
+    );
+  });
+
   it("does not render workspace quick actions in the row action area", () => {
     const { container } = render(
       <WorkspaceCard

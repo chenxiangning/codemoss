@@ -35,7 +35,7 @@ File History 当前 `.file-history-workbench` 用固定 `clamp(240px, 26%, 360px
   - 新增 `.file-history-vertical-resizer`；shared compare splitter 样式位于 `diff.css`。
   - 把 `.file-history-diff .editable-diff-compare-columns` 的 `overflow: hidden` 改为 `overflow-x: auto`，保证列本身仍 `minmax(0, 1fr)`，长行由 cm-scroller 内部滚动；列容器允许自身横向 overflow 透出。
   - 保持 narrow container breakpoint（720px）下 stack 行为不受影响。
-- `.trellis/spec/frontend/file-history-view.md`：在 §3 Contracts 增加「3 resizable regions」与「diff horizontal scroll」要求；在 §6 Tests Required 增加对应断言。
+- `dev-guidelines/frontend/file-history-view.md`：在 §3 Contracts 增加「3 resizable regions」与「diff horizontal scroll」要求；在 §6 Tests Required 增加对应断言。
 - `src/styles/file-history-layout.test.ts`：断言 splitter class 与 columns container overflow 不再 hidden。
 - `src/features/git-history/components/FileHistoryView.test.tsx`：新增 focused Vitest 覆盖 splitter mousedown→mousemove→mouseup 调整宽度 + 双击复位。
 
@@ -65,5 +65,5 @@ File History 当前 `.file-history-workbench` 用固定 `clamp(240px, 26%, 360px
 
 - Frontend：`FileHistoryView.tsx`、`WorkspaceReadOnlyDiffCompare.tsx`、`GitDiffViewer.tsx`、`useLayoutNodes.tsx` 与关联 styles/loaders。
 - Tests：File History、shared compare、center preview 与 CSS loader/layout focused suites。
-- Spec：`.trellis/spec/frontend/file-history-view.md` 增加 contracts。
+- Spec：`dev-guidelines/frontend/file-history-view.md` 增加 contracts。
 - 无新增 dependency；无 backend 变更；无 i18n 新增键。

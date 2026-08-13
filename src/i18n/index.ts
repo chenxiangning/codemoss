@@ -42,9 +42,13 @@ const supportedLanguages = new Set<SupportedLanguage>(
 const DEFAULT_LANGUAGE: SupportedLanguage = "zh";
 
 /**
- * Loaders exist for languages that ship a full translation bundle. Languages
- * without a loader render through their fallback chain, so adding a bundle later
- * is just a matter of registering another loader here.
+ * Full locale loaders. P2-3 tried critical/deferred split for cold-start size, but
+ * shell/settings surfaces regressed (raw keys like files.loadingFiles /
+ * settings.sidebarBasic) whenever deferred packs lagged. Product correctness
+ * wins: load the complete language pack before rendering i18n-backed UI.
+ *
+ * locales star critical.ts and deferred.ts remain as source organization helpers
+ * composed by locales star index.ts; runtime always imports the full index.
  */
 const localeLoaders: Partial<
   Record<SupportedLanguage, () => Promise<{ default: Record<string, unknown> }>>
@@ -109,7 +113,7 @@ if (initReactI18next && typeof initReactI18next === "object") {
 
 const i18nInstance = i18n;
 
-/** Load a single bundle if it exists and hasn't been loaded yet (idempotent). */
+/** Load a single full bundle if it exists and hasn't been loaded yet (idempotent). */
 async function loadBundle(lang: SupportedLanguage): Promise<void> {
   if (loadedLanguages.has(lang)) {
     return;

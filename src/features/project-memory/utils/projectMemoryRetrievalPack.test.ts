@@ -119,6 +119,12 @@ describe("formatProjectMemoryRetrievalPack", () => {
     expect(text).toContain("Original user input:");
     expect(text).toContain("Original assistant response:");
     expect(text).toContain("preserve its [Mx] citation");
+    expect(text).toContain("Primary task");
+    expect(text).toContain("PRIOR PROJECT REFERENCE");
+    expect(text).toContain("UNTRUSTED");
+    expect(text).toContain(
+      "For the user's current request, these prior project facts may help",
+    );
   });
 
   it("marks pack truncation when total budget drops records", () => {

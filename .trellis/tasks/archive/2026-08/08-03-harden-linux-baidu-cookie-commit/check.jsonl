@@ -1,6 +1,0 @@
-{"file": ".claude/commands/trellis/finish-work.md", "reason": "Finish work checklist"}
-{"file": ".claude/commands/trellis/check.md", "reason": "Code quality check spec"}
-{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "backend quality gate 与 review checklist"}
-{"file": ".trellis/spec/backend/linux-native-baidu-analytics.md", "reason": "验证 visitor identity 与 startup isolation 不回退"}
-{"file": "openspec/changes/fix-linux-startup-preserve-baidu-analytics/specs/linux-native-baidu-analytics-stability/spec.md", "reason": "behavior acceptance contract"}
-{"file": "src-tauri/src/baidu_tongji.rs", "reason": "检查锁粒度、validation-before-commit 和测试"}

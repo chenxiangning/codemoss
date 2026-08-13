@@ -32,6 +32,7 @@ const ROOT_FILE_ALLOWLIST = new Set([
   "markdown-doc1-claude-chat-canvas-rendering.md",
   "markdown-doc2-codex-chat-canvas-rendering.md",
   "openspec-trellis-playbook.md",
+  "openspec-playbook.md",
 ]);
 
 const CURRENT_SECTION_DIRS = [
@@ -48,9 +49,9 @@ const CURRENT_SECTION_DIRS = [
   "docs/reference/conversation",
   "docs/reports",
   "docs/research",
-  ".trellis/spec/backend",
-  ".trellis/spec/frontend",
-  ".trellis/spec/guides",
+  "dev-guidelines/backend",
+  "dev-guidelines/frontend",
+  "dev-guidelines/guides",
 ];
 
 const errors = [];
@@ -228,7 +229,7 @@ for (const filePath of docsFiles.filter((entry) => entry.endsWith(`${sep}.DS_Sto
 
 for (const section of CURRENT_SECTION_DIRS) {
   const sectionPath = join(ROOT, section);
-  const navigationName = section.startsWith(".trellis/spec/") ? "index.md" : "README.md";
+  const navigationName = section.startsWith("dev-guidelines/") ? "index.md" : "README.md";
   if (!existsSync(join(sectionPath, navigationName))) {
     errors.push(`${section}: missing ${navigationName}`);
   }
