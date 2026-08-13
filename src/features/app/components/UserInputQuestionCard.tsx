@@ -1,4 +1,5 @@
 import type { RefObject } from "react";
+import Check from "lucide-react/dist/esm/icons/check";
 import { useTranslation } from "react-i18next";
 import type { RequestUserInputRequest } from "../../../types";
 
@@ -69,6 +70,29 @@ function getFlavorClass(flavor: UserInputQuestionCardFlavor, suffix: string) {
   return flavor === "ask"
     ? `ask-user-question-${suffix}`
     : `request-user-input-${suffix}`;
+}
+
+function UserInputOptionCheck({
+  flavor,
+  selected,
+}: {
+  flavor: UserInputQuestionCardFlavor;
+  selected: boolean;
+}) {
+  if (!selected) {
+    return null;
+  }
+  return (
+    <span
+      className={cx(
+        "user-input-question-option-check",
+        getFlavorClass(flavor, "option-check"),
+      )}
+      aria-hidden="true"
+    >
+      <Check strokeWidth={2.75} />
+    </span>
+  );
 }
 
 export function UserInputQuestionCard({
@@ -298,6 +322,7 @@ export function UserInputQuestionCard({
                             getFlavorClass(flavor, "option"),
                             isSelected && "is-selected",
                           )}
+                          aria-pressed={isSelected}
                           onClick={() =>
                             onOptionToggle(
                               questionId,
@@ -314,6 +339,7 @@ export function UserInputQuestionCard({
                               {option.description}
                             </span>
                           ) : null}
+                          <UserInputOptionCheck flavor={flavor} selected={isSelected} />
                         </button>
                       );
                     })}
@@ -326,6 +352,7 @@ export function UserInputQuestionCard({
                           "is-other",
                           isOtherSelected && "is-selected",
                         )}
+                        aria-pressed={isOtherSelected}
                         onClick={() =>
                           onOptionToggle(
                             questionId,
@@ -340,6 +367,7 @@ export function UserInputQuestionCard({
                         <span className={cx("user-input-question-option-description", getFlavorClass(flavor, flavor === "ask" ? "option-desc" : "option-description"))}>
                           {t("askUserQuestion.otherOptionDesc")}
                         </span>
+                        <UserInputOptionCheck flavor={flavor} selected={isOtherSelected} />
                       </button>
                     ) : null}
                   </div>

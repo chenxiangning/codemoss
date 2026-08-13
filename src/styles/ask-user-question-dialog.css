@@ -177,28 +177,50 @@
 }
 
 .user-input-question-option.ask-user-question-option {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
+  position: relative;
+  display: grid;
+  gap: 2px;
+  align-content: start;
   min-width: 0;
   padding: 8px 10px;
   border: none;
   border-radius: 11px;
   background: color-mix(in srgb, var(--text-primary) 5%, transparent);
   cursor: pointer;
-  transition: background 0.15s;
+  transition: background 0.15s, padding 0.15s;
   text-align: left;
   min-height: 0;
 }
 
-.user-input-question-option.ask-user-question-option:hover {
+.user-input-question-option.ask-user-question-option:hover:not(.is-selected) {
   border: none;
   background: color-mix(in srgb, var(--text-primary) 8%, transparent);
 }
 
 .user-input-question-option.ask-user-question-option.is-selected {
   border: none;
-  background: color-mix(in srgb, var(--accent, #4da3ff) 16%, transparent);
+  padding-right: 28px;
+  background: var(--user-input-option-selected-fill);
+}
+
+.user-input-question-option-check.ask-user-question-option-check {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  background: var(--user-input-option-check-bg);
+  color: var(--user-input-option-check-fg);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.user-input-question-option-check.ask-user-question-option-check svg {
+  width: 11px;
+  height: 11px;
 }
 
 .user-input-question-option.ask-user-question-option.is-other {

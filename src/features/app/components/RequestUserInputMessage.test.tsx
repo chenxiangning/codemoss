@@ -843,9 +843,13 @@ describe("RequestUserInputMessage", () => {
     const option = screen.getByRole("button", { name: "18-25" });
     fireEvent.click(option);
     expect(option.classList.contains("is-selected")).toBe(true);
+    expect(option.querySelector(".user-input-question-option-check")).toBeTruthy();
+    expect(option.getAttribute("aria-pressed")).toBe("true");
 
     fireEvent.click(option);
     expect(option.classList.contains("is-selected")).toBe(false);
+    expect(option.querySelector(".user-input-question-option-check")).toBeNull();
+    expect(option.getAttribute("aria-pressed")).toBe("false");
   });
 
   it("keeps duplicate option labels independently selectable", async () => {

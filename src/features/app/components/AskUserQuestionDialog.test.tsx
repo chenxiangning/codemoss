@@ -107,11 +107,16 @@ describe('AskUserQuestionDialog', () => {
 
     fireEvent.click(optionA);
     expect(optionA.classList.contains('is-selected')).toBe(true);
+    expect(optionA.querySelector('.user-input-question-option-check')).toBeTruthy();
+    expect(optionA.getAttribute('aria-pressed')).toBe('true');
 
     // Clicking Option B should deselect A (single-select mode)
     fireEvent.click(optionB);
     expect(optionB.classList.contains('is-selected')).toBe(true);
+    expect(optionB.querySelector('.user-input-question-option-check')).toBeTruthy();
     expect(optionA.classList.contains('is-selected')).toBe(false);
+    expect(optionA.querySelector('.user-input-question-option-check')).toBeNull();
+    expect(optionA.getAttribute('aria-pressed')).toBe('false');
   });
 
   it('allows deselecting a single-select option by clicking it again', () => {
@@ -120,9 +125,11 @@ describe('AskUserQuestionDialog', () => {
     const optionA = screen.getByText('Option A').closest('button')!;
     fireEvent.click(optionA);
     expect(optionA.classList.contains('is-selected')).toBe(true);
+    expect(optionA.querySelector('.user-input-question-option-check')).toBeTruthy();
 
     fireEvent.click(optionA);
     expect(optionA.classList.contains('is-selected')).toBe(false);
+    expect(optionA.querySelector('.user-input-question-option-check')).toBeNull();
   });
 
   it('resets draft when the same Shared request id belongs to another Runtime attempt', () => {

@@ -516,9 +516,17 @@
   gap: 4px;
 }
 
-/* 选项：无描边，靠底色区分选中 */
+/* 选项：无描边；选中靠主题 accent 底色 + 右上角 ✓ */
 .user-input-question-option,
 .request-user-input-option {
+  --user-input-option-selected-fill: color-mix(
+    in srgb,
+    var(--text-accent) 24%,
+    transparent
+  );
+  --user-input-option-check-bg: var(--text-accent);
+  --user-input-option-check-fg: var(--text-strong);
+  position: relative;
   border: none;
   border-radius: 10px;
   padding: 8px 10px;
@@ -529,18 +537,73 @@
   align-content: start;
   min-height: 0;
   cursor: pointer;
-  transition: background 0.15s ease, color 0.15s ease;
+  transition: background 0.15s ease, color 0.15s ease, padding 0.15s ease;
 }
 
-.user-input-question-option:hover,
-.request-user-input-option:hover {
+.user-input-question-option:hover:not(.is-selected),
+.request-user-input-option:hover:not(.is-selected) {
   background: color-mix(in srgb, var(--text-primary) 7%, transparent);
 }
 
 .user-input-question-option.is-selected,
 .request-user-input-option.is-selected {
   border: none;
-  background: color-mix(in srgb, var(--accent, #4da3ff) 14%, transparent);
+  padding-right: 28px;
+  background: var(--user-input-option-selected-fill);
+}
+
+.user-input-question-option-check,
+.request-user-input-option-check {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  background: var(--user-input-option-check-bg);
+  color: var(--user-input-option-check-fg);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+:root[data-theme="light"] .user-input-question-option,
+:root[data-theme="light"] .request-user-input-option {
+  --user-input-option-selected-fill: color-mix(
+    in srgb,
+    var(--text-accent) 18%,
+    var(--surface-card-strong)
+  );
+  --user-input-option-check-bg: color-mix(
+    in srgb,
+    var(--text-accent) 82%,
+    var(--text-strong) 18%
+  );
+  --user-input-option-check-fg: var(--surface-messages);
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme]) .user-input-question-option,
+  :root:not([data-theme]) .request-user-input-option {
+    --user-input-option-selected-fill: color-mix(
+      in srgb,
+      var(--text-accent) 18%,
+      var(--surface-card-strong)
+    );
+    --user-input-option-check-bg: color-mix(
+      in srgb,
+      var(--text-accent) 82%,
+      var(--text-strong) 18%
+    );
+    --user-input-option-check-fg: var(--surface-messages);
+  }
+}
+
+.user-input-question-option-check svg,
+.request-user-input-option-check svg {
+  width: 11px;
+  height: 11px;
 }
 
 button.user-input-question-option,
