@@ -460,8 +460,19 @@ describe("useThreadUserInput", () => {
       workspaceId: "ws-1",
       request,
     });
-    expect(dispatch).not.toHaveBeenCalledWith(
-      expect.objectContaining({ type: "upsertItem" }),
+    // The stale branch also writes a durable terminal marker before removing,
+    // so a history reopen cannot rehydrate the card as live. That marker is
+    // settlement behaviour shared with every other stale path; what this test
+    // pins is that the expired-answer error reaches that branch at all,
+    // without a local timeout hint to corroborate it.
+    expect(dispatch).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "upsertItem",
+        item: expect.objectContaining({
+          toolType: "askuserquestion",
+          status: "completed",
+        }),
+      }),
     );
   });
 
