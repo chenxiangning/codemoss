@@ -11,6 +11,7 @@ Browser Dock 连续打开或切换多个本地 HTML tab 时，曾为每个 tab �
 - **目标**：Browser Dock 内嵌模式以稳定的单一 native renderer 承载当前激活 tab；tab 切换、导航、标题和 load 回调只更新当前绑定的会话。
 - **目标**：tab 右键菜单保留“关闭当前 / 其他 / 右侧 / 全部”的既有语义、禁用态和关闭目标计算，同时不遮蔽或隐藏页面。
 - **目标**：菜单从宿主应用读取已计算的 theme tokens，并在 child WebView 内使用这些值渲染，适配 light / dark / system 主题。
+- **目标**：菜单以 closed Shadow DOM 隔离自身样式，且 private bridge 仅接受与本次菜单、目标 tab 和当前 renderer 匹配的一次性 action，避免目标网页 CSS 或伪造 navigation 干扰菜单。
 - **边界**：仅覆盖 Browser Dock 的 embedded renderer 与 tab context menu；浮动 Browser Agent 窗口、页面内容、Browser Context Snapshot 和 AI action gate 不改。
 
 ## 非目标
@@ -19,6 +20,7 @@ Browser Dock 连续打开或切换多个本地 HTML tab 时，曾为每个 tab �
 - 不新建持久化主题设置，也不重构全局 theme token 系统。
 - 不改变 tab 关闭策略、Browser Session 数据模型或 URL 安全校验。
 - 不以隐藏 / 销毁 child WebView 作为弹出菜单的实现手段。
+- 不在本次拆分 `BrowserDock.tsx` 大文件；该治理性重构单独处理，避免和 native WebView 行为修复混合。
 
 ## What Changes
 
@@ -26,6 +28,8 @@ Browser Dock 连续打开或切换多个本地 HTML tab 时，曾为每个 tab �
 - 在 active child WebView 中注入应用拥有的 tab context menu，并经私有 bridge event 调回已有的 tab-close pipeline。
 - 保留关闭当前、其他、右侧和全部标签页的原逻辑，并由当前 tab 列表计算不可执行的菜单项。
 - 前端在右键时读取 `--surface-popover`、`--text-strong`、`--border-quiet`、`--surface-hover`、`--text-muted` 和 `--shadow-accent` 的已计算值，跨 Tauri command 传入 child WebView 菜单。
+- 将菜单挂载到 closed Shadow DOM，并以 host 的重要内联声明保护主题变量和定位，避免页面 author CSS（含 `!important`）污染菜单。
+- 每次显示菜单生成短时、一次性的 nonce，并绑定目标 tab 与当前 renderer tab；native navigation handler 仅消费匹配且未过期的 nonce。
 - 保持 HTML fallback menu，供没有 Tauri event bridge 的运行环境与测试使用。
 
 ## 技术方案与取舍
@@ -65,3 +69,4 @@ Browser Dock 连续打开或切换多个本地 HTML tab 时，曾为每个 tab �
 3. 菜单始终提供既有四项关闭操作；无其他 tab、无右侧 tab 或关闭进行中时对应项不可执行。
 4. 菜单背景、文字、边框、hover、disabled 与 shadow 由当前主题 token 决定；light / dark / system 切换后重新打开菜单应使用新主题值。
 5. 已验证：相关 Vitest、`npm run typecheck`、Rust 菜单单测及 `git diff --check`；用户已完成本工作区变更的人工验收。
+6. 目标网页的全局 CSS 或伪造 / 重放 private bridge URL 不得改变菜单外观，也不得触发 tab close action。

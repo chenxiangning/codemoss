@@ -11,14 +11,15 @@ Browser Dock 的 embedded mode 以单一 native child WebView 承载当前激活
 - 为 embedded renderer 维护当前 session、目标 URL 与 load-started 状态。
 - 只接受与预期 URL 相符的 page-load callback；旧 URL 的迟到 callback 不得更新当前 tab。
 - title callback 仅在 `Webview::url()` 与预期 URL 相符且已观察到目标 URL 的 `Started` load 后才可回写，避免 A 的 title 串写到 B。
-- 保持现有单 renderer、tab 关闭语义、菜单 bridge 和 theme-token transfer，不改变用户已验收行为。
+- 保持现有单 renderer、tab 关闭语义和 theme-token transfer，不改变用户已验收行为。
+- 将菜单迁入 closed Shadow DOM，并让 bridge action 具备一次性、短时、renderer/tab-scoped 的授权能力。
 - 用 Rust 单测锁定 generation / URL guard 的纯决策逻辑，并保留既有 TypeScript tab-switch 测试。
 
 **Non-Goals:**
 
 - 不改 Browser Session 持久化模型或关闭策略。
 - 不改变 URL allowlist 规则、浮动 Browser Agent 窗口或 Browser Context Snapshot。
-- 不在本次处理 tab-menu bridge nonce、Shadow DOM 隔离或 BrowserDock 大文件拆分；它们保留为独立 review follow-up。
+- 不拆分 `BrowserDock.tsx` 大文件；该治理性重构与 native WebView runtime 修复分开处理。
 
 ## Decisions
 
@@ -48,12 +49,26 @@ title callback 本身不携带 URL，但 callback 提供 `Webview`，可通过 `
 
 若 child WebView 创建或 navigate 失败，恢复完整的 previous binding，而不是只恢复 session id。这样原页面的 callback 仍按原 URL 状态处理，失败的新 navigation 不会留下可接受 title 的半成品状态。
 
+### 5. 菜单使用 closed Shadow DOM，而不是普通页面节点
+
+菜单 host 仍附着在当前 child WebView document 中，但将可见菜单节点、按钮和样式置于 `attachShadow({ mode: "closed" })`。菜单 host 的定位和 theme variables 使用 `!important` 的内联声明；Shadow DOM 内部使用局部 style / inline style。
+
+选择 closed Shadow DOM 的原因是目标 HTML 可以拥有全局 selector、reset 或 `!important` 规则，普通 document node 即使内联也可能被覆盖。closed root 既隔离页面 author CSS，也避免页面脚本依赖或篡改内部按钮树。document-level outside-click 检测改用 `event.composedPath().includes(host)`，因为 closed root 会对外 retarget event target。
+
+### 6. bridge action 使用一次性 scoped nonce
+
+show command 在 eval 前注册 `BrowserTabContextMenuInvocation`：随机 nonce、目标 `browser_session_id`、当前 renderer session id 与 issued-at。脚本只把这枚 nonce 拼入本次 menu action URL；navigation handler 仅在 action 合法、nonce 未过期且目标 / renderer id 都匹配时原子消费并 emit action。任何无效、过期或已消费的 private URL 均被拦截但不触发关闭。
+
+这允许用户在可见 A 页面上右键非活动 B tab：nonce 绑定 `(target=B, renderer=A)`，不错误要求 target 等于 renderer；同时拒绝 A 页面自行构造、缓存或重放 bridge URL。
+
 ## Risks / Trade-offs
 
 - [URL redirect 与 initial URL 不同] → `on_navigation` 在 allowlist 接受后先更新 expected URL；后续 `Started` / `Finished` 以该 accepted URL 匹配，避免合法 redirect 永远停在 loading。
 - [同 URL 的连续强制刷新] → Tauri callback 不提供 generation，无法区分两个相同 URL 的 navigation；它们仍仅更新同一 Browser Session，不产生跨 tab 归属错误。
 - [title 在 `Started` 之前由平台发出] → 该极早 title 将被忽略；页面后续 document-title callback 会刷新它。宁可暂时保留已有标题，也不接受跨 tab 串写。
 - [static binding lock 竞争] → binding 只保存少量内存数据，回调中只短暂读取/更新，不跨 await 持锁。
+- [菜单 eval 失败] → 仅清除本次 nonce；不清除后续菜单注册的 nonce，避免旧 command 的错误回滚新菜单授权。
+- [nonce 过短影响交互] → 使用 60 秒 TTL；菜单关闭后无 URL action 不产生副作用，超时后重新右键即可取得新授权。
 
 ## Migration Plan
 
@@ -61,7 +76,9 @@ title callback 本身不携带 URL，但 callback 提供 `Webview`，可通过 `
 2. 在 mount / navigate / bounds sync / hide 路径按 navigation 与非 navigation 区分更新 binding。
 3. 在 page-load 与 title callback 使用 binding snapshot / guard；失败时恢复完整 previous binding。
 4. 增加 Rust 单测，覆盖 A→B 后 A 的迟到 load/title 被拒绝、B 的 matching callback 被接受。
-5. 运行既有 focused Vitest、Rust 单测、`npm run typecheck` 与 `git diff --check`；手工复验快速 A→B→A 和 slow local HTML。
+5. 在菜单 script 中加入 closed Shadow DOM 和 `composedPath` outside-click 判断；以 host 的重要内联样式承载位置与 theme variables。
+6. 为 menu bridge 注册、消费和清理一次性 nonce；覆盖正确 scope、错误 scope、过期与重放。
+7. 运行既有 focused Vitest、Rust 单测、`npm run typecheck` 与 `git diff --check`；手工复验快速 A→B→A 和 slow local HTML，以及不同主题、页面 CSS 干扰与菜单 action。
 
 回滚方式：撤回 binding struct/guard 改动可恢复当前单 renderer 实现；不会迁移持久化数据或修改 session schema。
 

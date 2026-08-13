@@ -36,12 +36,16 @@ const BROWSER_TAB_CONTEXT_MENU_EVENT: &str = "browser-agent://tab-context-action
 const BROWSER_TAB_CONTEXT_MENU_BRIDGE_HOST: &str = "browser-agent-tab-menu.invalid";
 const BROWSER_TAB_CONTEXT_MENU_BRIDGE_PATH: &str = "/__mossx_tab_context_menu__";
 const BROWSER_TAB_CONTEXT_MENU_TOP_OFFSET: f64 = 16.0;
+const BROWSER_TAB_CONTEXT_MENU_BRIDGE_TTL_MS: u64 = 60_000;
 
 static BROWSER_RENDERER_SESSION_ID: OnceLock<Mutex<Option<String>>> = OnceLock::new();
 static BROWSER_EMBEDDED_WEBVIEW_BINDING: OnceLock<Mutex<Option<EmbeddedBrowserWebviewBinding>>> =
     OnceLock::new();
 static BROWSER_CAPTURE_BRIDGE: OnceLock<Mutex<HashMap<String, BrowserCaptureBridgeState>>> =
     OnceLock::new();
+static BROWSER_TAB_CONTEXT_MENU_INVOCATION: OnceLock<
+    Mutex<Option<BrowserTabContextMenuInvocation>>,
+> = OnceLock::new();
 
 #[derive(Debug, Clone)]
 struct BrowserCaptureBridgeState {
@@ -56,6 +60,45 @@ struct BrowserCaptureNavigationChunk {
     index: usize,
     total: usize,
     payload: String,
+}
+
+/// 每个 tab 菜单仅有一个短时、一次性的 native bridge 授权。target session 可与
+/// renderer session 不同，因为用户可在当前 A 页面上右键非活动 B tab。
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct BrowserTabContextMenuInvocation {
+    nonce: String,
+    target_browser_session_id: String,
+    renderer_browser_session_id: String,
+    issued_at: u64,
+}
+
+impl BrowserTabContextMenuInvocation {
+    fn new(
+        target_browser_session_id: &str,
+        renderer_browser_session_id: &str,
+        issued_at: u64,
+    ) -> Self {
+        Self {
+            nonce: format!("browser-tab-menu-{}", uuid::Uuid::new_v4()),
+            target_browser_session_id: target_browser_session_id.to_string(),
+            renderer_browser_session_id: renderer_browser_session_id.to_string(),
+            issued_at,
+        }
+    }
+
+    fn authorizes(
+        &self,
+        nonce: &str,
+        target_browser_session_id: &str,
+        renderer_browser_session_id: &str,
+        now: u64,
+    ) -> bool {
+        self.nonce == nonce
+            && self.target_browser_session_id == target_browser_session_id
+            && self.renderer_browser_session_id == renderer_browser_session_id
+            && now >= self.issued_at
+            && now - self.issued_at <= BROWSER_TAB_CONTEXT_MENU_BRIDGE_TTL_MS
+    }
 }
 
 /// 唯一 embedded renderer 的回调归属事实。native callback 是异步共享通道，不能只用
@@ -148,6 +191,77 @@ fn browser_capture_bridge() -> &'static Mutex<HashMap<String, BrowserCaptureBrid
     BROWSER_CAPTURE_BRIDGE.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
+fn browser_tab_context_menu_invocation() -> &'static Mutex<Option<BrowserTabContextMenuInvocation>>
+{
+    BROWSER_TAB_CONTEXT_MENU_INVOCATION.get_or_init(|| Mutex::new(None))
+}
+
+fn register_browser_tab_context_menu_invocation(invocation: BrowserTabContextMenuInvocation) {
+    if let Ok(mut active_invocation) = browser_tab_context_menu_invocation().lock() {
+        *active_invocation = Some(invocation);
+    }
+}
+
+fn consume_browser_tab_context_menu_invocation(
+    nonce: &str,
+    target_browser_session_id: &str,
+    renderer_browser_session_id: &str,
+    now: u64,
+) -> bool {
+    let Ok(mut active_invocation) = browser_tab_context_menu_invocation().lock() else {
+        return false;
+    };
+    consume_tab_context_menu_invocation(
+        &mut active_invocation,
+        nonce,
+        target_browser_session_id,
+        renderer_browser_session_id,
+        now,
+    )
+}
+
+fn consume_tab_context_menu_invocation(
+    active_invocation: &mut Option<BrowserTabContextMenuInvocation>,
+    nonce: &str,
+    target_browser_session_id: &str,
+    renderer_browser_session_id: &str,
+    now: u64,
+) -> bool {
+    let is_authorized = active_invocation
+        .as_ref()
+        .map(|invocation| {
+            invocation.authorizes(
+                nonce,
+                target_browser_session_id,
+                renderer_browser_session_id,
+                now,
+            )
+        })
+        .unwrap_or(false);
+    if is_authorized {
+        *active_invocation = None;
+    }
+    is_authorized
+}
+
+fn clear_browser_tab_context_menu_invocation(nonce: &str) {
+    if let Ok(mut active_invocation) = browser_tab_context_menu_invocation().lock() {
+        if active_invocation
+            .as_ref()
+            .map(|invocation| invocation.nonce == nonce)
+            .unwrap_or(false)
+        {
+            *active_invocation = None;
+        }
+    }
+}
+
+fn invalidate_browser_tab_context_menu_invocation() {
+    if let Ok(mut active_invocation) = browser_tab_context_menu_invocation().lock() {
+        *active_invocation = None;
+    }
+}
+
 fn bind_browser_renderer_session(browser_session_id: &str) {
     if let Ok(mut binding) = browser_renderer_session_binding().lock() {
         *binding = Some(browser_session_id.to_string());
@@ -185,6 +299,8 @@ fn begin_browser_embedded_webview_navigation(
     browser_session_id: &str,
     expected_url: &str,
 ) -> EmbeddedBrowserWebviewBinding {
+    // 页面切换后，旧 document 中遗留的菜单 URL 不能在切回同一 renderer 时复用。
+    invalidate_browser_tab_context_menu_invocation();
     let next_binding =
         EmbeddedBrowserWebviewBinding::navigating_to(browser_session_id, expected_url);
     if let Ok(mut binding) = browser_embedded_webview_binding().lock() {
@@ -223,14 +339,23 @@ fn update_browser_embedded_webview_navigation_target(browser_session_id: &str, e
 }
 
 fn clear_browser_embedded_webview_session(browser_session_id: &str) {
-    if let Ok(mut binding) = browser_embedded_webview_binding().lock() {
+    let cleared = {
+        let Ok(mut binding) = browser_embedded_webview_binding().lock() else {
+            return;
+        };
         if binding
             .as_ref()
             .map(|active| active.browser_session_id.as_str())
             == Some(browser_session_id)
         {
             *binding = None;
+            true
+        } else {
+            false
         }
+    };
+    if cleared {
+        invalidate_browser_tab_context_menu_invocation();
     }
 }
 
@@ -1141,6 +1266,7 @@ struct BrowserTabContextMenuLabels {
 
 fn browser_tab_context_menu_overlay_script(
     browser_session_id: &str,
+    nonce: &str,
     x: f64,
     locale: Option<&str>,
     disabled_actions: &[String],
@@ -1149,6 +1275,7 @@ fn browser_tab_context_menu_overlay_script(
     let labels = browser_tab_context_menu_labels(locale);
     let session_id =
         serde_json::to_string(browser_session_id).map_err(|error| error.to_string())?;
+    let nonce = serde_json::to_string(nonce).map_err(|error| error.to_string())?;
     let theme = serde_json::to_string(theme).map_err(|error| error.to_string())?;
     let items = serde_json::to_string(&[
         (
@@ -1181,8 +1308,22 @@ fn browser_tab_context_menu_overlay_script(
   if (typeof window[cleanupKey] === "function") {{
     window[cleanupKey]();
   }}
+  const host = document.createElement("div");
+  host.id = "mossx-browser-tab-context-menu";
+  host.setAttribute("data-mossx-browser-tab-menu", "true");
+  const setHostStyle = (property, value) => host.style.setProperty(property, value, "important");
+  setHostStyle("all", "initial");
+  setHostStyle("position", "fixed");
+  setHostStyle("inset", "0");
+  setHostStyle("z-index", "2147483647");
+  setHostStyle("display", "block");
+  setHostStyle("visibility", "visible");
+  setHostStyle("opacity", "1");
+  setHostStyle("transform", "none");
+  setHostStyle("pointer-events", "none");
+  const shadow = host.attachShadow({{ mode: "closed" }});
   const root = document.createElement("div");
-  root.id = "mossx-browser-tab-context-menu";
+  root.id = "mossx-browser-tab-context-menu-root";
   root.setAttribute("role", "menu");
   root.setAttribute("aria-label", "Browser tab actions");
   root.style.cssText = [
@@ -1190,7 +1331,8 @@ fn browser_tab_context_menu_overlay_script(
     "top:{BROWSER_TAB_CONTEXT_MENU_TOP_OFFSET}px", "width:248px", "box-sizing:border-box",
     "padding:8px", "border:1px solid var(--mossx-tab-menu-border)", "border-radius:16px",
     "background:var(--mossx-tab-menu-surface)",
-    "font:500 16px -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif", "color:var(--mossx-tab-menu-foreground)"
+    "font:500 16px -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif", "color:var(--mossx-tab-menu-foreground)",
+    "pointer-events:auto", "isolation:isolate"
   ].join(";");
   const theme = {theme};
   root.style.colorScheme = theme.colorScheme;
@@ -1203,16 +1345,17 @@ fn browser_tab_context_menu_overlay_script(
   const close = () => {{
     document.removeEventListener("pointerdown", onPointerDown, true);
     window.removeEventListener("keydown", onKeyDown, true);
-    root.remove();
+    host.remove();
     delete window[cleanupKey];
   }};
   const onPointerDown = (event) => {{
-    if (!root.contains(event.target)) close();
+    if (!event.composedPath().includes(host)) close();
   }};
   const onKeyDown = (event) => {{
     if (event.key === "Escape") close();
   }};
   const sessionId = {session_id};
+  const menuNonce = {nonce};
   const actions = {items};
   for (const [action, label, disabled] of actions) {{
     const button = document.createElement("button");
@@ -1228,11 +1371,12 @@ fn browser_tab_context_menu_overlay_script(
     button.onclick = () => {{
       if (disabled) return;
       close();
-      window.location.assign("https://{BROWSER_TAB_CONTEXT_MENU_BRIDGE_HOST}{BROWSER_TAB_CONTEXT_MENU_BRIDGE_PATH}?action=" + encodeURIComponent(action) + "&browserSessionId=" + encodeURIComponent(sessionId));
+      window.location.assign("https://{BROWSER_TAB_CONTEXT_MENU_BRIDGE_HOST}{BROWSER_TAB_CONTEXT_MENU_BRIDGE_PATH}?action=" + encodeURIComponent(action) + "&browserSessionId=" + encodeURIComponent(sessionId) + "&nonce=" + encodeURIComponent(menuNonce));
     }};
     root.appendChild(button);
   }}
-  (document.body || document.documentElement).appendChild(root);
+  shadow.appendChild(root);
+  (document.body || document.documentElement).appendChild(host);
   window[cleanupKey] = close;
   setTimeout(() => document.addEventListener("pointerdown", onPointerDown, true), 0);
   window.addEventListener("keydown", onKeyDown, true);
@@ -1240,10 +1384,7 @@ fn browser_tab_context_menu_overlay_script(
     ))
 }
 
-fn handle_browser_tab_context_menu_navigation(
-    app: &AppHandle,
-    target_url: &str,
-) -> bool {
+fn handle_browser_tab_context_menu_navigation(app: &AppHandle, target_url: &str) -> bool {
     let Ok(url) = target_url.parse::<tauri::Url>() else {
         return false;
     };
@@ -1254,17 +1395,30 @@ fn handle_browser_tab_context_menu_navigation(
     }
     let mut action = None;
     let mut browser_session_id = None;
+    let mut nonce = None;
     for (key, value) in url.query_pairs() {
         match key.as_ref() {
             "action" => action = Some(value.into_owned()),
             "browserSessionId" => browser_session_id = Some(value.into_owned()),
+            "nonce" => nonce = Some(value.into_owned()),
             _ => {}
         }
     }
-    let (Some(action), Some(browser_session_id)) = (action, browser_session_id) else {
+    let (Some(action), Some(browser_session_id), Some(nonce)) = (action, browser_session_id, nonce)
+    else {
         return true;
     };
-    if matches!(action.as_str(), "current" | "others" | "right" | "all") {
+    let Some(renderer_browser_session_id) = current_browser_embedded_webview_session_id() else {
+        return true;
+    };
+    if matches!(action.as_str(), "current" | "others" | "right" | "all")
+        && consume_browser_tab_context_menu_invocation(
+            nonce.as_str(),
+            browser_session_id.as_str(),
+            renderer_browser_session_id.as_str(),
+            unix_time_ms(),
+        )
+    {
         let _ = app.emit(
             BROWSER_TAB_CONTEXT_MENU_EVENT,
             BrowserTabContextMenuAction {
@@ -2283,20 +2437,30 @@ pub(crate) async fn show_browser_agent_tab_context_menu_overlay(
         ));
     }
 
-    if current_browser_embedded_webview_session_id().is_none() {
-        return Err("Browser Agent WebView is not embedded.".to_string());
-    }
+    let renderer_browser_session_id = current_browser_embedded_webview_session_id()
+        .ok_or_else(|| "Browser Agent WebView is not embedded.".to_string())?;
     let webview = app
         .get_webview(BROWSER_RENDERER_WEBVIEW_LABEL)
         .ok_or_else(|| "Browser Agent WebView is not available.".to_string())?;
+    let invocation = BrowserTabContextMenuInvocation::new(
+        request.browser_session_id.as_str(),
+        renderer_browser_session_id.as_str(),
+        unix_time_ms(),
+    );
     let script = browser_tab_context_menu_overlay_script(
         request.browser_session_id.as_str(),
+        invocation.nonce.as_str(),
         request.x,
         request.locale.as_deref(),
         request.disabled_actions.as_slice(),
         &request.theme,
     )?;
-    webview.eval(script).map_err(|error| error.to_string())
+    register_browser_tab_context_menu_invocation(invocation.clone());
+    if let Err(error) = webview.eval(script) {
+        clear_browser_tab_context_menu_invocation(invocation.nonce.as_str());
+        return Err(error.to_string());
+    }
+    Ok(())
 }
 
 /// 在内嵌子 webview 中启动元素选择器（浮动窗由注入工具条自行 eval，内嵌无注入工具条）。
@@ -2916,6 +3080,7 @@ mod tests {
         };
         let script = browser_tab_context_menu_overlay_script(
             "session-42",
+            "menu-nonce-42",
             88.0,
             Some("zh-CN"),
             &["right".to_string()],
@@ -2932,7 +3097,51 @@ mod tests {
         assert!(script.contains("[\"right\",\"关闭右侧标签页\",true]"));
         assert!(script.contains("\"surface\":\"theme-surface\""));
         assert!(script.contains("--mossx-tab-menu-surface"));
+        assert!(script.contains("attachShadow({ mode: \"closed\" })"));
+        assert!(script.contains("event.composedPath().includes(host)"));
+        assert!(script.contains("&nonce="));
+        assert!(script.contains("menu-nonce-42"));
         assert!(!script.contains("#111318"));
+    }
+
+    #[test]
+    fn tab_context_menu_invocation_is_scoped_expiring_and_one_time() {
+        let issued_at = 100_u64;
+        let invocation = BrowserTabContextMenuInvocation::new("target-b", "renderer-a", issued_at);
+        let nonce = invocation.nonce.clone();
+
+        assert!(invocation.authorizes(
+            nonce.as_str(),
+            "target-b",
+            "renderer-a",
+            issued_at + BROWSER_TAB_CONTEXT_MENU_BRIDGE_TTL_MS,
+        ));
+        assert!(!invocation.authorizes(nonce.as_str(), "target-c", "renderer-a", issued_at + 1,));
+        assert!(!invocation.authorizes(nonce.as_str(), "target-b", "renderer-c", issued_at + 1,));
+        assert!(!invocation.authorizes(
+            nonce.as_str(),
+            "target-b",
+            "renderer-a",
+            issued_at + BROWSER_TAB_CONTEXT_MENU_BRIDGE_TTL_MS + 1,
+        ));
+        assert!(!invocation.authorizes(nonce.as_str(), "target-b", "renderer-a", issued_at - 1,));
+
+        let mut active_invocation = Some(invocation);
+        assert!(consume_tab_context_menu_invocation(
+            &mut active_invocation,
+            nonce.as_str(),
+            "target-b",
+            "renderer-a",
+            issued_at + 1,
+        ));
+        assert!(active_invocation.is_none());
+        assert!(!consume_tab_context_menu_invocation(
+            &mut active_invocation,
+            nonce.as_str(),
+            "target-b",
+            "renderer-a",
+            issued_at + 2,
+        ));
     }
 
     #[test]
