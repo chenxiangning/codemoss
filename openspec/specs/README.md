@@ -396,6 +396,7 @@
 - [parallel-conversation-runtime-residuals](./parallel-conversation-runtime-residuals/spec.md)
 - [performance-compatibility-diagnostics](./performance-compatibility-diagnostics/spec.md)
 - [persistent-state-governance](./persistent-state-governance/spec.md)
+- [pi-file-reference-transport](./pi-file-reference-transport/spec.md)
 - [pi-provider-auth](./pi-provider-auth/spec.md)
 - [pi-session-history](./pi-session-history/spec.md)
 - [pi-thread-session-continuity](./pi-thread-session-continuity/spec.md)

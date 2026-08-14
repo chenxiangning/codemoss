@@ -52,6 +52,7 @@
 
 ## Active backlog notes（2026-08-08）
 
+- **已归档** `fix-pi-at-reference-transport` → `archive/2026-08-14-fix-pi-at-reference-transport`：pi prompt 内 `@文件` 引用提取为 `@file` argv + folder/missing 降级纯文本 + leading-`@` guard；主 specs 已同步 `pi-file-reference-transport`；用户 2026-08-14 验收通过。
 - **新增并落地** `fix-deferred-feature-style-surfaces`（2026-08-13）：延迟 CSS 入口漏接 + Git Diff 弹窗单栏/双栏滚动合同；用户手测通过，待 commit。
 - **已归档** `fix-pi-session-index-cold-start` → `archive/2026-08-13-fix-pi-session-index-cold-start`：重启后左侧 Native PI 行从 Session Index 投影；warm SQLite first-paint + cwd fingerprint + 并行 writer；用户 2026-08-13 手测通过。
 - **已归档** `fix-pi-session-continuity-and-sidebar` → `archive/2026-08-13-fix-pi-session-continuity-and-sidebar`：Native Pi 续聊同一 jsonl + Session Index 侧栏历史；用户 2026-08-13 手测通过。

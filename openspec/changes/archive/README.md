@@ -2,7 +2,7 @@
 
 本页为 `mossx` 已归档 OpenSpec proposal 的完整可点击索引。目录名中的日期是 archive date，不代表 proposal 首次创建时间。
 
-- Updated At: `2026-08-13`
+- Updated At: `2026-08-14`
 - Indexed proposals: `849+`
 - Source of truth: `openspec/changes/archive/<archive-date>-<change-id>/proposal.md`
 - Back to current changes: [`../README.md`](../README.md)
@@ -12,6 +12,7 @@
 
 ### 2026-08-14
 
+- [`2026-08-14-fix-pi-at-reference-transport`](2026-08-14-fix-pi-at-reference-transport/proposal.md) — user accepted，已同步 `pi-file-reference-transport`（新增 capability）；pi prompt 内 `@文件` 引用提取为 `@file` argv（token 边界 + 贪婪最长前缀匹配），folder/missing/mention 降级纯文本，leading-`@` argv guard 修复整条消息被误判为文件路径的 Turn failed
 - [`2026-08-14-add-pi-provider-auth`](2026-08-14-add-pi-provider-auth/proposal.md) — user accepted，已同步 `pi-provider-auth`（新增 capability）；PI CLI 供应商认证：auth.json API Key set/delete（mask 不出前端、原子写 0600）+ OAuth 订阅登录内嵌终端两段式引导
 
 ### 2026-08-13
