@@ -37,16 +37,30 @@ import {
   THREAD_LIST_MAX_FETCH_DURATION_MS,
   THREAD_LIST_MAX_TOTAL_PAGES,
   decodeThreadListCursorState,
+  encodeSessionIndexThreadListCursor,
   normalizeProjectCatalogSession,
   resolveThreadListCursorForDisplay,
   sortThreadSummariesForDisplay,
   type ProjectCatalogSessionSummary,
 } from "./useThreadActions.threadList";
+import { listSessionIndexForWorkspace as listSessionIndexForWorkspaceService } from "../../../services/tauri/sessionIndex";
+import { sessionIndexRowsToThreadSummaries } from "./sessionIndexThreadSummaries";
+import {
+  expandVisibilityHideSet,
+  hasVerifiedSharedHide,
+  isUsableSharedNativeVisibility,
+  lastVerifiedSharedHide,
+  unionHideSets,
+} from "./sharedNativeVisibility";
 import type {
   ArchivedSessionMapResult,
   ListWorkspaceSessionsService,
 } from "./useThreadActionsSessionCatalog";
 import type { ThreadAction, ThreadState } from "./useThreadsReducer";
+
+const SESSION_INDEX_LOAD_OLDER_PAGE_SIZE = 100;
+const SESSION_INDEX_LOAD_OLDER_MAX_LIMIT = 500;
+const SESSION_INDEX_LOAD_OLDER_TIMEOUT_MS = 5_000;
 
 type UseLoadOlderThreadsForWorkspaceOptions = {
   activeThreadIdByWorkspace: ThreadState["activeThreadIdByWorkspace"];
@@ -131,6 +145,112 @@ export function useLoadOlderThreadsForWorkspace({
           onThreadTitleMappingsLoaded?.(workspace.id, mappedTitles);
         } catch {
           mappedTitles = {};
+        }
+        // Session Index load-older: page deeper into SQLite with a growing
+        // limit. Pure SELECT — never a disk list/catalog call. Backfill keeps
+        // raising totalCount in the background, so repeated clicks converge
+        // with the daemon's historical import.
+        if (cursorState.source === "session-index") {
+          const parsedLimit = Number.parseInt(cursorState.cursor ?? "", 10);
+          const previousLimit =
+            Number.isFinite(parsedLimit) && parsedLimit > 0 ? parsedLimit : 50;
+          const nextLimit = Math.min(
+            previousLimit + SESSION_INDEX_LOAD_OLDER_PAGE_SIZE,
+            SESSION_INDEX_LOAD_OLDER_MAX_LIMIT,
+          );
+          const page = await withTimeout(
+            listSessionIndexForWorkspaceService(workspace.id, {
+              limit: nextLimit,
+              syncIfNeeded: false,
+              forceSync: false,
+            })
+              .then((value) => value ?? null)
+              .catch(() => null),
+            SESSION_INDEX_LOAD_OLDER_TIMEOUT_MS,
+          );
+          if (page && Array.isArray(page.data)) {
+            const visibility = page.visibility ?? null;
+            const canProjectIndexNatives =
+              isUsableSharedNativeVisibility(visibility) ||
+              hasVerifiedSharedHide(workspace.id);
+            const hideSet = unionHideSets(
+              expandVisibilityHideSet(visibility),
+              lastVerifiedSharedHide(workspace.id),
+            );
+            // Without a verified hide set, Shared bindings masquerade as Codex
+            // rows — mirror first-paint and only project PI rows then.
+            const rows = canProjectIndexNatives
+              ? page.data
+              : page.data.filter(
+                  (row) =>
+                    String(row.engine ?? "").trim().toLowerCase() === "pi",
+                );
+            const indexSummaries = sessionIndexRowsToThreadSummaries(rows, {
+              workspaceId: workspace.id,
+              mappedTitles,
+              getCustomName,
+              hiddenSharedBindingIds: hideSet,
+            });
+            const existingIds = new Set(existing.map((thread) => thread.id));
+            const additions = indexSummaries.filter(
+              (summary) => !existingIds.has(summary.id),
+            );
+            const archivedSessionMap = await archivedSessionMapPromise;
+            const merged = sortThreadSummariesForDisplay(
+              applySessionArchiveState(
+                [
+                  ...existing,
+                  ...applySessionArchiveState(additions, archivedSessionMap),
+                ],
+                archivedSessionMap,
+              ),
+            );
+            const mergedSignature = merged
+              .map((thread) => thread.id)
+              .join("\u0000");
+            const existingSignature = existing
+              .map((thread) => thread.id)
+              .join("\u0000");
+            if (mergedSignature !== existingSignature) {
+              dispatch({
+                type: "setThreads",
+                workspaceId: workspace.id,
+                threads: merged,
+              });
+              latestThreadsByWorkspaceRef.current = {
+                ...latestThreadsByWorkspaceRef.current,
+                [workspace.id]: merged,
+              };
+            }
+            const totalCount =
+              typeof page.totalCount === "number" ? page.totalCount : null;
+            const hasMore =
+              totalCount !== null &&
+              totalCount > page.data.length &&
+              nextLimit < SESSION_INDEX_LOAD_OLDER_MAX_LIMIT;
+            dispatch({
+              type: "setThreadListCursor",
+              workspaceId: workspace.id,
+              cursor: hasMore
+                ? encodeSessionIndexThreadListCursor(nextLimit)
+                : null,
+            });
+            onDebug?.({
+              id: `${Date.now()}-client-thread-list-older-index`,
+              timestamp: Date.now(),
+              source: "client",
+              label: "thread/list older session-index",
+              payload: {
+                workspaceId: workspace.id,
+                limit: nextLimit,
+                rowCount: page.data.length,
+                totalCount,
+                additions: additions.length,
+                hasMore,
+              },
+            });
+          }
+          return;
         }
         let catalogCursor: string | null = null;
         let didLoadCatalogPage = false;

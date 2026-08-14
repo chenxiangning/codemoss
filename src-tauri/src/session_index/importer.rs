@@ -4,7 +4,7 @@ use std::time::Duration;
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager};
 
-use super::commands::sync_session_index_core;
+use super::commands::{backfill_session_index_core, sync_session_index_core};
 use crate::state::AppState;
 
 pub(crate) const SESSION_INDEX_IMPORTED_EVENT: &str = "session-index-imported";
@@ -90,16 +90,29 @@ async fn run_import_tick(app: &AppHandle) -> Result<SessionIndexImportedPayload,
     let mut upserted = 0u32;
     let mut changed_ids = Vec::new();
     for (workspace_id, _path) in targets {
+        let mut workspace_upserted = 0usize;
         match sync_session_index_core(&state, &workspace_id, IMPORT_LIMIT, false).await {
             Ok(report) => {
-                if report.upserted > 0 {
-                    upserted = upserted.saturating_add(report.upserted as u32);
-                    changed_ids.push(workspace_id);
-                }
+                workspace_upserted = workspace_upserted.saturating_add(report.upserted);
             }
             Err(error) => {
                 log::debug!("session-index import skipped {workspace_id}: {error}");
             }
+        }
+        // Historical backfill tail: one bounded batch per engine (persisted
+        // cursors); converges to full CLI history across ticks without any
+        // exhaustive walk. Never blocks first-paint (SQLite-only there).
+        match backfill_session_index_core(&state, &workspace_id).await {
+            Ok(report) => {
+                workspace_upserted = workspace_upserted.saturating_add(report.upserted);
+            }
+            Err(error) => {
+                log::debug!("session-index backfill skipped {workspace_id}: {error}");
+            }
+        }
+        if workspace_upserted > 0 {
+            upserted = upserted.saturating_add(workspace_upserted as u32);
+            changed_ids.push(workspace_id);
         }
     }
     Ok(SessionIndexImportedPayload {

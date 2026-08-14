@@ -714,6 +714,22 @@ fn scan_codex_session_summaries_bounded_with_mode(
         }
     };
 
+    parse_codex_candidates_into_summaries(
+        candidates,
+        workspace_path,
+        parse_mode,
+        candidate_scan_limit,
+        unique_session_limit,
+    )
+}
+
+fn parse_codex_candidates_into_summaries(
+    candidates: Vec<CodexSessionCandidate>,
+    workspace_path: Option<&Path>,
+    parse_mode: CodexSessionParseMode,
+    candidate_scan_limit: usize,
+    unique_session_limit: usize,
+) -> Result<(Vec<LocalUsageSessionSummary>, usize), String> {
     let mut native_titles_by_home = HashMap::<PathBuf, HashMap<String, String>>::new();
     let mut sessions_by_id = HashMap::<String, LocalUsageSessionSummary>::new();
     let mut scanned_file_count = 0;
@@ -755,6 +771,139 @@ fn scan_codex_session_summaries_bounded_with_mode(
     });
     sessions.truncate(unique_session_limit);
     Ok((sessions, scanned_file_count))
+}
+
+/// One Codex `sessions/YYYY/MM/DD` day partition (zero-padded key so string
+/// ordering matches chronological ordering).
+#[derive(Debug, Clone)]
+pub(crate) struct CodexDayPartition {
+    pub key: String,
+    pub day_dir: PathBuf,
+    pub codex_home: Option<PathBuf>,
+}
+
+/// List day partitions across all date-partitioned roots, newest-first.
+/// Non-partitioned roots are skipped (backfill falls back to capped walk).
+pub(crate) fn list_codex_day_partitions(sessions_roots: &[PathBuf]) -> Vec<CodexDayPartition> {
+    let mut out = Vec::new();
+    for root in sessions_roots {
+        if !looks_like_codex_date_partitioned_root(root) {
+            continue;
+        }
+        let codex_home = codex_home_for_sessions_root(root);
+        for (year, year_path) in list_numeric_child_dirs(root) {
+            for (month, month_path) in list_numeric_child_dirs(&year_path) {
+                for (day, day_path) in list_numeric_child_dirs(&month_path) {
+                    out.push(CodexDayPartition {
+                        key: format!("{:04}/{:02}/{:02}", year, month, day),
+                        day_dir: day_path,
+                        codex_home: codex_home.clone(),
+                    });
+                }
+            }
+        }
+    }
+    out.sort_by(|left, right| {
+        right.key.cmp(&left.key).then_with(|| {
+            left.day_dir
+                .to_string_lossy()
+                .cmp(&right.day_dir.to_string_lossy())
+        })
+    });
+    out
+}
+
+/// Backfill support: parse ThreadPreview summaries for explicit day partitions
+/// (no candidate cap — a single day dir is naturally bounded).
+pub(crate) fn scan_codex_session_summaries_for_day_dirs(
+    workspace_path: Option<&Path>,
+    partitions: &[CodexDayPartition],
+) -> Result<Vec<LocalUsageSessionSummary>, String> {
+    let mut seen = HashSet::new();
+    let mut candidates = Vec::new();
+    for partition in partitions {
+        push_jsonl_candidates_from_dir(
+            &partition.day_dir,
+            partition.codex_home.as_ref(),
+            usize::MAX,
+            &mut seen,
+            &mut candidates,
+        );
+    }
+    let (sessions, _scanned) = parse_codex_candidates_into_summaries(
+        candidates,
+        workspace_path,
+        CodexSessionParseMode::ThreadPreview,
+        usize::MAX,
+        usize::MAX,
+    )?;
+    Ok(sessions)
+}
+
+/// Backfill fallback for non-partitioned roots: capped shallow walk, mtime desc.
+pub(crate) fn collect_codex_jsonl_candidates_capped(
+    sessions_roots: &[PathBuf],
+    max_files: usize,
+) -> Vec<PathBuf> {
+    let mut seen = HashSet::new();
+    let mut files = Vec::new();
+    for root in sessions_roots {
+        if looks_like_codex_date_partitioned_root(root) {
+            continue;
+        }
+        collect_jsonl_files_capped(root, &mut files, &mut seen, max_files);
+    }
+    files.sort_by(|left, right| {
+        let left_mtime = fs::metadata(left)
+            .and_then(|metadata| metadata.modified())
+            .unwrap_or(UNIX_EPOCH);
+        let right_mtime = fs::metadata(right)
+            .and_then(|metadata| metadata.modified())
+            .unwrap_or(UNIX_EPOCH);
+        right_mtime
+            .cmp(&left_mtime)
+            .then_with(|| left.to_string_lossy().cmp(&right.to_string_lossy()))
+    });
+    files
+}
+
+/// Parse ThreadPreview summaries for explicit candidate files (backfill fallback).
+pub(crate) fn scan_codex_session_summaries_for_files(
+    workspace_path: Option<&Path>,
+    files: Vec<PathBuf>,
+) -> Result<Vec<LocalUsageSessionSummary>, String> {
+    let candidates = files
+        .into_iter()
+        .map(|path| CodexSessionCandidate {
+            modified_at: fs::metadata(&path)
+                .and_then(|metadata| metadata.modified())
+                .unwrap_or(UNIX_EPOCH),
+            codex_home: codex_home_for_sessions_root_path(&path),
+            path,
+        })
+        .collect();
+    let (sessions, _scanned) = parse_codex_candidates_into_summaries(
+        candidates,
+        workspace_path,
+        CodexSessionParseMode::ThreadPreview,
+        usize::MAX,
+        usize::MAX,
+    )?;
+    Ok(sessions)
+}
+
+fn codex_home_for_sessions_root_path(path: &Path) -> Option<PathBuf> {
+    // path: <home>/(archived_)sessions/.../file.jsonl — walk up to the root
+    // whose file_name is sessions/archived_sessions, then take its parent.
+    for ancestor in path.ancestors() {
+        let Some(name) = ancestor.file_name().and_then(|value| value.to_str()) else {
+            continue;
+        };
+        if matches!(name, "sessions" | "archived_sessions") {
+            return ancestor.parent().map(Path::to_path_buf);
+        }
+    }
+    None
 }
 
 fn codex_home_for_sessions_root(root: &Path) -> Option<PathBuf> {

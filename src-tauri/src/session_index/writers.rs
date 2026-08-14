@@ -9,8 +9,9 @@ use rusqlite::Connection;
 use serde_json::Value;
 
 use super::store::{
-    load_file_cursor, mark_source_synced, normalize_path_key, save_file_cursor, source_is_fresh,
-    upsert_rows, SessionIndexFileCursor, SessionIndexRow,
+    load_file_cursor, load_backfill_state, mark_source_synced, normalize_path_key,
+    save_file_cursor, save_backfill_state, source_is_fresh, upsert_rows, BackfillState,
+    SessionIndexFileCursor, SessionIndexRow,
 };
 use crate::engine::claude_history::encode_project_path;
 
@@ -24,6 +25,13 @@ pub(crate) struct WriterResult {
     pub engines: Vec<String>,
     pub partial_source: Option<String>,
     pub skipped_fresh: bool,
+}
+
+/// Result of one bounded historical-backfill batch (import daemon tail).
+#[derive(Debug, Default)]
+pub(crate) struct BackfillBatchResult {
+    pub upserted: usize,
+    pub complete: bool,
 }
 
 fn mtime_fingerprint(path: &Path) -> String {
@@ -45,6 +53,64 @@ fn file_mtime_ms(path: &Path) -> i64 {
         .and_then(|modified| modified.duration_since(UNIX_EPOCH).ok())
         .map(|duration| duration.as_millis() as i64)
         .unwrap_or(0)
+}
+
+/// List Claude project-dir session files, newest mtime first.
+fn list_claude_project_session_files(project_dir: &Path) -> Vec<PathBuf> {
+    let mut files: Vec<PathBuf> = fs::read_dir(project_dir)
+        .map(|entries| {
+            entries
+                .flatten()
+                .map(|entry| entry.path())
+                .filter(|path| path.extension().and_then(|ext| ext.to_str()) == Some("jsonl"))
+                .collect()
+        })
+        .unwrap_or_default();
+    files.sort_by(|left, right| {
+        file_mtime_ms(right)
+            .cmp(&file_mtime_ms(left))
+            .then_with(|| left.to_string_lossy().cmp(&right.to_string_lossy()))
+    });
+    files
+}
+
+fn claude_index_row_from_file(
+    path: &Path,
+    workspace_path: &Path,
+    titles: &HashMap<String, String>,
+) -> Option<SessionIndexRow> {
+    let session_id = path
+        .file_stem()
+        .and_then(|name| name.to_str())
+        .unwrap_or("")
+        .trim()
+        .to_string();
+    if session_id.is_empty() {
+        return None;
+    }
+    let updated_at = file_mtime_ms(path);
+    let title_from_history = titles.get(&session_id).cloned();
+    let title = title_from_history
+        .clone()
+        .or_else(|| peek_claude_first_user_preview(path))
+        .unwrap_or_else(|| "Claude Session".to_string());
+    let size_bytes = fs::metadata(path).ok().map(|metadata| metadata.len());
+    let workspace_key = normalize_path_key(&workspace_path.to_string_lossy());
+    Some(SessionIndexRow {
+        engine: "claude".into(),
+        session_id: session_id.clone(),
+        title: title.clone(),
+        native_title: title_from_history,
+        updated_at,
+        created_at: None,
+        cwd: Some(workspace_key.clone()),
+        workspace_path: Some(workspace_key),
+        physical_path: Some(path.to_string_lossy().to_string()),
+        parent_session_id: super::shared_visibility::extract_claude_parent_session_id(
+            &session_id,
+        ),
+        size_bytes,
+    })
 }
 
 /// Sync Claude sessions for one workspace via project-dir mtime + history.jsonl titles.
@@ -79,51 +145,13 @@ pub(crate) fn sync_claude_for_workspace(
     let titles = read_claude_history_titles(connection, &history_path, workspace_path)?;
     let mut rows = Vec::new();
     if project_dir.is_dir() {
-        let mut files: Vec<PathBuf> = fs::read_dir(&project_dir)
-            .map_err(|error| error.to_string())?
-            .flatten()
-            .map(|entry| entry.path())
-            .filter(|path| path.extension().and_then(|ext| ext.to_str()) == Some("jsonl"))
-            .collect();
-        files.sort_by(|left, right| {
-            file_mtime_ms(right)
-                .cmp(&file_mtime_ms(left))
-                .then_with(|| left.to_string_lossy().cmp(&right.to_string_lossy()))
-        });
+        let mut files = list_claude_project_session_files(&project_dir);
         files.truncate(limit.saturating_mul(2).max(limit));
         for path in files {
-            let session_id = path
-                .file_stem()
-                .and_then(|name| name.to_str())
-                .unwrap_or("")
-                .trim()
-                .to_string();
-            if session_id.is_empty() {
+            let Some(row) = claude_index_row_from_file(&path, workspace_path, &titles) else {
                 continue;
-            }
-            let updated_at = file_mtime_ms(&path);
-            let title_from_history = titles.get(&session_id).cloned();
-            let title = title_from_history
-                .clone()
-                .or_else(|| peek_claude_first_user_preview(&path))
-                .unwrap_or_else(|| "Claude Session".to_string());
-            let size_bytes = fs::metadata(&path).ok().map(|metadata| metadata.len());
-            let workspace_key = normalize_path_key(&workspace_path.to_string_lossy());
-            rows.push(SessionIndexRow {
-                engine: "claude".into(),
-                session_id: session_id.clone(),
-                title: title.clone(),
-                native_title: title_from_history,
-                updated_at,
-                created_at: None,
-                cwd: Some(workspace_key.clone()),
-                workspace_path: Some(workspace_key),
-                physical_path: Some(path.to_string_lossy().to_string()),
-                parent_session_id: super::shared_visibility::extract_claude_parent_session_id(
-                    &session_id,
-                ),
-                size_bytes,
-            });
+            };
+            rows.push(row);
             if rows.len() >= limit {
                 break;
             }
@@ -365,6 +393,34 @@ fn truncate_title(value: &str, max_chars: usize) -> String {
     out
 }
 
+fn codex_summary_to_index_row(
+    summary: crate::types::LocalUsageSessionSummary,
+    workspace_key: &str,
+) -> SessionIndexRow {
+    let title = summary
+        .native_title
+        .clone()
+        .or(summary.summary.clone())
+        .unwrap_or_else(|| "Codex Session".to_string());
+    SessionIndexRow {
+        engine: "codex".into(),
+        session_id: summary.session_id,
+        title: title.clone(),
+        native_title: summary.native_title.or(summary.summary),
+        updated_at: summary.timestamp,
+        created_at: None,
+        cwd: summary
+            .cwd
+            .as_deref()
+            .map(normalize_path_key)
+            .or_else(|| Some(workspace_key.to_string())),
+        workspace_path: Some(workspace_key.to_string()),
+        physical_path: summary.physical_path,
+        parent_session_id: summary.parent_session_id,
+        size_bytes: summary.file_size_bytes,
+    }
+}
+
 /// Sync Codex sessions for one workspace using bounded ThreadPreview scanner.
 pub(crate) fn sync_codex_for_workspace(
     connection: &Connection,
@@ -405,30 +461,7 @@ pub(crate) fn sync_codex_for_workspace(
     let workspace_key = normalize_path_key(&workspace_path.to_string_lossy());
     let rows: Vec<SessionIndexRow> = summaries
         .into_iter()
-        .map(|summary| {
-            let title = summary
-                .native_title
-                .clone()
-                .or(summary.summary.clone())
-                .unwrap_or_else(|| "Codex Session".to_string());
-            SessionIndexRow {
-                engine: "codex".into(),
-                session_id: summary.session_id,
-                title: title.clone(),
-                native_title: summary.native_title.or(summary.summary),
-                updated_at: summary.timestamp,
-                created_at: None,
-                cwd: summary
-                    .cwd
-                    .as_deref()
-                    .map(normalize_path_key)
-                    .or_else(|| Some(workspace_key.clone())),
-                workspace_path: Some(workspace_key.clone()),
-                physical_path: summary.physical_path,
-                parent_session_id: summary.parent_session_id,
-                size_bytes: summary.file_size_bytes,
-            }
-        })
+        .map(|summary| codex_summary_to_index_row(summary, &workspace_key))
         .collect();
     let upserted = upsert_rows(connection, &rows)?;
     mark_source_synced(connection, &source_key, &fingerprint, rows.len())?;
@@ -440,17 +473,8 @@ pub(crate) fn sync_codex_for_workspace(
     })
 }
 
-/// Sync Kimi via session_index.jsonl (light index).
-pub(crate) fn sync_kimi_for_workspace(
-    connection: &Connection,
-    workspace_path: &Path,
-    limit: usize,
-    force: bool,
-) -> Result<WriterResult, String> {
-    let limit = limit.clamp(1, 500);
-    let home = dirs::home_dir()
-        .map(|home| home.join(".kimi"))
-        .ok_or_else(|| "home not found".to_string())?;
+fn kimi_session_index_path() -> Option<PathBuf> {
+    let home = dirs::home_dir().map(|home| home.join(".kimi"))?;
     // Kimi may use custom home; best-effort default + env.
     let home = std::env::var("KIMI_HOME")
         .ok()
@@ -463,7 +487,73 @@ pub(crate) fn sync_kimi_for_workspace(
             }
         })
         .unwrap_or(home);
-    let index_path = home.join("session_index.jsonl");
+    Some(home.join("session_index.jsonl"))
+}
+
+fn parse_kimi_index_line(line: &str, target: &str) -> Option<SessionIndexRow> {
+    if line.len() > 256_000 {
+        return None;
+    }
+    let value = serde_json::from_str::<Value>(line).ok()?;
+    let work_dir = value
+        .get("workDir")
+        .or_else(|| value.get("work_dir"))
+        .or_else(|| value.get("cwd"))
+        .and_then(Value::as_str)
+        .map(normalize_path_key)
+        .unwrap_or_default();
+    if work_dir.is_empty() || work_dir != target {
+        return None;
+    }
+    let session_id = value
+        .get("sessionId")
+        .or_else(|| value.get("session_id"))
+        .or_else(|| value.get("id"))
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())?;
+    let session_dir = value
+        .get("sessionDir")
+        .or_else(|| value.get("session_dir"))
+        .and_then(Value::as_str)
+        .map(PathBuf::from);
+    let updated_at = session_dir
+        .as_ref()
+        .map(|path| file_mtime_ms(path))
+        .filter(|value| *value > 0)
+        .unwrap_or_else(|| now_ms_fallback());
+    let title = value
+        .get("title")
+        .or_else(|| value.get("name"))
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+        .unwrap_or_else(|| "Kimi Session".to_string());
+    Some(SessionIndexRow {
+        engine: "kimi".into(),
+        session_id: session_id.to_string(),
+        title,
+        native_title: None,
+        updated_at,
+        created_at: None,
+        cwd: Some(target.to_string()),
+        workspace_path: Some(target.to_string()),
+        physical_path: session_dir.map(|path| path.to_string_lossy().to_string()),
+        parent_session_id: None,
+        size_bytes: None,
+    })
+}
+
+/// Sync Kimi via session_index.jsonl (light index).
+pub(crate) fn sync_kimi_for_workspace(
+    connection: &Connection,
+    workspace_path: &Path,
+    limit: usize,
+    force: bool,
+) -> Result<WriterResult, String> {
+    let limit = limit.clamp(1, 500);
+    let index_path = kimi_session_index_path().ok_or_else(|| "home not found".to_string())?;
     let source_key = format!("kimi:{}", normalize_path_key(&workspace_path.to_string_lossy()));
     let fingerprint = mtime_fingerprint(&index_path);
     if !force && source_is_fresh(connection, &source_key, &fingerprint, SOURCE_FRESH_MAX_AGE_MS)? {
@@ -491,63 +581,9 @@ pub(crate) fn sync_kimi_for_workspace(
         let Ok(line) = line else {
             continue;
         };
-        if line.len() > 256_000 {
-            continue;
+        if let Some(row) = parse_kimi_index_line(&line, &target) {
+            rows.push(row);
         }
-        let Ok(value) = serde_json::from_str::<Value>(&line) else {
-            continue;
-        };
-        let work_dir = value
-            .get("workDir")
-            .or_else(|| value.get("work_dir"))
-            .or_else(|| value.get("cwd"))
-            .and_then(Value::as_str)
-            .map(normalize_path_key)
-            .unwrap_or_default();
-        if work_dir.is_empty() || work_dir != target {
-            continue;
-        }
-        let session_id = value
-            .get("sessionId")
-            .or_else(|| value.get("session_id"))
-            .or_else(|| value.get("id"))
-            .and_then(Value::as_str)
-            .map(str::trim)
-            .filter(|value| !value.is_empty());
-        let Some(session_id) = session_id else {
-            continue;
-        };
-        let session_dir = value
-            .get("sessionDir")
-            .or_else(|| value.get("session_dir"))
-            .and_then(Value::as_str)
-            .map(PathBuf::from);
-        let updated_at = session_dir
-            .as_ref()
-            .map(|path| file_mtime_ms(path))
-            .filter(|value| *value > 0)
-            .unwrap_or_else(|| now_ms_fallback());
-        let title = value
-            .get("title")
-            .or_else(|| value.get("name"))
-            .and_then(Value::as_str)
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            .map(str::to_string)
-            .unwrap_or_else(|| "Kimi Session".to_string());
-        rows.push(SessionIndexRow {
-            engine: "kimi".into(),
-            session_id: session_id.to_string(),
-            title,
-            native_title: None,
-            updated_at,
-            created_at: None,
-            cwd: Some(target.clone()),
-            workspace_path: Some(target.clone()),
-            physical_path: session_dir.map(|path| path.to_string_lossy().to_string()),
-            parent_session_id: None,
-            size_bytes: None,
-        });
     }
     let upserted = upsert_rows(connection, &rows)?;
     mark_source_synced(connection, &source_key, &fingerprint, rows.len())?;
@@ -564,6 +600,288 @@ fn now_ms_fallback() -> i64 {
         .duration_since(UNIX_EPOCH)
         .map(|duration| duration.as_millis() as i64)
         .unwrap_or(0)
+}
+
+// ---------------------------------------------------------------------------
+// Historical backfill (import daemon tail). One bounded batch per engine per
+// tick; cursors persist in `session_index_backfill`. See OpenSpec change
+// `restore-sidebar-flat-list-and-index-backfill` design D2/D3.
+// ---------------------------------------------------------------------------
+
+/// Claude backfill: page through project-dir files (mtime desc) by offset.
+pub(crate) const CLAUDE_BACKFILL_BATCH_SIZE: usize = 100;
+/// Codex backfill: distinct partition days processed per tick.
+pub(crate) const CODEX_BACKFILL_PARTITIONS_PER_BATCH: usize = 3;
+/// Codex non-partitioned fallback root cap (one-shot, first batch only).
+pub(crate) const CODEX_BACKFILL_PLAIN_FILE_CAP: usize = 1_000;
+/// Kimi backfill: matched index lines per tick.
+pub(crate) const KIMI_BACKFILL_BATCH_SIZE: usize = 100;
+
+pub(crate) fn backfill_claude_for_workspace(
+    connection: &Connection,
+    workspace_path: &Path,
+    batch_size: usize,
+) -> Result<BackfillBatchResult, String> {
+    let source_key = format!("claude:{}", normalize_path_key(&workspace_path.to_string_lossy()));
+    let state = load_backfill_state(connection, &source_key)?;
+    if state.complete {
+        return Ok(BackfillBatchResult {
+            upserted: 0,
+            complete: true,
+        });
+    }
+    let Some(claude_home) = crate::claude_home::resolve_effective_claude_home(None) else {
+        save_backfill_state(
+            connection,
+            &source_key,
+            &BackfillState {
+                cursor: state.cursor.clone(),
+                complete: true,
+            },
+        )?;
+        return Ok(BackfillBatchResult {
+            upserted: 0,
+            complete: true,
+        });
+    };
+    let encoded = encode_project_path(&workspace_path.to_string_lossy());
+    let project_dir = claude_home.join("projects").join(&encoded);
+    if !project_dir.is_dir() {
+        save_backfill_state(
+            connection,
+            &source_key,
+            &BackfillState {
+                cursor: state.cursor.clone(),
+                complete: true,
+            },
+        )?;
+        return Ok(BackfillBatchResult {
+            upserted: 0,
+            complete: true,
+        });
+    }
+    let history_path = claude_home.join("history.jsonl");
+    let titles = read_claude_history_titles(connection, &history_path, workspace_path)?;
+    let files = list_claude_project_session_files(&project_dir);
+    let offset: usize = state.cursor.trim().parse().unwrap_or(0);
+    if offset >= files.len() {
+        save_backfill_state(
+            connection,
+            &source_key,
+            &BackfillState {
+                cursor: state.cursor.clone(),
+                complete: true,
+            },
+        )?;
+        return Ok(BackfillBatchResult {
+            upserted: 0,
+            complete: true,
+        });
+    }
+    let end = offset.saturating_add(batch_size).min(files.len());
+    let mut rows = Vec::new();
+    for path in &files[offset..end] {
+        if let Some(row) = claude_index_row_from_file(path, workspace_path, &titles) {
+            rows.push(row);
+        }
+    }
+    let upserted = upsert_rows(connection, &rows)?;
+    let complete = end >= files.len();
+    save_backfill_state(
+        connection,
+        &source_key,
+        &BackfillState {
+            cursor: end.to_string(),
+            complete,
+        },
+    )?;
+    Ok(BackfillBatchResult { upserted, complete })
+}
+
+/// Codex backfill: walk date partitions newest→oldest, `max_partitions`
+/// distinct days per tick (all roots sharing those days). Cursor is JSON
+/// `{"day": "YYYY/MM/DD", "plainDone": bool}`; new partitions only appear at
+/// the recent end, so a day-key cursor never mis-skips.
+pub(crate) fn backfill_codex_for_workspace(
+    connection: &Connection,
+    workspace_path: &Path,
+    sessions_roots: &[PathBuf],
+    max_partitions: usize,
+) -> Result<BackfillBatchResult, String> {
+    let source_key = format!("codex:{}", normalize_path_key(&workspace_path.to_string_lossy()));
+    let state = load_backfill_state(connection, &source_key)?;
+    if state.complete {
+        return Ok(BackfillBatchResult {
+            upserted: 0,
+            complete: true,
+        });
+    }
+    let parsed = serde_json::from_str::<Value>(&state.cursor).ok();
+    let cursor_day = parsed
+        .as_ref()
+        .and_then(|value| value.get("day"))
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_string();
+    let mut plain_done = parsed
+        .as_ref()
+        .and_then(|value| value.get("plainDone"))
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    let workspace_key = normalize_path_key(&workspace_path.to_string_lossy());
+    let mut upserted = 0usize;
+
+    // Non-partitioned roots (legacy layout): one bounded fallback pass.
+    if !plain_done {
+        let files = crate::local_usage::collect_codex_jsonl_candidates_capped(
+            sessions_roots,
+            CODEX_BACKFILL_PLAIN_FILE_CAP,
+        );
+        if !files.is_empty() {
+            let summaries = crate::local_usage::scan_codex_session_summaries_for_files(
+                Some(workspace_path),
+                files,
+            )?;
+            let rows: Vec<SessionIndexRow> = summaries
+                .into_iter()
+                .map(|summary| codex_summary_to_index_row(summary, &workspace_key))
+                .collect();
+            upserted += upsert_rows(connection, &rows)?;
+        }
+        plain_done = true;
+    }
+
+    let partitions = crate::local_usage::list_codex_day_partitions(sessions_roots);
+    let mut dates: Vec<String> = Vec::new();
+    for partition in &partitions {
+        if !dates.iter().any(|key| key == &partition.key) {
+            dates.push(partition.key.clone());
+        }
+    }
+    let remaining: Vec<String> = dates
+        .iter()
+        .filter(|key| cursor_day.is_empty() || *key < &cursor_day)
+        .cloned()
+        .collect();
+    let batch_dates: Vec<String> = remaining.iter().take(max_partitions).cloned().collect();
+
+    let save_state = |day: &str, plain: bool, complete: bool| {
+        save_backfill_state(
+            connection,
+            &source_key,
+            &BackfillState {
+                cursor: format!("{{\"day\":{:?},\"plainDone\":{}}}", day, plain),
+                complete,
+            },
+        )
+    };
+
+    if batch_dates.is_empty() {
+        save_state(&cursor_day, plain_done, true)?;
+        return Ok(BackfillBatchResult {
+            upserted,
+            complete: true,
+        });
+    }
+
+    let selected: Vec<_> = partitions
+        .into_iter()
+        .filter(|partition| batch_dates.contains(&partition.key))
+        .collect();
+    let summaries = crate::local_usage::scan_codex_session_summaries_for_day_dirs(
+        Some(workspace_path),
+        &selected,
+    )?;
+    let rows: Vec<SessionIndexRow> = summaries
+        .into_iter()
+        .map(|summary| codex_summary_to_index_row(summary, &workspace_key))
+        .collect();
+    upserted += upsert_rows(connection, &rows)?;
+
+    let oldest = batch_dates.last().cloned().unwrap_or_default();
+    let complete = !dates.iter().any(|key| *key < oldest);
+    save_state(&oldest, plain_done, complete)?;
+    Ok(BackfillBatchResult { upserted, complete })
+}
+
+/// Kimi backfill: page `session_index.jsonl` matched lines by offset.
+pub(crate) fn backfill_kimi_for_workspace(
+    connection: &Connection,
+    workspace_path: &Path,
+    batch_size: usize,
+) -> Result<BackfillBatchResult, String> {
+    let source_key = format!("kimi:{}", normalize_path_key(&workspace_path.to_string_lossy()));
+    let state = load_backfill_state(connection, &source_key)?;
+    if state.complete {
+        return Ok(BackfillBatchResult {
+            upserted: 0,
+            complete: true,
+        });
+    }
+    let Some(index_path) = kimi_session_index_path() else {
+        save_backfill_state(
+            connection,
+            &source_key,
+            &BackfillState {
+                cursor: state.cursor.clone(),
+                complete: true,
+            },
+        )?;
+        return Ok(BackfillBatchResult {
+            upserted: 0,
+            complete: true,
+        });
+    };
+    if !index_path.is_file() {
+        save_backfill_state(
+            connection,
+            &source_key,
+            &BackfillState {
+                cursor: state.cursor.clone(),
+                complete: true,
+            },
+        )?;
+        return Ok(BackfillBatchResult {
+            upserted: 0,
+            complete: true,
+        });
+    }
+    let offset: usize = state.cursor.trim().parse().unwrap_or(0);
+    let target = normalize_path_key(&workspace_path.to_string_lossy());
+    let file = File::open(&index_path).map_err(|error| error.to_string())?;
+    let mut matched = 0usize;
+    let mut rows = Vec::new();
+    let mut hit_batch_limit = false;
+    for line in BufReader::new(file).lines() {
+        let Ok(line) = line else {
+            continue;
+        };
+        let Some(row) = parse_kimi_index_line(&line, &target) else {
+            continue;
+        };
+        matched += 1;
+        if matched <= offset {
+            continue;
+        }
+        if rows.len() >= batch_size {
+            hit_batch_limit = true;
+            break;
+        }
+        rows.push(row);
+    }
+    let upserted = upsert_rows(connection, &rows)?;
+    let covered = offset + rows.len();
+    // EOF without hitting the batch cap means the file has no more matches.
+    let complete = !hit_batch_limit;
+    save_backfill_state(
+        connection,
+        &source_key,
+        &BackfillState {
+            cursor: covered.to_string(),
+            complete,
+        },
+    )?;
+    Ok(BackfillBatchResult { upserted, complete })
 }
 
 /// Commit prebuilt rows for one engine (used by async Gemini/Grok/OpenCode writers).
@@ -1028,5 +1346,172 @@ mod tests {
             "fp-a",
         )
         .expect("invalidated"));
+    }
+
+    static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    fn unique_temp_dir(tag: &str) -> PathBuf {
+        std::env::temp_dir().join(format!(
+            "ccgui-{tag}-{}",
+            std::time::SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        ))
+    }
+
+    #[test]
+    fn claude_backfill_pages_by_offset_and_never_resurrects_tombstone() {
+        let _guard = ENV_LOCK.lock().expect("env lock");
+        let temp = unique_temp_dir("claude-backfill");
+        let claude_home = temp.join("claude-home");
+        let workspace_key = "/tmp/ccgui-claude-backfill-ws";
+        let workspace = PathBuf::from(workspace_key);
+        let project_dir = claude_home
+            .join("projects")
+            .join(encode_project_path(workspace_key));
+        std::fs::create_dir_all(&project_dir).expect("project dir");
+        for name in ["s1", "s2", "s3"] {
+            std::fs::write(
+                project_dir.join(format!("{name}.jsonl")),
+                format!(
+                    "{}\n",
+                    json!({"type":"user","message":{"role":"user","content":format!("hello {name}")}})
+                ),
+            )
+            .expect("session file");
+        }
+        let previous_home = std::env::var("CLAUDE_HOME").ok();
+        std::env::set_var("CLAUDE_HOME", &claude_home);
+
+        let connection = Connection::open_in_memory().expect("db");
+        connection.execute_batch(DDL).expect("ddl");
+        // Pre-existing tombstone must survive backfill re-processing its file.
+        upsert_rows(
+            &connection,
+            &[SessionIndexRow {
+                engine: "claude".into(),
+                session_id: "s2".into(),
+                title: "deleted".into(),
+                native_title: None,
+                updated_at: 1,
+                created_at: None,
+                cwd: Some(workspace_key.into()),
+                workspace_path: Some(workspace_key.into()),
+                physical_path: None,
+                parent_session_id: None,
+                size_bytes: None,
+            }],
+        )
+        .expect("seed");
+        super::super::store::tombstone_session_ids(&connection, &["claude:s2".into()])
+            .expect("tombstone");
+
+        let first = backfill_claude_for_workspace(&connection, &workspace, 2).expect("batch 1");
+        assert!(!first.complete, "2 of 3 files processed");
+        let second = backfill_claude_for_workspace(&connection, &workspace, 2).expect("batch 2");
+        assert!(second.complete, "reached end of file list");
+        let third = backfill_claude_for_workspace(&connection, &workspace, 2).expect("batch 3");
+        assert!(third.complete);
+        assert_eq!(third.upserted, 0, "complete source must not rescan");
+
+        let rows = super::super::store::list_for_workspace_path(&connection, workspace_key, 10)
+            .expect("list");
+        let ids: Vec<&str> = rows.iter().map(|row| row.session_id.as_str()).collect();
+        assert!(ids.contains(&"s1"), "s1 indexed: {ids:?}");
+        assert!(ids.contains(&"s3"), "s3 indexed: {ids:?}");
+        assert!(!ids.contains(&"s2"), "tombstoned s2 must stay hidden: {ids:?}");
+
+        match previous_home {
+            Some(value) => std::env::set_var("CLAUDE_HOME", value),
+            None => std::env::remove_var("CLAUDE_HOME"),
+        }
+        let _ = std::fs::remove_dir_all(&temp);
+    }
+
+    #[test]
+    fn codex_backfill_walks_partitions_newest_to_oldest_until_complete() {
+        let temp = unique_temp_dir("codex-backfill");
+        let root = temp.join("sessions");
+        for day in ["2026/08/12", "2026/08/10", "2026/07/01"] {
+            let dir = root.join(day);
+            std::fs::create_dir_all(&dir).expect("partition");
+            std::fs::write(dir.join("rollout-dummy.jsonl"), "not-json\n").expect("file");
+        }
+        let workspace_key = "/tmp/ccgui-codex-backfill-ws";
+        let workspace = PathBuf::from(workspace_key);
+        let connection = Connection::open_in_memory().expect("db");
+        connection.execute_batch(DDL).expect("ddl");
+        let source_key = format!("codex:{workspace_key}");
+
+        let first = backfill_codex_for_workspace(&connection, &workspace, &[root.clone()], 2)
+            .expect("batch 1");
+        assert!(!first.complete, "one day remains");
+        let state = load_backfill_state(&connection, &source_key).expect("state");
+        assert!(
+            state.cursor.contains("2026/08/10"),
+            "cursor advanced past 2 newest days: {}",
+            state.cursor
+        );
+        assert!(state.cursor.contains("plainDone\":true"));
+
+        let second = backfill_codex_for_workspace(&connection, &workspace, &[root.clone()], 2)
+            .expect("batch 2");
+        assert!(second.complete, "all partitions consumed");
+
+        let third = backfill_codex_for_workspace(&connection, &workspace, &[root], 2)
+            .expect("batch 3");
+        assert!(third.complete);
+        assert_eq!(third.upserted, 0, "complete source must not rescan");
+
+        let _ = std::fs::remove_dir_all(&temp);
+    }
+
+    #[test]
+    fn kimi_backfill_pages_matched_rows_until_eof() {
+        let _guard = ENV_LOCK.lock().expect("env lock");
+        let temp = unique_temp_dir("kimi-backfill");
+        let kimi_home = temp.join("kimi-home");
+        std::fs::create_dir_all(&kimi_home).expect("kimi home");
+        let workspace_key = "/tmp/ccgui-kimi-backfill-ws";
+        std::fs::write(
+            kimi_home.join("session_index.jsonl"),
+            format!(
+                "{}\n{}\n{}\n{}\n",
+                json!({"sessionId":"k1","workDir":workspace_key,"title":"one"}),
+                json!({"sessionId":"other","workDir":"/tmp/other-ws"}),
+                json!({"sessionId":"k2","workDir":workspace_key}),
+                json!({"sessionId":"k3","workDir":workspace_key}),
+            ),
+        )
+        .expect("index file");
+        let previous_home = std::env::var("KIMI_HOME").ok();
+        std::env::set_var("KIMI_HOME", &kimi_home);
+
+        let workspace = PathBuf::from(workspace_key);
+        let connection = Connection::open_in_memory().expect("db");
+        connection.execute_batch(DDL).expect("ddl");
+
+        let first = backfill_kimi_for_workspace(&connection, &workspace, 2).expect("batch 1");
+        assert_eq!(first.upserted, 2);
+        assert!(!first.complete);
+        let second = backfill_kimi_for_workspace(&connection, &workspace, 2).expect("batch 2");
+        assert_eq!(second.upserted, 1);
+        assert!(second.complete, "EOF reached without filling the batch");
+        let third = backfill_kimi_for_workspace(&connection, &workspace, 2).expect("batch 3");
+        assert!(third.complete);
+        assert_eq!(third.upserted, 0);
+
+        let rows = super::super::store::list_for_workspace_path(&connection, workspace_key, 10)
+            .expect("list");
+        let ids: Vec<&str> = rows.iter().map(|row| row.session_id.as_str()).collect();
+        assert_eq!(ids.len(), 3, "only workspace-matched rows: {ids:?}");
+        assert!(!ids.contains(&"other"));
+
+        match previous_home {
+            Some(value) => std::env::set_var("KIMI_HOME", value),
+            None => std::env::remove_var("KIMI_HOME"),
+        }
+        let _ = std::fs::remove_dir_all(&temp);
     }
 }

@@ -76,7 +76,7 @@ const WORKSPACE_SESSION_SOURCE_COMPLETENESS_VALUES =
     "uncertain_empty",
   ]);
 
-type ThreadListCursorSource = "catalog" | "runtime";
+type ThreadListCursorSource = "catalog" | "runtime" | "session-index";
 
 /**
  * - first-paint: codex page + last-good only; skip multi-engine project catalog
@@ -157,6 +157,19 @@ export function decodeThreadListCursorState(
       cursor: value === THREAD_LIST_CURSOR_CATALOG_ROOT ? null : value,
     };
   }
+  if (
+    trimmedCursor.startsWith(
+      `session-index${THREAD_LIST_CURSOR_SOURCE_SEPARATOR}`,
+    )
+  ) {
+    const value = trimmedCursor.slice(
+      `session-index${THREAD_LIST_CURSOR_SOURCE_SEPARATOR}`.length,
+    );
+    return {
+      source: "session-index",
+      cursor: value === THREAD_LIST_CURSOR_CATALOG_ROOT ? null : value,
+    };
+  }
   if (trimmedCursor.startsWith("offset:")) {
     return { source: "catalog", cursor: trimmedCursor };
   }
@@ -188,6 +201,14 @@ export function resolveThreadListCursorForDisplay(params: {
   catalogCursor: string | null;
   catalogPartialSource: string | null;
   runtimeCursor: string | null;
+  /**
+   * Session Index paging fallback (sidebar load-older without any disk scan):
+   * when neither catalog nor runtime cursor exists and SQLite still holds
+   * rows beyond the current page, synthesize a `session-index::` cursor.
+   */
+  sessionIndexTotalCount?: number | null;
+  sessionIndexRowCount?: number | null;
+  sessionIndexLimit?: number | null;
 }): string | null {
   if (params.catalogCursor) {
     return encodeThreadListCursorState("catalog", params.catalogCursor);
@@ -195,7 +216,26 @@ export function resolveThreadListCursorForDisplay(params: {
   if (params.runtimeCursor) {
     return encodeThreadListCursorState("runtime", params.runtimeCursor);
   }
+  const totalCount = params.sessionIndexTotalCount ?? null;
+  const rowCount = params.sessionIndexRowCount ?? null;
+  const limit = params.sessionIndexLimit ?? null;
+  if (
+    totalCount !== null &&
+    rowCount !== null &&
+    limit !== null &&
+    totalCount > rowCount
+  ) {
+    return encodeThreadListCursorState("session-index", String(limit));
+  }
   return null;
+}
+
+/** Encode the Session Index load-older cursor (payload = limit just used). */
+export function encodeSessionIndexThreadListCursor(limit: number): string {
+  return encodeThreadListCursorState(
+    "session-index",
+    String(Math.max(1, Math.floor(limit))),
+  );
 }
 
 export function countSummariesByEngine(summaries: ThreadSummary[]) {

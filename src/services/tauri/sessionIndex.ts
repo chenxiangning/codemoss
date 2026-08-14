@@ -37,6 +37,8 @@ export type SessionIndexListPage = {
   synced: boolean;
   syncMs?: number | null;
   engines: string[];
+  /** Non-tombstoned rows matching the workspace across all engines. */
+  totalCount?: number | null;
   partialSource?: string | null;
   visibility?: SharedNativeVisibilityProjection | null;
 };

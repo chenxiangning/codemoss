@@ -47,6 +47,13 @@ CREATE TABLE IF NOT EXISTS session_index_file_cursors (
   offset INTEGER NOT NULL,
   titles_json TEXT NOT NULL DEFAULT '{}'
 );
+
+CREATE TABLE IF NOT EXISTS session_index_backfill (
+  source_key TEXT PRIMARY KEY,
+  cursor TEXT NOT NULL DEFAULT '',
+  complete INTEGER NOT NULL DEFAULT 0,
+  updated_ms INTEGER NOT NULL
+);
 "#;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -80,6 +87,9 @@ pub struct SessionIndexListPage {
     pub synced: bool,
     pub sync_ms: Option<u64>,
     pub engines: Vec<String>,
+    /// Non-tombstoned rows matching this workspace (all engines). Drives the
+    /// sidebar "load older" affordance when paging beyond the recent window.
+    pub total_count: i64,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub partial_source: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -556,6 +566,81 @@ pub(crate) fn save_file_cursor(
     Ok(())
 }
 
+/// Count all non-tombstoned rows matching a workspace (any engine). Used for
+/// the sidebar "load older" affordance (`totalCount` on list pages).
+pub(crate) fn count_for_workspace_path(
+    connection: &Connection,
+    workspace_path: &str,
+) -> Result<i64, String> {
+    let key = normalize_path_key(workspace_path);
+    if key.is_empty() {
+        return Ok(0);
+    }
+    connection
+        .query_row(
+            "SELECT COUNT(*) FROM session_index
+             WHERE (workspace_path = ?1 OR cwd = ?1)
+               AND tombstoned_at IS NULL",
+            params![key],
+            |row| row.get(0),
+        )
+        .map_err(|error| error.to_string())
+}
+
+/// Persisted incremental-backfill state for one `{engine}:{workspace_path}`.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) struct BackfillState {
+    /// Engine-specific cursor (mtime offset / partition day / matched-row
+    /// offset / covered count). Empty means "not started".
+    pub cursor: String,
+    pub complete: bool,
+}
+
+pub(crate) fn load_backfill_state(
+    connection: &Connection,
+    source_key: &str,
+) -> Result<BackfillState, String> {
+    let row = connection
+        .query_row(
+            "SELECT cursor, complete FROM session_index_backfill WHERE source_key = ?1",
+            [source_key],
+            |row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?)),
+        )
+        .optional()
+        .map_err(|error| error.to_string())?;
+    Ok(match row {
+        Some((cursor, complete)) => BackfillState {
+            cursor,
+            complete: complete > 0,
+        },
+        None => BackfillState::default(),
+    })
+}
+
+pub(crate) fn save_backfill_state(
+    connection: &Connection,
+    source_key: &str,
+    state: &BackfillState,
+) -> Result<(), String> {
+    connection
+        .execute(
+            "INSERT INTO session_index_backfill (source_key, cursor, complete, updated_ms)
+             VALUES (?1, ?2, ?3, ?4)
+             ON CONFLICT(source_key) DO UPDATE SET
+               cursor = excluded.cursor,
+               complete = excluded.complete,
+               updated_ms = excluded.updated_ms",
+            params![
+                source_key,
+                state.cursor,
+                if state.complete { 1 } else { 0 },
+                now_ms()
+            ],
+        )
+        .map_err(|error| error.to_string())?;
+    Ok(())
+}
+
 fn map_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<SessionIndexRow> {
     Ok(SessionIndexRow {
         engine: row.get(0)?,
@@ -642,6 +727,59 @@ mod tests {
         assert_eq!(claude, 2);
         assert_eq!(codex, 1);
         assert!(listed.iter().any(|row| row.session_id == "codex-old"));
+    }
+
+    #[test]
+    fn backfill_state_roundtrips_and_counts_visible_rows() {
+        let connection = Connection::open_in_memory().expect("open");
+        connection.execute_batch(DDL).expect("ddl");
+
+        let initial = load_backfill_state(&connection, "codex:/tmp/proj").expect("load");
+        assert_eq!(initial, BackfillState::default());
+
+        save_backfill_state(
+            &connection,
+            "codex:/tmp/proj",
+            &BackfillState {
+                cursor: "{\"day\":\"2026/07/01\",\"plainDone\":true}".into(),
+                complete: false,
+            },
+        )
+        .expect("save");
+        let loaded = load_backfill_state(&connection, "codex:/tmp/proj").expect("reload");
+        assert!(!loaded.complete);
+        assert!(loaded.cursor.contains("2026/07/01"));
+
+        save_backfill_state(
+            &connection,
+            "codex:/tmp/proj",
+            &BackfillState {
+                cursor: loaded.cursor.clone(),
+                complete: true,
+            },
+        )
+        .expect("save complete");
+        assert!(load_backfill_state(&connection, "codex:/tmp/proj")
+            .expect("reload")
+            .complete);
+
+        upsert_rows(
+            &connection,
+            &[
+                index_row("claude", "visible-1", 100),
+                index_row("codex", "visible-2", 90),
+                index_row("codex", "gone", 80),
+                SessionIndexRow {
+                    workspace_path: Some("/tmp/other".into()),
+                    cwd: Some("/tmp/other".into()),
+                    ..index_row("codex", "other-ws", 70)
+                },
+            ],
+        )
+        .expect("upsert");
+        tombstone_session_ids(&connection, &["codex:gone".into()]).expect("tombstone");
+        let total = count_for_workspace_path(&connection, "/tmp/proj").expect("count");
+        assert_eq!(total, 2, "tombstoned and other-workspace rows excluded");
     }
 
     #[test]

@@ -7,6 +7,8 @@ import {
   THREAD_LIST_INITIAL_TARGET_COUNT,
   THREAD_LIST_LOAD_OLDER_PAGE_SIZE,
   THREAD_LIST_LOAD_OLDER_TARGET_COUNT,
+  decodeThreadListCursorState,
+  encodeSessionIndexThreadListCursor,
   normalizeProjectCatalogSession,
   resolveInitialThreadListTargetCount,
   resolveThreadListCursorForDisplay,
@@ -138,6 +140,60 @@ describe("useThreadActions.threadList", () => {
         runtimeCursor: null,
       }),
     ).toBe("catalog::offset:200");
+  });
+
+  it("synthesizes a session-index cursor only when SQLite has more rows", () => {
+    // Index has older rows beyond the current page → session-index cursor.
+    expect(
+      resolveThreadListCursorForDisplay({
+        catalogCursor: null,
+        catalogPartialSource: null,
+        runtimeCursor: null,
+        sessionIndexTotalCount: 120,
+        sessionIndexRowCount: 50,
+        sessionIndexLimit: 50,
+      }),
+    ).toBe("session-index::50");
+    // Fully covered → no cursor.
+    expect(
+      resolveThreadListCursorForDisplay({
+        catalogCursor: null,
+        catalogPartialSource: null,
+        runtimeCursor: null,
+        sessionIndexTotalCount: 50,
+        sessionIndexRowCount: 50,
+        sessionIndexLimit: 50,
+      }),
+    ).toBeNull();
+    // Catalog/runtime cursors win over the index fallback.
+    expect(
+      resolveThreadListCursorForDisplay({
+        catalogCursor: "offset:200",
+        catalogPartialSource: null,
+        runtimeCursor: null,
+        sessionIndexTotalCount: 500,
+        sessionIndexRowCount: 50,
+        sessionIndexLimit: 50,
+      }),
+    ).toBe("catalog::offset:200");
+    expect(
+      resolveThreadListCursorForDisplay({
+        catalogCursor: null,
+        catalogPartialSource: null,
+        runtimeCursor: "rt-1",
+        sessionIndexTotalCount: 500,
+        sessionIndexRowCount: 50,
+        sessionIndexLimit: 50,
+      }),
+    ).toBe("runtime::rt-1");
+  });
+
+  it("decodes session-index cursors back to source + limit payload", () => {
+    expect(decodeThreadListCursorState("session-index::150")).toEqual({
+      source: "session-index",
+      cursor: "150",
+    });
+    expect(encodeSessionIndexThreadListCursor(150)).toBe("session-index::150");
   });
 
   it("first-paint list target defaults to 5 and stays smaller than load-older batches", () => {

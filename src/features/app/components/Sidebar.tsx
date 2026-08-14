@@ -19,17 +19,7 @@ import type {
 } from "react";
 import { useTranslation } from "react-i18next";
 
-import { SidebarEngineRail } from "./SidebarEngineRail";
 import { ThreadList } from "./ThreadList";
-import "../../../styles/sidebar.engine-rail.css";
-import {
-  collectSidebarEngineRails,
-  filterThreadsForEngineRail,
-  persistSidebarEngineRail,
-  resolveDefaultSidebarEngineRail,
-  resolveRailForActiveThreadChange,
-  type SidebarEngineRailId,
-} from "../utils/sidebarEngineRail";
 import { ThreadEmptyState } from "./ThreadEmptyState";
 import { ThreadLoadingState } from "./ThreadLoadingState";
 import { WorktreeSection } from "./WorktreeSection";
@@ -577,9 +567,6 @@ function SidebarImpl({
   );
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
-  const [engineRailByWorkspaceId, setEngineRailByWorkspaceId] = useState<
-    Record<string, SidebarEngineRailId>
-  >({});
   const [isSearchOpen] = useState(false);
   const [isSettingsMenuOpen, setIsSettingsMenuOpen] = useState(false);
   const settingsMenuRef = useRef<HTMLDivElement>(null);
@@ -1353,44 +1340,6 @@ function SidebarImpl({
     },
     [onQuickReloadWorkspaceThreads, onToggleWorkspaceCollapse],
   );
-  const handleSelectEngineRail = useCallback(
-    (workspaceId: string, railId: SidebarEngineRailId) => {
-      setEngineRailByWorkspaceId((current) => ({
-        ...current,
-        [workspaceId]: railId,
-      }));
-      persistSidebarEngineRail(workspaceId, railId);
-    },
-    [],
-  );
-  const lastFollowedActiveThreadIdRef = useRef<string | null>(null);
-  useEffect(() => {
-    if (!activeWorkspaceId || !activeThreadId) {
-      lastFollowedActiveThreadIdRef.current = activeThreadId;
-      return;
-    }
-    const threads = getProjectedThreads(activeWorkspaceId);
-    const activeExists = threads.some((thread) => thread.id === activeThreadId);
-    if (!activeExists) {
-      return;
-    }
-    const nextRail = resolveRailForActiveThreadChange({
-      previousActiveThreadId: lastFollowedActiveThreadIdRef.current,
-      nextActiveThreadId: activeThreadId,
-      threads,
-    });
-    lastFollowedActiveThreadIdRef.current = activeThreadId;
-    if (!nextRail) {
-      return;
-    }
-    handleSelectEngineRail(activeWorkspaceId, nextRail);
-  }, [
-    activeThreadId,
-    activeWorkspaceId,
-    getProjectedThreads,
-    handleSelectEngineRail,
-  ]);
-
   const threadRowsByWorkspace = useMemo(() => {
     const rowsByWorkspace = new Map<string, WorkspaceThreadRows>();
     filteredGroupedWorkspaces.forEach((group) => {
@@ -1405,21 +1354,12 @@ function SidebarImpl({
           return;
         }
         const threads = getProjectedThreads(workspace.id);
-        const selectedRail =
-          engineRailByWorkspaceId[workspace.id] ??
-          resolveDefaultSidebarEngineRail({
-            workspaceId: workspace.id,
-            threads,
-            activeThreadId:
-              workspace.id === activeWorkspaceId ? activeThreadId : null,
-          });
-        const railThreads = filterThreadsForEngineRail(threads, selectedRail);
         const isExpanded = expandedWorkspaces.has(workspace.id);
         const visibleThreadRootCount = normalizeVisibleThreadRootCount(
           workspace.settings.visibleThreadRootCount,
         );
         const { unpinnedRows, totalRoots } = getThreadRows(
-          railThreads,
+          threads,
           isExpanded,
           workspace.id,
           getPinTimestamp,
@@ -1430,10 +1370,7 @@ function SidebarImpl({
     });
     return rowsByWorkspace;
   }, [
-    activeThreadId,
-    activeWorkspaceId,
     collapsedGroups,
-    engineRailByWorkspaceId,
     expandedWorkspaces,
     filteredGroupedWorkspaces,
     getPinTimestamp,
@@ -1945,15 +1882,6 @@ function SidebarImpl({
     drag: SidebarWorkspaceDragChrome | null = null,
   ) => {
     const threads = threadsByWorkspace[entry.id] ?? [];
-    const projectedThreads = getProjectedThreads(entry.id);
-    const engineRails = collectSidebarEngineRails(projectedThreads, entry.id);
-    const selectedEngineRail =
-      engineRailByWorkspaceId[entry.id] ??
-      resolveDefaultSidebarEngineRail({
-        workspaceId: entry.id,
-        threads: projectedThreads,
-        activeThreadId: entry.id === activeWorkspaceId ? activeThreadId : null,
-      });
     const isCollapsed = entry.settings.sidebarCollapsed;
     const isExpanded = expandedWorkspaces.has(entry.id);
     const threadRows = threadRowsByWorkspace.get(entry.id);
@@ -2080,14 +2008,6 @@ function SidebarImpl({
             onLoadOlderThreads={onLoadOlderThreads}
           />
         )}
-        {showFolderProjection || showThreadList ? (
-          <div className="sidebar-engine-rail-row">
-            <SidebarEngineRail
-              rails={engineRails}
-              selectedRail={selectedEngineRail}
-              onSelectRail={(railId) => handleSelectEngineRail(entry.id, railId)}
-            />
-            <div>
         {showFolderProjection ? (
           <WorkspaceSessionFolderTree
             workspaceId={entry.id}
@@ -2178,9 +2098,6 @@ function SidebarImpl({
             onRenameConfirm={onRenameConfirm}
           />
         ) : null}
-            </div>
-          </div>
-        ) : null}
         {sessionFolderErrorByWorkspaceId[entry.id] ? (
           <div className="workspace-session-folder-error">
             {t("sidebar.sessionFolderLoadFailed")}
@@ -2196,9 +2113,6 @@ function SidebarImpl({
   }, [
     activeThreadId,
     activeWorkspaceId,
-    engineRailByWorkspaceId,
-    getProjectedThreads,
-    handleSelectEngineRail,
     collapsedWorktreeSections,
     collapsedSessionFolderIdsByWorkspaceId,
     deleteConfirmBusy,

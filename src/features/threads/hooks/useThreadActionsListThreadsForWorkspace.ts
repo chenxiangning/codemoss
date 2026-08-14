@@ -1765,6 +1765,9 @@ export function useListThreadsForWorkspace({
           catalogCursor: projectCatalogValue?.nextCursor ?? null,
           catalogPartialSource: projectCatalogValue?.partialSource ?? null,
           runtimeCursor: cursor,
+          sessionIndexTotalCount: sessionIndexPage?.totalCount ?? null,
+          sessionIndexRowCount: sessionIndexPage?.data?.length ?? null,
+          sessionIndexLimit,
         });
         const previewUpdates: Array<{
           threadId: string;
