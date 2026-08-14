@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>02 · 右侧统计</title>
+<link rel="stylesheet" href="base.css">
+<style>
+/* 02 · 右侧统计 —— base + checkbox 左侧追加 mono +/− */
+.fstats { display: inline-flex; margin-left: auto; opacity: .6; }
+.fstats:empty { display: none; }
+.row:hover .fstats { opacity: 1; }
+.ck { margin-left: 10px; }
+.acts { right: auto; left: auto; }
+.row:hover .fstats { display: none; } /* hover 时让位给动作条 */
+</style>
+</head>
+<body><div id="app"></div><script src="shared.js"></script></body>
+</html>

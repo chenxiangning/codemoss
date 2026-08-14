@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>15 · minimap 刻度</title>
+<link rel="stylesheet" href="base.css">
+<style>
+/* 15 · minimap 刻度 —— 面板最左缘是一整条「状态刻度带」：
+   每行贡献一格色块，滚动前就知道变更分布 */
+.tree { border-left: 5px solid transparent; }
+.row::after {
+  content: ""; position: absolute; left: -5px; top: 20%; bottom: 20%;
+  width: 5px; border-radius: 2px;
+  background: transparent;
+}
+.row.file::after { background: var(--stc); opacity: .85; }
+.row.dir::after { background: #dfe3e8; }
+.row { padding-left: calc(16px + var(--d, 0) * 17px); }
+.row::before { left: 22px; }
+</style>
+</head>
+<body><div id="app"></div><script src="shared.js"></script></body>
+</html>

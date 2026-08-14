@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>06 · 导线跟随</title>
+<link rel="stylesheet" href="base.css">
+<style>
+/* 06 · 导线跟随 —— hover 时「当前列」的导线加深加粗，深嵌套定位一目了然 */
+.row { min-height: 29px; }
+.row:hover::before {
+  background: repeating-linear-gradient(90deg, #cfd5dc 0 1.5px, transparent 1.5px 17px);
+}
+/* 最深一级导线染状态色 */
+.row.file:hover::after {
+  content: ""; position: absolute; top: 0; bottom: 0;
+  left: calc(18px + (var(--d, 0) - 1) * 17px); width: 2px;
+  background: var(--stc); opacity: .7;
+}
+</style>
+</head>
+<body><div id="app"></div><script src="shared.js"></script></body>
+</html>

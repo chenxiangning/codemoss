@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>03 · 状态色文件名</title>
+<link rel="stylesheet" href="base.css">
+<style>
+/* 03 · 状态色文件名 —— 文件名按状态着色，字母可隐去 */
+.row.file .nm { color: var(--stc); }
+.row.file[data-st="D"] .nm { text-decoration: line-through; text-decoration-color: rgba(220,38,38,.4); }
+.st { display: none; } /* 颜色已表达，字母退场 */
+.row.file { padding-left: calc(12px + var(--d, 0) * 17px + 20px); }
+</style>
+</head>
+<body><div id="app"></div><script src="shared.js"></script></body>
+</html>

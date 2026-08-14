@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>11 · 文件类型色彩</title>
+<link rel="stylesheet" href="base.css">
+<style>
+/* 11 · 文件类型色彩系统 —— 图标颜色表达「文件是什么」（html 橙 / ts 蓝 /
+   png 紫 / json 灰 / 配置紫），状态仍由字母表达。两套语义各司其职 */
+.row.file .ic-file { color: #6b7280; }
+.nm[class], .nm { } /* noop */
+/* 按扩展名着色（利用文件名文本匹配的属性选择器不可得，改用 data 思路的近似：
+   以 .nm 内容为依据不可行，于是按 shared.js 图标分类着色） */
+.row.file[data-st] .ic-file { color: #8b5cf6; }                    /* 图片/二进制默认紫 */
+.row.file:not(.bin) .ic-file { color: #3178c6; }                   /* 代码文件蓝 */
+.row.file[data-st="D"] .ic-file { color: #9aa1a9; }
+.ic-folder { color: #16a34a; }
+</style>
+</head>
+<body><div id="app"></div><script src="shared.js"></script></body>
+</html>

@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>20 · 实时呼吸</title>
+<link rel="stylesheet" href="base.css">
+<style>
+/* 20 · 实时呼吸 —— 新增文件带「活」的呼吸光点（刚被 AI/工具写入的感觉），
+   行入场错峰淡入；统计区像 ticker */
+@keyframes pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(22,163,74,.45); }
+  50% { box-shadow: 0 0 0 5px rgba(22,163,74,0); }
+}
+@keyframes rowIn {
+  from { opacity: 0; transform: translateY(3px); }
+  to { opacity: 1; transform: none; }
+}
+.row { animation: rowIn .3s both; }
+.row:nth-child(1) { animation-delay: .00s } .row:nth-child(2) { animation-delay: .02s }
+.row:nth-child(3) { animation-delay: .04s } .row:nth-child(4) { animation-delay: .06s }
+.row:nth-child(5) { animation-delay: .08s } .row:nth-child(6) { animation-delay: .10s }
+.row:nth-child(7) { animation-delay: .12s } .row:nth-child(8) { animation-delay: .14s }
+.row:nth-child(9) { animation-delay: .16s } .row:nth-child(10) { animation-delay: .18s }
+.row:nth-child(11) { animation-delay: .20s } .row:nth-child(12) { animation-delay: .22s }
+.row:nth-child(13) { animation-delay: .24s } .row:nth-child(14) { animation-delay: .26s }
+.row:nth-child(15) { animation-delay: .28s } .row:nth-child(16) { animation-delay: .30s }
+.row:nth-child(n+17) { animation-delay: .32s }
+
+.row.file[data-st="U"] .dot, .row.file[data-st="A"] .dot {
+  display: block; position: absolute;
+  left: calc(12px + var(--d, 0) * 17px + 15px); top: 50%; transform: translateY(-50%);
+  width: 6px; height: 6px; border-radius: 50%;
+  background: #16a34a; animation: pulse 2s infinite;
+}
+.sec-stats { background: #f6f7f9; border-radius: 5px; padding: 2px 7px; }
+</style>
+</head>
+<body><div id="app"></div><script src="shared.js"></script></body>
+</html>

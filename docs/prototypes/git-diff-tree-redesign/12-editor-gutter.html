@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>12 · 编辑器行号</title>
+<link rel="stylesheet" href="base.css">
+<style>
+/* 12 · 编辑器行号 —— 树即代码：左 gutter 行号 + 斑马纹 + 当前行高亮，
+   让「84 个文件」像 84 行代码一样可扫描 */
+.tree { counter-reset: ln; }
+.row { counter-increment: ln; min-height: 27px; }
+.row.file::after {
+  counter-increment: none;
+}
+.row::after {
+  content: counter(ln, decimal-leading-zero);
+  position: absolute; left: 0; top: 50%; transform: translateY(-50%);
+  width: 26px; text-align: right;
+  font-size: 10px; color: #c4c9cf; font-variant-numeric: tabular-nums;
+}
+.row { padding-left: calc(34px + var(--d, 0) * 17px); }
+.row::before { left: 40px; }
+.row:nth-child(even) { background: #fafbfc; }
+.row:hover { background: #eef1f4; }
+.row:nth-child(16) { background: rgba(22,163,74,.08); box-shadow: inset 2px 0 0 #16a34a; }
+</style>
+</head>
+<body><div id="app"></div><script src="shared.js"></script></body>
+</html>

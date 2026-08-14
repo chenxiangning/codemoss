@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>09 · 深色版</title>
+<link rel="stylesheet" href="base.css">
+<style>
+/* 09 · 深色版 —— 真实面板语言的暗色演绎 */
+body { background: #0c0e11; color: #d4d8dd; }
+.panel { background: #14171b; border-color: #262b32; box-shadow: 0 12px 32px -12px rgba(0,0,0,.6); }
+.sec-ttl { color: #e6e9ed; }
+.section-head .chev { color: #6e7681; }
+.sec-btn { color: #7d8590; } .sec-btn:hover { background: #1e232a; color: #e6e9ed; }
+.sec-stats .add { color: #3fb950; } .sec-stats .del { color: #f85149; }
+.sec-count { background: #21262d; color: #8b949e; }
+.sall input, .ck input { background: #0f1216; border-color: #3a4149; }
+.sall input:checked, .ck input:checked { background: #3fb950; border-color: #3fb950; }
+.sall input:checked::after, .ck input:checked::after { border-color: #0c0e11; }
+.composer { border-top-color: #20252c; }
+.composer .input { background: #0f1216; border-color: #262b32; color: #6e7681; }
+.engine { background: #0f1216; border-color: #262b32; color: #9aa4ae; }
+.commit { background: #21262d; color: #6e7681; }
+.hint { color: #6e7681; }
+
+.row:hover { background: #1b2026; }
+.row::before { background: repeating-linear-gradient(90deg, #23282f 0 1px, transparent 1px 17px); }
+.tw { color: #6e7681; }
+.ic-folder, .ic-file { color: #3fb950; }
+.row.dir .nm { color: #e6e9ed; }
+.row.file .nm { color: #c9d1d9; }
+.row.file[data-st="D"] .nm { color: #6e7681; }
+.cnt { color: #6e7681; }
+.fstats .add { color: #3fb950; } .fstats .del { color: #f85149; }
+.acts { background: #1e232a; border-color: #2d333b; }
+.act { color: #9aa4ae; } .act:hover { background: #2d333b; color: #e6e9ed; }
+.row.more .nm { color: #6e7681; }
+
+.row[data-st="U"], .row[data-st="A"] { --stc: #3fb950; }
+.row[data-st="M"] { --stc: #d29922; }
+.row[data-st="D"] { --stc: #f85149; }
+</style>
+</head>
+<body><div id="app"></div><script src="shared.js"></script></body>
+</html>

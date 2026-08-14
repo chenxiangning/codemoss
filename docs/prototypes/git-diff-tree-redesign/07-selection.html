@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>07 · 选中态语言</title>
+<link rel="stylesheet" href="base.css">
+<style>
+/* 07 · 选中态语言 —— 勾选行绿色淡染 + 左缘绿条，与图标绿同 accent */
+.row.file:has(input:checked) {
+  background: rgba(22,163,74,.07);
+  box-shadow: inset 2.5px 0 0 #16a34a;
+}
+.row.file:has(input:checked):hover { background: rgba(22,163,74,.11); }
+.row.file:has(input:checked) .nm { font-weight: 700; }
+.row.file:has(input:checked)::before { opacity: .4; }
+</style>
+</head>
+<body><div id="app"></div><script src="shared.js"></script></body>
+</html>

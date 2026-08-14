@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>18 · 常显动作列</title>
+<link rel="stylesheet" href="base.css">
+<style>
+/* 18 · 常显动作列 —— hover 动作条「拍平」成常驻双图标列（diff / stage），
+   撤销和打开收进 hover；power user 免悬停直达 */
+.row { min-height: 28px; }
+.acts { display: inline-flex; position: static; transform: none; background: none; border: 0; box-shadow: none; padding: 0; margin-left: auto; }
+.act { width: 20px; height: 20px; opacity: .45; }
+.row:hover .act { opacity: 1; }
+/* 常显只留 diff + stage 两个，其余 hover 才出现 */
+.act:nth-child(2), .act:nth-child(4) { display: none; }
+.row:hover .act:nth-child(2), .row:hover .act:nth-child(4) { display: inline-flex; }
+.ck { margin-left: 8px; }
+</style>
+</head>
+<body><div id="app"></div><script src="shared.js"></script></body>
+</html>

@@ -1,0 +1,142 @@
+/* Base v2：对齐真实面板 —— 绿色图标系 / 行左状态字母 / 缩进导线 /
+   section 头动作区 / 行 hover 浮动动作条 / checkbox 常驻右列 */
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", sans-serif;
+  background: #f0f1f3;
+  display: flex; align-items: flex-start; justify-content: center;
+  padding: 24px 12px;
+  color: #1f2328; font-size: 13px;
+}
+.panel {
+  width: 430px; background: #fff;
+  border: 1px solid #e4e6ea; border-radius: 12px;
+  display: flex; flex-direction: column; overflow: hidden;
+  max-height: calc(100vh - 48px);
+  box-shadow: 0 1px 2px rgba(16,24,40,.04), 0 10px 28px -14px rgba(16,24,40,.14);
+}
+
+/* ---------- section 头（截图同款动作区） ---------- */
+.section-head {
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 14px 8px; flex: none;
+}
+.section-head .chev { width: 13px; height: 13px; color: #6b7280; }
+.sec-ttl { font-weight: 700; font-size: 13.5px; }
+.sec-sp { flex: 1; }
+.sall { display: inline-flex; align-items: center; }
+.sall input, .ck input {
+  width: 15px; height: 15px; margin: 0; cursor: pointer;
+  appearance: none; border: 1.5px solid #c8cdd4; border-radius: 4px; background: #fff;
+  display: inline-block; position: relative;
+}
+.sall input:checked, .ck input:checked { background: #16a34a; border-color: #16a34a; }
+.sall input:checked::after, .ck input:checked::after {
+  content: ""; position: absolute; left: 4px; top: 1.5px;
+  width: 4px; height: 8px; border: solid #fff; border-width: 0 1.8px 1.8px 0; transform: rotate(45deg);
+}
+.sec-btn {
+  border: 0; background: none; width: 24px; height: 24px; border-radius: 5px;
+  display: inline-flex; align-items: center; justify-content: center;
+  color: #6b7280; cursor: pointer;
+}
+.sec-btn svg { width: 14px; height: 14px; }
+.sec-btn:hover { background: #f1f3f5; color: #1f2328; }
+.sec-stats { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12px; font-weight: 600; display: inline-flex; font-variant-numeric: tabular-nums; }
+.sec-stats .add { color: #16a34a; }
+.sec-stats .del { color: #dc2626; }
+.sec-count {
+  font-family: ui-monospace, monospace; font-size: 11px; color: #6b7280;
+  background: #f1f3f5; border-radius: 6px; padding: 1.5px 7px;
+}
+
+/* ---------- 树（base = 真实面板语言） ---------- */
+.tree {
+  overflow-y: auto; flex: 1; min-height: 120px;
+  padding: 0 0 8px;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+}
+.row {
+  position: relative;
+  display: flex; align-items: center; gap: 8px;
+  min-height: 32px;
+  padding: 0 14px 0 calc(12px + var(--d, 0) * 17px);
+  cursor: default; white-space: nowrap;
+}
+.row.dir { cursor: pointer; }
+.row:hover { background: #f5f6f8; }
+
+/* 缩进导线 */
+.row::before {
+  content: ""; position: absolute; top: 0; bottom: 0; left: 18px;
+  width: calc(var(--d, 0) * 17px);
+  background: repeating-linear-gradient(90deg, #eceff2 0 1px, transparent 1px 17px);
+  pointer-events: none;
+}
+
+.tw { width: 13px; height: 13px; flex: none; display: inline-flex; color: #6b7280; }
+.tw svg { width: 13px; height: 13px; transition: transform .12s; }
+.row.dir[data-open="1"] .tw svg { transform: rotate(90deg); }
+.row.file .tw { visibility: hidden; }
+
+/* 状态字母：base 常显（截图同款绿色 U） */
+.st {
+  display: inline; flex: none; width: 12px;
+  font-size: 11px; font-weight: 700; color: var(--stc);
+}
+.row.dir .st { display: none; }
+
+.dot { display: none; }
+
+.ic { width: 16px; height: 16px; flex: none; }
+.ic-folder { color: #16a34a; }
+.ic-file { color: #16a34a; }
+
+.nm { font-size: 12.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; }
+.row.dir .nm { color: #1f2328; }
+.row.file .nm { color: #1f2328; }
+.row.file[data-st="D"] .nm { color: #9aa1a9; text-decoration: line-through; }
+
+.cnt { display: none; font-family: ui-monospace, monospace; font-size: 10.5px; color: #9aa1a9; }
+.fstats { display: none; font-family: ui-monospace, monospace; font-size: 11px; font-variant-numeric: tabular-nums; gap: 6px; }
+.fstats .add { color: #16a34a; font-weight: 550; }
+.fstats .del { color: #dc2626; font-weight: 550; }
+.bar { display: none; }
+
+/* hover 浮动动作条（截图红框同款） */
+.acts {
+  display: none; position: absolute; right: 34px; top: 50%; transform: translateY(-50%);
+  background: #f3f4f6; border: 1px solid #e2e4e8; border-radius: 6px;
+  padding: 1px; gap: 0; z-index: 2;
+  box-shadow: 0 2px 6px rgba(16,24,40,.08);
+}
+.row:hover .acts { display: inline-flex; }
+.act {
+  border: 0; background: none; width: 22px; height: 22px; border-radius: 4px;
+  display: inline-flex; align-items: center; justify-content: center;
+  color: #5b636d; cursor: pointer;
+}
+.act svg { width: 13px; height: 13px; }
+.act:hover { background: #e4e7eb; color: #1f2328; }
+
+.ck { flex: none; display: inline-flex; align-items: center; margin-left: auto; }
+.row.more .nm { color: #9aa1a9; font-size: 11.5px; font-weight: 500; }
+.row.more:hover { background: none; }
+.row.more .ck, .row.more .acts { display: none; }
+
+/* 状态色变量 */
+.row[data-st="U"], .row[data-st="A"] { --stc: #16a34a; }
+.row[data-st="M"] { --stc: #b45309; }
+.row[data-st="D"] { --stc: #dc2626; }
+.row[data-st="R"] { --stc: #2563eb; }
+
+/* ---------- 提交框 ---------- */
+.composer { border-top: 1px solid #eff1f4; padding: 10px 14px 8px; flex: none; }
+.composer .input { border: 1px solid #e4e6ea; border-radius: 8px; padding: 8px 10px; color: #9aa1a9; font-size: 12.5px; background: #fbfbfc; }
+.composer-bar { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+.engine { display: inline-flex; align-items: center; gap: 6px; border: 1px solid #e4e6ea; border-radius: 7px; padding: 4px 9px; font-size: 12px; color: #3f4750; background: #fff; }
+.engine-dot { width: 7px; height: 7px; border-radius: 50%; background: #d97706; }
+.cb-sp { flex: 1; }
+.commit { display: inline-flex; align-items: center; gap: 5px; border: 0; border-radius: 7px; padding: 5px 14px; font-size: 12px; font-weight: 600; background: #e5e7eb; color: #9aa1a9; cursor: not-allowed; }
+.hint { padding: 8px 16px 12px; font-size: 12px; color: #9aa1a9; flex: none; }

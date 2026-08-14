@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>10 · 动作条主角</title>
+<link rel="stylesheet" href="base.css">
+<style>
+/* 10 · 动作条主角 —— hover 动作条升级为「大行卡」：更大触控面 +
+   图标下挂文字标签，新用户不用猜图标含义 */
+.row { min-height: 34px; }
+.acts {
+  right: 36px; padding: 3px; gap: 2px; border-radius: 9px;
+  background: #fff; box-shadow: 0 4px 14px rgba(16,24,40,.14);
+}
+.act {
+  width: 46px; height: 34px; flex-direction: column; gap: 2px; border-radius: 6px;
+}
+.act svg { width: 14px; height: 14px; }
+.act::after {
+  content: attr(title); font-size: 9px; color: #8a9199;
+  font-family: -apple-system, sans-serif;
+}
+.act:hover::after { color: #1f2328; }
+</style>
+</head>
+<body><div id="app"></div><script src="shared.js"></script></body>
+</html>

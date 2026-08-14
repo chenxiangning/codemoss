@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Git Diff 树形 UI · 20 个变体</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif;
+    background: #eceef1; padding: 28px 32px 60px; color: #1f2328;
+  }
+  h1 { font-size: 20px; font-weight: 700; }
+  h2 { font-size: 14px; font-weight: 700; margin: 28px 0 14px; color: #3f4750; }
+  h2 .tag { font-size: 11px; font-weight: 600; color: #16a34a; background: rgba(22,163,74,.1); border-radius: 5px; padding: 2px 8px; margin-left: 8px; vertical-align: 1px; }
+  .sub { color: #6b7280; font-size: 13px; margin: 6px 0 4px; max-width: 760px; line-height: 1.6; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(455px, 1fr)); gap: 28px; }
+  .cell-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 8px; }
+  .num { font-family: Georgia, serif; font-style: italic; font-size: 15px; color: #9aa1a9; }
+  .name { font-weight: 650; font-size: 14px; }
+  .desc { font-size: 12px; color: #8a9199; }
+  iframe {
+    width: 454px; height: 740px; border: 0; border-radius: 12px;
+    background: #f0f1f3; box-shadow: 0 1px 2px rgba(16,24,40,.05);
+  }
+</style>
+</head>
+<body>
+<h1>Git Diff 树形 UI · 20 个变体</h1>
+<p class="sub">已补齐真实面板全部元素：<strong>section 头动作区</strong>（全选 / stage all / revert all / +4724−10 / 84）与<strong>行 hover 浮动动作条</strong>（diff · 打开 · stage · 还原）。hover 任意文件行可看到动作条。选中编号即可，支持组合。</p>
+
+<h2>Batch A · 精修重构<span class="tag">在真实面板基础上演化</span></h2>
+<div class="grid" id="gridA"></div>
+
+<h2>Batch B · 惊喜方向<span class="tag">信息编码方式本身不同</span></h2>
+<div class="grid" id="gridB"></div>
+
+<script>
+  var A = [
+    ["01-faithful.html",     "基准还原",   "真实面板精修：不改结构只修节奏，作为对照锚点"],
+    ["02-right-stats.html",  "右侧统计",   "+/− 常驻右列，hover 时让位给动作条"],
+    ["03-status-names.html", "状态色文件名","文件名直接按状态着色，字母退场"],
+    ["04-colored-icons.html","图标载色",   "状态色只染图标，名字字母回归中性"],
+    ["05-inline-letter.html","字母右缘",   "状态字母移到行尾，行首留给图标+名字"],
+    ["06-guides-follow.html","导线跟随",   "hover 时当前列导线加深 + 状态色标记"],
+    ["07-selection.html",    "选中态语言", "勾选行绿色淡染 + 左缘绿条"],
+    ["08-compact.html",      "紧凑密度",   "25px 行高 + 目录数量徽章，84 文件场景"],
+    ["09-dark.html",         "深色版",     "整套语言暗色演绎"],
+    ["10-action-hero.html",  "动作条主角", "hover 动作条升级为大行卡：图标+文字标签"]
+  ];
+  var B = [
+    ["11-type-colors.html",  "文件类型色彩", "图标颜色表达文件类型（代码蓝/图片紫），状态归字母"],
+    ["12-editor-gutter.html","编辑器行号",  "左 gutter 行号 + 斑马纹，84 文件像 84 行代码"],
+    ["13-icon-badge.html",   "图标角标",    "状态浓缩成图标右上角的通知式圆点"],
+    ["14-sticky-dirs.html",  "粘性目录带",  "iOS 通讯录式：滚动时路径钉在顶部（滚动试试）"],
+    ["15-minimap-edge.html", "minimap 刻度","面板最左缘整条状态刻度带，变更分布一眼可见"],
+    ["16-cursor-row.html",   "键盘光标行",  "Quick Open 风光标行 + 底部快捷键图例"],
+    ["17-typewriter.html",   "打字机粗粝",  "无图标纯文本：[U] 方括号 + 大号等宽"],
+    ["18-flat-actions.html", "常显动作列",  "hover 动作条拍平成常驻双图标，免悬停直达"],
+    ["19-key-hints.html",    "快捷键提示列","每行右缘 kbd 键帽，按下即勾选"],
+    ["20-live-pulse.html",   "实时呼吸",    "新增文件呼吸光点 + 行错峰入场动效"]
+  ];
+  function render(list, el, offset) {
+    document.getElementById(el).innerHTML = list.map(function (v, i) {
+      return '<div class="cell">' +
+        '<div class="cell-head"><span class="num">' + String(i + 1 + offset).padStart(2, '0') + '</span>' +
+        '<span class="name">' + v[1] + '</span><span class="desc">' + v[2] + '</span></div>' +
+        '<iframe src="' + v[0] + '"></iframe></div>';
+    }).join('');
+  }
+  render(A, 'gridA', 0);
+  render(B, 'gridB', 10);
+</script>
+</body>
+</html>

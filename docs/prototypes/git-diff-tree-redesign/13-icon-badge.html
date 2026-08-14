@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>13 · 图标角标</title>
+<link rel="stylesheet" href="base.css">
+<style>
+/* 13 · 图标角标 —— 状态浓缩成图标右上角的通知式圆点徽章，字母退场 */
+.st { display: none; }
+.row.file { padding-left: calc(12px + var(--d, 0) * 17px + 20px); }
+.ic-file { color: #6b7280; }
+.row.file .dot {
+  display: block; position: absolute;
+  left: calc(12px + var(--d, 0) * 17px + 32px); top: 7px;
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--stc);
+  box-shadow: 0 0 0 1.8px #fff;
+}
+.row.file[data-st="U"] .dot, .row.file[data-st="A"] .dot { box-shadow: 0 0 0 1.8px #fff, 0 0 6px rgba(22,163,74,.5); }
+</style>
+</head>
+<body><div id="app"></div><script src="shared.js"></script></body>
+</html>
