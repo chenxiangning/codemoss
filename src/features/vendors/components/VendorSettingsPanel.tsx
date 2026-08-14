@@ -37,6 +37,7 @@ import { useGrokProviderManagement } from "../hooks/useGrokProviderManagement";
 import { useOpenCodeProviderManagement } from "../hooks/useOpenCodeProviderManagement";
 import { usePluginModels } from "../hooks/usePluginModels";
 import { ProviderList } from "./ProviderList";
+import { PiProviderAuthSection } from "./PiProviderAuthSection";
 import { ClaudeLocalSettingsCard } from "./ClaudeLocalSettingsCard";
 import { CodexProviderList } from "./CodexProviderList";
 import { KimiProviderList } from "./KimiProviderList";
@@ -1665,6 +1666,13 @@ export function VendorSettingsPanel({
                   </div>
                   {renderCustomPathEntry("pi")}
                 </div>
+              </VendorSettingsSection>
+              <VendorSettingsSection
+                label={t("settings.vendor.piAuth.sectionTitle", {
+                  defaultValue: "供应商认证",
+                })}
+              >
+                <PiProviderAuthSection piBin={appSettings.piBin ?? null} />
               </VendorSettingsSection>
             </div>
           </CliLifecycleProvider>

@@ -500,4 +500,95 @@ describe("useAppShellWorkspaceFlowsSection", () => {
       "claude --resume session-1\n",
     );
   });
+
+  it("runs a cross-surface terminal command request with delayed follow-up input", async () => {
+    vi.useFakeTimers();
+    try {
+      const ensureTerminalWithTitle = vi.fn(() => "pi-terminal");
+      const restartTerminalSession = vi.fn().mockResolvedValue(undefined);
+      const readyTerminalState: TerminalSessionState = {
+        status: "ready",
+        message: "Terminal ready.",
+        containerRef: { current: null },
+        hasSession: true,
+        readyKey: "ws-1:pi-terminal",
+        cleanupTerminalSession: vi.fn(),
+        getSelection: () => "",
+        findNext: vi.fn(() => false),
+        findPrevious: vi.fn(() => false),
+      };
+      const terminalControllerReadyState = {
+        terminalTabs: [],
+        activeTerminalId: "pi-terminal",
+        onSelectTerminal: vi.fn(),
+        onNewTerminal: vi.fn(),
+        onCloseTerminal: vi.fn(),
+        terminalState: readyTerminalState,
+        ensureTerminalWithTitle,
+        restartTerminalSession,
+      } satisfies ReturnType<typeof useTerminalController>;
+      vi.mocked(useTerminalController).mockReturnValue({
+        ...terminalControllerReadyState,
+        activeTerminalId: null,
+        terminalState: {
+          ...terminalControllerReadyState.terminalState,
+          readyKey: null,
+        },
+      });
+      vi.mocked(writeTerminalSession).mockResolvedValue(undefined);
+
+      const context = createContext();
+      const { rerender } = renderHook(() =>
+        useAppShellWorkspaceFlowsSection(context),
+      );
+
+      await act(async () => {
+        document.dispatchEvent(
+          new CustomEvent("mossx:terminal-command-request", {
+            detail: {
+              terminalId: "pi-login-openai",
+              title: "pi /login openai",
+              command: "pi",
+              followUpCommand: "/login openai",
+              followUpDelayMs: 1500,
+            },
+          }),
+        );
+      });
+
+      expect(ensureTerminalWithTitle).toHaveBeenCalledWith(
+        "ws-1",
+        "pi-login-openai",
+        "pi /login openai",
+      );
+      // 设置页等覆盖层会遮挡终端：处理事件时先退出设置
+      expect(context.closeSettings).toHaveBeenCalledTimes(1);
+      expect(context.openTerminal).toHaveBeenCalledTimes(1);
+      expect(restartTerminalSession).toHaveBeenCalledWith("ws-1", "pi-terminal");
+
+      vi.mocked(useTerminalController).mockReturnValue(
+        terminalControllerReadyState,
+      );
+      await act(async () => {
+        rerender();
+      });
+
+      expect(writeTerminalSession).toHaveBeenCalledWith(
+        "ws-1",
+        "pi-terminal",
+        "pi\n",
+      );
+
+      await act(async () => {
+        vi.advanceTimersByTime(1600);
+      });
+      expect(writeTerminalSession).toHaveBeenCalledWith(
+        "ws-1",
+        "pi-terminal",
+        "/login openai\n",
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

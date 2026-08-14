@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CLI 配置管理 · PI CLI 供应商认证</title>
+<style>
+  :root {
+    --bg: #fafaf9;
+    --panel: #ffffff;
+    --border: #e7e5e0;
+    --border-strong: #d9d6d0;
+    --ink: #1c1c1a;
+    --ink-2: #57534e;
+    --ink-3: #8a8680;
+    --ink-4: #b4b0a9;
+    --hover: #f5f4f1;
+    --active: #efede9;
+    --green: #16a34a;
+    --green-bg: #f0fdf4;
+    --green-border: #bbf7d0;
+    --amber: #b45309;
+    --amber-bg: #fffbeb;
+    --amber-border: #fde68a;
+    --blue: #2563eb;
+    --blue-bg: #eff6ff;
+    --blue-border: #bfdbfe;
+    --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+    --radius: 10px;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { -webkit-font-smoothing: antialiased; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", "Microsoft YaHei", sans-serif;
+    background: var(--bg);
+    color: var(--ink);
+    font-size: 14px;
+    line-height: 1.55;
+  }
+  ::selection { background: #e7e5e0; }
+
+  .window { max-width: 1240px; margin: 0 auto; min-height: 100vh; background: var(--panel); border-left: 1px solid var(--border); border-right: 1px solid var(--border); }
+
+  /* ── 页头 ── */
+  .page-head { padding: 34px 40px 26px; }
+  .page-head h1 { font-size: 26px; font-weight: 700; letter-spacing: -0.02em; }
+  .page-head p { margin-top: 6px; color: var(--ink-3); font-size: 14px; }
+
+  .layout { display: flex; align-items: flex-start; }
+
+  /* ── 侧栏 ── */
+  .sidebar { width: 250px; flex-shrink: 0; padding: 4px 16px 40px 24px; border-right: 1px solid var(--border); min-height: 70vh; }
+  .search-box { display: flex; align-items: center; gap: 8px; border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; color: var(--ink-3); background: var(--panel); margin-bottom: 18px; }
+  .search-box input { border: none; outline: none; font-size: 13px; width: 100%; background: transparent; color: var(--ink); font-family: inherit; }
+  .search-box input::placeholder { color: var(--ink-4); }
+
+  .side-group { margin-bottom: 8px; }
+  .side-group-title { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--ink-3); padding: 6px 8px; user-select: none; }
+  .side-item { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 8px; cursor: default; }
+  .side-item.active { background: var(--active); font-weight: 500; }
+  .side-item .name { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 14px; }
+  .side-item .dots { color: var(--ink-4); letter-spacing: 1px; font-size: 13px; }
+  .cli-badge { width: 26px; height: 26px; border-radius: 7px; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; flex-shrink: 0; border: 1px solid var(--border); background: var(--panel); }
+
+  /* ── 主区 ── */
+  .main { flex: 1; padding: 4px 40px 60px 36px; min-width: 0; }
+
+  .engine-head { display: flex; align-items: center; gap: 14px; padding: 14px 0 20px; }
+  .engine-logo { width: 38px; height: 38px; border-radius: 10px; border: 1px solid var(--border); background: var(--panel); display: flex; align-items: center; justify-content: center; box-shadow: 0 1px 2px rgba(0,0,0,.04); }
+  .engine-name { font-family: var(--mono); font-size: 20px; font-weight: 700; letter-spacing: -0.01em; }
+  .doc-link { color: var(--ink-3); font-size: 13px; display: inline-flex; align-items: center; gap: 4px; text-decoration: none; }
+  .doc-link:hover { color: var(--ink); }
+  .engine-head .spacer { flex: 1; }
+  .ver-chip { font-family: var(--mono); font-size: 12.5px; background: var(--hover); border: 1px solid var(--border); padding: 3px 10px; border-radius: 999px; color: var(--ink-2); }
+  .fresh-chip { font-size: 12px; color: var(--green); background: var(--green-bg); border: 1px solid var(--green-border); padding: 3px 10px; border-radius: 999px; font-weight: 500; }
+  .icon-btn { width: 30px; height: 30px; border-radius: 8px; border: none; background: transparent; color: var(--ink-3); cursor: pointer; display: flex; align-items: center; justify-content: center; }
+  .icon-btn:hover { background: var(--hover); color: var(--ink); }
+
+  /* ── 区块 ── */
+  .section { margin-top: 8px; }
+  .section + .section { margin-top: 34px; }
+  .section-title { display: flex; align-items: center; gap: 8px; font-size: 15px; font-weight: 600; margin-bottom: 12px; }
+  .section-title svg { color: var(--ink-2); }
+  .section-title .count { font-weight: 400; color: var(--ink-4); font-size: 13px; }
+
+  .card { border: 1px solid var(--border); border-radius: var(--radius); background: var(--panel); overflow: hidden; }
+  .card-note { padding: 13px 18px; color: var(--ink-2); font-size: 13px; border-bottom: 1px solid var(--border); background: #fcfcfb; }
+  .card-note code, .mono { font-family: var(--mono); font-size: 12.5px; }
+  .card-note code { background: var(--hover); padding: 1px 6px; border-radius: 5px; border: 1px solid var(--border); color: var(--ink-2); }
+
+  /* ── 分组小标题 ── */
+  .sub-head { display: flex; align-items: center; gap: 10px; margin: 20px 2px 10px; }
+  .sub-head:first-of-type { margin-top: 0; }
+  .sub-head .t { font-size: 13px; font-weight: 600; color: var(--ink-2); }
+  .sub-head .hint { font-size: 12px; color: var(--ink-4); }
+  .sub-head .spacer { flex: 1; }
+
+  /* ── 供应商行 ── */
+  .prov-row { display: flex; align-items: center; gap: 12px; padding: 12px 18px; border-top: 1px solid var(--border); transition: background .12s; }
+  .prov-row:first-child { border-top: none; }
+  .prov-row:hover { background: #fcfcfb; }
+  .prov-row.expanded { background: #fcfcfb; }
+  .prov-icon { width: 30px; height: 30px; border-radius: 8px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; border: 1px solid var(--border); background: var(--panel); box-shadow: 0 1px 2px rgba(0,0,0,.03); }
+  .prov-logo { width: 16px; height: 16px; display: block; }
+  .prov-icon.mono-tile { background: var(--ink); color: #fff; font-family: var(--mono); font-size: 11px; font-weight: 700; border-color: var(--ink); }
+  .prov-meta { flex: 1; min-width: 0; }
+  .prov-name { font-size: 14px; font-weight: 500; display: flex; align-items: center; gap: 8px; }
+  .prov-desc { font-size: 12px; color: var(--ink-3); margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .prov-right { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+
+  .status { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; }
+  .status .dot { width: 7px; height: 7px; border-radius: 50%; }
+  .status.ok { color: var(--green); } .status.ok .dot { background: var(--green); }
+  .status.idle { color: var(--ink-4); } .status.idle .dot { background: var(--ink-4); opacity: .55; }
+  .status.env { color: var(--blue); } .status.env .dot { background: var(--blue); }
+
+  .key-mask { font-family: var(--mono); font-size: 12px; color: var(--ink-3); background: var(--hover); border: 1px solid var(--border); padding: 2px 8px; border-radius: 6px; }
+  .env-chip { font-family: var(--mono); font-size: 11px; color: var(--ink-3); border: 1px dashed var(--border-strong); padding: 2px 7px; border-radius: 6px; }
+
+  .btn { font-family: inherit; font-size: 13px; border-radius: 8px; padding: 6px 14px; cursor: pointer; border: 1px solid var(--border-strong); background: var(--panel); color: var(--ink); transition: all .12s; }
+  .btn:hover { background: var(--hover); border-color: #c8c4bd; }
+  .btn.primary { background: var(--ink); color: #fff; border-color: var(--ink); }
+  .btn.primary:hover { background: #333330; }
+  .btn.text { border: none; background: transparent; color: var(--ink-3); padding: 6px 8px; }
+  .btn.text:hover { color: var(--ink); background: var(--hover); }
+  .btn.text.danger:hover { color: #dc2626; background: #fef2f2; }
+
+  /* ── 行内编辑器 ── */
+  .key-editor { border-top: 1px dashed var(--border); padding: 16px 18px 18px 60px; background: #fcfcfb; }
+  .key-editor label { display: block; font-size: 12px; font-weight: 600; color: var(--ink-2); margin-bottom: 7px; }
+  .key-input-wrap { display: flex; align-items: stretch; gap: 8px; max-width: 560px; }
+  .key-input-box { flex: 1; display: flex; align-items: center; border: 1px solid var(--border-strong); border-radius: 8px; background: var(--panel); overflow: hidden; transition: border-color .12s, box-shadow .12s; }
+  .key-input-box:focus-within { border-color: var(--ink); box-shadow: 0 0 0 3px rgba(28,28,26,.08); }
+  .key-input-box input { flex: 1; border: none; outline: none; padding: 9px 12px; font-family: var(--mono); font-size: 13px; background: transparent; color: var(--ink); }
+  .key-input-box input::placeholder { color: var(--ink-4); font-family: inherit; }
+  .eye-btn { border: none; background: transparent; padding: 0 12px; cursor: pointer; color: var(--ink-4); display: flex; align-items: center; }
+  .eye-btn:hover { color: var(--ink); }
+  .key-tips { margin-top: 10px; font-size: 12px; color: var(--ink-3); line-height: 1.8; }
+  .key-tips code { font-family: var(--mono); font-size: 11.5px; background: var(--hover); border: 1px solid var(--border); padding: 1px 5px; border-radius: 5px; color: var(--ink-2); }
+  .key-actions { display: flex; align-items: center; gap: 8px; margin-top: 14px; }
+  .save-hint { font-size: 12px; color: var(--ink-4); margin-left: 4px; }
+  .save-hint code { font-family: var(--mono); font-size: 11.5px; }
+
+  /* ── 底部状态条 ── */
+  .auth-foot { display: flex; align-items: center; gap: 14px; padding: 11px 18px; border-top: 1px solid var(--border); background: #fcfcfb; font-size: 12px; color: var(--ink-3); }
+  .auth-foot .mono { color: var(--ink-2); }
+  .perm-badge { font-family: var(--mono); font-size: 11px; background: var(--hover); border: 1px solid var(--border); padding: 1px 7px; border-radius: 5px; }
+  .auth-foot .spacer { flex: 1; }
+  .prio { color: var(--ink-4); }
+
+  .search-mini { display: flex; align-items: center; gap: 7px; border: 1px solid var(--border); border-radius: 8px; padding: 6px 11px; width: 210px; background: var(--panel); }
+  .search-mini input { border: none; outline: none; font-size: 12.5px; width: 100%; background: transparent; font-family: inherit; color: var(--ink); }
+  .search-mini input::placeholder { color: var(--ink-4); }
+  .search-mini svg { color: var(--ink-4); flex-shrink: 0; }
+
+  .hidden { display: none !important; }
+  .toast { position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%) translateY(16px); background: var(--ink); color: #fff; font-size: 13px; padding: 10px 18px; border-radius: 10px; opacity: 0; transition: all .25s; pointer-events: none; box-shadow: 0 8px 24px rgba(0,0,0,.18); }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  .toast code { font-family: var(--mono); font-size: 12px; opacity: .75; }
+</style>
+</head>
+<body>
+<div class="window">
+  <div class="page-head">
+    <h1>CLI配置管理</h1>
+    <p>管理 CLI 配置 下载 更新 以及对应周边</p>
+  </div>
+
+  <div class="layout">
+    <!-- ══════ 侧栏 ══════ -->
+    <aside class="sidebar">
+      <div class="search-box">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        <input placeholder="搜索CLI">
+      </div>
+      <div class="side-group">
+        <div class="side-group-title">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="m6 9 6 6 6-6"/></svg>
+          已启用
+        </div>
+        <div class="side-item"><span class="cli-badge" style="background:#fef3ec;color:#c2410c;">✳</span><span class="name">Claude Code C…</span><span class="dots">···</span></div>
+        <div class="side-item"><span class="cli-badge" style="background:#eff6ff;color:#2563eb;">⬡</span><span class="name">Codex CLI</span><span class="dots">···</span></div>
+        <div class="side-item"><span class="cli-badge" style="font-family:var(--mono);">K´</span><span class="name">Kimi CLI</span><span class="dots">···</span></div>
+        <div class="side-item"><span class="cli-badge" style="background:#f5f5f4;color:#44403c;">Ø</span><span class="name">Grok CLI</span><span class="dots">···</span></div>
+        <div class="side-item active"><span class="cli-badge" style="background:#1c1c1a;color:#fff;font-family:var(--mono);font-size:11px;">Pi</span><span class="name">PI CLI</span><span class="dots">···</span></div>
+      </div>
+      <div class="side-group">
+        <div class="side-group-title">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="m9 6 6 6-6 6"/></svg>
+          未启用
+        </div>
+      </div>
+      <div class="side-group">
+        <div class="side-group-title">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="m9 6 6 6-6 6"/></svg>
+          暂未开放
+        </div>
+      </div>
+    </aside>
+
+    <!-- ══════ 主区 ══════ -->
+    <main class="main">
+      <div class="engine-head">
+        <div class="engine-logo">
+          <span style="font-family:var(--mono);font-weight:700;font-size:15px;background:#1c1c1a;color:#fff;width:26px;height:26px;border-radius:6px;display:flex;align-items:center;justify-content:center;">Pi</span>
+        </div>
+        <span class="engine-name">PI CLI</span>
+        <a class="doc-link" href="#">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M2 4h6a4 4 0 0 1 4 4v12a3 3 0 0 0-3-3H2z"/><path d="M22 4h-6a4 4 0 0 0-4 4v12a3 3 0 0 1 3-3h7z"/></svg>
+          官方文档
+        </a>
+        <span class="spacer"></span>
+        <span class="ver-chip">v0.84.1</span>
+        <span class="fresh-chip">已是最新</span>
+        <button class="icon-btn" title="检查更新">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>
+        </button>
+      </div>
+
+      <!-- 引擎设置（原有区块，缩略呈现） -->
+      <div class="section">
+        <div class="section-title">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="4" y1="7" x2="20" y2="7"/><circle cx="9" cy="7" r="2.2" fill="#fff"/><line x1="4" y1="17" x2="20" y2="17"/><circle cx="15" cy="17" r="2.2" fill="#fff"/></svg>
+          引擎设置
+        </div>
+        <div class="card">
+          <div class="card-note">通过 npm 包 <code>@earendil-works/pi-coding-agent</code> 安装 / 更新 / 卸载本机 PI CLI。认证与模型配置仍使用 <code>~/.pi</code>。</div>
+          <div class="prov-row">
+            <div class="prov-meta"><div class="prov-name">自定义 PI CLI 路径</div></div>
+            <div class="prov-right">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#b4b0a9" stroke-width="2" stroke-linecap="round"><path d="m9 6 6 6-6 6"/></svg>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ════════ 新增区块：供应商认证（红框区域） ════════ -->
+      <div class="section">
+        <div class="section-title">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2l-2 2m-7.6 7.6a5.5 5.5 0 1 1-7.78 7.78 5.5 5.5 0 0 1 7.78-7.78zm0 0L19 3m-4 1 3 3"/></svg>
+          供应商认证
+          <span class="count">对应 pi 交互模式下的 /login</span>
+        </div>
+
+        <!-- ── 订阅授权 ── -->
+        <div class="sub-head">
+          <span class="t">订阅授权</span>
+          <span class="hint">OAuth 登录，token 自动刷新，存储于 auth.json</span>
+        </div>
+        <div class="card" id="oauthCard">
+          <div class="prov-row" data-oauth="claude">
+            <span class="prov-icon"><img class="prov-logo" src="assets/logos/claude.svg" alt="Claude"></span>
+            <div class="prov-meta">
+              <div class="prov-name">Claude Pro / Max</div>
+              <div class="prov-desc">Anthropic 订阅 · 第三方调用按 token 计量，计入 extra usage</div>
+            </div>
+            <div class="prov-right">
+              <span class="status ok"><span class="dot"></span>已授权 · 自动刷新</span>
+              <button class="btn text" onclick="toast('已打开浏览器重新授权 Claude Pro / Max')">重新授权</button>
+              <button class="btn text danger" onclick="logoutOauth(this)">退出登录</button>
+            </div>
+          </div>
+          <div class="prov-row" data-oauth="codex">
+            <span class="prov-icon"><img class="prov-logo" src="assets/logos/openai.svg" alt="OpenAI"></span>
+            <div class="prov-meta">
+              <div class="prov-name">ChatGPT Plus / Pro <span style="font-weight:400;color:var(--ink-4);font-size:12px;">Codex</span></div>
+              <div class="prov-desc">OpenAI 订阅 · 需要 ChatGPT Plus 或 Pro 计划</div>
+            </div>
+            <div class="prov-right">
+              <span class="status idle"><span class="dot"></span>未授权</span>
+              <button class="btn" onclick="toast('已打开浏览器，开始 ChatGPT 授权流程')">授权登录</button>
+            </div>
+          </div>
+          <div class="prov-row" data-oauth="copilot">
+            <span class="prov-icon"><img class="prov-logo" src="assets/logos/copilot.svg" alt="GitHub Copilot"></span>
+            <div class="prov-meta">
+              <div class="prov-name">GitHub Copilot</div>
+              <div class="prov-desc">支持 github.com 与 GitHub Enterprise Server 域名</div>
+            </div>
+            <div class="prov-right">
+              <span class="status idle"><span class="dot"></span>未授权</span>
+              <button class="btn" onclick="toast('已打开浏览器，开始 GitHub Copilot 授权流程')">授权登录</button>
+            </div>
+          </div>
+          <div class="prov-row">
+            <span class="prov-icon"><img class="prov-logo" src="assets/logos/xai.svg" alt="xAI"></span>
+            <div class="prov-meta">
+              <div class="prov-name">xAI <span style="font-weight:400;color:var(--ink-4);font-size:12px;">Grok / X 订阅</span></div>
+              <div class="prov-desc">订阅授权 · 也可在下方使用 XAI_API_KEY</div>
+            </div>
+            <div class="prov-right">
+              <span class="status idle"><span class="dot"></span>未授权</span>
+              <button class="btn" onclick="toast('已打开浏览器，开始 xAI 授权流程')">授权登录</button>
+            </div>
+          </div>
+          <div class="prov-row">
+            <span class="prov-icon"><img class="prov-logo" src="assets/logos/openrouter.svg" alt="OpenRouter"></span>
+            <div class="prov-meta">
+              <div class="prov-name">OpenRouter</div>
+              <div class="prov-desc">PKCE 授权后签发用户可控 API Key，从 OpenRouter 额度计费</div>
+            </div>
+            <div class="prov-right">
+              <span class="status idle"><span class="dot"></span>未授权</span>
+              <button class="btn" onclick="toast('已打开浏览器，开始 OpenRouter PKCE 授权')">授权登录</button>
+            </div>
+          </div>
+          <div class="prov-row">
+            <span class="prov-icon mono-tile">Pi</span>
+            <div class="prov-meta">
+              <div class="prov-name">Radius</div>
+              <div class="prov-desc">pi-messages 动态网关 · 模型目录独立刷新并缓存</div>
+            </div>
+            <div class="prov-right">
+              <span class="status idle"><span class="dot"></span>未授权</span>
+              <button class="btn" onclick="toast('已打开浏览器，开始 Radius 授权流程')">授权登录</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- ── API Key ── -->
+        <div class="sub-head" style="margin-top:26px;">
+          <span class="t">API Key</span>
+          <span class="hint">写入 ~/.pi/agent/auth.json · 优先级高于环境变量</span>
+          <span class="spacer"></span>
+          <div class="search-mini">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+            <input id="provSearch" placeholder="筛选供应商…" oninput="filterProviders(this.value)">
+          </div>
+        </div>
+        <div class="card">
+          <div id="provList"><!-- JS 渲染 --></div>
+          <div class="auth-foot">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>
+            <span class="mono">~/.pi/agent/auth.json</span>
+            <span class="perm-badge">0600</span>
+            <span class="spacer"></span>
+            <span class="prio">解析顺序：<span class="mono">--api-key</span> → auth.json → 环境变量 → models.json</span>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* ── 数据：按 pi providers.md 真实目录 ── */
+const PROVIDERS = [
+  { id: 'anthropic',  name: 'Anthropic',      env: 'ANTHROPIC_API_KEY',   logo: 'anthropic.svg',  state: 'configured', mask: 'sk-ant-········3f2a' },
+  { id: 'openai',     name: 'OpenAI',         env: 'OPENAI_API_KEY',      logo: 'openai.svg',     state: 'none', editing: true },
+  { id: 'google',     name: 'Google Gemini',  env: 'GEMINI_API_KEY',      logo: 'gemini.svg',     state: 'none' },
+  { id: 'deepseek',   name: 'DeepSeek',       env: 'DEEPSEEK_API_KEY',    logo: 'deepseek.svg',   state: 'env' },
+  { id: 'xai',        name: 'xAI',            env: 'XAI_API_KEY',         logo: 'xai.svg',        state: 'none' },
+  { id: 'openrouter', name: 'OpenRouter',     env: 'OPENROUTER_API_KEY',  logo: 'openrouter.svg', state: 'configured', mask: 'sk-or-········8c1d' },
+  { id: 'groq',       name: 'Groq',           env: 'GROQ_API_KEY',        logo: 'groq.svg',       state: 'none' },
+  { id: 'mistral',    name: 'Mistral',        env: 'MISTRAL_API_KEY',     logo: 'mistral.svg',    state: 'none' },
+  { id: 'zai',        name: 'ZAI Coding Plan',env: 'ZAI_API_KEY',         logo: 'zhipu.svg',      state: 'none' },
+  { id: 'kimi',       name: 'Kimi For Coding',env: 'KIMI_API_KEY',        logo: 'moonshot.svg',   state: 'none' },
+  { id: 'qwen',       name: 'Qwen Token Plan',env: 'QWEN_TOKEN_PLAN_API_KEY', logo: 'qwen.svg',   state: 'none' },
+  { id: 'minimax',    name: 'MiniMax',        env: 'MINIMAX_API_KEY',     logo: 'minimax.svg',    state: 'none' },
+  { id: 'together',   name: 'Together AI',    env: 'TOGETHER_API_KEY',    logo: 'together.svg',   state: 'none' },
+  { id: 'fireworks',  name: 'Fireworks',      env: 'FIREWORKS_API_KEY',   logo: 'fireworks.svg',  state: 'none' },
+  { id: 'cerebras',   name: 'Cerebras',       env: 'CEREBRAS_API_KEY',    logo: 'cerebras.svg',   state: 'none' },
+  { id: 'bedrock',    name: 'Amazon Bedrock', env: 'AWS_BEARER_TOKEN_BEDROCK', logo: 'bedrock.svg', state: 'none' },
+];
+let query = '';
+
+function statusHtml(p) {
+  if (p.state === 'configured')
+    return `<span class="status ok"><span class="dot"></span>已配置</span><span class="key-mask">${p.mask}</span>`;
+  if (p.state === 'env')
+    return `<span class="status env" title="环境变量 ${p.env} 生效中。如需覆盖，请设置 auth.json 凭证。"><span class="dot"></span>环境变量生效中</span>`;
+  return `<span class="status idle"><span class="dot"></span>未配置</span>`;
+}
+
+function render() {
+  const list = document.getElementById('provList');
+  const items = PROVIDERS.filter(p =>
+    !query || p.name.toLowerCase().includes(query) || p.env.toLowerCase().includes(query) || p.id.includes(query));
+  if (!items.length) {
+    list.innerHTML = `<div style="padding:34px;text-align:center;color:var(--ink-4);font-size:13px;">没有匹配「${query}」的供应商</div>`;
+    return;
+  }
+  list.innerHTML = items.map(p => `
+    <div class="prov-row ${p.editing ? 'expanded' : ''}" data-prov="${p.id}">
+      <span class="prov-icon"><img class="prov-logo" src="assets/logos/${p.logo}" alt="${p.name}"></span>
+      <div class="prov-meta">
+        <div class="prov-name">${p.name}</div>
+        <div class="prov-desc"><span class="env-chip">${p.env}</span></div>
+      </div>
+      <div class="prov-right">
+        ${statusHtml(p)}
+        ${p.state === 'configured'
+          ? `<button class="btn text" onclick="toggleEdit('${p.id}')">${p.editing ? '收起' : '编辑'}</button>`
+          : p.state === 'env'
+          ? `<button class="btn text" onclick="toggleEdit('${p.id}')">${p.editing ? '收起' : '覆盖设置'}</button>`
+          : `<button class="btn" onclick="toggleEdit('${p.id}')">${p.editing ? '收起' : '设置 Key'}</button>`}
+      </div>
+    </div>
+    ${p.editing ? editorHtml(p) : ''}
+  `).join('');
+}
+
+function editorHtml(p) {
+  return `
+  <div class="key-editor" data-editor="${p.id}">
+    <label>API Key · ${p.name}</label>
+    <div class="key-input-wrap">
+      <div class="key-input-box">
+        <input id="key-${p.id}" type="password" placeholder="${p.state === 'configured' ? p.mask + '（留空保持不变）' : '粘贴 ' + p.env + '，例如 sk-…'}" autocomplete="off" spellcheck="false">
+        <button class="eye-btn" onclick="toggleEye('${p.id}', this)" title="显示 / 隐藏">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>
+        </button>
+      </div>
+    </div>
+    <div class="key-tips">
+      高级用法：key 支持 <code>!command</code> 执行密钥工具（如 <code>!op read 'op://vault/item'</code>）与 <code>$ENV_VAR</code> 环境变量插值；留空则保持现有凭证。
+    </div>
+    <div class="key-actions">
+      <button class="btn primary" onclick="saveKey('${p.id}')">保存</button>
+      <button class="btn" onclick="toggleEdit('${p.id}')">取消</button>
+      <span class="save-hint">保存后写入 <code>~/.pi/agent/auth.json</code>（0600 权限）</span>
+    </div>
+  </div>`;
+}
+
+function toggleEdit(id) {
+  PROVIDERS.forEach(p => { p.editing = (p.id === id) ? !p.editing : false; });
+  render();
+  if (PROVIDERS.find(p => p.id === id)?.editing) {
+    const input = document.getElementById('key-' + id);
+    if (input) input.focus();
+  }
+}
+
+function toggleEye(id, btn) {
+  const input = document.getElementById('key-' + id);
+  input.type = input.type === 'password' ? 'text' : 'password';
+  btn.style.color = input.type === 'text' ? 'var(--ink)' : '';
+}
+
+function saveKey(id) {
+  const p = PROVIDERS.find(p => p.id === id);
+  const input = document.getElementById('key-' + id);
+  const v = input.value.trim();
+  if (!v) { toggleEdit(id); return; }
+  p.state = 'configured';
+  p.mask = v.length > 8 ? v.slice(0, 6) + '········' + v.slice(-4) : '········';
+  p.editing = false;
+  render();
+  toast(`已保存 ${p.name} 凭证 → <code>auth.json</code>`);
+}
+
+function filterProviders(v) { query = v.trim().toLowerCase(); render(); }
+
+function logoutOauth(btn) {
+  const row = btn.closest('.prov-row');
+  row.querySelector('.status').outerHTML = '<span class="status idle"><span class="dot"></span>未授权</span>';
+  row.querySelectorAll('.btn').forEach(b => b.remove());
+  row.querySelector('.prov-right').insertAdjacentHTML('beforeend',
+    '<button class="btn" onclick="toast(\'已打开浏览器重新授权\')">授权登录</button>');
+  toast('已清除凭证 · <code>auth.json</code> 对应条目已移除');
+}
+
+let toastTimer;
+function toast(html) {
+  const t = document.getElementById('toast');
+  t.innerHTML = html;
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), 2400);
+}
+
+render();
+</script>
+</body>
+</html>

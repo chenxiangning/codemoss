@@ -45,6 +45,7 @@ pub mod manager;
 pub mod opencode;
 pub(crate) mod opencode_provider_profile;
 pub mod pi;
+pub mod pi_auth;
 pub mod pi_history;
 pub(crate) mod pi_provider_profile;
 pub(crate) mod remote_bridge;

@@ -1102,6 +1102,21 @@ async fn handle_rpc_request(
 ) -> Result<Value, String> {
     match method {
         "ping" => Ok(json!({ "ok": true })),
+        "pi_auth_list_providers" => {
+            let result = crate::engine::pi_auth::list_pi_auth_providers(None).await?;
+            serde_json::to_value(result).map_err(|err| err.to_string())
+        }
+        "pi_auth_set_api_key" => {
+            let provider_id = parse_string(&params, "providerId")?;
+            let key = parse_string(&params, "key")?;
+            crate::engine::pi_auth::set_pi_auth_api_key(&provider_id, &key, None).await?;
+            Ok(json!({ "ok": true }))
+        }
+        "pi_auth_delete_credential" => {
+            let provider_id = parse_string(&params, "providerId")?;
+            crate::engine::pi_auth::delete_pi_auth_credential(&provider_id, None).await?;
+            Ok(json!({ "ok": true }))
+        }
         "prepare_native_provider_continuation"
         | "discard_prepared_native_provider_continuation"
         | "create_native_provider_continuation" => Err(
@@ -2806,5 +2821,20 @@ mod ccgui_repair_regression_tests {
             daemon_dispatch.contains("\"load_codex_session\" =>"),
             "daemon dispatch is missing load_codex_session"
         );
+    }
+
+    #[test]
+    fn daemon_dispatch_exposes_pi_auth_commands() {
+        let daemon_dispatch = include_str!("cc_gui_daemon.rs");
+        for method in [
+            "pi_auth_list_providers",
+            "pi_auth_set_api_key",
+            "pi_auth_delete_credential",
+        ] {
+            assert!(
+                daemon_dispatch.contains(&format!("\"{method}\" =>")),
+                "daemon dispatch is missing {method}"
+            );
+        }
     }
 }

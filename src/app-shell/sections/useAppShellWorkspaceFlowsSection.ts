@@ -17,6 +17,10 @@ import { useWorkspaceLaunchScripts } from "../../features/app/hooks/useWorkspace
 import type { CenterMode } from "../../features/app/hooks/useGitPanelController";
 import { useWorktreeSetupScript } from "../../features/app/hooks/useWorktreeSetupScript";
 import { buildClaudeResumeTerminalCommand } from "../../features/app/utils/claudeResumeCommand";
+import {
+  TERMINAL_COMMAND_REQUEST_EVENT,
+  type TerminalCommandRequest,
+} from "../../features/terminal/utils/terminalCommandRequestEvent";
 import { writeTerminalSession } from "../../services/tauri/terminalRuntime";
 import type { AgentTaskScrollRequest } from "../../features/messages";
 import type {
@@ -43,6 +47,11 @@ type PendingClaudeTuiOpen = {
   workspaceId: string;
   terminalId: string;
   command: string;
+};
+
+type PendingTerminalCommand = PendingClaudeTuiOpen & {
+  followUpCommand?: string;
+  followUpDelayMs?: number;
 };
 
 type ThreadSwitchScope = {
@@ -218,6 +227,7 @@ export function useAppShellWorkspaceFlowsSection(
   );
 
   const pendingClaudeTuiOpenRef = useRef<PendingClaudeTuiOpen | null>(null);
+  const pendingTerminalCommandRef = useRef<PendingTerminalCommand | null>(null);
   const threadSwitchRequestSeqRef = useRef(0);
   const latestThreadSwitchScopeRef = useRef<ThreadSwitchScope | null>(
     activeWorkspaceId && activeThreadId
@@ -311,6 +321,112 @@ export function useAppShellWorkspaceFlowsSection(
         payload: error instanceof Error ? error.message : String(error),
       });
     });
+  }, [activeTerminalId, activeWorkspace?.id, addDebugEntry, terminalState?.readyKey]);
+
+  // 跨 surface 终端命令请求（mossx:terminal-command-request）：
+  // 复用 Claude TUI resume 同款 ensure → open → restart → ready-write 链路。
+  // 首个消费者：PI 供应商 OAuth 登录引导（pi TUI + /login <provider> 两段式输入）。
+  useEffect(() => {
+    const onTerminalCommandRequest = (event: Event) => {
+      const detail = (event as CustomEvent<TerminalCommandRequest>).detail;
+      if (!detail?.command || !detail.terminalId) {
+        return;
+      }
+      if (!activeWorkspace) {
+        addDebugEntry({
+          id: `${Date.now()}-terminal-command-no-workspace`,
+          timestamp: Date.now(),
+          source: "error",
+          label: "terminal command request without active workspace",
+          payload: `${detail.terminalId}: ${detail.command}`,
+        });
+        return;
+      }
+      // 终端面板在主 App shell 内：设置页等全屏覆盖层会遮挡终端，先退出再呈现。
+      closeSettings();
+      const terminalId = ensureTerminalWithTitle(
+        activeWorkspace.id,
+        detail.terminalId,
+        detail.title,
+      );
+      pendingTerminalCommandRef.current = {
+        workspaceId: activeWorkspace.id,
+        terminalId,
+        command: detail.command,
+        followUpCommand: detail.followUpCommand,
+        followUpDelayMs: detail.followUpDelayMs,
+      };
+      openTerminal();
+      void restartTerminalSession(activeWorkspace.id, terminalId).catch((error) => {
+        pendingTerminalCommandRef.current = null;
+        addDebugEntry({
+          id: `${Date.now()}-terminal-command-restart-error`,
+          timestamp: Date.now(),
+          source: "error",
+          label: "terminal command restart error",
+          payload: error instanceof Error ? error.message : String(error),
+        });
+      });
+    };
+    document.addEventListener(
+      TERMINAL_COMMAND_REQUEST_EVENT,
+      onTerminalCommandRequest,
+    );
+    return () =>
+      document.removeEventListener(
+        TERMINAL_COMMAND_REQUEST_EVENT,
+        onTerminalCommandRequest,
+      );
+  }, [
+    activeWorkspace,
+    addDebugEntry,
+    closeSettings,
+    ensureTerminalWithTitle,
+    openTerminal,
+    restartTerminalSession,
+  ]);
+
+  useEffect(() => {
+    const pending = pendingTerminalCommandRef.current;
+    const pendingKey = pending
+      ? `${pending.workspaceId}:${pending.terminalId}`
+      : null;
+    if (
+      !pending ||
+      terminalState?.readyKey !== pendingKey ||
+      activeTerminalId !== pending.terminalId ||
+      activeWorkspace?.id !== pending.workspaceId
+    ) {
+      return;
+    }
+    pendingTerminalCommandRef.current = null;
+    const reportWriteError = (stage: string) => (error: unknown) => {
+      addDebugEntry({
+        id: `${Date.now()}-terminal-command-write-error-${stage}`,
+        timestamp: Date.now(),
+        source: "error",
+        label: `terminal command write error (${stage})`,
+        payload: error instanceof Error ? error.message : String(error),
+      });
+    };
+    writeTerminalSession(
+      pending.workspaceId,
+      pending.terminalId,
+      `${pending.command}\n`,
+    )
+      .then(() => {
+        if (!pending.followUpCommand) {
+          return;
+        }
+        window.setTimeout(() => {
+          writeTerminalSession(
+            pending.workspaceId,
+            pending.terminalId,
+            `${pending.followUpCommand}\n`,
+          ).catch(reportWriteError("follow-up"));
+        }, pending.followUpDelayMs ?? 1500);
+      })
+      .catch(reportWriteError("initial"));
   }, [activeTerminalId, activeWorkspace?.id, addDebugEntry, terminalState?.readyKey]);
 
   const launchScriptState = useWorkspaceLaunchScript({

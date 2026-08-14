@@ -45,6 +45,10 @@ pub mod kimi_history;
 pub(crate) mod kimi_provider_profile;
 #[path = "../../engine/pi.rs"]
 pub mod pi;
+// daemon 只复用纯函数（list/set/delete），tauri command wrapper 在桌面端注册
+#[allow(dead_code)]
+#[path = "../../engine/pi_auth.rs"]
+pub mod pi_auth;
 #[path = "../../engine/pi_history.rs"]
 pub mod pi_history;
 #[path = "../../engine/pi_provider_profile.rs"]
