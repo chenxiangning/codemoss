@@ -12,7 +12,7 @@
 
 use serde_json::{json, Value};
 use std::collections::{HashMap, HashSet};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::io::{AsyncBufReadExt, BufReader};
@@ -43,6 +43,117 @@ pub fn resolve_pi_session_id_for_engine_send(
     continue_session
         .then(|| explicit_session_id.or(tracked_session_id))
         .flatten()
+}
+
+/// Result of scanning prompt text for `@<path>` file reference tokens.
+///
+/// Pi CLI parses argv tokens starting with `@` as file arguments
+/// (`cli/args.js`), and print mode never expands inline `@path` inside the
+/// prompt message (that expansion is TUI-editor-only). mossx passes the whole
+/// prompt as ONE positional argv element, so a prompt merely *starting* with
+/// `@` makes pi treat the entire message — spaces, second `@`, Chinese text
+/// and all — as a single fake file path and exit(1) with "File not found".
+/// Extraction therefore (a) upgrades resolvable references to real `@file`
+/// argv entries so their content is injected, and (b) strips them from the
+/// prompt so the remaining text cannot be misparsed.
+struct AtReferenceExtraction {
+    text: String,
+    file_args: Vec<String>,
+}
+
+/// Resolve a `@` reference candidate to an existing regular file.
+///
+/// Folders, missing paths, and non-path text (e.g. `@teammate`) return None
+/// so callers keep the token verbatim in the prompt — pi is a tool-using
+/// agent and can explore a directory path given as plain text, while
+/// `@file` on a directory would make pi's file-processor exit(1).
+fn resolve_at_reference_path(raw: &str, workspace_path: &Path) -> Option<PathBuf> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() || trimmed.starts_with("data:") {
+        return None;
+    }
+    let path = PathBuf::from(trimmed);
+    let absolute = if path.is_absolute() {
+        path
+    } else {
+        workspace_path.join(path)
+    };
+    match std::fs::metadata(&absolute) {
+        Ok(meta) if meta.is_file() => Some(absolute),
+        _ => None,
+    }
+}
+
+/// Scan `text` for `@<path>` tokens at token boundaries (start of text or
+/// after whitespace) and extract the ones resolving to existing regular
+/// files into pi `@file` argv entries.
+///
+/// Matching is greedy longest-prefix against the filesystem: candidate
+/// substrings end at each following whitespace boundary (and end of text),
+/// longest first, so paths containing spaces (`@/abs/shot one.png`) resolve
+/// as one token. Unresolvable tokens are preserved verbatim and scanning
+/// continues after their `@`.
+fn extract_at_file_references(text: &str, workspace_path: &Path) -> AtReferenceExtraction {
+    let mut cleaned = String::with_capacity(text.len());
+    let mut file_args: Vec<String> = Vec::new();
+    let mut seen: HashSet<String> = HashSet::new();
+
+    let mut i = 0usize;
+    while i < text.len() {
+        let ch = text[i..].chars().next().expect("i is a char boundary");
+        let at_token_boundary = ch == '@'
+            && (i == 0
+                || text[..i]
+                    .chars()
+                    .last()
+                    .map(|prev| prev.is_whitespace())
+                    .unwrap_or(false));
+        if at_token_boundary {
+            // Candidate ends: byte index of each whitespace after the `@`,
+            // plus end of text. Try longest first.
+            let mut ends: Vec<usize> = Vec::new();
+            for (off, c) in text[i + 1..].char_indices() {
+                if c.is_whitespace() {
+                    ends.push(i + 1 + off);
+                }
+            }
+            ends.push(text.len());
+            let mut matched: Option<usize> = None;
+            for &end in ends.iter().rev() {
+                let candidate = &text[i + 1..end];
+                if let Some(path) = resolve_at_reference_path(candidate, workspace_path) {
+                    let key = path.to_string_lossy().to_string();
+                    if seen.insert(key.clone()) {
+                        file_args.push(format!("@{key}"));
+                    }
+                    matched = Some(end);
+                    break;
+                }
+            }
+            if let Some(end) = matched {
+                // Drop the token; avoid doubling the boundary whitespace.
+                i = end;
+                if text[i..]
+                    .chars()
+                    .next()
+                    .map(|next| next.is_whitespace())
+                    .unwrap_or(false)
+                    && cleaned
+                        .chars()
+                        .last()
+                        .map(|prev| prev.is_whitespace())
+                        .unwrap_or(false)
+                {
+                    i += text[i..].chars().next().expect("i is a char boundary").len_utf8();
+                }
+                continue;
+            }
+        }
+        cleaned.push(ch);
+        i += ch.len_utf8();
+    }
+
+    AtReferenceExtraction { text: cleaned, file_args }
 }
 
 #[derive(Debug, Clone)]
@@ -432,12 +543,25 @@ impl PiSession {
         // Pi print mode natively attaches `@file` arguments as image content
         // blocks (deterministic, processed by pi's file processor); keep the
         // prompt itself free of any injected marker or read-tool instruction.
-        for image_arg in crate::engine::cli_image_input::pi_image_file_args(&image_files) {
-            cmd.arg(image_arg);
+        // `@<path>` reference tokens embedded in the prompt text get the same
+        // transport: pi's argv parser treats ANY arg starting with `@` as a
+        // file arg, and the whole prompt is one argv element, so a prompt
+        // starting with `@` would otherwise turn the entire message into one
+        // fake file path and exit(1) with "File not found".
+        let mut at_args = crate::engine::cli_image_input::pi_image_file_args(&image_files);
+        let extraction = extract_at_file_references(&params.text, &self.workspace_path);
+        for reference_arg in extraction.file_args {
+            if !at_args.contains(&reference_arg) {
+                at_args.push(reference_arg);
+            }
         }
-        let prompt_text = params.text.clone();
-        // Positional prompt; avoid leading '-' being parsed as a flag.
-        let safe_text = if prompt_text.starts_with('-') {
+        for at_arg in at_args {
+            cmd.arg(at_arg);
+        }
+        let prompt_text = extraction.text;
+        // Positional prompt; avoid a leading '-' being parsed as a flag and a
+        // leading '@' (unresolvable reference token) being parsed as a file arg.
+        let safe_text = if prompt_text.starts_with('-') || prompt_text.starts_with('@') {
             format!(" {prompt_text}")
         } else {
             prompt_text
@@ -1071,6 +1195,163 @@ mod tests {
             .build_command(&params)
             .expect_err("unresolvable images must fail before spawn");
         assert!(error.contains("none of the attached images"));
+
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    fn make_workspace_with_files(files: &[&str]) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("pi-cmd-test-{}", uuid::Uuid::new_v4()));
+        for relative in files {
+            let path = dir.join(relative);
+            if let Some(parent) = path.parent() {
+                std::fs::create_dir_all(parent).unwrap();
+            }
+            std::fs::write(&path, b"payload").unwrap();
+        }
+        dir
+    }
+
+    #[test]
+    fn build_command_extracts_leading_at_file_reference_to_argv() {
+        let dir = make_workspace_with_files(&["design.md"]);
+        let file = dir.join("design.md");
+        let session = PiSession::new("ws".to_string(), dir.clone(), None);
+        let params = SendMessageParams {
+            text: format!("@{} 总结一下", file.display()),
+            ..Default::default()
+        };
+
+        let cmd = session.build_command(&params).expect("build_command");
+        let args = command_args(&cmd);
+
+        let at_arg = format!("@{}", file.display());
+        let at_pos = args.iter().position(|arg| arg == &at_arg).expect("missing @file arg");
+        let prompt_pos = args
+            .iter()
+            .rposition(|arg| arg.contains("总结一下"))
+            .expect("missing prompt arg");
+        assert!(at_pos < prompt_pos, "@file arg must precede the prompt");
+        let prompt = &args[prompt_pos];
+        assert!(!prompt.contains("design.md"), "extracted token must leave the prompt");
+        assert!(!prompt.starts_with('@'), "prompt must not start with '@'");
+
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn build_command_resolves_at_reference_with_spaces_greedily() {
+        let dir = make_workspace_with_files(&["shot one.png"]);
+        let file = dir.join("shot one.png");
+        let session = PiSession::new("ws".to_string(), dir.clone(), None);
+        let params = SendMessageParams {
+            text: format!("看下 @{} 这张图", file.display()),
+            ..Default::default()
+        };
+
+        let cmd = session.build_command(&params).expect("build_command");
+        let args = command_args(&cmd);
+
+        let at_arg = format!("@{}", file.display());
+        assert!(
+            args.iter().any(|arg| arg == &at_arg),
+            "spaced path must resolve as one @file arg: {args:?}"
+        );
+        let prompt = args.last().expect("prompt arg");
+        assert!(prompt.contains("看下"), "prompt keeps surrounding text");
+        assert!(prompt.contains("这张图"), "prompt keeps trailing text");
+        assert!(!prompt.contains("shot one.png"));
+
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn build_command_resolves_relative_at_reference_against_workspace() {
+        let dir = make_workspace_with_files(&["docs/a.md"]);
+        let session = PiSession::new("ws".to_string(), dir.clone(), None);
+        let params = SendMessageParams {
+            text: "@docs/a.md 读一下".to_string(),
+            ..Default::default()
+        };
+
+        let cmd = session.build_command(&params).expect("build_command");
+        let args = command_args(&cmd);
+
+        let at_arg = format!("@{}", dir.join("docs/a.md").display());
+        assert!(args.iter().any(|arg| arg == &at_arg), "args: {args:?}");
+
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn build_command_keeps_folder_reference_as_plain_text() {
+        let dir = make_workspace_with_files(&["sub/placeholder.txt"]);
+        let folder = dir.join("sub");
+        let session = PiSession::new("ws".to_string(), dir.clone(), None);
+        let params = SendMessageParams {
+            text: format!("@{} 这两个设计移到 docs", folder.display()),
+            ..Default::default()
+        };
+
+        let cmd = session.build_command(&params).expect("build_command");
+        let args = command_args(&cmd);
+
+        let folder_at = format!("@{}", folder.display());
+        assert!(
+            !args.iter().any(|arg| arg == &folder_at),
+            "folder must not become an @file arg"
+        );
+        let prompt = args.last().expect("prompt arg");
+        assert!(prompt.contains(&folder.display().to_string()));
+        assert!(
+            !prompt.starts_with('@'),
+            "leading unresolvable @ token must be space-guarded: {prompt:?}"
+        );
+
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn build_command_keeps_missing_path_and_mention_as_plain_text() {
+        let dir = make_workspace_with_files(&[]);
+        let missing = dir.join("missing.md");
+        let session = PiSession::new("ws".to_string(), dir.clone(), None);
+        let params = SendMessageParams {
+            text: format!("@teammate 帮忙看下 @{}", missing.display()),
+            ..Default::default()
+        };
+
+        let cmd = session.build_command(&params).expect("build_command");
+        let args = command_args(&cmd);
+
+        assert!(
+            !args.iter().any(|arg| arg.starts_with('@')),
+            "unresolvable tokens must not produce @file args: {args:?}"
+        );
+        let prompt = args.last().expect("prompt arg");
+        assert!(prompt.contains("@teammate"));
+        assert!(prompt.contains("missing.md"));
+        assert!(!prompt.starts_with('@'));
+
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn build_command_dedupes_reference_against_image_attachment() {
+        let dir = make_workspace_with_files(&["a.png"]);
+        let file = dir.join("a.png");
+        let session = PiSession::new("ws".to_string(), dir.clone(), None);
+        let params = SendMessageParams {
+            text: format!("@{} 看看", file.display()),
+            images: Some(vec![file.to_string_lossy().to_string()]),
+            ..Default::default()
+        };
+
+        let cmd = session.build_command(&params).expect("build_command");
+        let args = command_args(&cmd);
+
+        let at_arg = format!("@{}", file.display());
+        let count = args.iter().filter(|arg| *arg == &at_arg).count();
+        assert_eq!(count, 1, "same path must appear exactly once: {args:?}");
 
         let _ = std::fs::remove_dir_all(dir);
     }
