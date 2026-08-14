@@ -191,6 +191,27 @@ export type UseListThreadsForWorkspaceOptions = {
   workspacePathsByIdRef: MutableRefObject<Record<string, string>>;
 };
 
+/** First-paint index rows per engine — one display page feeds the mixed top-20. */
+const SIDEBAR_INDEX_FIRST_PAGE_LIMIT = 20;
+
+/** Oldest row of an index page = keyset cursor for the next "更多" page. */
+function oldestSessionIndexKey(
+  page: { data?: Array<{ updatedAt?: number; sessionId?: string }> } | null,
+): { updatedAt: number; sessionId: string } | null {
+  const data = page?.data;
+  if (!Array.isArray(data) || data.length === 0) {
+    return null;
+  }
+  // Index pages are ordered updated_at DESC, session_id ASC → last = oldest.
+  const last = data[data.length - 1];
+  const updatedAt = Number(last?.updatedAt);
+  const sessionId = String(last?.sessionId ?? "").trim();
+  if (!Number.isFinite(updatedAt) || updatedAt < 0 || !sessionId) {
+    return null;
+  }
+  return { updatedAt, sessionId };
+}
+
 export function useListThreadsForWorkspace({
   activeThreadIdByWorkspace,
   beginAutomaticRuntimeRecovery,
@@ -358,9 +379,11 @@ export function useListThreadsForWorkspace({
         // CRITICAL UX: on first-paint, await index FIRST and paint immediately.
         // Do NOT wait for titles/shared/codex live list — that left the sidebar
         // stuck on stale sidebarSnapshot for seconds (user: old list → late correct).
+        // One display page (20) per engine feeds the mixed top-20 view; older
+        // rows arrive via keyset paging (sidebar 更多).
         const sessionIndexLimit = Math.max(
           resolveInitialThreadListTargetCount(workspace) * 4,
-          50,
+          SIDEBAR_INDEX_FIRST_PAGE_LIMIT,
         );
         // Only explicit soft re-sync forces writers; cold first-paint must hit
         // warm SQLite (ms) so stale sidebarSnapshot is replaced immediately.
@@ -1767,7 +1790,7 @@ export function useListThreadsForWorkspace({
           runtimeCursor: cursor,
           sessionIndexTotalCount: sessionIndexPage?.totalCount ?? null,
           sessionIndexRowCount: sessionIndexPage?.data?.length ?? null,
-          sessionIndexLimit,
+          sessionIndexOldestKey: oldestSessionIndexKey(sessionIndexPage),
         });
         const previewUpdates: Array<{
           threadId: string;

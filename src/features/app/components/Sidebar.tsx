@@ -135,6 +135,11 @@ import {
 /** 与 useAppShellQuickSwitcherSection 硬编码 shortcut 一致 */
 const QUICK_SWITCHER_SHORTCUT = "cmd+e";
 
+/** 侧栏会话列表显示分页：一页 20 个 root；「更多」每次 +20。 */
+const SIDEBAR_THREAD_PAGE_SIZE = 20;
+/** 显示 root 超过该值时提供「收起」link（回到一页）。 */
+const SIDEBAR_THREAD_COLLAPSE_THRESHOLD = 50;
+
 type SidebarProps = {
   workspaces: WorkspaceInfo[];
   groupedWorkspaces: WorkspaceGroupSection[];
@@ -421,6 +426,8 @@ function SidebarImpl({
   const [expandedWorkspaces, setExpandedWorkspaces] = useState<Set<string>>(
     () => new Set(),
   );
+  const [visibleThreadCountByWorkspaceId, setVisibleThreadCountByWorkspaceId] =
+    useState<Record<string, number>>(() => ({}));
   const [collapsedWorktreeSections, setCollapsedWorktreeSections] = useState<Set<string>>(
     () => new Set(),
   );
@@ -1354,16 +1361,15 @@ function SidebarImpl({
           return;
         }
         const threads = getProjectedThreads(workspace.id);
-        const isExpanded = expandedWorkspaces.has(workspace.id);
-        const visibleThreadRootCount = normalizeVisibleThreadRootCount(
-          workspace.settings.visibleThreadRootCount,
-        );
+        const visibleThreadCount =
+          visibleThreadCountByWorkspaceId[workspace.id] ??
+          SIDEBAR_THREAD_PAGE_SIZE;
         const { unpinnedRows, totalRoots } = getThreadRows(
           threads,
-          isExpanded,
+          false,
           workspace.id,
           getPinTimestamp,
-          visibleThreadRootCount,
+          visibleThreadCount,
         );
         rowsByWorkspace.set(workspace.id, { unpinnedRows, totalRoots });
       });
@@ -1371,11 +1377,11 @@ function SidebarImpl({
     return rowsByWorkspace;
   }, [
     collapsedGroups,
-    expandedWorkspaces,
     filteredGroupedWorkspaces,
     getPinTimestamp,
     getThreadRows,
     getProjectedThreads,
+    visibleThreadCountByWorkspaceId,
   ]);
 
   useEffect(() => {
@@ -1498,6 +1504,40 @@ function SidebarImpl({
       }
       return next;
     });
+  }, []);
+
+  /** 「更多」：显示 +20；本地已加载不足一页时才触发真实 keyset 分页查询。 */
+  const handleShowMoreThreads = useCallback(
+    (workspaceId: string) => {
+      const current =
+        visibleThreadCountByWorkspaceId[workspaceId] ??
+        SIDEBAR_THREAD_PAGE_SIZE;
+      const target = current + SIDEBAR_THREAD_PAGE_SIZE;
+      setVisibleThreadCountByWorkspaceId((prev) => ({
+        ...prev,
+        [workspaceId]: target,
+      }));
+      const loadedRoots =
+        threadRowsByWorkspace.get(workspaceId)?.totalRoots ?? 0;
+      const cursor = threadListCursorByWorkspace[workspaceId] ?? null;
+      if (loadedRoots < target && cursor) {
+        onLoadOlderThreads(workspaceId);
+      }
+    },
+    [
+      visibleThreadCountByWorkspaceId,
+      threadRowsByWorkspace,
+      threadListCursorByWorkspace,
+      onLoadOlderThreads,
+    ],
+  );
+
+  /** 「收起」：回到一页（20）；已加载数据保留，再展开不重复查询。 */
+  const handleCollapseThreads = useCallback((workspaceId: string) => {
+    setVisibleThreadCountByWorkspaceId((prev) => ({
+      ...prev,
+      [workspaceId]: SIDEBAR_THREAD_PAGE_SIZE,
+    }));
   }, []);
 
   const handleToggleWorktreeSection = useCallback((workspaceId: string) => {
@@ -1883,7 +1923,6 @@ function SidebarImpl({
   ) => {
     const threads = threadsByWorkspace[entry.id] ?? [];
     const isCollapsed = entry.settings.sidebarCollapsed;
-    const isExpanded = expandedWorkspaces.has(entry.id);
     const threadRows = threadRowsByWorkspace.get(entry.id);
     const unpinnedRows = threadRows?.unpinnedRows ?? [];
     const totalThreadRoots = threadRows?.totalRoots ?? 0;
@@ -1920,9 +1959,8 @@ function SidebarImpl({
       entry.id === activeWorkspaceId && Boolean(activeThreadId);
     const hasRunningSession = hasRunningSessionByProjectId.get(entry.id) ?? false;
     const workspaceSidebarAlias = getWorkspaceSidebarAlias(entry);
-    const visibleThreadRootCount = normalizeVisibleThreadRootCount(
-      entry.settings.visibleThreadRootCount,
-    );
+    const visibleThreadCount =
+      visibleThreadCountByWorkspaceId[entry.id] ?? SIDEBAR_THREAD_PAGE_SIZE;
     const hideExitedSessions = isExitedSessionsHidden(entry.path);
     const sessionFolders = sessionFoldersByWorkspaceId[entry.id] ?? EMPTY_SESSION_FOLDERS;
     const collapsedSessionFolderIds = new Set(
@@ -2015,7 +2053,7 @@ function SidebarImpl({
             folders={folderProjection.folders}
             rootRows={folderProjection.rootRows}
             totalThreadRoots={totalThreadRoots}
-            isExpanded={isExpanded}
+            isExpanded={false}
             rootDraftRequestKey={rootFolderDraftRequestKey}
             moveFolderTargets={folderMoveTargets}
             collapsedFolderIds={collapsedSessionFolderIds}
@@ -2025,7 +2063,10 @@ function SidebarImpl({
             onToggleFolderCollapsed={handleToggleSessionFolderCollapsed}
             onNewSessionInFolder={handleOpenSessionFolderSessionMenu}
             threadListProps={{
-              visibleThreadRootCount,
+              visibleThreadRootCount: visibleThreadCount,
+              showCollapseThreads:
+                visibleThreadCount > SIDEBAR_THREAD_COLLAPSE_THRESHOLD,
+              onCollapseThreads: handleCollapseThreads,
               hideExitedSessions,
               activeWorkspaceId,
               activeThreadId,
@@ -2037,7 +2078,7 @@ function SidebarImpl({
               isThreadPinned,
               isThreadAutoNaming,
               onToggleThreadPin: handleToggleThreadPin,
-              onToggleExpanded: handleToggleExpanded,
+              onToggleExpanded: handleShowMoreThreads,
               onLoadOlderThreads,
               onSelectThread,
               onShowThreadMenu: showThreadMenu,
@@ -2065,8 +2106,12 @@ function SidebarImpl({
             pinnedRows={[]}
             unpinnedRows={unpinnedRows}
             totalThreadRoots={totalThreadRoots}
-            visibleThreadRootCount={visibleThreadRootCount}
-            isExpanded={isExpanded}
+            visibleThreadRootCount={visibleThreadCount}
+            isExpanded={false}
+            showCollapseThreads={
+              visibleThreadCount > SIDEBAR_THREAD_COLLAPSE_THRESHOLD
+            }
+            onCollapseThreads={handleCollapseThreads}
             nextCursor={nextCursor}
             isPaging={isPaging}
             moveFolderTargets={folderMoveTargets}
@@ -2081,7 +2126,7 @@ function SidebarImpl({
             isThreadPinned={isThreadPinned}
             isThreadAutoNaming={isThreadAutoNaming}
             onToggleThreadPin={handleToggleThreadPin}
-            onToggleExpanded={handleToggleExpanded}
+            onToggleExpanded={handleShowMoreThreads}
             onLoadOlderThreads={onLoadOlderThreads}
             onSelectThread={onSelectThread}
             onShowThreadMenu={showThreadMenu}
@@ -2126,11 +2171,14 @@ function SidebarImpl({
     onRenameConfirm,
     deletingWorktreeIds,
     expandedWorkspaces,
+    visibleThreadCountByWorkspaceId,
     getPinTimestamp,
     getThreadRows,
     getThreadTime,
     handleToggleThreadPin,
     handleToggleExpanded,
+    handleShowMoreThreads,
+    handleCollapseThreads,
     handleToggleWorktreeSection,
     handleCreateSessionFolder,
     handleOpenSessionFolderSessionMenu,

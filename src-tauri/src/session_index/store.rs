@@ -474,6 +474,45 @@ pub(crate) fn list_for_workspace_path(
     Ok(rows)
 }
 
+/// Keyset page of older rows for the sidebar "更多" paging. Single
+/// time-ordered query across engines (no per-engine budget): rows strictly
+/// older than `(before_updated_at, before_session_id)` in the list's display
+/// order (`updated_at DESC, session_id ASC`).
+pub(crate) fn list_page_for_workspace_before(
+    connection: &Connection,
+    workspace_path: &str,
+    before_updated_at: i64,
+    before_session_id: &str,
+    limit: usize,
+) -> Result<Vec<SessionIndexRow>, String> {
+    let limit = limit.clamp(1, 500);
+    let key = normalize_path_key(workspace_path);
+    if key.is_empty() {
+        return Ok(Vec::new());
+    }
+    let mut statement = connection
+        .prepare(
+            "SELECT engine, session_id, title, native_title, updated_at, created_at,
+                    cwd, workspace_path, physical_path, parent_session_id, size_bytes
+             FROM session_index
+             WHERE (workspace_path = ?1 OR cwd = ?1)
+               AND tombstoned_at IS NULL
+               AND (updated_at < ?2 OR (updated_at = ?2 AND session_id > ?3))
+             ORDER BY updated_at DESC, session_id ASC
+             LIMIT ?4",
+        )
+        .map_err(|error| error.to_string())?;
+    let rows = statement
+        .query_map(
+            params![key, before_updated_at, before_session_id, limit as i64],
+            map_row,
+        )
+        .map_err(|error| error.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| error.to_string())?;
+    Ok(rows)
+}
+
 pub(crate) fn tombstone_session_ids(
     connection: &Connection,
     session_ids: &[String],
@@ -780,6 +819,43 @@ mod tests {
         tombstone_session_ids(&connection, &["codex:gone".into()]).expect("tombstone");
         let total = count_for_workspace_path(&connection, "/tmp/proj").expect("count");
         assert_eq!(total, 2, "tombstoned and other-workspace rows excluded");
+    }
+
+    #[test]
+    fn keyset_page_returns_disjoint_older_rows_in_order() {
+        let connection = Connection::open_in_memory().expect("open");
+        connection.execute_batch(DDL).expect("ddl");
+        let mut rows = Vec::new();
+        // 5 rows, descending updated_at; two share a timestamp to exercise the
+        // session_id tiebreak.
+        for (id, updated_at) in [
+            ("a", 500i64),
+            ("b", 400),
+            ("c", 300),
+            ("d", 300),
+            ("e", 100),
+        ] {
+            rows.push(index_row("codex", id, updated_at));
+        }
+        upsert_rows(&connection, &rows).expect("upsert");
+        tombstone_session_ids(&connection, &["codex:d".into()]).expect("tombstone");
+
+        // Page 1 = newest 2 by display order (a@500, b@400).
+        let page1 = list_page_for_workspace_before(&connection, "/tmp/proj", i64::MAX, "", 2)
+            .expect("page 1");
+        let ids1: Vec<&str> = page1.iter().map(|row| row.session_id.as_str()).collect();
+        assert_eq!(ids1, vec!["a", "b"]);
+
+        // Page 2 continues strictly older than b@400; tombstoned d is skipped.
+        let page2 =
+            list_page_for_workspace_before(&connection, "/tmp/proj", 400, "b", 2).expect("page 2");
+        let ids2: Vec<&str> = page2.iter().map(|row| row.session_id.as_str()).collect();
+        assert_eq!(ids2, vec!["c", "e"], "d tombstoned, tie at 300 broken by id");
+
+        // Page 3 exhausts the set.
+        let page3 =
+            list_page_for_workspace_before(&connection, "/tmp/proj", 100, "e", 2).expect("page 3");
+        assert!(page3.is_empty());
     }
 
     #[test]

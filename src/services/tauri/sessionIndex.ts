@@ -57,6 +57,9 @@ export async function listSessionIndexForWorkspace(
     limit?: number | null;
     syncIfNeeded?: boolean | null;
     forceSync?: boolean | null;
+    /** Keyset paging (sidebar 更多): rows strictly older than this key. */
+    beforeUpdatedAt?: number | null;
+    beforeSessionId?: string | null;
   },
 ): Promise<SessionIndexListPage> {
   return invoke<SessionIndexListPage>("list_session_index_for_workspace", {
@@ -64,6 +67,8 @@ export async function listSessionIndexForWorkspace(
     limit: options?.limit ?? null,
     syncIfNeeded: options?.syncIfNeeded ?? true,
     forceSync: options?.forceSync ?? false,
+    beforeUpdatedAt: options?.beforeUpdatedAt ?? null,
+    beforeSessionId: options?.beforeSessionId ?? null,
   });
 }
 

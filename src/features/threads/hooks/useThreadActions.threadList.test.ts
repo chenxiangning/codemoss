@@ -7,6 +7,7 @@ import {
   THREAD_LIST_INITIAL_TARGET_COUNT,
   THREAD_LIST_LOAD_OLDER_PAGE_SIZE,
   THREAD_LIST_LOAD_OLDER_TARGET_COUNT,
+  decodeSessionIndexThreadListCursor,
   decodeThreadListCursorState,
   encodeSessionIndexThreadListCursor,
   normalizeProjectCatalogSession,
@@ -143,26 +144,38 @@ describe("useThreadActions.threadList", () => {
   });
 
   it("synthesizes a session-index cursor only when SQLite has more rows", () => {
-    // Index has older rows beyond the current page → session-index cursor.
+    const oldestKey = { updatedAt: 4000, sessionId: "row-20" };
+    // Index has older rows beyond the current page → session-index keyset cursor.
     expect(
       resolveThreadListCursorForDisplay({
         catalogCursor: null,
         catalogPartialSource: null,
         runtimeCursor: null,
         sessionIndexTotalCount: 120,
-        sessionIndexRowCount: 50,
-        sessionIndexLimit: 50,
+        sessionIndexRowCount: 20,
+        sessionIndexOldestKey: oldestKey,
       }),
-    ).toBe("session-index::50");
+    ).toBe("session-index::4000:row-20");
     // Fully covered → no cursor.
     expect(
       resolveThreadListCursorForDisplay({
         catalogCursor: null,
         catalogPartialSource: null,
         runtimeCursor: null,
-        sessionIndexTotalCount: 50,
-        sessionIndexRowCount: 50,
-        sessionIndexLimit: 50,
+        sessionIndexTotalCount: 20,
+        sessionIndexRowCount: 20,
+        sessionIndexOldestKey: oldestKey,
+      }),
+    ).toBeNull();
+    // Missing oldest key → no cursor (nothing to page from).
+    expect(
+      resolveThreadListCursorForDisplay({
+        catalogCursor: null,
+        catalogPartialSource: null,
+        runtimeCursor: null,
+        sessionIndexTotalCount: 120,
+        sessionIndexRowCount: 20,
+        sessionIndexOldestKey: null,
       }),
     ).toBeNull();
     // Catalog/runtime cursors win over the index fallback.
@@ -172,8 +185,8 @@ describe("useThreadActions.threadList", () => {
         catalogPartialSource: null,
         runtimeCursor: null,
         sessionIndexTotalCount: 500,
-        sessionIndexRowCount: 50,
-        sessionIndexLimit: 50,
+        sessionIndexRowCount: 20,
+        sessionIndexOldestKey: oldestKey,
       }),
     ).toBe("catalog::offset:200");
     expect(
@@ -182,18 +195,27 @@ describe("useThreadActions.threadList", () => {
         catalogPartialSource: null,
         runtimeCursor: "rt-1",
         sessionIndexTotalCount: 500,
-        sessionIndexRowCount: 50,
-        sessionIndexLimit: 50,
+        sessionIndexRowCount: 20,
+        sessionIndexOldestKey: oldestKey,
       }),
     ).toBe("runtime::rt-1");
   });
 
-  it("decodes session-index cursors back to source + limit payload", () => {
-    expect(decodeThreadListCursorState("session-index::150")).toEqual({
+  it("round-trips session-index keyset cursors (sessionId may contain colons)", () => {
+    expect(decodeThreadListCursorState("session-index::4000:row-20")).toEqual({
       source: "session-index",
-      cursor: "150",
+      cursor: "4000:row-20",
     });
-    expect(encodeSessionIndexThreadListCursor(150)).toBe("session-index::150");
+    const key = { updatedAt: 4000, sessionId: "ns:row-20" };
+    const encoded = encodeSessionIndexThreadListCursor(key);
+    expect(encoded).toBe("session-index::4000:ns:row-20");
+    expect(decodeThreadListCursorState(encoded)).toEqual({
+      source: "session-index",
+      cursor: "4000:ns:row-20",
+    });
+    expect(decodeSessionIndexThreadListCursor("4000:ns:row-20")).toEqual(key);
+    expect(decodeSessionIndexThreadListCursor("")).toBeNull();
+    expect(decodeSessionIndexThreadListCursor("abc")).toBeNull();
   });
 
   it("first-paint list target defaults to 5 and stays smaller than load-older batches", () => {

@@ -36,6 +36,7 @@ import {
   THREAD_LIST_MAX_EMPTY_PAGES_LOAD_OLDER,
   THREAD_LIST_MAX_FETCH_DURATION_MS,
   THREAD_LIST_MAX_TOTAL_PAGES,
+  decodeSessionIndexThreadListCursor,
   decodeThreadListCursorState,
   encodeSessionIndexThreadListCursor,
   normalizeProjectCatalogSession,
@@ -58,8 +59,7 @@ import type {
 } from "./useThreadActionsSessionCatalog";
 import type { ThreadAction, ThreadState } from "./useThreadsReducer";
 
-const SESSION_INDEX_LOAD_OLDER_PAGE_SIZE = 100;
-const SESSION_INDEX_LOAD_OLDER_MAX_LIMIT = 500;
+const SESSION_INDEX_PAGE_SIZE = 20;
 const SESSION_INDEX_LOAD_OLDER_TIMEOUT_MS = 5_000;
 
 type UseLoadOlderThreadsForWorkspaceOptions = {
@@ -146,29 +146,36 @@ export function useLoadOlderThreadsForWorkspace({
         } catch {
           mappedTitles = {};
         }
-        // Session Index load-older: page deeper into SQLite with a growing
-        // limit. Pure SELECT — never a disk list/catalog call. Backfill keeps
-        // raising totalCount in the background, so repeated clicks converge
-        // with the daemon's historical import.
+        // Session Index keyset paging (sidebar 更多): fetch the next page of
+        // rows strictly older than the cursor key. Pure SQLite SELECT — never
+        // a disk list/catalog call. A 21st row probes for another page.
         if (cursorState.source === "session-index") {
-          const parsedLimit = Number.parseInt(cursorState.cursor ?? "", 10);
-          const previousLimit =
-            Number.isFinite(parsedLimit) && parsedLimit > 0 ? parsedLimit : 50;
-          const nextLimit = Math.min(
-            previousLimit + SESSION_INDEX_LOAD_OLDER_PAGE_SIZE,
-            SESSION_INDEX_LOAD_OLDER_MAX_LIMIT,
-          );
+          const keyset = decodeSessionIndexThreadListCursor(cursorState.cursor);
+          if (!keyset) {
+            dispatch({
+              type: "setThreadListCursor",
+              workspaceId: workspace.id,
+              cursor: null,
+            });
+            return;
+          }
           const page = await withTimeout(
             listSessionIndexForWorkspaceService(workspace.id, {
-              limit: nextLimit,
+              limit: SESSION_INDEX_PAGE_SIZE + 1,
               syncIfNeeded: false,
               forceSync: false,
+              beforeUpdatedAt: keyset.updatedAt,
+              beforeSessionId: keyset.sessionId,
             })
               .then((value) => value ?? null)
               .catch(() => null),
             SESSION_INDEX_LOAD_OLDER_TIMEOUT_MS,
           );
           if (page && Array.isArray(page.data)) {
+            const hasMore = page.data.length > SESSION_INDEX_PAGE_SIZE;
+            const pageRows = hasMore
+              ? page.data.slice(0, SESSION_INDEX_PAGE_SIZE)
+              : page.data;
             const visibility = page.visibility ?? null;
             const canProjectIndexNatives =
               isUsableSharedNativeVisibility(visibility) ||
@@ -180,8 +187,8 @@ export function useLoadOlderThreadsForWorkspace({
             // Without a verified hide set, Shared bindings masquerade as Codex
             // rows — mirror first-paint and only project PI rows then.
             const rows = canProjectIndexNatives
-              ? page.data
-              : page.data.filter(
+              ? pageRows
+              : pageRows.filter(
                   (row) =>
                     String(row.engine ?? "").trim().toLowerCase() === "pi",
                 );
@@ -222,18 +229,21 @@ export function useLoadOlderThreadsForWorkspace({
                 [workspace.id]: merged,
               };
             }
-            const totalCount =
-              typeof page.totalCount === "number" ? page.totalCount : null;
-            const hasMore =
-              totalCount !== null &&
-              totalCount > page.data.length &&
-              nextLimit < SESSION_INDEX_LOAD_OLDER_MAX_LIMIT;
+            const oldest = pageRows[pageRows.length - 1] ?? null;
+            const nextKey =
+              hasMore && oldest
+                ? {
+                    updatedAt: Number(oldest.updatedAt) || 0,
+                    sessionId: String(oldest.sessionId ?? "").trim(),
+                  }
+                : null;
             dispatch({
               type: "setThreadListCursor",
               workspaceId: workspace.id,
-              cursor: hasMore
-                ? encodeSessionIndexThreadListCursor(nextLimit)
-                : null,
+              cursor:
+                nextKey && nextKey.sessionId
+                  ? encodeSessionIndexThreadListCursor(nextKey)
+                  : null,
             });
             onDebug?.({
               id: `${Date.now()}-client-thread-list-older-index`,
@@ -242,9 +252,9 @@ export function useLoadOlderThreadsForWorkspace({
               label: "thread/list older session-index",
               payload: {
                 workspaceId: workspace.id,
-                limit: nextLimit,
-                rowCount: page.data.length,
-                totalCount,
+                keyset,
+                rowCount: pageRows.length,
+                totalCount: page.totalCount ?? null,
                 additions: additions.length,
                 hasMore,
               },

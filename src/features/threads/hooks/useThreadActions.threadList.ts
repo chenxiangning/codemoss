@@ -202,13 +202,14 @@ export function resolveThreadListCursorForDisplay(params: {
   catalogPartialSource: string | null;
   runtimeCursor: string | null;
   /**
-   * Session Index paging fallback (sidebar load-older without any disk scan):
-   * when neither catalog nor runtime cursor exists and SQLite still holds
-   * rows beyond the current page, synthesize a `session-index::` cursor.
+   * Session Index keyset paging fallback (sidebar 更多 without any disk
+   * scan): when neither catalog nor runtime cursor exists and SQLite still
+   * holds rows beyond the current page, synthesize a `session-index::`
+   * cursor from the oldest row of the current page.
    */
   sessionIndexTotalCount?: number | null;
   sessionIndexRowCount?: number | null;
-  sessionIndexLimit?: number | null;
+  sessionIndexOldestKey?: { updatedAt: number; sessionId: string } | null;
 }): string | null {
   if (params.catalogCursor) {
     return encodeThreadListCursorState("catalog", params.catalogCursor);
@@ -218,24 +219,50 @@ export function resolveThreadListCursorForDisplay(params: {
   }
   const totalCount = params.sessionIndexTotalCount ?? null;
   const rowCount = params.sessionIndexRowCount ?? null;
-  const limit = params.sessionIndexLimit ?? null;
+  const oldest = params.sessionIndexOldestKey ?? null;
   if (
     totalCount !== null &&
     rowCount !== null &&
-    limit !== null &&
+    oldest &&
+    Number.isFinite(oldest.updatedAt) &&
+    oldest.sessionId &&
     totalCount > rowCount
   ) {
-    return encodeThreadListCursorState("session-index", String(limit));
+    return encodeSessionIndexThreadListCursor(oldest);
   }
   return null;
 }
 
-/** Encode the Session Index load-older cursor (payload = limit just used). */
-export function encodeSessionIndexThreadListCursor(limit: number): string {
+/** Encode the Session Index keyset cursor (payload = oldest row of the page). */
+export function encodeSessionIndexThreadListCursor(key: {
+  updatedAt: number;
+  sessionId: string;
+}): string {
+  const updatedAt = Math.max(0, Math.floor(key.updatedAt));
   return encodeThreadListCursorState(
     "session-index",
-    String(Math.max(1, Math.floor(limit))),
+    `${updatedAt}:${key.sessionId.trim()}`,
   );
+}
+
+/** Decode a `session-index::` cursor payload back into a keyset key. */
+export function decodeSessionIndexThreadListCursor(
+  cursor: string | null,
+): { updatedAt: number; sessionId: string } | null {
+  const payload = (cursor ?? "").trim();
+  if (!payload) {
+    return null;
+  }
+  const separator = payload.indexOf(":");
+  if (separator <= 0) {
+    return null;
+  }
+  const updatedAt = Number.parseInt(payload.slice(0, separator), 10);
+  const sessionId = payload.slice(separator + 1).trim();
+  if (!Number.isFinite(updatedAt) || updatedAt < 0 || !sessionId) {
+    return null;
+  }
+  return { updatedAt, sessionId };
 }
 
 export function countSummariesByEngine(summaries: ThreadSummary[]) {

@@ -452,16 +452,35 @@ describe("ThreadList", () => {
     expect(onToggleExpanded).toHaveBeenCalledWith("ws-1");
   });
 
-  it("loads older threads when a cursor is available", () => {
+  it("routes cursor paging through the more control; expanded mode loads older directly", () => {
+    const onToggleExpanded = vi.fn();
     const onLoadOlderThreads = vi.fn();
-    render(
+    const { unmount } = render(
       <ThreadList
         {...baseProps}
         nextCursor="cursor"
+        onToggleExpanded={onToggleExpanded}
         onLoadOlderThreads={onLoadOlderThreads}
       />,
     );
 
+    // Paged (collapsed) mode: a single "More" control; the parent decides
+    // whether revealing requires a backend page fetch.
+    const moreButton = screen.getByRole("button", { name: "More..." });
+    fireEvent.click(moreButton);
+    expect(onToggleExpanded).toHaveBeenCalledWith("ws-1");
+    expect(onLoadOlderThreads).not.toHaveBeenCalled();
+    unmount();
+
+    // Legacy expanded mode (worktree sections): direct load-older control.
+    render(
+      <ThreadList
+        {...baseProps}
+        isExpanded
+        nextCursor="cursor"
+        onLoadOlderThreads={onLoadOlderThreads}
+      />,
+    );
     const loadButton = screen.getByRole("button", { name: "Load older..." });
     fireEvent.click(loadButton);
     expect(onLoadOlderThreads).toHaveBeenCalledWith("ws-1");

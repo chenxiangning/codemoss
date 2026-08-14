@@ -103,6 +103,7 @@ vi.mock("react-i18next", () => ({
         "threads.loading": "Loading...",
         "threads.searchOlder": "Search older...",
         "threads.loadOlder": "Load older...",
+        "threads.showLess": "Show less",
         "workspace.engineClaudeCode": "Claude Code",
         "workspace.engineCodex": "Codex",
         "workspace.engineOpenCode": "OpenCode",
@@ -975,13 +976,15 @@ describe("Sidebar workspace session folders", () => {
     );
 
     expect(await screen.findByText("Planning")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Load older..." })).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Load older..." }));
+    // Paged list: a single "More" control fetches the next backend page when
+    // local rows cannot fill the next display page.
+    expect(screen.getByRole("button", { name: "More..." })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "More..." }));
 
     expect(onLoadOlderThreads).toHaveBeenCalledWith("ws-1");
   });
 
-  it("uses the workspace-specific root visibility count for the more button", async () => {
+  it("pages the visible session list by 20 roots per More click", async () => {
     const workspace = {
       id: "ws-1",
       name: "codemoss",
@@ -993,6 +996,12 @@ describe("Sidebar workspace session folders", () => {
         visibleThreadRootCount: 1,
       },
     };
+    const onLoadOlderThreads = vi.fn();
+    const threads = Array.from({ length: 25 }, (_, index) => ({
+      id: `root-session-${index}`,
+      name: `Root session ${index}`,
+      updatedAt: 1000 - index,
+    }));
 
     render(
       <Sidebar
@@ -1005,17 +1014,75 @@ describe("Sidebar workspace session folders", () => {
             workspaces: [workspace],
           },
         ]}
-        threadsByWorkspace={{
-          "ws-1": [
-            { id: "root-session-1", name: "Root session 1", updatedAt: 3 },
-            { id: "root-session-2", name: "Root session 2", updatedAt: 2 },
-          ],
-        }}
+        threadsByWorkspace={{ "ws-1": threads }}
+        hydratedThreadListWorkspaceIds={new Set(["ws-1"])}
+        onLoadOlderThreads={onLoadOlderThreads}
+      />,
+    );
+
+    // First page = 20 roots, regardless of the legacy visibility setting.
+    expect(await screen.findByText("Root session 0")).toBeTruthy();
+    expect(screen.getByText("Root session 19")).toBeTruthy();
+    expect(screen.queryByText("Root session 20")).toBeNull();
+
+    // 更多 reveals the next 20 from already-loaded rows (no backend fetch).
+    fireEvent.click(screen.getByRole("button", { name: "More..." }));
+    expect(await screen.findByText("Root session 24")).toBeTruthy();
+    expect(onLoadOlderThreads).not.toHaveBeenCalled();
+    // 25 <= 40 visible and no cursor → no More, no collapse (<= 50).
+    expect(screen.queryByRole("button", { name: "More..." })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Show less" })).toBeNull();
+  });
+
+  it("offers collapse once more than 50 roots are visible", async () => {
+    const workspace = {
+      id: "ws-1",
+      name: "codemoss",
+      path: "/tmp/codemoss",
+      connected: true,
+      kind: "main" as const,
+      settings: {
+        sidebarCollapsed: false,
+      },
+    };
+    const threads = Array.from({ length: 60 }, (_, index) => ({
+      id: `root-session-${index}`,
+      name: `Root session ${index}`,
+      updatedAt: 1000 - index,
+    }));
+
+    render(
+      <Sidebar
+        {...baseProps}
+        workspaces={[workspace]}
+        groupedWorkspaces={[
+          {
+            id: null,
+            name: "Ungrouped",
+            workspaces: [workspace],
+          },
+        ]}
+        threadsByWorkspace={{ "ws-1": threads }}
         hydratedThreadListWorkspaceIds={new Set(["ws-1"])}
       />,
     );
 
-    expect(await screen.findByText("Root session 1")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "More..." })).toBeTruthy();
+    expect(await screen.findByText("Root session 0")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "More..." }));
+    expect(await screen.findByText("Root session 39")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Show less" })).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "More..." }));
+    expect(await screen.findByText("Root session 59")).toBeTruthy();
+    const collapse = screen.getByRole("button", { name: "Show less" });
+    fireEvent.click(collapse);
+
+    // Back to one page; re-expanding uses local rows (no refetch needed).
+    await waitFor(() => {
+      expect(screen.queryByText("Root session 20")).toBeNull();
+    });
+    expect(screen.getByText("Root session 19")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "More..." }));
+    expect(await screen.findByText("Root session 39")).toBeTruthy();
   });
 });

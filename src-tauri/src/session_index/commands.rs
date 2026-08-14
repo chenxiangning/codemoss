@@ -5,10 +5,10 @@ use tauri::State;
 use tokio::time::timeout;
 
 use super::store::{
-    count_for_workspace_path, list_for_workspace_path, load_backfill_state, normalize_path_key,
-    open_connection, save_backfill_state, tombstone_session_ids, upsert_rows,
-    workspace_index_sources_invalidated, BackfillState, SessionIndexListPage, SessionIndexRow,
-    SessionIndexSyncReport,
+    count_for_workspace_path, list_for_workspace_path, list_page_for_workspace_before,
+    load_backfill_state, normalize_path_key, open_connection, save_backfill_state,
+    tombstone_session_ids, upsert_rows, workspace_index_sources_invalidated, BackfillState,
+    SessionIndexListPage, SessionIndexRow, SessionIndexSyncReport,
 };
 use super::writers::{
     backfill_claude_for_workspace, backfill_codex_for_workspace, backfill_kimi_for_workspace,
@@ -695,12 +695,16 @@ pub async fn upsert_session_index_rows(rows: Vec<SessionIndexRow>) -> Result<u32
 }
 
 /// List sidebar sessions from SQLite. Optionally sync first when stale/empty.
+/// When `before_updated_at` is set this is a pure keyset page query (sidebar
+/// "更多" paging): no sync, single time-ordered SELECT.
 #[tauri::command]
 pub async fn list_session_index_for_workspace(
     workspace_id: String,
     limit: Option<u32>,
     sync_if_needed: Option<bool>,
     force_sync: Option<bool>,
+    before_updated_at: Option<i64>,
+    before_session_id: Option<String>,
     state: State<'_, AppState>,
 ) -> Result<SessionIndexListPage, String> {
     let started = Instant::now();
@@ -708,8 +712,14 @@ pub async fn list_session_index_for_workspace(
         .map(|value| value as usize)
         .unwrap_or(DEFAULT_SIDEBAR_INDEX_LIMIT)
         .clamp(1, 500);
-    let sync_if_needed = sync_if_needed.unwrap_or(true);
-    let force_sync = force_sync.unwrap_or(false);
+    let keyset_before = before_updated_at.map(|updated_at| {
+        (
+            updated_at,
+            before_session_id.unwrap_or_default().trim().to_string(),
+        )
+    });
+    let sync_if_needed = sync_if_needed.unwrap_or(true) && keyset_before.is_none();
+    let force_sync = force_sync.unwrap_or(false) && keyset_before.is_none();
     let (path_str, _workspace_path) = resolve_workspace_path_async(&state, &workspace_id).await?;
 
     let mut synced = false;
@@ -744,7 +754,18 @@ pub async fn list_session_index_for_workspace(
     let path_for_list = path_str.clone();
     let (data, total_count) = tokio::task::spawn_blocking(move || {
         let connection = open_connection()?;
-        let rows = list_for_workspace_path(&connection, &path_for_list, limit)?;
+        let rows = match keyset_before {
+            Some((before_updated_at, before_session_id)) => {
+                list_page_for_workspace_before(
+                    &connection,
+                    &path_for_list,
+                    before_updated_at,
+                    &before_session_id,
+                    limit,
+                )?
+            }
+            None => list_for_workspace_path(&connection, &path_for_list, limit)?,
+        };
         let total = count_for_workspace_path(&connection, &path_for_list)?;
         Ok::<(Vec<SessionIndexRow>, i64), String>((rows, total))
     })

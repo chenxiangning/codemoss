@@ -506,6 +506,9 @@ export type ThreadListProps = {
   isExpanded: boolean;
   nextCursor: string | null;
   isPaging: boolean;
+  /** 显示分页（一页 20）：显示数超阈值时提供「收起」。 */
+  showCollapseThreads?: boolean;
+  onCollapseThreads?: (workspaceId: string) => void;
   nested?: boolean;
   showLoadOlder?: boolean;
   showProviderLabels?: boolean;
@@ -549,6 +552,8 @@ export function ThreadList({
   isExpanded,
   nextCursor,
   isPaging,
+  showCollapseThreads = false,
+  onCollapseThreads,
   nested,
   showLoadOlder = true,
   showProviderLabels = false,
@@ -977,35 +982,68 @@ export function ThreadList({
                 })}
               </div>
             )}
-            {totalThreadRoots > visibleThreadRootCount && (
-              <button
-                className="thread-more"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  onToggleExpanded(workspaceId);
-                }}
-              >
-                {isExpanded ? t("threads.showLess") : t("threads.more")}
-              </button>
+            {isExpanded ? (
+              <>
+                {totalThreadRoots > visibleThreadRootCount && (
+                  <button
+                    className="thread-more"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onToggleExpanded(workspaceId);
+                    }}
+                  >
+                    {t("threads.showLess")}
+                  </button>
+                )}
+                {showLoadOlder && nextCursor && (
+                  <button
+                    className="thread-more"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onLoadOlderThreads(workspaceId);
+                    }}
+                    disabled={isPaging}
+                  >
+                    {isPaging
+                      ? t("threads.loading")
+                      : totalThreadRoots === 0
+                        ? t("threads.searchOlder")
+                        : t("threads.loadOlder")}
+                  </button>
+                )}
+              </>
+            ) : (
+              <>
+                {(totalThreadRoots > visibleThreadRootCount ||
+                  (showLoadOlder && nextCursor)) && (
+                  <button
+                    className="thread-more"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onToggleExpanded(workspaceId);
+                    }}
+                    disabled={isPaging}
+                  >
+                    {isPaging
+                      ? t("threads.loading")
+                      : totalThreadRoots === 0
+                        ? t("threads.searchOlder")
+                        : t("threads.more")}
+                  </button>
+                )}
+                {showCollapseThreads && onCollapseThreads && (
+                  <button
+                    className="thread-more"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onCollapseThreads(workspaceId);
+                    }}
+                  >
+                    {t("threads.showLess")}
+                  </button>
+                )}
+              </>
             )}
-            {showLoadOlder &&
-              nextCursor &&
-              (isExpanded || totalThreadRoots <= visibleThreadRootCount) && (
-                <button
-                  className="thread-more"
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    onLoadOlderThreads(workspaceId);
-                  }}
-                  disabled={isPaging}
-                >
-                  {isPaging
-                    ? t("threads.loading")
-                    : totalThreadRoots === 0
-                      ? t("threads.searchOlder")
-                      : t("threads.loadOlder")}
-                </button>
-              )}
           </>
         ) : (
           <>
@@ -1022,35 +1060,68 @@ export function ThreadList({
                 })}
               </div>
             )}
-            {totalThreadRoots > visibleThreadRootCount && (
-              <button
-                className="thread-more"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  onToggleExpanded(workspaceId);
-                }}
-              >
-                {isExpanded ? t("threads.showLess") : t("threads.more")}
-              </button>
+            {isExpanded ? (
+              <>
+                {totalThreadRoots > visibleThreadRootCount && (
+                  <button
+                    className="thread-more"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onToggleExpanded(workspaceId);
+                    }}
+                  >
+                    {t("threads.showLess")}
+                  </button>
+                )}
+                {showLoadOlder && nextCursor && (
+                  <button
+                    className="thread-more"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onLoadOlderThreads(workspaceId);
+                    }}
+                    disabled={isPaging}
+                  >
+                    {isPaging
+                      ? t("threads.loading")
+                      : totalThreadRoots === 0
+                        ? t("threads.searchOlder")
+                        : t("threads.loadOlder")}
+                  </button>
+                )}
+              </>
+            ) : (
+              <>
+                {(totalThreadRoots > visibleThreadRootCount ||
+                  (showLoadOlder && nextCursor)) && (
+                  <button
+                    className="thread-more"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onToggleExpanded(workspaceId);
+                    }}
+                    disabled={isPaging}
+                  >
+                    {isPaging
+                      ? t("threads.loading")
+                      : totalThreadRoots === 0
+                        ? t("threads.searchOlder")
+                        : t("threads.more")}
+                  </button>
+                )}
+                {showCollapseThreads && onCollapseThreads && (
+                  <button
+                    className="thread-more"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onCollapseThreads(workspaceId);
+                    }}
+                  >
+                    {t("threads.showLess")}
+                  </button>
+                )}
+              </>
             )}
-            {showLoadOlder &&
-              nextCursor &&
-              (isExpanded || totalThreadRoots <= visibleThreadRootCount) && (
-                <button
-                  className="thread-more"
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    onLoadOlderThreads(workspaceId);
-                  }}
-                  disabled={isPaging}
-                >
-                  {isPaging
-                    ? t("threads.loading")
-                    : totalThreadRoots === 0
-                      ? t("threads.searchOlder")
-                      : t("threads.loadOlder")}
-                </button>
-              )}
           </>
         )}
       </div>
