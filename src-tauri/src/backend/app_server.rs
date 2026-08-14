@@ -1097,7 +1097,8 @@ pub(crate) async fn spawn_workspace_session_with_launch_options<E: EventSink>(
     launch_options: CodexAppServerLaunchOptions,
 ) -> Result<Arc<WorkspaceSession>, String> {
     let provider_runtime_key = entry.id.clone();
-    spawn_workspace_session_inner_with_settings(
+    // Box 到堆，避免 spawn 深链内联出超大栈帧（Windows 主线程仅 1MB）。
+    Box::pin(spawn_workspace_session_inner_with_settings(
         entry,
         default_codex_bin,
         codex_args,
@@ -1109,7 +1110,7 @@ pub(crate) async fn spawn_workspace_session_with_launch_options<E: EventSink>(
         launch_options,
         provider_runtime_key,
         crate::types::AppSettings::default(),
-    )
+    ))
     .await
 }
 

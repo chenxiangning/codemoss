@@ -20,6 +20,10 @@ const ALLOWED_LICENSES: &[&str] = &["MIT", "Apache-2.0", "BSD-2-Clause", "BSD-3-
 
 fn main() {
     tauri_build::build();
+    // Windows 主线程默认栈 1MB（macOS/Linux 为 8MB），深链 future 在 1MB 上易触发
+    // 0xc00000fd 栈溢出；对齐三端到 8MB reserve（commit 仍按需增长，不占物理内存）。
+    #[cfg(target_os = "windows")]
+    println!("cargo:rustc-link-arg-bin=cc-gui=/STACK:8388608");
     validate_curated_skills_lock();
     validate_curated_skills_bundled_in_conf();
     validate_agent_catalog();

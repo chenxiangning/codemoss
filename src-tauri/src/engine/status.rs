@@ -1971,7 +1971,8 @@ pub async fn resolve_engine_type(
     }
 
     // 3. Auto-detect based on installed CLIs
-    detect_preferred_engine(
+    // Box 到堆：tokio::join! 并发持有多路 CLI 探测，内联会放大调用方栈帧（Windows 主线程仅 1MB）。
+    Box::pin(detect_preferred_engine(
         claude_bin,
         codex_bin,
         gemini_bin,
@@ -1979,7 +1980,7 @@ pub async fn resolve_engine_type(
         kimi_bin,
         grok_bin,
         pi_bin,
-    )
+    ))
     .await
 }
 

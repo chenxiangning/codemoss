@@ -226,7 +226,8 @@ pub(crate) async fn ensure_codex_session_for_provider(
     state: &AppState,
     app: &AppHandle,
 ) -> Result<(), String> {
-    ensure_codex_session_with_mode(
+    // Box 到堆，避免 deep-loop future 内联出超大栈帧（Windows 主线程仅 1MB）。
+    Box::pin(ensure_codex_session_with_mode(
         workspace_id,
         provider_profile_id,
         state,
@@ -234,7 +235,7 @@ pub(crate) async fn ensure_codex_session_for_provider(
         false,
         "ensure-runtime-ready",
         CodexSessionEnsureMode::Normal,
-    )
+    ))
     .await
 }
 
@@ -244,7 +245,8 @@ pub(crate) async fn ensure_codex_session_without_session_hooks_for_provider(
     state: &AppState,
     app: &AppHandle,
 ) -> Result<(), String> {
-    ensure_codex_session_with_mode(
+    // Box 到堆，避免 deep-loop future 内联出超大栈帧（Windows 主线程仅 1MB）。
+    Box::pin(ensure_codex_session_with_mode(
         workspace_id,
         provider_profile_id,
         state,
@@ -252,7 +254,7 @@ pub(crate) async fn ensure_codex_session_without_session_hooks_for_provider(
         false,
         HOOK_SAFE_FALLBACK_SOURCE,
         CodexSessionEnsureMode::SessionHooksDisabled,
-    )
+    ))
     .await
 }
 

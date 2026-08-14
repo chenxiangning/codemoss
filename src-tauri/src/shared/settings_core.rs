@@ -337,13 +337,14 @@ where
         Output = Result<Arc<crate::backend::app_server::WorkspaceSession>, String>,
     >,
 {
-    crate::shared::workspaces_core::restart_all_connected_sessions_core(
+    // Box 到堆，避免 restart→spawn/terminate 深链内联出超大栈帧（Windows 主线程仅 1MB）。
+    Box::pin(crate::shared::workspaces_core::restart_all_connected_sessions_core(
         workspaces,
         sessions,
         app_settings,
         runtime_manager,
         spawn_session,
-    )
+    ))
     .await
 }
 

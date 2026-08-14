@@ -89,6 +89,8 @@ block2 = "0.6"
 objc2-user-notifications = "0.3"
 
 # Binary size: strip + fat LTO + size-biased opt (whisper.cpp C code keeps its own -O3).
+# Note: future stack-frame size is structural (cross-await state, not opt-level), so the
+# Windows 1MB main-thread overflow is fixed by Box::pin at deep call sites, not by opt-level.
 # No panic="abort": tokio task isolation relies on unwinding; a task panic must not kill the app.
 [profile.release]
 strip = true

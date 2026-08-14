@@ -430,7 +430,8 @@ pub(crate) async fn spawn_workspace_session_with_launch_options(
         app_settings_snapshot.codex_auto_compaction_enabled,
     );
     let event_sink = build_event_sink(app_handle);
-    spawn_workspace_session_inner_with_settings(
+    // Box 到堆，避免 spawn 深链内联出超大栈帧（Windows 主线程仅 1MB）。
+    Box::pin(spawn_workspace_session_inner_with_settings(
         entry,
         default_codex_bin,
         codex_args,
@@ -442,7 +443,7 @@ pub(crate) async fn spawn_workspace_session_with_launch_options(
         launch_options,
         provider_runtime_key,
         app_settings_snapshot,
-    )
+    ))
     .await
 }
 
