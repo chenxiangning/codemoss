@@ -10,6 +10,10 @@
 
 ## 2026-08
 
+### 2026-08-14
+
+- [`2026-08-14-add-pi-provider-auth`](2026-08-14-add-pi-provider-auth/proposal.md) — user accepted，已同步 `pi-provider-auth`（新增 capability）；PI CLI 供应商认证：auth.json API Key set/delete（mask 不出前端、原子写 0600）+ OAuth 订阅登录内嵌终端两段式引导
+
 ### 2026-08-13
 
 - [`2026-08-13-upgrade-pi-image-input-transport`](2026-08-13-upgrade-pi-image-input-transport/proposal.md) — user accepted，已同步 `engine-image-input-boundary`；pi 图片输入 transport 换 `@file` argv 原生附件，`image.input` 升 supported，history `<file name>` 双格式解析
