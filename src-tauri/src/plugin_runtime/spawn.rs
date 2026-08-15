@@ -95,6 +95,7 @@ impl RestrictedProcessDriver {
         let mut command = Command::new(&self.executable);
         command.env_clear();
         command.current_dir(&cwd);
+        close_inherited_fds(&mut command);
         #[cfg(windows)]
         {
             command.env("SYSTEMROOT", std::env::var_os("SYSTEMROOT").unwrap_or_default());
@@ -240,6 +241,30 @@ impl Drop for RestrictedProcessDriver {
                 kill_child(&mut child);
             }
         }
+    }
+}
+
+fn close_inherited_fds(command: &mut Command) {
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        unsafe {
+            command.pre_exec(|| {
+                close_fds_from(3);
+                Ok(())
+            });
+        }
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = command;
+    }
+}
+
+#[cfg(unix)]
+fn close_fds_from(start: i32) {
+    for fd in start..=1024 {
+        let _ = unsafe { libc::close(fd) };
     }
 }
 
@@ -512,6 +537,19 @@ mod tests {
         assert_eq!(host.driver().live_count(), 0);
         let _ = std::fs::remove_file(binary);
         std::env::remove_var("MOSSX_SHOULD_NOT_INHERIT");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_leaked_parent_fd_cannot_complete_handshake() {
+        let _probe = std::fs::File::open("/dev/null").expect("probe");
+        let binary = compile_peer("fd-clear");
+        let mut host = enabled_host(RestrictedProcessDriver::with_handshake(&binary));
+        host.activate(claude_activation_request()).expect("activate");
+        assert_eq!(host.driver().live_count(), 1);
+        host.disable("com.mossx.engine.claude").expect("disable");
+        assert_eq!(host.driver().live_count(), 0);
+        let _ = std::fs::remove_file(binary);
     }
 
     #[test]

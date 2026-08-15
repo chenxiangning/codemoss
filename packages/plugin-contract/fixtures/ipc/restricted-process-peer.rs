@@ -10,6 +10,18 @@ fn main() {
     if std::env::var_os("MOSSX_SHOULD_NOT_INHERIT").is_some() {
         std::process::exit(2);
     }
+    #[cfg(unix)]
+    {
+        extern "C" {
+            fn fcntl(fd: i32, cmd: i32, ...) -> i32;
+        }
+        const F_GETFD: i32 = 1;
+        for fd in 3..=256 {
+            if unsafe { fcntl(fd, F_GETFD) } != -1 {
+                std::process::exit(5);
+            }
+        }
+    }
     let expected_cwd = std::env::var_os("MOSSX_PLUGIN_DATA");
     let actual_cwd = std::env::current_dir().ok();
     match (expected_cwd, actual_cwd) {
