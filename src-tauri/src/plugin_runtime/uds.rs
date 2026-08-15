@@ -176,12 +176,12 @@ fn plugin_dir_token(plugin_id: &str) -> Result<String, IpcError> {
     if !crate::plugin_runtime::manifest::plugin_id_ok(plugin_id) {
         return Err(err("schema", "pluginId must be reverse-DNS"));
     }
-    let token = plugin_id
-        .rsplit('.')
-        .next()
-        .filter(|part| !part.is_empty())
-        .ok_or_else(|| err("schema", "pluginId must be reverse-DNS"))?;
-    Ok(token.chars().take(6).collect())
+    let mut hash: u32 = 2_166_136_261;
+    for byte in plugin_id.as_bytes() {
+        hash ^= u32::from(*byte);
+        hash = hash.wrapping_mul(16_777_619);
+    }
+    Ok(format!("{hash:08x}"))
 }
 
 #[cfg(unix)]
@@ -637,6 +637,24 @@ mod tests {
                 .permissions()
                 .mode()
                 & 0o777,
+            0o700
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn same_suffix_plugins_do_not_share_a_uds_directory() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let mossx = private_uds_dir("com.mossx.notes").expect("mossx");
+        let evil = private_uds_dir("com.evil.notes").expect("evil");
+        assert_ne!(mossx, evil);
+        assert_eq!(
+            std::fs::metadata(&mossx).expect("mossx meta").permissions().mode() & 0o777,
+            0o700
+        );
+        assert_eq!(
+            std::fs::metadata(&evil).expect("evil meta").permissions().mode() & 0o777,
             0o700
         );
     }
