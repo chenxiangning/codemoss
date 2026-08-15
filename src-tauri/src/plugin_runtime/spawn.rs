@@ -79,6 +79,11 @@ impl RestrictedProcessDriver {
             return Err(DriverError::Crash);
         }
         let mut command = Command::new(&self.executable);
+        command.env_clear();
+        #[cfg(windows)]
+        {
+            command.env("SYSTEMROOT", std::env::var_os("SYSTEMROOT").unwrap_or_default());
+        }
         if self.handshake {
             command
                 .stdin(Stdio::piped())
@@ -447,6 +452,19 @@ mod tests {
             .start("com.mossx.engine.claude", "claude-cli", 1)
             .is_err());
         assert_eq!(driver.live_count(), 0);
+    }
+
+    #[test]
+    fn parent_leak_probe_cannot_complete_handshake() {
+        std::env::set_var("MOSSX_SHOULD_NOT_INHERIT", "secret");
+        let binary = compile_peer("env-clear");
+        let mut host = enabled_host(RestrictedProcessDriver::with_handshake(&binary));
+        host.activate(claude_activation_request()).expect("activate");
+        assert_eq!(host.driver().live_count(), 1);
+        host.disable("com.mossx.engine.claude").expect("disable");
+        assert_eq!(host.driver().live_count(), 0);
+        let _ = std::fs::remove_file(binary);
+        std::env::remove_var("MOSSX_SHOULD_NOT_INHERIT");
     }
 
     #[test]

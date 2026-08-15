@@ -7,6 +7,9 @@ use std::time::Duration;
 const MXPC_MAGIC: u32 = 0x4D58_5043;
 
 fn main() {
+    if std::env::var_os("MOSSX_SHOULD_NOT_INHERIT").is_some() {
+        std::process::exit(2);
+    }
     let nonce = std::env::var("MOSSX_HANDSHAKE_NONCE").unwrap_or_default();
     let plugin_id = std::env::var("MOSSX_PLUGIN_ID").unwrap_or_else(|_| "com.mossx.notes".into());
     let generation = std::env::var("MOSSX_GENERATION").unwrap_or_else(|_| "1".into());
