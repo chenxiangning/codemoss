@@ -847,4 +847,40 @@ mod tests {
         );
         remove_path(&root);
     }
+
+    #[test]
+    fn runtime_rejects_invalid_host_budget() {
+        use std::time::Duration;
+
+        let root = unique_temp_root("runtime-invalid-budget");
+        let concurrent = match PluginRuntime::new(
+            HostConfig {
+                enabled: true,
+                max_concurrent: 3,
+                ..HostConfig::default()
+            },
+            FakeDriver::default(),
+            "/fixture/workspace",
+            &root,
+        ) {
+            Ok(_) => panic!("concurrent budget should fail"),
+            Err(error) => error,
+        };
+        assert_eq!(concurrent.code, "invalid-budget");
+        let deadline = match PluginRuntime::new(
+            HostConfig {
+                enabled: true,
+                activation_deadline: Duration::from_millis(31_000),
+                ..HostConfig::default()
+            },
+            FakeDriver::default(),
+            "/fixture/workspace",
+            &root,
+        ) {
+            Ok(_) => panic!("deadline budget should fail"),
+            Err(error) => error,
+        };
+        assert_eq!(deadline.code, "invalid-budget");
+        remove_path(&root);
+    }
 }
