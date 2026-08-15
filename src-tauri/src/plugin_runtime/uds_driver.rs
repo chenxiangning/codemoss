@@ -66,7 +66,7 @@ fn handshake(
     use std::thread;
 
     use super::ipc::{validate_handshake_ack, validate_handshake_hello};
-    use super::uds::{accept_uds, bind_uds, connect_uds, read_mxpc_frame_timed, write_mxpc_frame};
+    use super::uds::{accept_uds_timed, bind_uds, connect_uds, read_mxpc_frame_timed, write_mxpc_frame};
 
     let path = sock_path(entry_id, generation)?;
     let listener = bind_uds(&path).map_err(|_| DriverError::Crash)?;
@@ -75,7 +75,7 @@ fn handshake(
     let nonce = issue_handshake_nonce();
     let peer_nonce = nonce.clone();
     let peer = thread::spawn(move || {
-        let mut stream = accept_uds(&listener).map_err(|_| ())?;
+        let mut stream = accept_uds_timed(&listener, HANDSHAKE_DEADLINE).map_err(|_| ())?;
         let received = read_mxpc_frame_timed(&mut stream, HANDSHAKE_DEADLINE).map_err(|_| ())?;
         validate_handshake_hello(&received, generation, &peer_nonce).map_err(|_| ())?;
         let ack_nonce = if corrupt {

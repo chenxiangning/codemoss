@@ -268,6 +268,47 @@ pub fn accept_uds(
 }
 
 #[cfg(unix)]
+pub fn accept_uds_timed(
+    listener: &std::os::unix::net::UnixListener,
+    timeout: Duration,
+) -> Result<std::os::unix::net::UnixStream, IpcError> {
+    use std::os::unix::io::AsRawFd;
+    use std::os::unix::net::UnixListener;
+
+    let fd = listener.as_raw_fd();
+    let flags = unsafe { libc::fcntl(fd, libc::F_GETFL) };
+    if flags < 0 {
+        return Err(err("transport", "cannot inspect accept fd flags"));
+    }
+    if unsafe { libc::fcntl(fd, libc::F_SETFL, flags | libc::O_NONBLOCK) } < 0 {
+        return Err(err("transport", "cannot set accept fd non-blocking"));
+    }
+    let result = (|| {
+        wait_readable(fd, timeout)?;
+        let accepted = UnixListener::accept(listener);
+        match accepted {
+            Ok((stream, _)) => {
+                uds_peer_ok(peer_uid_of(&stream)?)?;
+                Ok(stream)
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => Err(err(
+                "handshake-timeout",
+                "handshake ack must arrive within 2s",
+            )),
+            Err(error) => Err(io_err(error)),
+        }
+    })();
+    let _ = unsafe { libc::fcntl(fd, libc::F_SETFL, flags) };
+    result
+}
+
+#[cfg(not(unix))]
+pub fn accept_uds_timed(_listener: &(), timeout: Duration) -> Result<(), IpcError> {
+    let _ = timeout;
+    Err(err("unsupported-platform", "UDS transport is unix-only in V1"))
+}
+
+#[cfg(unix)]
 pub fn connect_uds(path: &Path) -> Result<std::os::unix::net::UnixStream, IpcError> {
     let stream = std::os::unix::net::UnixStream::connect(path).map_err(io_err)?;
     uds_peer_ok(peer_uid_of(&stream)?)?;
@@ -342,15 +383,20 @@ mod tests {
 
     #[cfg(unix)]
     fn temp_sock(tag: &str) -> std::path::PathBuf {
+        use std::sync::atomic::{AtomicU64, Ordering};
+
+        static SOCK_SEQ: AtomicU64 = AtomicU64::new(1);
+        let seq = SOCK_SEQ.fetch_add(1, Ordering::Relaxed);
         let nanos = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map(|duration| duration.as_nanos())
             .unwrap_or(0);
         // sockaddr_un.sun_path is ~104 bytes; keep this under /tmp/m{pid}.
         private_uds_path(&format!(
-            "{}{}",
+            "{}{}{}",
             tag.chars().next().unwrap_or('x'),
-            nanos % 1_000
+            seq % 100,
+            nanos % 100
         ))
         .expect("private dir")
     }
@@ -429,6 +475,22 @@ mod tests {
             "handshake-timeout"
         );
         server.join().expect("server");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_listener_without_a_connector_times_out() {
+        use std::time::Duration;
+
+        let path = temp_sock("nacc");
+        let listener = bind_uds(&path).expect("bind");
+        assert_eq!(
+            accept_uds_timed(&listener, Duration::from_millis(20))
+                .unwrap_err()
+                .code,
+            "handshake-timeout"
+        );
+        let _ = std::fs::remove_file(&path);
     }
 
     #[cfg(unix)]
