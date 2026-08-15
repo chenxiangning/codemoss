@@ -1050,4 +1050,35 @@ mod tests {
         assert!(store.exists());
         remove_path(&root);
     }
+
+    #[test]
+    fn reset_after_fuse_restores_access_store() {
+        let root = unique_temp_root("runtime-access-reset");
+        let mut runtime = PluginRuntime::new(
+            HostConfig {
+                enabled: true,
+                ..HostConfig::default()
+            },
+            FakeDriver::default(),
+            "/fixture/workspace",
+            &root,
+        )
+        .expect("runtime");
+        runtime
+            .activate(notes_activation_request())
+            .expect("first");
+        let store = runtime.open_own_store("com.mossx.notes").expect("open");
+        runtime.fuse_plugin("com.mossx.notes").expect("fuse");
+        runtime.reset_plugin("com.mossx.notes").expect("reset");
+        runtime
+            .activate(notes_activation_request())
+            .expect("second");
+        assert_eq!(
+            runtime
+                .access_store("com.mossx.notes", "com.mossx.notes")
+                .expect("restored"),
+            store
+        );
+        remove_path(&root);
+    }
 }
