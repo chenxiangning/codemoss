@@ -17,6 +17,8 @@ fn err(code: &'static str, message: impl Into<String>) -> IpcError {
 
 #[derive(Debug, Clone)]
 struct StreamState {
+    plugin_id: String,
+    generation: u64,
     codec: String,
     unacked_frames: u32,
     unacked_bytes: u64,
@@ -29,7 +31,13 @@ pub struct DataPlane {
 }
 
 impl DataPlane {
-    pub fn open(&mut self, stream_id: u32, codec: &str) -> Result<(), IpcError> {
+    pub fn open(
+        &mut self,
+        plugin_id: &str,
+        generation: u64,
+        stream_id: u32,
+        codec: &str,
+    ) -> Result<(), IpcError> {
         assert_known_codec(codec)?;
         if self.streams.contains_key(&stream_id) {
             return Err(err("stream-exists", format!("stream {stream_id} already open")));
@@ -37,6 +45,8 @@ impl DataPlane {
         self.streams.insert(
             stream_id,
             StreamState {
+                plugin_id: plugin_id.to_string(),
+                generation,
                 codec: codec.to_string(),
                 unacked_frames: 0,
                 unacked_bytes: 0,
@@ -44,6 +54,12 @@ impl DataPlane {
             },
         );
         Ok(())
+    }
+
+    pub fn revoke(&mut self, plugin_id: &str, generation: u64) {
+        self.streams.retain(|_, stream| {
+            !(stream.plugin_id == plugin_id && stream.generation == generation)
+        });
     }
 
     pub fn write_frame(
@@ -156,7 +172,7 @@ mod tests {
     #[test]
     fn blob_frame_round_trips_on_a_pipe_after_open() {
         let mut plane = DataPlane::default();
-        plane.open(7, "blob-v1").expect("open");
+        plane.open("com.mossx.notes", 1, 7, "blob-v1").expect("open");
         let (mut reader, mut writer) = std::io::pipe().expect("pipe");
         let peer = thread::spawn(move || read_mxpd_frame(&mut reader).expect("peer frame"));
         plane
@@ -173,7 +189,7 @@ mod tests {
     #[test]
     fn cancel_drops_later_data_frames() {
         let mut plane = DataPlane::default();
-        plane.open(7, "blob-v1").expect("open");
+        plane.open("com.mossx.notes", 1, 7, "blob-v1").expect("open");
         let (mut reader, mut writer) = std::io::pipe().expect("pipe");
         plane
             .write_frame(
@@ -201,7 +217,7 @@ mod tests {
     #[test]
     fn window_blocks_unacked_frames() {
         let mut plane = DataPlane::default();
-        plane.open(7, "log-v1").expect("open");
+        plane.open("com.mossx.notes", 1, 7, "log-v1").expect("open");
         let (mut reader, mut writer) = std::io::pipe().expect("pipe");
         for seq in 1..=32 {
             plane
@@ -214,5 +230,22 @@ mod tests {
         let mut leftover = Vec::new();
         reader.read_to_end(&mut leftover).expect("drain");
         assert!(!leftover.is_empty());
+    }
+
+    #[test]
+    fn revoked_generation_cannot_write() {
+        let mut plane = DataPlane::default();
+        plane.open("com.mossx.notes", 1, 7, "blob-v1").expect("open");
+        let (mut reader, mut writer) = std::io::pipe().expect("pipe");
+        plane.revoke("com.mossx.notes", 1);
+        let error = plane
+            .write_frame(&mut writer, &blob(1, b"stale"))
+            .unwrap_err();
+        assert_eq!(error.code, "not-open");
+        assert!(plane.codec(7).is_none());
+        drop(writer);
+        let mut leftover = Vec::new();
+        reader.read_to_end(&mut leftover).expect("drain");
+        assert!(leftover.is_empty());
     }
 }
