@@ -65,4 +65,38 @@ mod tests {
         );
         host.dispatch("com.mossx.engine.claude", 1).expect("current");
     }
+
+    #[test]
+    fn disable_claude_fixture_keeps_core_implementation() {
+        use crate::plugin_runtime::broker::CapabilityBroker;
+        use std::path::Path;
+
+        let mut host = Host::new(
+            HostConfig {
+                enabled: true,
+                ..HostConfig::default()
+            },
+            FakeDriver::default(),
+        )
+        .expect("config");
+        host.activate(claude_activation_request()).expect("activate");
+        host.disable("com.mossx.engine.claude").expect("disable");
+        assert_eq!(
+            host.slot("com.mossx.engine.claude").unwrap().state,
+            SlotState::Disabled
+        );
+        assert_eq!(
+            host.activate(claude_activation_request()).unwrap_err().code,
+            "disabled"
+        );
+        let broker = CapabilityBroker::new("/fixture/workspace");
+        assert_eq!(
+            broker
+                .query(&host, "com.mossx.engine.claude", 1, "mossx.workspace.read")
+                .unwrap_err()
+                .code,
+            "plugin-unavailable"
+        );
+        assert!(Path::new("src/engine/claude.rs").exists());
+    }
 }
