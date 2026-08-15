@@ -52,17 +52,32 @@ impl BootHost {
     }
 
     pub fn reject_unexpected(&self) -> Result<(), HostError> {
+        self.reject_one(super::ipc::HANDSHAKE_DEADLINE)
+    }
+
+    pub fn drain_unexpected(&self) -> Result<usize, HostError> {
+        self.reject_one(super::ipc::HANDSHAKE_DEADLINE)?;
+        let mut count = 1;
+        loop {
+            match self.reject_one(std::time::Duration::ZERO) {
+                Ok(()) => count += 1,
+                Err(error) if error.code == "handshake-timeout" => return Ok(count),
+                Err(error) => return Err(error),
+            }
+        }
+    }
+
+    fn reject_one(&self, timeout: std::time::Duration) -> Result<(), HostError> {
         #[cfg(unix)]
         {
-            use super::ipc::HANDSHAKE_DEADLINE;
             use serde_json::json;
 
             let supervisor = self.supervisor.as_ref().ok_or_else(|| HostError {
                 code: "unsupported-platform",
                 message: "boot supervisor is unix-only in V1".into(),
             })?;
-            let mut stream = super::uds::accept_uds_timed(&supervisor.listener, HANDSHAKE_DEADLINE)
-                .map_err(host_err)?;
+            let mut stream =
+                super::uds::accept_uds_timed(&supervisor.listener, timeout).map_err(host_err)?;
             super::uds::write_mxpc_frame(
                 &mut stream,
                 &json!({
@@ -79,6 +94,7 @@ impl BootHost {
         }
         #[cfg(not(unix))]
         {
+            let _ = timeout;
             Err(HostError {
                 code: "unsupported-platform",
                 message: "boot supervisor is unix-only in V1".into(),
@@ -247,6 +263,46 @@ mod tests {
         let path = host.supervisor_path().expect("supervisor").to_path_buf();
         assert_eq!(
             host.reject_unexpected().unwrap_err().code,
+            "handshake-timeout"
+        );
+        assert!(path.exists());
+        assert_eq!(host.host.driver().process.live_count(), 0);
+        assert_eq!(host.host.driver().worker.live_count(), 0);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn two_unexpected_connectors_are_both_rejected() {
+        use crate::plugin_runtime::ipc::HANDSHAKE_DEADLINE;
+        use crate::plugin_runtime::uds::{connect_uds, read_mxpc_frame_timed};
+
+        let host = boot_host().expect("boot");
+        let path = host.supervisor_path().expect("supervisor").to_path_buf();
+        let mut first = connect_uds(&path).expect("first");
+        let mut second = connect_uds(&path).expect("second");
+        assert_eq!(host.drain_unexpected().expect("drain"), 2);
+        for client in [&mut first, &mut second] {
+            let received = read_mxpc_frame_timed(client, HANDSHAKE_DEADLINE).expect("frame");
+            assert_eq!(
+                received
+                    .get("error")
+                    .and_then(|error| error.get("message"))
+                    .and_then(serde_json::Value::as_str),
+                Some("host-disabled")
+            );
+        }
+        assert_eq!(host.host.driver().process.live_count(), 0);
+        assert_eq!(host.host.driver().worker.live_count(), 0);
+        assert!(host.host.slot("com.mossx.notes").is_none());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn drain_without_a_connector_times_out() {
+        let host = boot_host().expect("boot");
+        let path = host.supervisor_path().expect("supervisor").to_path_buf();
+        assert_eq!(
+            host.drain_unexpected().unwrap_err().code,
             "handshake-timeout"
         );
         assert!(path.exists());
