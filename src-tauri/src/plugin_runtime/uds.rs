@@ -433,6 +433,31 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
+    fn a_silent_connector_cannot_complete_hello() {
+        use std::thread;
+        use std::time::Duration;
+
+        let path = temp_sock("nhello");
+        let listener = bind_uds(&path).expect("bind");
+        let server = thread::spawn({
+            let path = path.clone();
+            move || {
+                let mut stream = accept_uds(&listener).expect("accept");
+                let error = read_mxpc_frame_timed(&mut stream, Duration::from_millis(20));
+                let _ = std::fs::remove_file(&path);
+                error
+            }
+        });
+        let _client = connect_uds(&path).expect("connect");
+        thread::sleep(Duration::from_millis(40));
+        assert_eq!(
+            server.join().expect("server").unwrap_err().code,
+            "handshake-timeout"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
     fn a_header_only_peer_cannot_complete_handshake() {
         use crate::plugin_runtime::ipc::encode_mxpc;
         use std::io::Write;

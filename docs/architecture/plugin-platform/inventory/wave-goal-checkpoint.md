@@ -132,7 +132,8 @@
 | 1UDS6 UDS 父目录必须恰好 0700 | 完成 | `a3c71a769` |
 | 1HS5 handshake 整帧必须在 2s 内读完 | 完成 | `dec0b5874` |
 | 1HS6 handshake hello 必须绑定 coreContract 1.0.0 | 完成 | `b258b9347` |
-| 1HS7 handshake hello 必须绑定本次签发 nonce | 完成 | 本刀 |
+| 1HS7 handshake hello 必须绑定本次签发 nonce | 完成 | `ddecf4753` |
+| 1HS8 接受端读 hello 也必须在 2s 内完成 | 完成 | 本刀 |
 
 ## 明确未做
 
