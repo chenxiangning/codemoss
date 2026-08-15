@@ -2269,4 +2269,46 @@ mod tests {
         );
         remove_path(&root);
     }
+
+    #[test]
+    fn reset_after_failed_activation_restores_store_apis() {
+        use crate::plugin_runtime::host::DriverError;
+
+        let root = unique_temp_root("runtime-failed-store-reset");
+        let mut driver = FakeDriver::default();
+        driver
+            .fail_on
+            .insert("notes-ui".into(), DriverError::Timeout);
+        let mut runtime = PluginRuntime::new(
+            HostConfig {
+                enabled: true,
+                ..HostConfig::default()
+            },
+            driver,
+            "/fixture/workspace",
+            &root,
+        )
+        .expect("runtime");
+        assert_eq!(
+            runtime
+                .activate(notes_activation_request())
+                .unwrap_err()
+                .code,
+            "activation-timeout"
+        );
+        runtime.reset_plugin("com.mossx.notes").expect("reset");
+        runtime.host.test_driver_mut().fail_on.clear();
+        runtime
+            .activate(notes_activation_request())
+            .expect("second");
+        runtime.open_own_store("com.mossx.notes").expect("open");
+        runtime
+            .access_store("com.mossx.notes", "com.mossx.notes")
+            .expect("access");
+        let checkpoint = runtime
+            .checkpoint_own_store("com.mossx.notes")
+            .expect("checkpoint");
+        assert!(checkpoint.starts_with("ckpt-"));
+        remove_path(&root);
+    }
 }
