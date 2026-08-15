@@ -304,6 +304,9 @@ impl<D: EntryDriver> Host<D> {
     }
 
     pub fn dispatch(&self, plugin_id: &str, generation: u64) -> Result<(), HostError> {
+        if generation == 0 {
+            return Err(err("stale-generation", "generation 0 is never a live handle"));
+        }
         let slot = self
             .slots
             .get(plugin_id)
@@ -385,6 +388,10 @@ mod tests {
             "stale-generation"
         );
         host.dispatch("com.mossx.notes", 2).expect("current");
+        assert_eq!(
+            host.dispatch("com.mossx.notes", 0).unwrap_err().code,
+            "stale-generation"
+        );
     }
 
     #[test]

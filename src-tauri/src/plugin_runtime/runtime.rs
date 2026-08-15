@@ -2617,4 +2617,37 @@ mod tests {
         assert!(runtime.host.slot("com.mossx.notes").is_none());
         remove_path(&root);
     }
+
+    #[test]
+    fn generation_zero_is_never_a_live_handle() {
+        let root = unique_temp_root("runtime-generation-zero");
+        let mut runtime = PluginRuntime::new(
+            HostConfig {
+                enabled: true,
+                ..HostConfig::default()
+            },
+            FakeDriver::default(),
+            "/fixture/workspace",
+            &root,
+        )
+        .expect("runtime");
+        runtime
+            .activate(notes_activation_request())
+            .expect("activate");
+        assert_eq!(
+            runtime
+                .query_read("com.mossx.notes", 0)
+                .unwrap_err()
+                .code,
+            "stale-generation"
+        );
+        assert_eq!(
+            runtime
+                .open_stream("com.mossx.notes", 0, 81, "blob-v1")
+                .unwrap_err()
+                .code,
+            "stale-generation"
+        );
+        remove_path(&root);
+    }
 }

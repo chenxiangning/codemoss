@@ -74,7 +74,9 @@
 | 1AM Activating 不得 fuse / disable | 完成 | `dc637f945` |
 | 1AN 合法 Host 预算边界可构造 | 完成 | `523631484` |
 | 1AO 空 pluginId / unitId 不得激活 | 完成 | `8ee215775` |
-| 1AP activation deadline 上限 30000ms 合法 | 完成 | 本刀 |
+| 1AP activation deadline 上限 30000ms 合法 | 完成 | `33a8fd284` |
+| 1AQ 空白身份 / required entry 不得激活 | 完成 | `e6b2d5882` |
+| 1AR generation 0 永远不是 live handle | 完成 | 本刀 |
 
 ## 明确未做
 
@@ -87,6 +89,6 @@
 
 ## 进度
 
-相对「Core + 可撤销插件平台」全文约 **89%**（合同/插座组合面/disable+fuse+reset/storage 闸门/Host off/只读 Broker/失败激活必须 reset/并发上限/Ready swap/reset 撤 stream/disable 恢复/disable lifecycle/stream budget/未知 codec/重复 stream/其余 brokered 拒绝/provider 拒绝/跨插件 stream/deadline 下限/concurrent 下限/crash reset/Failed store/Failed+disable+fuse reset 恢复 store/fuse 隔离/Activating fail-closed/Activating lifecycle/合法预算边界/空身份/deadline 上限）。  
+相对「Core + 可撤销插件平台」全文约 **90%**（合同/插座组合面/disable+fuse+reset/storage 闸门/Host off/只读 Broker/失败激活必须 reset/并发上限/Ready swap/reset 撤 stream/disable 恢复/disable lifecycle/stream budget/未知 codec/重复 stream/其余 brokered 拒绝/provider 拒绝/跨插件 stream/deadline 下限/concurrent 下限/crash reset/Failed store/Failed+disable+fuse reset 恢复 store/fuse 隔离/Activating fail-closed/Activating lifecycle/合法预算边界/空身份/deadline 上限/空白 entry/generation 0）。  
 相对「产品已拔插头」约 **0%**。  
 合同 100% **不等于**插座完成：1F spawn、Named Pipe、Host 进 boot 仍属插座本体。
