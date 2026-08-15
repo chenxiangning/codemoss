@@ -40,7 +40,9 @@
 | 2U fuse 后不得 restore | 完成 | `ffceaf838` |
 | 2V 从未 activate 不得用 store API | 完成 | `386ca9c69` |
 | 2W Host 默认 off 不得用 store API | 完成 | `52c7e9364` |
-| 1P Host 默认 off 不得 query / stream | 完成 | 本刀 |
+| 1P Host 默认 off 不得 query / stream | 完成 | `d4b5dc8c7` |
+| 1Q 从未 activate 不得 query / stream | 完成 | `e9abb304f` |
+| 1R 组合面拒绝 write / spawn | 完成 | 本刀 |
 
 ## 明确未做
 
@@ -53,5 +55,5 @@
 
 ## 进度
 
-相对「Core + 可撤销插件平台」全文约 **69%**（合同/插座组合面/disable+fuse+reset/storage 闸门/Host off fail-closed）。  
+相对「Core + 可撤销插件平台」全文约 **70%**（合同/插座组合面/disable+fuse+reset/storage 闸门/Host off/只读 Broker）。  
 相对「产品已拔插头」约 **0%**。

@@ -38,9 +38,18 @@ impl<D: EntryDriver> PluginRuntime<D> {
         self.host.activate(request)
     }
 
-    pub fn query_read(&self, plugin_id: &str, generation: u64) -> Result<WorkspaceRead, BrokerError> {
+    pub fn query(
+        &self,
+        plugin_id: &str,
+        generation: u64,
+        capability: &str,
+    ) -> Result<WorkspaceRead, BrokerError> {
         self.broker
-            .query(&self.host, plugin_id, generation, "mossx.workspace.read")
+            .query(&self.host, plugin_id, generation, capability)
+    }
+
+    pub fn query_read(&self, plugin_id: &str, generation: u64) -> Result<WorkspaceRead, BrokerError> {
+        self.query(plugin_id, generation, "mossx.workspace.read")
     }
 
     pub fn open_stream(
@@ -1348,6 +1357,42 @@ mod tests {
                 .unwrap_err()
                 .code,
             "plugin-unavailable"
+        );
+        remove_path(&root);
+    }
+
+    #[test]
+    fn ready_plugin_cannot_write_or_spawn_through_compose_surface() {
+        let root = unique_temp_root("runtime-readonly-broker");
+        let mut runtime = PluginRuntime::new(
+            HostConfig {
+                enabled: true,
+                ..HostConfig::default()
+            },
+            FakeDriver::default(),
+            "/fixture/workspace",
+            &root,
+        )
+        .expect("runtime");
+        let generation = runtime
+            .activate(notes_activation_request())
+            .expect("activate");
+        runtime
+            .query_read("com.mossx.notes", generation)
+            .expect("read");
+        assert_eq!(
+            runtime
+                .query("com.mossx.notes", generation, "mossx.workspace.write")
+                .unwrap_err()
+                .code,
+            "permission-denied"
+        );
+        assert_eq!(
+            runtime
+                .query("com.mossx.notes", generation, "mossx.process.spawn")
+                .unwrap_err()
+                .code,
+            "permission-denied"
         );
         remove_path(&root);
     }
