@@ -242,6 +242,10 @@ impl<D: EntryDriver> Host<D> {
         Ok(())
     }
 
+    pub fn driver(&self) -> &D {
+        &self.driver
+    }
+
     pub fn dispatch(&self, plugin_id: &str, generation: u64) -> Result<(), HostError> {
         let slot = self
             .slots

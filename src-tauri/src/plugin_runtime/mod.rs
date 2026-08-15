@@ -3,4 +3,5 @@
 
 pub mod host;
 pub mod ipc;
+pub mod loopback;
 pub mod manifest;
