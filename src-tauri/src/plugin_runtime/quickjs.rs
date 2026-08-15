@@ -1,0 +1,218 @@
+//! Per-plugin QuickJS Worker isolate gate. No C engine, not in product path.
+
+use std::collections::HashMap;
+
+use super::host::{DriverError, EntryDriver};
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WorkerError {
+    pub code: &'static str,
+    pub message: String,
+}
+
+fn err(code: &'static str, message: impl Into<String>) -> WorkerError {
+    WorkerError {
+        code,
+        message: message.into(),
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct IsolateKey {
+    plugin_id: String,
+    entry_id: String,
+    generation: u64,
+}
+
+#[derive(Debug, Clone)]
+pub struct WorkerIsolate {
+    pub plugin_id: String,
+    pub entry_id: String,
+    pub generation: u64,
+}
+
+pub struct QuickJsWorkerDriver {
+    isolates: HashMap<IsolateKey, WorkerIsolate>,
+}
+
+impl Default for QuickJsWorkerDriver {
+    fn default() -> Self {
+        Self {
+            isolates: HashMap::new(),
+        }
+    }
+}
+
+impl QuickJsWorkerDriver {
+    pub fn live_count(&self) -> usize {
+        self.isolates.len()
+    }
+
+    pub fn isolate(
+        &self,
+        plugin_id: &str,
+        entry_id: &str,
+        generation: u64,
+    ) -> Option<&WorkerIsolate> {
+        self.isolates.get(&IsolateKey {
+            plugin_id: plugin_id.to_string(),
+            entry_id: entry_id.to_string(),
+            generation,
+        })
+    }
+
+    pub fn eval(
+        &self,
+        plugin_id: &str,
+        entry_id: &str,
+        generation: u64,
+        source: &str,
+    ) -> Result<(), WorkerError> {
+        if self
+            .isolate(plugin_id, entry_id, generation)
+            .is_none()
+        {
+            return Err(err("plugin-unavailable", "worker isolate is not live"));
+        }
+        deny_host_escape(source)
+    }
+}
+
+fn deny_host_escape(source: &str) -> Result<(), WorkerError> {
+    let lowered = source.to_ascii_lowercase();
+    let denied = [
+        "require(",
+        "process.",
+        "process ",
+        "fetch(",
+        "import(",
+        "import '",
+        "import \"",
+        "fs.",
+        "net.",
+        "child_process",
+        "worker_threads",
+        "deno.",
+        "bun.",
+    ];
+    if denied.iter().any(|needle| lowered.contains(needle)) {
+        return Err(err(
+            "permission-denied",
+            "QuickJS Worker cannot reach OS or Node APIs",
+        ));
+    }
+    Ok(())
+}
+
+impl EntryDriver for QuickJsWorkerDriver {
+    fn start(&mut self, plugin_id: &str, entry_id: &str, generation: u64) -> Result<(), DriverError> {
+        let key = IsolateKey {
+            plugin_id: plugin_id.to_string(),
+            entry_id: entry_id.to_string(),
+            generation,
+        };
+        if self.isolates.contains_key(&key) {
+            return Err(DriverError::Crash);
+        }
+        self.isolates.insert(
+            key,
+            WorkerIsolate {
+                plugin_id: plugin_id.to_string(),
+                entry_id: entry_id.to_string(),
+                generation,
+            },
+        );
+        Ok(())
+    }
+
+    fn stop(&mut self, plugin_id: &str, entry_id: &str, generation: u64) {
+        self.isolates.remove(&IsolateKey {
+            plugin_id: plugin_id.to_string(),
+            entry_id: entry_id.to_string(),
+            generation,
+        });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::plugin_runtime::claude_pilot::claude_activation_request;
+    use crate::plugin_runtime::host::{Host, HostConfig, SlotState};
+    use crate::plugin_runtime::notes_pilot::notes_activation_request;
+
+    fn enabled_host(driver: QuickJsWorkerDriver) -> Host<QuickJsWorkerDriver> {
+        Host::new(
+            HostConfig {
+                enabled: true,
+                ..HostConfig::default()
+            },
+            driver,
+        )
+        .expect("config")
+    }
+
+    #[test]
+    fn notes_and_claude_workers_do_not_share_an_isolate() {
+        let mut host = enabled_host(QuickJsWorkerDriver::default());
+        host.activate(notes_activation_request()).expect("notes");
+        host.activate(claude_activation_request()).expect("claude");
+        let notes = host
+            .driver()
+            .isolate("com.mossx.notes", "notes-worker", 1)
+            .expect("notes isolate");
+        let claude = host
+            .driver()
+            .isolate("com.mossx.engine.claude", "claude-worker", 1)
+            .expect("claude isolate");
+        assert_ne!(notes.plugin_id, claude.plugin_id);
+        assert_eq!(host.driver().live_count(), 4);
+        host.disable("com.mossx.notes").expect("disable notes");
+        assert!(host
+            .driver()
+            .isolate("com.mossx.notes", "notes-worker", 1)
+            .is_none());
+        assert!(host
+            .driver()
+            .isolate("com.mossx.engine.claude", "claude-worker", 1)
+            .is_some());
+    }
+
+    #[test]
+    fn worker_cannot_reach_node_or_os_apis() {
+        let mut host = enabled_host(QuickJsWorkerDriver::default());
+        host.activate(notes_activation_request()).expect("notes");
+        for source in [
+            "require('fs')",
+            "process.exit(0)",
+            "fetch('https://example.com')",
+            "import('net')",
+            "child_process.spawn('sh')",
+        ] {
+            assert_eq!(
+                host.driver()
+                    .eval("com.mossx.notes", "notes-worker", 1, source)
+                    .unwrap_err()
+                    .code,
+                "permission-denied",
+                "{source}"
+            );
+        }
+    }
+
+    #[test]
+    fn disable_disposes_the_worker_isolate() {
+        let mut host = enabled_host(QuickJsWorkerDriver::default());
+        host.activate(notes_activation_request()).expect("notes");
+        assert_eq!(host.slot("com.mossx.notes").unwrap().state, SlotState::Ready);
+        host.disable("com.mossx.notes").expect("disable");
+        assert_eq!(host.driver().live_count(), 0);
+        assert_eq!(
+            host.driver()
+                .eval("com.mossx.notes", "notes-worker", 1, "1 + 1")
+                .unwrap_err()
+                .code,
+            "plugin-unavailable"
+        );
+    }
+}

@@ -100,12 +100,13 @@
 | 1F1 Restricted Process 可逆 spawn | 完成 | `9dd576efd` |
 | 1F2 Restricted Process framed stdio handshake | 完成 | `6d283fa4b` |
 | 1NP1 Windows Named Pipe 名字闸门 | 完成 | `870d9b5c5` |
-| 1H1 Host 进 boot 默认 off | 完成 | 本刀 |
+| 1H1 Host 进 boot 默认 off | 完成 | `125e3def2` |
+| 1QJ1 per-plugin QuickJS isolate | 完成 | 本刀 |
 
 ## 明确未做
 
 1. Named Pipe ACL / Host driver（1NP2）
-2. QuickJS Worker
+2. QuickJS 引擎嵌入（1QJ2，仍不切产品）
 3. Host boot 打开后的真实 UDS supervisor（仍默认 off）
 4. Claude / Notes **产品**切流（flag 仍默认 off）
 5. 用户数据导入
@@ -113,6 +114,5 @@
 
 ## 进度
 
-相对「Core + 可撤销插件平台」全文约 **99%**（合同平面 **100%**；插座本体 1F spawn+handshake + Named Pipe 闸门 + Host boot 默认 off 已落地；产品拔插头仍 0%）。  
-相对「产品已拔插头」约 **0%**。  
-插座骨架按当前边界落地；QuickJS / Named Pipe ACL / 产品切流仍未做。
+相对「Core + 可撤销插件平台」全文约 **99%**（合同平面 **100%**；插座本体骨架 + QuickJS 隔离闸门已落地；引擎嵌入 / Named Pipe ACL / 产品切流仍未做）。  
+相对「产品已拔插头」约 **0%**。
