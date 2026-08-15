@@ -1,0 +1,5 @@
+# Tasks
+
+- [x] 1.1 disable 后三类 lifecycle API 失败
+- [x] 1.2 `cargo test --lib plugin_runtime::runtime`
+- [x] 1.3 `openspec validate plugin-storage-disabled-lifecycle --strict --no-interactive`

@@ -52,7 +52,8 @@
 | 1Y Ready 再激活换 generation 并撤销旧 handle | 完成 | `2519955b6` |
 | 1Z reset 撤销旧 stream | 完成 | `f531b7272` |
 | 2X Disabled 必须先 reset 才能再激活 | 完成 | `4ffd47a3d` |
-| 2Y Disabled 后 reset 恢复 handle | 完成 | 本刀 |
+| 2Y Disabled 后 reset 恢复 handle | 完成 | `5e91cf2bf` |
+| 2Z disable 后不得 checkpoint / migrate / restore | 完成 | 本刀 |
 
 ## 明确未做
 
@@ -65,5 +66,5 @@
 
 ## 进度
 
-相对「Core + 可撤销插件平台」全文约 **77%**（合同/插座组合面/disable+fuse+reset/storage 闸门/Host off/只读 Broker/失败激活必须 reset/并发上限/Ready swap/reset 撤 stream/disable 恢复）。  
+相对「Core + 可撤销插件平台」全文约 **78%**（合同/插座组合面/disable+fuse+reset/storage 闸门/Host off/只读 Broker/失败激活必须 reset/并发上限/Ready swap/reset 撤 stream/disable 恢复/disable lifecycle）。  
 相对「产品已拔插头」约 **0%**。
