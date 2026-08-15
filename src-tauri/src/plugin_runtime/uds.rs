@@ -2,7 +2,7 @@
 
 use std::io::{Read, Write};
 use std::path::Path;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use serde_json::Value;
 
@@ -47,6 +47,18 @@ pub fn read_mxpc_frame(reader: &mut impl Read) -> Result<Value, IpcError> {
 }
 
 #[cfg(unix)]
+fn remaining(deadline: Instant) -> Result<Duration, IpcError> {
+    let now = Instant::now();
+    if now >= deadline {
+        return Err(err(
+            "handshake-timeout",
+            "handshake ack must arrive within 2s",
+        ));
+    }
+    Ok(deadline.saturating_duration_since(now))
+}
+
+#[cfg(unix)]
 fn wait_readable(fd: i32, timeout: Duration) -> Result<(), IpcError> {
     let mut fds = [libc::pollfd {
         fd,
@@ -68,12 +80,55 @@ fn wait_readable(fd: i32, timeout: Duration) -> Result<(), IpcError> {
 }
 
 #[cfg(unix)]
+fn read_exact_until(
+    reader: &mut (impl Read + std::os::unix::io::AsRawFd),
+    buf: &mut [u8],
+    deadline: Instant,
+) -> Result<(), IpcError> {
+    use std::io::ErrorKind;
+
+    let fd = reader.as_raw_fd();
+    let flags = unsafe { libc::fcntl(fd, libc::F_GETFL) };
+    if flags < 0 {
+        return Err(err("transport", "cannot inspect handshake fd flags"));
+    }
+    if unsafe { libc::fcntl(fd, libc::F_SETFL, flags | libc::O_NONBLOCK) } < 0 {
+        return Err(err("transport", "cannot set handshake fd non-blocking"));
+    }
+    let result = (|| {
+        let mut filled = 0;
+        while filled < buf.len() {
+            wait_readable(fd, remaining(deadline)?)?;
+            match reader.read(&mut buf[filled..]) {
+                Ok(0) => {
+                    return Err(err("truncated", "incomplete MXPC frame before deadline"));
+                }
+                Ok(n) => filled += n,
+                Err(error) if error.kind() == ErrorKind::WouldBlock || error.kind() == ErrorKind::Interrupted => {}
+                Err(error) => return Err(err("transport", error.to_string())),
+            }
+        }
+        Ok(())
+    })();
+    let _ = unsafe { libc::fcntl(fd, libc::F_SETFL, flags) };
+    result
+}
+
+#[cfg(unix)]
 pub fn read_mxpc_frame_timed(
     reader: &mut (impl Read + std::os::unix::io::AsRawFd),
     timeout: Duration,
 ) -> Result<Value, IpcError> {
-    wait_readable(reader.as_raw_fd(), timeout)?;
-    read_mxpc_frame(reader)
+    let deadline = Instant::now() + timeout;
+    let mut header = [0_u8; MXPC_HEADER_BYTES];
+    read_exact_until(reader, &mut header, deadline)?;
+    let payload_len = u32::from_le_bytes([header[6], header[7], header[8], header[9]]) as usize;
+    let mut frame = Vec::with_capacity(MXPC_HEADER_BYTES + payload_len);
+    frame.extend_from_slice(&header);
+    frame.resize(MXPC_HEADER_BYTES + payload_len, 0);
+    read_exact_until(reader, &mut frame[MXPC_HEADER_BYTES..], deadline)?;
+    let (value, _) = decode_mxpc(&frame)?;
+    Ok(value)
 }
 
 #[cfg(not(unix))]
@@ -378,6 +433,39 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
+    fn a_header_only_peer_cannot_complete_handshake() {
+        use crate::plugin_runtime::ipc::encode_mxpc;
+        use std::io::Write;
+        use std::thread;
+        use std::time::Duration;
+
+        let path = temp_sock("header");
+        let listener = bind_uds(&path).expect("bind");
+        let server = thread::spawn({
+            let path = path.clone();
+            move || {
+                let mut stream = accept_uds(&listener).expect("accept");
+                let _ = read_mxpc_frame(&mut stream).expect("hello");
+                let frame = encode_mxpc(&ack(NONCE)).expect("encode");
+                stream.write_all(&frame[..MXPC_HEADER_BYTES]).expect("header");
+                let _ = stream.flush();
+                thread::sleep(Duration::from_millis(80));
+                let _ = std::fs::remove_file(&path);
+            }
+        });
+        let mut client = connect_uds(&path).expect("connect");
+        write_mxpc_frame(&mut client, &hello()).expect("hello");
+        assert_eq!(
+            read_mxpc_frame_timed(&mut client, Duration::from_millis(30))
+                .unwrap_err()
+                .code,
+            "handshake-timeout"
+        );
+        server.join().expect("server");
+    }
+
+    #[cfg(unix)]
+    #[test]
     fn bound_uds_is_owner_only() {
         use std::os::unix::fs::PermissionsExt;
 
@@ -412,12 +500,12 @@ mod tests {
     fn a_world_readable_parent_cannot_bind() {
         use std::os::unix::fs::PermissionsExt;
 
-        let dir = private_uds_dir().expect("private dir");
-        let path = dir.join("r.s");
+        let dir = Path::new("/tmp").join(format!("m{}r", std::process::id() % 10_000));
+        std::fs::create_dir_all(&dir).expect("mkdir");
         std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o755)).expect("chmod");
+        let path = dir.join("r.s");
         assert_eq!(bind_uds(&path).unwrap_err().code, "permission-denied");
-        let _ = std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700));
-        let _ = std::fs::remove_file(&path);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

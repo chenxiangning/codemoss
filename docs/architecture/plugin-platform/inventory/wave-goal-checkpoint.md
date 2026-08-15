@@ -129,7 +129,8 @@
 | 1HS4 handshake 必须在 2s 内完成 | 完成 | `3de638e0e` |
 | 1QJ7 Worker handshake 必须走私有 UDS | 完成 | `d319ae858` |
 | 1UDS5 私有 UDS 失败不得回落到 /tmp | 完成 | `a754a4214` |
-| 1UDS6 UDS 父目录必须恰好 0700 | 完成 | 本刀 |
+| 1UDS6 UDS 父目录必须恰好 0700 | 完成 | `a3c71a769` |
+| 1HS5 handshake 整帧必须在 2s 内读完 | 完成 | 本刀 |
 
 ## 明确未做
 
