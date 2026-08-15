@@ -1,4 +1,4 @@
-//! Dispatch Process and QuickJS fibers by Manifest kind. Not in boot.
+//! Dispatch Process and QuickJS fibers by Manifest kind. Boot uses this default-off.
 
 use super::host::{DriverError, EntryDriver};
 use super::quickjs::QuickJsWorkerDriver;

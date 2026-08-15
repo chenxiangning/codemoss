@@ -4,13 +4,14 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use super::composite::CompositeDriver;
 use super::host::HostConfig;
 use super::runtime::PluginRuntime;
-use super::uds_driver::UdsHandshakeDriver;
+use super::spawn::{missing_executable, RestrictedProcessDriver};
 
 static BOOT_SEQ: AtomicU64 = AtomicU64::new(1);
 
-pub type BootHost = PluginRuntime<UdsHandshakeDriver>;
+pub type BootHost = PluginRuntime<CompositeDriver>;
 
 fn boot_storage_root() -> PathBuf {
     let seq = BOOT_SEQ.fetch_add(1, Ordering::Relaxed);
@@ -26,10 +27,14 @@ fn boot_storage_root() -> PathBuf {
     ))
 }
 
+fn boot_driver() -> CompositeDriver {
+    CompositeDriver::new(RestrictedProcessDriver::new(missing_executable()))
+}
+
 pub fn boot_host() -> Result<BootHost, super::host::HostError> {
     PluginRuntime::new(
         HostConfig::default(),
-        UdsHandshakeDriver::default(),
+        boot_driver(),
         "/fixture/workspace",
         boot_storage_root(),
     )
@@ -44,13 +49,15 @@ mod tests {
     #[test]
     fn boot_host_rejects_notes_activation() {
         let mut host = boot_host().expect("boot");
-        assert!(host.host.driver().started.is_empty());
+        assert_eq!(host.host.driver().process.live_count(), 0);
+        assert_eq!(host.host.driver().worker.live_count(), 0);
         assert_eq!(
             host.activate(notes_activation_request()).unwrap_err().code,
             "host-disabled"
         );
         assert!(host.host.slot("com.mossx.notes").is_none());
-        assert!(host.host.driver().started.is_empty());
+        assert_eq!(host.host.driver().process.live_count(), 0);
+        assert_eq!(host.host.driver().worker.live_count(), 0);
     }
 
     #[test]
@@ -61,8 +68,8 @@ mod tests {
             "host-disabled"
         );
         assert!(host.host.slot("com.mossx.engine.claude").is_none());
-        assert!(host.host.driver().started.is_empty());
-        assert!(host.host.driver().stopped.is_empty());
+        assert_eq!(host.host.driver().process.live_count(), 0);
+        assert_eq!(host.host.driver().worker.live_count(), 0);
     }
 
     #[test]
