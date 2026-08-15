@@ -148,7 +148,8 @@
 | 1HS11 UDS / Worker / spawn handshake 写必须走 timed write | 完成 | `c5470ffd3` |
 | 1H9 boot supervisor 必须在 Host 存活期间值守 | 完成 | `b46e63615` |
 | 1UDS13 UDS connect 必须在 handshake deadline 内完成 | 完成 | `9cf2ccdf4` |
-| 1QJ5 嵌入 per-plugin QuickJS C 引擎 | 完成 | 本刀 |
+| 1QJ5 嵌入 per-plugin QuickJS C 引擎 | 完成 | `daed8f70f` |
+| 1QJ8 Worker eval 必须在 deadline 内完成 | 完成 | 本刀 |
 
 ## 明确未做
 

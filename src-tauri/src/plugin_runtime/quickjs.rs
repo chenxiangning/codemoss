@@ -4,6 +4,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::thread::JoinHandle;
+use std::time::{Duration, Instant};
 
 use serde_json::{json, Value};
 
@@ -15,6 +16,7 @@ use super::ipc::HANDSHAKE_DEADLINE;
 use super::ipc::{decode_mxpc, encode_mxpc};
 
 static WORKER_SOCK_SEQ: AtomicU64 = AtomicU64::new(1);
+pub const EVAL_DEADLINE: Duration = Duration::from_secs(2);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WorkerError {
@@ -44,7 +46,7 @@ pub struct WorkerIsolate {
 }
 
 enum EngineCmd {
-    Eval(String, Sender<Result<(), WorkerError>>),
+    Eval(String, Duration, Sender<Result<(), WorkerError>>),
     Shutdown,
 }
 
@@ -63,15 +65,15 @@ impl Drop for EngineHandle {
 }
 
 impl WorkerIsolate {
-    fn eval(&self, source: &str) -> Result<(), WorkerError> {
+    fn eval(&self, source: &str, timeout: Duration) -> Result<(), WorkerError> {
         let (reply_tx, reply_rx) = mpsc::channel();
         self.engine
             .tx
-            .send(EngineCmd::Eval(source.to_string(), reply_tx))
+            .send(EngineCmd::Eval(source.to_string(), timeout, reply_tx))
             .map_err(|_| err("plugin-unavailable", "worker isolate is not live"))?;
         reply_rx
-            .recv()
-            .map_err(|_| err("plugin-unavailable", "worker isolate is not live"))?
+            .recv_timeout(timeout.saturating_add(Duration::from_millis(200)))
+            .map_err(|_| err("deadline", "worker eval exceeded deadline"))?
     }
 }
 
@@ -120,16 +122,19 @@ fn engine_loop(rx: Receiver<EngineCmd>, ready: Sender<Result<(), DriverError>>) 
     let _ = ready.send(Ok(()));
     while let Ok(cmd) = rx.recv() {
         match cmd {
-            EngineCmd::Eval(source, reply) => {
-                let result = context
-                    .with(|ctx| ctx.eval::<(), _>(source.as_str()))
-                    .map_err(|_| {
-                        err(
-                            "schema",
-                            "QuickJS rejected the worker source",
-                        )
-                    });
-                let _ = reply.send(result);
+            EngineCmd::Eval(source, timeout, reply) => {
+                let deadline = Instant::now() + timeout;
+                runtime.set_interrupt_handler(Some(Box::new(move || Instant::now() >= deadline)));
+                let result = context.with(|ctx| ctx.eval::<(), _>(source.as_str()));
+                runtime.set_interrupt_handler(None);
+                let mapped = match result {
+                    Ok(()) => Ok(()),
+                    Err(_) if Instant::now() >= deadline => {
+                        Err(err("deadline", "worker eval exceeded deadline"))
+                    }
+                    Err(_) => Err(err("schema", "QuickJS rejected the worker source")),
+                };
+                let _ = reply.send(mapped);
             }
             EngineCmd::Shutdown => break,
         }
@@ -181,7 +186,22 @@ impl QuickJsWorkerDriver {
             .isolate(plugin_id, entry_id, generation)
             .ok_or_else(|| err("plugin-unavailable", "worker isolate is not live"))?;
         allow_mossx_bridge(source)?;
-        isolate.eval(source)
+        isolate.eval(source, EVAL_DEADLINE)
+    }
+
+    pub fn eval_with_deadline(
+        &self,
+        plugin_id: &str,
+        entry_id: &str,
+        generation: u64,
+        source: &str,
+        timeout: Duration,
+    ) -> Result<(), WorkerError> {
+        let isolate = self
+            .isolate(plugin_id, entry_id, generation)
+            .ok_or_else(|| err("plugin-unavailable", "worker isolate is not live"))?;
+        allow_mossx_bridge(source)?;
+        isolate.eval(source, timeout)
     }
 
     pub fn declare(&mut self, plugin_id: &str, entry_id: &str) {
@@ -522,6 +542,29 @@ mod tests {
         );
         host.driver()
             .eval("com.mossx.notes", "notes-worker", 1, "mossx.handshake.hello()")
+            .expect("still live");
+        assert_eq!(host.driver().live_count(), 1);
+    }
+
+    #[test]
+    fn an_infinite_loop_cannot_hang_the_host() {
+        let mut host = enabled_host(QuickJsWorkerDriver::default());
+        host.activate(notes_activation_request()).expect("notes");
+        assert_eq!(
+            host.driver()
+                .eval_with_deadline(
+                    "com.mossx.notes",
+                    "notes-worker",
+                    1,
+                    "mossx.handshake.hello();while(true){}",
+                    Duration::from_millis(50),
+                )
+                .unwrap_err()
+                .code,
+            "deadline"
+        );
+        host.driver()
+            .eval("com.mossx.notes", "notes-worker", 1, "mossx.sdk.ready()")
             .expect("still live");
         assert_eq!(host.driver().live_count(), 1);
     }
