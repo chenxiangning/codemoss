@@ -113,7 +113,8 @@
 | 1QJ4 isolate 只认 Manifest kind/runtime | 完成 | `21719ec1f` |
 | 1F3 Restricted Process 只认 Manifest kind=process | 完成 | `59349c080` |
 | 1H4 Host 按 Manifest kind 分发 Process / QuickJS | 完成 | `fa614d09e` |
-| 1H5 boot Host 换 CompositeDriver，仍默认 off | 完成 | 本刀 |
+| 1H5 boot Host 换 CompositeDriver，仍默认 off | 完成 | `81a3b63c3` |
+| 1F4 Restricted Process executable allowlist | 完成 | 本刀 |
 
 ## 明确未做
 

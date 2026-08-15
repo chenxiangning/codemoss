@@ -72,6 +72,9 @@ impl RestrictedProcessDriver {
         generation: u64,
         corrupt: bool,
     ) -> Result<Child, DriverError> {
+        if !process_executable_ok(&self.executable) {
+            return Err(DriverError::Crash);
+        }
         if !self.executable.is_file() {
             return Err(DriverError::Crash);
         }
@@ -215,6 +218,41 @@ impl Drop for RestrictedProcessDriver {
 
 pub fn missing_executable() -> PathBuf {
     PathBuf::from("/nonexistent-mossx-restricted-process")
+}
+
+const DENIED_STEMS: &[&str] = &[
+    "sh",
+    "bash",
+    "zsh",
+    "dash",
+    "cmd",
+    "powershell",
+    "pwsh",
+    "python",
+    "python3",
+    "node",
+    "deno",
+    "bun",
+];
+
+pub fn process_executable_ok(path: &Path) -> bool {
+    if !path.is_absolute() {
+        return false;
+    }
+    if path.as_os_str().is_empty() {
+        return false;
+    }
+    if path.components().any(|component| {
+        matches!(component, std::path::Component::ParentDir)
+    }) {
+        return false;
+    }
+    let Some(stem) = path.file_stem().and_then(|name| name.to_str()) else {
+        return false;
+    };
+    !DENIED_STEMS
+        .iter()
+        .any(|denied| stem.eq_ignore_ascii_case(denied))
 }
 
 pub fn idle_fixture_executable() -> PathBuf {
@@ -394,5 +432,32 @@ mod tests {
             .start("com.mossx.engine.claude", "evil-cli", 1)
             .expect("start");
         assert_eq!(driver.live_count(), 0);
+    }
+
+    #[test]
+    fn a_shell_executable_cannot_leave_a_child() {
+        let shell = if cfg!(windows) {
+            PathBuf::from(r"C:\Windows\System32\cmd.exe")
+        } else {
+            PathBuf::from("/bin/sh")
+        };
+        assert!(!process_executable_ok(&shell));
+        let mut driver = RestrictedProcessDriver::new(shell);
+        assert!(driver
+            .start("com.mossx.engine.claude", "claude-cli", 1)
+            .is_err());
+        assert_eq!(driver.live_count(), 0);
+    }
+
+    #[test]
+    fn relative_or_parent_path_is_denied() {
+        for path in [
+            PathBuf::from("sleep"),
+            PathBuf::from("/tmp/../bin/sh"),
+            PathBuf::from(""),
+        ] {
+            assert!(!process_executable_ok(&path), "{path:?}");
+        }
+        assert!(process_executable_ok(&idle_fixture_executable()));
     }
 }
