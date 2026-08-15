@@ -204,6 +204,21 @@ impl QuickJsWorkerDriver {
         isolate.eval(source, timeout)
     }
 
+    #[cfg(test)]
+    pub fn eval_raw(
+        &self,
+        plugin_id: &str,
+        entry_id: &str,
+        generation: u64,
+        source: &str,
+        timeout: Duration,
+    ) -> Result<(), WorkerError> {
+        let isolate = self
+            .isolate(plugin_id, entry_id, generation)
+            .ok_or_else(|| err("plugin-unavailable", "worker isolate is not live"))?;
+        isolate.eval(source, timeout)
+    }
+
     pub fn declare(&mut self, plugin_id: &str, entry_id: &str) {
         self.catalog
             .insert((plugin_id.to_string(), entry_id.to_string()));
@@ -370,23 +385,29 @@ fn declared_quickjs_workers() -> HashSet<(String, String)> {
 
 fn allow_mossx_bridge(source: &str) -> Result<(), WorkerError> {
     let trimmed = source.trim();
-    let lowered = trimmed.to_ascii_lowercase();
-    let allowed = lowered.starts_with("mossx.handshake.") || lowered.starts_with("mossx.sdk.");
-    let smuggled = [
-        "require(",
-        "process.",
-        "fetch(",
-        "import(",
-        "eval(",
-        "function(",
-        "child_process",
-        "worker_threads",
-    ]
-    .iter()
-    .any(|needle| lowered.contains(needle));
-    if allowed && !smuggled {
+    let rest = trimmed
+        .strip_prefix("mossx.handshake.")
+        .or_else(|| trimmed.strip_prefix("mossx.sdk."));
+    let Some(rest) = rest else {
+        return denied();
+    };
+    let Some(ident) = rest.strip_suffix("()") else {
+        return denied();
+    };
+    let mut chars = ident.chars();
+    let Some(first) = chars.next() else {
+        return denied();
+    };
+    if !(first.is_ascii_alphabetic() || first == '_') {
+        return denied();
+    }
+    if chars.all(|ch| ch.is_ascii_alphanumeric() || ch == '_') {
         return Ok(());
     }
+    denied()
+}
+
+fn denied() -> Result<(), WorkerError> {
     Err(err(
         "permission-denied",
         "QuickJS Worker can only call mossx.handshake.* or mossx.sdk.*",
@@ -538,6 +559,19 @@ mod tests {
                 .eval("com.mossx.notes", "notes-worker", 1, "mossx.handshake.hello(")
                 .unwrap_err()
                 .code,
+            "permission-denied"
+        );
+        assert_eq!(
+            host.driver()
+                .eval_raw(
+                    "com.mossx.notes",
+                    "notes-worker",
+                    1,
+                    "mossx.handshake.hello(",
+                    EVAL_DEADLINE,
+                )
+                .unwrap_err()
+                .code,
             "schema"
         );
         host.driver()
@@ -552,7 +586,19 @@ mod tests {
         host.activate(notes_activation_request()).expect("notes");
         assert_eq!(
             host.driver()
-                .eval_with_deadline(
+                .eval(
+                    "com.mossx.notes",
+                    "notes-worker",
+                    1,
+                    "mossx.handshake.hello();while(true){}",
+                )
+                .unwrap_err()
+                .code,
+            "permission-denied"
+        );
+        assert_eq!(
+            host.driver()
+                .eval_raw(
                     "com.mossx.notes",
                     "notes-worker",
                     1,
@@ -567,6 +613,27 @@ mod tests {
             .eval("com.mossx.notes", "notes-worker", 1, "mossx.sdk.ready()")
             .expect("still live");
         assert_eq!(host.driver().live_count(), 1);
+    }
+
+    #[test]
+    fn a_trailing_statement_cannot_enter_the_engine() {
+        let mut host = enabled_host(QuickJsWorkerDriver::default());
+        host.activate(notes_activation_request()).expect("notes");
+        assert_eq!(
+            host.driver()
+                .eval(
+                    "com.mossx.notes",
+                    "notes-worker",
+                    1,
+                    "mossx.handshake.hello();1+1",
+                )
+                .unwrap_err()
+                .code,
+            "permission-denied"
+        );
+        host.driver()
+            .eval("com.mossx.notes", "notes-worker", 1, "mossx.handshake.hello()")
+            .expect("still live");
     }
 
     #[test]
