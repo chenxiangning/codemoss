@@ -2,6 +2,7 @@
 #![allow(dead_code)]
 
 pub mod broker;
+pub mod disk_storage;
 pub mod host;
 pub mod ipc;
 pub mod loopback;
