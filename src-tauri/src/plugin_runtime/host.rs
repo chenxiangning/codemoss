@@ -164,6 +164,9 @@ impl<D: EntryDriver> Host<D> {
             if current.state == SlotState::Fused {
                 return Err(err("fused", "plugin is fused until reset"));
             }
+            if current.state == SlotState::Disabled {
+                return Err(err("disabled", "plugin is disabled until reset"));
+            }
             if current.state == SlotState::Activating {
                 return Err(err("activation-busy", "plugin is already activating"));
             }
@@ -224,6 +227,18 @@ impl<D: EntryDriver> Host<D> {
         }
         slot.started.clear();
         slot.state = SlotState::Fused;
+        Ok(())
+    }
+
+    pub fn disable(&mut self, plugin_id: &str) -> Result<(), HostError> {
+        let slot = self.slots.entry(plugin_id.to_string()).or_insert_with(PluginSlot::idle);
+        let generation = slot.generation;
+        let started = slot.started.clone();
+        for entry_id in started.iter().rev() {
+            self.driver.stop(plugin_id, entry_id, generation);
+        }
+        slot.started.clear();
+        slot.state = SlotState::Disabled;
         Ok(())
     }
 
@@ -337,6 +352,18 @@ mod tests {
         host.fuse("com.mossx.notes").expect("fuse");
         assert_eq!(host.slot("com.mossx.notes").unwrap().state, SlotState::Fused);
         assert_eq!(host.activate(notes_request()).unwrap_err().code, "fused");
+        host.reset("com.mossx.notes").expect("reset");
+        host.activate(notes_request()).expect("after reset");
+    }
+
+    #[test]
+    fn disable_stops_entries_and_blocks_later_activate() {
+        let mut host = enabled_host(FakeDriver::default());
+        host.activate(notes_request()).expect("activate");
+        host.disable("com.mossx.notes").expect("disable");
+        assert_eq!(host.slot("com.mossx.notes").unwrap().state, SlotState::Disabled);
+        assert!(host.slot("com.mossx.notes").unwrap().started.is_empty());
+        assert_eq!(host.activate(notes_request()).unwrap_err().code, "disabled");
         host.reset("com.mossx.notes").expect("reset");
         host.activate(notes_request()).expect("after reset");
     }

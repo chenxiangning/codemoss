@@ -145,4 +145,16 @@ mod tests {
         assert_eq!(error.code, "plugin-unavailable");
         assert!(!error.message.contains("/fixture/workspace"));
     }
+
+    #[test]
+    fn disabled_plugin_cannot_read_fixture_workspace() {
+        let mut host = ready_host();
+        host.disable("com.mossx.notes").expect("disable");
+        let broker = CapabilityBroker::new("/fixture/workspace");
+        let error = broker
+            .query(&host, "com.mossx.notes", 1, READ)
+            .unwrap_err();
+        assert_eq!(error.code, "plugin-unavailable");
+        assert!(!error.message.contains("/fixture/workspace"));
+    }
 }
