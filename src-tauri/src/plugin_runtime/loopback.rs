@@ -47,7 +47,7 @@ impl LoopbackDriver {
         let issued = issue_handshake_nonce();
         let encoded_hello = encode_mxpc(&hello(generation, &issued)).map_err(|_| DriverError::Crash)?;
         let (decoded_hello, _) = decode_mxpc(&encoded_hello).map_err(|_| DriverError::Crash)?;
-        validate_handshake_hello(&decoded_hello, generation).map_err(|_| DriverError::Crash)?;
+        validate_handshake_hello(&decoded_hello, generation, &issued).map_err(|_| DriverError::Crash)?;
 
         let nonce = if self.corrupt_ack_on.as_deref() == Some(entry_id) {
             "bb".repeat(32)

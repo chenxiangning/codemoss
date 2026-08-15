@@ -77,7 +77,7 @@ fn handshake(
     let peer = thread::spawn(move || {
         let mut stream = accept_uds(&listener).map_err(|_| ())?;
         let received = read_mxpc_frame(&mut stream).map_err(|_| ())?;
-        validate_handshake_hello(&received, generation).map_err(|_| ())?;
+        validate_handshake_hello(&received, generation, &peer_nonce).map_err(|_| ())?;
         let ack_nonce = if corrupt {
             "bb".repeat(32)
         } else {

@@ -165,7 +165,7 @@ fn handshake_worker(
         let peer = thread::spawn(move || {
             let mut stream = accept_uds(&listener).map_err(|_| ())?;
             let received = read_mxpc_frame(&mut stream).map_err(|_| ())?;
-            validate_handshake_hello(&received, generation).map_err(|_| ())?;
+            validate_handshake_hello(&received, generation, &peer_nonce).map_err(|_| ())?;
             let ack_nonce = if corrupt {
                 "bb".repeat(32)
             } else {
@@ -191,7 +191,7 @@ fn handshake_worker(
         let issued = issue_handshake_nonce();
         let encoded_hello = encode_mxpc(&hello(generation, &issued)).map_err(|_| DriverError::Crash)?;
         let (decoded_hello, _) = decode_mxpc(&encoded_hello).map_err(|_| DriverError::Crash)?;
-        validate_handshake_hello(&decoded_hello, generation).map_err(|_| DriverError::Crash)?;
+        validate_handshake_hello(&decoded_hello, generation, &issued).map_err(|_| DriverError::Crash)?;
         let nonce = if corrupt {
             "bb".repeat(32)
         } else {

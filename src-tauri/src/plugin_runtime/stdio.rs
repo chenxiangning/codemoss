@@ -54,7 +54,7 @@ mod tests {
         let ((mut host_out, mut host_in), (mut peer_in, mut peer_out)) = duplex();
         let peer = thread::spawn(move || {
             let received = read_mxpc_frame(&mut peer_in).expect("peer hello");
-            validate_handshake_hello(&received, 1).expect("hello");
+            validate_handshake_hello(&received, 1, NONCE).expect("hello");
             write_mxpc_frame(&mut peer_out, &ack(NONCE)).expect("peer ack");
         });
         write_mxpc_frame(&mut host_out, &hello()).expect("host hello");

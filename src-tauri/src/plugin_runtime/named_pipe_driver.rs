@@ -58,7 +58,7 @@ fn handshake(
     let peer = thread::spawn(move || {
         let mut stream = server.accept().map_err(|_| ())?;
         let received = read_mxpc_frame(&mut stream).map_err(|_| ())?;
-        validate_handshake_hello(&received, generation).map_err(|_| ())?;
+        validate_handshake_hello(&received, generation, &peer_nonce).map_err(|_| ())?;
         write_mxpc_frame(
             &mut stream,
             &json!({

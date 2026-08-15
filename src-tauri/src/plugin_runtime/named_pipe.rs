@@ -353,7 +353,7 @@ mod tests {
             move || {
                 let mut stream = server.accept().expect("accept");
                 let received = read_mxpc_frame(&mut stream).expect("hello");
-                validate_handshake_hello(&received, 1).expect("hello");
+                validate_handshake_hello(&received, 1, NONCE).expect("hello");
                 write_mxpc_frame(
                     &mut stream,
                     &json!({

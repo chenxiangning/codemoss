@@ -230,7 +230,11 @@ pub fn issue_handshake_nonce() -> String {
     format!("{}{}", uuid::Uuid::new_v4().simple(), uuid::Uuid::new_v4().simple())
 }
 
-pub fn validate_handshake_hello(value: &Value, expected_generation: u64) -> Result<(), IpcError> {
+pub fn validate_handshake_hello(
+    value: &Value,
+    expected_generation: u64,
+    expected_nonce: &str,
+) -> Result<(), IpcError> {
     if value.get("jsonrpc").and_then(Value::as_str) != Some("2.0")
         || value.get("method").and_then(Value::as_str) != Some("mossx.handshake.hello")
     {
@@ -255,6 +259,12 @@ pub fn validate_handshake_hello(value: &Value, expected_generation: u64) -> Resu
         .ok_or_else(|| err("handshake-rejected", "nonce required"))?;
     if nonce.len() != 64 || !nonce.chars().all(|ch| ch.is_ascii_hexdigit()) {
         return Err(err("handshake-rejected", "nonce must be 32-byte hex"));
+    }
+    if nonce != expected_nonce {
+        return Err(err(
+            "handshake-rejected",
+            "hello nonce must match the issued nonce",
+        ));
     }
     if expected_generation == 0 {
         return Err(err("handshake-rejected", "generation 0 is never a live handle"));
@@ -350,7 +360,7 @@ mod tests {
         let (decoded, used) = decode_mxpc(&encoded).expect("decode");
         assert_eq!(used, encoded.len());
         assert_eq!(decoded, hello());
-        validate_handshake_hello(&decoded, 1).expect("hello shape");
+        validate_handshake_hello(&decoded, 1, &"aa".repeat(32)).expect("hello shape");
     }
 
     #[test]
@@ -447,26 +457,30 @@ mod tests {
 
     #[test]
     fn a_current_generation_hello_is_accepted() {
-        validate_handshake_hello(&hello(), 1).expect("hello");
+        validate_handshake_hello(&hello(), 1, &"aa".repeat(32)).expect("hello");
     }
 
     #[test]
     fn a_stale_hello_generation_cannot_start_handshake() {
         assert_eq!(
-            validate_handshake_hello(&hello(), 2).unwrap_err().code,
+            validate_handshake_hello(&hello(), 2, &"aa".repeat(32))
+                .unwrap_err()
+                .code,
             "handshake-rejected"
         );
         let mut zero = hello();
         zero["params"]["generation"] = Value::from(0);
         assert_eq!(
-            validate_handshake_hello(&zero, 1).unwrap_err().code,
+            validate_handshake_hello(&zero, 1, &"aa".repeat(32))
+                .unwrap_err()
+                .code,
             "handshake-rejected"
         );
     }
 
     #[test]
     fn a_current_contract_hello_is_accepted() {
-        validate_handshake_hello(&hello(), 1).expect("hello");
+        validate_handshake_hello(&hello(), 1, &"aa".repeat(32)).expect("hello");
     }
 
     #[test]
@@ -474,7 +488,9 @@ mod tests {
         let mut major = hello();
         major["params"]["coreContract"] = Value::from("2.0.0");
         assert_eq!(
-            validate_handshake_hello(&major, 1).unwrap_err().code,
+            validate_handshake_hello(&major, 1, &"aa".repeat(32))
+                .unwrap_err()
+                .code,
             "handshake-rejected"
         );
         let mut missing = hello();
@@ -483,7 +499,24 @@ mod tests {
             .expect("params")
             .remove("coreContract");
         assert_eq!(
-            validate_handshake_hello(&missing, 1).unwrap_err().code,
+            validate_handshake_hello(&missing, 1, &"aa".repeat(32))
+                .unwrap_err()
+                .code,
+            "handshake-rejected"
+        );
+    }
+
+    #[test]
+    fn the_issued_nonce_hello_is_accepted() {
+        validate_handshake_hello(&hello(), 1, &"aa".repeat(32)).expect("hello");
+    }
+
+    #[test]
+    fn a_foreign_hello_nonce_cannot_start_handshake() {
+        assert_eq!(
+            validate_handshake_hello(&hello(), 1, &"bb".repeat(32))
+                .unwrap_err()
+                .code,
             "handshake-rejected"
         );
     }
