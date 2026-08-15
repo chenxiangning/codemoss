@@ -117,7 +117,8 @@
 | 1F4 Restricted Process executable allowlist | 完成 | `31c2e22ea` |
 | 1F5 Restricted Process 不得继承父进程环境 | 完成 | `ed320a732` |
 | 1UDS3 UDS 必须落在 0700 私有目录 | 完成 | `514ec4ed9` |
-| 1NP5 Named Pipe bind 必须先编译当前用户 SDDL | 完成 | 本刀 |
+| 1NP5 Named Pipe bind 必须先编译当前用户 SDDL | 完成 | `65d026201` |
+| 1HS1 handshake nonce 每次独立签发 | 完成 | 本刀 |
 
 ## 明确未做
 
@@ -128,5 +129,5 @@
 
 ## 进度
 
-相对「Core + 可撤销插件平台」全文约 **99%**（合同平面 **100%**；插座本体骨架 + boot CompositeDriver 默认 off + env_clear + UDS 私有目录 + Named Pipe SDDL 已落地；C 引擎 / 产品切流仍未做）。  
+相对「Core + 可撤销插件平台」全文约 **99%**（合同平面 **100%**；插座本体骨架 + boot CompositeDriver 默认 off + env_clear + UDS 私有目录 + Named Pipe SDDL + 独立 handshake nonce 已落地；C 引擎 / 产品切流仍未做）。  
 相对「产品已拔插头」约 **0%**。

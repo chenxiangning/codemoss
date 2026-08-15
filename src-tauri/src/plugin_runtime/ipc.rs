@@ -211,6 +211,10 @@ pub fn can_send(unacked_frames: u32, unacked_bytes: u64, next_payload_bytes: u64
     }
 }
 
+pub fn issue_handshake_nonce() -> String {
+    format!("{}{}", uuid::Uuid::new_v4().simple(), uuid::Uuid::new_v4().simple())
+}
+
 pub fn validate_handshake_hello(value: &Value) -> Result<(), IpcError> {
     if value.get("jsonrpc").and_then(Value::as_str) != Some("2.0")
         || value.get("method").and_then(Value::as_str) != Some("mossx.handshake.hello")
@@ -327,6 +331,17 @@ mod tests {
         );
         assert_eq!(can_send(32, 0, 1).unwrap_err().code, "window-exceeded");
         assert_eq!(can_send(0, WINDOW_BYTES, 1).unwrap_err().code, "window-exceeded");
+    }
+
+    #[test]
+    fn two_issued_nonces_are_distinct() {
+        let first = issue_handshake_nonce();
+        let second = issue_handshake_nonce();
+        assert_eq!(first.len(), 64);
+        assert_eq!(second.len(), 64);
+        assert!(first.chars().all(|ch| ch.is_ascii_hexdigit()));
+        assert!(second.chars().all(|ch| ch.is_ascii_hexdigit()));
+        assert_ne!(first, second);
     }
 
     #[test]

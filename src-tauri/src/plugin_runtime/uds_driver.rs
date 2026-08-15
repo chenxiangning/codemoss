@@ -5,10 +5,9 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use serde_json::{json, Value};
 
 use super::host::{DriverError, EntryDriver};
+use super::ipc::issue_handshake_nonce;
 
 static SOCK_SEQ: AtomicU64 = AtomicU64::new(1);
-
-const NONCE: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 
 #[derive(Debug, Default)]
 pub struct UdsHandshakeDriver {
@@ -17,7 +16,7 @@ pub struct UdsHandshakeDriver {
     pub stopped: Vec<(String, String, u64)>,
 }
 
-fn hello(generation: u64) -> Value {
+fn hello(generation: u64, nonce: &str) -> Value {
     json!({
         "jsonrpc": "2.0",
         "id": "hs-1",
@@ -25,7 +24,7 @@ fn hello(generation: u64) -> Value {
         "params": {
             "protocolVersion": 1,
             "coreContract": "1.0.0",
-            "nonce": NONCE,
+            "nonce": nonce,
             "generation": generation
         }
     })
@@ -74,23 +73,25 @@ fn handshake(
     let listener = bind_uds(&path).map_err(|_| DriverError::Crash)?;
     let peer_plugin = plugin_id.to_string();
     let peer_path = path.clone();
+    let nonce = issue_handshake_nonce();
+    let peer_nonce = nonce.clone();
     let peer = thread::spawn(move || {
         let (mut stream, _) = listener.accept().map_err(|_| ())?;
         let received = read_mxpc_frame(&mut stream).map_err(|_| ())?;
         validate_handshake_hello(&received).map_err(|_| ())?;
-        let nonce = if corrupt {
+        let ack_nonce = if corrupt {
             "bb".repeat(32)
         } else {
-            NONCE.to_string()
+            peer_nonce
         };
-        write_mxpc_frame(&mut stream, &ack(&peer_plugin, generation, &nonce)).map_err(|_| ())?;
+        write_mxpc_frame(&mut stream, &ack(&peer_plugin, generation, &ack_nonce)).map_err(|_| ())?;
         let _ = std::fs::remove_file(&peer_path);
         Ok::<(), ()>(())
     });
     let mut client = UnixStream::connect(&path).map_err(|_| DriverError::Crash)?;
-    write_mxpc_frame(&mut client, &hello(generation)).map_err(|_| DriverError::Crash)?;
+    write_mxpc_frame(&mut client, &hello(generation, &nonce)).map_err(|_| DriverError::Crash)?;
     let received = read_mxpc_frame(&mut client).map_err(|_| DriverError::Crash)?;
-    let result = validate_handshake_ack(&received, NONCE).map_err(|_| DriverError::Crash);
+    let result = validate_handshake_ack(&received, &nonce).map_err(|_| DriverError::Crash);
     let _ = peer.join();
     result
 }

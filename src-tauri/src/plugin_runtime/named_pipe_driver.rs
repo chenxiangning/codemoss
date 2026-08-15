@@ -41,11 +41,12 @@ fn handshake(driver: &NamedPipeHandshakeDriver) -> Result<(), DriverError> {
     use serde_json::json;
     use std::thread;
 
-    use super::ipc::{validate_handshake_ack, validate_handshake_hello};
+    use super::ipc::{issue_handshake_nonce, validate_handshake_ack, validate_handshake_hello};
     use super::named_pipe::bind_named_pipe_secured;
     use super::uds::{read_mxpc_frame, write_mxpc_frame};
 
-    const NONCE: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    let nonce = issue_handshake_nonce();
+    let peer_nonce = nonce.clone();
     let allow: Vec<&str> = driver.allow_sids.iter().map(String::as_str).collect();
     let server = bind_named_pipe_secured(&driver.pipe_name, &driver.owner_sid, &allow)
         .map_err(|_| DriverError::Crash)?;
@@ -63,7 +64,7 @@ fn handshake(driver: &NamedPipeHandshakeDriver) -> Result<(), DriverError> {
                     "pluginId": "com.mossx.notes",
                     "version": "1.0.0",
                     "generation": 1,
-                    "nonce": NONCE
+                    "nonce": peer_nonce
                 }
             }),
         )
@@ -81,14 +82,14 @@ fn handshake(driver: &NamedPipeHandshakeDriver) -> Result<(), DriverError> {
             "params": {
                 "protocolVersion": 1,
                 "coreContract": "1.0.0",
-                "nonce": NONCE,
+                "nonce": nonce,
                 "generation": 1
             }
         }),
     )
     .map_err(|_| DriverError::Crash)?;
     let received = read_mxpc_frame(&mut client).map_err(|_| DriverError::Crash)?;
-    let result = validate_handshake_ack(&received, NONCE).map_err(|_| DriverError::Crash);
+    let result = validate_handshake_ack(&received, &nonce).map_err(|_| DriverError::Crash);
     let _ = peer.join();
     result
 }

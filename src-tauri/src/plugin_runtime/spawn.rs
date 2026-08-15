@@ -7,10 +7,8 @@ use std::process::{Child, Command, Stdio};
 use serde_json::{json, Value};
 
 use super::host::{DriverError, EntryDriver};
-use super::ipc::validate_handshake_ack;
+use super::ipc::{issue_handshake_nonce, validate_handshake_ack};
 use super::uds::{read_mxpc_frame, write_mxpc_frame};
-
-const HANDSHAKE_NONCE: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 struct ChildKey {
@@ -85,16 +83,23 @@ impl RestrictedProcessDriver {
             command.env("SYSTEMROOT", std::env::var_os("SYSTEMROOT").unwrap_or_default());
         }
         if self.handshake {
+            let nonce = issue_handshake_nonce();
             command
                 .stdin(Stdio::piped())
                 .stdout(Stdio::piped())
                 .stderr(Stdio::null())
-                .env("MOSSX_HANDSHAKE_NONCE", HANDSHAKE_NONCE)
+                .env("MOSSX_HANDSHAKE_NONCE", &nonce)
                 .env("MOSSX_PLUGIN_ID", plugin_id)
                 .env("MOSSX_GENERATION", generation.to_string());
             if corrupt {
                 command.env("MOSSX_CORRUPT_ACK", "1");
             }
+            let mut child = command.spawn().map_err(|_| DriverError::Crash)?;
+            if let Err(error) = handshake_child(&mut child, generation, &nonce) {
+                kill_child(&mut child);
+                return Err(error);
+            }
+            return Ok(child);
         } else {
             command
                 .args(spawn_args(&self.executable))
@@ -106,7 +111,7 @@ impl RestrictedProcessDriver {
     }
 }
 
-fn hello(generation: u64) -> Value {
+fn hello(generation: u64, nonce: &str) -> Value {
     json!({
         "jsonrpc": "2.0",
         "id": "hs-1",
@@ -114,18 +119,18 @@ fn hello(generation: u64) -> Value {
         "params": {
             "protocolVersion": 1,
             "coreContract": "1.0.0",
-            "nonce": HANDSHAKE_NONCE,
+            "nonce": nonce,
             "generation": generation
         }
     })
 }
 
-fn handshake_child(child: &mut Child, generation: u64) -> Result<(), DriverError> {
+fn handshake_child(child: &mut Child, generation: u64, nonce: &str) -> Result<(), DriverError> {
     let stdin = child.stdin.as_mut().ok_or(DriverError::Crash)?;
-    write_mxpc_frame(stdin, &hello(generation)).map_err(|_| DriverError::Crash)?;
+    write_mxpc_frame(stdin, &hello(generation, nonce)).map_err(|_| DriverError::Crash)?;
     let stdout = child.stdout.as_mut().ok_or(DriverError::Crash)?;
     let received = read_mxpc_frame(stdout).map_err(|_| DriverError::Crash)?;
-    validate_handshake_ack(&received, HANDSHAKE_NONCE).map_err(|_| DriverError::Crash)?;
+    validate_handshake_ack(&received, nonce).map_err(|_| DriverError::Crash)?;
     Ok(())
 }
 
@@ -187,13 +192,7 @@ impl EntryDriver for RestrictedProcessDriver {
             return Err(DriverError::Crash);
         }
         let corrupt = self.corrupt_ack_on.as_deref() == Some(entry_id);
-        let mut child = self.spawn_child(plugin_id, generation, corrupt)?;
-        if self.handshake {
-            if let Err(error) = handshake_child(&mut child, generation) {
-                kill_child(&mut child);
-                return Err(error);
-            }
-        }
+        let child = self.spawn_child(plugin_id, generation, corrupt)?;
         self.children.insert(key, child);
         Ok(())
     }

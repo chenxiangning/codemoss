@@ -3,9 +3,9 @@
 use serde_json::{json, Value};
 
 use super::host::{DriverError, EntryDriver};
-use super::ipc::{decode_mxpc, encode_mxpc, validate_handshake_ack, validate_handshake_hello};
-
-const NONCE: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+use super::ipc::{
+    decode_mxpc, encode_mxpc, issue_handshake_nonce, validate_handshake_ack, validate_handshake_hello,
+};
 
 #[derive(Debug, Default)]
 pub struct LoopbackDriver {
@@ -14,7 +14,7 @@ pub struct LoopbackDriver {
     pub stopped: Vec<(String, String, u64)>,
 }
 
-fn hello(generation: u64) -> Value {
+fn hello(generation: u64, nonce: &str) -> Value {
     json!({
         "jsonrpc": "2.0",
         "id": "hs-1",
@@ -22,7 +22,7 @@ fn hello(generation: u64) -> Value {
         "params": {
             "protocolVersion": 1,
             "coreContract": "1.0.0",
-            "nonce": NONCE,
+            "nonce": nonce,
             "generation": generation
         }
     })
@@ -44,18 +44,19 @@ fn ack(plugin_id: &str, generation: u64, nonce: &str) -> Value {
 
 impl LoopbackDriver {
     fn handshake(&self, plugin_id: &str, entry_id: &str, generation: u64) -> Result<(), DriverError> {
-        let encoded_hello = encode_mxpc(&hello(generation)).map_err(|_| DriverError::Crash)?;
+        let issued = issue_handshake_nonce();
+        let encoded_hello = encode_mxpc(&hello(generation, &issued)).map_err(|_| DriverError::Crash)?;
         let (decoded_hello, _) = decode_mxpc(&encoded_hello).map_err(|_| DriverError::Crash)?;
         validate_handshake_hello(&decoded_hello).map_err(|_| DriverError::Crash)?;
 
         let nonce = if self.corrupt_ack_on.as_deref() == Some(entry_id) {
             "bb".repeat(32)
         } else {
-            NONCE.to_string()
+            issued.clone()
         };
         let encoded_ack = encode_mxpc(&ack(plugin_id, generation, &nonce)).map_err(|_| DriverError::Crash)?;
         let (decoded_ack, _) = decode_mxpc(&encoded_ack).map_err(|_| DriverError::Crash)?;
-        validate_handshake_ack(&decoded_ack, NONCE).map_err(|_| DriverError::Crash)?;
+        validate_handshake_ack(&decoded_ack, &issued).map_err(|_| DriverError::Crash)?;
         Ok(())
     }
 }
