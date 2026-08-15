@@ -16,7 +16,10 @@
 | 2A–2C Storage + caller 闸门 | 完成 | `a2ea46e80` |
 | 3A–3F Claude 插头前半 + fixture disable | 完成（未删实现） | `ba496f762` |
 | 4A–4F Notes 门面 + fixture disable | 完成（未迁表） | `7c746feea` |
-| 1G–1I 组合面 / 默认 off / 双插头隔离 | 完成 | 本刀 |
+| 1G–1I 组合面 / 默认 off / 双插头隔离 | 完成 | `e87156c7d` |
+| 2D disable 撤销 store | 完成 | `672025d0e` |
+| 3G Claude 组合面 disable | 完成（未删实现） | `094ff98fb` |
+| 4G Notes 组合面 disable | 完成（未迁表） | 本刀 |
 
 ## 明确未做
 
@@ -29,5 +32,5 @@
 
 ## 进度
 
-相对「Core + 可撤销插件平台」全文约 **52%**（合同/插座组合面/两根插头 disable 原语）。  
+相对「Core + 可撤销插件平台」全文约 **55%**（合同/插座组合面/两根插头 disable handle）。  
 相对「产品已拔插头」约 **0%**。

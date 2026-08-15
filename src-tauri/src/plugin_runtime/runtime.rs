@@ -268,4 +268,40 @@ mod tests {
         assert!(Path::new("src/engine/claude.rs").exists());
         remove_path(&root);
     }
+
+    #[test]
+    fn disabled_notes_cannot_use_composed_handles() {
+        use std::path::Path;
+
+        let root = unique_temp_root("runtime-notes-off");
+        let mut runtime = PluginRuntime::new(
+            HostConfig {
+                enabled: true,
+                ..HostConfig::default()
+            },
+            FakeDriver::default(),
+            "/fixture/workspace",
+            &root,
+        )
+        .expect("runtime");
+        let generation = runtime
+            .activate(notes_activation_request())
+            .expect("activate");
+        runtime.open_own_store("com.mossx.notes").expect("store");
+        runtime
+            .open_stream("com.mossx.notes", generation, 5, "blob-v1")
+            .expect("stream");
+        runtime.disable_plugin("com.mossx.notes").expect("disable");
+        assert!(runtime.query_read("com.mossx.notes", generation).is_err());
+        assert_eq!(
+            runtime.open_own_store("com.mossx.notes").unwrap_err().code,
+            "plugin-unavailable"
+        );
+        assert!(runtime
+            .open_stream("com.mossx.notes", generation, 6, "blob-v1")
+            .is_err());
+        assert!(runtime.plane.codec(5).is_none());
+        assert!(Path::new("src/note_cards.rs").exists());
+        remove_path(&root);
+    }
 }
