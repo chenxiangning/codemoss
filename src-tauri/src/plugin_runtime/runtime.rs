@@ -3258,4 +3258,50 @@ mod tests {
         }
         remove_path(&root);
     }
+
+    #[test]
+    fn ready_plugin_cannot_query_leftover_catalog_capabilities() {
+        let root = unique_temp_root("runtime-catalog-denied");
+        let mut runtime = PluginRuntime::new(
+            HostConfig {
+                enabled: true,
+                ..HostConfig::default()
+            },
+            FakeDriver::default(),
+            "/fixture/workspace",
+            &root,
+        )
+        .expect("runtime");
+        let generation = runtime
+            .activate(notes_activation_request())
+            .expect("activate");
+        runtime
+            .query_read("com.mossx.notes", generation)
+            .expect("read");
+        for capability in [
+            "mossx.context.provider",
+            "mossx.command",
+            "mossx.tool",
+            "mossx.ui.view",
+            "mossx.ui.panel",
+            "mossx.ui.slot.workspace.rightPanel",
+            "mossx.ui.slot.sidebar.secondary",
+            "mossx.ui.slot.composer.toolbar",
+            "mossx.ui.slot.conversation.attachmentRenderer",
+            "mossx.ui.slot.settings.plugin",
+            "mossx.ui.slot.status.lowFrequency",
+            "mossx.settings.page",
+            "mossx.status.item",
+        ] {
+            assert_eq!(
+                runtime
+                    .query("com.mossx.notes", generation, capability)
+                    .unwrap_err()
+                    .code,
+                "permission-denied",
+                "{capability}"
+            );
+        }
+        remove_path(&root);
+    }
 }
