@@ -1,0 +1,29 @@
+{
+  "contractVersion": 1,
+  "capabilities": [
+    { "id": "mossx.workspace.read", "roles": ["consumer"], "trustMinimum": "local" },
+    { "id": "mossx.workspace.write", "roles": ["consumer"], "trustMinimum": "local" },
+    { "id": "mossx.git.read", "roles": ["consumer"], "trustMinimum": "local" },
+    { "id": "mossx.git.write", "roles": ["consumer"], "trustMinimum": "verified" },
+    { "id": "mossx.network.fetch", "roles": ["consumer"], "trustMinimum": "local" },
+    { "id": "mossx.process.spawn", "roles": ["consumer"], "trustMinimum": "local" },
+    { "id": "mossx.storage.readwrite", "roles": ["consumer"], "trustMinimum": "local" },
+    { "id": "mossx.notifications.publish", "roles": ["consumer"], "trustMinimum": "verified" },
+    { "id": "mossx.engine.provider", "roles": ["provider"], "trustMinimum": "local", "templateEligible": false },
+    { "id": "mossx.search.provider", "roles": ["provider"], "trustMinimum": "local", "templateEligible": true },
+    { "id": "mossx.context.provider", "roles": ["provider"], "trustMinimum": "local", "templateEligible": true },
+    { "id": "mossx.command", "roles": ["provider"], "trustMinimum": "local", "templateEligible": false },
+    { "id": "mossx.tool", "roles": ["provider"], "trustMinimum": "local", "templateEligible": true },
+    { "id": "mossx.ui.view", "roles": ["provider"], "trustMinimum": "local", "templateEligible": false },
+    { "id": "mossx.ui.panel", "roles": ["provider"], "trustMinimum": "local", "templateEligible": false },
+    { "id": "mossx.ui.slot.workspace.main", "roles": ["consumer"], "trustMinimum": "local" },
+    { "id": "mossx.ui.slot.workspace.rightPanel", "roles": ["consumer"], "trustMinimum": "local" },
+    { "id": "mossx.ui.slot.sidebar.secondary", "roles": ["consumer"], "trustMinimum": "local" },
+    { "id": "mossx.ui.slot.composer.toolbar", "roles": ["consumer"], "trustMinimum": "local" },
+    { "id": "mossx.ui.slot.conversation.attachmentRenderer", "roles": ["consumer"], "trustMinimum": "local" },
+    { "id": "mossx.ui.slot.settings.plugin", "roles": ["consumer"], "trustMinimum": "local" },
+    { "id": "mossx.ui.slot.status.lowFrequency", "roles": ["consumer"], "trustMinimum": "local" },
+    { "id": "mossx.settings.page", "roles": ["provider"], "trustMinimum": "local", "templateEligible": false },
+    { "id": "mossx.status.item", "roles": ["provider"], "trustMinimum": "local", "templateEligible": true }
+  ]
+}

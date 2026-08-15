@@ -1,0 +1,155 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mossx.dev/schemas/plugin-manifest.v1.json",
+  "title": "Mossx Plugin Manifest V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "manifestVersion",
+    "pluginId",
+    "version",
+    "compatibility",
+    "entries",
+    "activationUnits"
+  ],
+  "properties": {
+    "manifestVersion": { "const": 1 },
+    "pluginId": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]*(\\.[a-z0-9][a-z0-9-]*){1,15}$"
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-beta\\.(0|[1-9]\\d*))?$"
+    },
+    "displayName": { "type": "string" },
+    "description": { "type": "string" },
+    "publisher": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id"],
+      "properties": {
+        "id": { "type": "string" },
+        "displayName": { "type": "string" },
+        "homepage": { "type": "string" }
+      }
+    },
+    "repository": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "type": { "const": "git" },
+        "url": { "type": "string" },
+        "commit": { "type": "string", "minLength": 40, "maxLength": 40 }
+      }
+    },
+    "license": { "type": "string" },
+    "channel": { "enum": ["stable", "beta"] },
+    "compatibility": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["coreApi"],
+      "properties": {
+        "coreApi": { "type": "string" },
+        "platforms": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "darwin-arm64",
+              "darwin-x64",
+              "windows-x64",
+              "windows-arm64",
+              "linux-x64",
+              "linux-arm64"
+            ]
+          }
+        }
+      }
+    },
+    "entries": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/entry" }
+    },
+    "activationUnits": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/activationUnit" }
+    },
+    "contributions": {
+      "type": "array",
+      "items": { "type": "object", "additionalProperties": true }
+    },
+    "contributionTemplates": {
+      "type": "array",
+      "items": { "type": "object", "additionalProperties": true }
+    },
+    "capabilities": {
+      "type": "array",
+      "items": { "type": "object", "additionalProperties": true }
+    },
+    "storage": { "type": "object", "additionalProperties": true },
+    "budgets": { "type": "object", "additionalProperties": true },
+    "extensions": { "type": "object", "additionalProperties": true }
+  },
+  "$defs": {
+    "entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-z][a-z0-9-]{0,63}$" },
+        "kind": { "enum": ["worker", "process", "ui", "migration"] },
+        "criticality": { "enum": ["required", "optional"] },
+        "dependsOn": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["entryId"],
+            "properties": {
+              "entryId": { "type": "string" },
+              "criticality": { "enum": ["required", "optional"] }
+            }
+          }
+        },
+        "path": { "type": "string" },
+        "runtime": { "const": "quickjs" },
+        "export": { "type": "string" },
+        "platforms": { "type": "object", "additionalProperties": { "type": "string" } },
+        "argv": { "type": "array", "items": { "type": "string" } },
+        "cwd": { "type": "string" },
+        "stdio": { "type": "string" },
+        "mode": { "enum": ["declarative", "sandbox", "trusted-react"] },
+        "slot": { "type": "string" },
+        "trustedReact": { "type": "boolean" },
+        "fromSchema": { "type": "integer" },
+        "toSchema": { "type": "integer" },
+        "destructive": { "type": "boolean" },
+        "exportRequired": { "type": "boolean" },
+        "budgets": { "type": "object" }
+      }
+    },
+    "activationUnit": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "entries", "events"],
+      "properties": {
+        "id": { "type": "string" },
+        "entries": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
+        "events": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["type"],
+            "properties": {
+              "type": {
+                "enum": ["onView", "onCommand", "onEngine", "onWorkspace", "onSettings", "onStartup"]
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,128 @@
+{
+  "manifestVersion": 1,
+  "pluginId": "com.mossx.notes",
+  "version": "1.0.0",
+  "displayName": "Notes",
+  "description": "Workspace-local notes",
+  "publisher": {
+    "id": "com.mossx",
+    "displayName": "Mossx",
+    "homepage": "https://mossx.dev"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mossx/mossx-plugin-notes",
+    "commit": "0000000000000000000000000000000000000000"
+  },
+  "license": "MIT",
+  "channel": "stable",
+  "compatibility": {
+    "coreApi": ">=1.0.0 <2.0.0",
+    "platforms": [
+      "darwin-arm64",
+      "darwin-x64",
+      "windows-x64",
+      "windows-arm64",
+      "linux-x64",
+      "linux-arm64"
+    ]
+  },
+  "entries": [
+    {
+      "id": "notes-worker",
+      "kind": "worker",
+      "path": "dist/worker.js",
+      "runtime": "quickjs",
+      "criticality": "required"
+    },
+    {
+      "id": "notes-ui",
+      "kind": "ui",
+      "mode": "trusted-react",
+      "path": "dist/ui/notes.js",
+      "slot": "workspace.main",
+      "trustedReact": true,
+      "dependsOn": [
+        {
+          "entryId": "notes-worker",
+          "criticality": "required"
+        }
+      ]
+    },
+    {
+      "id": "schema-v2",
+      "kind": "migration",
+      "path": "migrations/v2.js",
+      "fromSchema": 1,
+      "toSchema": 2,
+      "destructive": false
+    }
+  ],
+  "activationUnits": [
+    {
+      "id": "notes-main",
+      "entries": [
+        "notes-worker",
+        "notes-ui"
+      ],
+      "events": [
+        {
+          "type": "onFile",
+          "viewId": "notes.main"
+        },
+        {
+          "type": "onCommand",
+          "commandId": "notes.create"
+        }
+      ]
+    }
+  ],
+  "contributions": [
+    {
+      "id": "notes.main",
+      "type": "mossx.ui.view",
+      "entryId": "notes-ui",
+      "slot": "workspace.main",
+      "mode": "trusted-react"
+    },
+    {
+      "id": "notes.create",
+      "type": "mossx.command",
+      "entryId": "notes-worker",
+      "commandId": "notes.create"
+    }
+  ],
+  "capabilities": [
+    {
+      "id": "mossx.storage.readwrite",
+      "role": "consumer",
+      "scopes": [
+        "namespace:self"
+      ]
+    },
+    {
+      "id": "mossx.ui.slot.workspace.main",
+      "role": "consumer"
+    }
+  ],
+  "storage": {
+    "schemaVersion": 1,
+    "format": "sqlite-v1",
+    "migrations": [
+      {
+        "from": 1,
+        "to": 2,
+        "entryId": "schema-v2",
+        "destructive": false,
+        "exportRequired": false
+      }
+    ],
+    "checkpoint": {
+      "required": true,
+      "retainPrevious": 2
+    }
+  },
+  "budgets": {
+    "activationDeadlineMs": 10000
+  }
+}

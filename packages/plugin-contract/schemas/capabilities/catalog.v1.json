@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mossx.dev/schemas/plugin-capabilities.v1.json",
+  "title": "Mossx Capability Catalog V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["contractVersion", "capabilities"],
+  "properties": {
+    "contractVersion": { "const": 1 },
+    "capabilities": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "roles", "trustMinimum"],
+        "properties": {
+          "id": { "type": "string" },
+          "roles": {
+            "type": "array",
+            "items": { "enum": ["provider", "consumer"] }
+          },
+          "trustMinimum": { "enum": ["system", "verified", "local"] },
+          "templateEligible": { "type": "boolean" }
+        }
+      }
+    }
+  }
+}

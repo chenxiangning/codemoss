@@ -1,0 +1,7 @@
+{
+  "name": "@mossx/plugin-contract",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Mossx Plugin Manifest V1 contract schemas and fixtures. Not wired into the app workspace.",
+  "type": "module"
+}
