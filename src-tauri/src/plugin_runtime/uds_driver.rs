@@ -85,7 +85,9 @@ fn handshake_at(
     use std::thread;
 
     use super::ipc::{validate_handshake_ack, validate_handshake_hello};
-    use super::uds::{accept_uds_timed, bind_uds, connect_uds, read_mxpc_frame_timed, write_mxpc_frame};
+    use super::uds::{
+        accept_uds_timed, bind_uds, connect_uds, read_mxpc_frame_timed, write_mxpc_frame_timed,
+    };
 
     let listener = bind_uds(path).map_err(|_| DriverError::Crash)?;
     let _unlink = super::uds::UnlinkOnDrop::new(path);
@@ -104,11 +106,17 @@ fn handshake_at(
         } else {
             peer_nonce
         };
-        write_mxpc_frame(&mut stream, &ack(&peer_plugin, generation, &ack_nonce)).map_err(|_| ())?;
+        write_mxpc_frame_timed(
+            &mut stream,
+            &ack(&peer_plugin, generation, &ack_nonce),
+            HANDSHAKE_DEADLINE,
+        )
+        .map_err(|_| ())?;
         Ok::<(), ()>(())
     });
     let mut client = connect_uds(path).map_err(|_| DriverError::Crash)?;
-    write_mxpc_frame(&mut client, &hello(generation, &nonce)).map_err(|_| DriverError::Crash)?;
+    write_mxpc_frame_timed(&mut client, &hello(generation, &nonce), HANDSHAKE_DEADLINE)
+        .map_err(|_| DriverError::Crash)?;
     let received =
         read_mxpc_frame_timed(&mut client, HANDSHAKE_DEADLINE).map_err(|_| DriverError::Crash)?;
     let result =

@@ -817,6 +817,24 @@ mod tests {
     }
 
     #[test]
+    fn handshake_modules_do_not_block_on_write() {
+        for source in [
+            include_str!("uds_driver.rs"),
+            include_str!("quickjs.rs"),
+            include_str!("spawn.rs"),
+        ] {
+            assert!(
+                source.contains("write_mxpc_frame_timed"),
+                "timed write missing"
+            );
+            assert!(
+                !source.contains("write_mxpc_frame("),
+                "blocking handshake write leaked"
+            );
+        }
+    }
+
+    #[test]
     fn current_user_peer_is_accepted() {
         #[cfg(unix)]
         let uid = unsafe { libc::getuid() };

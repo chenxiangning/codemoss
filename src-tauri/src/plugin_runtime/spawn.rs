@@ -9,7 +9,7 @@ use serde_json::{json, Value};
 
 use super::host::{DriverError, EntryDriver};
 use super::ipc::{issue_handshake_nonce, validate_handshake_ack, HANDSHAKE_DEADLINE};
-use super::uds::{read_mxpc_frame_timed, write_mxpc_frame};
+use super::uds::{read_mxpc_frame_timed, write_mxpc_frame_timed};
 
 static DATA_SEQ: AtomicU64 = AtomicU64::new(1);
 
@@ -154,7 +154,8 @@ fn handshake_child(
     nonce: &str,
 ) -> Result<(), DriverError> {
     let stdin = child.stdin.as_mut().ok_or(DriverError::Crash)?;
-    write_mxpc_frame(stdin, &hello(generation, nonce)).map_err(|_| DriverError::Crash)?;
+    write_mxpc_frame_timed(stdin, &hello(generation, nonce), HANDSHAKE_DEADLINE)
+        .map_err(|_| DriverError::Crash)?;
     let stdout = child.stdout.as_mut().ok_or(DriverError::Crash)?;
     let received =
         read_mxpc_frame_timed(stdout, HANDSHAKE_DEADLINE).map_err(|_| DriverError::Crash)?;

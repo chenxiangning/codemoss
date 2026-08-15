@@ -160,7 +160,7 @@ fn handshake_worker(
         use std::thread;
 
         use super::uds::{
-            accept_uds_timed, bind_uds, connect_uds, read_mxpc_frame_timed, write_mxpc_frame,
+            accept_uds_timed, bind_uds, connect_uds, read_mxpc_frame_timed, write_mxpc_frame_timed,
         };
 
         let path = worker_sock_path(plugin_id, entry_id, generation)?;
@@ -179,12 +179,17 @@ fn handshake_worker(
             } else {
                 peer_nonce
             };
-            write_mxpc_frame(&mut stream, &ack(&peer_plugin, generation, &ack_nonce))
-                .map_err(|_| ())?;
+            write_mxpc_frame_timed(
+                &mut stream,
+                &ack(&peer_plugin, generation, &ack_nonce),
+                HANDSHAKE_DEADLINE,
+            )
+            .map_err(|_| ())?;
             Ok::<(), ()>(())
         });
         let mut client = connect_uds(&path).map_err(|_| DriverError::Crash)?;
-        write_mxpc_frame(&mut client, &hello(generation, &issued)).map_err(|_| DriverError::Crash)?;
+        write_mxpc_frame_timed(&mut client, &hello(generation, &issued), HANDSHAKE_DEADLINE)
+            .map_err(|_| DriverError::Crash)?;
         let received =
             read_mxpc_frame_timed(&mut client, HANDSHAKE_DEADLINE).map_err(|_| DriverError::Crash)?;
         let result = validate_handshake_ack(&received, &issued, plugin_id, generation, "1.0.0")
