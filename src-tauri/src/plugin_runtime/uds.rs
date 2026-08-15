@@ -310,6 +310,7 @@ pub fn accept_uds_timed(_listener: &(), timeout: Duration) -> Result<(), IpcErro
 
 #[cfg(unix)]
 pub fn connect_uds(path: &Path) -> Result<std::os::unix::net::UnixStream, IpcError> {
+    parent_is_owner_only(path)?;
     let stream = std::os::unix::net::UnixStream::connect(path).map_err(io_err)?;
     uds_peer_ok(peer_uid_of(&stream)?)?;
     Ok(stream)
@@ -580,6 +581,10 @@ mod tests {
             bind_uds(Path::new("/tmp/mx-open.s")).unwrap_err().code,
             "permission-denied"
         );
+        assert_eq!(
+            connect_uds(Path::new("/tmp/mx-open.s")).unwrap_err().code,
+            "permission-denied"
+        );
     }
 
     #[cfg(unix)]
@@ -592,6 +597,7 @@ mod tests {
         std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o755)).expect("chmod");
         let path = dir.join("r.s");
         assert_eq!(bind_uds(&path).unwrap_err().code, "permission-denied");
+        assert_eq!(connect_uds(&path).unwrap_err().code, "permission-denied");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
