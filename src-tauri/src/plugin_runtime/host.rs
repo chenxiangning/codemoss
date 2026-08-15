@@ -167,6 +167,9 @@ impl<D: EntryDriver> Host<D> {
             if current.state == SlotState::Disabled {
                 return Err(err("disabled", "plugin is disabled until reset"));
             }
+            if current.state == SlotState::Failed {
+                return Err(err("failed", "plugin is failed until reset"));
+            }
             if current.state == SlotState::Activating {
                 return Err(err("activation-busy", "plugin is already activating"));
             }
