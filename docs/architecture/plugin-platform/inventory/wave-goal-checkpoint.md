@@ -34,7 +34,9 @@
 | 2O migrate from 必须匹配 | 完成 | `b1c195b30` |
 | 2P disable 后不得 access_store | 完成 | `0e35361ef` |
 | 2Q fuse 后不得 access_store | 完成 | `28bddf2ed` |
-| 2R fuse 后 reset 恢复 access_store | 完成 | 本刀 |
+| 2R fuse 后 reset 恢复 access_store | 完成 | `154526f6f` |
+| 2S fuse 后不得 checkpoint | 完成 | `e86b72f1a` |
+| 2T fuse 后不得 migrate | 完成 | 本刀 |
 
 ## 明确未做
 
@@ -47,5 +49,5 @@
 
 ## 进度
 
-相对「Core + 可撤销插件平台」全文约 **66%**（合同/插座组合面/disable+fuse+reset/storage 闸门/非法预算/空 closure）。  
+相对「Core + 可撤销插件平台」全文约 **67%**（合同/插座组合面/disable+fuse+reset/storage 闸门/非法预算/空 closure）。  
 相对「产品已拔插头」约 **0%**。
