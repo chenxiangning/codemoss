@@ -1,0 +1,68 @@
+{
+  "pluginId": "com.mossx.engine.claude",
+  "wave": "3A",
+  "status": "inventory-only",
+  "deleteGate": "after-pilot-disable",
+  "surfaces": {
+    "engineCore": [
+      "src-tauri/src/engine/claude.rs",
+      "src-tauri/src/engine/claude/",
+      "src-tauri/src/engine/claude_forwarder.rs",
+      "src-tauri/src/engine/claude_history.rs",
+      "src-tauri/src/engine/claude_history_entries.rs",
+      "src-tauri/src/engine/claude_history_subagents.rs",
+      "src-tauri/src/engine/claude_history_large_payload.rs",
+      "src-tauri/src/engine/claude_message_content.rs",
+      "src-tauri/src/engine/claude_stream_helpers.rs"
+    ],
+    "engineTests": [
+      "src-tauri/src/engine/claude_history_*_tests.rs"
+    ],
+    "compatOutsideEngine": [
+      "src-tauri/src/claude_commands.rs",
+      "src-tauri/src/claude_commands_watch.rs",
+      "src-tauri/src/claude_home.rs"
+    ],
+    "frontend": [
+      "src/features/threads/loaders/claudeHistoryLoader.ts",
+      "src/features/threads/adapters/claudeRealtimeAdapter.ts",
+      "src/features/threads/utils/claudeForkThread.ts",
+      "src/features/threads/utils/claudeRewindRestore.ts",
+      "src/features/threads/utils/claudeThreadContinuity.ts",
+      "src/features/threads/utils/claudeMcpRuntimeSnapshot.ts",
+      "src/features/app/utils/claudeResumeCommand.ts",
+      "src/features/composer/components/ChatInputBox/ClaudeContextCard.tsx",
+      "src/features/composer/components/ClaudeRewindConfirmDialog.tsx",
+      "src/features/models/claudeContextWindow.ts",
+      "src/features/models/claudeCustomModels.ts",
+      "src/features/models/claudeManagedRuntimeModel.ts",
+      "src/features/vendors/components/ClaudeLocalSettingsCard.tsx",
+      "src/features/vendors/components/ClaudeSettingsJsonDialog.tsx",
+      "src/features/workspaces/hooks/useWorkspaceClaudeMd.ts",
+      "src/app-shell/sections/useAppShellClaudeThinkingSection.ts"
+    ],
+    "i18n": ["src/i18n/locales/*/claudeModes.ts"],
+    "registry": {
+      "engineType": "claude",
+      "adapterId": "builtin.claude",
+      "commandRegistryHits": 23
+    }
+  },
+  "stayInCore": [
+    "src-tauri/src/engine/adapter_registry.rs",
+    "src-tauri/src/engine/commands.rs",
+    "src-tauri/src/engine/events.rs",
+    "src-tauri/src/engine/manager.rs",
+    "src/features/engine/engineRegistry.ts",
+    "src/types/engine.ts"
+  ],
+  "mustNotMoveWithClaude": [
+    "src-tauri/src/engine/codex*",
+    "src-tauri/src/engine/gemini*",
+    "src-tauri/src/engine/grok*",
+    "src-tauri/src/engine/kimi*",
+    "src-tauri/src/engine/opencode*",
+    "src-tauri/src/engine/pi*"
+  ],
+  "notes": "3A inventory only. Do not delete or dual-write. Next change is Claude contract/adapter, not source removal."
+}
