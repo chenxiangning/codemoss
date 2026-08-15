@@ -261,6 +261,11 @@ impl<D: EntryDriver> Host<D> {
         &self.driver
     }
 
+    #[cfg(test)]
+    pub fn test_driver_mut(&mut self) -> &mut D {
+        &mut self.driver
+    }
+
     pub fn dispatch(&self, plugin_id: &str, generation: u64) -> Result<(), HostError> {
         let slot = self
             .slots

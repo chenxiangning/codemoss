@@ -1530,4 +1530,46 @@ mod tests {
         );
         remove_path(&root);
     }
+
+    #[test]
+    fn reset_after_failed_activation_restores_handles() {
+        use crate::plugin_runtime::host::DriverError;
+
+        let root = unique_temp_root("runtime-failed-reset");
+        let mut driver = FakeDriver::default();
+        driver
+            .fail_on
+            .insert("notes-ui".into(), DriverError::Timeout);
+        let mut runtime = PluginRuntime::new(
+            HostConfig {
+                enabled: true,
+                ..HostConfig::default()
+            },
+            driver,
+            "/fixture/workspace",
+            &root,
+        )
+        .expect("runtime");
+        assert_eq!(
+            runtime
+                .activate(notes_activation_request())
+                .unwrap_err()
+                .code,
+            "activation-timeout"
+        );
+        runtime.reset_plugin("com.mossx.notes").expect("reset");
+        runtime.host.test_driver_mut().fail_on.clear();
+        let generation = runtime
+            .activate(notes_activation_request())
+            .expect("second");
+        assert!(generation > 1);
+        runtime
+            .query_read("com.mossx.notes", generation)
+            .expect("read");
+        runtime
+            .open_stream("com.mossx.notes", generation, 25, "blob-v1")
+            .expect("stream");
+        runtime.open_own_store("com.mossx.notes").expect("store");
+        remove_path(&root);
+    }
 }
