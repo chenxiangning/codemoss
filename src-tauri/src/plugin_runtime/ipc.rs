@@ -1,5 +1,7 @@
 //! MXPC/MXPD V1 codec. No sockets. Not registered in command_registry.
 
+use std::time::Duration;
+
 use serde_json::Value;
 
 pub const MXPC_MAGIC: u32 = 0x4D58_5043;
@@ -15,6 +17,18 @@ pub const FLAG_CANCEL: u8 = 2;
 pub const FLAG_ACK: u8 = 4;
 pub const RESERVED_FLAG_MASK: u8 = 0b1111_1000;
 pub const V1_CODECS: &[&str] = &["engine-event-v1", "blob-v1", "log-v1"];
+pub const HANDSHAKE_DEADLINE: Duration = Duration::from_millis(2_000);
+
+pub fn handshake_deadline_ok(elapsed: Duration) -> Result<(), IpcError> {
+    if elapsed > HANDSHAKE_DEADLINE {
+        Err(err(
+            "handshake-timeout",
+            "handshake ack must arrive within 2s",
+        ))
+    } else {
+        Ok(())
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct IpcError {
@@ -307,6 +321,18 @@ mod tests {
         assert_eq!(WINDOW_FRAMES, 32);
         assert_eq!(WINDOW_BYTES, 8_388_608);
         assert_eq!(FLAG_END | FLAG_CANCEL | FLAG_ACK, 7);
+        assert_eq!(HANDSHAKE_DEADLINE, Duration::from_millis(2_000));
+    }
+
+    #[test]
+    fn two_seconds_is_the_handshake_deadline() {
+        handshake_deadline_ok(Duration::from_millis(2_000)).expect("deadline");
+        assert_eq!(
+            handshake_deadline_ok(Duration::from_millis(2_001))
+                .unwrap_err()
+                .code,
+            "handshake-timeout"
+        );
     }
 
     #[test]

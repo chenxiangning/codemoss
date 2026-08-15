@@ -5,7 +5,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use serde_json::{json, Value};
 
 use super::host::{DriverError, EntryDriver};
-use super::ipc::issue_handshake_nonce;
+use super::ipc::{issue_handshake_nonce, HANDSHAKE_DEADLINE};
 
 static SOCK_SEQ: AtomicU64 = AtomicU64::new(1);
 
@@ -66,7 +66,7 @@ fn handshake(
     use std::thread;
 
     use super::ipc::{validate_handshake_ack, validate_handshake_hello};
-    use super::uds::{accept_uds, bind_uds, connect_uds, read_mxpc_frame, write_mxpc_frame};
+    use super::uds::{accept_uds, bind_uds, connect_uds, read_mxpc_frame, read_mxpc_frame_timed, write_mxpc_frame};
 
     let path = sock_path(entry_id, generation);
     let listener = bind_uds(&path).map_err(|_| DriverError::Crash)?;
@@ -89,7 +89,8 @@ fn handshake(
     });
     let mut client = connect_uds(&path).map_err(|_| DriverError::Crash)?;
     write_mxpc_frame(&mut client, &hello(generation, &nonce)).map_err(|_| DriverError::Crash)?;
-    let received = read_mxpc_frame(&mut client).map_err(|_| DriverError::Crash)?;
+    let received =
+        read_mxpc_frame_timed(&mut client, HANDSHAKE_DEADLINE).map_err(|_| DriverError::Crash)?;
     let result =
         validate_handshake_ack(&received, &nonce, plugin_id, generation).map_err(|_| DriverError::Crash);
     let _ = peer.join();

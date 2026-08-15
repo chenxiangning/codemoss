@@ -2,6 +2,7 @@
 
 use std::io::{Read, Write};
 use std::path::Path;
+use std::time::Duration;
 
 use serde_json::Value;
 
@@ -43,6 +44,42 @@ pub fn read_mxpc_frame(reader: &mut impl Read) -> Result<Value, IpcError> {
         })?;
     let (value, _) = decode_mxpc(&frame)?;
     Ok(value)
+}
+
+#[cfg(unix)]
+fn wait_readable(fd: i32, timeout: Duration) -> Result<(), IpcError> {
+    let mut fds = [libc::pollfd {
+        fd,
+        events: libc::POLLIN,
+        revents: 0,
+    }];
+    let ms = i32::try_from(timeout.as_millis()).unwrap_or(i32::MAX);
+    let rc = unsafe { libc::poll(fds.as_mut_ptr(), 1, ms) };
+    if rc == 0 {
+        return Err(err(
+            "handshake-timeout",
+            "handshake ack must arrive within 2s",
+        ));
+    }
+    if rc < 0 {
+        return Err(err("transport", "poll failed while waiting for handshake"));
+    }
+    Ok(())
+}
+
+#[cfg(unix)]
+pub fn read_mxpc_frame_timed(
+    reader: &mut (impl Read + std::os::unix::io::AsRawFd),
+    timeout: Duration,
+) -> Result<Value, IpcError> {
+    wait_readable(reader.as_raw_fd(), timeout)?;
+    read_mxpc_frame(reader)
+}
+
+#[cfg(not(unix))]
+pub fn read_mxpc_frame_timed(reader: &mut impl Read, timeout: Duration) -> Result<Value, IpcError> {
+    let _ = timeout;
+    read_mxpc_frame(reader)
 }
 
 pub fn write_mxpc_frame(writer: &mut impl Write, message: &Value) -> Result<(), IpcError> {
@@ -309,6 +346,33 @@ mod tests {
         write_mxpc_frame(&mut client, &hello()).expect("hello");
         let received = read_mxpc_frame(&mut client).expect("ack frame");
         assert!(validate_handshake_ack(&received, NONCE, "com.mossx.notes", 1).is_err());
+        server.join().expect("server");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_silent_peer_cannot_complete_handshake() {
+        use std::thread;
+        use std::time::Duration;
+
+        let path = temp_sock("silent");
+        let listener = bind_uds(&path).expect("bind");
+        let server = thread::spawn({
+            let path = path.clone();
+            move || {
+                let _stream = accept_uds(&listener).expect("accept");
+                thread::sleep(Duration::from_millis(80));
+                let _ = std::fs::remove_file(&path);
+            }
+        });
+        let mut client = connect_uds(&path).expect("connect");
+        write_mxpc_frame(&mut client, &hello()).expect("hello");
+        assert_eq!(
+            read_mxpc_frame_timed(&mut client, Duration::from_millis(20))
+                .unwrap_err()
+                .code,
+            "handshake-timeout"
+        );
         server.join().expect("server");
     }
 
