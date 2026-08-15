@@ -3129,4 +3129,33 @@ mod tests {
         assert!(runtime.host.slot(" com.mossx.notes ").is_none());
         remove_path(&root);
     }
+
+    #[test]
+    fn ready_plugin_cannot_register_a_search_provider() {
+        let root = unique_temp_root("runtime-search-denied");
+        let mut runtime = PluginRuntime::new(
+            HostConfig {
+                enabled: true,
+                ..HostConfig::default()
+            },
+            FakeDriver::default(),
+            "/fixture/workspace",
+            &root,
+        )
+        .expect("runtime");
+        let generation = runtime
+            .activate(notes_activation_request())
+            .expect("activate");
+        runtime
+            .query_read("com.mossx.notes", generation)
+            .expect("read");
+        assert_eq!(
+            runtime
+                .query("com.mossx.notes", generation, "mossx.search.provider")
+                .unwrap_err()
+                .code,
+            "permission-denied"
+        );
+        remove_path(&root);
+    }
 }
