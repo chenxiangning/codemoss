@@ -6,6 +6,7 @@ import { MOSSX_CAPABILITIES } from "./catalog";
 import { parseManifestV1 } from "./parseManifestV1";
 import type { ManifestErrorCode, ParseManifestOptions } from "./types";
 import notesMinimal from "../../packages/plugin-contract/fixtures/valid/notes-minimal.json";
+import claudeEngine from "../../packages/plugin-contract/fixtures/valid/claude-engine.json";
 
 const fixtureDir = dirname(fileURLToPath(import.meta.url));
 const contractRoot = join(fixtureDir, "../../packages/plugin-contract");
@@ -22,6 +23,32 @@ function clone<T>(value: T): T {
 }
 
 describe("parseManifestV1", () => {
+  it("accepts the claude engine pilot manifest", () => {
+    const result = parseManifestV1(claudeEngine, systemOpts);
+    expect(result.ok).toBe(true);
+    expect(result.manifest?.pluginId).toBe("com.mossx.engine.claude");
+    expect(result.manifest?.contributions.some((item) => item.type === "mossx.engine.provider")).toBe(true);
+    expect(result.manifest?.activationUnits[0]?.events.some((event) => event.type === "onEngine")).toBe(true);
+    expect(JSON.stringify(claudeEngine)).not.toMatch(/onStartup|trusted-react/);
+  });
+
+  it("rejects templated engine providers on the claude fixture", () => {
+    const templated = clone(claudeEngine) as Record<string, unknown>;
+    templated.contributionTemplates = [
+      {
+        id: "engines",
+        type: "mossx.engine.provider",
+        entryId: "claude-worker",
+        keyPrefix: "com.mossx.engine.claude.extra.",
+        scopes: ["global"],
+        maxInstances: 2,
+      },
+    ];
+    expect(parseManifestV1(templated, systemOpts).errors.some((error) => error.code === "template-type-forbidden")).toBe(
+      true,
+    );
+  });
+
   it("accepts the notes minimal manifest", () => {
     const result = parseManifestV1(notesMinimal, systemOpts);
     expect(result.ok).toBe(true);
