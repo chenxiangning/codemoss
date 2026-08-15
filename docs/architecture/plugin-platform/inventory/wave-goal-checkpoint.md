@@ -158,7 +158,8 @@
 | 1MXPD2 MXPD 写必须在 deadline 内完成 | 完成 | `5503f94ac` |
 | 1NP7 Named Pipe accept / connect 必须在 handshake deadline 内完成 | 完成 | `414667209` |
 | 1QJ12 Worker QuickJS 必须有内存上限 | 完成 | `1884b2a2f` |
-| 1F9 Restricted Process 必须有内存上限 | 完成 | 本刀 |
+| 1F9 Restricted Process 必须有内存上限 | 完成 | `8e436c502` |
+| 1H10 Host Ready 必须先有一次成功 heartbeat | 完成 | 本刀 |
 
 ## 明确未做
 

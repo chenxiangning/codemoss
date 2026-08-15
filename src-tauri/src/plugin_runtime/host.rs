@@ -104,13 +104,23 @@ pub enum DriverError {
 pub trait EntryDriver {
     fn start(&mut self, plugin_id: &str, entry_id: &str, generation: u64) -> Result<(), DriverError>;
     fn stop(&mut self, plugin_id: &str, entry_id: &str, generation: u64);
+    fn heartbeat(
+        &mut self,
+        _plugin_id: &str,
+        _entry_id: &str,
+        _generation: u64,
+    ) -> Result<(), DriverError> {
+        Ok(())
+    }
 }
 
 #[derive(Debug, Default)]
 pub struct FakeDriver {
     pub fail_on: HashMap<String, DriverError>,
+    pub fail_heartbeat_on: HashMap<String, DriverError>,
     pub started: Vec<(String, String, u64)>,
     pub stopped: Vec<(String, String, u64)>,
+    pub heartbeats: Vec<(String, String, u64)>,
 }
 
 impl EntryDriver for FakeDriver {
@@ -126,6 +136,20 @@ impl EntryDriver for FakeDriver {
     fn stop(&mut self, plugin_id: &str, entry_id: &str, generation: u64) {
         self.stopped
             .push((plugin_id.to_string(), entry_id.to_string(), generation));
+    }
+
+    fn heartbeat(
+        &mut self,
+        plugin_id: &str,
+        entry_id: &str,
+        generation: u64,
+    ) -> Result<(), DriverError> {
+        if let Some(error) = self.fail_heartbeat_on.get(entry_id) {
+            return Err(error.clone());
+        }
+        self.heartbeats
+            .push((plugin_id.to_string(), entry_id.to_string(), generation));
+        Ok(())
     }
 }
 
@@ -255,6 +279,28 @@ impl<D: EntryDriver> Host<D> {
                 Err(DriverError::Crash) => {
                     failure = Some(err("activation-failed", format!("{entry_id} crashed")));
                     break;
+                }
+            }
+        }
+
+        if failure.is_none() {
+            for entry_id in &started {
+                match self.driver.heartbeat(&plugin_id, entry_id, generation) {
+                    Ok(()) => {}
+                    Err(DriverError::Timeout) => {
+                        failure = Some(err(
+                            "activation-timeout",
+                            format!("{entry_id} heartbeat exceeded deadline"),
+                        ));
+                        break;
+                    }
+                    Err(DriverError::Crash) => {
+                        failure = Some(err(
+                            "activation-failed",
+                            format!("{entry_id} heartbeat failed"),
+                        ));
+                        break;
+                    }
                 }
             }
         }
@@ -433,7 +479,35 @@ mod tests {
         let slot = host.slot("com.mossx.notes").expect("slot");
         assert_eq!(slot.state, SlotState::Ready);
         assert_eq!(slot.started, vec!["notes-worker", "notes-ui"]);
+        assert_eq!(
+            host.driver.heartbeats,
+            vec![
+                ("com.mossx.notes".into(), "notes-worker".into(), 1),
+                ("com.mossx.notes".into(), "notes-ui".into(), 1),
+            ]
+        );
         host.dispatch("com.mossx.notes", 1).expect("current generation");
+    }
+
+    #[test]
+    fn a_missing_first_heartbeat_cannot_become_ready() {
+        let mut driver = FakeDriver::default();
+        driver
+            .fail_heartbeat_on
+            .insert("notes-ui".into(), DriverError::Crash);
+        let mut host = enabled_host(driver);
+        let error = host.activate(notes_request()).unwrap_err();
+        assert_eq!(error.code, "activation-failed");
+        let slot = host.slot("com.mossx.notes").expect("slot");
+        assert_eq!(slot.state, SlotState::Failed);
+        assert!(slot.started.is_empty());
+        assert_eq!(
+            host.driver.stopped,
+            vec![
+                ("com.mossx.notes".into(), "notes-ui".into(), 1),
+                ("com.mossx.notes".into(), "notes-worker".into(), 1),
+            ]
+        );
     }
 
     #[test]
