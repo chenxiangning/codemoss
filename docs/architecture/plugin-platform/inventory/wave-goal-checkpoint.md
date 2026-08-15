@@ -105,7 +105,9 @@
 | 1NP2 Named Pipe ACL 仅当前用户 | 完成 | `9b6791fce` |
 | 1H2 boot Host 换 UDS supervisor | 完成 | `acc84ed0a` |
 | 1NP3 Named Pipe Host driver fail-closed | 完成 | `781674ce1` |
-| 1QJ2 QuickJS 只允许 mossx handshake / SDK | 完成 | 本刀 |
+| 1QJ2 QuickJS 只允许 mossx handshake / SDK | 完成 | `72fcd081e` |
+| 1UDS2 UDS bind 0600 | 完成 | 本刀前一提交 |
+| 1H3 Ready 再激活 stop 旧 generation | 完成 | 本刀 |
 
 ## 明确未做
 
@@ -117,5 +119,5 @@
 
 ## 进度
 
-相对「Core + 可撤销插件平台」全文约 **99%**（合同平面 **100%**；插座本体骨架 + UDS boot supervisor + Named Pipe driver + QuickJS allowlist 已落地；C 引擎 / Windows SD / 产品切流仍未做）。  
+相对「Core + 可撤销插件平台」全文约 **99%**（合同平面 **100%**；插座本体骨架 + UDS 0600 + Ready 再激活可逆 已落地；C 引擎 / Windows SD / 产品切流仍未做）。  
 相对「产品已拔插头」约 **0%**。

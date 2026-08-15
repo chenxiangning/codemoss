@@ -217,6 +217,24 @@ impl<D: EntryDriver> Host<D> {
                 return Err(err("activation-busy", "concurrent activation limit reached"));
             }
             self.inflight += 1;
+        }
+        let previous = self
+            .slots
+            .get(&request.plugin_id)
+            .and_then(|slot| {
+                if slot.state == SlotState::Ready {
+                    Some((slot.generation, slot.started.clone()))
+                } else {
+                    None
+                }
+            });
+        if let Some((old_generation, old_started)) = previous {
+            for entry_id in old_started.iter().rev() {
+                self.driver
+                    .stop(&request.plugin_id, entry_id, old_generation);
+            }
+        }
+        if let Some(current) = self.slots.get_mut(&request.plugin_id) {
             current.state = SlotState::Activating;
             current.generation += 1;
             current.unit_id = Some(request.unit_id.clone());
@@ -705,5 +723,29 @@ mod tests {
             );
             assert!(host.slot(plugin_id).is_none(), "{plugin_id}");
         }
+    }
+
+    #[test]
+    fn ready_reactivate_stops_previous_generation() {
+        let mut host = enabled_host(FakeDriver::default());
+        host.activate(notes_request()).expect("first");
+        host.activate(notes_request()).expect("second");
+        assert_eq!(host.slot("com.mossx.notes").unwrap().generation, 2);
+        assert_eq!(
+            host.driver().stopped,
+            vec![
+                ("com.mossx.notes".into(), "notes-ui".into(), 1),
+                ("com.mossx.notes".into(), "notes-worker".into(), 1),
+            ]
+        );
+        assert_eq!(
+            host.driver().started,
+            vec![
+                ("com.mossx.notes".into(), "notes-worker".into(), 1),
+                ("com.mossx.notes".into(), "notes-ui".into(), 1),
+                ("com.mossx.notes".into(), "notes-worker".into(), 2),
+                ("com.mossx.notes".into(), "notes-ui".into(), 2),
+            ]
+        );
     }
 }

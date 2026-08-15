@@ -292,4 +292,15 @@ mod tests {
         assert_eq!(host.driver().live_count(), 0);
         let _ = std::fs::remove_file(binary);
     }
+
+    #[test]
+    fn ready_reactivate_does_not_leak_old_children() {
+        let mut host = enabled_host(RestrictedProcessDriver::new(idle_fixture_executable()));
+        host.activate(notes_activation_request()).expect("first");
+        assert_eq!(host.driver().live_count(), 2);
+        host.activate(notes_activation_request()).expect("second");
+        assert_eq!(host.driver().live_count(), 2);
+        host.disable("com.mossx.notes").expect("disable");
+        assert_eq!(host.driver().live_count(), 0);
+    }
 }

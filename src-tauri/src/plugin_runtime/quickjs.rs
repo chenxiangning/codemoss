@@ -228,4 +228,32 @@ mod tests {
             .eval("com.mossx.notes", "notes-worker", 1, "mossx.sdk.ready()")
             .expect("sdk");
     }
+
+    #[test]
+    fn stale_worker_generation_cannot_eval() {
+        let mut host = enabled_host(QuickJsWorkerDriver::default());
+        host.activate(notes_activation_request()).expect("first");
+        host.activate(notes_activation_request()).expect("second");
+        assert_eq!(
+            host.driver()
+                .eval(
+                    "com.mossx.notes",
+                    "notes-worker",
+                    1,
+                    "mossx.handshake.hello()"
+                )
+                .unwrap_err()
+                .code,
+            "plugin-unavailable"
+        );
+        host.driver()
+            .eval(
+                "com.mossx.notes",
+                "notes-worker",
+                2,
+                "mossx.handshake.hello()",
+            )
+            .expect("new generation");
+        assert_eq!(host.driver().live_count(), 2);
+    }
 }
