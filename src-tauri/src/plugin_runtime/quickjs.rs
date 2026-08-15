@@ -1,6 +1,8 @@
 //! Per-plugin QuickJS Worker isolate gate. No C engine, not in product path.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
+
+use serde_json::Value;
 
 use super::host::{DriverError, EntryDriver};
 
@@ -33,12 +35,14 @@ pub struct WorkerIsolate {
 
 pub struct QuickJsWorkerDriver {
     isolates: HashMap<IsolateKey, WorkerIsolate>,
+    catalog: HashSet<(String, String)>,
 }
 
 impl Default for QuickJsWorkerDriver {
     fn default() -> Self {
         Self {
             isolates: HashMap::new(),
+            catalog: declared_quickjs_workers(),
         }
     }
 }
@@ -76,6 +80,46 @@ impl QuickJsWorkerDriver {
         }
         allow_mossx_bridge(source)
     }
+
+    pub fn declare(&mut self, plugin_id: &str, entry_id: &str) {
+        self.catalog
+            .insert((plugin_id.to_string(), entry_id.to_string()));
+    }
+}
+
+fn collect_quickjs_workers(source: &str, catalog: &mut HashSet<(String, String)>) {
+    let Ok(manifest) = serde_json::from_str::<Value>(source) else {
+        return;
+    };
+    let Some(plugin_id) = manifest.get("pluginId").and_then(Value::as_str) else {
+        return;
+    };
+    let Some(entries) = manifest.get("entries").and_then(Value::as_array) else {
+        return;
+    };
+    for entry in entries {
+        let Some(entry_id) = entry.get("id").and_then(Value::as_str) else {
+            continue;
+        };
+        if entry.get("kind").and_then(Value::as_str) == Some("worker")
+            && entry.get("runtime").and_then(Value::as_str) == Some("quickjs")
+        {
+            catalog.insert((plugin_id.to_string(), entry_id.to_string()));
+        }
+    }
+}
+
+fn declared_quickjs_workers() -> HashSet<(String, String)> {
+    let mut catalog = HashSet::new();
+    collect_quickjs_workers(
+        include_str!("../../../packages/plugin-contract/fixtures/valid/notes-pilot.json"),
+        &mut catalog,
+    );
+    collect_quickjs_workers(
+        include_str!("../../../packages/plugin-contract/fixtures/valid/claude-engine.json"),
+        &mut catalog,
+    );
+    catalog
 }
 
 fn allow_mossx_bridge(source: &str) -> Result<(), WorkerError> {
@@ -103,13 +147,12 @@ fn allow_mossx_bridge(source: &str) -> Result<(), WorkerError> {
     ))
 }
 
-fn is_worker_entry(entry_id: &str) -> bool {
-    entry_id.ends_with("-worker")
-}
-
 impl EntryDriver for QuickJsWorkerDriver {
     fn start(&mut self, plugin_id: &str, entry_id: &str, generation: u64) -> Result<(), DriverError> {
-        if !is_worker_entry(entry_id) {
+        if !self
+            .catalog
+            .contains(&(plugin_id.to_string(), entry_id.to_string()))
+        {
             return Ok(());
         }
         let key = IsolateKey {
@@ -289,5 +332,30 @@ mod tests {
             "plugin-unavailable"
         );
         assert_eq!(host.driver().live_count(), 1);
+    }
+
+    #[test]
+    fn undeclared_worker_named_entry_has_no_isolate() {
+        let mut driver = QuickJsWorkerDriver::default();
+        driver
+            .start("com.mossx.notes", "evil-worker", 1)
+            .expect("start");
+        assert!(driver
+            .isolate("com.mossx.notes", "evil-worker", 1)
+            .is_none());
+        assert_eq!(driver.live_count(), 0);
+    }
+
+    #[test]
+    fn declared_worker_without_suffix_gets_an_isolate() {
+        let mut driver = QuickJsWorkerDriver::default();
+        driver.declare("com.mossx.notes", "notes-core");
+        driver
+            .start("com.mossx.notes", "notes-core", 1)
+            .expect("start");
+        assert!(driver
+            .isolate("com.mossx.notes", "notes-core", 1)
+            .is_some());
+        assert_eq!(driver.live_count(), 1);
     }
 }
