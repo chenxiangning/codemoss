@@ -87,7 +87,16 @@ impl<D: EntryDriver> PluginRuntime<D> {
     }
 
     pub fn reset_plugin(&mut self, plugin_id: &str) -> Result<(), HostError> {
-        self.host.reset(plugin_id)
+        let generation = self
+            .host
+            .slot(plugin_id)
+            .map(|slot| slot.generation)
+            .unwrap_or(0);
+        self.host.reset(plugin_id)?;
+        if generation > 0 {
+            self.plane.revoke(plugin_id, generation);
+        }
+        Ok(())
     }
 
     fn ensure_ready(&self, plugin_id: &str) -> Result<(), StorageError> {
@@ -1693,6 +1702,45 @@ mod tests {
             .open_stream("com.mossx.notes", second, 27, "blob-v1")
             .expect("second stream");
         assert_eq!(runtime.plane.codec(27), Some("blob-v1"));
+        remove_path(&root);
+    }
+
+    #[test]
+    fn reset_plugin_revokes_leftover_streams() {
+        let root = unique_temp_root("runtime-reset-revoke");
+        let mut runtime = PluginRuntime::new(
+            HostConfig {
+                enabled: true,
+                ..HostConfig::default()
+            },
+            FakeDriver::default(),
+            "/fixture/workspace",
+            &root,
+        )
+        .expect("runtime");
+        let generation = runtime
+            .activate(notes_activation_request())
+            .expect("activate");
+        runtime
+            .open_stream("com.mossx.notes", generation, 28, "blob-v1")
+            .expect("stream");
+        assert_eq!(runtime.plane.codec(28), Some("blob-v1"));
+        runtime.reset_plugin("com.mossx.notes").expect("reset");
+        assert!(runtime.plane.codec(28).is_none());
+        assert_eq!(
+            runtime
+                .query_read("com.mossx.notes", generation)
+                .unwrap_err()
+                .code,
+            "plugin-unavailable"
+        );
+        assert_eq!(
+            runtime
+                .open_stream("com.mossx.notes", generation, 29, "blob-v1")
+                .unwrap_err()
+                .code,
+            "plugin-unavailable"
+        );
         remove_path(&root);
     }
 }

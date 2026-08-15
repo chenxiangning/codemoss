@@ -49,7 +49,8 @@
 | 1V Failed 后 reset 恢复 handle | 完成 | `5d6c2ea68` |
 | 1W Failed 必须先 reset 才能再激活 | 完成 | `000dfb7df` |
 | 1X 组合面并发激活满员失败 | 完成 | `38d476f6f` |
-| 1Y Ready 再激活换 generation 并撤销旧 handle | 完成 | 本刀 |
+| 1Y Ready 再激活换 generation 并撤销旧 handle | 完成 | `2519955b6` |
+| 1Z reset 撤销旧 stream | 完成 | 本刀 |
 
 ## 明确未做
 
@@ -62,5 +63,5 @@
 
 ## 进度
 
-相对「Core + 可撤销插件平台」全文约 **75%**（合同/插座组合面/disable+fuse+reset/storage 闸门/Host off/只读 Broker/失败激活必须 reset/并发上限/Ready swap）。  
+相对「Core + 可撤销插件平台」全文约 **76%**（合同/插座组合面/disable+fuse+reset/storage 闸门/Host off/只读 Broker/失败激活必须 reset/并发上限/Ready swap/reset 撤 stream）。  
 相对「产品已拔插头」约 **0%**。
