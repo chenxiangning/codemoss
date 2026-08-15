@@ -113,6 +113,15 @@ impl<D: EntryDriver> PluginRuntime<D> {
         self.ensure_ready(plugin_id)?;
         self.storage.migrate(plugin_id, plan)
     }
+
+    pub fn access_store(
+        &self,
+        caller_id: &str,
+        target_id: &str,
+    ) -> Result<PathBuf, StorageError> {
+        self.ensure_ready(caller_id)?;
+        self.storage.access_file(caller_id, target_id)
+    }
 }
 
 #[cfg(test)]
@@ -771,6 +780,44 @@ mod tests {
             )
             .unwrap_err();
         assert_eq!(error.code, "quarantine");
+        remove_path(&root);
+    }
+
+    #[test]
+    fn compose_surface_denies_cross_plugin_store_access() {
+        use crate::plugin_runtime::claude_pilot::claude_activation_request;
+
+        let root = unique_temp_root("runtime-store-access");
+        let mut runtime = PluginRuntime::new(
+            HostConfig {
+                enabled: true,
+                ..HostConfig::default()
+            },
+            FakeDriver::default(),
+            "/fixture/workspace",
+            &root,
+        )
+        .expect("runtime");
+        runtime
+            .activate(claude_activation_request())
+            .expect("claude");
+        runtime
+            .activate(notes_activation_request())
+            .expect("notes");
+        let own = runtime.open_own_store("com.mossx.notes").expect("open");
+        assert_eq!(
+            runtime
+                .access_store("com.mossx.notes", "com.mossx.notes")
+                .expect("own"),
+            own
+        );
+        assert_eq!(
+            runtime
+                .access_store("com.mossx.engine.claude", "com.mossx.notes")
+                .unwrap_err()
+                .code,
+            "permission-denied"
+        );
         remove_path(&root);
     }
 }

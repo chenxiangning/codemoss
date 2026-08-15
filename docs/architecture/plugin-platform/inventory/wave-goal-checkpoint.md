@@ -25,7 +25,8 @@
 | 1L fuse 后 reset 恢复 | 完成 | `06ade989d` |
 | 1M 旧 generation 失效 | 完成 | `fab30c466` |
 | 2E–2G storage Ready 闸门 | 完成 | `098c48763` |
-| 2H–2K migrate 组合面闸门 | 完成 | 本刀 |
+| 2H–2K migrate 组合面闸门 | 完成 | `cc1afd8cb` |
+| 2L 组合面跨插件 store 隔离 | 完成 | 本刀 |
 
 ## 明确未做
 
@@ -38,5 +39,5 @@
 
 ## 进度
 
-相对「Core + 可撤销插件平台」全文约 **61%**（合同/插座组合面/disable+fuse+reset/storage Ready+migrate 闸门）。  
+相对「Core + 可撤销插件平台」全文约 **62%**（合同/插座组合面/disable+fuse+reset/storage Ready+migrate+access 闸门）。  
 相对「产品已拔插头」约 **0%**。
