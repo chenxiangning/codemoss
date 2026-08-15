@@ -424,8 +424,85 @@ pub fn accept_uds_timed(_listener: &(), timeout: Duration) -> Result<(), IpcErro
 
 #[cfg(unix)]
 pub fn connect_uds(path: &Path) -> Result<std::os::unix::net::UnixStream, IpcError> {
+    connect_uds_timed(path, super::ipc::HANDSHAKE_DEADLINE)
+}
+
+#[cfg(unix)]
+pub fn connect_uds_timed(
+    path: &Path,
+    timeout: Duration,
+) -> Result<std::os::unix::net::UnixStream, IpcError> {
+    use std::os::unix::ffi::OsStrExt;
+    use std::os::unix::io::FromRawFd;
+    use std::os::unix::net::UnixStream;
+
     parent_is_owner_only(path)?;
-    let stream = std::os::unix::net::UnixStream::connect(path).map_err(io_err)?;
+    let bytes = path.as_os_str().as_bytes();
+    if bytes.is_empty() || bytes.len() >= 104 {
+        return Err(err("schema", "uds path is too long"));
+    }
+    let fd = unsafe { libc::socket(libc::AF_UNIX, libc::SOCK_STREAM, 0) };
+    if fd < 0 {
+        return Err(io_err(std::io::Error::last_os_error()));
+    }
+    let flags = unsafe { libc::fcntl(fd, libc::F_GETFL) };
+    if flags < 0 || unsafe { libc::fcntl(fd, libc::F_SETFL, flags | libc::O_NONBLOCK) } < 0 {
+        unsafe { libc::close(fd) };
+        return Err(err("transport", "cannot set connect fd non-blocking"));
+    }
+    let mut addr: libc::sockaddr_un = unsafe { std::mem::zeroed() };
+    addr.sun_family = libc::AF_UNIX as libc::sa_family_t;
+    for (index, byte) in bytes.iter().enumerate() {
+        addr.sun_path[index] = *byte as libc::c_char;
+    }
+    let addr_len = std::mem::size_of::<libc::sockaddr_un>() as libc::socklen_t;
+    let deadline = Instant::now() + timeout;
+    let rc = unsafe {
+        libc::connect(
+            fd,
+            std::ptr::addr_of!(addr) as *const libc::sockaddr,
+            addr_len,
+        )
+    };
+    if rc != 0 {
+        let os = std::io::Error::last_os_error();
+        let raw = os.raw_os_error();
+        if raw != Some(libc::EINPROGRESS)
+            && raw != Some(libc::EAGAIN)
+            && raw != Some(libc::EWOULDBLOCK)
+        {
+            unsafe { libc::close(fd) };
+            return Err(io_err(os));
+        }
+        if let Err(error) = wait_writable(fd, remaining(deadline)?) {
+            unsafe { libc::close(fd) };
+            return Err(error);
+        }
+        let mut err_code = 0;
+        let mut err_len = std::mem::size_of::<libc::c_int>() as libc::socklen_t;
+        let gs = unsafe {
+            libc::getsockopt(
+                fd,
+                libc::SOL_SOCKET,
+                libc::SO_ERROR,
+                std::ptr::addr_of_mut!(err_code) as *mut libc::c_void,
+                &mut err_len,
+            )
+        };
+        if gs < 0 {
+            unsafe { libc::close(fd) };
+            return Err(err("transport", "cannot inspect connect error"));
+        }
+        if err_code != 0 {
+            unsafe { libc::close(fd) };
+            return Err(io_err(std::io::Error::from_raw_os_error(err_code)));
+        }
+    }
+    if unsafe { libc::fcntl(fd, libc::F_SETFL, flags) } < 0 {
+        unsafe { libc::close(fd) };
+        return Err(err("transport", "cannot restore connect fd flags"));
+    }
+    let stream = unsafe { UnixStream::from_raw_fd(fd) };
     uds_peer_ok(peer_uid_of(&stream)?)?;
     Ok(stream)
 }
@@ -438,6 +515,12 @@ pub fn accept_uds(_listener: &()) -> Result<(), IpcError> {
 #[cfg(not(unix))]
 pub fn connect_uds(_path: &Path) -> Result<(), IpcError> {
     Err(err("unsupported-platform", "UDS transport is unix-only in V1"))
+}
+
+#[cfg(not(unix))]
+pub fn connect_uds_timed(_path: &Path, timeout: Duration) -> Result<(), IpcError> {
+    let _ = timeout;
+    connect_uds(_path)
 }
 
 #[cfg(unix)]
@@ -667,6 +750,34 @@ mod tests {
             "handshake-timeout"
         );
         server.join().expect("server");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_listener_that_never_accepts_cannot_complete_connect() {
+        use std::time::Duration;
+
+        let path = temp_sock("nacc");
+        let _listener = bind_uds(&path).expect("bind");
+        let mut held = Vec::new();
+        let started = Instant::now();
+        let mut failed = None;
+        for _ in 0..256 {
+            match connect_uds_timed(&path, Duration::from_millis(30)) {
+                Ok(stream) => held.push(stream),
+                Err(error) => {
+                    failed = Some(error.code);
+                    break;
+                }
+            }
+        }
+        assert!(started.elapsed() < Duration::from_millis(200));
+        assert!(
+            matches!(failed, Some("handshake-timeout") | Some("transport")),
+            "full backlog must fail closed, got {failed:?}"
+        );
+        assert!(!held.is_empty());
+        let _ = std::fs::remove_file(&path);
     }
 
     #[cfg(unix)]

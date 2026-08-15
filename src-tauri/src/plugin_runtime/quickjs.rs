@@ -160,7 +160,8 @@ fn handshake_worker(
         use std::thread;
 
         use super::uds::{
-            accept_uds_timed, bind_uds, connect_uds, read_mxpc_frame_timed, write_mxpc_frame_timed,
+            accept_uds_timed, bind_uds, connect_uds_timed, read_mxpc_frame_timed,
+            write_mxpc_frame_timed,
         };
 
         let path = worker_sock_path(plugin_id, entry_id, generation)?;
@@ -187,7 +188,8 @@ fn handshake_worker(
             .map_err(|_| ())?;
             Ok::<(), ()>(())
         });
-        let mut client = connect_uds(&path).map_err(|_| DriverError::Crash)?;
+        let mut client =
+            connect_uds_timed(&path, HANDSHAKE_DEADLINE).map_err(|_| DriverError::Crash)?;
         write_mxpc_frame_timed(&mut client, &hello(generation, &issued), HANDSHAKE_DEADLINE)
             .map_err(|_| DriverError::Crash)?;
         let received =

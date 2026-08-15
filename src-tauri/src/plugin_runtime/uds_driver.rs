@@ -86,7 +86,7 @@ fn handshake_at(
 
     use super::ipc::{validate_handshake_ack, validate_handshake_hello};
     use super::uds::{
-        accept_uds_timed, bind_uds, connect_uds, read_mxpc_frame_timed, write_mxpc_frame_timed,
+        accept_uds_timed, bind_uds, connect_uds_timed, read_mxpc_frame_timed, write_mxpc_frame_timed,
     };
 
     let listener = bind_uds(path).map_err(|_| DriverError::Crash)?;
@@ -114,7 +114,7 @@ fn handshake_at(
         .map_err(|_| ())?;
         Ok::<(), ()>(())
     });
-    let mut client = connect_uds(path).map_err(|_| DriverError::Crash)?;
+    let mut client = connect_uds_timed(path, HANDSHAKE_DEADLINE).map_err(|_| DriverError::Crash)?;
     write_mxpc_frame_timed(&mut client, &hello(generation, &nonce), HANDSHAKE_DEADLINE)
         .map_err(|_| DriverError::Crash)?;
     let received =
