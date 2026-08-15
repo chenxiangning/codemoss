@@ -17,6 +17,24 @@ use super::ipc::{decode_mxpc, encode_mxpc};
 
 static WORKER_SOCK_SEQ: AtomicU64 = AtomicU64::new(1);
 pub const EVAL_DEADLINE: Duration = Duration::from_secs(2);
+pub const WORKER_MEMORY_DEFAULT: usize = 128 * 1024 * 1024;
+pub const WORKER_MEMORY_HARD_MAX: usize = 256 * 1024 * 1024;
+
+pub fn worker_memory_limit_ok(limit: usize) -> Result<(), WorkerError> {
+    if limit == 0 {
+        return Err(err(
+            "schema",
+            "worker memory limit must be finite",
+        ));
+    }
+    if limit > WORKER_MEMORY_HARD_MAX {
+        return Err(err(
+            "schema",
+            "worker memory limit exceeds 256 MiB",
+        ));
+    }
+    Ok(())
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WorkerError {
@@ -105,6 +123,11 @@ fn engine_loop(rx: Receiver<EngineCmd>, ready: Sender<Result<(), DriverError>>) 
             return;
         }
     };
+    if worker_memory_limit_ok(WORKER_MEMORY_DEFAULT).is_err() {
+        let _ = ready.send(Err(DriverError::Crash));
+        return;
+    }
+    runtime.set_memory_limit(WORKER_MEMORY_DEFAULT);
     let context = match rquickjs::Context::custom::<rquickjs::context::intrinsic::Eval>(&runtime) {
         Ok(context) => context,
         Err(_) => {
@@ -736,6 +759,41 @@ mod tests {
     }
 
     #[test]
+    fn unlimited_or_oversized_worker_memory_is_rejected() {
+        assert_eq!(worker_memory_limit_ok(0).unwrap_err().code, "schema");
+        assert_eq!(
+            worker_memory_limit_ok(WORKER_MEMORY_HARD_MAX + 1)
+                .unwrap_err()
+                .code,
+            "schema"
+        );
+        worker_memory_limit_ok(WORKER_MEMORY_DEFAULT).expect("default");
+        worker_memory_limit_ok(WORKER_MEMORY_HARD_MAX).expect("hard max");
+    }
+
+    #[test]
+    fn an_allocation_beyond_the_isolate_budget_cannot_succeed() {
+        let runtime = rquickjs::Runtime::new().expect("runtime");
+        worker_memory_limit_ok(64 * 1024).expect("tiny");
+        runtime.set_memory_limit(64 * 1024);
+        let started = Instant::now();
+        let deadline = started + Duration::from_millis(200);
+        runtime.set_interrupt_handler(Some(Box::new(move || Instant::now() >= deadline)));
+        let context = rquickjs::Context::custom::<rquickjs::context::intrinsic::Eval>(&runtime)
+            .expect("context");
+        let failed = context.with(|ctx| {
+            ctx.eval::<(), _>("var a = []; while (true) { a.push('xxxxxxxx'); }")
+                .is_err()
+        });
+        runtime.set_interrupt_handler(None);
+        assert!(failed, "over-budget allocation must fail");
+        assert!(
+            started.elapsed() < Duration::from_millis(80),
+            "memory limit must stop the allocation before the interrupt deadline"
+        );
+    }
+
+    #[test]
     fn stale_worker_generation_cannot_eval() {
         let mut host = enabled_host(QuickJsWorkerDriver::default());
         host.activate(notes_activation_request()).expect("first");
@@ -838,6 +896,7 @@ mod tests {
         assert!(source.contains("read_mxpc_frame_timed"));
         assert!(source.contains("rquickjs::Runtime::new"));
         assert!(source.contains("Context::custom::<rquickjs::context::intrinsic::Eval>"));
+        assert!(source.contains("set_memory_limit(WORKER_MEMORY_DEFAULT)"));
         assert!(source.contains("EngineCmd::Handshake"));
         assert!(source.contains("mossx.handshake.hello()"));
         let mut host = enabled_host(QuickJsWorkerDriver::default());

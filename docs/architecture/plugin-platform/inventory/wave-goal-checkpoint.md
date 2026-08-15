@@ -156,7 +156,8 @@
 | 1NP6 Named Pipe 管名必须按完整 pluginId 隔离 | 完成 | `357926673` |
 | 1QJ11 Worker QuickJS 只能是 base + Eval | 完成 | `551da7cd0` |
 | 1MXPD2 MXPD 写必须在 deadline 内完成 | 完成 | `5503f94ac` |
-| 1NP7 Named Pipe accept / connect 必须在 handshake deadline 内完成 | 完成 | 本刀 |
+| 1NP7 Named Pipe accept / connect 必须在 handshake deadline 内完成 | 完成 | `414667209` |
+| 1QJ12 Worker QuickJS 必须有内存上限 | 完成 | 本刀 |
 
 ## 明确未做
 
