@@ -330,6 +330,9 @@ impl<D: EntryDriver> Host<D> {
     }
 
     pub fn dispatch(&self, plugin_id: &str, generation: u64) -> Result<(), HostError> {
+        if plugin_id.trim().is_empty() {
+            return Err(err("schema", "pluginId is required"));
+        }
         if generation == 0 {
             return Err(err("stale-generation", "generation 0 is never a live handle"));
         }
@@ -573,5 +576,12 @@ mod tests {
         assert!(host.slot("").is_none());
         assert!(host.slot("   ").is_none());
         assert!(host.slot("com.mossx.notes").is_none());
+    }
+
+    #[test]
+    fn blank_plugin_id_cannot_dispatch() {
+        let host = enabled_host(FakeDriver::default());
+        assert_eq!(host.dispatch("", 1).unwrap_err().code, "schema");
+        assert_eq!(host.dispatch("   ", 1).unwrap_err().code, "schema");
     }
 }
