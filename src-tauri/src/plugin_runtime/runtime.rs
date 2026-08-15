@@ -2017,4 +2017,39 @@ mod tests {
         }
         remove_path(&root);
     }
+
+    #[test]
+    fn claude_cannot_occupy_a_notes_stream_id() {
+        use crate::plugin_runtime::claude_pilot::claude_activation_request;
+
+        let root = unique_temp_root("runtime-cross-stream");
+        let mut runtime = PluginRuntime::new(
+            HostConfig {
+                enabled: true,
+                ..HostConfig::default()
+            },
+            FakeDriver::default(),
+            "/fixture/workspace",
+            &root,
+        )
+        .expect("runtime");
+        let notes_gen = runtime
+            .activate(notes_activation_request())
+            .expect("notes");
+        let claude_gen = runtime
+            .activate(claude_activation_request())
+            .expect("claude");
+        runtime
+            .open_stream("com.mossx.notes", notes_gen, 51, "blob-v1")
+            .expect("notes stream");
+        assert_eq!(
+            runtime
+                .open_stream("com.mossx.engine.claude", claude_gen, 51, "engine-event-v1")
+                .unwrap_err()
+                .code,
+            "stream-exists"
+        );
+        assert_eq!(runtime.plane.codec(51), Some("blob-v1"));
+        remove_path(&root);
+    }
 }

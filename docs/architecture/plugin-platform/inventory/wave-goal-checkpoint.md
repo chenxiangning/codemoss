@@ -57,7 +57,9 @@
 | 1AA 每 generation 最多 8 条 stream | 完成 | `3f64eaa55` |
 | 1AB 组合面拒绝未知 codec | 完成 | `f2ae1be71` |
 | 1AC 组合面拒绝重复 stream_id | 完成 | `e3dc13a8c` |
-| 1AD 组合面拒绝其余 V1 brokered capability | 完成 | 本刀 |
+| 1AD 组合面拒绝其余 V1 brokered capability | 完成 | `110fac4de` |
+| 1AE 组合面拒绝 provider / slot / 私有 capability | 完成 | `44bd9142c` |
+| 1AF Claude 不得占用 Notes stream_id | 完成 | 本刀 |
 
 ## 明确未做
 
@@ -70,6 +72,6 @@
 
 ## 进度
 
-相对「Core + 可撤销插件平台」全文约 **81%**（合同/插座组合面/disable+fuse+reset/storage 闸门/Host off/只读 Broker/失败激活必须 reset/并发上限/Ready swap/reset 撤 stream/disable 恢复/disable lifecycle/stream budget/未知 codec/重复 stream/其余 brokered 拒绝）。  
+相对「Core + 可撤销插件平台」全文约 **82%**（合同/插座组合面/disable+fuse+reset/storage 闸门/Host off/只读 Broker/失败激活必须 reset/并发上限/Ready swap/reset 撤 stream/disable 恢复/disable lifecycle/stream budget/未知 codec/重复 stream/其余 brokered 拒绝/provider 拒绝/跨插件 stream）。  
 相对「产品已拔插头」约 **0%**。  
 合同 100% **不等于**插座完成：1F spawn、Named Pipe、Host 进 boot 仍属插座本体。
