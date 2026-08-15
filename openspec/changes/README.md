@@ -2,7 +2,7 @@
 
 本页是 `mossx` OpenSpec proposal 的当前入口。它只维护 active change 的执行状态，并把 archived change 路由到完整历史索引；详细治理快照仍以 [`../project.md`](../project.md) 为准。
 
-- Updated At: `2026-08-14`
+- Updated At: `2026-08-16`
 - Active proposals: `5+`（以磁盘 `openspec/changes/*` 为准）
 - Archived proposals: `848+`
 - Main capability specs: `494`
@@ -11,6 +11,8 @@
 
 | Change | Progress | Current gate | Artifacts |
 | ------ | -------: | ------------ | --------- |
+| [`plugin-kernel-ownership-inventory`](plugin-kernel-ownership-inventory/proposal.md) | proposed | Wave 0A：ownership 表 + fitness；不删产品 | [proposal](plugin-kernel-ownership-inventory/proposal.md) · [design](plugin-kernel-ownership-inventory/design.md) · [tasks](plugin-kernel-ownership-inventory/tasks.md) · [specs](plugin-kernel-ownership-inventory/specs/) |
+| [`plugin-manifest-v1-parser`](plugin-manifest-v1-parser/proposal.md) | proposed | Wave 0B：Manifest/Catalog/DAG parser，不接生产路径 | [proposal](plugin-manifest-v1-parser/proposal.md) · [design](plugin-manifest-v1-parser/design.md) · [tasks](plugin-manifest-v1-parser/tasks.md) · [specs](plugin-manifest-v1-parser/specs/) |
 | [`cap-live-trailing-process-window`](cap-live-trailing-process-window/proposal.md) | implemented / committed | trailing live 段滚动卡片窗口（N=5/K=3，批量卡计 1）；delta 修订 `message-process-phase-collapse`；vitest 31 绿 + typecheck/lint 绿；N/K 常量注释锁定设计边界不扩散 | [proposal](cap-live-trailing-process-window/proposal.md) · [design](cap-live-trailing-process-window/design.md) · [tasks](cap-live-trailing-process-window/tasks.md) · [specs](cap-live-trailing-process-window/specs/) |
 | [`bound-command-execution-output-memory`](bound-command-execution-output-memory/proposal.md) | implemented / user accepted / committed | commandExecution 256KiB / fileChange 1MiB head+tail；temp/tmp/.tmp 进 junk 名单；Codex thread start upsert `.codexignore` 托管段；delta specs 已 sync 主 specs，未 archive | [proposal](bound-command-execution-output-memory/proposal.md) · [design](bound-command-execution-output-memory/design.md) · [tasks](bound-command-execution-output-memory/tasks.md) · [specs](bound-command-execution-output-memory/specs/) · [verification](bound-command-execution-output-memory/verification.md) |
 | [`fix-deferred-feature-style-surfaces`](fix-deferred-feature-style-surfaces/proposal.md) | implemented / user accepted | 延迟 CSS 按可见宿主接线 + Git Diff 单栏/双栏互斥滚动层；用户 2026-08-13 手测通过 | [proposal](fix-deferred-feature-style-surfaces/proposal.md) · [design](fix-deferred-feature-style-surfaces/design.md) · [tasks](fix-deferred-feature-style-surfaces/tasks.md) · [specs](fix-deferred-feature-style-surfaces/specs/) · [verification](fix-deferred-feature-style-surfaces/verification.md) |
