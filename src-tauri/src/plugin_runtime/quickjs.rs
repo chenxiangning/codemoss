@@ -2,9 +2,12 @@
 
 use std::collections::{HashMap, HashSet};
 
-use serde_json::Value;
+use serde_json::{json, Value};
 
 use super::host::{DriverError, EntryDriver};
+use super::ipc::{
+    decode_mxpc, encode_mxpc, issue_handshake_nonce, validate_handshake_ack, validate_handshake_hello,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WorkerError {
@@ -36,6 +39,7 @@ pub struct WorkerIsolate {
 pub struct QuickJsWorkerDriver {
     isolates: HashMap<IsolateKey, WorkerIsolate>,
     catalog: HashSet<(String, String)>,
+    corrupt_ack_on: Option<String>,
 }
 
 impl Default for QuickJsWorkerDriver {
@@ -43,6 +47,7 @@ impl Default for QuickJsWorkerDriver {
         Self {
             isolates: HashMap::new(),
             catalog: declared_quickjs_workers(),
+            corrupt_ack_on: None,
         }
     }
 }
@@ -85,6 +90,62 @@ impl QuickJsWorkerDriver {
         self.catalog
             .insert((plugin_id.to_string(), entry_id.to_string()));
     }
+
+    #[cfg(test)]
+    pub fn corrupt_ack_on(&mut self, entry_id: impl Into<String>) {
+        self.corrupt_ack_on = Some(entry_id.into());
+    }
+}
+
+fn hello(generation: u64, nonce: &str) -> Value {
+    json!({
+        "jsonrpc": "2.0",
+        "id": "hs-1",
+        "method": "mossx.handshake.hello",
+        "params": {
+            "protocolVersion": 1,
+            "coreContract": "1.0.0",
+            "nonce": nonce,
+            "generation": generation
+        }
+    })
+}
+
+fn ack(plugin_id: &str, generation: u64, nonce: &str) -> Value {
+    json!({
+        "jsonrpc": "2.0",
+        "id": "hs-1",
+        "result": {
+            "protocolVersion": 1,
+            "pluginId": plugin_id,
+            "version": "1.0.0",
+            "generation": generation,
+            "nonce": nonce
+        }
+    })
+}
+
+fn handshake_worker(
+    plugin_id: &str,
+    entry_id: &str,
+    generation: u64,
+    corrupt: bool,
+) -> Result<(), DriverError> {
+    let issued = issue_handshake_nonce();
+    let encoded_hello = encode_mxpc(&hello(generation, &issued)).map_err(|_| DriverError::Crash)?;
+    let (decoded_hello, _) = decode_mxpc(&encoded_hello).map_err(|_| DriverError::Crash)?;
+    validate_handshake_hello(&decoded_hello).map_err(|_| DriverError::Crash)?;
+    let nonce = if corrupt {
+        "bb".repeat(32)
+    } else {
+        issued.clone()
+    };
+    let encoded_ack = encode_mxpc(&ack(plugin_id, generation, &nonce)).map_err(|_| DriverError::Crash)?;
+    let (decoded_ack, _) = decode_mxpc(&encoded_ack).map_err(|_| DriverError::Crash)?;
+    validate_handshake_ack(&decoded_ack, &issued, plugin_id, generation)
+        .map_err(|_| DriverError::Crash)?;
+    let _ = entry_id;
+    Ok(())
 }
 
 fn collect_quickjs_workers(source: &str, catalog: &mut HashSet<(String, String)>) {
@@ -163,6 +224,8 @@ impl EntryDriver for QuickJsWorkerDriver {
         if self.isolates.contains_key(&key) {
             return Err(DriverError::Crash);
         }
+        let corrupt = self.corrupt_ack_on.as_deref() == Some(entry_id);
+        handshake_worker(plugin_id, entry_id, generation, corrupt)?;
         self.isolates.insert(
             key,
             WorkerIsolate {
@@ -187,7 +250,7 @@ impl EntryDriver for QuickJsWorkerDriver {
 mod tests {
     use super::*;
     use crate::plugin_runtime::claude_pilot::claude_activation_request;
-    use crate::plugin_runtime::host::{Host, HostConfig, SlotState};
+    use crate::plugin_runtime::host::{ActivationRequest, Host, HostConfig, SlotState};
     use crate::plugin_runtime::notes_pilot::notes_activation_request;
 
     fn enabled_host(driver: QuickJsWorkerDriver) -> Host<QuickJsWorkerDriver> {
@@ -357,5 +420,56 @@ mod tests {
             .isolate("com.mossx.notes", "notes-core", 1)
             .is_some());
         assert_eq!(driver.live_count(), 1);
+    }
+
+    #[test]
+    fn notes_worker_becomes_ready_only_after_handshake() {
+        let mut host = enabled_host(QuickJsWorkerDriver::default());
+        let generation = host.activate(notes_activation_request()).expect("notes");
+        assert_eq!(generation, 1);
+        assert_eq!(host.slot("com.mossx.notes").unwrap().state, SlotState::Ready);
+        let isolate = host
+            .driver()
+            .isolate("com.mossx.notes", "notes-worker", 1)
+            .expect("isolate");
+        assert_eq!(isolate.generation, 1);
+        assert_eq!(host.driver().live_count(), 1);
+    }
+
+    #[test]
+    fn a_bad_worker_nonce_cannot_leave_an_isolate() {
+        let mut driver = QuickJsWorkerDriver::default();
+        driver.corrupt_ack_on("notes-worker");
+        let mut host = enabled_host(driver);
+        assert!(host.activate(notes_activation_request()).is_err());
+        assert_eq!(
+            host.slot("com.mossx.notes").unwrap().state,
+            SlotState::Failed
+        );
+        assert_eq!(host.driver().live_count(), 0);
+        assert!(host
+            .driver()
+            .isolate("com.mossx.notes", "notes-worker", 1)
+            .is_none());
+    }
+
+    #[test]
+    fn later_worker_handshake_failure_rolls_back_earlier_isolate() {
+        let mut driver = QuickJsWorkerDriver::default();
+        driver.declare("com.mossx.notes", "notes-core");
+        driver.corrupt_ack_on("notes-core");
+        let mut host = enabled_host(driver);
+        assert!(host
+            .activate(ActivationRequest {
+                plugin_id: "com.mossx.notes".into(),
+                unit_id: "notes-main".into(),
+                required_entries: vec!["notes-worker".into(), "notes-core".into()],
+            })
+            .is_err());
+        assert_eq!(
+            host.slot("com.mossx.notes").unwrap().state,
+            SlotState::Failed
+        );
+        assert_eq!(host.driver().live_count(), 0);
     }
 }
