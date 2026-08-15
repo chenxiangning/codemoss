@@ -952,4 +952,44 @@ mod tests {
         assert_eq!(error.code, "schema");
         remove_path(&root);
     }
+
+    #[test]
+    fn ready_plugin_cannot_migrate_with_mismatched_from() {
+        let root = unique_temp_root("runtime-migrate-from");
+        let mut runtime = PluginRuntime::new(
+            HostConfig {
+                enabled: true,
+                ..HostConfig::default()
+            },
+            FakeDriver::default(),
+            "/fixture/workspace",
+            &root,
+        )
+        .expect("runtime");
+        runtime
+            .activate(notes_activation_request())
+            .expect("activate");
+        runtime
+            .checkpoint_own_store("com.mossx.notes")
+            .expect("ckpt");
+        assert_eq!(
+            runtime
+                .migrate_own_store(
+                    "com.mossx.notes",
+                    MigrationPlan {
+                        from: 2,
+                        to: 3,
+                        destructive: false,
+                        export_required: false,
+                        confirmed: false,
+                        exported: false,
+                        reader_schema: 3,
+                    },
+                )
+                .unwrap_err()
+                .code,
+            "invalid-storage"
+        );
+        remove_path(&root);
+    }
 }
