@@ -141,7 +141,8 @@
 | 1UDS10 私有 UDS 目录 token 必须绑定完整 pluginId | 完成 | `3e2743c7f` |
 | 1UDS11 UDS handshake 失败也必须删除 socket 文件 | 完成 | `6fb82c418` |
 | 1UDS12 UDS handshake 超时 / connect 失败也必须删除 socket | 完成 | `f88ce5c05` |
-| 1H6 boot 后真实 UDS supervisor，仍默认 off | 完成 | 本刀 |
+| 1H6 boot 后真实 UDS supervisor，仍默认 off | 完成 | `5526d5308` |
+| 1H7 默认 off 的 boot supervisor 必须拒绝意外连接 | 完成 | 本刀 |
 
 ## 明确未做
 

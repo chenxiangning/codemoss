@@ -21,7 +21,7 @@ pub struct BootHost {
 #[cfg(unix)]
 struct SupervisorSocket {
     path: PathBuf,
-    _listener: std::os::unix::net::UnixListener,
+    listener: std::os::unix::net::UnixListener,
     _unlink: super::uds::UnlinkOnDrop,
 }
 
@@ -48,6 +48,41 @@ impl BootHost {
         #[cfg(not(unix))]
         {
             None
+        }
+    }
+
+    pub fn reject_unexpected(&self) -> Result<(), HostError> {
+        #[cfg(unix)]
+        {
+            use super::ipc::HANDSHAKE_DEADLINE;
+            use serde_json::json;
+
+            let supervisor = self.supervisor.as_ref().ok_or_else(|| HostError {
+                code: "unsupported-platform",
+                message: "boot supervisor is unix-only in V1".into(),
+            })?;
+            let mut stream = super::uds::accept_uds_timed(&supervisor.listener, HANDSHAKE_DEADLINE)
+                .map_err(host_err)?;
+            super::uds::write_mxpc_frame(
+                &mut stream,
+                &json!({
+                    "jsonrpc": "2.0",
+                    "id": serde_json::Value::Null,
+                    "error": {
+                        "code": -32000,
+                        "message": "host-disabled"
+                    }
+                }),
+            )
+            .map_err(host_err)?;
+            Ok(())
+        }
+        #[cfg(not(unix))]
+        {
+            Err(HostError {
+                code: "unsupported-platform",
+                message: "boot supervisor is unix-only in V1".into(),
+            })
         }
     }
 }
@@ -85,7 +120,7 @@ fn bind_supervisor() -> Result<SupervisorSocket, HostError> {
     let listener = super::uds::bind_uds(&path).map_err(host_err)?;
     Ok(SupervisorSocket {
         path: path.clone(),
-        _listener: listener,
+        listener,
         _unlink: super::uds::UnlinkOnDrop::new(path),
     })
 }
@@ -174,5 +209,48 @@ mod tests {
         assert!(path.exists());
         drop(host);
         assert!(!path.exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn an_unexpected_connector_is_rejected_without_activation() {
+        use std::thread;
+
+        use crate::plugin_runtime::ipc::HANDSHAKE_DEADLINE;
+        use crate::plugin_runtime::uds::{connect_uds, read_mxpc_frame_timed};
+
+        let host = boot_host().expect("boot");
+        let path = host.supervisor_path().expect("supervisor").to_path_buf();
+        let peer = thread::spawn(move || {
+            let mut client = connect_uds(&path).expect("connect");
+            read_mxpc_frame_timed(&mut client, HANDSHAKE_DEADLINE)
+        });
+        host.reject_unexpected().expect("reject");
+        let received = peer.join().expect("peer").expect("frame");
+        assert_eq!(
+            received
+                .get("error")
+                .and_then(|error| error.get("message"))
+                .and_then(serde_json::Value::as_str),
+            Some("host-disabled")
+        );
+        assert_eq!(host.host.driver().process.live_count(), 0);
+        assert_eq!(host.host.driver().worker.live_count(), 0);
+        assert!(host.host.slot("com.mossx.notes").is_none());
+        assert!(host.host.slot("com.mossx.engine.claude").is_none());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn reject_without_a_connector_times_out() {
+        let host = boot_host().expect("boot");
+        let path = host.supervisor_path().expect("supervisor").to_path_buf();
+        assert_eq!(
+            host.reject_unexpected().unwrap_err().code,
+            "handshake-timeout"
+        );
+        assert!(path.exists());
+        assert_eq!(host.host.driver().process.live_count(), 0);
+        assert_eq!(host.host.driver().worker.live_count(), 0);
     }
 }
