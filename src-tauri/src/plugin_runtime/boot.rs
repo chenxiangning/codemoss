@@ -4,12 +4,13 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use super::host::{FakeDriver, HostConfig};
+use super::host::HostConfig;
 use super::runtime::PluginRuntime;
+use super::uds_driver::UdsHandshakeDriver;
 
 static BOOT_SEQ: AtomicU64 = AtomicU64::new(1);
 
-pub type BootHost = PluginRuntime<FakeDriver>;
+pub type BootHost = PluginRuntime<UdsHandshakeDriver>;
 
 fn boot_storage_root() -> PathBuf {
     let seq = BOOT_SEQ.fetch_add(1, Ordering::Relaxed);
@@ -28,7 +29,7 @@ fn boot_storage_root() -> PathBuf {
 pub fn boot_host() -> Result<BootHost, super::host::HostError> {
     PluginRuntime::new(
         HostConfig::default(),
-        FakeDriver::default(),
+        UdsHandshakeDriver::default(),
         "/fixture/workspace",
         boot_storage_root(),
     )
@@ -60,6 +61,8 @@ mod tests {
             "host-disabled"
         );
         assert!(host.host.slot("com.mossx.engine.claude").is_none());
+        assert!(host.host.driver().started.is_empty());
+        assert!(host.host.driver().stopped.is_empty());
     }
 
     #[test]
