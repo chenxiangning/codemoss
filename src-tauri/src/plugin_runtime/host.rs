@@ -156,8 +156,15 @@ impl<D: EntryDriver> Host<D> {
         if request.required_entries.is_empty() {
             return Err(err("schema", "required closure must not be empty"));
         }
-        if request.plugin_id.is_empty() || request.unit_id.is_empty() {
+        if request.plugin_id.trim().is_empty() || request.unit_id.trim().is_empty() {
             return Err(err("schema", "pluginId and unitId are required"));
+        }
+        if request
+            .required_entries
+            .iter()
+            .any(|entry_id| entry_id.trim().is_empty())
+        {
+            return Err(err("schema", "required entry ids must not be blank"));
         }
         {
             let current = self
@@ -442,6 +449,43 @@ mod tests {
             "schema"
         );
         assert!(host.slot("").is_none());
+        assert!(host.slot("com.mossx.notes").is_none());
+    }
+
+    #[test]
+    fn blank_identity_or_entry_is_rejected_before_slot_insert() {
+        let mut host = enabled_host(FakeDriver::default());
+        assert_eq!(
+            host.activate(ActivationRequest {
+                plugin_id: "   ".into(),
+                unit_id: "notes-main".into(),
+                required_entries: vec!["notes-ui".into()],
+            })
+            .unwrap_err()
+            .code,
+            "schema"
+        );
+        assert_eq!(
+            host.activate(ActivationRequest {
+                plugin_id: "com.mossx.notes".into(),
+                unit_id: "\t".into(),
+                required_entries: vec!["notes-ui".into()],
+            })
+            .unwrap_err()
+            .code,
+            "schema"
+        );
+        assert_eq!(
+            host.activate(ActivationRequest {
+                plugin_id: "com.mossx.notes".into(),
+                unit_id: "notes-main".into(),
+                required_entries: vec!["".into()],
+            })
+            .unwrap_err()
+            .code,
+            "schema"
+        );
+        assert!(host.slot("   ").is_none());
         assert!(host.slot("com.mossx.notes").is_none());
     }
 
