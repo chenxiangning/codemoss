@@ -99,6 +99,11 @@ impl<D: EntryDriver> PluginRuntime<D> {
         self.open_own_store(plugin_id)?;
         self.storage.checkpoint(plugin_id, 2)
     }
+
+    pub fn restore_own_store(&mut self, plugin_id: &str) -> Result<u32, StorageError> {
+        self.ensure_ready(plugin_id)?;
+        self.storage.restore(plugin_id)
+    }
 }
 
 #[cfg(test)]
@@ -484,6 +489,59 @@ mod tests {
         assert_eq!(
             runtime
                 .checkpoint_own_store("com.mossx.notes")
+                .unwrap_err()
+                .code,
+            "plugin-unavailable"
+        );
+        remove_path(&root);
+    }
+
+    #[test]
+    fn restore_requires_ready_plugin() {
+        use crate::plugin_runtime::storage::MigrationPlan;
+
+        let root = unique_temp_root("runtime-restore");
+        let mut runtime = PluginRuntime::new(
+            HostConfig {
+                enabled: true,
+                ..HostConfig::default()
+            },
+            FakeDriver::default(),
+            "/fixture/workspace",
+            &root,
+        )
+        .expect("runtime");
+        runtime
+            .activate(notes_activation_request())
+            .expect("activate");
+        runtime
+            .checkpoint_own_store("com.mossx.notes")
+            .expect("ckpt");
+        runtime
+            .storage
+            .migrate(
+                "com.mossx.notes",
+                MigrationPlan {
+                    from: 1,
+                    to: 2,
+                    destructive: false,
+                    export_required: false,
+                    confirmed: false,
+                    exported: false,
+                    reader_schema: 2,
+                },
+            )
+            .expect("migrate");
+        assert_eq!(runtime.storage.read_schema("com.mossx.notes").unwrap(), 2);
+        let schema = runtime
+            .restore_own_store("com.mossx.notes")
+            .expect("restore");
+        assert_eq!(schema, 1);
+        assert_eq!(runtime.storage.read_schema("com.mossx.notes").unwrap(), 1);
+        runtime.disable_plugin("com.mossx.notes").expect("disable");
+        assert_eq!(
+            runtime
+                .restore_own_store("com.mossx.notes")
                 .unwrap_err()
                 .code,
             "plugin-unavailable"
