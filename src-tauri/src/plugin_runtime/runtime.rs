@@ -1476,4 +1476,58 @@ mod tests {
         );
         remove_path(&root);
     }
+
+    #[test]
+    fn crashed_activation_cannot_receive_composed_handles() {
+        use crate::plugin_runtime::host::DriverError;
+
+        let root = unique_temp_root("runtime-crash-handles");
+        let mut driver = FakeDriver::default();
+        driver
+            .fail_on
+            .insert("notes-ui".into(), DriverError::Crash);
+        let mut runtime = PluginRuntime::new(
+            HostConfig {
+                enabled: true,
+                ..HostConfig::default()
+            },
+            driver,
+            "/fixture/workspace",
+            &root,
+        )
+        .expect("runtime");
+        assert_eq!(
+            runtime
+                .activate(notes_activation_request())
+                .unwrap_err()
+                .code,
+            "activation-failed"
+        );
+        assert_eq!(
+            runtime.host.slot("com.mossx.notes").unwrap().state,
+            SlotState::Failed
+        );
+        assert_eq!(
+            runtime
+                .query_read("com.mossx.notes", 1)
+                .unwrap_err()
+                .code,
+            "plugin-unavailable"
+        );
+        assert_eq!(
+            runtime
+                .open_stream("com.mossx.notes", 1, 24, "blob-v1")
+                .unwrap_err()
+                .code,
+            "plugin-unavailable"
+        );
+        assert_eq!(
+            runtime
+                .open_own_store("com.mossx.notes")
+                .unwrap_err()
+                .code,
+            "plugin-unavailable"
+        );
+        remove_path(&root);
+    }
 }
