@@ -403,4 +403,48 @@ mod tests {
         assert_eq!(runtime.plane.codec(12), Some("blob-v1"));
         remove_path(&root);
     }
+
+    #[test]
+    fn old_generation_is_rejected_after_reset_activate() {
+        let root = unique_temp_root("runtime-stale");
+        let mut runtime = PluginRuntime::new(
+            HostConfig {
+                enabled: true,
+                ..HostConfig::default()
+            },
+            FakeDriver::default(),
+            "/fixture/workspace",
+            &root,
+        )
+        .expect("runtime");
+        let first = runtime
+            .activate(notes_activation_request())
+            .expect("first");
+        runtime.fuse_plugin("com.mossx.notes").expect("fuse");
+        runtime.reset_plugin("com.mossx.notes").expect("reset");
+        let second = runtime
+            .activate(notes_activation_request())
+            .expect("second");
+        assert_eq!(
+            runtime
+                .query_read("com.mossx.notes", first)
+                .unwrap_err()
+                .code,
+            "stale-generation"
+        );
+        assert_eq!(
+            runtime
+                .open_stream("com.mossx.notes", first, 13, "blob-v1")
+                .unwrap_err()
+                .code,
+            "stale-generation"
+        );
+        runtime
+            .query_read("com.mossx.notes", second)
+            .expect("current read");
+        runtime
+            .open_stream("com.mossx.notes", second, 14, "blob-v1")
+            .expect("current stream");
+        remove_path(&root);
+    }
 }

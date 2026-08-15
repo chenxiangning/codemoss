@@ -21,7 +21,9 @@
 | 3G Claude 组合面 disable | 完成（未删实现） | `094ff98fb` |
 | 4G Notes 组合面 disable | 完成（未迁表） | `bf6a85972` |
 | 1J 组合面 fuse | 完成 | `54b748d3a` |
-| 1K command 面隔离 | 完成 | 本刀 |
+| 1K command 面隔离 | 完成 | `a56aad1c3` |
+| 1L fuse 后 reset 恢复 | 完成 | `06ade989d` |
+| 1M 旧 generation 失效 | 完成 | 本刀 |
 
 ## 明确未做
 
@@ -34,5 +36,5 @@
 
 ## 进度
 
-相对「Core + 可撤销插件平台」全文约 **57%**（合同/插座组合面/disable+fuse handle/command 隔离）。  
+相对「Core + 可撤销插件平台」全文约 **58%**（合同/插座组合面/disable+fuse+reset/generation）。  
 相对「产品已拔插头」约 **0%**。
