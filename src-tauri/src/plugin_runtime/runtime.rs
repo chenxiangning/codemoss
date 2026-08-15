@@ -2340,4 +2340,33 @@ mod tests {
         assert!(checkpoint.starts_with("ckpt-"));
         remove_path(&root);
     }
+
+    #[test]
+    fn reset_after_fuse_restores_checkpoint() {
+        let root = unique_temp_root("runtime-fuse-store-reset");
+        let mut runtime = PluginRuntime::new(
+            HostConfig {
+                enabled: true,
+                ..HostConfig::default()
+            },
+            FakeDriver::default(),
+            "/fixture/workspace",
+            &root,
+        )
+        .expect("runtime");
+        runtime
+            .activate(notes_activation_request())
+            .expect("first");
+        runtime.fuse_plugin("com.mossx.notes").expect("fuse");
+        runtime.reset_plugin("com.mossx.notes").expect("reset");
+        runtime
+            .activate(notes_activation_request())
+            .expect("second");
+        runtime.open_own_store("com.mossx.notes").expect("open");
+        let checkpoint = runtime
+            .checkpoint_own_store("com.mossx.notes")
+            .expect("checkpoint");
+        assert!(checkpoint.starts_with("ckpt-"));
+        remove_path(&root);
+    }
 }
