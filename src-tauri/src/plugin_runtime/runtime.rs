@@ -2695,4 +2695,27 @@ mod tests {
         assert!(runtime.host.slot("com.mossx.notes").is_none());
         remove_path(&root);
     }
+
+    #[test]
+    fn ready_plugin_can_checkpoint_with_retain_ceiling() {
+        let root = unique_temp_root("runtime-retain-ceiling");
+        let mut runtime = PluginRuntime::new(
+            HostConfig {
+                enabled: true,
+                ..HostConfig::default()
+            },
+            FakeDriver::default(),
+            "/fixture/workspace",
+            &root,
+        )
+        .expect("runtime");
+        runtime
+            .activate(notes_activation_request())
+            .expect("activate");
+        let id = runtime
+            .checkpoint_own_store_retained("com.mossx.notes", 5)
+            .expect("retain 5");
+        assert!(id.starts_with("ckpt-"));
+        remove_path(&root);
+    }
 }
