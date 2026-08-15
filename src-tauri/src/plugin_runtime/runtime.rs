@@ -222,4 +222,50 @@ mod tests {
         assert_eq!(again, store);
         remove_path(&root);
     }
+
+    #[test]
+    fn disabled_claude_cannot_use_composed_handles() {
+        use crate::plugin_runtime::claude_pilot::claude_activation_request;
+        use std::path::Path;
+
+        let root = unique_temp_root("runtime-claude-off");
+        let mut runtime = PluginRuntime::new(
+            HostConfig {
+                enabled: true,
+                ..HostConfig::default()
+            },
+            FakeDriver::default(),
+            "/fixture/workspace",
+            &root,
+        )
+        .expect("runtime");
+        let generation = runtime
+            .activate(claude_activation_request())
+            .expect("activate");
+        runtime
+            .open_own_store("com.mossx.engine.claude")
+            .expect("store");
+        runtime
+            .open_stream("com.mossx.engine.claude", generation, 8, "engine-event-v1")
+            .expect("stream");
+        runtime
+            .disable_plugin("com.mossx.engine.claude")
+            .expect("disable");
+        assert!(runtime
+            .query_read("com.mossx.engine.claude", generation)
+            .is_err());
+        assert_eq!(
+            runtime
+                .open_own_store("com.mossx.engine.claude")
+                .unwrap_err()
+                .code,
+            "plugin-unavailable"
+        );
+        assert!(runtime
+            .open_stream("com.mossx.engine.claude", generation, 9, "engine-event-v1")
+            .is_err());
+        assert!(runtime.plane.codec(8).is_none());
+        assert!(Path::new("src/engine/claude.rs").exists());
+        remove_path(&root);
+    }
 }
