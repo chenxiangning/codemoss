@@ -269,6 +269,11 @@ impl<D: EntryDriver> Host<D> {
         &mut self.driver
     }
 
+    #[cfg(test)]
+    pub fn test_set_inflight(&mut self, inflight: u32) {
+        self.inflight = inflight;
+    }
+
     pub fn dispatch(&self, plugin_id: &str, generation: u64) -> Result<(), HostError> {
         let slot = self
             .slots

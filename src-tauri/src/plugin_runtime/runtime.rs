@@ -1608,4 +1608,29 @@ mod tests {
         );
         remove_path(&root);
     }
+
+    #[test]
+    fn compose_surface_cannot_exceed_concurrent_activation_budget() {
+        let root = unique_temp_root("runtime-activation-busy");
+        let mut runtime = PluginRuntime::new(
+            HostConfig {
+                enabled: true,
+                max_concurrent: 2,
+                ..HostConfig::default()
+            },
+            FakeDriver::default(),
+            "/fixture/workspace",
+            &root,
+        )
+        .expect("runtime");
+        runtime.host.test_set_inflight(2);
+        assert_eq!(
+            runtime
+                .activate(notes_activation_request())
+                .unwrap_err()
+                .code,
+            "activation-busy"
+        );
+        remove_path(&root);
+    }
 }
