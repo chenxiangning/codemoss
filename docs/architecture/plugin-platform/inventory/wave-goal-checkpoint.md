@@ -101,11 +101,12 @@
 | 1F2 Restricted Process framed stdio handshake | 完成 | `6d283fa4b` |
 | 1NP1 Windows Named Pipe 名字闸门 | 完成 | `870d9b5c5` |
 | 1H1 Host 进 boot 默认 off | 完成 | `125e3def2` |
-| 1QJ1 per-plugin QuickJS isolate | 完成 | 本刀 |
+| 1QJ1 per-plugin QuickJS isolate | 完成 | `a66c1ce7d` |
+| 1NP2 Named Pipe ACL 仅当前用户 | 完成 | 本刀 |
 
 ## 明确未做
 
-1. Named Pipe ACL / Host driver（1NP2）
+1. Named Pipe 挂 Windows SD / Host driver（1NP3）
 2. QuickJS 引擎嵌入（1QJ2，仍不切产品）
 3. Host boot 打开后的真实 UDS supervisor（仍默认 off）
 4. Claude / Notes **产品**切流（flag 仍默认 off）

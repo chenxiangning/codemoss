@@ -19,6 +19,34 @@ pub fn pipe_name_ok(name: &str) -> bool {
             .all(|ch| ch.is_ascii_alphanumeric() || ch == '-' || ch == '_')
 }
 
+const EVERYONE: &str = "S-1-1-0";
+const AUTHENTICATED_USERS: &str = "S-1-5-11";
+const WORLD: &str = "S-1-1-0";
+
+pub fn pipe_acl_ok(owner_sid: &str, allow_sids: &[&str]) -> Result<(), IpcError> {
+    if owner_sid.trim().is_empty() || owner_sid != owner_sid.trim() {
+        return Err(err("schema", "owner SID is required"));
+    }
+    if allow_sids.is_empty() {
+        return Err(err("permission-denied", "named pipe ACL must not be empty"));
+    }
+    if allow_sids.iter().any(|sid| {
+        *sid == EVERYONE || *sid == AUTHENTICATED_USERS || *sid == WORLD || sid.trim().is_empty()
+    }) {
+        return Err(err(
+            "permission-denied",
+            "named pipe ACL cannot include Everyone or Authenticated Users",
+        ));
+    }
+    if !allow_sids.contains(&owner_sid) {
+        return Err(err(
+            "permission-denied",
+            "named pipe ACL must include the current user",
+        ));
+    }
+    Ok(())
+}
+
 #[cfg(windows)]
 pub fn bind_named_pipe(name: &str) -> Result<windows_pipe::NamedPipeServer, IpcError> {
     if !pipe_name_ok(name) {
@@ -138,6 +166,30 @@ mod tests {
             bind_named_pipe(r"\\.\pipe\mossx-notes").unwrap_err().code,
             "unsupported-platform"
         );
+    }
+
+    #[test]
+    fn empty_allow_list_is_denied() {
+        assert_eq!(
+            pipe_acl_ok("S-1-5-21-1-2-3-1001", &[]).unwrap_err().code,
+            "permission-denied"
+        );
+    }
+
+    #[test]
+    fn everyone_or_authenticated_users_are_denied() {
+        for sid in ["S-1-1-0", "S-1-5-11"] {
+            assert_eq!(
+                pipe_acl_ok("S-1-5-21-1-2-3-1001", &[sid]).unwrap_err().code,
+                "permission-denied",
+                "{sid}"
+            );
+        }
+    }
+
+    #[test]
+    fn current_user_only_is_accepted() {
+        pipe_acl_ok("S-1-5-21-1-2-3-1001", &["S-1-5-21-1-2-3-1001"]).expect("acl");
     }
 
     #[cfg(windows)]
