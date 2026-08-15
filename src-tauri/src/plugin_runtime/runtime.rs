@@ -3185,4 +3185,46 @@ mod tests {
         assert!(runtime.plane.codec(94).is_none());
         remove_path(&root);
     }
+
+    #[test]
+    fn fuse_claude_keeps_notes_store() {
+        use crate::plugin_runtime::claude_pilot::claude_activation_request;
+
+        let root = unique_temp_root("runtime-fuse-store-isolation");
+        let mut runtime = PluginRuntime::new(
+            HostConfig {
+                enabled: true,
+                ..HostConfig::default()
+            },
+            FakeDriver::default(),
+            "/fixture/workspace",
+            &root,
+        )
+        .expect("runtime");
+        runtime
+            .activate(claude_activation_request())
+            .expect("claude");
+        runtime
+            .activate(notes_activation_request())
+            .expect("notes");
+        runtime.open_own_store("com.mossx.notes").expect("notes store");
+        runtime
+            .fuse_plugin("com.mossx.engine.claude")
+            .expect("fuse claude");
+        runtime
+            .access_store("com.mossx.notes", "com.mossx.notes")
+            .expect("notes access");
+        let checkpoint = runtime
+            .checkpoint_own_store("com.mossx.notes")
+            .expect("notes checkpoint");
+        assert!(checkpoint.starts_with("ckpt-"));
+        assert_eq!(
+            runtime
+                .open_own_store("com.mossx.engine.claude")
+                .unwrap_err()
+                .code,
+            "plugin-unavailable"
+        );
+        remove_path(&root);
+    }
 }
