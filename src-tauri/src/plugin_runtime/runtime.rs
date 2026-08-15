@@ -2811,4 +2811,27 @@ mod tests {
         }
         remove_path(&root);
     }
+
+    #[test]
+    fn ready_plugin_can_open_a_log_v1_stream() {
+        let root = unique_temp_root("runtime-log-codec");
+        let mut runtime = PluginRuntime::new(
+            HostConfig {
+                enabled: true,
+                ..HostConfig::default()
+            },
+            FakeDriver::default(),
+            "/fixture/workspace",
+            &root,
+        )
+        .expect("runtime");
+        let generation = runtime
+            .activate(notes_activation_request())
+            .expect("activate");
+        runtime
+            .open_stream("com.mossx.notes", generation, 92, "log-v1")
+            .expect("log stream");
+        assert_eq!(runtime.plane.codec(92), Some("log-v1"));
+        remove_path(&root);
+    }
 }
