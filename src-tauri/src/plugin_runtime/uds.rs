@@ -108,10 +108,10 @@ fn parent_is_owner_only(path: &Path) -> Result<(), IpcError> {
         ));
     }
     let mode = std::fs::metadata(parent).map_err(io_err)?.permissions().mode() & 0o777;
-    if mode & 0o022 != 0 {
+    if mode != 0o700 {
         return Err(err(
             "permission-denied",
-            "UDS parent directory must be owner-only",
+            "UDS parent directory must be exactly 0700",
         ));
     }
     Ok(())
@@ -405,6 +405,19 @@ mod tests {
             bind_uds(Path::new("/tmp/mx-open.s")).unwrap_err().code,
             "permission-denied"
         );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_world_readable_parent_cannot_bind() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = private_uds_dir().expect("private dir");
+        let path = dir.join("r.s");
+        std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o755)).expect("chmod");
+        assert_eq!(bind_uds(&path).unwrap_err().code, "permission-denied");
+        let _ = std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700));
+        let _ = std::fs::remove_file(&path);
     }
 
     #[test]
