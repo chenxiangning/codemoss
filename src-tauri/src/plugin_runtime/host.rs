@@ -223,6 +223,9 @@ impl<D: EntryDriver> Host<D> {
 
     pub fn fuse(&mut self, plugin_id: &str) -> Result<(), HostError> {
         let slot = self.slots.entry(plugin_id.to_string()).or_insert_with(PluginSlot::idle);
+        if slot.state == SlotState::Activating {
+            return Err(err("activation-busy", "cannot fuse while activating"));
+        }
         let generation = slot.generation;
         let started = slot.started.clone();
         for entry_id in started.iter().rev() {
@@ -235,6 +238,9 @@ impl<D: EntryDriver> Host<D> {
 
     pub fn disable(&mut self, plugin_id: &str) -> Result<(), HostError> {
         let slot = self.slots.entry(plugin_id.to_string()).or_insert_with(PluginSlot::idle);
+        if slot.state == SlotState::Activating {
+            return Err(err("activation-busy", "cannot disable while activating"));
+        }
         let generation = slot.generation;
         let started = slot.started.clone();
         for entry_id in started.iter().rev() {
@@ -407,5 +413,17 @@ mod tests {
         .expect("config");
         host.inflight = 2;
         assert_eq!(host.activate(notes_request()).unwrap_err().code, "activation-busy");
+    }
+
+    #[test]
+    fn fuse_and_disable_refuse_activating_slot() {
+        let mut host = enabled_host(FakeDriver::default());
+        host.test_force_state("com.mossx.notes", SlotState::Activating, 1);
+        assert_eq!(host.fuse("com.mossx.notes").unwrap_err().code, "activation-busy");
+        assert_eq!(
+            host.disable("com.mossx.notes").unwrap_err().code,
+            "activation-busy"
+        );
+        assert_eq!(host.slot("com.mossx.notes").unwrap().state, SlotState::Activating);
     }
 }

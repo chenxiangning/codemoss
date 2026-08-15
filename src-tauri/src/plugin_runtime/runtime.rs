@@ -2461,4 +2461,35 @@ mod tests {
         );
         remove_path(&root);
     }
+
+    #[test]
+    fn activating_plugin_cannot_be_fused_or_disabled() {
+        let root = unique_temp_root("runtime-activating-lifecycle");
+        let mut runtime = PluginRuntime::new(
+            HostConfig {
+                enabled: true,
+                ..HostConfig::default()
+            },
+            FakeDriver::default(),
+            "/fixture/workspace",
+            &root,
+        )
+        .expect("runtime");
+        runtime
+            .host
+            .test_force_state("com.mossx.notes", SlotState::Activating, 1);
+        assert_eq!(
+            runtime.fuse_plugin("com.mossx.notes").unwrap_err().code,
+            "activation-busy"
+        );
+        assert_eq!(
+            runtime.disable_plugin("com.mossx.notes").unwrap_err().code,
+            "activation-busy"
+        );
+        assert_eq!(
+            runtime.host.slot("com.mossx.notes").unwrap().state,
+            SlotState::Activating
+        );
+        remove_path(&root);
+    }
 }
