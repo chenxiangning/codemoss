@@ -7,7 +7,7 @@ use super::disk_storage::DiskStorage;
 use super::host::{ActivationRequest, EntryDriver, Host, HostConfig, HostError, SlotState};
 use super::host_data::{disable_and_revoke, fuse_and_revoke};
 use super::mxpd::DataPlane;
-use super::storage::StorageError;
+use super::storage::{MigrationPlan, StorageError};
 
 pub struct PluginRuntime<D: EntryDriver> {
     pub host: Host<D>,
@@ -103,6 +103,15 @@ impl<D: EntryDriver> PluginRuntime<D> {
     pub fn restore_own_store(&mut self, plugin_id: &str) -> Result<u32, StorageError> {
         self.ensure_ready(plugin_id)?;
         self.storage.restore(plugin_id)
+    }
+
+    pub fn migrate_own_store(
+        &mut self,
+        plugin_id: &str,
+        plan: MigrationPlan,
+    ) -> Result<u32, StorageError> {
+        self.ensure_ready(plugin_id)?;
+        self.storage.migrate(plugin_id, plan)
     }
 }
 
@@ -542,6 +551,62 @@ mod tests {
         assert_eq!(
             runtime
                 .restore_own_store("com.mossx.notes")
+                .unwrap_err()
+                .code,
+            "plugin-unavailable"
+        );
+        remove_path(&root);
+    }
+
+    #[test]
+    fn migrate_requires_ready_plugin() {
+        let root = unique_temp_root("runtime-migrate");
+        let mut runtime = PluginRuntime::new(
+            HostConfig {
+                enabled: true,
+                ..HostConfig::default()
+            },
+            FakeDriver::default(),
+            "/fixture/workspace",
+            &root,
+        )
+        .expect("runtime");
+        runtime
+            .activate(notes_activation_request())
+            .expect("activate");
+        runtime
+            .checkpoint_own_store("com.mossx.notes")
+            .expect("ckpt");
+        let to = runtime
+            .migrate_own_store(
+                "com.mossx.notes",
+                MigrationPlan {
+                    from: 1,
+                    to: 2,
+                    destructive: false,
+                    export_required: false,
+                    confirmed: false,
+                    exported: false,
+                    reader_schema: 2,
+                },
+            )
+            .expect("migrate");
+        assert_eq!(to, 2);
+        runtime.disable_plugin("com.mossx.notes").expect("disable");
+        assert_eq!(
+            runtime
+                .migrate_own_store(
+                    "com.mossx.notes",
+                    MigrationPlan {
+                        from: 2,
+                        to: 3,
+                        destructive: false,
+                        export_required: false,
+                        confirmed: false,
+                        exported: false,
+                        reader_schema: 3,
+                    },
+                )
                 .unwrap_err()
                 .code,
             "plugin-unavailable"
