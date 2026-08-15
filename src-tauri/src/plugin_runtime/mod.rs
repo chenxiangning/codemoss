@@ -2,6 +2,7 @@
 #![allow(dead_code)]
 
 pub mod broker;
+pub mod claude_compat;
 pub mod claude_pilot;
 pub mod disk_storage;
 pub mod host;
