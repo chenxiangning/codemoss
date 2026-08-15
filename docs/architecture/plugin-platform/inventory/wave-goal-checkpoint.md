@@ -143,7 +143,8 @@
 | 1UDS12 UDS handshake 超时 / connect 失败也必须删除 socket | 完成 | `f88ce5c05` |
 | 1H6 boot 后真实 UDS supervisor，仍默认 off | 完成 | `5526d5308` |
 | 1H7 默认 off 的 boot supervisor 必须拒绝意外连接 | 完成 | `22d7325e0` |
-| 1H8 默认 off 的 boot supervisor 必须抽干意外连接 | 完成 | 本刀 |
+| 1H8 默认 off 的 boot supervisor 必须抽干意外连接 | 完成 | `b129731ed` |
+| 1HS10 handshake 写也必须在 2s 内完成 | 完成 | 本刀 |
 
 ## 明确未做
 

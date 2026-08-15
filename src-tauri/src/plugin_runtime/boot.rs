@@ -78,7 +78,7 @@ impl BootHost {
             })?;
             let mut stream =
                 super::uds::accept_uds_timed(&supervisor.listener, timeout).map_err(host_err)?;
-            super::uds::write_mxpc_frame(
+            super::uds::write_mxpc_frame_timed(
                 &mut stream,
                 &json!({
                     "jsonrpc": "2.0",
@@ -88,6 +88,7 @@ impl BootHost {
                         "message": "host-disabled"
                     }
                 }),
+                super::ipc::HANDSHAKE_DEADLINE,
             )
             .map_err(host_err)?;
             Ok(())

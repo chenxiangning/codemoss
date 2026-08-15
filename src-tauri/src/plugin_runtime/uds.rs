@@ -80,6 +80,27 @@ fn wait_readable(fd: i32, timeout: Duration) -> Result<(), IpcError> {
 }
 
 #[cfg(unix)]
+fn wait_writable(fd: i32, timeout: Duration) -> Result<(), IpcError> {
+    let mut fds = [libc::pollfd {
+        fd,
+        events: libc::POLLOUT,
+        revents: 0,
+    }];
+    let ms = i32::try_from(timeout.as_millis()).unwrap_or(i32::MAX);
+    let rc = unsafe { libc::poll(fds.as_mut_ptr(), 1, ms) };
+    if rc == 0 {
+        return Err(err(
+            "handshake-timeout",
+            "handshake ack must arrive within 2s",
+        ));
+    }
+    if rc < 0 {
+        return Err(err("transport", "poll failed while waiting to write handshake"));
+    }
+    Ok(())
+}
+
+#[cfg(unix)]
 fn read_exact_until(
     reader: &mut (impl Read + std::os::unix::io::AsRawFd),
     buf: &mut [u8],
@@ -146,6 +167,64 @@ pub fn write_mxpc_frame(writer: &mut impl Write, message: &Value) -> Result<(), 
         .flush()
         .map_err(|error| err("transport", error.to_string()))?;
     Ok(())
+}
+
+#[cfg(unix)]
+fn write_all_until(
+    writer: &mut (impl Write + std::os::unix::io::AsRawFd),
+    buf: &[u8],
+    deadline: Instant,
+) -> Result<(), IpcError> {
+    use std::io::ErrorKind;
+
+    let fd = writer.as_raw_fd();
+    let flags = unsafe { libc::fcntl(fd, libc::F_GETFL) };
+    if flags < 0 {
+        return Err(err("transport", "cannot inspect handshake fd flags"));
+    }
+    if unsafe { libc::fcntl(fd, libc::F_SETFL, flags | libc::O_NONBLOCK) } < 0 {
+        return Err(err("transport", "cannot set handshake fd non-blocking"));
+    }
+    let result = (|| {
+        let mut written = 0;
+        while written < buf.len() {
+            wait_writable(fd, remaining(deadline)?)?;
+            match writer.write(&buf[written..]) {
+                Ok(0) => {
+                    return Err(err("truncated", "handshake write closed before deadline"));
+                }
+                Ok(n) => written += n,
+                Err(error)
+                    if error.kind() == ErrorKind::WouldBlock
+                        || error.kind() == ErrorKind::Interrupted => {}
+                Err(error) => return Err(err("transport", error.to_string())),
+            }
+        }
+        Ok(())
+    })();
+    let _ = unsafe { libc::fcntl(fd, libc::F_SETFL, flags) };
+    result
+}
+
+#[cfg(unix)]
+pub fn write_mxpc_frame_timed(
+    writer: &mut (impl Write + std::os::unix::io::AsRawFd),
+    message: &Value,
+    timeout: Duration,
+) -> Result<(), IpcError> {
+    let bytes = encode_mxpc(message)?;
+    write_all_until(writer, &bytes, Instant::now() + timeout)?;
+    Ok(())
+}
+
+#[cfg(not(unix))]
+pub fn write_mxpc_frame_timed(
+    writer: &mut impl Write,
+    message: &Value,
+    timeout: Duration,
+) -> Result<(), IpcError> {
+    let _ = timeout;
+    write_mxpc_frame(writer, message)
 }
 
 #[cfg(unix)]
@@ -588,6 +667,33 @@ mod tests {
             "handshake-timeout"
         );
         server.join().expect("server");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_silent_reader_cannot_complete_a_handshake_write() {
+        use std::os::unix::net::UnixStream;
+        use std::time::Duration;
+
+        let (mut writer, _reader) = UnixStream::pair().expect("pair");
+        let message = json!({
+            "jsonrpc": "2.0",
+            "id": "hs-1",
+            "method": "mossx.handshake.hello",
+            "params": {
+                "protocolVersion": 1,
+                "coreContract": "1.0.0",
+                "nonce": "aa".repeat(32),
+                "generation": 1,
+                "pad": "x".repeat(256 * 1024)
+            }
+        });
+        assert_eq!(
+            write_mxpc_frame_timed(&mut writer, &message, Duration::from_millis(30))
+                .unwrap_err()
+                .code,
+            "handshake-timeout"
+        );
     }
 
     #[cfg(unix)]
