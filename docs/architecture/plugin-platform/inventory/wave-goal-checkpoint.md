@@ -28,7 +28,9 @@
 | 2H–2K migrate 组合面闸门 | 完成 | `cc1afd8cb` |
 | 2L 组合面跨插件 store 隔离 | 完成 | `ab6a81b2e` |
 | 2M 组合面无 checkpoint 不得 restore | 完成 | `6c35ab547` |
-| 1N 组合面拒绝非法 Host 预算 | 完成 | 本刀 |
+| 1N 组合面拒绝非法 Host 预算 | 完成 | `402c6bd41` |
+| 2N 组合面 retainPrevious 1–5 | 完成 | `632974f45` |
+| 1O 组合面空 required_entries 失败 | 完成 | 本刀 |
 
 ## 明确未做
 
@@ -41,5 +43,5 @@
 
 ## 进度
 
-相对「Core + 可撤销插件平台」全文约 **63%**（合同/插座组合面/disable+fuse+reset/storage 闸门/非法预算）。  
+相对「Core + 可撤销插件平台」全文约 **64%**（合同/插座组合面/disable+fuse+reset/storage 闸门/非法预算/空 closure）。  
 相对「产品已拔插头」约 **0%**。

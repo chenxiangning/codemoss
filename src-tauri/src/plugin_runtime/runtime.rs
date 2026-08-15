@@ -928,4 +928,28 @@ mod tests {
         assert!(id.starts_with("ckpt-"));
         remove_path(&root);
     }
+
+    #[test]
+    fn empty_required_entries_fail_on_compose_surface() {
+        let root = unique_temp_root("runtime-empty-required");
+        let mut runtime = PluginRuntime::new(
+            HostConfig {
+                enabled: true,
+                ..HostConfig::default()
+            },
+            FakeDriver::default(),
+            "/fixture/workspace",
+            &root,
+        )
+        .expect("runtime");
+        let error = runtime
+            .activate(ActivationRequest {
+                plugin_id: "com.mossx.notes".into(),
+                unit_id: "notes-main".into(),
+                required_entries: Vec::new(),
+            })
+            .unwrap_err();
+        assert_eq!(error.code, "schema");
+        remove_path(&root);
+    }
 }
