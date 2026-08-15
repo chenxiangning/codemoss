@@ -127,7 +127,8 @@
 | 1F8 Windows Restricted Process 不得继承额外 handle | 完成 | `0aadf4ed7` |
 | 1HS3 handshake hello 必须绑定 generation | 完成 | `2a5760d29` |
 | 1HS4 handshake 必须在 2s 内完成 | 完成 | `3de638e0e` |
-| 1QJ7 Worker handshake 必须走私有 UDS | 完成 | 本刀 |
+| 1QJ7 Worker handshake 必须走私有 UDS | 完成 | `d319ae858` |
+| 1UDS5 私有 UDS 失败不得回落到 /tmp | 完成 | 本刀 |
 
 ## 明确未做
 

@@ -131,7 +131,7 @@ fn ack(plugin_id: &str, generation: u64, nonce: &str) -> Value {
 }
 
 #[cfg(unix)]
-fn worker_sock_path(entry_id: &str, generation: u64) -> std::path::PathBuf {
+fn worker_sock_path(entry_id: &str, generation: u64) -> Result<std::path::PathBuf, DriverError> {
     let seq = WORKER_SOCK_SEQ.fetch_add(1, Ordering::Relaxed);
     super::uds::private_uds_path(&format!(
         "w{}{}{}",
@@ -139,7 +139,7 @@ fn worker_sock_path(entry_id: &str, generation: u64) -> std::path::PathBuf {
         entry_id.as_bytes().first().copied().unwrap_or(b'w') as char,
         generation % 10
     ))
-    .unwrap_or_else(|_| std::path::PathBuf::from("/tmp/mx-open.s"))
+    .map_err(|_| DriverError::Crash)
 }
 
 fn handshake_worker(
@@ -156,7 +156,7 @@ fn handshake_worker(
             accept_uds, bind_uds, connect_uds, read_mxpc_frame, read_mxpc_frame_timed, write_mxpc_frame,
         };
 
-        let path = worker_sock_path(entry_id, generation);
+        let path = worker_sock_path(entry_id, generation)?;
         let listener = bind_uds(&path).map_err(|_| DriverError::Crash)?;
         let peer_plugin = plugin_id.to_string();
         let peer_path = path.clone();

@@ -408,6 +408,17 @@ mod tests {
     }
 
     #[test]
+    fn source_has_no_tmp_fallback() {
+        for source in [
+            include_str!("uds_driver.rs"),
+            include_str!("quickjs.rs"),
+            include_str!("mxpd_uds.rs"),
+        ] {
+            assert!(!source.contains("/tmp/mx-open.s"), "tmp fallback leaked");
+        }
+    }
+
+    #[test]
     fn current_user_peer_is_accepted() {
         #[cfg(unix)]
         let uid = unsafe { libc::getuid() };

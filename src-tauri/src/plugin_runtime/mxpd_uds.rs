@@ -8,10 +8,9 @@ use super::uds::{accept_uds, bind_uds, connect_uds};
 static SOCK_SEQ: AtomicU64 = AtomicU64::new(1);
 
 #[cfg(unix)]
-fn sock_path() -> std::path::PathBuf {
+fn sock_path() -> Result<std::path::PathBuf, super::ipc::IpcError> {
     let seq = SOCK_SEQ.fetch_add(1, Ordering::Relaxed);
     super::uds::private_uds_path(&format!("d{}", seq % 1000))
-        .unwrap_or_else(|_| std::path::PathBuf::from("/tmp/mx-open.s"))
 }
 
 #[cfg(test)]
@@ -38,7 +37,7 @@ mod tests {
         plane
             .open("com.mossx.notes", 1, 11, "blob-v1")
             .expect("open");
-        let path = sock_path();
+        let path = sock_path().expect("private path");
         let listener = bind_uds(&path).expect("bind");
         let peer_path = path.clone();
         let peer = thread::spawn(move || {
@@ -65,7 +64,7 @@ mod tests {
         plane
             .open("com.mossx.notes", 1, 11, "blob-v1")
             .expect("open");
-        let path = sock_path();
+        let path = sock_path().expect("private path");
         let listener = bind_uds(&path).expect("bind");
         let peer_path = path.clone();
         let peer = thread::spawn(move || {
