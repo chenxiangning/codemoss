@@ -36,7 +36,8 @@
 | 2Q fuse 后不得 access_store | 完成 | `28bddf2ed` |
 | 2R fuse 后 reset 恢复 access_store | 完成 | `154526f6f` |
 | 2S fuse 后不得 checkpoint | 完成 | `e86b72f1a` |
-| 2T fuse 后不得 migrate | 完成 | 本刀 |
+| 2T fuse 后不得 migrate | 完成 | `2bd315d09` |
+| 2U fuse 后不得 restore | 完成 | 本刀 |
 
 ## 明确未做
 
