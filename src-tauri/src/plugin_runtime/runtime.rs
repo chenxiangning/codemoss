@@ -2492,4 +2492,27 @@ mod tests {
         );
         remove_path(&root);
     }
+
+    #[test]
+    fn runtime_accepts_legal_host_budget_floors() {
+        use std::time::Duration;
+
+        let root = unique_temp_root("runtime-budget-edges");
+        let mut runtime = PluginRuntime::new(
+            HostConfig {
+                enabled: true,
+                max_concurrent: 1,
+                activation_deadline: Duration::from_millis(1_000),
+                ..HostConfig::default()
+            },
+            FakeDriver::default(),
+            "/fixture/workspace",
+            &root,
+        )
+        .expect("runtime");
+        runtime
+            .activate(notes_activation_request())
+            .expect("activate");
+        remove_path(&root);
+    }
 }
