@@ -820,4 +820,31 @@ mod tests {
         );
         remove_path(&root);
     }
+
+    #[test]
+    fn ready_plugin_cannot_restore_without_checkpoint() {
+        let root = unique_temp_root("runtime-restore-no-ckpt");
+        let mut runtime = PluginRuntime::new(
+            HostConfig {
+                enabled: true,
+                ..HostConfig::default()
+            },
+            FakeDriver::default(),
+            "/fixture/workspace",
+            &root,
+        )
+        .expect("runtime");
+        runtime
+            .activate(notes_activation_request())
+            .expect("activate");
+        runtime.open_own_store("com.mossx.notes").expect("store");
+        assert_eq!(
+            runtime
+                .restore_own_store("com.mossx.notes")
+                .unwrap_err()
+                .code,
+            "checkpoint-required"
+        );
+        remove_path(&root);
+    }
 }
