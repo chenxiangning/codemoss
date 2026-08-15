@@ -10,6 +10,12 @@ fn main() {
     if std::env::var_os("MOSSX_SHOULD_NOT_INHERIT").is_some() {
         std::process::exit(2);
     }
+    let expected_cwd = std::env::var_os("MOSSX_PLUGIN_DATA");
+    let actual_cwd = std::env::current_dir().ok();
+    match (expected_cwd, actual_cwd) {
+        (Some(expected), Some(actual)) if expected == actual => {}
+        _ => std::process::exit(4),
+    }
     let nonce = std::env::var("MOSSX_HANDSHAKE_NONCE").unwrap_or_default();
     let plugin_id = std::env::var("MOSSX_PLUGIN_ID").unwrap_or_else(|_| "com.mossx.notes".into());
     let generation = std::env::var("MOSSX_GENERATION").unwrap_or_else(|_| "1".into());

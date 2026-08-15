@@ -3,12 +3,15 @@
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use serde_json::{json, Value};
 
 use super::host::{DriverError, EntryDriver};
 use super::ipc::{issue_handshake_nonce, validate_handshake_ack};
 use super::uds::{read_mxpc_frame, write_mxpc_frame};
+
+static DATA_SEQ: AtomicU64 = AtomicU64::new(1);
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 struct ChildKey {
@@ -19,6 +22,7 @@ struct ChildKey {
 
 pub struct RestrictedProcessDriver {
     executable: PathBuf,
+    data_root: PathBuf,
     children: HashMap<ChildKey, Child>,
     catalog: HashSet<(String, String)>,
     fail_on: Option<String>,
@@ -30,6 +34,7 @@ impl RestrictedProcessDriver {
     pub fn new(executable: impl Into<PathBuf>) -> Self {
         Self {
             executable: executable.into(),
+            data_root: default_data_root(),
             children: HashMap::new(),
             catalog: declared_process_entries(),
             fail_on: None,
@@ -64,6 +69,11 @@ impl RestrictedProcessDriver {
             .insert((plugin_id.to_string(), entry_id.to_string()));
     }
 
+    #[cfg(test)]
+    pub fn set_data_root(&mut self, root: impl Into<PathBuf>) {
+        self.data_root = root.into();
+    }
+
     fn spawn_child(
         &self,
         plugin_id: &str,
@@ -76,8 +86,15 @@ impl RestrictedProcessDriver {
         if !self.executable.is_file() {
             return Err(DriverError::Crash);
         }
+        let planned = plugin_data_cwd(&self.data_root, plugin_id);
+        if !process_cwd_ok(&planned, &self.data_root, plugin_id) {
+            return Err(DriverError::Crash);
+        }
+        std::fs::create_dir_all(&planned).map_err(|_| DriverError::Crash)?;
+        let cwd = planned.canonicalize().unwrap_or(planned);
         let mut command = Command::new(&self.executable);
         command.env_clear();
+        command.current_dir(&cwd);
         #[cfg(windows)]
         {
             command.env("SYSTEMROOT", std::env::var_os("SYSTEMROOT").unwrap_or_default());
@@ -90,7 +107,8 @@ impl RestrictedProcessDriver {
                 .stderr(Stdio::null())
                 .env("MOSSX_HANDSHAKE_NONCE", &nonce)
                 .env("MOSSX_PLUGIN_ID", plugin_id)
-                .env("MOSSX_GENERATION", generation.to_string());
+                .env("MOSSX_GENERATION", generation.to_string())
+                .env("MOSSX_PLUGIN_DATA", &cwd);
             if corrupt {
                 command.env("MOSSX_CORRUPT_ACK", "1");
             }
@@ -223,6 +241,31 @@ impl Drop for RestrictedProcessDriver {
             }
         }
     }
+}
+
+fn default_data_root() -> PathBuf {
+    let seq = DATA_SEQ.fetch_add(1, Ordering::Relaxed);
+    std::env::temp_dir().join(format!(
+        "mossx-pdata-{}-{}",
+        std::process::id() % 10_000,
+        seq
+    ))
+}
+
+pub fn plugin_data_cwd(root: &Path, plugin_id: &str) -> PathBuf {
+    root.join("plugin-runtime/data").join(plugin_id)
+}
+
+pub fn process_cwd_ok(cwd: &Path, root: &Path, plugin_id: &str) -> bool {
+    if !cwd.is_absolute() || plugin_id.trim().is_empty() {
+        return false;
+    }
+    if cwd.components().any(|component| {
+        matches!(component, std::path::Component::ParentDir)
+    }) {
+        return false;
+    }
+    cwd == plugin_data_cwd(root, plugin_id)
 }
 
 pub fn missing_executable() -> PathBuf {
@@ -481,5 +524,36 @@ mod tests {
             assert!(!process_executable_ok(&path), "{path:?}");
         }
         assert!(process_executable_ok(&idle_fixture_executable()));
+    }
+
+    #[test]
+    fn plugin_data_cwd_is_accepted() {
+        let root = PathBuf::from("/tmp/mossx-pdata-fixture");
+        let cwd = plugin_data_cwd(&root, "com.mossx.engine.claude");
+        assert!(process_cwd_ok(&cwd, &root, "com.mossx.engine.claude"));
+    }
+
+    #[test]
+    fn a_parent_or_workspace_cwd_cannot_leave_a_child() {
+        let root = PathBuf::from("/tmp/mossx-pdata-fixture");
+        let expected = plugin_data_cwd(&root, "com.mossx.engine.claude");
+        for cwd in [
+            PathBuf::from("plugin-runtime/data/com.mossx.engine.claude"),
+            expected.join(".."),
+            root.clone(),
+            PathBuf::from("/tmp"),
+            PathBuf::from(""),
+        ] {
+            assert!(
+                !process_cwd_ok(&cwd, &root, "com.mossx.engine.claude"),
+                "{cwd:?}"
+            );
+        }
+        let mut driver = RestrictedProcessDriver::new(idle_fixture_executable());
+        driver.set_data_root("relative-root");
+        assert!(driver
+            .start("com.mossx.engine.claude", "claude-cli", 1)
+            .is_err());
+        assert_eq!(driver.live_count(), 0);
     }
 }

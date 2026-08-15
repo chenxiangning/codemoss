@@ -120,7 +120,8 @@
 | 1NP5 Named Pipe bind 必须先编译当前用户 SDDL | 完成 | `65d026201` |
 | 1HS1 handshake nonce 每次独立签发 | 完成 | `b7221c35a` |
 | 1HS2 handshake ack 必须绑定 pluginId / generation | 完成 | `cd248c9e5` |
-| 1UDS4 UDS accept/connect 必须核验对端 uid | 完成 | 本刀 |
+| 1UDS4 UDS accept/connect 必须核验对端 uid | 完成 | `b84ac621e` |
+| 1F6 Restricted Process cwd 必须钉在 plugin-data | 完成 | 本刀 |
 
 ## 明确未做
 
@@ -131,5 +132,5 @@
 
 ## 进度
 
-相对「Core + 可撤销插件平台」全文约 **99%**（合同平面 **100%**；插座本体骨架 + boot CompositeDriver 默认 off + env_clear + UDS 私有目录 + Named Pipe SDDL + 独立 handshake nonce + ack 身份绑定 + UDS peer uid 已落地；C 引擎 / 产品切流仍未做）。  
+相对「Core + 可撤销插件平台」全文约 **99%**（合同平面 **100%**；插座本体骨架 + boot CompositeDriver 默认 off + env_clear + plugin-data cwd + UDS 私有目录 + Named Pipe SDDL + 独立 handshake nonce + ack 身份绑定 + UDS peer uid 已落地；C 引擎 / 产品切流仍未做）。  
 相对「产品已拔插头」约 **0%**。
