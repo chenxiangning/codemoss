@@ -2515,4 +2515,44 @@ mod tests {
             .expect("activate");
         remove_path(&root);
     }
+
+    #[test]
+    fn empty_plugin_or_unit_identity_fails_on_compose_surface() {
+        let root = unique_temp_root("runtime-empty-identity");
+        let mut runtime = PluginRuntime::new(
+            HostConfig {
+                enabled: true,
+                ..HostConfig::default()
+            },
+            FakeDriver::default(),
+            "/fixture/workspace",
+            &root,
+        )
+        .expect("runtime");
+        assert_eq!(
+            runtime
+                .activate(ActivationRequest {
+                    plugin_id: String::new(),
+                    unit_id: "notes-main".into(),
+                    required_entries: vec!["notes-ui".into()],
+                })
+                .unwrap_err()
+                .code,
+            "schema"
+        );
+        assert_eq!(
+            runtime
+                .activate(ActivationRequest {
+                    plugin_id: "com.mossx.notes".into(),
+                    unit_id: String::new(),
+                    required_entries: vec!["notes-ui".into()],
+                })
+                .unwrap_err()
+                .code,
+            "schema"
+        );
+        assert!(runtime.host.slot("").is_none());
+        assert!(runtime.host.slot("com.mossx.notes").is_none());
+        remove_path(&root);
+    }
 }

@@ -156,6 +156,9 @@ impl<D: EntryDriver> Host<D> {
         if request.required_entries.is_empty() {
             return Err(err("schema", "required closure must not be empty"));
         }
+        if request.plugin_id.is_empty() || request.unit_id.is_empty() {
+            return Err(err("schema", "pluginId and unitId are required"));
+        }
         {
             let current = self
                 .slots
@@ -413,6 +416,33 @@ mod tests {
         .expect("config");
         host.inflight = 2;
         assert_eq!(host.activate(notes_request()).unwrap_err().code, "activation-busy");
+    }
+
+    #[test]
+    fn empty_identity_is_rejected_before_slot_insert() {
+        let mut host = enabled_host(FakeDriver::default());
+        assert_eq!(
+            host.activate(ActivationRequest {
+                plugin_id: String::new(),
+                unit_id: "notes-main".into(),
+                required_entries: vec!["notes-ui".into()],
+            })
+            .unwrap_err()
+            .code,
+            "schema"
+        );
+        assert_eq!(
+            host.activate(ActivationRequest {
+                plugin_id: "com.mossx.notes".into(),
+                unit_id: String::new(),
+                required_entries: vec!["notes-ui".into()],
+            })
+            .unwrap_err()
+            .code,
+            "schema"
+        );
+        assert!(host.slot("").is_none());
+        assert!(host.slot("com.mossx.notes").is_none());
     }
 
     #[test]
