@@ -130,7 +130,8 @@
 | 1QJ7 Worker handshake 必须走私有 UDS | 完成 | `d319ae858` |
 | 1UDS5 私有 UDS 失败不得回落到 /tmp | 完成 | `a754a4214` |
 | 1UDS6 UDS 父目录必须恰好 0700 | 完成 | `a3c71a769` |
-| 1HS5 handshake 整帧必须在 2s 内读完 | 完成 | 本刀 |
+| 1HS5 handshake 整帧必须在 2s 内读完 | 完成 | `dec0b5874` |
+| 1HS6 handshake hello 必须绑定 coreContract 1.0.0 | 完成 | 本刀 |
 
 ## 明确未做
 

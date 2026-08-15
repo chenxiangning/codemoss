@@ -18,6 +18,7 @@ pub const FLAG_ACK: u8 = 4;
 pub const RESERVED_FLAG_MASK: u8 = 0b1111_1000;
 pub const V1_CODECS: &[&str] = &["engine-event-v1", "blob-v1", "log-v1"];
 pub const HANDSHAKE_DEADLINE: Duration = Duration::from_millis(2_000);
+pub const CORE_CONTRACT: &str = "1.0.0";
 
 pub fn handshake_deadline_ok(elapsed: Duration) -> Result<(), IpcError> {
     if elapsed > HANDSHAKE_DEADLINE {
@@ -242,6 +243,12 @@ pub fn validate_handshake_hello(value: &Value, expected_generation: u64) -> Resu
     if params.get("protocolVersion").and_then(Value::as_u64) != Some(1) {
         return Err(err("handshake-rejected", "protocolVersion must be 1"));
     }
+    if params.get("coreContract").and_then(Value::as_str) != Some(CORE_CONTRACT) {
+        return Err(err(
+            "handshake-rejected",
+            "hello coreContract must be 1.0.0",
+        ));
+    }
     let nonce = params
         .get("nonce")
         .and_then(Value::as_str)
@@ -322,6 +329,7 @@ mod tests {
         assert_eq!(WINDOW_BYTES, 8_388_608);
         assert_eq!(FLAG_END | FLAG_CANCEL | FLAG_ACK, 7);
         assert_eq!(HANDSHAKE_DEADLINE, Duration::from_millis(2_000));
+        assert_eq!(CORE_CONTRACT, "1.0.0");
     }
 
     #[test]
@@ -452,6 +460,30 @@ mod tests {
         zero["params"]["generation"] = Value::from(0);
         assert_eq!(
             validate_handshake_hello(&zero, 1).unwrap_err().code,
+            "handshake-rejected"
+        );
+    }
+
+    #[test]
+    fn a_current_contract_hello_is_accepted() {
+        validate_handshake_hello(&hello(), 1).expect("hello");
+    }
+
+    #[test]
+    fn a_major_mismatched_hello_cannot_start_handshake() {
+        let mut major = hello();
+        major["params"]["coreContract"] = Value::from("2.0.0");
+        assert_eq!(
+            validate_handshake_hello(&major, 1).unwrap_err().code,
+            "handshake-rejected"
+        );
+        let mut missing = hello();
+        missing["params"]
+            .as_object_mut()
+            .expect("params")
+            .remove("coreContract");
+        assert_eq!(
+            validate_handshake_hello(&missing, 1).unwrap_err().code,
             "handshake-rejected"
         );
     }
