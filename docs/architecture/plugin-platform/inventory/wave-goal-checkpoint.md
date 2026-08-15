@@ -103,11 +103,12 @@
 | 1H1 Host 进 boot 默认 off | 完成 | `125e3def2` |
 | 1QJ1 per-plugin QuickJS isolate | 完成 | `a66c1ce7d` |
 | 1NP2 Named Pipe ACL 仅当前用户 | 完成 | `9b6791fce` |
-| 1H2 boot Host 换 UDS supervisor | 完成 | 本刀 |
+| 1H2 boot Host 换 UDS supervisor | 完成 | `acc84ed0a` |
+| 1NP3 Named Pipe Host driver fail-closed | 完成 | 本刀 |
 
 ## 明确未做
 
-1. Named Pipe Host driver / Windows SD（1NP3）
+1. Named Pipe 挂 Windows SD（1NP4）
 2. QuickJS 引擎嵌入（1QJ2，仍不切产品）
 3. Claude / Notes **产品**切流（flag 仍默认 off）
 4. 用户数据导入

@@ -14,6 +14,7 @@ pub mod manifest;
 pub mod mxpd;
 pub mod mxpd_uds;
 pub mod named_pipe;
+pub mod named_pipe_driver;
 pub mod notes_compat;
 pub mod notes_pilot;
 pub mod notes_storage;

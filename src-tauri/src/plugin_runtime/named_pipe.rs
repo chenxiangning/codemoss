@@ -55,6 +55,14 @@ pub fn bind_named_pipe(name: &str) -> Result<windows_pipe::NamedPipeServer, IpcE
     windows_pipe::bind(name)
 }
 
+#[cfg(windows)]
+pub fn connect_named_pipe(name: &str) -> Result<std::fs::File, IpcError> {
+    if !pipe_name_ok(name) {
+        return Err(err("schema", "named pipe must be \\\\.\\pipe\\mossx-*"));
+    }
+    windows_pipe::connect(name)
+}
+
 #[cfg(not(windows))]
 pub fn bind_named_pipe(_name: &str) -> Result<(), IpcError> {
     if !pipe_name_ok(_name) {
