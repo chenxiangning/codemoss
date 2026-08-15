@@ -1,0 +1,11 @@
+{
+  "jsonrpc": "2.0",
+  "id": "hs-1",
+  "result": {
+    "protocolVersion": 1,
+    "pluginId": "com.mossx.notes",
+    "version": "1.0.0",
+    "generation": 1,
+    "nonce": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  }
+}

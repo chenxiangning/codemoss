@@ -1,0 +1,33 @@
+{
+  "contractVersion": 1,
+  "mxpc": {
+    "magicAscii": "MXPC",
+    "magicU32be": 1297633347,
+    "version": 1,
+    "flags": 0,
+    "headerBytes": 10,
+    "maxPayload": 1048576
+  },
+  "mxpd": {
+    "magicAscii": "MXPD",
+    "magicU32be": 1297633348,
+    "version": 1,
+    "headerBytes": 18,
+    "maxPayload": 1048576,
+    "flagEnd": 1,
+    "flagCancel": 2,
+    "flagAck": 4,
+    "reservedMask": 248
+  },
+  "window": {
+    "maxUnackedFrames": 32,
+    "maxUnackedBytes": 8388608
+  },
+  "codecs": ["engine-event-v1", "blob-v1", "log-v1"],
+  "handshake": {
+    "method": "mossx.handshake.hello",
+    "protocolVersion": 1,
+    "ackDeadlineMs": 2000,
+    "nonceHexBytes": 32
+  }
+}

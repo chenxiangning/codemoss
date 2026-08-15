@@ -1,0 +1,11 @@
+{
+  "jsonrpc": "2.0",
+  "id": "hs-1",
+  "method": "mossx.handshake.hello",
+  "params": {
+    "protocolVersion": 1,
+    "coreContract": "1.0.0",
+    "nonce": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "generation": 1
+  }
+}
