@@ -1,6 +1,7 @@
 //! Plugin runtime contract surface. Not registered in command_registry.
 #![allow(dead_code)]
 
+pub mod boot;
 pub mod broker;
 pub mod claude_compat;
 pub mod claude_pilot;

@@ -261,6 +261,18 @@ pub fn run() {
             app.manage(baidu_tongji::BaiduTongjiState::load());
             let state = state::AppState::load(&app.handle());
             app.manage(state);
+            match plugin_runtime::boot::boot_host() {
+                Ok(host) => {
+                    app.manage(Mutex::new(host));
+                }
+                Err(error) => {
+                    log::warn!(
+                        "Plugin Host boot skipped (default-off construct failed): {} {}",
+                        error.code,
+                        error.message
+                    );
+                }
+            }
             renderer_stability::spawn_renderer_heartbeat_watchdog(app.handle().clone());
             crate::session_index::importer::spawn_session_index_importer(app.handle().clone());
             {
