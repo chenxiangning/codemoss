@@ -3227,4 +3227,35 @@ mod tests {
         );
         remove_path(&root);
     }
+
+    #[test]
+    fn non_reverse_dns_plugin_id_fails_on_compose_surface() {
+        let root = unique_temp_root("runtime-reverse-dns");
+        let mut runtime = PluginRuntime::new(
+            HostConfig {
+                enabled: true,
+                ..HostConfig::default()
+            },
+            FakeDriver::default(),
+            "/fixture/workspace",
+            &root,
+        )
+        .expect("runtime");
+        for plugin_id in ["../escape", "Notes", "com"] {
+            assert_eq!(
+                runtime
+                    .activate(ActivationRequest {
+                        plugin_id: plugin_id.into(),
+                        unit_id: "notes-main".into(),
+                        required_entries: vec!["notes-ui".into()],
+                    })
+                    .unwrap_err()
+                    .code,
+                "schema",
+                "{plugin_id}"
+            );
+            assert!(runtime.host.slot(plugin_id).is_none(), "{plugin_id}");
+        }
+        remove_path(&root);
+    }
 }

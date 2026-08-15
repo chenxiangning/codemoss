@@ -67,12 +67,8 @@ impl StorageService {
         if plugin_id.trim().is_empty() || plugin_id != plugin_id.trim() {
             return Err(err("schema", "pluginId must be canonical"));
         }
-        if plugin_id.contains('/')
-            || plugin_id.contains('\\')
-            || plugin_id.split('.').any(|part| part == "..")
-            || plugin_id == ".."
-        {
-            return Err(err("schema", "pluginId must not contain path segments"));
+        if !crate::plugin_runtime::manifest::plugin_id_ok(plugin_id) {
+            return Err(err("schema", "pluginId must be reverse-DNS"));
         }
         self.namespaces
             .entry(plugin_id.to_string())
@@ -304,7 +300,7 @@ mod tests {
     #[test]
     fn path_unsafe_plugin_id_cannot_open_a_namespace() {
         let mut service = StorageService::default();
-        for plugin_id in ["../escape", "com.mossx.notes/../escape", "com\\mossx"] {
+        for plugin_id in ["../escape", "com.mossx.notes/../escape", "com\\mossx", "Notes"] {
             assert_eq!(
                 service
                     .open_or_create(plugin_id, "1.0.0", "1.0.0", 1)

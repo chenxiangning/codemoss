@@ -45,7 +45,7 @@ fn unknown_fields(value: &Value, allowed: &[&str], prefix: &str, errors: &mut Ve
     }
 }
 
-fn plugin_id_ok(value: &str) -> bool {
+pub fn plugin_id_ok(value: &str) -> bool {
     let mut parts = value.split('.');
     let Some(first) = parts.next() else {
         return false;

@@ -33,6 +33,14 @@ fn require_canonical_id(value: &str, field: &str) -> Result<(), HostError> {
     Ok(())
 }
 
+fn require_plugin_id(value: &str) -> Result<(), HostError> {
+    require_canonical_id(value, "pluginId")?;
+    if !crate::plugin_runtime::manifest::plugin_id_ok(value) {
+        return Err(err("schema", "pluginId must be reverse-DNS"));
+    }
+    Ok(())
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SlotState {
     Idle,
@@ -169,7 +177,7 @@ impl<D: EntryDriver> Host<D> {
         if request.required_entries.is_empty() {
             return Err(err("schema", "required closure must not be empty"));
         }
-        require_canonical_id(&request.plugin_id, "pluginId")?;
+        require_plugin_id(&request.plugin_id)?;
         require_canonical_id(&request.unit_id, "unitId")?;
         if request
             .required_entries
@@ -254,7 +262,7 @@ impl<D: EntryDriver> Host<D> {
     }
 
     pub fn fuse(&mut self, plugin_id: &str) -> Result<(), HostError> {
-        require_canonical_id(plugin_id, "pluginId")?;
+        require_plugin_id(plugin_id)?;
         let slot = self
             .slots
             .get_mut(plugin_id)
@@ -280,7 +288,7 @@ impl<D: EntryDriver> Host<D> {
     }
 
     pub fn disable(&mut self, plugin_id: &str) -> Result<(), HostError> {
-        require_canonical_id(plugin_id, "pluginId")?;
+        require_plugin_id(plugin_id)?;
         let slot = self
             .slots
             .get_mut(plugin_id)
@@ -306,7 +314,7 @@ impl<D: EntryDriver> Host<D> {
     }
 
     pub fn reset(&mut self, plugin_id: &str) -> Result<(), HostError> {
-        require_canonical_id(plugin_id, "pluginId")?;
+        require_plugin_id(plugin_id)?;
         let slot = self
             .slots
             .get_mut(plugin_id)
@@ -352,7 +360,7 @@ impl<D: EntryDriver> Host<D> {
     }
 
     pub fn dispatch(&self, plugin_id: &str, generation: u64) -> Result<(), HostError> {
-        require_canonical_id(plugin_id, "pluginId")?;
+        require_plugin_id(plugin_id)?;
         if generation == 0 {
             return Err(err("stale-generation", "generation 0 is never a live handle"));
         }
@@ -678,5 +686,24 @@ mod tests {
             "schema"
         );
         assert_eq!(host.fuse(" com.mossx.notes ").unwrap_err().code, "schema");
+    }
+
+    #[test]
+    fn non_reverse_dns_plugin_id_cannot_activate() {
+        let mut host = enabled_host(FakeDriver::default());
+        for plugin_id in ["../escape", "Notes", "com", "com.Mossx.notes"] {
+            assert_eq!(
+                host.activate(ActivationRequest {
+                    plugin_id: plugin_id.into(),
+                    unit_id: "notes-main".into(),
+                    required_entries: vec!["notes-ui".into()],
+                })
+                .unwrap_err()
+                .code,
+                "schema",
+                "{plugin_id}"
+            );
+            assert!(host.slot(plugin_id).is_none(), "{plugin_id}");
+        }
     }
 }
