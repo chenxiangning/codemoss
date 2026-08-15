@@ -2136,4 +2136,40 @@ mod tests {
         runtime.open_own_store("com.mossx.notes").expect("store");
         remove_path(&root);
     }
+
+    #[test]
+    fn crashed_plugin_cannot_activate_until_reset() {
+        use crate::plugin_runtime::host::DriverError;
+
+        let root = unique_temp_root("runtime-crash-until-reset");
+        let mut driver = FakeDriver::default();
+        driver
+            .fail_on
+            .insert("notes-ui".into(), DriverError::Crash);
+        let mut runtime = PluginRuntime::new(
+            HostConfig {
+                enabled: true,
+                ..HostConfig::default()
+            },
+            driver,
+            "/fixture/workspace",
+            &root,
+        )
+        .expect("runtime");
+        assert_eq!(
+            runtime
+                .activate(notes_activation_request())
+                .unwrap_err()
+                .code,
+            "activation-failed"
+        );
+        assert_eq!(
+            runtime
+                .activate(notes_activation_request())
+                .unwrap_err()
+                .code,
+            "failed"
+        );
+        remove_path(&root);
+    }
 }
