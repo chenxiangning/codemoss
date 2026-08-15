@@ -37,7 +37,8 @@
 | 2R fuse 后 reset 恢复 access_store | 完成 | `154526f6f` |
 | 2S fuse 后不得 checkpoint | 完成 | `e86b72f1a` |
 | 2T fuse 后不得 migrate | 完成 | `2bd315d09` |
-| 2U fuse 后不得 restore | 完成 | 本刀 |
+| 2U fuse 后不得 restore | 完成 | `ffceaf838` |
+| 2V 从未 activate 不得用 store API | 完成 | 本刀 |
 
 ## 明确未做
 
@@ -50,5 +51,5 @@
 
 ## 进度
 
-相对「Core + 可撤销插件平台」全文约 **67%**（合同/插座组合面/disable+fuse+reset/storage 闸门/非法预算/空 closure）。  
+相对「Core + 可撤销插件平台」全文约 **68%**（合同/插座组合面/disable+fuse+reset/storage 闸门/非法预算/空 closure）。  
 相对「产品已拔插头」约 **0%**。
