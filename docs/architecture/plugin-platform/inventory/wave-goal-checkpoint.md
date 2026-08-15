@@ -110,7 +110,8 @@
 | 1H3 Ready 再激活 stop 旧 generation | 完成 | `593986120` |
 | 1NP4 Named Pipe bind 必须先过 ACL | 完成 | `6fcff4c65` |
 | 1QJ3 只有 worker entry 才有 QuickJS isolate | 完成 | `547172d6e` |
-| 1QJ4 isolate 只认 Manifest kind/runtime | 完成 | 本刀 |
+| 1QJ4 isolate 只认 Manifest kind/runtime | 完成 | `21719ec1f` |
+| 1F3 Restricted Process 只认 Manifest kind=process | 完成 | 本刀 |
 
 ## 明确未做
 
@@ -122,5 +123,5 @@
 
 ## 进度
 
-相对「Core + 可撤销插件平台」全文约 **99%**（合同平面 **100%**；插座本体骨架 + UDS 0600 + Named Pipe bind ACL + Manifest-declared Worker isolate 已落地；C 引擎 / Windows SD / 产品切流仍未做）。  
+相对「Core + 可撤销插件平台」全文约 **99%**（合同平面 **100%**；插座本体骨架 + UDS 0600 + Named Pipe bind ACL + Manifest-declared Worker/Process 已落地；C 引擎 / Windows SD / 产品切流仍未做）。  
 相对「产品已拔插头」约 **0%**。
