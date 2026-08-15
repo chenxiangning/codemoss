@@ -42,7 +42,9 @@
 | 2W Host 默认 off 不得用 store API | 完成 | `52c7e9364` |
 | 1P Host 默认 off 不得 query / stream | 完成 | `d4b5dc8c7` |
 | 1Q 从未 activate 不得 query / stream | 完成 | `e9abb304f` |
-| 1R 组合面拒绝 write / spawn | 完成 | 本刀 |
+| 1R 组合面拒绝 write / spawn | 完成 | `275ab6173` |
+| 1S 组合面拒绝未知 capability | 完成 | `04b9de9b0` |
+| 1T 激活失败后不得拿 handle | 完成 | 本刀 |
 
 ## 明确未做
 
@@ -55,5 +57,5 @@
 
 ## 进度
 
-相对「Core + 可撤销插件平台」全文约 **70%**（合同/插座组合面/disable+fuse+reset/storage 闸门/Host off/只读 Broker）。  
+相对「Core + 可撤销插件平台」全文约 **71%**（合同/插座组合面/disable+fuse+reset/storage 闸门/Host off/只读 Broker/失败激活）。  
 相对「产品已拔插头」约 **0%**。
