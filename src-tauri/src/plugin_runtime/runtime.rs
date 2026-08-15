@@ -992,4 +992,33 @@ mod tests {
         );
         remove_path(&root);
     }
+
+    #[test]
+    fn disabled_plugin_cannot_access_its_store() {
+        let root = unique_temp_root("runtime-access-disabled");
+        let mut runtime = PluginRuntime::new(
+            HostConfig {
+                enabled: true,
+                ..HostConfig::default()
+            },
+            FakeDriver::default(),
+            "/fixture/workspace",
+            &root,
+        )
+        .expect("runtime");
+        runtime
+            .activate(notes_activation_request())
+            .expect("activate");
+        let store = runtime.open_own_store("com.mossx.notes").expect("open");
+        runtime.disable_plugin("com.mossx.notes").expect("disable");
+        assert_eq!(
+            runtime
+                .access_store("com.mossx.notes", "com.mossx.notes")
+                .unwrap_err()
+                .code,
+            "plugin-unavailable"
+        );
+        assert!(store.exists());
+        remove_path(&root);
+    }
 }
