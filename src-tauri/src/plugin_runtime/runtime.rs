@@ -1857,4 +1857,35 @@ mod tests {
         );
         remove_path(&root);
     }
+
+    #[test]
+    fn ninth_stream_in_one_generation_is_refused() {
+        let root = unique_temp_root("runtime-stream-budget");
+        let mut runtime = PluginRuntime::new(
+            HostConfig {
+                enabled: true,
+                ..HostConfig::default()
+            },
+            FakeDriver::default(),
+            "/fixture/workspace",
+            &root,
+        )
+        .expect("runtime");
+        let generation = runtime
+            .activate(notes_activation_request())
+            .expect("activate");
+        for stream_id in 40..48 {
+            runtime
+                .open_stream("com.mossx.notes", generation, stream_id, "blob-v1")
+                .expect("within budget");
+        }
+        assert_eq!(
+            runtime
+                .open_stream("com.mossx.notes", generation, 48, "blob-v1")
+                .unwrap_err()
+                .code,
+            "stream-budget"
+        );
+        remove_path(&root);
+    }
 }

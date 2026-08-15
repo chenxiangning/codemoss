@@ -8,6 +8,8 @@ use super::ipc::{
     FLAG_CANCEL, MXPD_HEADER_BYTES,
 };
 
+pub const DEFAULT_STREAMS_PER_GENERATION: usize = 8;
+
 fn err(code: &'static str, message: impl Into<String>) -> IpcError {
     IpcError {
         code,
@@ -41,6 +43,17 @@ impl DataPlane {
         assert_known_codec(codec)?;
         if self.streams.contains_key(&stream_id) {
             return Err(err("stream-exists", format!("stream {stream_id} already open")));
+        }
+        let open_for_generation = self
+            .streams
+            .values()
+            .filter(|stream| stream.plugin_id == plugin_id && stream.generation == generation)
+            .count();
+        if open_for_generation >= DEFAULT_STREAMS_PER_GENERATION {
+            return Err(err(
+                "stream-budget",
+                format!("generation {generation} already has {DEFAULT_STREAMS_PER_GENERATION} streams"),
+            ));
         }
         self.streams.insert(
             stream_id,
