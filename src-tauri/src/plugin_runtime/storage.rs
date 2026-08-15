@@ -64,8 +64,8 @@ impl StorageService {
         contract_version: &str,
         schema: u32,
     ) -> Result<&Namespace, StorageError> {
-        if plugin_id.is_empty() {
-            return Err(err("schema", "pluginId required"));
+        if plugin_id.trim().is_empty() || plugin_id != plugin_id.trim() {
+            return Err(err("schema", "pluginId must be canonical"));
         }
         self.namespaces
             .entry(plugin_id.to_string())
@@ -276,5 +276,21 @@ mod tests {
             )
             .unwrap_err();
         assert_eq!(error.code, "quarantine");
+    }
+
+    #[test]
+    fn untrimmed_plugin_id_cannot_open_a_namespace() {
+        let mut service = StorageService::default();
+        for plugin_id in ["", "   ", " com.mossx.notes "] {
+            assert_eq!(
+                service
+                    .open_or_create(plugin_id, "1.0.0", "1.0.0", 1)
+                    .unwrap_err()
+                    .code,
+                "schema"
+            );
+            assert!(service.namespace(plugin_id).is_err());
+        }
+        assert!(service.namespace("com.mossx.notes").is_err());
     }
 }
