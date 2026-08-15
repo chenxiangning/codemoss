@@ -101,7 +101,7 @@ fn wait_writable(fd: i32, timeout: Duration) -> Result<(), IpcError> {
 }
 
 #[cfg(unix)]
-fn read_exact_until(
+pub(crate) fn read_exact_until(
     reader: &mut (impl Read + std::os::unix::io::AsRawFd),
     buf: &mut [u8],
     deadline: Instant,

@@ -2,6 +2,7 @@
 
 use std::collections::HashMap;
 use std::io::{Read, Write};
+use std::time::{Duration, Instant};
 
 use super::ipc::{
     assert_known_codec, can_send, decode_mxpd, encode_mxpd, IpcError, MxpdFrame, FLAG_ACK,
@@ -151,6 +152,29 @@ pub fn read_mxpd_frame(reader: &mut impl Read) -> Result<MxpdFrame, IpcError> {
         })?;
     let (decoded, _) = decode_mxpd(&frame)?;
     Ok(decoded)
+}
+
+#[cfg(unix)]
+pub fn read_mxpd_frame_timed(
+    reader: &mut (impl Read + std::os::unix::io::AsRawFd),
+    timeout: Duration,
+) -> Result<MxpdFrame, IpcError> {
+    let deadline = Instant::now() + timeout;
+    let mut header = [0_u8; MXPD_HEADER_BYTES];
+    super::uds::read_exact_until(reader, &mut header, deadline)?;
+    let payload_len = u32::from_le_bytes([header[14], header[15], header[16], header[17]]) as usize;
+    let mut frame = Vec::with_capacity(MXPD_HEADER_BYTES + payload_len);
+    frame.extend_from_slice(&header);
+    frame.resize(MXPD_HEADER_BYTES + payload_len, 0);
+    super::uds::read_exact_until(reader, &mut frame[MXPD_HEADER_BYTES..], deadline)?;
+    let (decoded, _) = decode_mxpd(&frame)?;
+    Ok(decoded)
+}
+
+#[cfg(not(unix))]
+pub fn read_mxpd_frame_timed(reader: &mut impl Read, timeout: Duration) -> Result<MxpdFrame, IpcError> {
+    let _ = timeout;
+    read_mxpd_frame(reader)
 }
 
 #[cfg(test)]

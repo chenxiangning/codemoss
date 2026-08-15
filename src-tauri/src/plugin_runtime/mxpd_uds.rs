@@ -2,8 +2,8 @@
 
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use super::mxpd::{read_mxpd_frame, DataPlane};
-use super::uds::{accept_uds, bind_uds, connect_uds};
+use super::mxpd::{read_mxpd_frame_timed, DataPlane};
+use super::uds::{accept_uds_timed, bind_uds, connect_uds_timed};
 
 static SOCK_SEQ: AtomicU64 = AtomicU64::new(1);
 
@@ -41,12 +41,19 @@ mod tests {
         let listener = bind_uds(&path).expect("bind");
         let peer_path = path.clone();
         let peer = thread::spawn(move || {
-            let mut stream = accept_uds(&listener).expect("accept");
-            let frame = read_mxpd_frame(&mut stream).expect("peer frame");
+            let mut stream =
+                accept_uds_timed(&listener, crate::plugin_runtime::ipc::HANDSHAKE_DEADLINE)
+                    .expect("accept");
+            let frame = read_mxpd_frame_timed(
+                &mut stream,
+                crate::plugin_runtime::ipc::HANDSHAKE_DEADLINE,
+            )
+            .expect("peer frame");
             let _ = std::fs::remove_file(&peer_path);
             frame
         });
-        let mut client = connect_uds(&path).expect("connect");
+        let mut client =
+            connect_uds_timed(&path, crate::plugin_runtime::ipc::HANDSHAKE_DEADLINE).expect("connect");
         plane
             .write_frame(&mut client, &blob(b"uds-blob"))
             .expect("write");
@@ -68,13 +75,16 @@ mod tests {
         let listener = bind_uds(&path).expect("bind");
         let peer_path = path.clone();
         let peer = thread::spawn(move || {
-            let mut stream = accept_uds(&listener).expect("accept");
+            let mut stream =
+                accept_uds_timed(&listener, crate::plugin_runtime::ipc::HANDSHAKE_DEADLINE)
+                    .expect("accept");
             let mut leftover = Vec::new();
             stream.read_to_end(&mut leftover).expect("drain");
             let _ = std::fs::remove_file(&peer_path);
             leftover
         });
-        let mut client = connect_uds(&path).expect("connect");
+        let mut client =
+            connect_uds_timed(&path, crate::plugin_runtime::ipc::HANDSHAKE_DEADLINE).expect("connect");
         plane.revoke("com.mossx.notes", 1);
         let error = plane
             .write_frame(&mut client, &blob(b"stale"))
@@ -83,5 +93,37 @@ mod tests {
         drop(client);
         let leftover = peer.join().expect("peer");
         assert!(leftover.is_empty());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_header_only_peer_cannot_complete_an_mxpd_read() {
+        use std::io::Write;
+        use std::thread;
+        use std::time::Duration;
+
+        use crate::plugin_runtime::ipc::{encode_mxpd, HANDSHAKE_DEADLINE};
+
+        let path = sock_path("com.mossx.notes").expect("private path");
+        let listener = bind_uds(&path).expect("bind");
+        let peer_path = path.clone();
+        let peer = thread::spawn(move || {
+            let mut stream = accept_uds_timed(&listener, HANDSHAKE_DEADLINE).expect("accept");
+            let frame = encode_mxpd(&blob(b"payload")).expect("encode");
+            stream
+                .write_all(&frame[..crate::plugin_runtime::ipc::MXPD_HEADER_BYTES])
+                .expect("header");
+            let _ = stream.flush();
+            thread::sleep(Duration::from_millis(80));
+            let _ = std::fs::remove_file(&peer_path);
+        });
+        let mut client = connect_uds_timed(&path, HANDSHAKE_DEADLINE).expect("connect");
+        assert_eq!(
+            read_mxpd_frame_timed(&mut client, Duration::from_millis(30))
+                .unwrap_err()
+                .code,
+            "handshake-timeout"
+        );
+        peer.join().expect("peer");
     }
 }
