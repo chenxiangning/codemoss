@@ -1,5 +1,7 @@
 //! Windows Named Pipe MXPC transport. No TCP, not in boot.
 
+use std::time::Duration;
+
 use super::ipc::IpcError;
 
 fn err(code: &'static str, message: impl Into<String>) -> IpcError {
@@ -103,6 +105,23 @@ fn gate_named_pipe(name: &str, owner_sid: &str, allow_sids: &[&str]) -> Result<S
     compile_pipe_sddl(owner_sid, allow_sids)
 }
 
+pub fn named_pipe_timeout_ms(timeout: Duration) -> Result<u32, IpcError> {
+    let ms = timeout.as_millis();
+    if ms == 0 {
+        return Err(err(
+            "handshake-timeout",
+            "named pipe wait must be greater than 0",
+        ));
+    }
+    if ms >= u128::from(u32::MAX) {
+        return Err(err(
+            "schema",
+            "named pipe wait must not be WAIT_FOREVER",
+        ));
+    }
+    Ok(ms as u32)
+}
+
 #[cfg(windows)]
 pub fn bind_named_pipe_secured(
     name: &str,
@@ -139,6 +158,29 @@ pub fn connect_named_pipe(name: &str) -> Result<std::fs::File, IpcError> {
     windows_pipe::connect(name)
 }
 
+#[cfg(windows)]
+pub fn connect_named_pipe_timed(
+    name: &str,
+    timeout: Duration,
+) -> Result<std::fs::File, IpcError> {
+    if !pipe_name_ok(name) {
+        return Err(err("schema", "named pipe must be \\\\.\\pipe\\mossx-*"));
+    }
+    windows_pipe::connect_timed(name, timeout)
+}
+
+#[cfg(not(windows))]
+pub fn connect_named_pipe_timed(name: &str, timeout: Duration) -> Result<(), IpcError> {
+    let _ = named_pipe_timeout_ms(timeout)?;
+    if !pipe_name_ok(name) {
+        return Err(err("schema", "named pipe must be \\\\.\\pipe\\mossx-*"));
+    }
+    Err(err(
+        "unsupported-platform",
+        "Named Pipe transport is windows-only in V1",
+    ))
+}
+
 #[cfg(not(windows))]
 pub fn bind_named_pipe(name: &str) -> Result<(), IpcError> {
     bind_named_pipe_secured(name, DEFAULT_OWNER, &[DEFAULT_OWNER])
@@ -151,14 +193,18 @@ mod windows_pipe {
     use std::os::windows::ffi::OsStrExt;
     use std::os::windows::io::{AsRawHandle, FromRawHandle, OwnedHandle, RawHandle};
     use std::ptr::null_mut;
+    use std::time::Duration;
 
-    use windows_sys::Win32::Foundation::{GENERIC_READ, GENERIC_WRITE, HANDLE, INVALID_HANDLE_VALUE};
+    use windows_sys::Win32::Foundation::{
+        GetLastError, GENERIC_READ, GENERIC_WRITE, HANDLE, INVALID_HANDLE_VALUE, ERROR_PIPE_CONNECTED,
+    };
     use windows_sys::Win32::Storage::FileSystem::{
         CreateFileW, FILE_ATTRIBUTE_NORMAL, FILE_FLAG_FIRST_PIPE_INSTANCE, FILE_SHARE_READ,
         FILE_SHARE_WRITE, OPEN_EXISTING, PIPE_ACCESS_DUPLEX,
     };
     use windows_sys::Win32::System::Pipes::{
-        ConnectNamedPipe, CreateNamedPipeW, PIPE_READMODE_BYTE, PIPE_TYPE_BYTE, PIPE_WAIT,
+        ConnectNamedPipe, CreateNamedPipeW, WaitNamedPipeW, PIPE_READMODE_BYTE, PIPE_TYPE_BYTE,
+        PIPE_WAIT,
     };
 
     pub struct NamedPipeServer {
@@ -167,12 +213,38 @@ mod windows_pipe {
 
     impl NamedPipeServer {
         pub fn accept(self) -> Result<std::fs::File, IpcError> {
-            let raw = self.handle.as_raw_handle() as HANDLE;
-            let ok = unsafe { ConnectNamedPipe(raw, null_mut()) };
-            if ok == 0 {
-                return Err(err("transport", "ConnectNamedPipe failed"));
+            self.accept_timed(super::super::ipc::HANDSHAKE_DEADLINE)
+        }
+
+        pub fn accept_timed(self, timeout: Duration) -> Result<std::fs::File, IpcError> {
+            let _ms = super::named_pipe_timeout_ms(timeout)?;
+            let raw = self.handle.as_raw_handle() as usize;
+            let (tx, rx) = std::sync::mpsc::channel();
+            std::thread::spawn(move || {
+                let handle = raw as HANDLE;
+                let ok = unsafe { ConnectNamedPipe(handle, null_mut()) };
+                let code = if ok == 0 {
+                    unsafe { GetLastError() }
+                } else {
+                    0
+                };
+                let _ = tx.send((ok, code));
+            });
+            match rx.recv_timeout(timeout) {
+                Ok((ok, code)) => {
+                    if ok == 0 && code != ERROR_PIPE_CONNECTED {
+                        return Err(err("transport", "ConnectNamedPipe failed"));
+                    }
+                    Ok(std::fs::File::from(self.handle))
+                }
+                Err(_) => {
+                    drop(self.handle);
+                    Err(err(
+                        "handshake-timeout",
+                        "ConnectNamedPipe timed out",
+                    ))
+                }
             }
-            Ok(std::fs::File::from(self.handle))
         }
     }
 
@@ -229,6 +301,19 @@ mod windows_pipe {
         })
     }
 
+    pub fn connect_timed(name: &str, timeout: Duration) -> Result<std::fs::File, IpcError> {
+        let ms = super::named_pipe_timeout_ms(timeout)?;
+        let wide_name = wide(name);
+        let ready = unsafe { WaitNamedPipeW(wide_name.as_ptr(), ms) };
+        if ready == 0 {
+            return Err(err(
+                "handshake-timeout",
+                "WaitNamedPipeW timed out",
+            ));
+        }
+        connect(name)
+    }
+
     pub fn connect(name: &str) -> Result<std::fs::File, IpcError> {
         let wide_name = wide(name);
         let handle = unsafe {
@@ -252,6 +337,7 @@ mod windows_pipe {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::time::Duration;
 
     #[test]
     fn an_invalid_plugin_id_cannot_create_a_pipe_name() {
@@ -348,6 +434,48 @@ mod tests {
             .unwrap_err()
             .code,
             "permission-denied"
+        );
+    }
+
+    #[test]
+    fn zero_or_forever_timeout_is_rejected() {
+        assert_eq!(
+            named_pipe_timeout_ms(Duration::from_millis(0))
+                .unwrap_err()
+                .code,
+            "handshake-timeout"
+        );
+        assert_eq!(
+            named_pipe_timeout_ms(Duration::from_millis(u64::from(u32::MAX)))
+                .unwrap_err()
+                .code,
+            "schema"
+        );
+        named_pipe_timeout_ms(super::super::ipc::HANDSHAKE_DEADLINE).expect("2s");
+        let source = include_str!("named_pipe.rs");
+        assert!(source.contains("WaitNamedPipeW"));
+        assert!(source.contains("accept_timed"));
+        assert!(source.contains("named_pipe_timeout_ms"));
+        assert!(source.contains("WAIT_FOREVER"));
+    }
+
+    #[cfg(not(windows))]
+    #[test]
+    fn timed_connect_is_fail_closed_off_windows() {
+        assert_eq!(
+            connect_named_pipe_timed(
+                r"\\.\pipe\mossx-notes",
+                super::super::ipc::HANDSHAKE_DEADLINE
+            )
+            .unwrap_err()
+            .code,
+            "unsupported-platform"
+        );
+        assert_eq!(
+            connect_named_pipe_timed(r"\\.\pipe\other", super::super::ipc::HANDSHAKE_DEADLINE)
+                .unwrap_err()
+                .code,
+            "schema"
         );
     }
 

@@ -56,8 +56,9 @@ fn handshake(
     use std::thread;
 
     use super::ipc::{issue_handshake_nonce, validate_handshake_ack, validate_handshake_hello};
+    use super::ipc::HANDSHAKE_DEADLINE;
     use super::named_pipe::bind_named_pipe_secured;
-    use super::uds::{read_mxpc_frame, write_mxpc_frame};
+    use super::uds::{read_mxpc_frame_timed, write_mxpc_frame_timed};
 
     let nonce = issue_handshake_nonce();
     let peer_nonce = nonce.clone();
@@ -67,10 +68,10 @@ fn handshake(
     let server = bind_named_pipe_secured(&pipe_name, &driver.owner_sid, &allow)
         .map_err(|_| DriverError::Crash)?;
     let peer = thread::spawn(move || {
-        let mut stream = server.accept().map_err(|_| ())?;
-        let received = read_mxpc_frame(&mut stream).map_err(|_| ())?;
+        let mut stream = server.accept_timed(HANDSHAKE_DEADLINE).map_err(|_| ())?;
+        let received = read_mxpc_frame_timed(&mut stream, HANDSHAKE_DEADLINE).map_err(|_| ())?;
         validate_handshake_hello(&received, generation, &peer_nonce).map_err(|_| ())?;
-        write_mxpc_frame(
+        write_mxpc_frame_timed(
             &mut stream,
             &json!({
                 "jsonrpc": "2.0",
@@ -83,13 +84,14 @@ fn handshake(
                     "nonce": peer_nonce
                 }
             }),
+            HANDSHAKE_DEADLINE,
         )
         .map_err(|_| ())?;
         Ok::<(), ()>(())
     });
-    let mut client =
-        super::named_pipe::connect_named_pipe(&pipe_name).map_err(|_| DriverError::Crash)?;
-    write_mxpc_frame(
+    let mut client = super::named_pipe::connect_named_pipe_timed(&pipe_name, HANDSHAKE_DEADLINE)
+        .map_err(|_| DriverError::Crash)?;
+    write_mxpc_frame_timed(
         &mut client,
         &json!({
             "jsonrpc": "2.0",
@@ -102,9 +104,11 @@ fn handshake(
                 "generation": generation
             }
         }),
+        HANDSHAKE_DEADLINE,
     )
     .map_err(|_| DriverError::Crash)?;
-    let received = read_mxpc_frame(&mut client).map_err(|_| DriverError::Crash)?;
+    let received = read_mxpc_frame_timed(&mut client, HANDSHAKE_DEADLINE)
+        .map_err(|_| DriverError::Crash)?;
     let result = validate_handshake_ack(&received, &nonce, plugin_id, generation, "1.0.0")
         .map_err(|_| DriverError::Crash);
     let _ = peer.join();
@@ -197,5 +201,14 @@ mod tests {
         assert_ne!(notes, driver.pipe_name);
         assert!(pipe_name_ok(&notes));
         assert!(pipe_name_ok(&claude));
+    }
+
+    #[test]
+    fn handshake_source_does_not_block_on_accept_or_connect() {
+        let source = include_str!("named_pipe_driver.rs");
+        assert!(source.contains("accept_timed(HANDSHAKE_DEADLINE)"));
+        assert!(source.contains("connect_named_pipe_timed(&pipe_name, HANDSHAKE_DEADLINE)"));
+        assert!(source.contains("read_mxpc_frame_timed"));
+        assert!(source.contains("write_mxpc_frame_timed"));
     }
 }
