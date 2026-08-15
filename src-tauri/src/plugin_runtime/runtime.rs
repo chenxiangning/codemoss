@@ -1888,4 +1888,30 @@ mod tests {
         );
         remove_path(&root);
     }
+
+    #[test]
+    fn ready_plugin_cannot_open_unknown_codec() {
+        let root = unique_temp_root("runtime-unknown-codec");
+        let mut runtime = PluginRuntime::new(
+            HostConfig {
+                enabled: true,
+                ..HostConfig::default()
+            },
+            FakeDriver::default(),
+            "/fixture/workspace",
+            &root,
+        )
+        .expect("runtime");
+        let generation = runtime
+            .activate(notes_activation_request())
+            .expect("activate");
+        assert_eq!(
+            runtime
+                .open_stream("com.mossx.notes", generation, 49, "custom-pack")
+                .unwrap_err()
+                .code,
+            "unknown-codec"
+        );
+        remove_path(&root);
+    }
 }
