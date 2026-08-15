@@ -16,6 +16,7 @@ pub mod notes_compat;
 pub mod notes_pilot;
 pub mod notes_storage;
 pub mod runtime;
+pub mod spawn;
 pub mod stdio;
 pub mod storage;
 pub mod uds;

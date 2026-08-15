@@ -2,7 +2,7 @@
 
 > 日期：2026-08-16  
 > 分支：`feature/plugin-mossx-0.8.9`  
-> 结论：**合同平面继续加厚。总目标未完成。** 产品路径零变化。不要把本 checkpoint 当成可以删 Core 的绿灯。
+> 结论：**合同平面已按当前边界收口。插座本体开 1F1。** 产品路径零变化。不要把本 checkpoint 当成可以删 Core 的绿灯。
 
 ## 已落地（按 Wave）
 
@@ -96,19 +96,21 @@
 | 1BI 路径不安全 pluginId 不得开 namespace | 完成 | `443817751` |
 | 1BJ fuse Claude 不得撤 Notes store | 完成 | `44c0ac1b7` |
 | 1BK Host 拒绝非 reverse-DNS pluginId | 完成 | `9c9ce77f2` |
-| 1BL 剩余 V1 catalog 一律拒绝 | 完成 | 本刀 |
+| 1BL 剩余 V1 catalog 一律拒绝 | 完成 | `edafc446c` |
+| 1F1 Restricted Process 可逆 spawn | 完成 | 本刀 |
 
 ## 明确未做
 
-1. QuickJS / Restricted Process spawn（1F）
-2. Windows Named Pipe
-3. Host 挂进 `lib.rs::run`
-4. Claude / Notes **产品**切流（flag 仍默认 off）
-5. 用户数据导入
-6. Marketplace
+1. Restricted Process **framed stdio handshake**（1F 后半）
+2. QuickJS Worker
+3. Windows Named Pipe
+4. Host 挂进 `lib.rs::run`
+5. Claude / Notes **产品**切流（flag 仍默认 off）
+6. 用户数据导入
+7. Marketplace
 
 ## 进度
 
-相对「Core + 可撤销插件平台」全文约 **99%**（合同平面按当前边界 **100%**；插座本体与产品拔插头仍未做）。  
+相对「Core + 可撤销插件平台」全文约 **99%**（合同平面 **100%**；插座本体刚开 1F1 可逆 spawn；产品拔插头仍 0%）。  
 相对「产品已拔插头」约 **0%**。  
-合同 100% **不等于**插座完成：1F spawn、Named Pipe、Host 进 boot 仍属插座本体。
+合同 100% **不等于**插座完成：1F handshake、Named Pipe、Host 进 boot 仍属插座本体。
