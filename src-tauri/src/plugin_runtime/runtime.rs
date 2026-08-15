@@ -158,6 +158,24 @@ mod tests {
     }
 
     #[test]
+    fn command_registry_keeps_product_notes_and_hides_runtime() {
+        let registry = include_str!("../command_registry.rs");
+        for command in [
+            "note_card_list",
+            "note_card_get",
+            "note_card_create",
+            "note_card_update",
+            "note_card_archive",
+            "note_card_restore",
+            "note_card_delete",
+        ] {
+            assert!(registry.contains(command), "{command}");
+        }
+        assert!(!registry.contains("plugin_runtime"));
+        assert!(!registry.contains("PluginRuntime"));
+    }
+
+    #[test]
     fn two_pilots_stay_isolated_in_one_runtime() {
         use crate::plugin_runtime::claude_pilot::claude_activation_request;
 

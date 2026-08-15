@@ -19,7 +19,9 @@
 | 1G–1I 组合面 / 默认 off / 双插头隔离 | 完成 | `e87156c7d` |
 | 2D disable 撤销 store | 完成 | `672025d0e` |
 | 3G Claude 组合面 disable | 完成（未删实现） | `094ff98fb` |
-| 4G Notes 组合面 disable | 完成（未迁表） | 本刀 |
+| 4G Notes 组合面 disable | 完成（未迁表） | `bf6a85972` |
+| 1J 组合面 fuse | 完成 | `54b748d3a` |
+| 1K command 面隔离 | 完成 | 本刀 |
 
 ## 明确未做
 
@@ -32,5 +34,5 @@
 
 ## 进度
 
-相对「Core + 可撤销插件平台」全文约 **55%**（合同/插座组合面/两根插头 disable handle）。  
+相对「Core + 可撤销插件平台」全文约 **57%**（合同/插座组合面/disable+fuse handle/command 隔离）。  
 相对「产品已拔插头」约 **0%**。
