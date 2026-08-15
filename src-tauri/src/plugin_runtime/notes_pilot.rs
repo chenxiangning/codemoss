@@ -63,4 +63,38 @@ mod tests {
         assert_eq!(host.slot("com.mossx.notes").unwrap().state, SlotState::Ready);
         host.dispatch("com.mossx.notes", 1).expect("current");
     }
+
+    #[test]
+    fn disable_notes_fixture_keeps_core_implementation() {
+        use crate::plugin_runtime::broker::CapabilityBroker;
+        use std::path::Path;
+
+        let mut host = Host::new(
+            HostConfig {
+                enabled: true,
+                ..HostConfig::default()
+            },
+            FakeDriver::default(),
+        )
+        .expect("config");
+        host.activate(notes_activation_request()).expect("activate");
+        host.disable("com.mossx.notes").expect("disable");
+        assert_eq!(
+            host.slot("com.mossx.notes").unwrap().state,
+            SlotState::Disabled
+        );
+        assert_eq!(
+            host.activate(notes_activation_request()).unwrap_err().code,
+            "disabled"
+        );
+        let broker = CapabilityBroker::new("/fixture/workspace");
+        assert_eq!(
+            broker
+                .query(&host, "com.mossx.notes", 1, "mossx.workspace.read")
+                .unwrap_err()
+                .code,
+            "plugin-unavailable"
+        );
+        assert!(Path::new("src/note_cards.rs").exists());
+    }
 }
