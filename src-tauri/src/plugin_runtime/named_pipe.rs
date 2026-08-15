@@ -48,11 +48,50 @@ pub fn pipe_acl_ok(owner_sid: &str, allow_sids: &[&str]) -> Result<(), IpcError>
     Ok(())
 }
 
-fn gate_named_pipe(name: &str, owner_sid: &str, allow_sids: &[&str]) -> Result<(), IpcError> {
+fn sid_ok(sid: &str) -> bool {
+    let mut parts = sid.split('-');
+    if parts.next() != Some("S") {
+        return false;
+    }
+    let rest: Vec<&str> = parts.collect();
+    rest.len() >= 3
+        && rest
+            .iter()
+            .all(|part| !part.is_empty() && part.chars().all(|ch| ch.is_ascii_digit()))
+}
+
+pub fn sddl_ok(sddl: &str, owner_sid: &str) -> bool {
+    !sddl.is_empty()
+        && sddl.contains(owner_sid)
+        && !sddl.contains("WD")
+        && !sddl.contains(EVERYONE)
+        && !sddl.contains(AUTHENTICATED_USERS)
+        && !sddl.contains(";AU)")
+}
+
+pub fn compile_pipe_sddl(owner_sid: &str, allow_sids: &[&str]) -> Result<String, IpcError> {
+    pipe_acl_ok(owner_sid, allow_sids)?;
+    if !sid_ok(owner_sid) {
+        return Err(err("schema", "owner SID is malformed"));
+    }
+    if allow_sids != [owner_sid] {
+        return Err(err(
+            "permission-denied",
+            "named pipe SDDL must be current-user only",
+        ));
+    }
+    let sddl = format!("O:{owner_sid}G:{owner_sid}D:P(A;;GA;;;{owner_sid})");
+    if !sddl_ok(&sddl, owner_sid) {
+        return Err(err("permission-denied", "compiled SDDL is not owner-only"));
+    }
+    Ok(sddl)
+}
+
+fn gate_named_pipe(name: &str, owner_sid: &str, allow_sids: &[&str]) -> Result<String, IpcError> {
     if !pipe_name_ok(name) {
         return Err(err("schema", "named pipe must be \\\\.\\pipe\\mossx-*"));
     }
-    pipe_acl_ok(owner_sid, allow_sids)
+    compile_pipe_sddl(owner_sid, allow_sids)
 }
 
 #[cfg(windows)]
@@ -61,8 +100,8 @@ pub fn bind_named_pipe_secured(
     owner_sid: &str,
     allow_sids: &[&str],
 ) -> Result<windows_pipe::NamedPipeServer, IpcError> {
-    gate_named_pipe(name, owner_sid, allow_sids)?;
-    windows_pipe::bind(name)
+    let sddl = gate_named_pipe(name, owner_sid, allow_sids)?;
+    windows_pipe::bind(name, &sddl)
 }
 
 #[cfg(not(windows))]
@@ -71,7 +110,7 @@ pub fn bind_named_pipe_secured(
     owner_sid: &str,
     allow_sids: &[&str],
 ) -> Result<(), IpcError> {
-    gate_named_pipe(name, owner_sid, allow_sids)?;
+    let _sddl = gate_named_pipe(name, owner_sid, allow_sids)?;
     Err(err(
         "unsupported-platform",
         "Named Pipe transport is windows-only in V1",
@@ -132,8 +171,32 @@ mod windows_pipe {
         OsStr::new(name).encode_wide().chain(Some(0)).collect()
     }
 
-    pub fn bind(name: &str) -> Result<NamedPipeServer, IpcError> {
+    pub fn bind(name: &str, sddl: &str) -> Result<NamedPipeServer, IpcError> {
+        use windows_sys::Win32::Security::Authorization::{
+            ConvertStringSecurityDescriptorToSecurityDescriptorW, SDDL_REVISION_1,
+        };
+        use windows_sys::Win32::Security::SECURITY_ATTRIBUTES;
+        use windows_sys::Win32::System::Memory::LocalFree;
+
         let wide_name = wide(name);
+        let wide_sddl = wide(sddl);
+        let mut sd: *mut core::ffi::c_void = null_mut();
+        let ok = unsafe {
+            ConvertStringSecurityDescriptorToSecurityDescriptorW(
+                wide_sddl.as_ptr(),
+                SDDL_REVISION_1,
+                &mut sd,
+                null_mut(),
+            )
+        };
+        if ok == 0 || sd.is_null() {
+            return Err(err("permission-denied", "SDDL could not become a descriptor"));
+        }
+        let mut attrs = SECURITY_ATTRIBUTES {
+            nLength: std::mem::size_of::<SECURITY_ATTRIBUTES>() as u32,
+            lpSecurityDescriptor: sd,
+            bInheritHandle: 0,
+        };
         let handle = unsafe {
             CreateNamedPipeW(
                 wide_name.as_ptr(),
@@ -143,9 +206,12 @@ mod windows_pipe {
                 65_536,
                 65_536,
                 0,
-                null_mut(),
+                &mut attrs,
             )
         };
+        unsafe {
+            LocalFree(sd);
+        }
         if handle == INVALID_HANDLE_VALUE {
             return Err(err("transport", "CreateNamedPipeW failed"));
         }
@@ -220,6 +286,34 @@ mod tests {
     #[test]
     fn current_user_only_is_accepted() {
         pipe_acl_ok("S-1-5-21-1-2-3-1001", &["S-1-5-21-1-2-3-1001"]).expect("acl");
+    }
+
+    #[test]
+    fn current_user_sddl_is_compiled() {
+        let sddl = compile_pipe_sddl("S-1-5-21-1-2-3-1001", &["S-1-5-21-1-2-3-1001"]).expect("sddl");
+        assert!(sddl.contains("S-1-5-21-1-2-3-1001"));
+        assert!(!sddl.contains("WD"));
+        assert!(!sddl.contains("S-1-1-0"));
+        assert!(sddl_ok(&sddl, "S-1-5-21-1-2-3-1001"));
+    }
+
+    #[test]
+    fn everyone_cannot_compile_a_descriptor() {
+        assert_eq!(
+            compile_pipe_sddl("S-1-5-21-1-2-3-1001", &["S-1-1-0"])
+                .unwrap_err()
+                .code,
+            "permission-denied"
+        );
+        assert_eq!(
+            compile_pipe_sddl(
+                "S-1-5-21-1-2-3-1001",
+                &["S-1-5-21-1-2-3-1001", "S-1-5-21-9-9-9-9"]
+            )
+            .unwrap_err()
+            .code,
+            "permission-denied"
+        );
     }
 
     #[test]

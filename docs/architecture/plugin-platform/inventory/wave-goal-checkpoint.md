@@ -116,17 +116,17 @@
 | 1H5 boot Host 换 CompositeDriver，仍默认 off | 完成 | `81a3b63c3` |
 | 1F4 Restricted Process executable allowlist | 完成 | `31c2e22ea` |
 | 1F5 Restricted Process 不得继承父进程环境 | 完成 | `ed320a732` |
-| 1UDS3 UDS 必须落在 0700 私有目录 | 完成 | 本刀 |
+| 1UDS3 UDS 必须落在 0700 私有目录 | 完成 | `514ec4ed9` |
+| 1NP5 Named Pipe bind 必须先编译当前用户 SDDL | 完成 | 本刀 |
 
 ## 明确未做
 
-1. Named Pipe 挂 Windows SECURITY_DESCRIPTOR（1NP5）
-2. QuickJS C 引擎嵌入（1QJ5，仍不切产品）
-3. Claude / Notes **产品**切流（flag 仍默认 off）
-4. 用户数据导入
-5. Marketplace
+1. QuickJS C 引擎嵌入（1QJ5，仍不切产品）
+2. Claude / Notes **产品**切流（flag 仍默认 off）
+3. 用户数据导入
+4. Marketplace
 
 ## 进度
 
-相对「Core + 可撤销插件平台」全文约 **99%**（合同平面 **100%**；插座本体骨架 + boot CompositeDriver 默认 off + env_clear + UDS 私有目录 已落地；C 引擎 / Windows SD / 产品切流仍未做）。  
+相对「Core + 可撤销插件平台」全文约 **99%**（合同平面 **100%**；插座本体骨架 + boot CompositeDriver 默认 off + env_clear + UDS 私有目录 + Named Pipe SDDL 已落地；C 引擎 / 产品切流仍未做）。  
 相对「产品已拔插头」约 **0%**。
