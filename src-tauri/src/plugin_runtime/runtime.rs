@@ -2052,4 +2052,26 @@ mod tests {
         assert_eq!(runtime.plane.codec(51), Some("blob-v1"));
         remove_path(&root);
     }
+
+    #[test]
+    fn runtime_rejects_subsecond_activation_deadline() {
+        use std::time::Duration;
+
+        let root = unique_temp_root("runtime-deadline-floor");
+        let error = match PluginRuntime::new(
+            HostConfig {
+                enabled: true,
+                activation_deadline: Duration::from_millis(200),
+                ..HostConfig::default()
+            },
+            FakeDriver::default(),
+            "/fixture/workspace",
+            &root,
+        ) {
+            Ok(_) => panic!("subsecond deadline should fail"),
+            Err(error) => error,
+        };
+        assert_eq!(error.code, "invalid-budget");
+        remove_path(&root);
+    }
 }
