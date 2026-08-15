@@ -722,4 +722,55 @@ mod tests {
         assert_eq!(error.code, "export-required");
         remove_path(&root);
     }
+
+    #[test]
+    fn old_reader_cannot_migrate_newer_store() {
+        let root = unique_temp_root("runtime-migrate-quarantine");
+        let mut runtime = PluginRuntime::new(
+            HostConfig {
+                enabled: true,
+                ..HostConfig::default()
+            },
+            FakeDriver::default(),
+            "/fixture/workspace",
+            &root,
+        )
+        .expect("runtime");
+        runtime
+            .activate(notes_activation_request())
+            .expect("activate");
+        runtime
+            .checkpoint_own_store("com.mossx.notes")
+            .expect("ckpt");
+        runtime
+            .migrate_own_store(
+                "com.mossx.notes",
+                MigrationPlan {
+                    from: 1,
+                    to: 2,
+                    destructive: false,
+                    export_required: false,
+                    confirmed: false,
+                    exported: false,
+                    reader_schema: 2,
+                },
+            )
+            .expect("forward");
+        let error = runtime
+            .migrate_own_store(
+                "com.mossx.notes",
+                MigrationPlan {
+                    from: 2,
+                    to: 3,
+                    destructive: false,
+                    export_required: false,
+                    confirmed: false,
+                    exported: false,
+                    reader_schema: 1,
+                },
+            )
+            .unwrap_err();
+        assert_eq!(error.code, "quarantine");
+        remove_path(&root);
+    }
 }

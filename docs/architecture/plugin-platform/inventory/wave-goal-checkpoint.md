@@ -25,7 +25,7 @@
 | 1L fuse 后 reset 恢复 | 完成 | `06ade989d` |
 | 1M 旧 generation 失效 | 完成 | `fab30c466` |
 | 2E–2G storage Ready 闸门 | 完成 | `098c48763` |
-| 2H–2J migrate 组合面闸门 | 完成 | 本刀 |
+| 2H–2K migrate 组合面闸门 | 完成 | 本刀 |
 
 ## 明确未做
 
