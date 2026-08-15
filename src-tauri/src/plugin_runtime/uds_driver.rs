@@ -48,13 +48,13 @@ fn ack(plugin_id: &str, generation: u64, nonce: &str) -> Value {
 #[cfg(unix)]
 fn sock_path(entry_id: &str, generation: u64) -> std::path::PathBuf {
     let seq = SOCK_SEQ.fetch_add(1, Ordering::Relaxed);
-    std::path::PathBuf::from(format!(
-        "/tmp/m{}{}{}{}.s",
-        std::process::id() % 1000,
+    super::uds::private_uds_path(&format!(
+        "{}{}{}",
         seq % 1000,
         entry_id.as_bytes().first().copied().unwrap_or(b'e') as char,
         generation % 10
     ))
+    .unwrap_or_else(|_| std::path::PathBuf::from("/tmp/mx-open.s"))
 }
 
 #[cfg(unix)]

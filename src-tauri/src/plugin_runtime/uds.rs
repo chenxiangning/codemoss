@@ -57,12 +57,52 @@ pub fn write_mxpc_frame(writer: &mut impl Write, message: &Value) -> Result<(), 
 }
 
 #[cfg(unix)]
+fn parent_is_owner_only(path: &Path) -> Result<(), IpcError> {
+    use std::os::unix::fs::PermissionsExt;
+
+    let parent = path
+        .parent()
+        .filter(|dir| !dir.as_os_str().is_empty())
+        .ok_or_else(|| err("schema", "uds path must have a parent directory"))?;
+    if parent == Path::new("/tmp") || parent == Path::new("/var/tmp") {
+        return Err(err(
+            "permission-denied",
+            "UDS cannot bind in a world-writable directory",
+        ));
+    }
+    let mode = std::fs::metadata(parent).map_err(io_err)?.permissions().mode() & 0o777;
+    if mode & 0o022 != 0 {
+        return Err(err(
+            "permission-denied",
+            "UDS parent directory must be owner-only",
+        ));
+    }
+    Ok(())
+}
+
+#[cfg(unix)]
+pub fn private_uds_dir() -> Result<std::path::PathBuf, IpcError> {
+    use std::os::unix::fs::PermissionsExt;
+
+    let dir = Path::new("/tmp").join(format!("m{}", std::process::id() % 10_000));
+    std::fs::create_dir_all(&dir).map_err(io_err)?;
+    std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700)).map_err(io_err)?;
+    Ok(dir)
+}
+
+#[cfg(unix)]
+pub fn private_uds_path(tag: &str) -> Result<std::path::PathBuf, IpcError> {
+    Ok(private_uds_dir()?.join(format!("{tag}.s")))
+}
+
+#[cfg(unix)]
 pub fn bind_uds(path: &Path) -> Result<std::os::unix::net::UnixListener, IpcError> {
     if let Some(parent) = path.parent() {
         if !parent.as_os_str().is_empty() {
             std::fs::create_dir_all(parent).map_err(io_err)?;
         }
     }
+    parent_is_owner_only(path)?;
     let _ = std::fs::remove_file(path);
     let listener = std::os::unix::net::UnixListener::bind(path).map_err(io_err)?;
     use std::os::unix::fs::PermissionsExt;
@@ -117,13 +157,13 @@ mod tests {
             .duration_since(UNIX_EPOCH)
             .map(|duration| duration.as_nanos())
             .unwrap_or(0);
-        // sockaddr_un.sun_path is ~104 bytes; keep this under /tmp.
-        std::path::PathBuf::from(format!(
-            "/tmp/mx{}{}{}.s",
-            std::process::id() % 10_000,
-            nanos % 1_000_000,
-            tag.chars().next().unwrap_or('x')
+        // sockaddr_un.sun_path is ~104 bytes; keep this under /tmp/m{pid}.
+        private_uds_path(&format!(
+            "{}{}",
+            tag.chars().next().unwrap_or('x'),
+            nanos % 1_000
         ))
+        .expect("private dir")
     }
 
     #[cfg(unix)]
@@ -190,7 +230,22 @@ mod tests {
             .mode()
             & 0o777;
         assert_eq!(mode, 0o600);
+        let parent_mode = std::fs::metadata(path.parent().expect("parent"))
+            .expect("parent meta")
+            .permissions()
+            .mode()
+            & 0o777;
+        assert_eq!(parent_mode, 0o700);
         let _ = std::fs::remove_file(&path);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_socket_in_tmp_is_rejected() {
+        assert_eq!(
+            bind_uds(Path::new("/tmp/mx-open.s")).unwrap_err().code,
+            "permission-denied"
+        );
     }
 
 }

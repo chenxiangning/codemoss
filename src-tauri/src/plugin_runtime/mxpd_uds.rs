@@ -10,11 +10,8 @@ static SOCK_SEQ: AtomicU64 = AtomicU64::new(1);
 #[cfg(unix)]
 fn sock_path() -> std::path::PathBuf {
     let seq = SOCK_SEQ.fetch_add(1, Ordering::Relaxed);
-    std::path::PathBuf::from(format!(
-        "/tmp/md{}{}.s",
-        std::process::id() % 1000,
-        seq % 1000
-    ))
+    super::uds::private_uds_path(&format!("d{}", seq % 1000))
+        .unwrap_or_else(|_| std::path::PathBuf::from("/tmp/mx-open.s"))
 }
 
 #[cfg(test)]
