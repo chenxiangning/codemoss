@@ -35,7 +35,17 @@ impl<D: EntryDriver> PluginRuntime<D> {
     }
 
     pub fn activate(&mut self, request: ActivationRequest) -> Result<u64, HostError> {
-        self.host.activate(request)
+        let previous = self
+            .host
+            .slot(&request.plugin_id)
+            .map(|slot| (slot.generation, slot.state));
+        let generation = self.host.activate(request.clone())?;
+        if let Some((old_generation, state)) = previous {
+            if old_generation > 0 && state == SlotState::Ready {
+                self.plane.revoke(&request.plugin_id, old_generation);
+            }
+        }
+        Ok(generation)
     }
 
     pub fn query(
@@ -1631,6 +1641,58 @@ mod tests {
                 .code,
             "activation-busy"
         );
+        remove_path(&root);
+    }
+
+    #[test]
+    fn ready_reactivate_swaps_generation_and_revokes_old_handles() {
+        let root = unique_temp_root("runtime-ready-swap");
+        let mut runtime = PluginRuntime::new(
+            HostConfig {
+                enabled: true,
+                ..HostConfig::default()
+            },
+            FakeDriver::default(),
+            "/fixture/workspace",
+            &root,
+        )
+        .expect("runtime");
+        let first = runtime
+            .activate(notes_activation_request())
+            .expect("first");
+        runtime
+            .query_read("com.mossx.notes", first)
+            .expect("first read");
+        runtime
+            .open_stream("com.mossx.notes", first, 26, "blob-v1")
+            .expect("first stream");
+        assert_eq!(runtime.plane.codec(26), Some("blob-v1"));
+        let second = runtime
+            .activate(notes_activation_request())
+            .expect("second");
+        assert!(second > first);
+        assert!(runtime.plane.codec(26).is_none());
+        assert_eq!(
+            runtime
+                .query_read("com.mossx.notes", first)
+                .unwrap_err()
+                .code,
+            "stale-generation"
+        );
+        assert_eq!(
+            runtime
+                .open_stream("com.mossx.notes", first, 27, "blob-v1")
+                .unwrap_err()
+                .code,
+            "stale-generation"
+        );
+        runtime
+            .query_read("com.mossx.notes", second)
+            .expect("second read");
+        runtime
+            .open_stream("com.mossx.notes", second, 27, "blob-v1")
+            .expect("second stream");
+        assert_eq!(runtime.plane.codec(27), Some("blob-v1"));
         remove_path(&root);
     }
 }
