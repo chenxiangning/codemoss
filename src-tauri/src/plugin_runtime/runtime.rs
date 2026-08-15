@@ -95,9 +95,17 @@ impl<D: EntryDriver> PluginRuntime<D> {
     }
 
     pub fn checkpoint_own_store(&mut self, plugin_id: &str) -> Result<String, StorageError> {
+        self.checkpoint_own_store_retained(plugin_id, 2)
+    }
+
+    pub fn checkpoint_own_store_retained(
+        &mut self,
+        plugin_id: &str,
+        retain_previous: u32,
+    ) -> Result<String, StorageError> {
         self.ensure_ready(plugin_id)?;
         self.open_own_store(plugin_id)?;
-        self.storage.checkpoint(plugin_id, 2)
+        self.storage.checkpoint(plugin_id, retain_previous)
     }
 
     pub fn restore_own_store(&mut self, plugin_id: &str) -> Result<u32, StorageError> {
@@ -881,6 +889,43 @@ mod tests {
             Err(error) => error,
         };
         assert_eq!(deadline.code, "invalid-budget");
+        remove_path(&root);
+    }
+
+    #[test]
+    fn checkpoint_retain_previous_must_stay_in_range() {
+        let root = unique_temp_root("runtime-retain");
+        let mut runtime = PluginRuntime::new(
+            HostConfig {
+                enabled: true,
+                ..HostConfig::default()
+            },
+            FakeDriver::default(),
+            "/fixture/workspace",
+            &root,
+        )
+        .expect("runtime");
+        runtime
+            .activate(notes_activation_request())
+            .expect("activate");
+        assert_eq!(
+            runtime
+                .checkpoint_own_store_retained("com.mossx.notes", 0)
+                .unwrap_err()
+                .code,
+            "invalid-storage"
+        );
+        assert_eq!(
+            runtime
+                .checkpoint_own_store_retained("com.mossx.notes", 6)
+                .unwrap_err()
+                .code,
+            "invalid-storage"
+        );
+        let id = runtime
+            .checkpoint_own_store_retained("com.mossx.notes", 1)
+            .expect("retain 1");
+        assert!(id.starts_with("ckpt-"));
         remove_path(&root);
     }
 }
