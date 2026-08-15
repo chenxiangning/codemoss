@@ -37,7 +37,11 @@ impl NamedPipeHandshakeDriver {
 }
 
 #[cfg(windows)]
-fn handshake(driver: &NamedPipeHandshakeDriver) -> Result<(), DriverError> {
+fn handshake(
+    driver: &NamedPipeHandshakeDriver,
+    plugin_id: &str,
+    generation: u64,
+) -> Result<(), DriverError> {
     use serde_json::json;
     use std::thread;
 
@@ -47,6 +51,7 @@ fn handshake(driver: &NamedPipeHandshakeDriver) -> Result<(), DriverError> {
 
     let nonce = issue_handshake_nonce();
     let peer_nonce = nonce.clone();
+    let peer_plugin = plugin_id.to_string();
     let allow: Vec<&str> = driver.allow_sids.iter().map(String::as_str).collect();
     let server = bind_named_pipe_secured(&driver.pipe_name, &driver.owner_sid, &allow)
         .map_err(|_| DriverError::Crash)?;
@@ -61,9 +66,9 @@ fn handshake(driver: &NamedPipeHandshakeDriver) -> Result<(), DriverError> {
                 "id": "hs-1",
                 "result": {
                     "protocolVersion": 1,
-                    "pluginId": "com.mossx.notes",
+                    "pluginId": peer_plugin,
                     "version": "1.0.0",
-                    "generation": 1,
+                    "generation": generation,
                     "nonce": peer_nonce
                 }
             }),
@@ -83,26 +88,31 @@ fn handshake(driver: &NamedPipeHandshakeDriver) -> Result<(), DriverError> {
                 "protocolVersion": 1,
                 "coreContract": "1.0.0",
                 "nonce": nonce,
-                "generation": 1
+                "generation": generation
             }
         }),
     )
     .map_err(|_| DriverError::Crash)?;
     let received = read_mxpc_frame(&mut client).map_err(|_| DriverError::Crash)?;
-    let result = validate_handshake_ack(&received, &nonce).map_err(|_| DriverError::Crash);
+    let result = validate_handshake_ack(&received, &nonce, plugin_id, generation)
+        .map_err(|_| DriverError::Crash);
     let _ = peer.join();
     result
 }
 
 #[cfg(not(windows))]
-fn handshake(_driver: &NamedPipeHandshakeDriver) -> Result<(), DriverError> {
+fn handshake(
+    _driver: &NamedPipeHandshakeDriver,
+    _plugin_id: &str,
+    _generation: u64,
+) -> Result<(), DriverError> {
     Err(DriverError::Crash)
 }
 
 impl EntryDriver for NamedPipeHandshakeDriver {
     fn start(&mut self, plugin_id: &str, entry_id: &str, generation: u64) -> Result<(), DriverError> {
         self.gate()?;
-        handshake(self)?;
+        handshake(self, plugin_id, generation)?;
         self.started
             .push((plugin_id.to_string(), entry_id.to_string(), generation));
         Ok(())

@@ -238,7 +238,12 @@ pub fn validate_handshake_hello(value: &Value) -> Result<(), IpcError> {
     Ok(())
 }
 
-pub fn validate_handshake_ack(value: &Value, expected_nonce: &str) -> Result<(), IpcError> {
+pub fn validate_handshake_ack(
+    value: &Value,
+    expected_nonce: &str,
+    expected_plugin_id: &str,
+    expected_generation: u64,
+) -> Result<(), IpcError> {
     let result = value
         .get("result")
         .and_then(Value::as_object)
@@ -248,6 +253,21 @@ pub fn validate_handshake_ack(value: &Value, expected_nonce: &str) -> Result<(),
     }
     if result.get("nonce").and_then(Value::as_str) != Some(expected_nonce) {
         return Err(err("handshake-rejected", "ack must echo hello nonce"));
+    }
+    if expected_generation == 0 {
+        return Err(err("handshake-rejected", "generation 0 is never a live handle"));
+    }
+    if !crate::plugin_runtime::manifest::plugin_id_ok(expected_plugin_id) {
+        return Err(err("handshake-rejected", "pluginId must be reverse-DNS"));
+    }
+    if result.get("pluginId").and_then(Value::as_str) != Some(expected_plugin_id) {
+        return Err(err("handshake-rejected", "ack pluginId must match the current plugin"));
+    }
+    if result.get("generation").and_then(Value::as_u64) != Some(expected_generation) {
+        return Err(err(
+            "handshake-rejected",
+            "ack generation must match the current generation",
+        ));
     }
     Ok(())
 }
@@ -346,11 +366,36 @@ mod tests {
 
     #[test]
     fn handshake_rejects_nonce_drift() {
-        validate_handshake_ack(&ack(), "aa".repeat(32).as_str()).expect("ack");
+        validate_handshake_ack(&ack(), "aa".repeat(32).as_str(), "com.mossx.notes", 1).expect("ack");
         let mut bad = ack();
         bad["result"]["nonce"] = Value::String("bb".repeat(32));
         assert_eq!(
-            validate_handshake_ack(&bad, "aa".repeat(32).as_str())
+            validate_handshake_ack(&bad, "aa".repeat(32).as_str(), "com.mossx.notes", 1)
+                .unwrap_err()
+                .code,
+            "handshake-rejected"
+        );
+    }
+
+    #[test]
+    fn a_notes_ack_cannot_satisfy_a_claude_handshake() {
+        assert_eq!(
+            validate_handshake_ack(
+                &ack(),
+                "aa".repeat(32).as_str(),
+                "com.mossx.engine.claude",
+                1
+            )
+            .unwrap_err()
+            .code,
+            "handshake-rejected"
+        );
+    }
+
+    #[test]
+    fn a_stale_generation_cannot_satisfy_the_current_handshake() {
+        assert_eq!(
+            validate_handshake_ack(&ack(), "aa".repeat(32).as_str(), "com.mossx.notes", 2)
                 .unwrap_err()
                 .code,
             "handshake-rejected"

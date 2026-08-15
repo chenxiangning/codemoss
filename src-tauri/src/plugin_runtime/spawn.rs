@@ -95,7 +95,7 @@ impl RestrictedProcessDriver {
                 command.env("MOSSX_CORRUPT_ACK", "1");
             }
             let mut child = command.spawn().map_err(|_| DriverError::Crash)?;
-            if let Err(error) = handshake_child(&mut child, generation, &nonce) {
+            if let Err(error) = handshake_child(&mut child, plugin_id, generation, &nonce) {
                 kill_child(&mut child);
                 return Err(error);
             }
@@ -125,12 +125,17 @@ fn hello(generation: u64, nonce: &str) -> Value {
     })
 }
 
-fn handshake_child(child: &mut Child, generation: u64, nonce: &str) -> Result<(), DriverError> {
+fn handshake_child(
+    child: &mut Child,
+    plugin_id: &str,
+    generation: u64,
+    nonce: &str,
+) -> Result<(), DriverError> {
     let stdin = child.stdin.as_mut().ok_or(DriverError::Crash)?;
     write_mxpc_frame(stdin, &hello(generation, nonce)).map_err(|_| DriverError::Crash)?;
     let stdout = child.stdout.as_mut().ok_or(DriverError::Crash)?;
     let received = read_mxpc_frame(stdout).map_err(|_| DriverError::Crash)?;
-    validate_handshake_ack(&received, nonce).map_err(|_| DriverError::Crash)?;
+    validate_handshake_ack(&received, nonce, plugin_id, generation).map_err(|_| DriverError::Crash)?;
     Ok(())
 }
 

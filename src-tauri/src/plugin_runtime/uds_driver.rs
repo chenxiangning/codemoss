@@ -91,7 +91,8 @@ fn handshake(
     let mut client = UnixStream::connect(&path).map_err(|_| DriverError::Crash)?;
     write_mxpc_frame(&mut client, &hello(generation, &nonce)).map_err(|_| DriverError::Crash)?;
     let received = read_mxpc_frame(&mut client).map_err(|_| DriverError::Crash)?;
-    let result = validate_handshake_ack(&received, &nonce).map_err(|_| DriverError::Crash);
+    let result =
+        validate_handshake_ack(&received, &nonce, plugin_id, generation).map_err(|_| DriverError::Crash);
     let _ = peer.join();
     result
 }

@@ -389,7 +389,7 @@ mod tests {
         )
         .expect("hello");
         let received = read_mxpc_frame(&mut client).expect("ack frame");
-        validate_handshake_ack(&received, NONCE).expect("ack");
+        validate_handshake_ack(&received, NONCE, "com.mossx.notes", 1).expect("ack");
         peer.join().expect("server");
     }
 
@@ -447,7 +447,7 @@ mod tests {
         )
         .expect("hello");
         let received = read_mxpc_frame(&mut client).expect("ack frame");
-        assert!(validate_handshake_ack(&received, NONCE).is_err());
+        assert!(validate_handshake_ack(&received, NONCE, "com.mossx.notes", 1).is_err());
         peer.join().expect("server");
     }
 }

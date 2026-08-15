@@ -188,7 +188,7 @@ mod tests {
         let mut client = UnixStream::connect(&path).expect("connect");
         write_mxpc_frame(&mut client, &hello()).expect("client hello");
         let received = read_mxpc_frame(&mut client).expect("client read ack");
-        validate_handshake_ack(&received, NONCE).expect("ack");
+        validate_handshake_ack(&received, NONCE, "com.mossx.notes", 1).expect("ack");
         server.join().expect("server");
     }
 
@@ -213,7 +213,7 @@ mod tests {
         let mut client = UnixStream::connect(&path).expect("connect");
         write_mxpc_frame(&mut client, &hello()).expect("hello");
         let received = read_mxpc_frame(&mut client).expect("ack frame");
-        assert!(validate_handshake_ack(&received, NONCE).is_err());
+        assert!(validate_handshake_ack(&received, NONCE, "com.mossx.notes", 1).is_err());
         server.join().expect("server");
     }
 

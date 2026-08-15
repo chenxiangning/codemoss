@@ -56,7 +56,8 @@ impl LoopbackDriver {
         };
         let encoded_ack = encode_mxpc(&ack(plugin_id, generation, &nonce)).map_err(|_| DriverError::Crash)?;
         let (decoded_ack, _) = decode_mxpc(&encoded_ack).map_err(|_| DriverError::Crash)?;
-        validate_handshake_ack(&decoded_ack, &issued).map_err(|_| DriverError::Crash)?;
+        validate_handshake_ack(&decoded_ack, &issued, plugin_id, generation)
+            .map_err(|_| DriverError::Crash)?;
         Ok(())
     }
 }
