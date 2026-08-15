@@ -64,7 +64,10 @@ pub fn bind_uds(path: &Path) -> Result<std::os::unix::net::UnixListener, IpcErro
         }
     }
     let _ = std::fs::remove_file(path);
-    std::os::unix::net::UnixListener::bind(path).map_err(io_err)
+    let listener = std::os::unix::net::UnixListener::bind(path).map_err(io_err)?;
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600)).map_err(io_err)?;
+    Ok(listener)
 }
 
 #[cfg(not(unix))]
@@ -172,6 +175,22 @@ mod tests {
         let received = read_mxpc_frame(&mut client).expect("ack frame");
         assert!(validate_handshake_ack(&received, NONCE).is_err());
         server.join().expect("server");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn bound_uds_is_owner_only() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let path = temp_sock("mode");
+        let _listener = bind_uds(&path).expect("bind");
+        let mode = std::fs::metadata(&path)
+            .expect("meta")
+            .permissions()
+            .mode()
+            & 0o777;
+        assert_eq!(mode, 0o600);
+        let _ = std::fs::remove_file(&path);
     }
 
 }
