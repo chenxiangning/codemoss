@@ -283,6 +283,7 @@ pub fn validate_handshake_ack(
     expected_nonce: &str,
     expected_plugin_id: &str,
     expected_generation: u64,
+    expected_version: &str,
 ) -> Result<(), IpcError> {
     let result = value
         .get("result")
@@ -307,6 +308,15 @@ pub fn validate_handshake_ack(
         return Err(err(
             "handshake-rejected",
             "ack generation must match the current generation",
+        ));
+    }
+    if expected_version.is_empty() {
+        return Err(err("handshake-rejected", "plugin version is required"));
+    }
+    if result.get("version").and_then(Value::as_str) != Some(expected_version) {
+        return Err(err(
+            "handshake-rejected",
+            "ack version must match the current plugin version",
         ));
     }
     Ok(())
@@ -419,11 +429,12 @@ mod tests {
 
     #[test]
     fn handshake_rejects_nonce_drift() {
-        validate_handshake_ack(&ack(), "aa".repeat(32).as_str(), "com.mossx.notes", 1).expect("ack");
+        validate_handshake_ack(&ack(), "aa".repeat(32).as_str(), "com.mossx.notes", 1, "1.0.0")
+            .expect("ack");
         let mut bad = ack();
         bad["result"]["nonce"] = Value::String("bb".repeat(32));
         assert_eq!(
-            validate_handshake_ack(&bad, "aa".repeat(32).as_str(), "com.mossx.notes", 1)
+            validate_handshake_ack(&bad, "aa".repeat(32).as_str(), "com.mossx.notes", 1, "1.0.0")
                 .unwrap_err()
                 .code,
             "handshake-rejected"
@@ -437,7 +448,8 @@ mod tests {
                 &ack(),
                 "aa".repeat(32).as_str(),
                 "com.mossx.engine.claude",
-                1
+                1,
+                "1.0.0"
             )
             .unwrap_err()
             .code,
@@ -448,7 +460,7 @@ mod tests {
     #[test]
     fn a_stale_generation_cannot_satisfy_the_current_handshake() {
         assert_eq!(
-            validate_handshake_ack(&ack(), "aa".repeat(32).as_str(), "com.mossx.notes", 2)
+            validate_handshake_ack(&ack(), "aa".repeat(32).as_str(), "com.mossx.notes", 2, "1.0.0")
                 .unwrap_err()
                 .code,
             "handshake-rejected"
@@ -517,6 +529,45 @@ mod tests {
             validate_handshake_hello(&hello(), 1, &"bb".repeat(32))
                 .unwrap_err()
                 .code,
+            "handshake-rejected"
+        );
+    }
+
+    #[test]
+    fn a_current_version_ack_is_accepted() {
+        validate_handshake_ack(&ack(), "aa".repeat(32).as_str(), "com.mossx.notes", 1, "1.0.0")
+            .expect("ack");
+    }
+
+    #[test]
+    fn a_drifted_version_cannot_satisfy_the_handshake() {
+        assert_eq!(
+            validate_handshake_ack(
+                &ack(),
+                "aa".repeat(32).as_str(),
+                "com.mossx.notes",
+                1,
+                "9.9.9"
+            )
+            .unwrap_err()
+            .code,
+            "handshake-rejected"
+        );
+        let mut missing = ack();
+        missing["result"]
+            .as_object_mut()
+            .expect("result")
+            .remove("version");
+        assert_eq!(
+            validate_handshake_ack(
+                &missing,
+                "aa".repeat(32).as_str(),
+                "com.mossx.notes",
+                1,
+                "1.0.0"
+            )
+            .unwrap_err()
+            .code,
             "handshake-rejected"
         );
     }

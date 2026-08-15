@@ -94,7 +94,7 @@ fn handshake(
     )
     .map_err(|_| DriverError::Crash)?;
     let received = read_mxpc_frame(&mut client).map_err(|_| DriverError::Crash)?;
-    let result = validate_handshake_ack(&received, &nonce, plugin_id, generation)
+    let result = validate_handshake_ack(&received, &nonce, plugin_id, generation, "1.0.0")
         .map_err(|_| DriverError::Crash);
     let _ = peer.join();
     result

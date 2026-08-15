@@ -181,7 +181,7 @@ fn handshake_worker(
         write_mxpc_frame(&mut client, &hello(generation, &issued)).map_err(|_| DriverError::Crash)?;
         let received =
             read_mxpc_frame_timed(&mut client, HANDSHAKE_DEADLINE).map_err(|_| DriverError::Crash)?;
-        let result = validate_handshake_ack(&received, &issued, plugin_id, generation)
+        let result = validate_handshake_ack(&received, &issued, plugin_id, generation, "1.0.0")
             .map_err(|_| DriverError::Crash);
         let _ = peer.join();
         let _ = std::fs::remove_file(&path);
@@ -201,7 +201,7 @@ fn handshake_worker(
         let encoded_ack =
             encode_mxpc(&ack(plugin_id, generation, &nonce)).map_err(|_| DriverError::Crash)?;
         let (decoded_ack, _) = decode_mxpc(&encoded_ack).map_err(|_| DriverError::Crash)?;
-        validate_handshake_ack(&decoded_ack, &issued, plugin_id, generation)
+        validate_handshake_ack(&decoded_ack, &issued, plugin_id, generation, "1.0.0")
             .map_err(|_| DriverError::Crash)?;
         let _ = entry_id;
         Ok(())

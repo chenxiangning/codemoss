@@ -158,7 +158,8 @@ fn handshake_child(
     let stdout = child.stdout.as_mut().ok_or(DriverError::Crash)?;
     let received =
         read_mxpc_frame_timed(stdout, HANDSHAKE_DEADLINE).map_err(|_| DriverError::Crash)?;
-    validate_handshake_ack(&received, nonce, plugin_id, generation).map_err(|_| DriverError::Crash)?;
+    validate_handshake_ack(&received, nonce, plugin_id, generation, "1.0.0")
+        .map_err(|_| DriverError::Crash)?;
     Ok(())
 }
 

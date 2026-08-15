@@ -59,7 +59,7 @@ mod tests {
         });
         write_mxpc_frame(&mut host_out, &hello()).expect("host hello");
         let received = read_mxpc_frame(&mut host_in).expect("host ack");
-        validate_handshake_ack(&received, NONCE, "com.mossx.notes", 1).expect("ack");
+        validate_handshake_ack(&received, NONCE, "com.mossx.notes", 1, "1.0.0").expect("ack");
         peer.join().expect("peer");
     }
 
@@ -72,7 +72,7 @@ mod tests {
         });
         write_mxpc_frame(&mut host_out, &hello()).expect("hello");
         let received = read_mxpc_frame(&mut host_in).expect("ack frame");
-        assert!(validate_handshake_ack(&received, NONCE, "com.mossx.notes", 1).is_err());
+        assert!(validate_handshake_ack(&received, NONCE, "com.mossx.notes", 1, "1.0.0").is_err());
         peer.join().expect("peer");
     }
 }
