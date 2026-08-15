@@ -9,6 +9,15 @@ fn err(code: &'static str, message: impl Into<String>) -> IpcError {
     }
 }
 
+pub fn private_pipe_name(plugin_id: &str) -> Result<String, IpcError> {
+    let token = super::uds::plugin_dir_token(plugin_id)?;
+    let name = format!(r"\\.\pipe\mossx-{token}");
+    if !pipe_name_ok(&name) {
+        return Err(err("schema", "derived named pipe is not mossx-*"));
+    }
+    Ok(name)
+}
+
 pub fn pipe_name_ok(name: &str) -> bool {
     let Some(rest) = name.strip_prefix(r"\\.\pipe\mossx-") else {
         return false;
@@ -243,6 +252,32 @@ mod windows_pipe {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_invalid_plugin_id_cannot_create_a_pipe_name() {
+        assert_eq!(
+            private_pipe_name("not-a-plugin").unwrap_err().code,
+            "schema"
+        );
+    }
+
+    #[test]
+    fn notes_and_claude_do_not_share_a_named_pipe() {
+        let notes = private_pipe_name("com.mossx.notes").expect("notes");
+        let claude = private_pipe_name("com.mossx.engine.claude").expect("claude");
+        assert_ne!(notes, claude);
+        assert!(pipe_name_ok(&notes));
+        assert!(pipe_name_ok(&claude));
+    }
+
+    #[test]
+    fn same_suffix_plugins_do_not_share_a_named_pipe() {
+        let notes = private_pipe_name("com.mossx.notes").expect("notes");
+        let evil = private_pipe_name("com.evil.notes").expect("evil");
+        assert_ne!(notes, evil);
+        assert!(pipe_name_ok(&notes));
+        assert!(pipe_name_ok(&evil));
+    }
 
     #[test]
     fn illegal_pipe_name_is_schema() {

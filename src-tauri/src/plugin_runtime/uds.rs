@@ -251,7 +251,7 @@ fn parent_is_owner_only(path: &Path) -> Result<(), IpcError> {
     Ok(())
 }
 
-fn plugin_dir_token(plugin_id: &str) -> Result<String, IpcError> {
+pub(crate) fn plugin_dir_token(plugin_id: &str) -> Result<String, IpcError> {
     if !crate::plugin_runtime::manifest::plugin_id_ok(plugin_id) {
         return Err(err("schema", "pluginId must be reverse-DNS"));
     }

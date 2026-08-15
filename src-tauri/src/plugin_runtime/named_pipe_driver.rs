@@ -1,7 +1,7 @@
 //! Host EntryDriver over Named Pipe. Fail-closed off Windows. Not in boot.
 
 use super::host::{DriverError, EntryDriver};
-use super::named_pipe::{pipe_acl_ok, pipe_name_ok};
+use super::named_pipe::{pipe_acl_ok, pipe_name_ok, private_pipe_name};
 
 const CURRENT_USER: &str = "S-1-5-21-1-2-3-1001";
 
@@ -34,6 +34,16 @@ impl NamedPipeHandshakeDriver {
         pipe_acl_ok(&self.owner_sid, &allow).map_err(|_| DriverError::Crash)?;
         Ok(())
     }
+
+    fn pipe_name_for(&self, plugin_id: &str) -> Result<String, DriverError> {
+        if self.pipe_name == r"\\.\pipe\mossx-host" {
+            return private_pipe_name(plugin_id).map_err(|_| DriverError::Crash);
+        }
+        if !pipe_name_ok(&self.pipe_name) {
+            return Err(DriverError::Crash);
+        }
+        Ok(self.pipe_name.clone())
+    }
 }
 
 #[cfg(windows)]
@@ -53,7 +63,8 @@ fn handshake(
     let peer_nonce = nonce.clone();
     let peer_plugin = plugin_id.to_string();
     let allow: Vec<&str> = driver.allow_sids.iter().map(String::as_str).collect();
-    let server = bind_named_pipe_secured(&driver.pipe_name, &driver.owner_sid, &allow)
+    let pipe_name = driver.pipe_name_for(plugin_id)?;
+    let server = bind_named_pipe_secured(&pipe_name, &driver.owner_sid, &allow)
         .map_err(|_| DriverError::Crash)?;
     let peer = thread::spawn(move || {
         let mut stream = server.accept().map_err(|_| ())?;
@@ -77,7 +88,7 @@ fn handshake(
         Ok::<(), ()>(())
     });
     let mut client =
-        super::named_pipe::connect_named_pipe(&driver.pipe_name).map_err(|_| DriverError::Crash)?;
+        super::named_pipe::connect_named_pipe(&pipe_name).map_err(|_| DriverError::Crash)?;
     write_mxpc_frame(
         &mut client,
         &json!({
@@ -171,5 +182,20 @@ mod tests {
         let mut host = enabled_host(driver);
         assert!(host.activate(notes_activation_request()).is_err());
         assert!(host.driver().started.is_empty());
+    }
+
+    #[test]
+    fn default_host_pipe_resolves_to_plugin_private_name() {
+        let driver = NamedPipeHandshakeDriver::default();
+        let notes = driver.pipe_name_for("com.mossx.notes").expect("notes");
+        let claude = driver
+            .pipe_name_for("com.mossx.engine.claude")
+            .expect("claude");
+        let evil = driver.pipe_name_for("com.evil.notes").expect("evil");
+        assert_ne!(notes, claude);
+        assert_ne!(notes, evil);
+        assert_ne!(notes, driver.pipe_name);
+        assert!(pipe_name_ok(&notes));
+        assert!(pipe_name_ok(&claude));
     }
 }
