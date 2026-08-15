@@ -42,11 +42,13 @@ fn handshake(driver: &NamedPipeHandshakeDriver) -> Result<(), DriverError> {
     use std::thread;
 
     use super::ipc::{validate_handshake_ack, validate_handshake_hello};
-    use super::named_pipe::bind_named_pipe;
+    use super::named_pipe::bind_named_pipe_secured;
     use super::uds::{read_mxpc_frame, write_mxpc_frame};
 
     const NONCE: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
-    let server = bind_named_pipe(&driver.pipe_name).map_err(|_| DriverError::Crash)?;
+    let allow: Vec<&str> = driver.allow_sids.iter().map(String::as_str).collect();
+    let server = bind_named_pipe_secured(&driver.pipe_name, &driver.owner_sid, &allow)
+        .map_err(|_| DriverError::Crash)?;
     let peer = thread::spawn(move || {
         let mut stream = server.accept().map_err(|_| ())?;
         let received = read_mxpc_frame(&mut stream).map_err(|_| ())?;

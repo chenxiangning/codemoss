@@ -22,6 +22,7 @@ pub fn pipe_name_ok(name: &str) -> bool {
 const EVERYONE: &str = "S-1-1-0";
 const AUTHENTICATED_USERS: &str = "S-1-5-11";
 const WORLD: &str = "S-1-1-0";
+const DEFAULT_OWNER: &str = "S-1-5-21-1-2-3-1001";
 
 pub fn pipe_acl_ok(owner_sid: &str, allow_sids: &[&str]) -> Result<(), IpcError> {
     if owner_sid.trim().is_empty() || owner_sid != owner_sid.trim() {
@@ -47,12 +48,39 @@ pub fn pipe_acl_ok(owner_sid: &str, allow_sids: &[&str]) -> Result<(), IpcError>
     Ok(())
 }
 
-#[cfg(windows)]
-pub fn bind_named_pipe(name: &str) -> Result<windows_pipe::NamedPipeServer, IpcError> {
+fn gate_named_pipe(name: &str, owner_sid: &str, allow_sids: &[&str]) -> Result<(), IpcError> {
     if !pipe_name_ok(name) {
         return Err(err("schema", "named pipe must be \\\\.\\pipe\\mossx-*"));
     }
+    pipe_acl_ok(owner_sid, allow_sids)
+}
+
+#[cfg(windows)]
+pub fn bind_named_pipe_secured(
+    name: &str,
+    owner_sid: &str,
+    allow_sids: &[&str],
+) -> Result<windows_pipe::NamedPipeServer, IpcError> {
+    gate_named_pipe(name, owner_sid, allow_sids)?;
     windows_pipe::bind(name)
+}
+
+#[cfg(not(windows))]
+pub fn bind_named_pipe_secured(
+    name: &str,
+    owner_sid: &str,
+    allow_sids: &[&str],
+) -> Result<(), IpcError> {
+    gate_named_pipe(name, owner_sid, allow_sids)?;
+    Err(err(
+        "unsupported-platform",
+        "Named Pipe transport is windows-only in V1",
+    ))
+}
+
+#[cfg(windows)]
+pub fn bind_named_pipe(name: &str) -> Result<windows_pipe::NamedPipeServer, IpcError> {
+    bind_named_pipe_secured(name, DEFAULT_OWNER, &[DEFAULT_OWNER])
 }
 
 #[cfg(windows)]
@@ -64,14 +92,8 @@ pub fn connect_named_pipe(name: &str) -> Result<std::fs::File, IpcError> {
 }
 
 #[cfg(not(windows))]
-pub fn bind_named_pipe(_name: &str) -> Result<(), IpcError> {
-    if !pipe_name_ok(_name) {
-        return Err(err("schema", "named pipe must be \\\\.\\pipe\\mossx-*"));
-    }
-    Err(err(
-        "unsupported-platform",
-        "Named Pipe transport is windows-only in V1",
-    ))
+pub fn bind_named_pipe(name: &str) -> Result<(), IpcError> {
+    bind_named_pipe_secured(name, DEFAULT_OWNER, &[DEFAULT_OWNER])
 }
 
 #[cfg(windows)]
@@ -198,6 +220,20 @@ mod tests {
     #[test]
     fn current_user_only_is_accepted() {
         pipe_acl_ok("S-1-5-21-1-2-3-1001", &["S-1-5-21-1-2-3-1001"]).expect("acl");
+    }
+
+    #[test]
+    fn bind_with_everyone_is_denied_before_listen() {
+        assert_eq!(
+            bind_named_pipe_secured(
+                r"\\.\pipe\mossx-notes",
+                "S-1-5-21-1-2-3-1001",
+                &["S-1-1-0"]
+            )
+            .unwrap_err()
+            .code,
+            "permission-denied"
+        );
     }
 
     #[cfg(windows)]
