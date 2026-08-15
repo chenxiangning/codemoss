@@ -1914,4 +1914,34 @@ mod tests {
         );
         remove_path(&root);
     }
+
+    #[test]
+    fn ready_plugin_cannot_reopen_the_same_stream_id() {
+        let root = unique_temp_root("runtime-stream-exists");
+        let mut runtime = PluginRuntime::new(
+            HostConfig {
+                enabled: true,
+                ..HostConfig::default()
+            },
+            FakeDriver::default(),
+            "/fixture/workspace",
+            &root,
+        )
+        .expect("runtime");
+        let generation = runtime
+            .activate(notes_activation_request())
+            .expect("activate");
+        runtime
+            .open_stream("com.mossx.notes", generation, 50, "blob-v1")
+            .expect("first");
+        assert_eq!(
+            runtime
+                .open_stream("com.mossx.notes", generation, 50, "log-v1")
+                .unwrap_err()
+                .code,
+            "stream-exists"
+        );
+        assert_eq!(runtime.plane.codec(50), Some("blob-v1"));
+        remove_path(&root);
+    }
 }
