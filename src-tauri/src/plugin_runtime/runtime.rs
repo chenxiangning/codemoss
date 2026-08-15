@@ -2555,4 +2555,26 @@ mod tests {
         assert!(runtime.host.slot("com.mossx.notes").is_none());
         remove_path(&root);
     }
+
+    #[test]
+    fn runtime_accepts_legal_activation_deadline_ceiling() {
+        use std::time::Duration;
+
+        let root = unique_temp_root("runtime-deadline-ceiling");
+        let mut runtime = PluginRuntime::new(
+            HostConfig {
+                enabled: true,
+                activation_deadline: Duration::from_millis(30_000),
+                ..HostConfig::default()
+            },
+            FakeDriver::default(),
+            "/fixture/workspace",
+            &root,
+        )
+        .expect("runtime");
+        runtime
+            .activate(notes_activation_request())
+            .expect("activate");
+        remove_path(&root);
+    }
 }
