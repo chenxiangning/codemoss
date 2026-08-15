@@ -100,10 +100,10 @@ impl<D: EntryDriver> PluginRuntime<D> {
     }
 
     fn ensure_ready(&self, plugin_id: &str) -> Result<(), StorageError> {
-        if plugin_id.trim().is_empty() {
+        if plugin_id.trim().is_empty() || plugin_id != plugin_id.trim() {
             return Err(StorageError {
                 code: "schema",
-                message: "pluginId is required".into(),
+                message: "pluginId must be canonical".into(),
             });
         }
         let ready = self
@@ -162,10 +162,10 @@ impl<D: EntryDriver> PluginRuntime<D> {
         target_id: &str,
     ) -> Result<PathBuf, StorageError> {
         self.ensure_ready(caller_id)?;
-        if target_id.trim().is_empty() {
+        if target_id.trim().is_empty() || target_id != target_id.trim() {
             return Err(StorageError {
                 code: "schema",
-                message: "targetId is required".into(),
+                message: "targetId must be canonical".into(),
             });
         }
         self.storage.access_file(caller_id, target_id)
@@ -3074,6 +3074,59 @@ mod tests {
                 .code,
             "plugin-unavailable"
         );
+        remove_path(&root);
+    }
+
+    #[test]
+    fn untrimmed_identity_fails_on_compose_surface() {
+        let root = unique_temp_root("runtime-canonical-identity");
+        let mut runtime = PluginRuntime::new(
+            HostConfig {
+                enabled: true,
+                ..HostConfig::default()
+            },
+            FakeDriver::default(),
+            "/fixture/workspace",
+            &root,
+        )
+        .expect("runtime");
+        assert_eq!(
+            runtime
+                .activate(ActivationRequest {
+                    plugin_id: " com.mossx.notes ".into(),
+                    unit_id: "notes-main".into(),
+                    required_entries: vec!["notes-ui".into()],
+                })
+                .unwrap_err()
+                .code,
+            "schema"
+        );
+        let generation = runtime
+            .activate(notes_activation_request())
+            .expect("activate");
+        runtime.open_own_store("com.mossx.notes").expect("open");
+        assert_eq!(
+            runtime
+                .query("com.mossx.notes", generation, " mossx.workspace.read ")
+                .unwrap_err()
+                .code,
+            "schema"
+        );
+        assert_eq!(
+            runtime
+                .open_own_store(" com.mossx.notes ")
+                .unwrap_err()
+                .code,
+            "schema"
+        );
+        assert_eq!(
+            runtime
+                .access_store("com.mossx.notes", " com.mossx.notes ")
+                .unwrap_err()
+                .code,
+            "schema"
+        );
+        assert!(runtime.host.slot(" com.mossx.notes ").is_none());
         remove_path(&root);
     }
 }

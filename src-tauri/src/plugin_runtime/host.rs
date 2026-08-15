@@ -20,6 +20,19 @@ fn err(code: &'static str, message: impl Into<String>) -> HostError {
     }
 }
 
+fn require_canonical_id(value: &str, field: &str) -> Result<(), HostError> {
+    if value.trim().is_empty() {
+        return Err(err("schema", format!("{field} is required")));
+    }
+    if value != value.trim() {
+        return Err(err(
+            "schema",
+            format!("{field} must not have surrounding whitespace"),
+        ));
+    }
+    Ok(())
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SlotState {
     Idle,
@@ -156,15 +169,16 @@ impl<D: EntryDriver> Host<D> {
         if request.required_entries.is_empty() {
             return Err(err("schema", "required closure must not be empty"));
         }
-        if request.plugin_id.trim().is_empty() || request.unit_id.trim().is_empty() {
-            return Err(err("schema", "pluginId and unitId are required"));
-        }
+        require_canonical_id(&request.plugin_id, "pluginId")?;
+        require_canonical_id(&request.unit_id, "unitId")?;
         if request
             .required_entries
             .iter()
-            .any(|entry_id| entry_id.trim().is_empty())
+            .any(|entry_id| {
+                entry_id.trim().is_empty() || entry_id.as_str() != entry_id.trim()
+            })
         {
-            return Err(err("schema", "required entry ids must not be blank"));
+            return Err(err("schema", "required entry ids must be canonical"));
         }
         let unique_entries = request
             .required_entries
@@ -240,9 +254,7 @@ impl<D: EntryDriver> Host<D> {
     }
 
     pub fn fuse(&mut self, plugin_id: &str) -> Result<(), HostError> {
-        if plugin_id.trim().is_empty() {
-            return Err(err("schema", "pluginId is required"));
-        }
+        require_canonical_id(plugin_id, "pluginId")?;
         let slot = self
             .slots
             .get_mut(plugin_id)
@@ -268,9 +280,7 @@ impl<D: EntryDriver> Host<D> {
     }
 
     pub fn disable(&mut self, plugin_id: &str) -> Result<(), HostError> {
-        if plugin_id.trim().is_empty() {
-            return Err(err("schema", "pluginId is required"));
-        }
+        require_canonical_id(plugin_id, "pluginId")?;
         let slot = self
             .slots
             .get_mut(plugin_id)
@@ -296,9 +306,7 @@ impl<D: EntryDriver> Host<D> {
     }
 
     pub fn reset(&mut self, plugin_id: &str) -> Result<(), HostError> {
-        if plugin_id.trim().is_empty() {
-            return Err(err("schema", "pluginId is required"));
-        }
+        require_canonical_id(plugin_id, "pluginId")?;
         let slot = self
             .slots
             .get_mut(plugin_id)
@@ -344,9 +352,7 @@ impl<D: EntryDriver> Host<D> {
     }
 
     pub fn dispatch(&self, plugin_id: &str, generation: u64) -> Result<(), HostError> {
-        if plugin_id.trim().is_empty() {
-            return Err(err("schema", "pluginId is required"));
-        }
+        require_canonical_id(plugin_id, "pluginId")?;
         if generation == 0 {
             return Err(err("stale-generation", "generation 0 is never a live handle"));
         }
@@ -629,5 +635,48 @@ mod tests {
         assert_eq!(host.fuse("com.mossx.notes").unwrap_err().code, "failed");
         assert_eq!(host.disable("com.mossx.notes").unwrap_err().code, "failed");
         assert_eq!(host.slot("com.mossx.notes").unwrap().state, SlotState::Failed);
+    }
+
+    #[test]
+    fn untrimmed_identity_cannot_activate_or_dispatch() {
+        let mut host = enabled_host(FakeDriver::default());
+        assert_eq!(
+            host.activate(ActivationRequest {
+                plugin_id: " com.mossx.notes ".into(),
+                unit_id: "notes-main".into(),
+                required_entries: vec!["notes-ui".into()],
+            })
+            .unwrap_err()
+            .code,
+            "schema"
+        );
+        assert_eq!(
+            host.activate(ActivationRequest {
+                plugin_id: "com.mossx.notes".into(),
+                unit_id: " notes-main ".into(),
+                required_entries: vec!["notes-ui".into()],
+            })
+            .unwrap_err()
+            .code,
+            "schema"
+        );
+        assert_eq!(
+            host.activate(ActivationRequest {
+                plugin_id: "com.mossx.notes".into(),
+                unit_id: "notes-main".into(),
+                required_entries: vec![" notes-ui ".into()],
+            })
+            .unwrap_err()
+            .code,
+            "schema"
+        );
+        assert!(host.slot(" com.mossx.notes ").is_none());
+        assert!(host.slot("com.mossx.notes").is_none());
+        host.activate(notes_request()).expect("activate");
+        assert_eq!(
+            host.dispatch(" com.mossx.notes ", 1).unwrap_err().code,
+            "schema"
+        );
+        assert_eq!(host.fuse(" com.mossx.notes ").unwrap_err().code, "schema");
     }
 }

@@ -50,8 +50,8 @@ impl CapabilityBroker {
         capability: &str,
     ) -> Result<WorkspaceRead, BrokerError> {
         host.dispatch(plugin_id, generation)?;
-        if capability.trim().is_empty() {
-            return Err(err("schema", "capability is required"));
+        if capability.trim().is_empty() || capability != capability.trim() {
+            return Err(err("schema", "capability must be canonical"));
         }
         let slot = host
             .slot(plugin_id)
