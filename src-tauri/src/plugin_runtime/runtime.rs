@@ -162,6 +162,12 @@ impl<D: EntryDriver> PluginRuntime<D> {
         target_id: &str,
     ) -> Result<PathBuf, StorageError> {
         self.ensure_ready(caller_id)?;
+        if target_id.trim().is_empty() {
+            return Err(StorageError {
+                code: "schema",
+                message: "targetId is required".into(),
+            });
+        }
         self.storage.access_file(caller_id, target_id)
     }
 }
@@ -2997,6 +3003,35 @@ mod tests {
                 .code,
             "permission-denied"
         );
+        remove_path(&root);
+    }
+
+    #[test]
+    fn ready_plugin_cannot_access_a_blank_store_target() {
+        let root = unique_temp_root("runtime-blank-store-target");
+        let mut runtime = PluginRuntime::new(
+            HostConfig {
+                enabled: true,
+                ..HostConfig::default()
+            },
+            FakeDriver::default(),
+            "/fixture/workspace",
+            &root,
+        )
+        .expect("runtime");
+        runtime
+            .activate(notes_activation_request())
+            .expect("activate");
+        runtime.open_own_store("com.mossx.notes").expect("open");
+        for target_id in ["", "   "] {
+            assert_eq!(
+                runtime
+                    .access_store("com.mossx.notes", target_id)
+                    .unwrap_err()
+                    .code,
+                "schema"
+            );
+        }
         remove_path(&root);
     }
 }
