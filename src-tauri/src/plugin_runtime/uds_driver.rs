@@ -70,15 +70,25 @@ fn handshake(
     generation: u64,
     corrupt: bool,
 ) -> Result<(), DriverError> {
+    let path = sock_path(plugin_id, entry_id, generation)?;
+    handshake_at(&path, plugin_id, generation, corrupt)
+}
+
+#[cfg(unix)]
+fn handshake_at(
+    path: &std::path::Path,
+    plugin_id: &str,
+    generation: u64,
+    corrupt: bool,
+) -> Result<(), DriverError> {
     use std::thread;
 
     use super::ipc::{validate_handshake_ack, validate_handshake_hello};
     use super::uds::{accept_uds_timed, bind_uds, connect_uds, read_mxpc_frame_timed, write_mxpc_frame};
 
-    let path = sock_path(plugin_id, entry_id, generation)?;
-    let listener = bind_uds(&path).map_err(|_| DriverError::Crash)?;
+    let listener = bind_uds(path).map_err(|_| DriverError::Crash)?;
     let peer_plugin = plugin_id.to_string();
-    let peer_path = path.clone();
+    let peer_path = path.to_path_buf();
     let nonce = issue_handshake_nonce();
     let peer_nonce = nonce.clone();
     let peer = thread::spawn(move || {
@@ -94,7 +104,7 @@ fn handshake(
         let _ = std::fs::remove_file(&peer_path);
         Ok::<(), ()>(())
     });
-    let mut client = connect_uds(&path).map_err(|_| DriverError::Crash)?;
+    let mut client = connect_uds(path).map_err(|_| DriverError::Crash)?;
     write_mxpc_frame(&mut client, &hello(generation, &nonce)).map_err(|_| DriverError::Crash)?;
     let received =
         read_mxpc_frame_timed(&mut client, HANDSHAKE_DEADLINE).map_err(|_| DriverError::Crash)?;
@@ -102,6 +112,7 @@ fn handshake(
         validate_handshake_ack(&received, &nonce, plugin_id, generation, "1.0.0")
             .map_err(|_| DriverError::Crash);
     let _ = peer.join();
+    let _ = std::fs::remove_file(path);
     result
 }
 
@@ -174,6 +185,15 @@ mod tests {
             host.driver().stopped,
             vec![("com.mossx.notes".into(), "notes-worker".into(), 1)]
         );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_bad_nonce_cannot_leave_a_uds_socket() {
+        let path = super::super::uds::private_uds_path("com.mossx.notes", "badn")
+            .expect("private path");
+        assert!(handshake_at(&path, "com.mossx.notes", 1, true).is_err());
+        assert!(!path.exists());
     }
 
 }
