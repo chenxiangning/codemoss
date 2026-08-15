@@ -147,16 +147,16 @@
 | 1HS10 handshake 写也必须在 2s 内完成 | 完成 | `9dda79397` |
 | 1HS11 UDS / Worker / spawn handshake 写必须走 timed write | 完成 | `c5470ffd3` |
 | 1H9 boot supervisor 必须在 Host 存活期间值守 | 完成 | `b46e63615` |
-| 1UDS13 UDS connect 必须在 handshake deadline 内完成 | 完成 | 本刀 |
+| 1UDS13 UDS connect 必须在 handshake deadline 内完成 | 完成 | `9cf2ccdf4` |
+| 1QJ5 嵌入 per-plugin QuickJS C 引擎 | 完成 | 本刀 |
 
 ## 明确未做
 
-1. QuickJS C 引擎嵌入（1QJ5，仍不切产品）
-2. Claude / Notes **产品**切流（flag 仍默认 off）
-3. 用户数据导入
-4. Marketplace
+1. Claude / Notes **产品**切流（flag 仍默认 off）
+2. 用户数据导入
+3. Marketplace
 
 ## 进度
 
-相对「Core + 可撤销插件平台」全文约 **99%**（合同平面 **100%**；插座本体骨架 + boot CompositeDriver 默认 off + env_clear + plugin-data cwd + 关闭继承 FD + Windows CREATE_NO_WINDOW + Worker 私有 UDS handshake + UDS 私有目录恰好 0700 + Named Pipe SDDL + 独立 handshake nonce + ack 身份绑定 + hello generation 绑定 + 2s handshake 截止 + UDS peer uid 已落地；C 引擎 / 产品切流仍未做）。  
+相对「Core + 可撤销插件平台」全文约 **99%**（合同平面 **100%**；插座本体骨架 + boot CompositeDriver 默认 off + env_clear + plugin-data cwd + 关闭继承 FD + Windows CREATE_NO_WINDOW + Worker 私有 UDS handshake + 真实 per-plugin QuickJS Runtime + UDS 私有目录恰好 0700 + Named Pipe SDDL + 独立 handshake nonce + ack 身份绑定 + hello generation 绑定 + 2s handshake 截止 + UDS peer uid 已落地；产品切流仍未做）。  
 相对「产品已拔插头」约 **0%**。

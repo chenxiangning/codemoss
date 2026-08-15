@@ -1,7 +1,9 @@
-//! Per-plugin QuickJS Worker isolate gate. No C engine, not in product path.
+//! Per-plugin QuickJS Worker isolate. Real C engine, not in product path.
 
 use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::mpsc::{self, Receiver, Sender};
+use std::thread::JoinHandle;
 
 use serde_json::{json, Value};
 
@@ -34,11 +36,104 @@ struct IsolateKey {
     generation: u64,
 }
 
-#[derive(Debug, Clone)]
 pub struct WorkerIsolate {
     pub plugin_id: String,
     pub entry_id: String,
     pub generation: u64,
+    engine: EngineHandle,
+}
+
+enum EngineCmd {
+    Eval(String, Sender<Result<(), WorkerError>>),
+    Shutdown,
+}
+
+struct EngineHandle {
+    tx: Sender<EngineCmd>,
+    thread: Option<JoinHandle<()>>,
+}
+
+impl Drop for EngineHandle {
+    fn drop(&mut self) {
+        let _ = self.tx.send(EngineCmd::Shutdown);
+        if let Some(thread) = self.thread.take() {
+            let _ = thread.join();
+        }
+    }
+}
+
+impl WorkerIsolate {
+    fn eval(&self, source: &str) -> Result<(), WorkerError> {
+        let (reply_tx, reply_rx) = mpsc::channel();
+        self.engine
+            .tx
+            .send(EngineCmd::Eval(source.to_string(), reply_tx))
+            .map_err(|_| err("plugin-unavailable", "worker isolate is not live"))?;
+        reply_rx
+            .recv()
+            .map_err(|_| err("plugin-unavailable", "worker isolate is not live"))?
+    }
+}
+
+fn spawn_engine() -> Result<EngineHandle, DriverError> {
+    let (tx, rx) = mpsc::channel();
+    let (ready_tx, ready_rx) = mpsc::channel();
+    let thread = std::thread::spawn(move || engine_loop(rx, ready_tx));
+    ready_rx.recv().map_err(|_| DriverError::Crash)??;
+    Ok(EngineHandle {
+        tx,
+        thread: Some(thread),
+    })
+}
+
+fn engine_loop(rx: Receiver<EngineCmd>, ready: Sender<Result<(), DriverError>>) {
+    let runtime = match rquickjs::Runtime::new() {
+        Ok(runtime) => runtime,
+        Err(_) => {
+            let _ = ready.send(Err(DriverError::Crash));
+            return;
+        }
+    };
+    let context = match rquickjs::Context::full(&runtime) {
+        Ok(context) => context,
+        Err(_) => {
+            let _ = ready.send(Err(DriverError::Crash));
+            return;
+        }
+    };
+    if context
+        .with(|ctx| {
+            ctx.eval::<(), _>(
+                r#"
+                var mossx = {
+                    handshake: { hello: function() { return 'ok'; } },
+                    sdk: { ready: function() { return 'ok'; } }
+                };
+                "#,
+            )
+        })
+        .is_err()
+    {
+        let _ = ready.send(Err(DriverError::Crash));
+        return;
+    }
+    let _ = ready.send(Ok(()));
+    while let Ok(cmd) = rx.recv() {
+        match cmd {
+            EngineCmd::Eval(source, reply) => {
+                let result = context
+                    .with(|ctx| ctx.eval::<(), _>(source.as_str()))
+                    .map_err(|_| {
+                        err(
+                            "schema",
+                            "QuickJS rejected the worker source",
+                        )
+                    });
+                let _ = reply.send(result);
+            }
+            EngineCmd::Shutdown => break,
+        }
+    }
 }
 
 pub struct QuickJsWorkerDriver {
@@ -82,13 +177,11 @@ impl QuickJsWorkerDriver {
         generation: u64,
         source: &str,
     ) -> Result<(), WorkerError> {
-        if self
+        let isolate = self
             .isolate(plugin_id, entry_id, generation)
-            .is_none()
-        {
-            return Err(err("plugin-unavailable", "worker isolate is not live"));
-        }
-        allow_mossx_bridge(source)
+            .ok_or_else(|| err("plugin-unavailable", "worker isolate is not live"))?;
+        allow_mossx_bridge(source)?;
+        isolate.eval(source)
     }
 
     pub fn declare(&mut self, plugin_id: &str, entry_id: &str) {
@@ -298,12 +391,14 @@ impl EntryDriver for QuickJsWorkerDriver {
         }
         let corrupt = self.corrupt_ack_on.as_deref() == Some(entry_id);
         handshake_worker(plugin_id, entry_id, generation, corrupt)?;
+        let engine = spawn_engine()?;
         self.isolates.insert(
             key,
             WorkerIsolate {
                 plugin_id: plugin_id.to_string(),
                 entry_id: entry_id.to_string(),
                 generation,
+                engine,
             },
         );
         Ok(())
@@ -415,6 +510,23 @@ mod tests {
     }
 
     #[test]
+    fn allowlisted_but_invalid_javascript_cannot_stay_half_executed() {
+        let mut host = enabled_host(QuickJsWorkerDriver::default());
+        host.activate(notes_activation_request()).expect("notes");
+        assert_eq!(
+            host.driver()
+                .eval("com.mossx.notes", "notes-worker", 1, "mossx.handshake.hello(")
+                .unwrap_err()
+                .code,
+            "schema"
+        );
+        host.driver()
+            .eval("com.mossx.notes", "notes-worker", 1, "mossx.handshake.hello()")
+            .expect("still live");
+        assert_eq!(host.driver().live_count(), 1);
+    }
+
+    #[test]
     fn stale_worker_generation_cannot_eval() {
         let mut host = enabled_host(QuickJsWorkerDriver::default());
         host.activate(notes_activation_request()).expect("first");
@@ -515,6 +627,7 @@ mod tests {
         assert!(source.contains("private_uds_path"));
         assert!(source.contains("connect_uds"));
         assert!(source.contains("read_mxpc_frame_timed"));
+        assert!(source.contains("rquickjs::Runtime::new"));
         let mut host = enabled_host(QuickJsWorkerDriver::default());
         host.activate(notes_activation_request()).expect("notes");
         assert_eq!(host.driver().live_count(), 1);

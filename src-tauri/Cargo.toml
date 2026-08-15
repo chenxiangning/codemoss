@@ -63,6 +63,7 @@ encoding_rs = "0.8"
 lettre = { version = "0.11.21", default-features = false, features = ["smtp-transport", "builder", "tokio1-rustls-tls", "hostname"] }
 imap = { version = "3.0.0-alpha.15", default-features = false, features = ["rustls-tls"] }
 mailparse = "0.16.1"
+rquickjs = "0.12.2"
 # ONNX embedding（ort）已移除：ort-sys 无 x86_64-apple-darwin 预编译，阻断 Intel macOS 打包。
 # 命令面仍在 project_memory/embed.rs（health=unavailable → lexical）；后续若恢复需另选可跨 Intel 的 runtime。
 
