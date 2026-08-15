@@ -2369,4 +2369,45 @@ mod tests {
         assert!(checkpoint.starts_with("ckpt-"));
         remove_path(&root);
     }
+
+    #[test]
+    fn fuse_claude_keeps_notes_stream() {
+        use crate::plugin_runtime::claude_pilot::claude_activation_request;
+
+        let root = unique_temp_root("runtime-fuse-isolation");
+        let mut runtime = PluginRuntime::new(
+            HostConfig {
+                enabled: true,
+                ..HostConfig::default()
+            },
+            FakeDriver::default(),
+            "/fixture/workspace",
+            &root,
+        )
+        .expect("runtime");
+        let claude_gen = runtime
+            .activate(claude_activation_request())
+            .expect("claude");
+        let notes_gen = runtime.activate(notes_activation_request()).expect("notes");
+        runtime
+            .open_stream("com.mossx.engine.claude", claude_gen, 61, "engine-event-v1")
+            .expect("claude stream");
+        runtime
+            .open_stream("com.mossx.notes", notes_gen, 62, "blob-v1")
+            .expect("notes stream");
+        runtime.open_own_store("com.mossx.notes").expect("notes store");
+        runtime
+            .fuse_plugin("com.mossx.engine.claude")
+            .expect("fuse claude");
+        assert!(runtime.plane.codec(61).is_none());
+        assert_eq!(runtime.plane.codec(62), Some("blob-v1"));
+        runtime
+            .query_read("com.mossx.notes", notes_gen)
+            .expect("notes read");
+        runtime.open_own_store("com.mossx.notes").expect("notes store still");
+        assert!(runtime
+            .query_read("com.mossx.engine.claude", claude_gen)
+            .is_err());
+        remove_path(&root);
+    }
 }
