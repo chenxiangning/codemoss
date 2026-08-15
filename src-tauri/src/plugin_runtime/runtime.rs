@@ -100,6 +100,12 @@ impl<D: EntryDriver> PluginRuntime<D> {
     }
 
     fn ensure_ready(&self, plugin_id: &str) -> Result<(), StorageError> {
+        if plugin_id.trim().is_empty() {
+            return Err(StorageError {
+                code: "schema",
+                message: "pluginId is required".into(),
+            });
+        }
         let ready = self
             .host
             .slot(plugin_id)
@@ -2744,6 +2750,36 @@ mod tests {
             "schema"
         );
         assert!(runtime.host.slot("com.mossx.notes").is_none());
+        remove_path(&root);
+    }
+
+    #[test]
+    fn blank_plugin_id_cannot_touch_storage_on_compose_surface() {
+        let root = unique_temp_root("runtime-blank-store");
+        let mut runtime = PluginRuntime::new(
+            HostConfig {
+                enabled: true,
+                ..HostConfig::default()
+            },
+            FakeDriver::default(),
+            "/fixture/workspace",
+            &root,
+        )
+        .expect("runtime");
+        for plugin_id in ["", "   "] {
+            assert_eq!(
+                runtime.open_own_store(plugin_id).unwrap_err().code,
+                "schema"
+            );
+            assert_eq!(
+                runtime.checkpoint_own_store(plugin_id).unwrap_err().code,
+                "schema"
+            );
+            assert_eq!(
+                runtime.access_store(plugin_id, plugin_id).unwrap_err().code,
+                "schema"
+            );
+        }
         remove_path(&root);
     }
 }
