@@ -2233,4 +2233,40 @@ mod tests {
         );
         remove_path(&root);
     }
+
+    #[test]
+    fn failed_plugin_cannot_access_its_store() {
+        use crate::plugin_runtime::host::DriverError;
+
+        let root = unique_temp_root("runtime-failed-access");
+        let mut driver = FakeDriver::default();
+        driver
+            .fail_on
+            .insert("notes-ui".into(), DriverError::Timeout);
+        let mut runtime = PluginRuntime::new(
+            HostConfig {
+                enabled: true,
+                ..HostConfig::default()
+            },
+            driver,
+            "/fixture/workspace",
+            &root,
+        )
+        .expect("runtime");
+        assert_eq!(
+            runtime
+                .activate(notes_activation_request())
+                .unwrap_err()
+                .code,
+            "activation-timeout"
+        );
+        assert_eq!(
+            runtime
+                .access_store("com.mossx.notes", "com.mossx.notes")
+                .unwrap_err()
+                .code,
+            "plugin-unavailable"
+        );
+        remove_path(&root);
+    }
 }
