@@ -276,7 +276,7 @@ mod tests {
             move || {
                 let mut stream = accept_uds(&listener).expect("accept");
                 let received = read_mxpc_frame(&mut stream).expect("server read hello");
-                validate_handshake_hello(&received).expect("hello");
+                validate_handshake_hello(&received, 1).expect("hello");
                 write_mxpc_frame(&mut stream, &ack(NONCE)).expect("server write ack");
                 let _ = std::fs::remove_file(&path);
             }

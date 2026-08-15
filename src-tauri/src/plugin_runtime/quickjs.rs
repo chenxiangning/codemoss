@@ -134,7 +134,7 @@ fn handshake_worker(
     let issued = issue_handshake_nonce();
     let encoded_hello = encode_mxpc(&hello(generation, &issued)).map_err(|_| DriverError::Crash)?;
     let (decoded_hello, _) = decode_mxpc(&encoded_hello).map_err(|_| DriverError::Crash)?;
-    validate_handshake_hello(&decoded_hello).map_err(|_| DriverError::Crash)?;
+    validate_handshake_hello(&decoded_hello, generation).map_err(|_| DriverError::Crash)?;
     let nonce = if corrupt {
         "bb".repeat(32)
     } else {

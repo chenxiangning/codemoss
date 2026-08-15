@@ -215,7 +215,7 @@ pub fn issue_handshake_nonce() -> String {
     format!("{}{}", uuid::Uuid::new_v4().simple(), uuid::Uuid::new_v4().simple())
 }
 
-pub fn validate_handshake_hello(value: &Value) -> Result<(), IpcError> {
+pub fn validate_handshake_hello(value: &Value, expected_generation: u64) -> Result<(), IpcError> {
     if value.get("jsonrpc").and_then(Value::as_str) != Some("2.0")
         || value.get("method").and_then(Value::as_str) != Some("mossx.handshake.hello")
     {
@@ -234,6 +234,15 @@ pub fn validate_handshake_hello(value: &Value) -> Result<(), IpcError> {
         .ok_or_else(|| err("handshake-rejected", "nonce required"))?;
     if nonce.len() != 64 || !nonce.chars().all(|ch| ch.is_ascii_hexdigit()) {
         return Err(err("handshake-rejected", "nonce must be 32-byte hex"));
+    }
+    if expected_generation == 0 {
+        return Err(err("handshake-rejected", "generation 0 is never a live handle"));
+    }
+    if params.get("generation").and_then(Value::as_u64) != Some(expected_generation) {
+        return Err(err(
+            "handshake-rejected",
+            "hello generation must match the current generation",
+        ));
     }
     Ok(())
 }
@@ -307,7 +316,7 @@ mod tests {
         let (decoded, used) = decode_mxpc(&encoded).expect("decode");
         assert_eq!(used, encoded.len());
         assert_eq!(decoded, hello());
-        validate_handshake_hello(&decoded).expect("hello shape");
+        validate_handshake_hello(&decoded, 1).expect("hello shape");
     }
 
     #[test]
@@ -398,6 +407,25 @@ mod tests {
             validate_handshake_ack(&ack(), "aa".repeat(32).as_str(), "com.mossx.notes", 2)
                 .unwrap_err()
                 .code,
+            "handshake-rejected"
+        );
+    }
+
+    #[test]
+    fn a_current_generation_hello_is_accepted() {
+        validate_handshake_hello(&hello(), 1).expect("hello");
+    }
+
+    #[test]
+    fn a_stale_hello_generation_cannot_start_handshake() {
+        assert_eq!(
+            validate_handshake_hello(&hello(), 2).unwrap_err().code,
+            "handshake-rejected"
+        );
+        let mut zero = hello();
+        zero["params"]["generation"] = Value::from(0);
+        assert_eq!(
+            validate_handshake_hello(&zero, 1).unwrap_err().code,
             "handshake-rejected"
         );
     }
