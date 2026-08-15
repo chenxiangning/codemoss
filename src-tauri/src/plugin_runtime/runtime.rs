@@ -1294,4 +1294,31 @@ mod tests {
         );
         remove_path(&root);
     }
+
+    #[test]
+    fn disabled_host_cannot_query_or_open_stream() {
+        let root = unique_temp_root("runtime-host-off-handles");
+        let mut runtime = PluginRuntime::new(
+            HostConfig::default(),
+            FakeDriver::default(),
+            "/fixture/workspace",
+            &root,
+        )
+        .expect("runtime");
+        assert_eq!(
+            runtime
+                .query_read("com.mossx.notes", 1)
+                .unwrap_err()
+                .code,
+            "plugin-unavailable"
+        );
+        assert_eq!(
+            runtime
+                .open_stream("com.mossx.notes", 1, 21, "blob-v1")
+                .unwrap_err()
+                .code,
+            "plugin-unavailable"
+        );
+        remove_path(&root);
+    }
 }
