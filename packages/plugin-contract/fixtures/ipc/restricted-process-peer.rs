@@ -21,6 +21,37 @@ fn main() {
                 std::process::exit(5);
             }
         }
+        const PROCESS_MEMORY_DEFAULT: u64 = 512 * 1024 * 1024;
+        let declared = std::env::var("MOSSX_PROCESS_MEMORY")
+            .ok()
+            .and_then(|value| value.parse::<u64>().ok());
+        if declared != Some(PROCESS_MEMORY_DEFAULT) {
+            std::process::exit(6);
+        }
+        #[cfg(target_os = "linux")]
+        {
+            #[repr(C)]
+            struct Rlimit {
+                rlim_cur: u64,
+                rlim_max: u64,
+            }
+            extern "C" {
+                fn getrlimit(resource: i32, rlp: *mut Rlimit) -> i32;
+            }
+            const RLIMIT_AS: i32 = 9;
+            let mut limit = Rlimit {
+                rlim_cur: 0,
+                rlim_max: 0,
+            };
+            if unsafe { getrlimit(RLIMIT_AS, &mut limit) } != 0
+                || limit.rlim_cur == 0
+                || limit.rlim_cur == u64::MAX
+                || limit.rlim_cur == i64::MAX as u64
+                || limit.rlim_cur > PROCESS_MEMORY_DEFAULT
+            {
+                std::process::exit(6);
+            }
+        }
     }
     let expected_cwd = std::env::var_os("MOSSX_PLUGIN_DATA");
     let actual_cwd = std::env::current_dir().ok();

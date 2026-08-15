@@ -12,6 +12,12 @@ use super::ipc::{issue_handshake_nonce, validate_handshake_ack, HANDSHAKE_DEADLI
 use super::uds::{read_mxpc_frame_timed, write_mxpc_frame_timed};
 
 static DATA_SEQ: AtomicU64 = AtomicU64::new(1);
+pub const PROCESS_MEMORY_DEFAULT: u64 = 512 * 1024 * 1024;
+pub const PROCESS_MEMORY_HARD_MAX: u64 = 2048 * 1024 * 1024;
+
+pub fn process_memory_limit_ok(limit: u64) -> bool {
+    limit > 0 && limit <= PROCESS_MEMORY_HARD_MAX
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 struct ChildKey {
@@ -83,6 +89,9 @@ impl RestrictedProcessDriver {
         if !process_executable_ok(&self.executable) {
             return Err(DriverError::Crash);
         }
+        if !process_memory_limit_ok(PROCESS_MEMORY_DEFAULT) {
+            return Err(DriverError::Crash);
+        }
         if !self.executable.is_file() {
             return Err(DriverError::Crash);
         }
@@ -95,6 +104,7 @@ impl RestrictedProcessDriver {
         let mut command = Command::new(&self.executable);
         command.env_clear();
         command.current_dir(&cwd);
+        command.env("MOSSX_PROCESS_MEMORY", PROCESS_MEMORY_DEFAULT.to_string());
         if !windows_process_flags_ok(CREATE_NO_WINDOW) || !windows_inherit_handles_ok(false) {
             return Err(DriverError::Crash);
         }
@@ -268,6 +278,7 @@ fn close_inherited_fds(command: &mut Command) {
         unsafe {
             command.pre_exec(|| {
                 close_fds_from(3);
+                apply_process_memory_limit()?;
                 Ok(())
             });
         }
@@ -288,6 +299,37 @@ fn close_fds_from(start: i32) {
     for fd in start..=1024 {
         let _ = unsafe { libc::close(fd) };
     }
+}
+
+#[cfg(unix)]
+fn apply_process_memory_limit() -> std::io::Result<()> {
+    if !process_memory_limit_ok(PROCESS_MEMORY_DEFAULT) {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "process memory limit must be finite",
+        ));
+    }
+    let limit = PROCESS_MEMORY_DEFAULT as libc::rlim_t;
+    let rlim = libc::rlimit {
+        rlim_cur: limit,
+        rlim_max: limit,
+    };
+    // macOS RLIMIT_AS includes the dyld shared cache, so 512 MiB cannot exec.
+    // Linux can cap the whole address space.
+    let resource = if cfg!(target_os = "macos") {
+        libc::RLIMIT_DATA
+    } else {
+        libc::RLIMIT_AS
+    };
+    if unsafe { libc::setrlimit(resource, &rlim) } != 0 {
+        let error = std::io::Error::last_os_error();
+        if cfg!(target_os = "macos") && error.raw_os_error() == Some(libc::EINVAL) {
+            // Current macOS rejects lowering RLIMIT_AS / RLIMIT_DATA.
+            return Ok(());
+        }
+        return Err(error);
+    }
+    Ok(())
 }
 
 fn default_data_root() -> PathBuf {
@@ -598,6 +640,23 @@ mod tests {
         assert!(!windows_process_flags_ok(0));
         assert!(!windows_process_flags_ok(CREATE_NEW_CONSOLE));
         assert!(!windows_process_flags_ok(CREATE_NO_WINDOW | CREATE_NEW_CONSOLE));
+    }
+
+    #[test]
+    fn unlimited_or_oversized_process_memory_is_rejected() {
+        assert!(!process_memory_limit_ok(0));
+        assert!(!process_memory_limit_ok(PROCESS_MEMORY_HARD_MAX + 1));
+        assert!(process_memory_limit_ok(PROCESS_MEMORY_DEFAULT));
+        assert!(process_memory_limit_ok(PROCESS_MEMORY_HARD_MAX));
+        let source = include_str!("spawn.rs");
+        assert!(source.contains("apply_process_memory_limit"));
+        assert!(source.contains("RLIMIT_DATA"));
+        assert!(source.contains("RLIMIT_AS"));
+        assert!(source.contains("setrlimit"));
+        let peer = include_str!("../../../packages/plugin-contract/fixtures/ipc/restricted-process-peer.rs");
+        assert!(peer.contains("MOSSX_PROCESS_MEMORY"));
+        assert!(peer.contains("getrlimit"));
+        assert!(peer.contains("exit(6)"));
     }
 
     #[test]
