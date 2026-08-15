@@ -1,6 +1,6 @@
 //! In-memory Extension Host supervisor. No sockets, no spawn, not in the app boot path.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::time::Duration;
 
 pub const DEFAULT_ACTIVATION_DEADLINE_MS: u64 = 10_000;
@@ -165,6 +165,14 @@ impl<D: EntryDriver> Host<D> {
             .any(|entry_id| entry_id.trim().is_empty())
         {
             return Err(err("schema", "required entry ids must not be blank"));
+        }
+        let unique_entries = request
+            .required_entries
+            .iter()
+            .map(|entry_id| entry_id.as_str())
+            .collect::<HashSet<_>>();
+        if unique_entries.len() != request.required_entries.len() {
+            return Err(err("schema", "required entry ids must be unique"));
         }
         {
             let current = self
@@ -511,6 +519,22 @@ mod tests {
             "schema"
         );
         assert!(host.slot("   ").is_none());
+        assert!(host.slot("com.mossx.notes").is_none());
+    }
+
+    #[test]
+    fn duplicate_required_entries_are_rejected_before_slot_insert() {
+        let mut host = enabled_host(FakeDriver::default());
+        assert_eq!(
+            host.activate(ActivationRequest {
+                plugin_id: "com.mossx.notes".into(),
+                unit_id: "notes-main".into(),
+                required_entries: vec!["notes-ui".into(), "notes-ui".into()],
+            })
+            .unwrap_err()
+            .code,
+            "schema"
+        );
         assert!(host.slot("com.mossx.notes").is_none());
     }
 
