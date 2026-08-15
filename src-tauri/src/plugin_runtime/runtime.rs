@@ -1770,4 +1770,39 @@ mod tests {
         );
         remove_path(&root);
     }
+
+    #[test]
+    fn reset_after_disable_restores_composed_handles() {
+        let root = unique_temp_root("runtime-disabled-reset");
+        let mut runtime = PluginRuntime::new(
+            HostConfig {
+                enabled: true,
+                ..HostConfig::default()
+            },
+            FakeDriver::default(),
+            "/fixture/workspace",
+            &root,
+        )
+        .expect("runtime");
+        let first = runtime
+            .activate(notes_activation_request())
+            .expect("first");
+        runtime
+            .open_stream("com.mossx.notes", first, 30, "blob-v1")
+            .expect("first stream");
+        runtime.disable_plugin("com.mossx.notes").expect("disable");
+        runtime.reset_plugin("com.mossx.notes").expect("reset");
+        let second = runtime
+            .activate(notes_activation_request())
+            .expect("second");
+        assert!(second > first);
+        runtime
+            .query_read("com.mossx.notes", second)
+            .expect("read");
+        runtime
+            .open_stream("com.mossx.notes", second, 31, "blob-v1")
+            .expect("stream");
+        runtime.open_own_store("com.mossx.notes").expect("store");
+        remove_path(&root);
+    }
 }
