@@ -47,6 +47,15 @@ pub struct WorkerIsolate {
 
 enum EngineCmd {
     Eval(String, Duration, Sender<Result<(), WorkerError>>),
+    Handshake {
+        plugin_id: String,
+        generation: u64,
+        nonce: String,
+        ack_nonce: String,
+        #[cfg(unix)]
+        path: std::path::PathBuf,
+        reply: Sender<Result<(), DriverError>>,
+    },
     Shutdown,
 }
 
@@ -136,9 +145,68 @@ fn engine_loop(rx: Receiver<EngineCmd>, ready: Sender<Result<(), DriverError>>) 
                 };
                 let _ = reply.send(mapped);
             }
+            EngineCmd::Handshake {
+                plugin_id,
+                generation,
+                nonce,
+                ack_nonce,
+                #[cfg(unix)]
+                path,
+                reply,
+            } => {
+                let result = engine_handshake(
+                    &context,
+                    &plugin_id,
+                    generation,
+                    &nonce,
+                    &ack_nonce,
+                    #[cfg(unix)]
+                    &path,
+                );
+                let _ = reply.send(result);
+            }
             EngineCmd::Shutdown => break,
         }
     }
+}
+
+fn engine_handshake(
+    context: &rquickjs::Context,
+    plugin_id: &str,
+    generation: u64,
+    nonce: &str,
+    ack_nonce: &str,
+    #[cfg(unix)] path: &std::path::Path,
+) -> Result<(), DriverError> {
+    context
+        .with(|ctx| ctx.eval::<(), _>("mossx.handshake.hello()"))
+        .map_err(|_| DriverError::Crash)?;
+    #[cfg(unix)]
+    {
+        use super::uds::{connect_uds_timed, read_mxpc_frame_timed, write_mxpc_frame_timed};
+
+        let _ = ack_nonce;
+        let mut client =
+            connect_uds_timed(path, HANDSHAKE_DEADLINE).map_err(|_| DriverError::Crash)?;
+        write_mxpc_frame_timed(&mut client, &hello(generation, nonce), HANDSHAKE_DEADLINE)
+            .map_err(|_| DriverError::Crash)?;
+        let received =
+            read_mxpc_frame_timed(&mut client, HANDSHAKE_DEADLINE).map_err(|_| DriverError::Crash)?;
+        validate_handshake_ack(&received, nonce, plugin_id, generation, "1.0.0")
+            .map_err(|_| DriverError::Crash)?;
+    }
+    #[cfg(not(unix))]
+    {
+        let encoded_hello = encode_mxpc(&hello(generation, nonce)).map_err(|_| DriverError::Crash)?;
+        let (decoded_hello, _) = decode_mxpc(&encoded_hello).map_err(|_| DriverError::Crash)?;
+        validate_handshake_hello(&decoded_hello, generation, nonce).map_err(|_| DriverError::Crash)?;
+        let encoded_ack =
+            encode_mxpc(&ack(plugin_id, generation, ack_nonce)).map_err(|_| DriverError::Crash)?;
+        let (decoded_ack, _) = decode_mxpc(&encoded_ack).map_err(|_| DriverError::Crash)?;
+        validate_handshake_ack(&decoded_ack, nonce, plugin_id, generation, "1.0.0")
+            .map_err(|_| DriverError::Crash)?;
+    }
+    Ok(())
 }
 
 pub struct QuickJsWorkerDriver {
@@ -277,74 +345,73 @@ fn worker_sock_path(
     .map_err(|_| DriverError::Crash)
 }
 
-fn handshake_worker(
+fn handshake_on_engine(
+    engine: &EngineHandle,
     plugin_id: &str,
     entry_id: &str,
     generation: u64,
     corrupt: bool,
 ) -> Result<(), DriverError> {
+    let issued = issue_handshake_nonce();
+    let (reply_tx, reply_rx) = mpsc::channel();
     #[cfg(unix)]
     {
-        use std::thread;
-
-        use super::uds::{
-            accept_uds_timed, bind_uds, connect_uds_timed, read_mxpc_frame_timed,
-            write_mxpc_frame_timed,
-        };
+        use super::uds::{accept_uds_timed, bind_uds, read_mxpc_frame_timed, write_mxpc_frame_timed};
 
         let path = worker_sock_path(plugin_id, entry_id, generation)?;
         let listener = bind_uds(&path).map_err(|_| DriverError::Crash)?;
         let _unlink = super::uds::UnlinkOnDrop::new(&path);
-        let peer_plugin = plugin_id.to_string();
-        let issued = issue_handshake_nonce();
-        let peer_nonce = issued.clone();
-        let peer = thread::spawn(move || {
-            let mut stream = accept_uds_timed(&listener, HANDSHAKE_DEADLINE).map_err(|_| ())?;
-            let received =
-                read_mxpc_frame_timed(&mut stream, HANDSHAKE_DEADLINE).map_err(|_| ())?;
-            validate_handshake_hello(&received, generation, &peer_nonce).map_err(|_| ())?;
-            let ack_nonce = if corrupt {
-                "bb".repeat(32)
-            } else {
-                peer_nonce
-            };
-            write_mxpc_frame_timed(
-                &mut stream,
-                &ack(&peer_plugin, generation, &ack_nonce),
-                HANDSHAKE_DEADLINE,
-            )
-            .map_err(|_| ())?;
-            Ok::<(), ()>(())
-        });
-        let mut client =
-            connect_uds_timed(&path, HANDSHAKE_DEADLINE).map_err(|_| DriverError::Crash)?;
-        write_mxpc_frame_timed(&mut client, &hello(generation, &issued), HANDSHAKE_DEADLINE)
+        engine
+            .tx
+            .send(EngineCmd::Handshake {
+                plugin_id: plugin_id.to_string(),
+                generation,
+                nonce: issued.clone(),
+                ack_nonce: issued.clone(),
+                path: path.clone(),
+                reply: reply_tx,
+            })
             .map_err(|_| DriverError::Crash)?;
+        let mut stream = accept_uds_timed(&listener, HANDSHAKE_DEADLINE).map_err(|_| DriverError::Crash)?;
         let received =
-            read_mxpc_frame_timed(&mut client, HANDSHAKE_DEADLINE).map_err(|_| DriverError::Crash)?;
-        let result = validate_handshake_ack(&received, &issued, plugin_id, generation, "1.0.0")
-            .map_err(|_| DriverError::Crash);
-        let _ = peer.join();
-        result
+            read_mxpc_frame_timed(&mut stream, HANDSHAKE_DEADLINE).map_err(|_| DriverError::Crash)?;
+        validate_handshake_hello(&received, generation, &issued).map_err(|_| DriverError::Crash)?;
+        let ack_nonce = if corrupt {
+            "bb".repeat(32)
+        } else {
+            issued
+        };
+        write_mxpc_frame_timed(
+            &mut stream,
+            &ack(plugin_id, generation, &ack_nonce),
+            HANDSHAKE_DEADLINE,
+        )
+        .map_err(|_| DriverError::Crash)?;
+        reply_rx
+            .recv_timeout(HANDSHAKE_DEADLINE.saturating_add(Duration::from_millis(200)))
+            .map_err(|_| DriverError::Timeout)?
     }
     #[cfg(not(unix))]
     {
-        let issued = issue_handshake_nonce();
-        let encoded_hello = encode_mxpc(&hello(generation, &issued)).map_err(|_| DriverError::Crash)?;
-        let (decoded_hello, _) = decode_mxpc(&encoded_hello).map_err(|_| DriverError::Crash)?;
-        validate_handshake_hello(&decoded_hello, generation, &issued).map_err(|_| DriverError::Crash)?;
-        let nonce = if corrupt {
+        let _ = entry_id;
+        let ack_nonce = if corrupt {
             "bb".repeat(32)
         } else {
             issued.clone()
         };
-        let encoded_ack =
-            encode_mxpc(&ack(plugin_id, generation, &nonce)).map_err(|_| DriverError::Crash)?;
-        let (decoded_ack, _) = decode_mxpc(&encoded_ack).map_err(|_| DriverError::Crash)?;
-        validate_handshake_ack(&decoded_ack, &issued, plugin_id, generation, "1.0.0")
+        engine
+            .tx
+            .send(EngineCmd::Handshake {
+                plugin_id: plugin_id.to_string(),
+                generation,
+                nonce: issued,
+                ack_nonce,
+                reply: reply_tx,
+            })
             .map_err(|_| DriverError::Crash)?;
-        let _ = entry_id;
-        Ok(())
+        reply_rx
+            .recv_timeout(EVAL_DEADLINE.saturating_add(Duration::from_millis(200)))
+            .map_err(|_| DriverError::Timeout)?
     }
 }
 
@@ -431,8 +498,11 @@ impl EntryDriver for QuickJsWorkerDriver {
             return Err(DriverError::Crash);
         }
         let corrupt = self.corrupt_ack_on.as_deref() == Some(entry_id);
-        handshake_worker(plugin_id, entry_id, generation, corrupt)?;
         let engine = spawn_engine()?;
+        if let Err(error) = handshake_on_engine(&engine, plugin_id, entry_id, generation, corrupt) {
+            drop(engine);
+            return Err(error);
+        }
         self.isolates.insert(
             key,
             WorkerIsolate {
@@ -738,6 +808,8 @@ mod tests {
         assert!(source.contains("connect_uds"));
         assert!(source.contains("read_mxpc_frame_timed"));
         assert!(source.contains("rquickjs::Runtime::new"));
+        assert!(source.contains("EngineCmd::Handshake"));
+        assert!(source.contains("mossx.handshake.hello()"));
         let mut host = enabled_host(QuickJsWorkerDriver::default());
         host.activate(notes_activation_request()).expect("notes");
         assert_eq!(host.driver().live_count(), 1);
