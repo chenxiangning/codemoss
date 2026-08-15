@@ -225,4 +225,27 @@ mod tests {
         assert_eq!(own, notes);
         remove_path(&root);
     }
+
+    #[test]
+    fn path_unsafe_plugin_id_cannot_create_files() {
+        let root = unique_temp_root("path-unsafe");
+        let mut storage = DiskStorage::open(&root).expect("open root");
+        assert_eq!(
+            storage
+                .open_plugin("../escape", "1.0.0", "1.0.0", 1)
+                .unwrap_err()
+                .code,
+            "schema"
+        );
+        assert_eq!(
+            storage
+                .open_plugin("com.mossx.notes/../escape", "1.0.0", "1.0.0", 1)
+                .unwrap_err()
+                .code,
+            "schema"
+        );
+        assert!(!root.join("escape").exists());
+        assert!(!root.join("plugin-runtime/data/escape").exists());
+        remove_path(&root);
+    }
 }

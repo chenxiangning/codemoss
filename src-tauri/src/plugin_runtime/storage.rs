@@ -67,6 +67,13 @@ impl StorageService {
         if plugin_id.trim().is_empty() || plugin_id != plugin_id.trim() {
             return Err(err("schema", "pluginId must be canonical"));
         }
+        if plugin_id.contains('/')
+            || plugin_id.contains('\\')
+            || plugin_id.split('.').any(|part| part == "..")
+            || plugin_id == ".."
+        {
+            return Err(err("schema", "pluginId must not contain path segments"));
+        }
         self.namespaces
             .entry(plugin_id.to_string())
             .or_insert_with(|| Namespace {
@@ -292,5 +299,20 @@ mod tests {
             assert!(service.namespace(plugin_id).is_err());
         }
         assert!(service.namespace("com.mossx.notes").is_err());
+    }
+
+    #[test]
+    fn path_unsafe_plugin_id_cannot_open_a_namespace() {
+        let mut service = StorageService::default();
+        for plugin_id in ["../escape", "com.mossx.notes/../escape", "com\\mossx"] {
+            assert_eq!(
+                service
+                    .open_or_create(plugin_id, "1.0.0", "1.0.0", 1)
+                    .unwrap_err()
+                    .code,
+                "schema"
+            );
+            assert!(service.namespace(plugin_id).is_err());
+        }
     }
 }
