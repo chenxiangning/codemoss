@@ -6,6 +6,7 @@ import { MOSSX_CAPABILITIES } from "./catalog";
 import { parseManifestV1 } from "./parseManifestV1";
 import type { ManifestErrorCode, ParseManifestOptions } from "./types";
 import notesMinimal from "../../packages/plugin-contract/fixtures/valid/notes-minimal.json";
+import notesPilot from "../../packages/plugin-contract/fixtures/valid/notes-pilot.json";
 import claudeEngine from "../../packages/plugin-contract/fixtures/valid/claude-engine.json";
 
 const fixtureDir = dirname(fileURLToPath(import.meta.url));
@@ -47,6 +48,44 @@ describe("parseManifestV1", () => {
     expect(parseManifestV1(templated, systemOpts).errors.some((error) => error.code === "template-type-forbidden")).toBe(
       true,
     );
+  });
+
+  it("accepts the notes pilot inventory manifest", () => {
+    const result = parseManifestV1(notesPilot, systemOpts);
+    expect(result.ok).toBe(true);
+    expect(result.manifest?.pluginId).toBe("com.mossx.notes");
+    const commandIds = (result.manifest?.contributions ?? [])
+      .filter((item) => item.type === "mossx.command")
+      .map((item) => item.commandId);
+    expect(commandIds).toEqual([
+      "note_card_list",
+      "note_card_get",
+      "note_card_create",
+      "note_card_update",
+      "note_card_archive",
+      "note_card_restore",
+      "note_card_delete",
+    ]);
+    expect(result.manifest?.contributions.some((item) => item.type === "mossx.ui.view")).toBe(true);
+    expect(result.manifest?.contributions.some((item) => item.type === "mossx.engine.provider")).toBe(false);
+    expect(JSON.stringify(notesPilot)).not.toMatch(/onStartup/);
+  });
+
+  it("rejects templated notes commands", () => {
+    const templated = clone(notesPilot) as Record<string, unknown>;
+    templated.contributionTemplates = [
+      {
+        id: "notes-commands",
+        type: "mossx.command",
+        entryId: "notes-worker",
+        keyPrefix: "com.mossx.notes.extra.",
+        scopes: ["global"],
+        maxInstances: 2,
+      },
+    ];
+    expect(
+      parseManifestV1(templated, systemOpts).errors.some((error) => error.code === "template-type-forbidden"),
+    ).toBe(true);
   });
 
   it("accepts the notes minimal manifest", () => {
