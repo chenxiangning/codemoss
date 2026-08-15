@@ -2834,4 +2834,79 @@ mod tests {
         assert_eq!(runtime.plane.codec(92), Some("log-v1"));
         remove_path(&root);
     }
+
+    #[test]
+    fn fuse_and_disable_stay_inside_one_terminal_state_on_compose_surface() {
+        use crate::plugin_runtime::host::DriverError;
+
+        let root = unique_temp_root("runtime-terminal-lifecycle");
+        let mut runtime = PluginRuntime::new(
+            HostConfig {
+                enabled: true,
+                ..HostConfig::default()
+            },
+            FakeDriver::default(),
+            "/fixture/workspace",
+            &root,
+        )
+        .expect("runtime");
+        runtime
+            .activate(notes_activation_request())
+            .expect("activate");
+        runtime.fuse_plugin("com.mossx.notes").expect("fuse");
+        runtime.fuse_plugin("com.mossx.notes").expect("idempotent fuse");
+        assert_eq!(
+            runtime.host.slot("com.mossx.notes").unwrap().state,
+            SlotState::Fused
+        );
+        assert_eq!(
+            runtime.disable_plugin("com.mossx.notes").unwrap_err().code,
+            "fused"
+        );
+        runtime.reset_plugin("com.mossx.notes").expect("reset");
+        assert_eq!(
+            runtime.fuse_plugin("com.mossx.notes").unwrap_err().code,
+            "plugin-unavailable"
+        );
+        runtime
+            .activate(notes_activation_request())
+            .expect("second");
+        runtime.disable_plugin("com.mossx.notes").expect("disable");
+        runtime
+            .disable_plugin("com.mossx.notes")
+            .expect("idempotent disable");
+        assert_eq!(
+            runtime.host.slot("com.mossx.notes").unwrap().state,
+            SlotState::Disabled
+        );
+        assert_eq!(
+            runtime.fuse_plugin("com.mossx.notes").unwrap_err().code,
+            "disabled"
+        );
+        runtime.reset_plugin("com.mossx.notes").expect("reset after disable");
+        runtime.host.test_driver_mut().fail_on.insert(
+            "notes-ui".into(),
+            DriverError::Timeout,
+        );
+        assert_eq!(
+            runtime
+                .activate(notes_activation_request())
+                .unwrap_err()
+                .code,
+            "activation-timeout"
+        );
+        assert_eq!(
+            runtime.fuse_plugin("com.mossx.notes").unwrap_err().code,
+            "failed"
+        );
+        assert_eq!(
+            runtime.disable_plugin("com.mossx.notes").unwrap_err().code,
+            "failed"
+        );
+        assert_eq!(
+            runtime.host.slot("com.mossx.notes").unwrap().state,
+            SlotState::Failed
+        );
+        remove_path(&root);
+    }
 }

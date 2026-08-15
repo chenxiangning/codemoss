@@ -247,8 +247,15 @@ impl<D: EntryDriver> Host<D> {
             .slots
             .get_mut(plugin_id)
             .ok_or_else(|| err("plugin-unavailable", "plugin is not loaded"))?;
-        if slot.state == SlotState::Activating {
-            return Err(err("activation-busy", "cannot fuse while activating"));
+        match slot.state {
+            SlotState::Fused => return Ok(()),
+            SlotState::Activating => {
+                return Err(err("activation-busy", "cannot fuse while activating"));
+            }
+            SlotState::Failed => return Err(err("failed", "plugin is failed until reset")),
+            SlotState::Disabled => return Err(err("disabled", "plugin is disabled until reset")),
+            SlotState::Idle => return Err(err("plugin-unavailable", "plugin is idle until activate")),
+            SlotState::Ready => {}
         }
         let generation = slot.generation;
         let started = slot.started.clone();
@@ -268,8 +275,15 @@ impl<D: EntryDriver> Host<D> {
             .slots
             .get_mut(plugin_id)
             .ok_or_else(|| err("plugin-unavailable", "plugin is not loaded"))?;
-        if slot.state == SlotState::Activating {
-            return Err(err("activation-busy", "cannot disable while activating"));
+        match slot.state {
+            SlotState::Disabled => return Ok(()),
+            SlotState::Activating => {
+                return Err(err("activation-busy", "cannot disable while activating"));
+            }
+            SlotState::Failed => return Err(err("failed", "plugin is failed until reset")),
+            SlotState::Fused => return Err(err("fused", "plugin is fused until reset")),
+            SlotState::Idle => return Err(err("plugin-unavailable", "plugin is idle until activate")),
+            SlotState::Ready => {}
         }
         let generation = slot.generation;
         let started = slot.started.clone();
@@ -583,5 +597,37 @@ mod tests {
         let host = enabled_host(FakeDriver::default());
         assert_eq!(host.dispatch("", 1).unwrap_err().code, "schema");
         assert_eq!(host.dispatch("   ", 1).unwrap_err().code, "schema");
+    }
+
+    #[test]
+    fn fuse_and_disable_stay_inside_one_terminal_state() {
+        let mut host = enabled_host(FakeDriver::default());
+        host.activate(notes_request()).expect("activate");
+        host.fuse("com.mossx.notes").expect("fuse");
+        host.fuse("com.mossx.notes").expect("idempotent fuse");
+        assert_eq!(host.slot("com.mossx.notes").unwrap().state, SlotState::Fused);
+        assert_eq!(host.disable("com.mossx.notes").unwrap_err().code, "fused");
+        host.reset("com.mossx.notes").expect("reset");
+        assert_eq!(
+            host.fuse("com.mossx.notes").unwrap_err().code,
+            "plugin-unavailable"
+        );
+        assert_eq!(
+            host.disable("com.mossx.notes").unwrap_err().code,
+            "plugin-unavailable"
+        );
+        host.activate(notes_request()).expect("second");
+        host.disable("com.mossx.notes").expect("disable");
+        host.disable("com.mossx.notes").expect("idempotent disable");
+        assert_eq!(
+            host.slot("com.mossx.notes").unwrap().state,
+            SlotState::Disabled
+        );
+        assert_eq!(host.fuse("com.mossx.notes").unwrap_err().code, "disabled");
+        host.reset("com.mossx.notes").expect("reset after disable");
+        host.test_force_state("com.mossx.notes", SlotState::Failed, 2);
+        assert_eq!(host.fuse("com.mossx.notes").unwrap_err().code, "failed");
+        assert_eq!(host.disable("com.mossx.notes").unwrap_err().code, "failed");
+        assert_eq!(host.slot("com.mossx.notes").unwrap().state, SlotState::Failed);
     }
 }
