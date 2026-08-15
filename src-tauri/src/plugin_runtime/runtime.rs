@@ -71,21 +71,33 @@ impl<D: EntryDriver> PluginRuntime<D> {
         self.host.reset(plugin_id)
     }
 
-    pub fn open_own_store(&mut self, plugin_id: &str) -> Result<PathBuf, StorageError> {
+    fn ensure_ready(&self, plugin_id: &str) -> Result<(), StorageError> {
         let ready = self
             .host
             .slot(plugin_id)
             .is_some_and(|slot| slot.state == SlotState::Ready);
-        if !ready {
-            return Err(StorageError {
+        if ready {
+            Ok(())
+        } else {
+            Err(StorageError {
                 code: "plugin-unavailable",
                 message: format!("{plugin_id} is not ready"),
-            });
+            })
         }
+    }
+
+    pub fn open_own_store(&mut self, plugin_id: &str) -> Result<PathBuf, StorageError> {
+        self.ensure_ready(plugin_id)?;
         self.storage
             .access_file(plugin_id, plugin_id)
             .or_else(|_| self.storage.open_plugin(plugin_id, "1.0.0", "1.0.0", 1))?;
         self.storage.access_file(plugin_id, plugin_id)
+    }
+
+    pub fn checkpoint_own_store(&mut self, plugin_id: &str) -> Result<String, StorageError> {
+        self.ensure_ready(plugin_id)?;
+        self.open_own_store(plugin_id)?;
+        self.storage.checkpoint(plugin_id, 2)
     }
 }
 
@@ -445,6 +457,37 @@ mod tests {
         runtime
             .open_stream("com.mossx.notes", second, 14, "blob-v1")
             .expect("current stream");
+        remove_path(&root);
+    }
+
+    #[test]
+    fn checkpoint_requires_ready_plugin() {
+        let root = unique_temp_root("runtime-ckpt");
+        let mut runtime = PluginRuntime::new(
+            HostConfig {
+                enabled: true,
+                ..HostConfig::default()
+            },
+            FakeDriver::default(),
+            "/fixture/workspace",
+            &root,
+        )
+        .expect("runtime");
+        runtime
+            .activate(notes_activation_request())
+            .expect("activate");
+        let id = runtime
+            .checkpoint_own_store("com.mossx.notes")
+            .expect("ckpt");
+        assert!(id.starts_with("ckpt-"));
+        runtime.disable_plugin("com.mossx.notes").expect("disable");
+        assert_eq!(
+            runtime
+                .checkpoint_own_store("com.mossx.notes")
+                .unwrap_err()
+                .code,
+            "plugin-unavailable"
+        );
         remove_path(&root);
     }
 }
