@@ -67,7 +67,10 @@
 | 2AA Failed 后不得 checkpoint / migrate / restore | 完成 | `3cd1efdc7` |
 | 2AB Failed 后不得 access_store | 完成 | `dc8a14d22` |
 | 2AC Failed 后 reset 恢复 store API | 完成 | `c12578262` |
-| 2AD disable 后 reset 恢复 store lifecycle | 完成 | 本刀 |
+| 2AD disable 后 reset 恢复 store lifecycle | 完成 | `73bdd2c16` |
+| 2AE fuse 后 reset 恢复 checkpoint | 完成 | `bdb49192d` |
+| 1AK fuse Claude 不得撤 Notes stream | 完成 | `17f7e6422` |
+| 1AL Activating 态组合面 fail-closed | 完成 | 本刀 |
 
 ## 明确未做
 
@@ -80,6 +83,6 @@
 
 ## 进度
 
-相对「Core + 可撤销插件平台」全文约 **86%**（合同/插座组合面/disable+fuse+reset/storage 闸门/Host off/只读 Broker/失败激活必须 reset/并发上限/Ready swap/reset 撤 stream/disable 恢复/disable lifecycle/stream budget/未知 codec/重复 stream/其余 brokered 拒绝/provider 拒绝/跨插件 stream/deadline 下限/concurrent 下限/crash reset/Failed store/Failed+disable reset 恢复 store）。  
+相对「Core + 可撤销插件平台」全文约 **87%**（合同/插座组合面/disable+fuse+reset/storage 闸门/Host off/只读 Broker/失败激活必须 reset/并发上限/Ready swap/reset 撤 stream/disable 恢复/disable lifecycle/stream budget/未知 codec/重复 stream/其余 brokered 拒绝/provider 拒绝/跨插件 stream/deadline 下限/concurrent 下限/crash reset/Failed store/Failed+disable+fuse reset 恢复 store/fuse 隔离/Activating fail-closed）。  
 相对「产品已拔插头」约 **0%**。  
 合同 100% **不等于**插座完成：1F spawn、Named Pipe、Host 进 boot 仍属插座本体。

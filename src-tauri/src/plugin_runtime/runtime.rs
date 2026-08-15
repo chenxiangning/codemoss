@@ -2410,4 +2410,55 @@ mod tests {
             .is_err());
         remove_path(&root);
     }
+
+    #[test]
+    fn activating_plugin_is_fail_closed_on_compose_surface() {
+        let root = unique_temp_root("runtime-activating-busy");
+        let mut runtime = PluginRuntime::new(
+            HostConfig {
+                enabled: true,
+                ..HostConfig::default()
+            },
+            FakeDriver::default(),
+            "/fixture/workspace",
+            &root,
+        )
+        .expect("runtime");
+        runtime
+            .host
+            .test_force_state("com.mossx.notes", SlotState::Activating, 1);
+        assert_eq!(
+            runtime
+                .activate(notes_activation_request())
+                .unwrap_err()
+                .code,
+            "activation-busy"
+        );
+        assert_eq!(
+            runtime.reset_plugin("com.mossx.notes").unwrap_err().code,
+            "activation-busy"
+        );
+        assert_eq!(
+            runtime
+                .query_read("com.mossx.notes", 1)
+                .unwrap_err()
+                .code,
+            "plugin-unavailable"
+        );
+        assert_eq!(
+            runtime
+                .open_stream("com.mossx.notes", 1, 71, "blob-v1")
+                .unwrap_err()
+                .code,
+            "plugin-unavailable"
+        );
+        assert_eq!(
+            runtime
+                .open_own_store("com.mossx.notes")
+                .unwrap_err()
+                .code,
+            "plugin-unavailable"
+        );
+        remove_path(&root);
+    }
 }

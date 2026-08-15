@@ -274,6 +274,19 @@ impl<D: EntryDriver> Host<D> {
         self.inflight = inflight;
     }
 
+    #[cfg(test)]
+    pub fn test_force_state(&mut self, plugin_id: &str, state: SlotState, generation: u64) {
+        self.slots.insert(
+            plugin_id.to_string(),
+            PluginSlot {
+                state,
+                generation,
+                unit_id: Some("forced".into()),
+                started: Vec::new(),
+            },
+        );
+    }
+
     pub fn dispatch(&self, plugin_id: &str, generation: u64) -> Result<(), HostError> {
         let slot = self
             .slots
