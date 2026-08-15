@@ -1,5 +1,6 @@
-//! Wave 3D: single-owner Claude facade. Delegates to Core; does not replace registry.
+//! Wave 3D/3E: single-owner Claude facade. Delegates to Core; does not replace registry.
 
+use std::ffi::OsStr;
 use std::path::Path;
 use std::sync::Arc;
 
@@ -13,8 +14,9 @@ use crate::engine::EngineType;
 use super::claude_pilot::claude_activation_request;
 
 pub const CLAUDE_PLUGIN_ID: &str = "com.mossx.engine.claude";
+pub const CLAUDE_COMPAT_FACADE_ENV: &str = "MOSSX_CLAUDE_COMPAT_FACADE";
 
-/// 3D 只允许 Core owner。第二个变体留给 3E flag，不得在本刀出现。
+/// 只允许 Core owner。flag 切的是调用路径，不是第二个实现。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CompatOwner {
     CoreClaude,
@@ -23,16 +25,31 @@ pub enum CompatOwner {
 pub struct ClaudeCompatAdapter {
     owner: CompatOwner,
     plugin_id: String,
-    manager: ClaudeSessionManager,
+    manager: Arc<ClaudeSessionManager>,
     builtin: BuiltinEngineAdapter,
+}
+
+pub fn claude_compat_facade_enabled() -> bool {
+    claude_compat_facade_enabled_from(std::env::var_os(CLAUDE_COMPAT_FACADE_ENV).as_deref())
+}
+
+pub fn claude_compat_facade_enabled_from(value: Option<&OsStr>) -> bool {
+    matches!(
+        value.and_then(OsStr::to_str).map(str::trim),
+        Some("1" | "true" | "TRUE" | "yes")
+    )
 }
 
 impl ClaudeCompatAdapter {
     pub fn core() -> Self {
+        Self::wrapping(Arc::new(ClaudeSessionManager::new()))
+    }
+
+    pub fn wrapping(manager: Arc<ClaudeSessionManager>) -> Self {
         Self {
             owner: CompatOwner::CoreClaude,
             plugin_id: CLAUDE_PLUGIN_ID.to_string(),
-            manager: ClaudeSessionManager::new(),
+            manager,
             builtin: BuiltinEngineAdapter::new(EngineType::Claude),
         }
     }
@@ -49,6 +66,10 @@ impl ClaudeCompatAdapter {
         self.builtin.engine_id().as_str()
     }
 
+    pub fn manager(&self) -> &Arc<ClaudeSessionManager> {
+        &self.manager
+    }
+
     pub async fn get_or_create_session(
         &self,
         workspace_id: &str,
@@ -56,6 +77,17 @@ impl ClaudeCompatAdapter {
     ) -> Arc<ClaudeSession> {
         self.manager
             .get_or_create_session(workspace_id, workspace_path)
+            .await
+    }
+
+    pub async fn get_or_create_session_for_provider(
+        &self,
+        workspace_id: &str,
+        workspace_path: &Path,
+        provider_profile_id: Option<&str>,
+    ) -> Arc<ClaudeSession> {
+        self.manager
+            .get_or_create_session_for_provider(workspace_id, workspace_path, provider_profile_id)
             .await
     }
 
@@ -77,13 +109,26 @@ mod tests {
         assert_eq!(adapter.owner(), CompatOwner::CoreClaude);
     }
 
+    #[test]
+    fn flag_defaults_to_off() {
+        assert!(!claude_compat_facade_enabled_from(None));
+        assert!(!claude_compat_facade_enabled_from(Some(OsStr::new("0"))));
+        assert!(!claude_compat_facade_enabled_from(Some(OsStr::new("false"))));
+        assert!(claude_compat_facade_enabled_from(Some(OsStr::new("1"))));
+        assert!(claude_compat_facade_enabled_from(Some(OsStr::new("true"))));
+    }
+
     #[tokio::test]
     async fn facade_shares_the_core_session_manager() {
-        let adapter = ClaudeCompatAdapter::core();
+        let manager = Arc::new(ClaudeSessionManager::new());
+        let adapter = ClaudeCompatAdapter::wrapping(manager.clone());
         let workspace = std::env::temp_dir().join("mossx-claude-compat-ws");
         let first = adapter.get_or_create_session("ws-compat", &workspace).await;
-        let second = adapter.get_or_create_session("ws-compat", &workspace).await;
+        let second = manager
+            .get_or_create_session("ws-compat", &workspace)
+            .await;
         assert!(Arc::ptr_eq(&first, &second));
+        assert!(Arc::ptr_eq(adapter.manager(), &manager));
     }
 
     #[test]

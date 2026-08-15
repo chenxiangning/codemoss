@@ -54,6 +54,10 @@ pub struct EngineManager {
 
     /// Engine configurations
     engine_configs: RwLock<HashMap<EngineType, EngineConfig>>,
+
+    /// Optional Claude facade. When present, session getters go through it
+    /// but still share `claude_manager`. Default construction leaves this None.
+    claude_compat: Option<crate::plugin_runtime::claude_compat::ClaudeCompatAdapter>,
 }
 
 #[derive(Default)]
@@ -120,19 +124,36 @@ fn grok_engine_config_with_home(
 impl EngineManager {
     /// Create a new engine manager
     pub fn new() -> Self {
+        Self::new_with_claude_compat(
+            crate::plugin_runtime::claude_compat::claude_compat_facade_enabled(),
+        )
+    }
+
+    pub fn new_with_claude_compat(enabled: bool) -> Self {
+        let claude_manager = Arc::new(ClaudeSessionManager::new());
+        let claude_compat = enabled.then(|| {
+            crate::plugin_runtime::claude_compat::ClaudeCompatAdapter::wrapping(
+                claude_manager.clone(),
+            )
+        });
         Self {
             agent_event_bus: AgentEventBus::new(),
             adapter_registry: EngineAdapterRegistry::with_builtins(),
             active_engine: RwLock::new(EngineType::default()),
             engine_statuses: RwLock::new(HashMap::new()),
-            claude_manager: Arc::new(ClaudeSessionManager::new()),
+            claude_manager,
             opencode_sessions: Mutex::new(HashMap::new()),
             gemini_sessions: Mutex::new(GeminiSessionRegistry::default()),
             kimi_sessions: Mutex::new(HashMap::new()),
             grok_sessions: Mutex::new(HashMap::new()),
             pi_sessions: Mutex::new(HashMap::new()),
             engine_configs: RwLock::new(HashMap::new()),
+            claude_compat,
         }
+    }
+
+    pub fn claude_compat_enabled(&self) -> bool {
+        self.claude_compat.is_some()
     }
 
     pub(crate) fn agent_event_bus(&self) -> AgentEventBus {
@@ -328,6 +349,11 @@ impl EngineManager {
         workspace_id: &str,
         workspace_path: &Path,
     ) -> Arc<ClaudeSession> {
+        if let Some(facade) = &self.claude_compat {
+            return facade
+                .get_or_create_session(workspace_id, workspace_path)
+                .await;
+        }
         self.claude_manager
             .get_or_create_session(workspace_id, workspace_path)
             .await
@@ -339,6 +365,15 @@ impl EngineManager {
         workspace_path: &Path,
         provider_profile_id: Option<&str>,
     ) -> Arc<ClaudeSession> {
+        if let Some(facade) = &self.claude_compat {
+            return facade
+                .get_or_create_session_for_provider(
+                    workspace_id,
+                    workspace_path,
+                    provider_profile_id,
+                )
+                .await;
+        }
         self.claude_manager
             .get_or_create_session_for_provider(workspace_id, workspace_path, provider_profile_id)
             .await
@@ -1201,6 +1236,29 @@ mod tests {
     async fn default_engine_is_claude() {
         let manager = EngineManager::new();
         assert_eq!(manager.get_active_engine().await, EngineType::Claude);
+    }
+
+    #[test]
+    fn claude_compat_flag_is_off_when_injected_false() {
+        let manager = EngineManager::new_with_claude_compat(false);
+        assert!(!manager.claude_compat_enabled());
+    }
+
+    #[tokio::test]
+    async fn flagged_claude_path_still_shares_core_sessions() {
+        let manager = EngineManager::new_with_claude_compat(true);
+        assert!(manager.claude_compat_enabled());
+        let workspace = std::env::temp_dir().join("mossx-claude-dual-run-ws");
+        let via_getter = manager.get_claude_session("ws-dual", &workspace).await;
+        let via_core = manager
+            .claude_manager
+            .get_or_create_session("ws-dual", &workspace)
+            .await;
+        assert!(Arc::ptr_eq(&via_getter, &via_core));
+        let via_provider = manager
+            .get_claude_session_for_provider("ws-dual", &workspace, None)
+            .await;
+        assert!(Arc::ptr_eq(&via_getter, &via_provider));
     }
 
     #[tokio::test]
