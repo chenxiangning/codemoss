@@ -1235,4 +1235,63 @@ mod tests {
         );
         remove_path(&root);
     }
+
+    #[test]
+    fn disabled_host_cannot_use_storage_apis() {
+        let root = unique_temp_root("runtime-host-off-store");
+        let mut runtime = PluginRuntime::new(
+            HostConfig::default(),
+            FakeDriver::default(),
+            "/fixture/workspace",
+            &root,
+        )
+        .expect("runtime");
+        assert_eq!(
+            runtime
+                .open_own_store("com.mossx.notes")
+                .unwrap_err()
+                .code,
+            "plugin-unavailable"
+        );
+        assert_eq!(
+            runtime
+                .checkpoint_own_store("com.mossx.notes")
+                .unwrap_err()
+                .code,
+            "plugin-unavailable"
+        );
+        assert_eq!(
+            runtime
+                .restore_own_store("com.mossx.notes")
+                .unwrap_err()
+                .code,
+            "plugin-unavailable"
+        );
+        assert_eq!(
+            runtime
+                .migrate_own_store(
+                    "com.mossx.notes",
+                    MigrationPlan {
+                        from: 1,
+                        to: 2,
+                        destructive: false,
+                        export_required: false,
+                        confirmed: false,
+                        exported: false,
+                        reader_schema: 2,
+                    },
+                )
+                .unwrap_err()
+                .code,
+            "plugin-unavailable"
+        );
+        assert_eq!(
+            runtime
+                .access_store("com.mossx.notes", "com.mossx.notes")
+                .unwrap_err()
+                .code,
+            "plugin-unavailable"
+        );
+        remove_path(&root);
+    }
 }
