@@ -8,9 +8,9 @@ use super::uds::{accept_uds, bind_uds, connect_uds};
 static SOCK_SEQ: AtomicU64 = AtomicU64::new(1);
 
 #[cfg(unix)]
-fn sock_path() -> Result<std::path::PathBuf, super::ipc::IpcError> {
+fn sock_path(plugin_id: &str) -> Result<std::path::PathBuf, super::ipc::IpcError> {
     let seq = SOCK_SEQ.fetch_add(1, Ordering::Relaxed);
-    super::uds::private_uds_path(&format!("d{}", seq % 1000))
+    super::uds::private_uds_path(plugin_id, &format!("d{}", seq % 1000))
 }
 
 #[cfg(test)]
@@ -37,7 +37,7 @@ mod tests {
         plane
             .open("com.mossx.notes", 1, 11, "blob-v1")
             .expect("open");
-        let path = sock_path().expect("private path");
+        let path = sock_path("com.mossx.notes").expect("private path");
         let listener = bind_uds(&path).expect("bind");
         let peer_path = path.clone();
         let peer = thread::spawn(move || {
@@ -64,7 +64,7 @@ mod tests {
         plane
             .open("com.mossx.notes", 1, 11, "blob-v1")
             .expect("open");
-        let path = sock_path().expect("private path");
+        let path = sock_path("com.mossx.notes").expect("private path");
         let listener = bind_uds(&path).expect("bind");
         let peer_path = path.clone();
         let peer = thread::spawn(move || {

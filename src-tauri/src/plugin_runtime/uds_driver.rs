@@ -45,14 +45,21 @@ fn ack(plugin_id: &str, generation: u64, nonce: &str) -> Value {
 }
 
 #[cfg(unix)]
-fn sock_path(entry_id: &str, generation: u64) -> Result<std::path::PathBuf, DriverError> {
+fn sock_path(
+    plugin_id: &str,
+    entry_id: &str,
+    generation: u64,
+) -> Result<std::path::PathBuf, DriverError> {
     let seq = SOCK_SEQ.fetch_add(1, Ordering::Relaxed);
-    super::uds::private_uds_path(&format!(
-        "{}{}{}",
-        seq % 1000,
-        entry_id.as_bytes().first().copied().unwrap_or(b'e') as char,
-        generation % 10
-    ))
+    super::uds::private_uds_path(
+        plugin_id,
+        &format!(
+            "{}{}{}",
+            seq % 1000,
+            entry_id.as_bytes().first().copied().unwrap_or(b'e') as char,
+            generation % 10
+        ),
+    )
     .map_err(|_| DriverError::Crash)
 }
 
@@ -68,7 +75,7 @@ fn handshake(
     use super::ipc::{validate_handshake_ack, validate_handshake_hello};
     use super::uds::{accept_uds_timed, bind_uds, connect_uds, read_mxpc_frame_timed, write_mxpc_frame};
 
-    let path = sock_path(entry_id, generation)?;
+    let path = sock_path(plugin_id, entry_id, generation)?;
     let listener = bind_uds(&path).map_err(|_| DriverError::Crash)?;
     let peer_plugin = plugin_id.to_string();
     let peer_path = path.clone();

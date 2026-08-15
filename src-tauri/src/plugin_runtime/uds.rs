@@ -172,19 +172,35 @@ fn parent_is_owner_only(path: &Path) -> Result<(), IpcError> {
     Ok(())
 }
 
+fn plugin_dir_token(plugin_id: &str) -> Result<String, IpcError> {
+    if !crate::plugin_runtime::manifest::plugin_id_ok(plugin_id) {
+        return Err(err("schema", "pluginId must be reverse-DNS"));
+    }
+    let token = plugin_id
+        .rsplit('.')
+        .next()
+        .filter(|part| !part.is_empty())
+        .ok_or_else(|| err("schema", "pluginId must be reverse-DNS"))?;
+    Ok(token.chars().take(6).collect())
+}
+
 #[cfg(unix)]
-pub fn private_uds_dir() -> Result<std::path::PathBuf, IpcError> {
+pub fn private_uds_dir(plugin_id: &str) -> Result<std::path::PathBuf, IpcError> {
     use std::os::unix::fs::PermissionsExt;
 
-    let dir = Path::new("/tmp").join(format!("m{}", std::process::id() % 10_000));
+    let token = plugin_dir_token(plugin_id)?;
+    let root = Path::new("/tmp").join(format!("m{}", std::process::id() % 10_000));
+    std::fs::create_dir_all(&root).map_err(io_err)?;
+    std::fs::set_permissions(&root, std::fs::Permissions::from_mode(0o700)).map_err(io_err)?;
+    let dir = root.join(token);
     std::fs::create_dir_all(&dir).map_err(io_err)?;
     std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700)).map_err(io_err)?;
     Ok(dir)
 }
 
 #[cfg(unix)]
-pub fn private_uds_path(tag: &str) -> Result<std::path::PathBuf, IpcError> {
-    Ok(private_uds_dir()?.join(format!("{tag}.s")))
+pub fn private_uds_path(plugin_id: &str, tag: &str) -> Result<std::path::PathBuf, IpcError> {
+    Ok(private_uds_dir(plugin_id)?.join(format!("{tag}.s")))
 }
 
 pub fn uds_peer_ok(peer_uid: u32) -> Result<(), IpcError> {
@@ -393,12 +409,15 @@ mod tests {
             .map(|duration| duration.as_nanos())
             .unwrap_or(0);
         // sockaddr_un.sun_path is ~104 bytes; keep this under /tmp/m{pid}.
-        private_uds_path(&format!(
-            "{}{}{}",
-            tag.chars().next().unwrap_or('x'),
-            seq % 100,
-            nanos % 100
-        ))
+        private_uds_path(
+            "com.mossx.notes",
+            &format!(
+                "{}{}{}",
+                tag.chars().next().unwrap_or('x'),
+                seq % 100,
+                nanos % 100
+            ),
+        )
         .expect("private dir")
     }
 
@@ -599,6 +618,35 @@ mod tests {
         assert_eq!(bind_uds(&path).unwrap_err().code, "permission-denied");
         assert_eq!(connect_uds(&path).unwrap_err().code, "permission-denied");
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn notes_and_claude_do_not_share_a_uds_directory() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let notes = private_uds_dir("com.mossx.notes").expect("notes");
+        let claude = private_uds_dir("com.mossx.engine.claude").expect("claude");
+        assert_ne!(notes, claude);
+        assert_eq!(
+            std::fs::metadata(&notes).expect("notes meta").permissions().mode() & 0o777,
+            0o700
+        );
+        assert_eq!(
+            std::fs::metadata(&claude)
+                .expect("claude meta")
+                .permissions()
+                .mode()
+                & 0o777,
+            0o700
+        );
+    }
+
+    #[test]
+    fn an_invalid_plugin_id_cannot_create_a_uds_directory() {
+        assert_eq!(
+            private_uds_dir("not-a-plugin").unwrap_err().code,
+            "schema"
+        );
     }
 
     #[test]

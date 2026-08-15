@@ -136,7 +136,8 @@
 | 1HS8 接受端读 hello 也必须在 2s 内完成 | 完成 | `52512e99e` |
 | 1UDS7 UDS accept 必须在 handshake deadline 内完成 | 完成 | `c8799003d` |
 | 1HS9 handshake ack 必须绑定 plugin version | 完成 | `df09542f6` |
-| 1UDS8 UDS connect 也必须要求父目录 0700 | 完成 | 本刀 |
+| 1UDS8 UDS connect 也必须要求父目录 0700 | 完成 | `80a435b0f` |
+| 1UDS9 私有 UDS 目录必须按 plugin 隔离 | 完成 | 本刀 |
 
 ## 明确未做
 
