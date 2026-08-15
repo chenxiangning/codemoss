@@ -170,7 +170,7 @@ pub fn write_mxpc_frame(writer: &mut impl Write, message: &Value) -> Result<(), 
 }
 
 #[cfg(unix)]
-fn write_all_until(
+pub(crate) fn write_all_until(
     writer: &mut (impl Write + std::os::unix::io::AsRawFd),
     buf: &[u8],
     deadline: Instant,

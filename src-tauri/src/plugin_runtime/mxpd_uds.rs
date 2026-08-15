@@ -55,7 +55,11 @@ mod tests {
         let mut client =
             connect_uds_timed(&path, crate::plugin_runtime::ipc::HANDSHAKE_DEADLINE).expect("connect");
         plane
-            .write_frame(&mut client, &blob(b"uds-blob"))
+            .write_frame_timed(
+                &mut client,
+                &blob(b"uds-blob"),
+                crate::plugin_runtime::ipc::HANDSHAKE_DEADLINE,
+            )
             .expect("write");
         let received = peer.join().expect("peer");
         assert_eq!(received.stream_id, 11);
@@ -125,5 +129,35 @@ mod tests {
             "handshake-timeout"
         );
         peer.join().expect("peer");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_silent_reader_cannot_complete_an_mxpd_write() {
+        use std::os::unix::net::UnixStream;
+        use std::time::Duration;
+
+        let (mut writer, _reader) = UnixStream::pair().expect("pair");
+        let mut plane = DataPlane::default();
+        plane
+            .open("com.mossx.notes", 1, 11, "blob-v1")
+            .expect("open");
+        let padded = vec![0_u8; 256 * 1024];
+        assert_eq!(
+            plane
+                .write_frame_timed(
+                    &mut writer,
+                    &MxpdFrame {
+                        flags: 0,
+                        stream_id: 11,
+                        seq: 1,
+                        payload: padded,
+                    },
+                    Duration::from_millis(30),
+                )
+                .unwrap_err()
+                .code,
+            "handshake-timeout"
+        );
     }
 }

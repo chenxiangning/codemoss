@@ -99,6 +99,31 @@ impl DataPlane {
         write_mxpd_frame(writer, frame)
     }
 
+    #[cfg(unix)]
+    pub fn write_frame_timed(
+        &mut self,
+        writer: &mut (impl Write + std::os::unix::io::AsRawFd),
+        frame: &MxpdFrame,
+        timeout: Duration,
+    ) -> Result<(), IpcError> {
+        let stream = self
+            .streams
+            .get_mut(&frame.stream_id)
+            .ok_or_else(|| err("not-open", format!("stream {} is not open", frame.stream_id)))?;
+        if stream.cancelled && frame.flags & FLAG_ACK == 0 {
+            return Err(err("cancelled", "non-ACK frames after CANCEL are dropped"));
+        }
+        if frame.flags & FLAG_CANCEL != 0 {
+            stream.cancelled = true;
+        }
+        if frame.flags & FLAG_ACK == 0 {
+            can_send(stream.unacked_frames, stream.unacked_bytes, frame.payload.len() as u64)?;
+            stream.unacked_frames += 1;
+            stream.unacked_bytes += frame.payload.len() as u64;
+        }
+        write_mxpd_frame_timed(writer, frame, timeout)
+    }
+
     pub fn ack(&mut self, stream_id: u32, payload_bytes: u64) -> Result<(), IpcError> {
         let stream = self
             .streams
@@ -126,6 +151,26 @@ pub fn write_mxpd_frame(writer: &mut impl Write, frame: &MxpdFrame) -> Result<()
         .flush()
         .map_err(|error| err("transport", error.to_string()))?;
     Ok(())
+}
+
+#[cfg(unix)]
+pub fn write_mxpd_frame_timed(
+    writer: &mut (impl Write + std::os::unix::io::AsRawFd),
+    frame: &MxpdFrame,
+    timeout: Duration,
+) -> Result<(), IpcError> {
+    let bytes = encode_mxpd(frame)?;
+    super::uds::write_all_until(writer, &bytes, Instant::now() + timeout)
+}
+
+#[cfg(not(unix))]
+pub fn write_mxpd_frame_timed(
+    writer: &mut impl Write,
+    frame: &MxpdFrame,
+    timeout: Duration,
+) -> Result<(), IpcError> {
+    let _ = timeout;
+    write_mxpd_frame(writer, frame)
 }
 
 pub fn read_mxpd_frame(reader: &mut impl Read) -> Result<MxpdFrame, IpcError> {
