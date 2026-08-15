@@ -2650,4 +2650,49 @@ mod tests {
         );
         remove_path(&root);
     }
+
+    #[test]
+    fn unknown_or_blank_plugin_cannot_change_lifecycle_on_compose_surface() {
+        let root = unique_temp_root("runtime-unknown-lifecycle");
+        let mut runtime = PluginRuntime::new(
+            HostConfig {
+                enabled: true,
+                ..HostConfig::default()
+            },
+            FakeDriver::default(),
+            "/fixture/workspace",
+            &root,
+        )
+        .expect("runtime");
+        for plugin_id in ["", "   "] {
+            assert_eq!(runtime.fuse_plugin(plugin_id).unwrap_err().code, "schema");
+            assert_eq!(runtime.disable_plugin(plugin_id).unwrap_err().code, "schema");
+            assert_eq!(runtime.reset_plugin(plugin_id).unwrap_err().code, "schema");
+        }
+        assert_eq!(
+            runtime
+                .fuse_plugin("com.mossx.notes")
+                .unwrap_err()
+                .code,
+            "plugin-unavailable"
+        );
+        assert_eq!(
+            runtime
+                .disable_plugin("com.mossx.notes")
+                .unwrap_err()
+                .code,
+            "plugin-unavailable"
+        );
+        assert_eq!(
+            runtime
+                .reset_plugin("com.mossx.notes")
+                .unwrap_err()
+                .code,
+            "plugin-unavailable"
+        );
+        assert!(runtime.host.slot("").is_none());
+        assert!(runtime.host.slot("   ").is_none());
+        assert!(runtime.host.slot("com.mossx.notes").is_none());
+        remove_path(&root);
+    }
 }

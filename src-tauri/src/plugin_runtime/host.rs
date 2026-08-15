@@ -232,7 +232,13 @@ impl<D: EntryDriver> Host<D> {
     }
 
     pub fn fuse(&mut self, plugin_id: &str) -> Result<(), HostError> {
-        let slot = self.slots.entry(plugin_id.to_string()).or_insert_with(PluginSlot::idle);
+        if plugin_id.trim().is_empty() {
+            return Err(err("schema", "pluginId is required"));
+        }
+        let slot = self
+            .slots
+            .get_mut(plugin_id)
+            .ok_or_else(|| err("plugin-unavailable", "plugin is not loaded"))?;
         if slot.state == SlotState::Activating {
             return Err(err("activation-busy", "cannot fuse while activating"));
         }
@@ -247,7 +253,13 @@ impl<D: EntryDriver> Host<D> {
     }
 
     pub fn disable(&mut self, plugin_id: &str) -> Result<(), HostError> {
-        let slot = self.slots.entry(plugin_id.to_string()).or_insert_with(PluginSlot::idle);
+        if plugin_id.trim().is_empty() {
+            return Err(err("schema", "pluginId is required"));
+        }
+        let slot = self
+            .slots
+            .get_mut(plugin_id)
+            .ok_or_else(|| err("plugin-unavailable", "plugin is not loaded"))?;
         if slot.state == SlotState::Activating {
             return Err(err("activation-busy", "cannot disable while activating"));
         }
@@ -262,7 +274,13 @@ impl<D: EntryDriver> Host<D> {
     }
 
     pub fn reset(&mut self, plugin_id: &str) -> Result<(), HostError> {
-        let slot = self.slots.entry(plugin_id.to_string()).or_insert_with(PluginSlot::idle);
+        if plugin_id.trim().is_empty() {
+            return Err(err("schema", "pluginId is required"));
+        }
+        let slot = self
+            .slots
+            .get_mut(plugin_id)
+            .ok_or_else(|| err("plugin-unavailable", "plugin is not loaded"))?;
         if slot.state == SlotState::Activating {
             return Err(err("activation-busy", "cannot reset while activating"));
         }
@@ -506,5 +524,30 @@ mod tests {
             "activation-busy"
         );
         assert_eq!(host.slot("com.mossx.notes").unwrap().state, SlotState::Activating);
+    }
+
+    #[test]
+    fn unknown_or_blank_plugin_cannot_change_lifecycle() {
+        let mut host = enabled_host(FakeDriver::default());
+        for plugin_id in ["", "   "] {
+            assert_eq!(host.fuse(plugin_id).unwrap_err().code, "schema");
+            assert_eq!(host.disable(plugin_id).unwrap_err().code, "schema");
+            assert_eq!(host.reset(plugin_id).unwrap_err().code, "schema");
+        }
+        assert_eq!(
+            host.fuse("com.mossx.notes").unwrap_err().code,
+            "plugin-unavailable"
+        );
+        assert_eq!(
+            host.disable("com.mossx.notes").unwrap_err().code,
+            "plugin-unavailable"
+        );
+        assert_eq!(
+            host.reset("com.mossx.notes").unwrap_err().code,
+            "plugin-unavailable"
+        );
+        assert!(host.slot("").is_none());
+        assert!(host.slot("   ").is_none());
+        assert!(host.slot("com.mossx.notes").is_none());
     }
 }
