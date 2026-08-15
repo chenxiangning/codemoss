@@ -1944,4 +1944,41 @@ mod tests {
         assert_eq!(runtime.plane.codec(50), Some("blob-v1"));
         remove_path(&root);
     }
+
+    #[test]
+    fn ready_plugin_cannot_query_remaining_brokered_capabilities() {
+        let root = unique_temp_root("runtime-brokered-denied");
+        let mut runtime = PluginRuntime::new(
+            HostConfig {
+                enabled: true,
+                ..HostConfig::default()
+            },
+            FakeDriver::default(),
+            "/fixture/workspace",
+            &root,
+        )
+        .expect("runtime");
+        let generation = runtime
+            .activate(notes_activation_request())
+            .expect("activate");
+        runtime
+            .query_read("com.mossx.notes", generation)
+            .expect("read");
+        for capability in [
+            "mossx.git.read",
+            "mossx.git.write",
+            "mossx.network.fetch",
+            "mossx.storage.readwrite",
+        ] {
+            assert_eq!(
+                runtime
+                    .query("com.mossx.notes", generation, capability)
+                    .unwrap_err()
+                    .code,
+                "permission-denied",
+                "{capability}"
+            );
+        }
+        remove_path(&root);
+    }
 }
