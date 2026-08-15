@@ -2074,4 +2074,24 @@ mod tests {
         assert_eq!(error.code, "invalid-budget");
         remove_path(&root);
     }
+
+    #[test]
+    fn runtime_rejects_zero_concurrent_activation_budget() {
+        let root = unique_temp_root("runtime-concurrent-floor");
+        let error = match PluginRuntime::new(
+            HostConfig {
+                enabled: true,
+                max_concurrent: 0,
+                ..HostConfig::default()
+            },
+            FakeDriver::default(),
+            "/fixture/workspace",
+            &root,
+        ) {
+            Ok(_) => panic!("zero concurrent budget should fail"),
+            Err(error) => error,
+        };
+        assert_eq!(error.code, "invalid-budget");
+        remove_path(&root);
+    }
 }
