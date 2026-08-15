@@ -87,6 +87,16 @@ impl StorageService {
             .ok_or_else(|| err("plugin-unavailable", "namespace missing"))
     }
 
+    pub fn access(&self, caller_id: &str, target_id: &str) -> Result<&Namespace, StorageError> {
+        if caller_id != target_id {
+            return Err(err(
+                "permission-denied",
+                format!("{caller_id} cannot open {target_id} namespace"),
+            ));
+        }
+        self.namespace(target_id)
+    }
+
     pub fn checkpoint(&mut self, plugin_id: &str, retain_previous: u32) -> Result<String, StorageError> {
         if !(1..=5).contains(&retain_previous) {
             return Err(err("invalid-storage", "retainPrevious must be 1-5"));
@@ -173,6 +183,20 @@ mod tests {
         let path = service.namespace("com.mossx.notes").unwrap().data_path();
         assert!(path.contains("com.mossx.notes"));
         assert!(!path.contains("com.mossx.engine.claude"));
+    }
+
+    #[test]
+    fn claude_cannot_access_notes_namespace() {
+        let mut service = StorageService::default();
+        notes(&mut service);
+        let error = service
+            .access("com.mossx.engine.claude", "com.mossx.notes")
+            .unwrap_err();
+        assert_eq!(error.code, "permission-denied");
+        let own = service
+            .access("com.mossx.notes", "com.mossx.notes")
+            .expect("own");
+        assert_eq!(own.plugin_id, "com.mossx.notes");
     }
 
     #[test]

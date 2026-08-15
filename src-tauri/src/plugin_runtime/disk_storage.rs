@@ -39,6 +39,11 @@ impl DiskStorage {
             .join("store.sqlite")
     }
 
+    pub fn access_file(&self, caller_id: &str, target_id: &str) -> Result<PathBuf, StorageError> {
+        self.logic.access(caller_id, target_id)?;
+        Ok(self.data_file(target_id))
+    }
+
     pub fn checkpoint_file(&self, plugin_id: &str, checkpoint_id: &str) -> PathBuf {
         self.root
             .join("plugin-runtime/checkpoints")
@@ -210,6 +215,14 @@ mod tests {
             .expect("claude");
         assert_ne!(notes, claude);
         assert!(notes.exists() && claude.exists());
+        let denied = storage
+            .access_file("com.mossx.engine.claude", "com.mossx.notes")
+            .unwrap_err();
+        assert_eq!(denied.code, "permission-denied");
+        let own = storage
+            .access_file("com.mossx.notes", "com.mossx.notes")
+            .expect("own");
+        assert_eq!(own, notes);
         remove_path(&root);
     }
 }
