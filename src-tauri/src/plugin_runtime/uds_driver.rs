@@ -63,11 +63,10 @@ fn handshake(
     generation: u64,
     corrupt: bool,
 ) -> Result<(), DriverError> {
-    use std::os::unix::net::UnixStream;
     use std::thread;
 
     use super::ipc::{validate_handshake_ack, validate_handshake_hello};
-    use super::uds::{bind_uds, read_mxpc_frame, write_mxpc_frame};
+    use super::uds::{accept_uds, bind_uds, connect_uds, read_mxpc_frame, write_mxpc_frame};
 
     let path = sock_path(entry_id, generation);
     let listener = bind_uds(&path).map_err(|_| DriverError::Crash)?;
@@ -76,7 +75,7 @@ fn handshake(
     let nonce = issue_handshake_nonce();
     let peer_nonce = nonce.clone();
     let peer = thread::spawn(move || {
-        let (mut stream, _) = listener.accept().map_err(|_| ())?;
+        let mut stream = accept_uds(&listener).map_err(|_| ())?;
         let received = read_mxpc_frame(&mut stream).map_err(|_| ())?;
         validate_handshake_hello(&received).map_err(|_| ())?;
         let ack_nonce = if corrupt {
@@ -88,7 +87,7 @@ fn handshake(
         let _ = std::fs::remove_file(&peer_path);
         Ok::<(), ()>(())
     });
-    let mut client = UnixStream::connect(&path).map_err(|_| DriverError::Crash)?;
+    let mut client = connect_uds(&path).map_err(|_| DriverError::Crash)?;
     write_mxpc_frame(&mut client, &hello(generation, &nonce)).map_err(|_| DriverError::Crash)?;
     let received = read_mxpc_frame(&mut client).map_err(|_| DriverError::Crash)?;
     let result =

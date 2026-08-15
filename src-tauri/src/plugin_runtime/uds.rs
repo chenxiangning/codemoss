@@ -95,6 +95,103 @@ pub fn private_uds_path(tag: &str) -> Result<std::path::PathBuf, IpcError> {
     Ok(private_uds_dir()?.join(format!("{tag}.s")))
 }
 
+pub fn uds_peer_ok(peer_uid: u32) -> Result<(), IpcError> {
+    #[cfg(unix)]
+    {
+        let current = unsafe { libc::getuid() };
+        if peer_uid != current {
+            return Err(err(
+                "permission-denied",
+                "UDS peer uid must be the current user",
+            ));
+        }
+        Ok(())
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = peer_uid;
+        Err(err("unsupported-platform", "UDS transport is unix-only in V1"))
+    }
+}
+
+#[cfg(unix)]
+fn peer_uid_of(stream: &std::os::unix::net::UnixStream) -> Result<u32, IpcError> {
+    use std::os::unix::io::AsRawFd;
+
+    let fd = stream.as_raw_fd();
+    #[cfg(any(target_os = "macos", target_os = "ios", target_os = "freebsd", target_os = "openbsd", target_os = "netbsd", target_os = "dragonfly"))]
+    {
+        let mut uid: libc::uid_t = 0;
+        let mut gid: libc::gid_t = 0;
+        let rc = unsafe { libc::getpeereid(fd, &mut uid, &mut gid) };
+        if rc != 0 {
+            return Err(err("permission-denied", "UDS peer credentials unavailable"));
+        }
+        Ok(uid)
+    }
+    #[cfg(target_os = "linux")]
+    {
+        let mut cred = libc::ucred {
+            pid: 0,
+            uid: 0,
+            gid: 0,
+        };
+        let mut len = std::mem::size_of::<libc::ucred>() as libc::socklen_t;
+        let rc = unsafe {
+            libc::getsockopt(
+                fd,
+                libc::SOL_SOCKET,
+                libc::SO_PEERCRED,
+                &mut cred as *mut _ as *mut libc::c_void,
+                &mut len,
+            )
+        };
+        if rc != 0 {
+            return Err(err("permission-denied", "UDS peer credentials unavailable"));
+        }
+        Ok(cred.uid)
+    }
+    #[cfg(not(any(
+        target_os = "macos",
+        target_os = "ios",
+        target_os = "freebsd",
+        target_os = "openbsd",
+        target_os = "netbsd",
+        target_os = "dragonfly",
+        target_os = "linux"
+    )))]
+    {
+        let _ = fd;
+        Err(err("unsupported-platform", "UDS peer credentials unavailable"))
+    }
+}
+
+#[cfg(unix)]
+pub fn accept_uds(
+    listener: &std::os::unix::net::UnixListener,
+) -> Result<std::os::unix::net::UnixStream, IpcError> {
+    let (stream, _) = listener.accept().map_err(io_err)?;
+    uds_peer_ok(peer_uid_of(&stream)?)?;
+    Ok(stream)
+}
+
+#[cfg(unix)]
+pub fn connect_uds(path: &Path) -> Result<std::os::unix::net::UnixStream, IpcError> {
+    let stream = std::os::unix::net::UnixStream::connect(path).map_err(io_err)?;
+    uds_peer_ok(peer_uid_of(&stream)?)?;
+    Ok(stream)
+}
+
+#[cfg(not(unix))]
+pub fn accept_uds(_listener: &()) -> Result<(), IpcError> {
+    Err(err("unsupported-platform", "UDS transport is unix-only in V1"))
+}
+
+#[cfg(not(unix))]
+pub fn connect_uds(_path: &Path) -> Result<(), IpcError> {
+    Err(err("unsupported-platform", "UDS transport is unix-only in V1"))
+}
+
 #[cfg(unix)]
 pub fn bind_uds(path: &Path) -> Result<std::os::unix::net::UnixListener, IpcError> {
     if let Some(parent) = path.parent() {
@@ -170,7 +267,6 @@ mod tests {
     #[test]
     fn hello_and_ack_round_trip_on_temp_uds() {
         use crate::plugin_runtime::ipc::{validate_handshake_ack, validate_handshake_hello};
-        use std::os::unix::net::UnixStream;
         use std::thread;
 
         let path = temp_sock("roundtrip");
@@ -178,14 +274,14 @@ mod tests {
         let server = thread::spawn({
             let path = path.clone();
             move || {
-                let (mut stream, _) = listener.accept().expect("accept");
+                let mut stream = accept_uds(&listener).expect("accept");
                 let received = read_mxpc_frame(&mut stream).expect("server read hello");
                 validate_handshake_hello(&received).expect("hello");
                 write_mxpc_frame(&mut stream, &ack(NONCE)).expect("server write ack");
                 let _ = std::fs::remove_file(&path);
             }
         });
-        let mut client = UnixStream::connect(&path).expect("connect");
+        let mut client = connect_uds(&path).expect("connect");
         write_mxpc_frame(&mut client, &hello()).expect("client hello");
         let received = read_mxpc_frame(&mut client).expect("client read ack");
         validate_handshake_ack(&received, NONCE, "com.mossx.notes", 1).expect("ack");
@@ -196,7 +292,6 @@ mod tests {
     #[test]
     fn mismatched_nonce_is_rejected_after_uds_read() {
         use crate::plugin_runtime::ipc::validate_handshake_ack;
-        use std::os::unix::net::UnixStream;
         use std::thread;
 
         let path = temp_sock("bad-nonce");
@@ -204,13 +299,13 @@ mod tests {
         let server = thread::spawn({
             let path = path.clone();
             move || {
-                let (mut stream, _) = listener.accept().expect("accept");
+                let mut stream = accept_uds(&listener).expect("accept");
                 let _ = read_mxpc_frame(&mut stream).expect("hello");
                 write_mxpc_frame(&mut stream, &ack(&"bb".repeat(32))).expect("bad ack");
                 let _ = std::fs::remove_file(&path);
             }
         });
-        let mut client = UnixStream::connect(&path).expect("connect");
+        let mut client = connect_uds(&path).expect("connect");
         write_mxpc_frame(&mut client, &hello()).expect("hello");
         let received = read_mxpc_frame(&mut client).expect("ack frame");
         assert!(validate_handshake_ack(&received, NONCE, "com.mossx.notes", 1).is_err());
@@ -246,6 +341,25 @@ mod tests {
             bind_uds(Path::new("/tmp/mx-open.s")).unwrap_err().code,
             "permission-denied"
         );
+    }
+
+    #[test]
+    fn current_user_peer_is_accepted() {
+        #[cfg(unix)]
+        let uid = unsafe { libc::getuid() };
+        #[cfg(not(unix))]
+        let uid = 0;
+        #[cfg(unix)]
+        uds_peer_ok(uid).expect("current user");
+        #[cfg(not(unix))]
+        assert_eq!(uds_peer_ok(uid).unwrap_err().code, "unsupported-platform");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_foreign_uid_cannot_complete_uds_handshake() {
+        let foreign = unsafe { libc::getuid() }.wrapping_add(1);
+        assert_eq!(uds_peer_ok(foreign).unwrap_err().code, "permission-denied");
     }
 
 }
