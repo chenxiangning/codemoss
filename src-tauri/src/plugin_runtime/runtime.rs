@@ -142,4 +142,43 @@ mod tests {
         assert!(!boot.contains("Host::new"));
         assert!(boot.contains("mod plugin_runtime"));
     }
+
+    #[test]
+    fn two_pilots_stay_isolated_in_one_runtime() {
+        use crate::plugin_runtime::claude_pilot::claude_activation_request;
+
+        let root = unique_temp_root("runtime-dual");
+        let mut runtime = PluginRuntime::new(
+            HostConfig {
+                enabled: true,
+                ..HostConfig::default()
+            },
+            FakeDriver::default(),
+            "/fixture/workspace",
+            &root,
+        )
+        .expect("runtime");
+        let claude_gen = runtime
+            .activate(claude_activation_request())
+            .expect("claude");
+        let notes_gen = runtime.activate(notes_activation_request()).expect("notes");
+        runtime
+            .open_stream("com.mossx.engine.claude", claude_gen, 1, "engine-event-v1")
+            .expect("claude stream");
+        runtime
+            .open_stream("com.mossx.notes", notes_gen, 2, "blob-v1")
+            .expect("notes stream");
+        runtime
+            .open_own_store("com.mossx.notes")
+            .expect("notes store");
+        let denied = runtime
+            .storage
+            .access_file("com.mossx.engine.claude", "com.mossx.notes")
+            .unwrap_err();
+        assert_eq!(denied.code, "permission-denied");
+        runtime.disable_plugin("com.mossx.notes").expect("disable notes");
+        assert!(runtime.plane.codec(2).is_none());
+        assert_eq!(runtime.plane.codec(1), Some("engine-event-v1"));
+        remove_path(&root);
+    }
 }
