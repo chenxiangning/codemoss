@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use super::broker::{BrokerError, CapabilityBroker, WorkspaceRead};
 use super::disk_storage::DiskStorage;
 use super::host::{ActivationRequest, EntryDriver, Host, HostConfig, HostError, SlotState};
-use super::host_data::disable_and_revoke;
+use super::host_data::{disable_and_revoke, fuse_and_revoke};
 use super::mxpd::DataPlane;
 use super::storage::StorageError;
 
@@ -61,6 +61,10 @@ impl<D: EntryDriver> PluginRuntime<D> {
 
     pub fn disable_plugin(&mut self, plugin_id: &str) -> Result<(), HostError> {
         disable_and_revoke(&mut self.host, &mut self.plane, plugin_id)
+    }
+
+    pub fn fuse_plugin(&mut self, plugin_id: &str) -> Result<(), HostError> {
+        fuse_and_revoke(&mut self.host, &mut self.plane, plugin_id)
     }
 
     pub fn open_own_store(&mut self, plugin_id: &str) -> Result<PathBuf, StorageError> {
@@ -302,6 +306,46 @@ mod tests {
             .is_err());
         assert!(runtime.plane.codec(5).is_none());
         assert!(Path::new("src/note_cards.rs").exists());
+        remove_path(&root);
+    }
+
+    #[test]
+    fn fused_plugin_cannot_use_composed_handles_or_reactivate() {
+        let root = unique_temp_root("runtime-fuse");
+        let mut runtime = PluginRuntime::new(
+            HostConfig {
+                enabled: true,
+                ..HostConfig::default()
+            },
+            FakeDriver::default(),
+            "/fixture/workspace",
+            &root,
+        )
+        .expect("runtime");
+        let generation = runtime
+            .activate(notes_activation_request())
+            .expect("activate");
+        runtime.open_own_store("com.mossx.notes").expect("store");
+        runtime
+            .open_stream("com.mossx.notes", generation, 7, "blob-v1")
+            .expect("stream");
+        runtime.fuse_plugin("com.mossx.notes").expect("fuse");
+        assert_eq!(
+            runtime.host.slot("com.mossx.notes").unwrap().state,
+            SlotState::Fused
+        );
+        assert!(runtime.query_read("com.mossx.notes", generation).is_err());
+        assert_eq!(
+            runtime.open_own_store("com.mossx.notes").unwrap_err().code,
+            "plugin-unavailable"
+        );
+        assert!(runtime
+            .open_stream("com.mossx.notes", generation, 8, "blob-v1")
+            .is_err());
+        assert_eq!(
+            runtime.activate(notes_activation_request()).unwrap_err().code,
+            "fused"
+        );
         remove_path(&root);
     }
 }
