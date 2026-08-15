@@ -95,6 +95,9 @@ impl RestrictedProcessDriver {
         let mut command = Command::new(&self.executable);
         command.env_clear();
         command.current_dir(&cwd);
+        if !windows_process_flags_ok(CREATE_NO_WINDOW) || !windows_inherit_handles_ok(false) {
+            return Err(DriverError::Crash);
+        }
         close_inherited_fds(&mut command);
         #[cfg(windows)]
         {
@@ -244,6 +247,17 @@ impl Drop for RestrictedProcessDriver {
     }
 }
 
+const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+const CREATE_NEW_CONSOLE: u32 = 0x0000_0010;
+
+pub fn windows_process_flags_ok(flags: u32) -> bool {
+    flags & CREATE_NO_WINDOW != 0 && flags & CREATE_NEW_CONSOLE == 0
+}
+
+pub fn windows_inherit_handles_ok(inherit_extra: bool) -> bool {
+    !inherit_extra
+}
+
 fn close_inherited_fds(command: &mut Command) {
     #[cfg(unix)]
     {
@@ -255,7 +269,12 @@ fn close_inherited_fds(command: &mut Command) {
             });
         }
     }
-    #[cfg(not(unix))]
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        command.creation_flags(CREATE_NO_WINDOW);
+    }
+    #[cfg(not(any(unix, windows)))]
     {
         let _ = command;
     }
@@ -562,6 +581,20 @@ mod tests {
             assert!(!process_executable_ok(&path), "{path:?}");
         }
         assert!(process_executable_ok(&idle_fixture_executable()));
+    }
+
+    #[test]
+    fn create_no_window_without_extra_inherit_is_accepted() {
+        assert!(windows_process_flags_ok(CREATE_NO_WINDOW));
+        assert!(windows_inherit_handles_ok(false));
+    }
+
+    #[test]
+    fn extra_inherit_cannot_leave_a_child() {
+        assert!(!windows_inherit_handles_ok(true));
+        assert!(!windows_process_flags_ok(0));
+        assert!(!windows_process_flags_ok(CREATE_NEW_CONSOLE));
+        assert!(!windows_process_flags_ok(CREATE_NO_WINDOW | CREATE_NEW_CONSOLE));
     }
 
     #[test]

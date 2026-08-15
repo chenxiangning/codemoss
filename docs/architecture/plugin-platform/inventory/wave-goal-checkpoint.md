@@ -123,7 +123,8 @@
 | 1UDS4 UDS accept/connect 必须核验对端 uid | 完成 | `b84ac621e` |
 | 1F6 Restricted Process cwd 必须钉在 plugin-data | 完成 | `fef84e596` |
 | 1F7 Restricted Process 不得继承父进程额外 FD | 完成 | `6bb9948e8` |
-| 1QJ6 Worker isolate 必须先完成 handshake 才能 live | 完成 | 本刀 |
+| 1QJ6 Worker isolate 必须先完成 handshake 才能 live | 完成 | `5f7453497` |
+| 1F8 Windows Restricted Process 不得继承额外 handle | 完成 | 本刀 |
 
 ## 明确未做
 
@@ -134,5 +135,5 @@
 
 ## 进度
 
-相对「Core + 可撤销插件平台」全文约 **99%**（合同平面 **100%**；插座本体骨架 + boot CompositeDriver 默认 off + env_clear + plugin-data cwd + 关闭继承 FD + Worker handshake + UDS 私有目录 + Named Pipe SDDL + 独立 handshake nonce + ack 身份绑定 + UDS peer uid 已落地；C 引擎 / 产品切流仍未做）。  
+相对「Core + 可撤销插件平台」全文约 **99%**（合同平面 **100%**；插座本体骨架 + boot CompositeDriver 默认 off + env_clear + plugin-data cwd + 关闭继承 FD + Windows CREATE_NO_WINDOW + Worker handshake + UDS 私有目录 + Named Pipe SDDL + 独立 handshake nonce + ack 身份绑定 + UDS peer uid 已落地；C 引擎 / 产品切流仍未做）。  
 相对「产品已拔插头」约 **0%**。
