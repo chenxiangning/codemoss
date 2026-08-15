@@ -64,6 +64,16 @@ impl<D: EntryDriver> PluginRuntime<D> {
     }
 
     pub fn open_own_store(&mut self, plugin_id: &str) -> Result<PathBuf, StorageError> {
+        let ready = self
+            .host
+            .slot(plugin_id)
+            .is_some_and(|slot| slot.state == SlotState::Ready);
+        if !ready {
+            return Err(StorageError {
+                code: "plugin-unavailable",
+                message: format!("{plugin_id} is not ready"),
+            });
+        }
         self.storage
             .access_file(plugin_id, plugin_id)
             .or_else(|_| self.storage.open_plugin(plugin_id, "1.0.0", "1.0.0", 1))?;
@@ -179,6 +189,37 @@ mod tests {
         runtime.disable_plugin("com.mossx.notes").expect("disable notes");
         assert!(runtime.plane.codec(2).is_none());
         assert_eq!(runtime.plane.codec(1), Some("engine-event-v1"));
+        remove_path(&root);
+    }
+
+    #[test]
+    fn disabled_plugin_cannot_reopen_its_store() {
+        let root = unique_temp_root("runtime-store-off");
+        let mut runtime = PluginRuntime::new(
+            HostConfig {
+                enabled: true,
+                ..HostConfig::default()
+            },
+            FakeDriver::default(),
+            "/fixture/workspace",
+            &root,
+        )
+        .expect("runtime");
+        runtime
+            .activate(notes_activation_request())
+            .expect("activate");
+        let store = runtime.open_own_store("com.mossx.notes").expect("store");
+        assert!(store.exists());
+        runtime.disable_plugin("com.mossx.notes").expect("disable");
+        let error = runtime.open_own_store("com.mossx.notes").unwrap_err();
+        assert_eq!(error.code, "plugin-unavailable");
+        assert!(store.exists());
+        runtime.host.reset("com.mossx.notes").expect("reset");
+        runtime
+            .activate(notes_activation_request())
+            .expect("reactivate");
+        let again = runtime.open_own_store("com.mossx.notes").expect("reopen");
+        assert_eq!(again, store);
         remove_path(&root);
     }
 }
