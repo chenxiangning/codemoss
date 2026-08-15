@@ -2966,4 +2966,37 @@ mod tests {
         }
         remove_path(&root);
     }
+
+    #[test]
+    fn ready_plugin_cannot_publish_notifications() {
+        let root = unique_temp_root("runtime-notifications-denied");
+        let mut runtime = PluginRuntime::new(
+            HostConfig {
+                enabled: true,
+                ..HostConfig::default()
+            },
+            FakeDriver::default(),
+            "/fixture/workspace",
+            &root,
+        )
+        .expect("runtime");
+        let generation = runtime
+            .activate(notes_activation_request())
+            .expect("activate");
+        runtime
+            .query_read("com.mossx.notes", generation)
+            .expect("read");
+        assert_eq!(
+            runtime
+                .query(
+                    "com.mossx.notes",
+                    generation,
+                    "mossx.notifications.publish"
+                )
+                .unwrap_err()
+                .code,
+            "permission-denied"
+        );
+        remove_path(&root);
+    }
 }
