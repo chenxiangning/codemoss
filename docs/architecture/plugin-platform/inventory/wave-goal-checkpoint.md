@@ -153,7 +153,8 @@
 | 1QJ9 Worker eval 只能是单次 mossx bridge 调用 | 完成 | `b861ed7fe` |
 | 1MXPD1 MXPD UDS accept / connect / read 必须在 deadline 内完成 | 完成 | `32d3f526b` |
 | 1QJ10 Worker handshake 必须在 live 引擎线程完成 | 完成 | `018f9c4bb` |
-| 1NP6 Named Pipe 管名必须按完整 pluginId 隔离 | 完成 | 本刀 |
+| 1NP6 Named Pipe 管名必须按完整 pluginId 隔离 | 完成 | `357926673` |
+| 1QJ11 Worker QuickJS 只能是 base + Eval | 完成 | 本刀 |
 
 ## 明确未做
 

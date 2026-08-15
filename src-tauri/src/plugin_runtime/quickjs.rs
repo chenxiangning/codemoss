@@ -105,7 +105,7 @@ fn engine_loop(rx: Receiver<EngineCmd>, ready: Sender<Result<(), DriverError>>) 
             return;
         }
     };
-    let context = match rquickjs::Context::full(&runtime) {
+    let context = match rquickjs::Context::custom::<rquickjs::context::intrinsic::Eval>(&runtime) {
         Ok(context) => context,
         Err(_) => {
             let _ = ready.send(Err(DriverError::Crash));
@@ -707,6 +707,35 @@ mod tests {
     }
 
     #[test]
+    fn extra_javascript_intrinsics_cannot_run() {
+        let mut host = enabled_host(QuickJsWorkerDriver::default());
+        host.activate(notes_activation_request()).expect("notes");
+        for source in [
+            "new Date()",
+            "JSON.stringify({})",
+            "Promise.resolve(1)",
+        ] {
+            assert_eq!(
+                host.driver()
+                    .eval_raw(
+                        "com.mossx.notes",
+                        "notes-worker",
+                        1,
+                        source,
+                        EVAL_DEADLINE,
+                    )
+                    .unwrap_err()
+                    .code,
+                "schema",
+                "{source}"
+            );
+        }
+        host.driver()
+            .eval("com.mossx.notes", "notes-worker", 1, "mossx.handshake.hello()")
+            .expect("still live");
+    }
+
+    #[test]
     fn stale_worker_generation_cannot_eval() {
         let mut host = enabled_host(QuickJsWorkerDriver::default());
         host.activate(notes_activation_request()).expect("first");
@@ -808,6 +837,7 @@ mod tests {
         assert!(source.contains("connect_uds"));
         assert!(source.contains("read_mxpc_frame_timed"));
         assert!(source.contains("rquickjs::Runtime::new"));
+        assert!(source.contains("Context::custom::<rquickjs::context::intrinsic::Eval>"));
         assert!(source.contains("EngineCmd::Handshake"));
         assert!(source.contains("mossx.handshake.hello()"));
         let mut host = enabled_host(QuickJsWorkerDriver::default());
