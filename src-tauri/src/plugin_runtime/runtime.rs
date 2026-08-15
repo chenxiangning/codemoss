@@ -2172,4 +2172,65 @@ mod tests {
         );
         remove_path(&root);
     }
+
+    #[test]
+    fn failed_plugin_cannot_checkpoint_migrate_or_restore() {
+        use crate::plugin_runtime::host::DriverError;
+
+        let root = unique_temp_root("runtime-failed-lifecycle");
+        let mut driver = FakeDriver::default();
+        driver
+            .fail_on
+            .insert("notes-ui".into(), DriverError::Timeout);
+        let mut runtime = PluginRuntime::new(
+            HostConfig {
+                enabled: true,
+                ..HostConfig::default()
+            },
+            driver,
+            "/fixture/workspace",
+            &root,
+        )
+        .expect("runtime");
+        assert_eq!(
+            runtime
+                .activate(notes_activation_request())
+                .unwrap_err()
+                .code,
+            "activation-timeout"
+        );
+        assert_eq!(
+            runtime
+                .checkpoint_own_store("com.mossx.notes")
+                .unwrap_err()
+                .code,
+            "plugin-unavailable"
+        );
+        assert_eq!(
+            runtime
+                .migrate_own_store(
+                    "com.mossx.notes",
+                    MigrationPlan {
+                        from: 1,
+                        to: 2,
+                        destructive: false,
+                        export_required: false,
+                        confirmed: false,
+                        exported: false,
+                        reader_schema: 2,
+                    },
+                )
+                .unwrap_err()
+                .code,
+            "plugin-unavailable"
+        );
+        assert_eq!(
+            runtime
+                .restore_own_store("com.mossx.notes")
+                .unwrap_err()
+                .code,
+            "plugin-unavailable"
+        );
+        remove_path(&root);
+    }
 }
