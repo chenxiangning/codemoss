@@ -103,8 +103,15 @@ fn allow_mossx_bridge(source: &str) -> Result<(), WorkerError> {
     ))
 }
 
+fn is_worker_entry(entry_id: &str) -> bool {
+    entry_id.ends_with("-worker")
+}
+
 impl EntryDriver for QuickJsWorkerDriver {
     fn start(&mut self, plugin_id: &str, entry_id: &str, generation: u64) -> Result<(), DriverError> {
+        if !is_worker_entry(entry_id) {
+            return Ok(());
+        }
         let key = IsolateKey {
             plugin_id: plugin_id.to_string(),
             entry_id: entry_id.to_string(),
@@ -165,7 +172,7 @@ mod tests {
             .isolate("com.mossx.engine.claude", "claude-worker", 1)
             .expect("claude isolate");
         assert_ne!(notes.plugin_id, claude.plugin_id);
-        assert_eq!(host.driver().live_count(), 4);
+        assert_eq!(host.driver().live_count(), 2);
         host.disable("com.mossx.notes").expect("disable notes");
         assert!(host
             .driver()
@@ -254,6 +261,33 @@ mod tests {
                 "mossx.handshake.hello()",
             )
             .expect("new generation");
-        assert_eq!(host.driver().live_count(), 2);
+        assert_eq!(host.driver().live_count(), 1);
+    }
+
+    #[test]
+    fn notes_ui_cannot_eval() {
+        let mut host = enabled_host(QuickJsWorkerDriver::default());
+        host.activate(notes_activation_request()).expect("notes");
+        assert!(host
+            .driver()
+            .isolate("com.mossx.notes", "notes-worker", 1)
+            .is_some());
+        assert!(host
+            .driver()
+            .isolate("com.mossx.notes", "notes-ui", 1)
+            .is_none());
+        assert_eq!(
+            host.driver()
+                .eval(
+                    "com.mossx.notes",
+                    "notes-ui",
+                    1,
+                    "mossx.handshake.hello()"
+                )
+                .unwrap_err()
+                .code,
+            "plugin-unavailable"
+        );
+        assert_eq!(host.driver().live_count(), 1);
     }
 }

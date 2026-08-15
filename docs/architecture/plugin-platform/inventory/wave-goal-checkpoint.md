@@ -106,18 +106,20 @@
 | 1H2 boot Host 换 UDS supervisor | 完成 | `acc84ed0a` |
 | 1NP3 Named Pipe Host driver fail-closed | 完成 | `781674ce1` |
 | 1QJ2 QuickJS 只允许 mossx handshake / SDK | 完成 | `72fcd081e` |
-| 1UDS2 UDS bind 0600 | 完成 | 本刀前一提交 |
-| 1H3 Ready 再激活 stop 旧 generation | 完成 | 本刀 |
+| 1UDS2 UDS bind 0600 | 完成 | `eb7a30218` |
+| 1H3 Ready 再激活 stop 旧 generation | 完成 | `593986120` |
+| 1NP4 Named Pipe bind 必须先过 ACL | 完成 | 本刀前一提交 |
+| 1QJ3 只有 worker entry 才有 QuickJS isolate | 完成 | 本刀 |
 
 ## 明确未做
 
-1. Named Pipe 挂 Windows SD（1NP4）
-2. QuickJS C 引擎嵌入（1QJ3，仍不切产品）
+1. Named Pipe 挂 Windows SECURITY_DESCRIPTOR（1NP5）
+2. QuickJS C 引擎嵌入（1QJ4，仍不切产品）
 3. Claude / Notes **产品**切流（flag 仍默认 off）
 4. 用户数据导入
 5. Marketplace
 
 ## 进度
 
-相对「Core + 可撤销插件平台」全文约 **99%**（合同平面 **100%**；插座本体骨架 + UDS 0600 + Ready 再激活可逆 已落地；C 引擎 / Windows SD / 产品切流仍未做）。  
+相对「Core + 可撤销插件平台」全文约 **99%**（合同平面 **100%**；插座本体骨架 + UDS 0600 + Named Pipe bind ACL + Worker-only isolate 已落地；C 引擎 / Windows SD / 产品切流仍未做）。  
 相对「产品已拔插头」约 **0%**。
