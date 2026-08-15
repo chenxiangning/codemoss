@@ -104,17 +104,18 @@
 | 1QJ1 per-plugin QuickJS isolate | 完成 | `a66c1ce7d` |
 | 1NP2 Named Pipe ACL 仅当前用户 | 完成 | `9b6791fce` |
 | 1H2 boot Host 换 UDS supervisor | 完成 | `acc84ed0a` |
-| 1NP3 Named Pipe Host driver fail-closed | 完成 | 本刀 |
+| 1NP3 Named Pipe Host driver fail-closed | 完成 | `781674ce1` |
+| 1QJ2 QuickJS 只允许 mossx handshake / SDK | 完成 | 本刀 |
 
 ## 明确未做
 
 1. Named Pipe 挂 Windows SD（1NP4）
-2. QuickJS 引擎嵌入（1QJ2，仍不切产品）
+2. QuickJS C 引擎嵌入（1QJ3，仍不切产品）
 3. Claude / Notes **产品**切流（flag 仍默认 off）
 4. 用户数据导入
 5. Marketplace
 
 ## 进度
 
-相对「Core + 可撤销插件平台」全文约 **99%**（合同平面 **100%**；插座本体骨架 + QuickJS 隔离闸门已落地；引擎嵌入 / Named Pipe ACL / 产品切流仍未做）。  
+相对「Core + 可撤销插件平台」全文约 **99%**（合同平面 **100%**；插座本体骨架 + UDS boot supervisor + Named Pipe driver + QuickJS allowlist 已落地；C 引擎 / Windows SD / 产品切流仍未做）。  
 相对「产品已拔插头」约 **0%**。

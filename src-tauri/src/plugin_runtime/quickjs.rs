@@ -74,34 +74,33 @@ impl QuickJsWorkerDriver {
         {
             return Err(err("plugin-unavailable", "worker isolate is not live"));
         }
-        deny_host_escape(source)
+        allow_mossx_bridge(source)
     }
 }
 
-fn deny_host_escape(source: &str) -> Result<(), WorkerError> {
-    let lowered = source.to_ascii_lowercase();
-    let denied = [
+fn allow_mossx_bridge(source: &str) -> Result<(), WorkerError> {
+    let trimmed = source.trim();
+    let lowered = trimmed.to_ascii_lowercase();
+    let allowed = lowered.starts_with("mossx.handshake.") || lowered.starts_with("mossx.sdk.");
+    let smuggled = [
         "require(",
         "process.",
-        "process ",
         "fetch(",
         "import(",
-        "import '",
-        "import \"",
-        "fs.",
-        "net.",
+        "eval(",
+        "function(",
         "child_process",
         "worker_threads",
-        "deno.",
-        "bun.",
-    ];
-    if denied.iter().any(|needle| lowered.contains(needle)) {
-        return Err(err(
-            "permission-denied",
-            "QuickJS Worker cannot reach OS or Node APIs",
-        ));
+    ]
+    .iter()
+    .any(|needle| lowered.contains(needle));
+    if allowed && !smuggled {
+        return Ok(());
     }
-    Ok(())
+    Err(err(
+        "permission-denied",
+        "QuickJS Worker can only call mossx.handshake.* or mossx.sdk.*",
+    ))
 }
 
 impl EntryDriver for QuickJsWorkerDriver {
@@ -188,6 +187,8 @@ mod tests {
             "fetch('https://example.com')",
             "import('net')",
             "child_process.spawn('sh')",
+            "1 + 1",
+            "eval('1')",
         ] {
             assert_eq!(
                 host.driver()
@@ -214,5 +215,17 @@ mod tests {
                 .code,
             "plugin-unavailable"
         );
+    }
+
+    #[test]
+    fn handshake_call_is_accepted() {
+        let mut host = enabled_host(QuickJsWorkerDriver::default());
+        host.activate(notes_activation_request()).expect("notes");
+        host.driver()
+            .eval("com.mossx.notes", "notes-worker", 1, "mossx.handshake.hello()")
+            .expect("handshake");
+        host.driver()
+            .eval("com.mossx.notes", "notes-worker", 1, "mossx.sdk.ready()")
+            .expect("sdk");
     }
 }
