@@ -15,8 +15,9 @@
 #### Scenario: pilots are uniquely identified
 
 - **WHEN** 读取 inventory
-- **THEN** 恰好一个 owner 的 targetPluginId 为 `com.mossx.engine.claude`
-- **AND** 恰好一个 owner 的 targetPluginId 为 `com.mossx.notes`
+- **THEN** 至少一行 owner 的 targetPluginId 为 `com.mossx.engine.claude`
+- **AND** 至少一行 owner 的 targetPluginId 为 `com.mossx.notes`
+- **AND** 不得把其他 Engine 标成这两个 Pilot identity
 
 ### Requirement: Product code MUST NOT be deleted until its ownerClass allows it
 

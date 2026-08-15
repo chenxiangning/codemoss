@@ -33,6 +33,8 @@
     "check:runtime-contracts": "npm run check:app-shell:governance && npm run check:git-history:runtime-contract",
     "check:engine-capability-matrix": "node scripts/check-engine-capability-matrix.mjs",
     "check:engine-adapter-registry": "node scripts/check-engine-adapter-registry.mjs",
+    "check:core-shell:boundary": "node scripts/check-core-shell-boundary.mjs",
+    "inventory:plugin-ownership": "node scripts/generate-plugin-ownership-inventory.mjs",
     "check:model-provider-catalog": "node scripts/check-model-provider-catalog.mjs",
     "check:engine-controller-facade": "node scripts/check-engine-controller-facade.mjs",
     "check:capability-aware-policy-router": "node scripts/scan-engine-name-branches.mjs",
