@@ -145,7 +145,8 @@
 | 1H7 默认 off 的 boot supervisor 必须拒绝意外连接 | 完成 | `22d7325e0` |
 | 1H8 默认 off 的 boot supervisor 必须抽干意外连接 | 完成 | `b129731ed` |
 | 1HS10 handshake 写也必须在 2s 内完成 | 完成 | `9dda79397` |
-| 1HS11 UDS / Worker / spawn handshake 写必须走 timed write | 完成 | 本刀 |
+| 1HS11 UDS / Worker / spawn handshake 写必须走 timed write | 完成 | `c5470ffd3` |
+| 1H9 boot supervisor 必须在 Host 存活期间值守 | 完成 | 本刀 |
 
 ## 明确未做
 
