@@ -113,4 +113,33 @@ mod tests {
         assert!(runtime.plane.codec(4).is_none());
         remove_path(&root);
     }
+
+    #[test]
+    fn default_host_config_is_disabled() {
+        assert!(!HostConfig::default().enabled);
+        let root = unique_temp_root("runtime-off");
+        let mut runtime = PluginRuntime::new(
+            HostConfig::default(),
+            FakeDriver::default(),
+            "/fixture/workspace",
+            &root,
+        )
+        .expect("runtime");
+        assert_eq!(
+            runtime
+                .activate(notes_activation_request())
+                .unwrap_err()
+                .code,
+            "host-disabled"
+        );
+        remove_path(&root);
+    }
+
+    #[test]
+    fn boot_source_does_not_construct_the_runtime() {
+        let boot = include_str!("../lib.rs");
+        assert!(!boot.contains("PluginRuntime::new"));
+        assert!(!boot.contains("Host::new"));
+        assert!(boot.contains("mod plugin_runtime"));
+    }
 }
