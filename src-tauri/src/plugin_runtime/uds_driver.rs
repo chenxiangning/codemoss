@@ -71,7 +71,7 @@ fn handshake(
     corrupt: bool,
 ) -> Result<(), DriverError> {
     let path = sock_path(plugin_id, entry_id, generation)?;
-    handshake_at(&path, plugin_id, generation, corrupt)
+    handshake_at(&path, plugin_id, generation, corrupt, false)
 }
 
 #[cfg(unix)]
@@ -80,6 +80,7 @@ fn handshake_at(
     plugin_id: &str,
     generation: u64,
     corrupt: bool,
+    silent: bool,
 ) -> Result<(), DriverError> {
     use std::thread;
 
@@ -87,12 +88,15 @@ fn handshake_at(
     use super::uds::{accept_uds_timed, bind_uds, connect_uds, read_mxpc_frame_timed, write_mxpc_frame};
 
     let listener = bind_uds(path).map_err(|_| DriverError::Crash)?;
+    let _unlink = super::uds::UnlinkOnDrop::new(path);
     let peer_plugin = plugin_id.to_string();
-    let peer_path = path.to_path_buf();
     let nonce = issue_handshake_nonce();
     let peer_nonce = nonce.clone();
     let peer = thread::spawn(move || {
         let mut stream = accept_uds_timed(&listener, HANDSHAKE_DEADLINE).map_err(|_| ())?;
+        if silent {
+            return Ok(());
+        }
         let received = read_mxpc_frame_timed(&mut stream, HANDSHAKE_DEADLINE).map_err(|_| ())?;
         validate_handshake_hello(&received, generation, &peer_nonce).map_err(|_| ())?;
         let ack_nonce = if corrupt {
@@ -101,7 +105,6 @@ fn handshake_at(
             peer_nonce
         };
         write_mxpc_frame(&mut stream, &ack(&peer_plugin, generation, &ack_nonce)).map_err(|_| ())?;
-        let _ = std::fs::remove_file(&peer_path);
         Ok::<(), ()>(())
     });
     let mut client = connect_uds(path).map_err(|_| DriverError::Crash)?;
@@ -112,7 +115,6 @@ fn handshake_at(
         validate_handshake_ack(&received, &nonce, plugin_id, generation, "1.0.0")
             .map_err(|_| DriverError::Crash);
     let _ = peer.join();
-    let _ = std::fs::remove_file(path);
     result
 }
 
@@ -192,7 +194,16 @@ mod tests {
     fn a_bad_nonce_cannot_leave_a_uds_socket() {
         let path = super::super::uds::private_uds_path("com.mossx.notes", "badn")
             .expect("private path");
-        assert!(handshake_at(&path, "com.mossx.notes", 1, true).is_err());
+        assert!(handshake_at(&path, "com.mossx.notes", 1, true, false).is_err());
+        assert!(!path.exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_silent_peer_cannot_leave_a_uds_socket() {
+        let path = super::super::uds::private_uds_path("com.mossx.notes", "siln")
+            .expect("private path");
+        assert!(handshake_at(&path, "com.mossx.notes", 1, false, true).is_err());
         assert!(!path.exists());
     }
 

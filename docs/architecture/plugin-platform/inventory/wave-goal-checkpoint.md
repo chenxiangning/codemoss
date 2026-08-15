@@ -139,7 +139,8 @@
 | 1UDS8 UDS connect 也必须要求父目录 0700 | 完成 | `80a435b0f` |
 | 1UDS9 私有 UDS 目录必须按 plugin 隔离 | 完成 | `af50b6d65` |
 | 1UDS10 私有 UDS 目录 token 必须绑定完整 pluginId | 完成 | `3e2743c7f` |
-| 1UDS11 UDS handshake 失败也必须删除 socket 文件 | 完成 | 本刀 |
+| 1UDS11 UDS handshake 失败也必须删除 socket 文件 | 完成 | `6fb82c418` |
+| 1UDS12 UDS handshake 超时 / connect 失败也必须删除 socket | 完成 | 本刀 |
 
 ## 明确未做
 

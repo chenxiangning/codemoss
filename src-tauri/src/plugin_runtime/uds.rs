@@ -203,6 +203,25 @@ pub fn private_uds_path(plugin_id: &str, tag: &str) -> Result<std::path::PathBuf
     Ok(private_uds_dir(plugin_id)?.join(format!("{tag}.s")))
 }
 
+#[cfg(unix)]
+pub struct UnlinkOnDrop {
+    path: std::path::PathBuf,
+}
+
+#[cfg(unix)]
+impl UnlinkOnDrop {
+    pub fn new(path: impl Into<std::path::PathBuf>) -> Self {
+        Self { path: path.into() }
+    }
+}
+
+#[cfg(unix)]
+impl Drop for UnlinkOnDrop {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.path);
+    }
+}
+
 pub fn uds_peer_ok(peer_uid: u32) -> Result<(), IpcError> {
     #[cfg(unix)]
     {
@@ -620,6 +639,19 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    #[test]
+    fn unlink_on_drop_removes_the_socket() {
+        let path = temp_sock("drop");
+        let _listener = bind_uds(&path).expect("bind");
+        assert!(path.exists());
+        {
+            let _unlink = UnlinkOnDrop::new(&path);
+            assert!(path.exists());
+        }
+        assert!(!path.exists());
+    }
+
+    #[cfg(unix)]
     #[test]
     fn notes_and_claude_do_not_share_a_uds_directory() {
         use std::os::unix::fs::PermissionsExt;

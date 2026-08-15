@@ -165,8 +165,8 @@ fn handshake_worker(
 
         let path = worker_sock_path(plugin_id, entry_id, generation)?;
         let listener = bind_uds(&path).map_err(|_| DriverError::Crash)?;
+        let _unlink = super::uds::UnlinkOnDrop::new(&path);
         let peer_plugin = plugin_id.to_string();
-        let peer_path = path.clone();
         let issued = issue_handshake_nonce();
         let peer_nonce = issued.clone();
         let peer = thread::spawn(move || {
@@ -181,7 +181,6 @@ fn handshake_worker(
             };
             write_mxpc_frame(&mut stream, &ack(&peer_plugin, generation, &ack_nonce))
                 .map_err(|_| ())?;
-            let _ = std::fs::remove_file(&peer_path);
             Ok::<(), ()>(())
         });
         let mut client = connect_uds(&path).map_err(|_| DriverError::Crash)?;
@@ -191,7 +190,6 @@ fn handshake_worker(
         let result = validate_handshake_ack(&received, &issued, plugin_id, generation, "1.0.0")
             .map_err(|_| DriverError::Crash);
         let _ = peer.join();
-        let _ = std::fs::remove_file(&path);
         result
     }
     #[cfg(not(unix))]
