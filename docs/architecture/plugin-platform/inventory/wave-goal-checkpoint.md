@@ -126,7 +126,8 @@
 | 1QJ6 Worker isolate 必须先完成 handshake 才能 live | 完成 | `5f7453497` |
 | 1F8 Windows Restricted Process 不得继承额外 handle | 完成 | `0aadf4ed7` |
 | 1HS3 handshake hello 必须绑定 generation | 完成 | `2a5760d29` |
-| 1HS4 handshake 必须在 2s 内完成 | 完成 | 本刀 |
+| 1HS4 handshake 必须在 2s 内完成 | 完成 | `3de638e0e` |
+| 1QJ7 Worker handshake 必须走私有 UDS | 完成 | 本刀 |
 
 ## 明确未做
 
@@ -137,5 +138,5 @@
 
 ## 进度
 
-相对「Core + 可撤销插件平台」全文约 **99%**（合同平面 **100%**；插座本体骨架 + boot CompositeDriver 默认 off + env_clear + plugin-data cwd + 关闭继承 FD + Windows CREATE_NO_WINDOW + Worker handshake + UDS 私有目录 + Named Pipe SDDL + 独立 handshake nonce + ack 身份绑定 + hello generation 绑定 + 2s handshake 截止 + UDS peer uid 已落地；C 引擎 / 产品切流仍未做）。  
+相对「Core + 可撤销插件平台」全文约 **99%**（合同平面 **100%**；插座本体骨架 + boot CompositeDriver 默认 off + env_clear + plugin-data cwd + 关闭继承 FD + Windows CREATE_NO_WINDOW + Worker 私有 UDS handshake + UDS 私有目录 + Named Pipe SDDL + 独立 handshake nonce + ack 身份绑定 + hello generation 绑定 + 2s handshake 截止 + UDS peer uid 已落地；C 引擎 / 产品切流仍未做）。  
 相对「产品已拔插头」约 **0%**。

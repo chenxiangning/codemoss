@@ -1,13 +1,18 @@
 //! Per-plugin QuickJS Worker isolate gate. No C engine, not in product path.
 
 use std::collections::{HashMap, HashSet};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use serde_json::{json, Value};
 
 use super::host::{DriverError, EntryDriver};
-use super::ipc::{
-    decode_mxpc, encode_mxpc, issue_handshake_nonce, validate_handshake_ack, validate_handshake_hello,
-};
+use super::ipc::{issue_handshake_nonce, validate_handshake_ack, validate_handshake_hello};
+#[cfg(unix)]
+use super::ipc::HANDSHAKE_DEADLINE;
+#[cfg(not(unix))]
+use super::ipc::{decode_mxpc, encode_mxpc};
+
+static WORKER_SOCK_SEQ: AtomicU64 = AtomicU64::new(1);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WorkerError {
@@ -125,27 +130,81 @@ fn ack(plugin_id: &str, generation: u64, nonce: &str) -> Value {
     })
 }
 
+#[cfg(unix)]
+fn worker_sock_path(entry_id: &str, generation: u64) -> std::path::PathBuf {
+    let seq = WORKER_SOCK_SEQ.fetch_add(1, Ordering::Relaxed);
+    super::uds::private_uds_path(&format!(
+        "w{}{}{}",
+        seq % 1000,
+        entry_id.as_bytes().first().copied().unwrap_or(b'w') as char,
+        generation % 10
+    ))
+    .unwrap_or_else(|_| std::path::PathBuf::from("/tmp/mx-open.s"))
+}
+
 fn handshake_worker(
     plugin_id: &str,
     entry_id: &str,
     generation: u64,
     corrupt: bool,
 ) -> Result<(), DriverError> {
-    let issued = issue_handshake_nonce();
-    let encoded_hello = encode_mxpc(&hello(generation, &issued)).map_err(|_| DriverError::Crash)?;
-    let (decoded_hello, _) = decode_mxpc(&encoded_hello).map_err(|_| DriverError::Crash)?;
-    validate_handshake_hello(&decoded_hello, generation).map_err(|_| DriverError::Crash)?;
-    let nonce = if corrupt {
-        "bb".repeat(32)
-    } else {
-        issued.clone()
-    };
-    let encoded_ack = encode_mxpc(&ack(plugin_id, generation, &nonce)).map_err(|_| DriverError::Crash)?;
-    let (decoded_ack, _) = decode_mxpc(&encoded_ack).map_err(|_| DriverError::Crash)?;
-    validate_handshake_ack(&decoded_ack, &issued, plugin_id, generation)
-        .map_err(|_| DriverError::Crash)?;
-    let _ = entry_id;
-    Ok(())
+    #[cfg(unix)]
+    {
+        use std::thread;
+
+        use super::uds::{
+            accept_uds, bind_uds, connect_uds, read_mxpc_frame, read_mxpc_frame_timed, write_mxpc_frame,
+        };
+
+        let path = worker_sock_path(entry_id, generation);
+        let listener = bind_uds(&path).map_err(|_| DriverError::Crash)?;
+        let peer_plugin = plugin_id.to_string();
+        let peer_path = path.clone();
+        let issued = issue_handshake_nonce();
+        let peer_nonce = issued.clone();
+        let peer = thread::spawn(move || {
+            let mut stream = accept_uds(&listener).map_err(|_| ())?;
+            let received = read_mxpc_frame(&mut stream).map_err(|_| ())?;
+            validate_handshake_hello(&received, generation).map_err(|_| ())?;
+            let ack_nonce = if corrupt {
+                "bb".repeat(32)
+            } else {
+                peer_nonce
+            };
+            write_mxpc_frame(&mut stream, &ack(&peer_plugin, generation, &ack_nonce))
+                .map_err(|_| ())?;
+            let _ = std::fs::remove_file(&peer_path);
+            Ok::<(), ()>(())
+        });
+        let mut client = connect_uds(&path).map_err(|_| DriverError::Crash)?;
+        write_mxpc_frame(&mut client, &hello(generation, &issued)).map_err(|_| DriverError::Crash)?;
+        let received =
+            read_mxpc_frame_timed(&mut client, HANDSHAKE_DEADLINE).map_err(|_| DriverError::Crash)?;
+        let result = validate_handshake_ack(&received, &issued, plugin_id, generation)
+            .map_err(|_| DriverError::Crash);
+        let _ = peer.join();
+        let _ = std::fs::remove_file(&path);
+        result
+    }
+    #[cfg(not(unix))]
+    {
+        let issued = issue_handshake_nonce();
+        let encoded_hello = encode_mxpc(&hello(generation, &issued)).map_err(|_| DriverError::Crash)?;
+        let (decoded_hello, _) = decode_mxpc(&encoded_hello).map_err(|_| DriverError::Crash)?;
+        validate_handshake_hello(&decoded_hello, generation).map_err(|_| DriverError::Crash)?;
+        let nonce = if corrupt {
+            "bb".repeat(32)
+        } else {
+            issued.clone()
+        };
+        let encoded_ack =
+            encode_mxpc(&ack(plugin_id, generation, &nonce)).map_err(|_| DriverError::Crash)?;
+        let (decoded_ack, _) = decode_mxpc(&encoded_ack).map_err(|_| DriverError::Crash)?;
+        validate_handshake_ack(&decoded_ack, &issued, plugin_id, generation)
+            .map_err(|_| DriverError::Crash)?;
+        let _ = entry_id;
+        Ok(())
+    }
 }
 
 fn collect_quickjs_workers(source: &str, catalog: &mut HashSet<(String, String)>) {
@@ -433,6 +492,18 @@ mod tests {
             .isolate("com.mossx.notes", "notes-worker", 1)
             .expect("isolate");
         assert_eq!(isolate.generation, 1);
+        assert_eq!(host.driver().live_count(), 1);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn notes_worker_becomes_ready_over_private_uds() {
+        let source = include_str!("quickjs.rs");
+        assert!(source.contains("private_uds_path"));
+        assert!(source.contains("connect_uds"));
+        assert!(source.contains("read_mxpc_frame_timed"));
+        let mut host = enabled_host(QuickJsWorkerDriver::default());
+        host.activate(notes_activation_request()).expect("notes");
         assert_eq!(host.driver().live_count(), 1);
     }
 
