@@ -67,6 +67,10 @@ impl<D: EntryDriver> PluginRuntime<D> {
         fuse_and_revoke(&mut self.host, &mut self.plane, plugin_id)
     }
 
+    pub fn reset_plugin(&mut self, plugin_id: &str) -> Result<(), HostError> {
+        self.host.reset(plugin_id)
+    }
+
     pub fn open_own_store(&mut self, plugin_id: &str) -> Result<PathBuf, StorageError> {
         let ready = self
             .host
@@ -364,6 +368,39 @@ mod tests {
             runtime.activate(notes_activation_request()).unwrap_err().code,
             "fused"
         );
+        remove_path(&root);
+    }
+
+    #[test]
+    fn reset_after_fuse_restores_composed_handles() {
+        let root = unique_temp_root("runtime-fuse-reset");
+        let mut runtime = PluginRuntime::new(
+            HostConfig {
+                enabled: true,
+                ..HostConfig::default()
+            },
+            FakeDriver::default(),
+            "/fixture/workspace",
+            &root,
+        )
+        .expect("runtime");
+        let first = runtime
+            .activate(notes_activation_request())
+            .expect("first");
+        runtime.fuse_plugin("com.mossx.notes").expect("fuse");
+        runtime.reset_plugin("com.mossx.notes").expect("reset");
+        let second = runtime
+            .activate(notes_activation_request())
+            .expect("second");
+        assert!(second > first);
+        runtime
+            .query_read("com.mossx.notes", second)
+            .expect("read");
+        runtime.open_own_store("com.mossx.notes").expect("store");
+        runtime
+            .open_stream("com.mossx.notes", second, 12, "blob-v1")
+            .expect("stream");
+        assert_eq!(runtime.plane.codec(12), Some("blob-v1"));
         remove_path(&root);
     }
 }
