@@ -2938,4 +2938,32 @@ mod tests {
         assert!(runtime.plane.codec(93).is_none());
         remove_path(&root);
     }
+
+    #[test]
+    fn ready_plugin_cannot_query_a_blank_capability() {
+        let root = unique_temp_root("runtime-blank-capability");
+        let mut runtime = PluginRuntime::new(
+            HostConfig {
+                enabled: true,
+                ..HostConfig::default()
+            },
+            FakeDriver::default(),
+            "/fixture/workspace",
+            &root,
+        )
+        .expect("runtime");
+        let generation = runtime
+            .activate(notes_activation_request())
+            .expect("activate");
+        for capability in ["", "   "] {
+            assert_eq!(
+                runtime
+                    .query("com.mossx.notes", generation, capability)
+                    .unwrap_err()
+                    .code,
+                "schema"
+            );
+        }
+        remove_path(&root);
+    }
 }

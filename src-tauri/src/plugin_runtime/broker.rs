@@ -50,6 +50,9 @@ impl CapabilityBroker {
         capability: &str,
     ) -> Result<WorkspaceRead, BrokerError> {
         host.dispatch(plugin_id, generation)?;
+        if capability.trim().is_empty() {
+            return Err(err("schema", "capability is required"));
+        }
         let slot = host
             .slot(plugin_id)
             .ok_or_else(|| err("plugin-unavailable", "plugin is not loaded"))?;
@@ -131,6 +134,20 @@ mod tests {
                 .unwrap_err()
                 .code,
             "permission-denied"
+        );
+        assert_eq!(
+            broker
+                .query(&host, "com.mossx.notes", 1, "")
+                .unwrap_err()
+                .code,
+            "schema"
+        );
+        assert_eq!(
+            broker
+                .query(&host, "com.mossx.notes", 1, "   ")
+                .unwrap_err()
+                .code,
+            "schema"
         );
     }
 
