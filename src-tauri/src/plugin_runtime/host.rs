@@ -394,6 +394,40 @@ impl<D: EntryDriver> Host<D> {
         Ok(())
     }
 
+    /// 非终态中断：停掉当前 generation 的进程组并回到 Idle（可再次 activate）。
+    /// 与 `disable` 的差异仅一步——`disable` 进终态 `Disabled`，`interrupt` 回非终态 `Idle`。
+    pub fn interrupt(&mut self, plugin_id: &str, generation: u64) -> Result<(), HostError> {
+        require_plugin_id(plugin_id)?;
+        if generation == 0 {
+            return Err(err("stale-generation", "generation 0 is never a live handle"));
+        }
+        let slot = self
+            .slots
+            .get_mut(plugin_id)
+            .ok_or_else(|| err("plugin-unavailable", "plugin is not loaded"))?;
+        match slot.state {
+            SlotState::Activating => {
+                return Err(err("activation-busy", "cannot interrupt while activating"));
+            }
+            SlotState::Failed => return Err(err("failed", "plugin is failed until reset")),
+            SlotState::Fused => return Err(err("fused", "plugin is fused until reset")),
+            SlotState::Disabled => return Err(err("disabled", "plugin is disabled until reset")),
+            SlotState::Idle => return Err(err("plugin-unavailable", "plugin is idle until activate")),
+            SlotState::Ready => {}
+        }
+        if slot.generation != generation {
+            return Err(err("stale-generation", "generation is not current"));
+        }
+        let started = slot.started.clone();
+        for entry_id in started.iter().rev() {
+            self.driver.stop(plugin_id, entry_id, generation);
+        }
+        slot.started.clear();
+        slot.unit_id = None;
+        slot.state = SlotState::Idle;
+        Ok(())
+    }
+
     pub fn reset(&mut self, plugin_id: &str) -> Result<(), HostError> {
         require_plugin_id(plugin_id)?;
         let slot = self
@@ -838,5 +872,73 @@ mod tests {
                 ("com.mossx.notes".into(), "notes-ui".into(), 2),
             ]
         );
+    }
+
+    #[test]
+    fn interrupt_stops_process_group_and_returns_to_idle() {
+        let mut host = enabled_host(FakeDriver::default());
+        let generation = host.activate(notes_request()).expect("activate");
+        host.interrupt("com.mossx.notes", generation)
+            .expect("interrupt");
+        let slot = host.slot("com.mossx.notes").expect("slot");
+        assert_eq!(slot.state, SlotState::Idle);
+        assert!(slot.started.is_empty());
+        assert!(slot.unit_id.is_none());
+        assert_eq!(
+            host.driver().stopped,
+            vec![
+                ("com.mossx.notes".into(), "notes-ui".into(), 1),
+                ("com.mossx.notes".into(), "notes-worker".into(), 1),
+            ]
+        );
+        // 非终态：可再次 activate，生成新 generation。
+        let next = host.activate(notes_request()).expect("reactivate after interrupt");
+        assert_eq!(next, 2);
+        assert_eq!(host.slot("com.mossx.notes").unwrap().state, SlotState::Ready);
+    }
+
+    #[test]
+    fn interrupt_rejects_stale_or_unknown_generation() {
+        let mut host = enabled_host(FakeDriver::default());
+        host.activate(notes_request()).expect("activate");
+        assert_eq!(
+            host.interrupt("com.mossx.notes", 0).unwrap_err().code,
+            "stale-generation"
+        );
+        assert_eq!(
+            host.interrupt("com.mossx.notes", 999).unwrap_err().code,
+            "stale-generation"
+        );
+        assert_eq!(
+            host.interrupt("com.mossx.unknown", 1).unwrap_err().code,
+            "plugin-unavailable"
+        );
+        assert!(host.driver().stopped.is_empty());
+    }
+
+    #[test]
+    fn interrupt_refuses_non_ready_slot_without_stopping() {
+        let mut host = enabled_host(FakeDriver::default());
+        // 未加载（unknown）→ plugin-unavailable。
+        assert_eq!(
+            host.interrupt("com.mossx.notes", 1).unwrap_err().code,
+            "plugin-unavailable"
+        );
+        let cases = [
+            (SlotState::Idle, "plugin-unavailable"),
+            (SlotState::Activating, "activation-busy"),
+            (SlotState::Failed, "failed"),
+            (SlotState::Fused, "fused"),
+            (SlotState::Disabled, "disabled"),
+        ];
+        for (state, code) in cases {
+            host.test_force_state("com.mossx.notes", state, 1);
+            assert_eq!(
+                host.interrupt("com.mossx.notes", 1).unwrap_err().code,
+                code,
+                "{state:?}"
+            );
+        }
+        assert!(host.driver().stopped.is_empty());
     }
 }
