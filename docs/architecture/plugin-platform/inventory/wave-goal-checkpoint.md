@@ -196,13 +196,14 @@
 | 3AO conformance 缺口只盘点 | 完成 | `94e4a205a` |
 | 3AP flag-on history 调用路径单测 | 完成 | `609528662` |
 | 3AQ 产品启动链默认 off 只盘点 | 完成 | `32fb856f1` |
-| 3AR Wave 3 目标完成条件只盘点 | 完成 | 本刀 |
+| 3AR Wave 3 目标完成条件只盘点 | 完成 | `a6a51cda6` |
+| UI-1 Extensions Plugins 只读插排 | 完成 | 本刀 |
 
 ## 明确未做
 
 1. Claude / Notes **产品**切流（flag 仍默认 off）
 2. 用户数据导入
-3. Marketplace
+3. Marketplace 安装 / 远程目录 / 侧栏市场按钮
 
 ## 进度
 

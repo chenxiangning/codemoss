@@ -150,6 +150,7 @@ mod linux_startup_guard;
 mod local_usage;
 mod menu;
 mod mermaid_export;
+mod plugin_rack;
 mod plugin_runtime;
 mod native_continuation;
 mod native_history;

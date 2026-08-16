@@ -47,4 +47,10 @@ describe("extensions layout", () => {
     expect(stickyActionsRule).toContain("z-index: 90;");
     expect(stickyActionsRule).toContain("background: var(--surface-messages);");
   });
+
+  it("styles the read-only plugin rack cards", () => {
+    expect(getCssRuleBlock(".extensions-plugin-rack")).toContain("display: grid;");
+    expect(getCssRuleBlock(".extensions-plugin-rack-card")).toContain("border-radius: 10px;");
+    expect(css).not.toContain("Browse Marketplace");
+  });
 });

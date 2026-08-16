@@ -319,3 +319,90 @@
   background: var(--surface-messages);
   box-shadow: 0 16px 22px -24px color-mix(in srgb, var(--shadow-color, #000) 35%, transparent);
 }
+
+.extensions-plugin-rack {
+  display: grid;
+  gap: 20px;
+  padding-bottom: 48px;
+}
+
+.extensions-plugin-rack-header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 24px;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.extensions-plugin-rack-header h2 {
+  margin: 0 0 6px;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.extensions-plugin-rack-header p,
+.extensions-plugin-rack-footnote,
+.extensions-plugin-rack-error {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+
+.extensions-plugin-rack-host {
+  padding: 6px 10px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 999px;
+  background: var(--surface-elevated);
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.extensions-plugin-rack-list {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.extensions-plugin-rack-card {
+  display: grid;
+  gap: 16px;
+  padding: 16px 18px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  background: var(--surface-elevated);
+}
+
+.extensions-plugin-rack-card h3 {
+  margin: 0 0 4px;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.extensions-plugin-rack-id {
+  margin: 0;
+  color: var(--text-muted);
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 12px;
+}
+
+.extensions-plugin-rack-card dl {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 10px 16px;
+  margin: 0;
+}
+
+.extensions-plugin-rack-card dt {
+  color: var(--text-muted);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.extensions-plugin-rack-card dd {
+  margin: 4px 0 0;
+  font-size: 13px;
+}

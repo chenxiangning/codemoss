@@ -48,6 +48,10 @@ vi.mock("./McpsDashboardSection", () => ({
   McpsDashboardSection: () => <div data-testid="mcps-dashboard-section" />,
 }));
 
+vi.mock("./PluginRackSection", () => ({
+  PluginRackSection: () => <div data-testid="plugin-rack-section" />,
+}));
+
 function renderExtensionsView() {
   return render(<ExtensionsView activeWorkspace={null} />);
 }
@@ -125,6 +129,17 @@ describe("ExtensionsView", () => {
     expect(document.querySelector(".extensions-empty-panel")).toBeNull();
   });
 
+  it("renders the plugin rack when the Plugins tab is selected", () => {
+    renderExtensionsView();
+
+    fireEvent.click(screen.getByRole("button", { name: "Plugins" }));
+
+    expect(screen.queryByTestId("usage-dashboard-section")).toBeNull();
+    expect(screen.getByTestId("plugin-rack-section")).toBeTruthy();
+    expect(document.querySelector(".extensions-empty-panel")).toBeNull();
+    expect(screen.queryByText("Browse Marketplace")).toBeNull();
+  });
+
   it("renders a structured shadcn-style empty state", () => {
     renderExtensionsView();
 
@@ -146,6 +161,9 @@ describe("ExtensionsView", () => {
       );
       expect(Object.keys(locale.extensions.descriptions).sort()).toEqual(
         Object.keys(locale.extensions.tabs).sort(),
+      );
+      expect(Object.keys(locale.extensions.rack).sort()).toEqual(
+        Object.keys(enSidebar.extensions.rack).sort(),
       );
     }
   });

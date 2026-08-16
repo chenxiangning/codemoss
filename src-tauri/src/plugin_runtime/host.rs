@@ -179,6 +179,27 @@ pub struct Host<D> {
     inflight: u32,
 }
 
+impl<D> Host<D> {
+    pub fn enabled(&self) -> bool {
+        self.config.enabled
+    }
+
+    pub fn slot(&self, plugin_id: &str) -> Option<&PluginSlot> {
+        self.slots.get(plugin_id)
+    }
+
+    pub fn slot_state_name(state: SlotState) -> &'static str {
+        match state {
+            SlotState::Idle => "idle",
+            SlotState::Activating => "activating",
+            SlotState::Ready => "ready",
+            SlotState::Failed => "failed",
+            SlotState::Fused => "fused",
+            SlotState::Disabled => "disabled",
+        }
+    }
+}
+
 impl<D: EntryDriver> Host<D> {
     pub fn new(config: HostConfig, driver: D) -> Result<Self, HostError> {
         config.validate()?;
@@ -188,10 +209,6 @@ impl<D: EntryDriver> Host<D> {
             slots: HashMap::new(),
             inflight: 0,
         })
-    }
-
-    pub fn slot(&self, plugin_id: &str) -> Option<&PluginSlot> {
-        self.slots.get(plugin_id)
     }
 
     pub fn activate(&mut self, request: ActivationRequest) -> Result<u64, HostError> {

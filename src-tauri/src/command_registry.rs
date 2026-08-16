@@ -60,6 +60,7 @@ pub(crate) fn invoke_handler(
         crate::renderer_stability::record_renderer_heartbeat,
         crate::renderer_stability::get_renderer_stability_snapshot,
         crate::renderer_stability::get_renderer_platform_hook_support,
+        crate::plugin_rack::get_plugin_rack_snapshot,
         crate::runtime::commands::get_runtime_pool_snapshot,
         crate::runtime::commands::mutate_runtime_pool,
         crate::runtime::commands::ensure_runtime_ready,

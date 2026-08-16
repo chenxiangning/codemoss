@@ -682,3 +682,5 @@ export type {
   ThreadListResultPayload,
 } from "./tauri/session";
 export { isWebServiceRuntime } from "./tauri/runtimeMode";
+export { getPluginRackSnapshot } from "./tauri/pluginRack";
+export type { PluginRackPlug, PluginRackSnapshot } from "./tauri/pluginRack";
