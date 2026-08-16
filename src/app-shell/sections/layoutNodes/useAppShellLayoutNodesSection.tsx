@@ -12,7 +12,7 @@ import { useModuleViewShortcuts } from "../../../features/app/hooks/useModuleVie
 import { GIT_GRAPH_TAB_ID } from "../../../features/git-history/types";
 import { WorkspaceAliasPrompt } from "../../../features/workspaces/components/WorkspaceAliasPrompt";
 import { useClientUiVisibility } from "../../../features/client-ui-visibility/hooks/useClientUiVisibility";
-import { useProjectMapDataset } from "../../../features/project-map/hooks/useProjectMapDataset";
+import { useProjectMapDataset } from "@mossx/plugin-project-map/runtime";
 import {
   buildIntentCanvasContextAttachment,
   formatIntentCanvasThreadContext,

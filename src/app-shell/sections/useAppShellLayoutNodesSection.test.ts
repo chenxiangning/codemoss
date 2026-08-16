@@ -28,7 +28,7 @@ vi.mock("../../features/app/components/MainHeaderActions", () => ({
 vi.mock("../../features/app/hooks/useModuleViewShortcuts", () => ({
   useModuleViewShortcuts: () => {},
 }));
-vi.mock("../../features/project-map/hooks/useProjectMapDataset", () => ({
+vi.mock("@mossx/plugin-project-map/runtime", () => ({
   useProjectMapDataset: () => ({}),
 }));
 vi.mock("../../features/client-ui-visibility/hooks/useClientUiVisibility", () => ({

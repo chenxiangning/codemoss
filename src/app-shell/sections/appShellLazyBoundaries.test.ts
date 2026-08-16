@@ -17,7 +17,7 @@ const lazyFeatureImports = [
 
 // project-map / intent-canvas 动态 import 位于 layout feature（非 lazyViews）
 const layoutLazyImports = [
-  "../../project-map/components/ProjectMapPanel",
+  "@mossx/plugin-project-map/ui",
   "../../intent-canvas/components/IntentCanvasManager",
 ] as const;
 

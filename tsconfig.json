@@ -21,7 +21,10 @@
       "@mossx/plugin-kanban": ["./packages/plugin-kanban/src/index.ts"],
       "@mossx/plugin-notes": ["./packages/plugin-notes/src/index.ts"],
       "@mossx/plugin-notes/runtime": ["./packages/plugin-notes/src/runtime.ts"],
-      "@mossx/plugin-notes/ui": ["./packages/plugin-notes/src/ui.ts"]
+      "@mossx/plugin-notes/ui": ["./packages/plugin-notes/src/ui.ts"],
+      "@mossx/plugin-project-map": ["./packages/plugin-project-map/src/index.ts"],
+      "@mossx/plugin-project-map/runtime": ["./packages/plugin-project-map/src/runtime.ts"],
+      "@mossx/plugin-project-map/ui": ["./packages/plugin-project-map/src/ui.ts"]
     },
 
     /* Linting */

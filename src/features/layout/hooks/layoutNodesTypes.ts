@@ -1,5 +1,5 @@
 import type { DragEvent, MouseEvent, ReactNode, RefObject } from "react";
-import type { ProjectMapDatasetController } from "../../project-map";
+import type { ProjectMapDatasetController } from "@mossx/plugin-project-map/runtime";
 import type {
   IntentCanvasCodeSelectionAnchor,
   IntentCanvasDocument,

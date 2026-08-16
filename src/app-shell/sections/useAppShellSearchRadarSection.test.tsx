@@ -43,12 +43,9 @@ vi.mock("../../features/search/hooks/useUnifiedSearch", () => ({
   useUnifiedSearch: useUnifiedSearchMock,
 }));
 
-vi.mock("../../features/project-map/services/projectMapPersistence", () => ({
+vi.mock("@mossx/plugin-project-map/runtime", () => ({
   readProjectMapRelationships: readProjectMapRelationshipsMock,
   scanProjectMapRelationships: scanProjectMapRelationshipsMock,
-}));
-
-vi.mock("../../features/project-map/utils/relationshipDashboardModel", () => ({
   normalizeProjectMapRelationshipDashboardData: (response: {
     apiContracts?: unknown;
     staleSummary?: unknown;

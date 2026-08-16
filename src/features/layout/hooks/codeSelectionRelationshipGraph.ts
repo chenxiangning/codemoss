@@ -1,14 +1,14 @@
-import { readProjectMapRelationships } from "../../project-map/services/projectMapPersistence";
 import {
   getProjectMapRelationshipCallCandidate,
   normalizeProjectMapRelationshipDashboardData,
   normalizeProjectMapRelationshipReadSummary,
-} from "../../project-map/utils/relationshipDashboardModel";
+  readProjectMapRelationships,
+} from "@mossx/plugin-project-map/runtime";
 import type {
   ProjectMapFileRelation,
   ProjectMapScannedFile,
   ProjectMapStorageLocation,
-} from "../../project-map/types";
+} from "@mossx/plugin-project-map/runtime";
 import {
   createProjectMapRelationshipEdgeSnapshot,
   getProjectMapRelationshipEdgeDisplayLabel,

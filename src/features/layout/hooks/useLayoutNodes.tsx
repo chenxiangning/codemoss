@@ -50,8 +50,8 @@ import type {
 import { pushErrorToast } from "../../../services/toasts";
 import {
   buildGitStatusProjectMapImpactInput,
-  type ProjectMapImpactInput,
-} from "../../project-map/utils/impactSources";
+} from "@mossx/plugin-project-map/runtime";
+import type { ProjectMapImpactInput } from "@mossx/plugin-project-map/runtime";
 import { useTaskRunStore } from "../../tasks/hooks/useTaskRunStore";
 import { WorkspaceNoteCardPanel } from "@mossx/plugin-notes/ui";
 import type {
@@ -158,7 +158,7 @@ const BrowserDock = lazy(() =>
   })),
 );
 const ProjectMapPanel = lazy(() =>
-  import("../../project-map/components/ProjectMapPanel").then((m) => ({
+  import("@mossx/plugin-project-map/ui").then((m) => ({
     default: m.ProjectMapPanel,
   })),
 );

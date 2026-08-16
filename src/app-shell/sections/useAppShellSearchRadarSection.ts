@@ -17,10 +17,11 @@ import { loadHistoryWithImportance } from "../../features/composer/hooks/useInpu
 import type { HistoryItem } from "../../features/composer/hooks/useInputHistoryStore";
 import type { KanbanTask } from "@mossx/plugin-kanban";
 import {
+  normalizeProjectMapRelationshipDashboardData,
   readProjectMapRelationships,
   scanProjectMapRelationships,
-} from "../../features/project-map/services/projectMapPersistence";
-import { normalizeProjectMapRelationshipDashboardData } from "../../features/project-map/utils/relationshipDashboardModel";
+} from "@mossx/plugin-project-map/runtime";
+import type { ProjectMapApiEndpoint } from "@mossx/plugin-project-map/runtime";
 import { useUnifiedSearch } from "../../features/search/hooks/useUnifiedSearch";
 import type {
   SearchContentFilter,
@@ -283,7 +284,7 @@ export function useAppShellSearchRadarSection({
   const apiSnapshotsByWorkspaceRef = useRef(apiSnapshotsByWorkspace);
   apiSnapshotsByWorkspaceRef.current = apiSnapshotsByWorkspace;
   const apiHydrationInFlightByWorkspaceRef = useRef(
-    new Map<string, Promise<import("../../features/project-map/types").ProjectMapApiEndpoint[]>>(),
+    new Map<string, Promise<ProjectMapApiEndpoint[]>>(),
   );
   const backgroundRenderGatingEnabled = isBackgroundRenderGatingEnabled();
   // Session radar 完成预览依赖 threadItems，不能在搜索关闭时清空 deferred 表。

@@ -65,6 +65,18 @@ export default defineConfig(({ command }) => ({
         find: /^@mossx\/plugin-notes$/,
         replacement: path.resolve(__dirname, "./packages/plugin-notes/src/index.ts"),
       },
+      {
+        find: /^@mossx\/plugin-project-map\/runtime$/,
+        replacement: path.resolve(__dirname, "./packages/plugin-project-map/src/runtime.ts"),
+      },
+      {
+        find: /^@mossx\/plugin-project-map\/ui$/,
+        replacement: path.resolve(__dirname, "./packages/plugin-project-map/src/ui.ts"),
+      },
+      {
+        find: /^@mossx\/plugin-project-map$/,
+        replacement: path.resolve(__dirname, "./packages/plugin-project-map/src/index.ts"),
+      },
       { find: "@", replacement: path.resolve(__dirname, "./src") },
     ],
     dedupe: [
