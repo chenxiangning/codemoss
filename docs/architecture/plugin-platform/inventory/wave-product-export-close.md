@@ -41,6 +41,7 @@
 | `@mossx/plugin-client-documentation` | AppShell / router | `src/features/client-documentation` |
 | `@mossx/plugin-runtime-log` | App 控制器 / dock | `src/features/runtime-log` |
 | `@mossx/plugin-prompt-distill` | Messages | `src/features/prompt-distill` |
+| `@mossx/plugin-operation-facts` | Status / Composer / session-activity | `src/features/operation-facts` |
 
 ## 仍未做
 

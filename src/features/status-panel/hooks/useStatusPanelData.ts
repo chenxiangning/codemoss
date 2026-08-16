@@ -15,7 +15,7 @@ import {
 import {
   extractCommandSummaries,
   extractFileChangeSummaries,
-} from "../../operation-facts/operationFacts";
+} from "@mossx/plugin-operation-facts/runtime";
 import {
   normalizeCollabAgentStatusMap,
   parseCollabFallbackLink,

@@ -3,7 +3,7 @@ import type { ClaudeRewindPreviewState } from "../components/ClaudeRewindConfirm
 import {
   extractFileChangeSummaries,
   type OperationFileChangeSummary,
-} from "../../operation-facts/operationFacts";
+} from "@mossx/plugin-operation-facts/runtime";
 
 export type RewindFileChangeStatus = OperationFileChangeSummary["status"];
 

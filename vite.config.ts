@@ -409,6 +409,14 @@ export default defineConfig(({ command }) => ({
         find: /^@mossx\/plugin-prompt-distill$/,
         replacement: path.resolve(__dirname, "./packages/plugin-prompt-distill/src/index.ts"),
       },
+      {
+        find: /^@mossx\/plugin-operation-facts\/runtime$/,
+        replacement: path.resolve(__dirname, "./packages/plugin-operation-facts/src/runtime.ts"),
+      },
+      {
+        find: /^@mossx\/plugin-operation-facts$/,
+        replacement: path.resolve(__dirname, "./packages/plugin-operation-facts/src/index.ts"),
+      },
       { find: "@", replacement: path.resolve(__dirname, "./src") },
     ],
     dedupe: [

@@ -7,7 +7,7 @@ import {
 import { parseDiff, type ParsedDiffLine } from "../../../utils/diff";
 import { languageFromPath } from "../../../utils/syntax";
 import FileIcon from "../../../components/FileIcon";
-import type { OperationFileChangeSummary } from "../../operation-facts/operationFacts";
+import type { OperationFileChangeSummary } from "@mossx/plugin-operation-facts/runtime";
 import { DiffBlock } from "../../git/components/DiffBlock";
 import type { RewindMode } from "../../threads/utils/rewindMode";
 

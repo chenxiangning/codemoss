@@ -12,7 +12,7 @@ import {
 import {
   extractFileChangeEventDetails,
   extractCommandSummaries,
-} from "../../operation-facts/operationFacts";
+} from "@mossx/plugin-operation-facts/runtime";
 import {
   findPrimaryGitMarkerLine,
   parseLineMarkersFromDiff,
