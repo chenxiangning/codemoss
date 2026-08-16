@@ -43,6 +43,7 @@
 | `@mossx/plugin-prompt-distill` | Messages | `src/features/prompt-distill` |
 | `@mossx/plugin-operation-facts` | Status / Composer / session-activity | `src/features/operation-facts` |
 | `@mossx/plugin-about` | router | `src/features/about` |
+| `@mossx/plugin-shared` | Settings / Workspaces | `src/features/shared` |
 
 ## 仍未做
 

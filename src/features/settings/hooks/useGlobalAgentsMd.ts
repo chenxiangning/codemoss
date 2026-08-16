@@ -1,5 +1,5 @@
 import { readGlobalAgentsMd, writeGlobalAgentsMd } from "../../../services/tauri";
-import { useFileEditor } from "../../shared/hooks/useFileEditor";
+import { useFileEditor } from "@mossx/plugin-shared/runtime";
 
 export function useGlobalAgentsMd() {
   return useFileEditor({

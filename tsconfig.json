@@ -111,7 +111,10 @@
       "@mossx/plugin-operation-facts": ["./packages/plugin-operation-facts/src/index.ts"],
       "@mossx/plugin-operation-facts/runtime": ["./packages/plugin-operation-facts/src/runtime.ts"],
       "@mossx/plugin-about": ["./packages/plugin-about/src/index.ts"],
-      "@mossx/plugin-about/ui": ["./packages/plugin-about/src/ui.ts"]
+      "@mossx/plugin-about/ui": ["./packages/plugin-about/src/ui.ts"],
+      "@mossx/plugin-shared": ["./packages/plugin-shared/src/index.ts"],
+      "@mossx/plugin-shared/runtime": ["./packages/plugin-shared/src/runtime.ts"],
+      "@mossx/plugin-shared/ui": ["./packages/plugin-shared/src/ui.ts"]
     },
 
     /* Linting */

@@ -1,5 +1,5 @@
 import { readGlobalCodexConfigToml, writeGlobalCodexConfigToml } from "../../../services/tauri";
-import { useFileEditor } from "../../shared/hooks/useFileEditor";
+import { useFileEditor } from "@mossx/plugin-shared/runtime";
 
 export function useGlobalCodexConfigToml() {
   return useFileEditor({
