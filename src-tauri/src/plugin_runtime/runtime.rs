@@ -459,6 +459,52 @@ mod tests {
     }
 
     #[test]
+    fn uninstalled_notes_cannot_use_composed_handles_or_reactivate() {
+        use std::path::Path;
+
+        let root = unique_temp_root("runtime-notes-uninstall");
+        let mut runtime = PluginRuntime::new(
+            HostConfig {
+                enabled: true,
+                ..HostConfig::default()
+            },
+            FakeDriver::default(),
+            "/fixture/workspace",
+            &root,
+        )
+        .expect("runtime");
+        let generation = runtime
+            .activate(notes_activation_request())
+            .expect("activate");
+        runtime.open_own_store("com.mossx.notes").expect("store");
+        runtime
+            .open_stream("com.mossx.notes", generation, 9, "blob-v1")
+            .expect("stream");
+        runtime.uninstall_plugin("com.mossx.notes").expect("uninstall");
+        assert_eq!(
+            runtime.host.slot("com.mossx.notes").unwrap().state,
+            SlotState::Uninstalled
+        );
+        // 卸载后三类 composed handles 全部失效。
+        assert!(runtime.query_read("com.mossx.notes", generation).is_err());
+        assert_eq!(
+            runtime.open_own_store("com.mossx.notes").unwrap_err().code,
+            "plugin-unavailable"
+        );
+        assert!(runtime
+            .open_stream("com.mossx.notes", generation, 10, "blob-v1")
+            .is_err());
+        assert!(runtime.plane.codec(9).is_none());
+        // 不可恢复终态：activate 返回 uninstalled。
+        assert_eq!(
+            runtime.activate(notes_activation_request()).unwrap_err().code,
+            "uninstalled"
+        );
+        assert!(Path::new("src/note_cards.rs").exists());
+        remove_path(&root);
+    }
+
+    #[test]
     fn reset_after_fuse_restores_composed_handles() {
         let root = unique_temp_root("runtime-fuse-reset");
         let mut runtime = PluginRuntime::new(
