@@ -766,4 +766,37 @@ mod tests {
         assert_eq!(host.driver().live_count(), 0);
         let _ = std::fs::remove_file(binary);
     }
+
+    #[test]
+    fn interrupt_stops_a_real_peer_process_group_and_returns_to_idle() {
+        // 端到端验证：真实 driver spawn peer → activate Ready → interrupt 非终态
+        // 杀真实进程组（live_count 归零）→ 回 Idle → 可再次 activate 生成新 generation。
+        let binary = compile_peer("interrupt");
+        let mut host = enabled_host(restricted_process_driver_for(
+            Some(binary.to_str().expect("utf8 path")),
+        ));
+        let generation = host
+            .activate(claude_activation_request())
+            .expect("activate");
+        assert_eq!(
+            host.slot("com.mossx.engine.claude").unwrap().state,
+            SlotState::Ready
+        );
+        assert_eq!(host.driver().live_count(), 1);
+        host.interrupt("com.mossx.engine.claude", generation)
+            .expect("interrupt");
+        assert_eq!(host.driver().live_count(), 0);
+        let slot = host.slot("com.mossx.engine.claude").expect("slot");
+        assert_eq!(slot.state, SlotState::Idle);
+        assert!(slot.started.is_empty());
+        // 非终态：可再次 activate 并再次真实 spawn。
+        let next = host
+            .activate(claude_activation_request())
+            .expect("reactivate after interrupt");
+        assert_eq!(next, generation + 1);
+        assert_eq!(host.driver().live_count(), 1);
+        host.disable("com.mossx.engine.claude").expect("disable");
+        assert_eq!(host.driver().live_count(), 0);
+        let _ = std::fs::remove_file(binary);
+    }
 }
