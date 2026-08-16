@@ -26,10 +26,10 @@ vi.mock("@/services/tauri", () => ({
 vi.mock("@/services/events", () => ({
   subscribeCliInstallerEvents: vi.fn(() => vi.fn()),
 }));
-vi.mock("@/features/computer-use/constants", () => ({
+vi.mock("@mossx/plugin-computer-use/runtime", () => ({
   ENABLE_COMPUTER_USE_BRIDGE: false,
 }));
-vi.mock("@/features/computer-use/components/ComputerUseStatusCard", () => ({
+vi.mock("@mossx/plugin-computer-use/ui", () => ({
   ComputerUseStatusCard: () => null,
 }));
 

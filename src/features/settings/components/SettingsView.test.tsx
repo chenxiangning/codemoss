@@ -58,7 +58,7 @@ vi.mock("../../../services/toasts", () => ({
   pushErrorToast: vi.fn(),
 }));
 
-vi.mock("@/features/computer-use/components/ComputerUseStatusCard", () => ({
+vi.mock("@mossx/plugin-computer-use/ui", () => ({
   ComputerUseStatusCard: () => <div data-testid="computer-use-status-card" />,
 }));
 

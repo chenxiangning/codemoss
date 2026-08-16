@@ -349,6 +349,18 @@ export default defineConfig(({ command }) => ({
         find: /^@mossx\/plugin-dictation$/,
         replacement: path.resolve(__dirname, "./packages/plugin-dictation/src/index.ts"),
       },
+      {
+        find: /^@mossx\/plugin-computer-use\/runtime$/,
+        replacement: path.resolve(__dirname, "./packages/plugin-computer-use/src/runtime.ts"),
+      },
+      {
+        find: /^@mossx\/plugin-computer-use\/ui$/,
+        replacement: path.resolve(__dirname, "./packages/plugin-computer-use/src/ui.ts"),
+      },
+      {
+        find: /^@mossx\/plugin-computer-use$/,
+        replacement: path.resolve(__dirname, "./packages/plugin-computer-use/src/index.ts"),
+      },
       { find: "@", replacement: path.resolve(__dirname, "./src") },
     ],
     dedupe: [

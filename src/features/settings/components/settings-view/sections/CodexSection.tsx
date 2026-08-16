@@ -10,8 +10,8 @@ import type {
   WorkspaceSettings,
 } from "@/types";
 import { previewCodexLaunchProfile } from "@/services/tauri";
-import { ComputerUseStatusCard } from "@/features/computer-use/components/ComputerUseStatusCard";
-import { ENABLE_COMPUTER_USE_BRIDGE } from "@/features/computer-use/constants";
+import { ENABLE_COMPUTER_USE_BRIDGE } from "@mossx/plugin-computer-use/runtime";
+import { ComputerUseStatusCard } from "@mossx/plugin-computer-use/ui";
 import {
   resolveInstallerAction,
   useCliInstallLifecycle,

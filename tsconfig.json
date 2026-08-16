@@ -92,7 +92,10 @@
       "@mossx/plugin-subagent-ui/ui": ["./packages/plugin-subagent-ui/src/ui.ts"],
       "@mossx/plugin-dictation": ["./packages/plugin-dictation/src/index.ts"],
       "@mossx/plugin-dictation/runtime": ["./packages/plugin-dictation/src/runtime.ts"],
-      "@mossx/plugin-dictation/ui": ["./packages/plugin-dictation/src/ui.ts"]
+      "@mossx/plugin-dictation/ui": ["./packages/plugin-dictation/src/ui.ts"],
+      "@mossx/plugin-computer-use": ["./packages/plugin-computer-use/src/index.ts"],
+      "@mossx/plugin-computer-use/runtime": ["./packages/plugin-computer-use/src/runtime.ts"],
+      "@mossx/plugin-computer-use/ui": ["./packages/plugin-computer-use/src/ui.ts"]
     },
 
     /* Linting */
