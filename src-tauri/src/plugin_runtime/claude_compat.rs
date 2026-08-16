@@ -362,6 +362,35 @@ mod tests {
     }
 
     #[test]
+    fn transitional_package_manifest_shares_identity_with_fixture() {
+        let fixture: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../packages/plugin-contract/fixtures/valid/claude-engine.json"
+        ))
+        .expect("3B fixture");
+        let package: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../packages/plugin-engine-claude/.mossx-plugin/plugin.json"
+        ))
+        .expect("3AK package");
+        for key in [
+            "pluginId",
+            "version",
+            "entries",
+            "activationUnits",
+            "contributions",
+            "capabilities",
+            "compatibility",
+            "budgets",
+        ] {
+            assert_eq!(package.get(key), fixture.get(key), "{key}");
+        }
+        assert_eq!(package["pluginId"], "com.mossx.engine.claude");
+        assert_ne!(package.get("description"), fixture.get("description"));
+        let boot = include_str!("boot.rs");
+        assert!(!boot.contains("plugin-engine-claude"));
+        assert!(std::path::Path::new("src/engine/claude.rs").exists());
+    }
+
+    #[test]
     fn flag_defaults_to_off() {
         assert!(!claude_compat_facade_enabled_from(None));
         assert!(!claude_compat_facade_enabled_from(Some(OsStr::new("0"))));
