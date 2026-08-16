@@ -721,4 +721,23 @@ mod tests {
         assert_eq!(driver.executable.to_string_lossy(), "/path/to/claude");
         assert!(driver.handshake, "real path must enable handshake");
     }
+
+    #[test]
+    fn restricted_process_driver_for_spawns_and_kills_a_real_peer() {
+        // 端到端验证：helper 解析出的真实 driver 能真实 spawn peer、
+        // 完成 activate → Ready，并在 disable 后真实杀进程（live_count 归零）。
+        let binary = compile_peer("from-helper");
+        let mut host = enabled_host(restricted_process_driver_for(
+            Some(binary.to_str().expect("utf8 path")),
+        ));
+        host.activate(claude_activation_request()).expect("activate");
+        assert_eq!(
+            host.slot("com.mossx.engine.claude").unwrap().state,
+            SlotState::Ready
+        );
+        assert_eq!(host.driver().live_count(), 1);
+        host.disable("com.mossx.engine.claude").expect("disable");
+        assert_eq!(host.driver().live_count(), 0);
+        let _ = std::fs::remove_file(binary);
+    }
 }
