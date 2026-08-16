@@ -22,13 +22,9 @@ vi.mock('./ResizeHandles.js', () => ({
   ResizeHandles: () => null,
 }));
 
-vi.mock('../../../curated-skills', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../../../curated-skills')>();
-  return {
-    ...actual,
-    CuratedSkillIndicator: () => null,
-  };
-});
+vi.mock('@mossx/plugin-skills/ui', () => ({
+  CuratedSkillIndicator: () => null,
+}));
 
 import { ChatInputBox } from './ChatInputBox.js';
 

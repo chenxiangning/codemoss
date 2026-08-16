@@ -8,7 +8,7 @@ import { useGitRepoScan } from "../../features/git/hooks/useGitRepoScan";
 import { useAutoExitEmptyDiff } from "../../features/git/hooks/useAutoExitEmptyDiff";
 import { useModels } from "@mossx/plugin-models/runtime";
 import { useCollaborationModes } from "../../features/collaboration/hooks/useCollaborationModes";
-import { useSkills } from "../../features/skills/hooks/useSkills";
+import { useSkills } from "@mossx/plugin-skills/runtime";
 import { useCustomCommands } from "../../features/commands/hooks/useCustomCommands";
 import { useCustomPrompts } from "../../features/prompts/hooks/useCustomPrompts";
 import { useWorkspaceFiles } from "../../features/workspaces/hooks/useWorkspaceFiles";

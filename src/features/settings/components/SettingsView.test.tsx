@@ -62,11 +62,11 @@ vi.mock("@/features/computer-use/components/ComputerUseStatusCard", () => ({
   ComputerUseStatusCard: () => <div data-testid="computer-use-status-card" />,
 }));
 
-vi.mock("../../curated-skills/components/CuratedSection", () => ({
+vi.mock("@mossx/plugin-skills/ui", () => ({
   CuratedSection: () => <div data-testid="curated-section-stub">Mock Curated Section</div>,
 }));
 
-vi.mock("../../curated-skills/hooks/useCuratedSkills", () => ({
+vi.mock("@mossx/plugin-skills/runtime", () => ({
   useCuratedSkills: () => ({
     skills: [],
     loading: false,

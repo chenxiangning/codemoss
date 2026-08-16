@@ -27,7 +27,7 @@ import { ComposerReadinessBar } from './ComposerReadinessBar.js';
 import { ContextBar } from './ContextBar.js';
 import { ResizeHandles } from './ResizeHandles.js';
 import { shouldSkipComposerShellFocus } from './utils/shouldSkipComposerShellFocus.js';
-import { CuratedSkillIndicator } from '../../../curated-skills';
+import { CuratedSkillIndicator } from '@mossx/plugin-skills/ui';
 import {
   useCompletionDropdown,
   useCompletionTriggerDetection,

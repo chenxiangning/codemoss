@@ -5,7 +5,7 @@ import { buildNoteBlock } from "@mossx/plugin-notes/runtime";
 import {
   classifyManagedInstructionAttribution,
   normalizeManagedInstructionSource,
-} from "../../skills/utils/managedInstructionSource";
+} from "@mossx/plugin-skills/runtime";
 import type {
   ContextLedgerAttributionConfidence,
   ContextLedgerBlock,

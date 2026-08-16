@@ -18,7 +18,7 @@ import {
   isBatchGovernableBlock,
 } from "../utils/contextLedgerGovernance";
 import { formatContextLedgerInspectionMarkdown } from "../utils/contextLedgerInspectionMarkdown";
-import { normalizeManagedInstructionSource } from "../../skills/utils/managedInstructionSource";
+import { normalizeManagedInstructionSource } from "@mossx/plugin-skills/runtime";
 
 type ContextLedgerPanelProps = {
   projection: ContextLedgerProjection;

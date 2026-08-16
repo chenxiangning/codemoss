@@ -12,7 +12,7 @@ import {
   setPerfDiagnosticsEnabled,
 } from "@/services/perfBaseline/perfDiagnosticsController";
 import { buildDiagnosticsReportText } from "@/services/perfBaseline/diagnosticsReport";
-import { CuratedSection } from "../../../../curated-skills";
+import { CuratedSection } from "@mossx/plugin-skills/ui";
 import { HistoryCompletionSettings } from "../../HistoryCompletionSettings";
 import { SessionRadarHistoryManagementSection } from "../../SessionRadarHistoryManagementSection";
 import type { AppSettings } from "../../../../../types";

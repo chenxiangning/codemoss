@@ -34,7 +34,7 @@ vi.mock("../../HistoryCompletionSettings", () => ({
   HistoryCompletionSettings: () => <div data-testid="history-completion-settings" />,
 }));
 
-vi.mock("../../../../curated-skills", () => ({
+vi.mock("@mossx/plugin-skills/ui", () => ({
   CuratedSection: () => <div data-testid="curated-section-stub">Mock Curated Section</div>,
 }));
 

@@ -3,26 +3,22 @@ import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 // Mock the curated indicator to expose a marker we can query in tests.
-vi.mock('../../../curated-skills', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../../../curated-skills')>();
-  return {
-    ...actual,
-    CuratedSkillIndicator: (props: { onOpenSkillsSettings?: () => void }) => (
-      <div
-        className="curated-indicator"
-        data-testid="curated-indicator"
-        data-has-open-handler={props.onOpenSkillsSettings ? 'yes' : 'no'}
-      >
-        <button className="curated-indicator-chip" type="button">
-          <span className="curated-indicator-chip-icon" />
-          <span className="curated-indicator-chip-name">Lazy senior dev</span>
-        </button>
-      </div>
-    ),
-  };
-});
+vi.mock('@mossx/plugin-skills/ui', () => ({
+  CuratedSkillIndicator: (props: { onOpenSkillsSettings?: () => void }) => (
+    <div
+      className="curated-indicator"
+      data-testid="curated-indicator"
+      data-has-open-handler={props.onOpenSkillsSettings ? 'yes' : 'no'}
+    >
+      <button className="curated-indicator-chip" type="button">
+        <span className="curated-indicator-chip-icon" />
+        <span className="curated-indicator-chip-name">Lazy senior dev</span>
+      </button>
+    </div>
+  ),
+}));
 
-import { CuratedSkillIndicator } from '../../../curated-skills';
+import { CuratedSkillIndicator } from '@mossx/plugin-skills/ui';
 
 // A minimal stub that mirrors the header layout: the indicator lives in
 // the readiness bar's right accessory slot so it stays on the title row.

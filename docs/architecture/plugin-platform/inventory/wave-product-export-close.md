@@ -21,6 +21,7 @@
 | `@mossx/plugin-terminal` | AppShell / 布局 / launch script / vendors | `src/features/terminal` |
 | `@mossx/plugin-vendors` | AppShell / Settings / Composer / shared-session | `src/features/vendors` |
 | `@mossx/plugin-models` | AppShell / Composer / Settings / Vendors / Engine | `src/features/models` |
+| `@mossx/plugin-skills` | AppShell / Composer / Settings / Context Ledger | `src/features/skills` + `curated-skills` |
 
 ## 仍未做
 

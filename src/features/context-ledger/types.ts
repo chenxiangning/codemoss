@@ -2,7 +2,7 @@ import type { NoteCardPreviewAttachment } from "../../services/tauri";
 import type { ContextSelectionChip, DualContextUsageViewModel } from "../composer/components/ChatInputBox/types";
 import type { CodeAnnotationSelection } from "../code-annotations/types";
 import type { MemoryContextInjectionMode, EngineType, ThreadTokenUsage } from "../../types";
-import type { ManagedInstructionAttributionKind } from "../skills/utils/managedInstructionSource";
+import type { ManagedInstructionAttributionKind } from "@mossx/plugin-skills/runtime";
 
 export type ContextLedgerGroupKind =
   | "recent_turns"

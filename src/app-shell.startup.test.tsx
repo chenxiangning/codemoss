@@ -645,7 +645,7 @@ vi.mock("./app-shell-parts/useThreadScopedCollaborationMode", () => ({
   }),
 }));
 
-vi.mock("./features/skills/hooks/useSkills", () => ({
+vi.mock("@mossx/plugin-skills/runtime", () => ({
   useSkills: () => ({
     skills: [],
   }),

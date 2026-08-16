@@ -24,13 +24,9 @@ vi.mock('./ResizeHandles.js', () => ({
 // indicator itself is covered by its own unit tests; for the undo /
 // redo + IME smoke tests we only need ChatInputBox's local state
 // machine to run, so the indicator is a no-op here.
-vi.mock('../../../curated-skills', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../../../curated-skills')>();
-  return {
-    ...actual,
-    CuratedSkillIndicator: () => null,
-  };
-});
+vi.mock('@mossx/plugin-skills/ui', () => ({
+  CuratedSkillIndicator: () => null,
+}));
 
 import { ChatInputBox } from './ChatInputBox.js';
 import { resolveShortcutPlatform } from './utils/undoRedoShortcut.js';
