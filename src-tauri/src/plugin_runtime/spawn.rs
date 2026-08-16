@@ -827,4 +827,74 @@ mod tests {
         assert_eq!(host.driver().live_count(), 0);
         let _ = std::fs::remove_file(binary);
     }
+
+    #[test]
+    fn runtime_uninstall_stops_real_peer_and_revokes_composed_handles() {
+        // 最完整端到端闭环：真实 peer 进程 + 完整组合（host + broker + plane + storage），
+        // uninstall 杀真实进程组 + 撤销三类 composed handles + 进不可恢复终态。
+        use crate::plugin_runtime::disk_storage::{remove_path, unique_temp_root};
+        use crate::plugin_runtime::runtime::PluginRuntime;
+
+        let binary = compile_peer("runtime-uninstall");
+        let root = unique_temp_root("spawn-runtime-uninstall");
+        let mut runtime = PluginRuntime::new(
+            HostConfig {
+                enabled: true,
+                ..HostConfig::default()
+            },
+            restricted_process_driver_for(Some(binary.to_str().expect("utf8 path"))),
+            "/fixture/workspace",
+            &root,
+        )
+        .expect("runtime");
+        let generation = runtime
+            .activate(claude_activation_request())
+            .expect("activate");
+        assert_eq!(
+            runtime.host.slot("com.mossx.engine.claude").unwrap().state,
+            SlotState::Ready
+        );
+        assert_eq!(runtime.host.driver().live_count(), 1);
+        runtime
+            .open_own_store("com.mossx.engine.claude")
+            .expect("store");
+        runtime
+            .open_stream("com.mossx.engine.claude", generation, 11, "blob-v1")
+            .expect("stream");
+        runtime
+            .uninstall_plugin("com.mossx.engine.claude")
+            .expect("uninstall");
+        // 真实进程组已停。
+        assert_eq!(runtime.host.driver().live_count(), 0);
+        assert_eq!(
+            runtime.host.slot("com.mossx.engine.claude").unwrap().state,
+            SlotState::Uninstalled
+        );
+        // 三类 composed handles 全部失效。
+        assert!(runtime
+            .query_read("com.mossx.engine.claude", generation)
+            .is_err());
+        assert_eq!(
+            runtime
+                .open_own_store("com.mossx.engine.claude")
+                .unwrap_err()
+                .code,
+            "plugin-unavailable"
+        );
+        assert!(runtime
+            .open_stream("com.mossx.engine.claude", generation, 12, "blob-v1")
+            .is_err());
+        assert!(runtime.plane.codec(11).is_none());
+        // 不可恢复：activate 拒绝，进程保持归零。
+        assert_eq!(
+            runtime
+                .activate(claude_activation_request())
+                .unwrap_err()
+                .code,
+            "uninstalled"
+        );
+        assert_eq!(runtime.host.driver().live_count(), 0);
+        let _ = std::fs::remove_file(binary);
+        remove_path(&root);
+    }
 }
