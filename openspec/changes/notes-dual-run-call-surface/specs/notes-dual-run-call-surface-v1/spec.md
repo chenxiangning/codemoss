@@ -2,15 +2,15 @@
 
 ## ADDED Requirements
 
-### Requirement: Notes backend MUST delegate to Core across all seven commands
+### Requirement: Notes facade MUST delegate to Core across all seven commands
 
-`NotesBackend` trait MUST 覆盖 7 条 `note_card_*` 命令的 delegate 面（list / get / create / update / archive / restore / delete），`NotesCompatAdapter` MUST 持有 `Arc<dyn NotesBackend>` 且 `owner()` 恒为 `NotesCompatOwner::CoreNotes`。生产路径 MUST 注入 Core backend（包装 `note_cards.rs` 现有函数），测试路径可用内存 backend。
+`note_cards.rs` MUST 把 7 条命令的 Core 逻辑抽成 `pub(crate)` 内部函数（`note_card_list_core` 等），`NotesCompatAdapter` MUST 提供 7 个 delegate 方法直接调这些内部函数，且 `owner()` 恒为 `NotesCompatOwner::CoreNotes`。delegate MUST NOT 调命令入口（避免递归），MUST NOT 引入第二个实现。
 
 #### Scenario: the facade exposes a single Core owner across seven commands
 
 - **WHEN** 构造 `NotesCompatAdapter`
 - **THEN** `owner()` MUST 为 `NotesCompatOwner::CoreNotes`
-- **AND** `NotesBackend` trait MUST 声明 list / get / create / update / archive / restore / delete 七个方法
+- **AND** facade MUST 提供 list / get / create / update / archive / restore / delete 七个 delegate 方法，各自调对应 `*_core` 内部函数
 
 ### Requirement: note_card commands MUST route through a default-off facade flag
 

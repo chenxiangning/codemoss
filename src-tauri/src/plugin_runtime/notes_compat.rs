@@ -94,6 +94,32 @@ impl NotesCompatAdapter {
     pub fn list(&self, workspace_id: &str) -> Vec<NoteSummary> {
         self.backend.list(workspace_id)
     }
+
+    /// 4H 调用面：单 owner Core 门面，delegate 到 `note_cards.rs` 内部函数。
+    pub fn core() -> Self {
+        Self::wrapping(Arc::new(MemoryNotesBackend::default()))
+    }
+
+    pub fn list_notes(
+        &self,
+        workspace_id: String,
+        workspace_name: Option<String>,
+        workspace_path: Option<String>,
+        archived: bool,
+        query: Option<String>,
+        page: Option<usize>,
+        page_size: Option<usize>,
+    ) -> Result<crate::note_cards::WorkspaceNoteCardListResult, String> {
+        crate::note_cards::note_card_list_core(
+            workspace_id,
+            workspace_name,
+            workspace_path,
+            archived,
+            query,
+            page,
+            page_size,
+        )
+    }
 }
 
 #[cfg(test)]
@@ -139,5 +165,12 @@ mod tests {
         assert!(!NOTES_COMMAND_IDS.is_empty());
         let adapter = NotesCompatAdapter::wrapping(Arc::new(MemoryNotesBackend::default()));
         assert_eq!(adapter.list("ws-empty").len(), 0);
+    }
+
+    #[test]
+    fn core_facade_exposes_a_single_core_owner() {
+        let adapter = NotesCompatAdapter::core();
+        assert_eq!(adapter.owner(), NotesCompatOwner::CoreNotes);
+        assert_eq!(adapter.plugin_id(), NOTES_PLUGIN_ID);
     }
 }

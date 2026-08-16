@@ -1139,8 +1139,7 @@ fn read_collection_summaries(
     Ok(items)
 }
 
-#[tauri::command]
-pub(crate) fn note_card_list(
+pub(crate) fn note_card_list_core(
     workspace_id: String,
     workspace_name: Option<String>,
     workspace_path: Option<String>,
@@ -1187,6 +1186,38 @@ pub(crate) fn note_card_list(
             total,
         })
     })
+}
+
+#[tauri::command]
+pub(crate) fn note_card_list(
+    workspace_id: String,
+    workspace_name: Option<String>,
+    workspace_path: Option<String>,
+    archived: bool,
+    query: Option<String>,
+    page: Option<usize>,
+    page_size: Option<usize>,
+) -> Result<WorkspaceNoteCardListResult, String> {
+    if crate::plugin_runtime::notes_compat::notes_compat_facade_enabled() {
+        return crate::plugin_runtime::notes_compat::NotesCompatAdapter::core().list_notes(
+            workspace_id,
+            workspace_name,
+            workspace_path,
+            archived,
+            query,
+            page,
+            page_size,
+        );
+    }
+    note_card_list_core(
+        workspace_id,
+        workspace_name,
+        workspace_path,
+        archived,
+        query,
+        page,
+        page_size,
+    )
 }
 
 #[tauri::command]
