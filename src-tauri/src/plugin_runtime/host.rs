@@ -774,7 +774,9 @@ mod tests {
         for plugin_id in ["", "   "] {
             assert_eq!(host.fuse(plugin_id).unwrap_err().code, "schema");
             assert_eq!(host.disable(plugin_id).unwrap_err().code, "schema");
+            assert_eq!(host.uninstall(plugin_id).unwrap_err().code, "schema");
             assert_eq!(host.reset(plugin_id).unwrap_err().code, "schema");
+            assert_eq!(host.interrupt(plugin_id, 1).unwrap_err().code, "schema");
         }
         assert_eq!(
             host.fuse("com.mossx.notes").unwrap_err().code,
@@ -785,7 +787,15 @@ mod tests {
             "plugin-unavailable"
         );
         assert_eq!(
+            host.uninstall("com.mossx.notes").unwrap_err().code,
+            "plugin-unavailable"
+        );
+        assert_eq!(
             host.reset("com.mossx.notes").unwrap_err().code,
+            "plugin-unavailable"
+        );
+        assert_eq!(
+            host.interrupt("com.mossx.notes", 1).unwrap_err().code,
             "plugin-unavailable"
         );
         assert!(host.slot("").is_none());
