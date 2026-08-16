@@ -227,6 +227,22 @@ impl ClaudeCompatAdapter {
         )
         .await
     }
+
+    pub async fn fork_history_session_from_message(
+        &self,
+        workspace_path: &Path,
+        session_id: &str,
+        message_id: &str,
+        config: Option<&crate::engine::EngineConfig>,
+    ) -> Result<String, String> {
+        crate::engine::claude_history::fork_claude_session_from_message_with_config(
+            workspace_path,
+            session_id,
+            message_id,
+            config,
+        )
+        .await
+    }
 }
 
 #[cfg(test)]
@@ -495,6 +511,16 @@ mod tests {
         assert!(!delete_fn.contains("claude_history::"));
         assert!(manager.contains("fn delete_claude_history_session("));
         assert!(manager.contains("delete_history_session"));
+        let rewind = include_str!("../engine/rewind_commands.rs");
+        assert!(rewind.contains("fork_claude_history_session_from_message"));
+        let rewind_fn = rewind
+            .split("pub async fn fork_claude_session_from_message(")
+            .nth(1)
+            .expect("fork_claude_session_from_message");
+        assert!(rewind_fn.contains("fork_claude_history_session_from_message"));
+        assert!(!rewind_fn.contains("claude_history::"));
+        assert!(manager.contains("fn fork_claude_history_session_from_message("));
+        assert!(manager.contains("fork_history_session_from_message"));
     }
 
     #[tokio::test]

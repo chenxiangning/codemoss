@@ -175,7 +175,8 @@
 | 3T GUI load_claude_session 走 history 门面 | 完成 | `14240da06` |
 | 3U GUI hydrate_claude_deferred_image 走 history 门面 | 完成 | `797ef2486` |
 | 3V GUI fork_claude_session 走 history 门面 | 完成 | `9e31c2959` |
-| 3W GUI delete_claude_session 走 history 门面 | 完成 | 本刀 |
+| 3W GUI delete_claude_session 走 history 门面 | 完成 | `80d31dd46` |
+| 3X GUI rewind fork_from_message 走 history 门面 | 完成 | 本刀 |
 
 ## 明确未做
 

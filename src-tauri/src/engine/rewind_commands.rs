@@ -28,17 +28,10 @@ pub async fn fork_claude_session_from_message(
         .await;
     }
     let path = std::path::PathBuf::from(&workspace_path);
-    let config = state
+    let forked_session_id = state
         .engine_manager
-        .get_engine_config(super::EngineType::Claude)
-        .await;
-    let forked_session_id = super::claude_history::fork_claude_session_from_message_with_config(
-        &path,
-        &session_id,
-        &message_id,
-        config.as_ref(),
-    )
-    .await?;
+        .fork_claude_history_session_from_message(&path, &session_id, &message_id)
+        .await?;
     Ok(json!({
         "thread": {
             "id": format!("claude:{}", forked_session_id)
