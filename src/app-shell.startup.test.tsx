@@ -618,13 +618,16 @@ vi.mock("./features/git/hooks/useGitRepoScan", () => ({
   }),
 }));
 
-vi.mock("./features/collaboration/hooks/useCollaborationModes", () => ({
+vi.mock("@mossx/plugin-collaboration/runtime", () => ({
   useCollaborationModes: () => ({
     collaborationModes: [],
     collaborationModesEnabled: false,
     selectedCollaborationMode: null,
     selectedCollaborationModeId: null,
     setSelectedCollaborationModeId: createNoopFunction(),
+  }),
+  useCollaborationModeSelection: () => ({
+    collaborationModePayload: null,
   }),
 }));
 
@@ -751,12 +754,6 @@ vi.mock("./features/composer/hooks/useComposerEditorState", () => ({
   useComposerEditorState: () => ({
     textareaHeight: 0,
     onTextareaHeightChange: createNoopFunction(),
-  }),
-}));
-
-vi.mock("./features/collaboration/hooks/useCollaborationModeSelection", () => ({
-  useCollaborationModeSelection: () => ({
-    collaborationModePayload: null,
   }),
 }));
 

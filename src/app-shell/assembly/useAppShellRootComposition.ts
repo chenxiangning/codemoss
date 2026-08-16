@@ -7,7 +7,7 @@ import { useGitRemote } from "../../features/git/hooks/useGitRemote";
 import { useGitRepoScan } from "../../features/git/hooks/useGitRepoScan";
 import { useAutoExitEmptyDiff } from "../../features/git/hooks/useAutoExitEmptyDiff";
 import { useModels } from "@mossx/plugin-models/runtime";
-import { useCollaborationModes } from "../../features/collaboration/hooks/useCollaborationModes";
+import { useCollaborationModes } from "@mossx/plugin-collaboration/runtime";
 import { useSkills } from "@mossx/plugin-skills/runtime";
 import { useCustomCommands } from "@mossx/plugin-commands/runtime";
 import { useCustomPrompts } from "@mossx/plugin-prompts/runtime";

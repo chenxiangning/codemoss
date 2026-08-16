@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ModelOption } from "../../types";
-import { useCollaborationModeSelection } from "../../features/collaboration/hooks/useCollaborationModeSelection";
+import { useCollaborationModeSelection } from "@mossx/plugin-collaboration/runtime";
 import { useComposerMenuActions } from "../../features/composer/hooks/useComposerMenuActions";
 import { useComposerShortcuts } from "../../features/composer/hooks/useComposerShortcuts";
 import { usePersistComposerSettings } from "../../features/app/hooks/usePersistComposerSettings";

@@ -2,7 +2,7 @@
 import { act, renderHook } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
-vi.mock("../../features/collaboration/hooks/useCollaborationModeSelection", () => ({
+vi.mock("@mossx/plugin-collaboration/runtime", () => ({
   useCollaborationModeSelection: () => ({ collaborationModePayload: null }),
 }));
 vi.mock("../../features/composer/hooks/useComposerMenuActions", () => ({
