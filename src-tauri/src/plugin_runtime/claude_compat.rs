@@ -692,6 +692,16 @@ mod tests {
         let native = include_str!("../native_continuation/commands.rs");
         assert!(native.contains("resolve_claude_history_session_file"));
         assert!(!native.contains("claude_history::resolve_claude_session_file_with_config"));
+        let remaining = include_str!(
+            "../../../docs/architecture/plugin-platform/inventory/claude-history-remaining.json"
+        );
+        assert!(remaining.contains("productOperationsFacaded"));
+        assert!(remaining.contains("encode_project_path"));
+        assert!(remaining.contains("sessionIndexHelper"));
+        let writers = include_str!("../session_index/writers.rs");
+        assert!(writers.contains("use crate::engine::claude_history::encode_project_path"));
+        assert!(!writers.contains("list_claude_sessions"));
+        assert!(!writers.contains("delete_claude_session"));
     }
 
     #[tokio::test]
