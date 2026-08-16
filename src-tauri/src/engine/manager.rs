@@ -333,9 +333,17 @@ impl EngineManager {
             if let Some(facade) = &self.claude_compat {
                 facade.set_config(config).await;
             } else {
-                self.claude_manager.set_config(config).await;
+                self.core_claude().set_config(config).await;
             }
         }
+    }
+
+    fn core_claude(&self) -> &ClaudeSessionManager {
+        &self.claude_manager
+    }
+
+    fn core_claude_arc(&self) -> Arc<ClaudeSessionManager> {
+        Arc::clone(&self.claude_manager)
     }
 
     /// Get engine configuration
@@ -357,7 +365,7 @@ impl EngineManager {
                 .get_or_create_session(workspace_id, workspace_path)
                 .await;
         }
-        self.claude_manager
+        self.core_claude()
             .get_or_create_session(workspace_id, workspace_path)
             .await
     }
@@ -377,7 +385,7 @@ impl EngineManager {
                 )
                 .await;
         }
-        self.claude_manager
+        self.core_claude()
             .get_or_create_session_for_provider(workspace_id, workspace_path, provider_profile_id)
             .await
     }
@@ -389,7 +397,7 @@ impl EngineManager {
             return;
         }
         for (runtime_key, session) in self
-            .claude_manager
+            .core_claude()
             .runtime_sessions_for_workspace(workspace_id)
             .await
         {
@@ -402,7 +410,7 @@ impl EngineManager {
                 continue;
             }
             session.mark_disposed();
-            self.claude_manager
+            self.core_claude()
                 .remove_runtime_session(&runtime_key)
                 .await;
         }
@@ -412,7 +420,7 @@ impl EngineManager {
         if let Some(facade) = &self.claude_compat {
             return facade.interrupt_workspace_sessions(workspace_id).await;
         }
-        self.claude_manager
+        self.core_claude()
             .interrupt_workspace_sessions(workspace_id)
             .await
     }
@@ -429,7 +437,7 @@ impl EngineManager {
                     .get_session_for_provider(workspace_id, provider_profile_id)
                     .await
             } else {
-                self.claude_manager
+                self.core_claude()
                     .get_session_for_provider(workspace_id, provider_profile_id)
                     .await
             };
@@ -440,7 +448,7 @@ impl EngineManager {
         } else if let Some(facade) = &self.claude_compat {
             facade.session_for_turn(workspace_id, turn_id).await
         } else {
-            self.claude_manager
+            self.core_claude()
                 .session_for_turn(workspace_id, turn_id)
                 .await
         };
@@ -454,7 +462,7 @@ impl EngineManager {
         if let Some(facade) = &self.claude_compat {
             return facade.list_sessions().await;
         }
-        self.claude_manager.list_sessions().await
+        self.core_claude().list_sessions().await
     }
 
     pub async fn interrupt_all_claude_sessions(&self) {
@@ -462,7 +470,7 @@ impl EngineManager {
             facade.interrupt_all().await;
             return;
         }
-        self.claude_manager.interrupt_all().await
+        self.core_claude().interrupt_all().await
     }
 
     pub async fn get_claude_session_if_present(
@@ -475,7 +483,7 @@ impl EngineManager {
                 .get_session_for_provider(workspace_id, provider_profile_id)
                 .await;
         }
-        self.claude_manager
+        self.core_claude()
             .get_session_for_provider(workspace_id, provider_profile_id)
             .await
     }
@@ -487,7 +495,7 @@ impl EngineManager {
         if let Some(facade) = &self.claude_compat {
             return facade.sessions_for_workspace(workspace_id).await;
         }
-        self.claude_manager
+        self.core_claude()
             .sessions_for_workspace(workspace_id)
             .await
     }
@@ -499,7 +507,7 @@ impl EngineManager {
         if let Some(facade) = &self.claude_compat {
             return facade.runtime_sessions_for_workspace(workspace_id).await;
         }
-        self.claude_manager
+        self.core_claude()
             .runtime_sessions_for_workspace(workspace_id)
             .await
     }
@@ -511,14 +519,14 @@ impl EngineManager {
         if let Some(facade) = &self.claude_compat {
             return facade.remove_runtime_session(runtime_key).await;
         }
-        self.claude_manager.remove_runtime_session(runtime_key).await
+        self.core_claude().remove_runtime_session(runtime_key).await
     }
 
     pub fn claude_ask_lookup(&self) -> super::claude::ClaudeAskLookup {
         if let Some(facade) = &self.claude_compat {
             return facade.ask_lookup();
         }
-        super::claude::ClaudeAskLookup::from_manager(self.claude_manager.clone())
+        super::claude::ClaudeAskLookup::from_manager(self.core_claude_arc())
     }
 
     pub fn set_claude_ask_user_question_resume_diagnostic_sink(

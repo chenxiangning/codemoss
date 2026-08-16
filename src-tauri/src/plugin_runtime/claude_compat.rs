@@ -338,6 +338,12 @@ mod tests {
         assert!(manager.contains("    claude_manager: Arc<ClaudeSessionManager>,"));
         assert!(!manager.contains("    pub claude_manager:"));
         assert!(manager.contains("facade.set_config"));
+        assert!(manager.contains("fn core_claude("));
+        let method_calls = manager.matches("self.claude_manager.").count();
+        assert_eq!(
+            method_calls, 0,
+            "flag-off paths must not call methods on self.claude_manager"
+        );
     }
 
     #[tokio::test]
