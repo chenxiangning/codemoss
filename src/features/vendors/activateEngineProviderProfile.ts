@@ -6,7 +6,7 @@ import {
   switchKimiProvider,
   switchOpenCodeProvider,
 } from "../../services/tauri";
-import { syncModelMappingFromProviderEnv } from "../models/constants";
+import { syncModelMappingFromProviderEnv } from "@mossx/plugin-models/runtime";
 import {
   CLAUDE_LOCAL_PROVIDER_PROFILE_ID,
   CODEX_DISK_PROVIDER_PROFILE_ID,

@@ -10,7 +10,7 @@ import {
   MODEL_ID_PATTERN as COMPOSER_MODEL_ID_PATTERN,
   isValidModelId as isValidComposerModelId,
 } from "../composer/types/provider";
-import { STORAGE_KEYS as MODEL_STORAGE_KEYS } from "../models/constants";
+import { STORAGE_KEYS as MODEL_STORAGE_KEYS } from "@mossx/plugin-models/runtime";
 
 // ============ Constants ============
 

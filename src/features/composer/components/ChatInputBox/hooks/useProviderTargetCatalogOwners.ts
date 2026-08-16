@@ -26,7 +26,7 @@ import {
   type EngineProviderProfileOption,
 } from "../../../../threads/constants/codexProviderProfiles";
 import type { ModelInfo, ProviderId } from "../types";
-import { enrichModelInfoWithAtomicReasoning } from "../../../../models/atomicModelReasoning";
+import { enrichModelInfoWithAtomicReasoning } from "@mossx/plugin-models/runtime";
 import { useCliEngineVisibility } from "../../../hooks/cliEngineVisibilityStore";
 
 // Native 单栏与 Atomic 双栏共享不可变 cache primitives，但拥有独立 hook state/input contract。

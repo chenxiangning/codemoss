@@ -15,7 +15,7 @@ import {
   writeClientStoreValue,
 } from "../../../services/clientStorage";
 import type { DebugEntry, EngineStatus } from "../../../types";
-import { STORAGE_KEYS as MODEL_STORAGE_KEYS } from "../../models/constants";
+import { STORAGE_KEYS as MODEL_STORAGE_KEYS } from "@mossx/plugin-models/runtime";
 import { STORAGE_KEYS as PROVIDER_STORAGE_KEYS } from "../../composer/types/provider";
 
 function createDeferred<T>() {

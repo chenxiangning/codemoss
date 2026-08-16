@@ -6,7 +6,7 @@ import { useGitPanelController } from "../../features/app/hooks/useGitPanelContr
 import { useGitRemote } from "../../features/git/hooks/useGitRemote";
 import { useGitRepoScan } from "../../features/git/hooks/useGitRepoScan";
 import { useAutoExitEmptyDiff } from "../../features/git/hooks/useAutoExitEmptyDiff";
-import { useModels } from "../../features/models/hooks/useModels";
+import { useModels } from "@mossx/plugin-models/runtime";
 import { useCollaborationModes } from "../../features/collaboration/hooks/useCollaborationModes";
 import { useSkills } from "../../features/skills/hooks/useSkills";
 import { useCustomCommands } from "../../features/commands/hooks/useCustomCommands";

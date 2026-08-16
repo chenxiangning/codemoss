@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { CODEX_MODEL_CATALOG } from "../../models/codexModelCatalog";
+import { CODEX_MODEL_CATALOG } from "@mossx/plugin-models/runtime";
 import { detectEngines, getConfigModel, getEngineModels, getModelList } from "../../../services/tauri";
 import type { EngineModelInfo, EngineStatus, EngineType, WorkspaceInfo } from "../../../types";
 import { normalizeEngineForExecution } from "../../../utils/engineExecutionPolicy";

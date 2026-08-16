@@ -6,7 +6,7 @@ import Settings2Icon from 'lucide-react/dist/esm/icons/settings-2';
 import type { ModelInfo, ProviderId } from '../types';
 import {
   resolveAtomicReasoningEffort,
-} from '../../../../models/atomicModelReasoning';
+} from '@mossx/plugin-models/runtime';
 import type { ProviderModelGroup } from '../modelOptions';
 import type { ProviderTargetGroup } from '../hooks/useProviderTargetCatalogOwners';
 import type { ExecutionTarget } from '../../../../shared-session/target/types';
@@ -30,7 +30,7 @@ import {
   getModelMapping,
   resolveModelMappingValue,
   type ModelMapping,
-} from '../../../../models/constants';
+} from '@mossx/plugin-models/runtime';
 import {
   Dialog,
   DialogContent,

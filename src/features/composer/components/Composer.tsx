@@ -78,7 +78,7 @@ import {
 import {
   reconcileAtomicReasoningEffort,
   resolveAtomicReasoningOptions,
-} from "../../models/atomicModelReasoning";
+} from "@mossx/plugin-models/runtime";
 import {
   ClaudeRewindConfirmDialog,
   type ClaudeRewindPreviewState,

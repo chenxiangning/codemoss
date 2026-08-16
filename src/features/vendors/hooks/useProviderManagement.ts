@@ -21,7 +21,7 @@ import {
 import {
   migrateModelMappingStorage,
   syncModelMappingFromProviderEnv,
-} from "../../models/constants";
+} from "@mossx/plugin-models/runtime";
 import { applyOptimisticActiveProvider } from "../applyOptimisticActiveProvider";
 import { VENDOR_ACTIVE_PROVIDER_CHANGED_EVENT } from "../vendorActiveProviderEvents";
 import { notifyProviderTargetCatalogChanged } from "../../composer/components/ChatInputBox/hooks/useProviderTargetCatalogOwners";

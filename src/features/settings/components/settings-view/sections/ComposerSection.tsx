@@ -1,7 +1,7 @@
 import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
 import type { AppSettings } from "@/types";
-import { ModelMappingSettings } from "../../../../models/components/ModelMappingSettings";
+import { ModelMappingSettings } from "@mossx/plugin-models/ui";
 import { HistoryCompletionSettings } from "../../HistoryCompletionSettings";
 import {
   COMPOSER_PRESET_LABELS,

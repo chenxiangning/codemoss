@@ -9,7 +9,7 @@ import {
   validateCodexCustomModels,
 } from "../../composer/types/provider";
 import { readClaudeCustomModelsFromStorage } from "@mossx/plugin-engine-claude/runtime";
-import { getGeneratedModelFallbacks } from "../../models/generatedModelFallbacks";
+import { getGeneratedModelFallbacks } from "@mossx/plugin-models/runtime";
 
 const UNKNOWN_MODEL_SOURCE = "unknown";
 const CUSTOM_MODEL_SOURCE = "custom";

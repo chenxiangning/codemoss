@@ -73,7 +73,7 @@ import { getSelectedTemplate } from "../../multi-agent/templates/templateStore";
 import { templateToStageBindings } from "../../multi-agent/templates/types";
 import { subscribeMultiAgentConversationItems } from "../../multi-agent/runtime/conversationBridge";
 import { readExternalAbsoluteFile } from "../../../services/tauri/workspaceFiles";
-import { reconcileAtomicReasoningEffort } from "../../models/atomicModelReasoning";
+import { reconcileAtomicReasoningEffort } from "@mossx/plugin-models/runtime";
 import { projectMemoryFacade } from "../../project-memory/services/projectMemoryFacade";
 import {
   injectSelectedMemoriesContext,

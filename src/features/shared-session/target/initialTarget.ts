@@ -1,5 +1,5 @@
 import type { EngineModelInfo } from "../../../types";
-import { resolveAtomicReasoningEffort } from "../../models/atomicModelReasoning";
+import { resolveAtomicReasoningEffort } from "@mossx/plugin-models/runtime";
 import {
   CLAUDE_LOCAL_PROVIDER_PROFILE_ID,
   CODEX_DISK_PROVIDER_PROFILE_ID,
