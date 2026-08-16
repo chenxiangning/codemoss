@@ -166,7 +166,8 @@
 | 3K Claude shutdown / list 走门面 | 完成 | `fb027bb86` |
 | 3L 剩余产品 lookup 走门面 | 完成 | `ee8bf1f2b` |
 | 3M Codex / daemon respond 走门面 | 完成 | `3f9b12aae` |
-| 3N AskUser MCP / diagnostic 走门面 | 完成 | 本刀 |
+| 3N AskUser MCP / diagnostic 走门面 | 完成 | `b9bb50104` |
+| 3O Claude config 走门面，字段不再公开 | 完成 | 本刀 |
 
 ## 明确未做
 

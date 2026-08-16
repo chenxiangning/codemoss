@@ -146,6 +146,10 @@ impl ClaudeCompatAdapter {
         crate::engine::claude::ClaudeAskLookup::from_manager(self.manager.clone())
     }
 
+    pub async fn set_config(&self, config: crate::engine::EngineConfig) {
+        self.manager.set_config(config).await
+    }
+
     pub async fn remove_workspace_sessions(&self, workspace_id: &str) {
         for (runtime_key, session) in self.manager.runtime_sessions_for_workspace(workspace_id).await
         {
@@ -309,6 +313,31 @@ mod tests {
         assert!(!state.contains("claude_manager.set_ask_user_question_resume_diagnostic_sink"));
         assert!(mcp.contains("lookup.get_session"));
         assert!(!mcp.contains("claude_manager.get_session"));
+    }
+
+    #[test]
+    fn product_modules_cannot_touch_the_claude_manager_field() {
+        let files = [
+            include_str!("../lib.rs"),
+            include_str!("../state.rs"),
+            include_str!("../engine/commands.rs"),
+            include_str!("../bin/cc_gui_daemon.rs"),
+            include_str!("../bin/cc_gui_daemon/daemon_state.rs"),
+            include_str!("../runtime/mod.rs"),
+            include_str!("../runtime/session_lifecycle.rs"),
+            include_str!("../shared_session_v2.rs"),
+            include_str!("../codex/mod.rs"),
+        ];
+        for source in files {
+            assert!(
+                !source.contains(".claude_manager"),
+                "product module still touches .claude_manager"
+            );
+        }
+        let manager = include_str!("../engine/manager.rs");
+        assert!(manager.contains("    claude_manager: Arc<ClaudeSessionManager>,"));
+        assert!(!manager.contains("    pub claude_manager:"));
+        assert!(manager.contains("facade.set_config"));
     }
 
     #[tokio::test]

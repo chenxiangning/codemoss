@@ -33,9 +33,8 @@ pub struct EngineManager {
     /// Cached engine statuses
     engine_statuses: RwLock<HashMap<EngineType, EngineStatus>>,
 
-    /// Claude session manager. Wrapped in `Arc` so the in-process AskUserQuestion
-    /// MCP server can hold a shared handle for session lookup (see `askuser_mcp`).
-    pub claude_manager: Arc<ClaudeSessionManager>,
+    /// Claude session manager. Product modules MUST go through facade entries.
+    claude_manager: Arc<ClaudeSessionManager>,
 
     /// OpenCode sessions per workspace/provider runtime.
     opencode_sessions: Mutex<HashMap<String, OpenCodeSessionEntry>>,
@@ -330,9 +329,12 @@ impl EngineManager {
         let mut configs = self.engine_configs.write().await;
         configs.insert(engine_type, config.clone());
 
-        // Update Claude manager if it's Claude config
         if engine_type == EngineType::Claude {
-            self.claude_manager.set_config(config).await;
+            if let Some(facade) = &self.claude_compat {
+                facade.set_config(config).await;
+            } else {
+                self.claude_manager.set_config(config).await;
+            }
         }
     }
 
@@ -1376,11 +1378,11 @@ mod tests {
         assert!(manager.claude_compat_enabled());
         let workspace = std::env::temp_dir().join("mossx-claude-dual-run-ws");
         let via_getter = manager.get_claude_session("ws-dual", &workspace).await;
-        let via_core = manager
-            .claude_manager
-            .get_or_create_session("ws-dual", &workspace)
-            .await;
-        assert!(Arc::ptr_eq(&via_getter, &via_core));
+        let via_lookup = manager
+            .get_claude_session_if_present("ws-dual", None)
+            .await
+            .expect("lookup");
+        assert!(Arc::ptr_eq(&via_getter, &via_lookup));
         let via_provider = manager
             .get_claude_session_for_provider("ws-dual", &workspace, None)
             .await;
@@ -1392,9 +1394,15 @@ mod tests {
         let manager = EngineManager::new_with_claude_compat(true);
         let workspace = std::env::temp_dir().join("mossx-claude-dual-remove-ws");
         let _session = manager.get_claude_session("ws-remove", &workspace).await;
-        assert!(manager.claude_manager.get_session("ws-remove").await.is_some());
+        assert!(manager
+            .get_claude_session_if_present("ws-remove", None)
+            .await
+            .is_some());
         manager.remove_claude_session("ws-remove").await;
-        assert!(manager.claude_manager.get_session("ws-remove").await.is_none());
+        assert!(manager
+            .get_claude_session_if_present("ws-remove", None)
+            .await
+            .is_none());
         manager
             .interrupt_claude_sessions("ws-remove")
             .await
