@@ -38,7 +38,10 @@
       "@mossx/plugin-git-history/ui": ["./packages/plugin-git-history/src/ui.ts"],
       "@mossx/plugin-spec": ["./packages/plugin-spec/src/index.ts"],
       "@mossx/plugin-spec/runtime": ["./packages/plugin-spec/src/runtime.ts"],
-      "@mossx/plugin-spec/ui": ["./packages/plugin-spec/src/ui.ts"]
+      "@mossx/plugin-spec/ui": ["./packages/plugin-spec/src/ui.ts"],
+      "@mossx/plugin-quick-switcher": ["./packages/plugin-quick-switcher/src/index.ts"],
+      "@mossx/plugin-quick-switcher/runtime": ["./packages/plugin-quick-switcher/src/runtime.ts"],
+      "@mossx/plugin-quick-switcher/ui": ["./packages/plugin-quick-switcher/src/ui.ts"]
     },
 
     /* Linting */

@@ -55,7 +55,7 @@ export const SearchPalette = lazy(() =>
 );
 
 export const QuickSwitcher = lazy(() =>
-  import("../../features/quick-switcher/components/QuickSwitcher").then((module) => ({
+  import("@mossx/plugin-quick-switcher/ui").then((module) => ({
     default: module.QuickSwitcher,
   })),
 );

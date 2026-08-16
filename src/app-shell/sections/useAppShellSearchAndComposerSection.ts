@@ -39,7 +39,7 @@ import type {
   QuickSwitcherRecentFileGroup,
   QuickSwitcherRunningSession,
   QuickSwitcherSessionGroup,
-} from "../../features/quick-switcher/types";
+} from "@mossx/plugin-quick-switcher/runtime";
 import {
   getThreadSelectDiffCleanupAction,
   shouldPreserveEditorOnThreadSelect,

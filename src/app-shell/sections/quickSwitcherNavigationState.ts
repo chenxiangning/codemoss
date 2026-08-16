@@ -1,4 +1,4 @@
-import type { QuickSwitcherNavigationId } from "../../features/quick-switcher/types";
+import type { QuickSwitcherNavigationId } from "@mossx/plugin-quick-switcher/runtime";
 import { pushErrorToast } from "../../services/toasts";
 
 /**

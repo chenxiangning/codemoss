@@ -28,7 +28,7 @@ import {
   getFileHistoryTabId,
 } from "@mossx/plugin-git-history/runtime";
 import type { FileHistoryTarget } from "@mossx/plugin-git-history/runtime";
-import { recordQuickSwitcherFileOpened } from "../../quick-switcher/recentFiles";
+import { recordQuickSwitcherFileOpened } from "@mossx/plugin-quick-switcher/runtime";
 
 const GIT_DIFF_LIST_VIEW_BY_WORKSPACE_KEY = "gitDiffListViewByWorkspace";
 const GIT_DIFF_PRELOAD_MAX_CHANGED_FILES = 80;

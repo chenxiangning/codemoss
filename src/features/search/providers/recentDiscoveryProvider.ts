@@ -1,7 +1,7 @@
 import type {
   QuickSwitcherRecentFileGroup,
   QuickSwitcherSessionGroup,
-} from "../../quick-switcher/types";
+} from "@mossx/plugin-quick-switcher/runtime";
 import type { RecentSearchAction } from "../ranking/recentActions";
 import { compareSearchResults } from "../ranking/score";
 import type { SearchResult, SearchScope } from "../types";

@@ -2,13 +2,15 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useGlobalSearchShortcut } from "../../features/app/hooks/useGlobalSearchShortcut";
 import type { CenterMode } from "../../features/app/hooks/useGitPanelController";
-import { useRecordRecentFilesFromActivity } from "../../features/quick-switcher/hooks/useRecordRecentFilesFromActivity";
-import { useQuickSwitcherRecentFiles } from "../../features/quick-switcher/hooks/useQuickSwitcherRecentFiles";
+import {
+  projectQuickSwitcherSessionGroups,
+  useQuickSwitcherRecentFiles,
+  useRecordRecentFilesFromActivity,
+} from "@mossx/plugin-quick-switcher/runtime";
 import type {
   QuickSwitcherNavigationId,
   QuickSwitcherRunningSession,
-} from "../../features/quick-switcher/types";
-import { projectQuickSwitcherSessionGroups } from "../../features/quick-switcher/sessionProjection";
+} from "@mossx/plugin-quick-switcher/runtime";
 import { pushQuickSwitcherSelectWorkspaceToast } from "./quickSwitcherNavigationState";
 import type { SessionActivityEvent } from "../../features/session-activity/types";
 import type { SessionRadarEntry } from "../../features/session-activity/hooks/useSessionRadarFeed";
