@@ -53,6 +53,15 @@ describe("pluginLocalStage", () => {
     expect(readFileSync(join(repoRoot, "src/features/kanban/types.ts"), "utf8")).toContain("KanbanTaskStatus");
   });
 
+  it("rejects undeclared capabilities without writing a lockfile row", () => {
+    localStorage.clear();
+    const result = stageLocalPlugin("com.mossx.notes", ["mossx.filesystem.raw"]);
+    expect(result.ok).toBe(false);
+    expect(result.previewed).toBe(true);
+    expect(result.staged).toBe(false);
+    expect(listLocalLockfile()).toEqual([]);
+  });
+
   it("rejects an unknown pluginId without writing a lockfile row", () => {
     localStorage.clear();
     const result = stageLocalPlugin("com.unknown.plugin");

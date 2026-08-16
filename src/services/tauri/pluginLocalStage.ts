@@ -1,4 +1,4 @@
-import { previewInstall } from "@/plugin-kernel/installPreview";
+import { previewInstall, validateRegistration } from "@/plugin-kernel/installPreview";
 import type { ValidatedManifest } from "@/plugin-kernel/types";
 
 import { LOCAL_PLUGIN_CATALOG } from "./pluginLocalCatalog";
@@ -89,7 +89,7 @@ export function catalogManifestStub(pluginId: string): ValidatedManifest | null 
   };
 }
 
-export function stageLocalPlugin(pluginId: string): LocalStageResult {
+export function stageLocalPlugin(pluginId: string, extraCapabilities: string[] = []): LocalStageResult {
   const manifest = catalogManifestStub(pluginId);
   if (!manifest) {
     return { ok: false, pluginId, staged: false, previewed: false, activatedHost: false };
@@ -97,6 +97,12 @@ export function stageLocalPlugin(pluginId: string): LocalStageResult {
   const preview = previewInstall(manifest);
   if (preview.loadsEntries || preview.pluginId !== pluginId) {
     return { ok: false, pluginId, staged: false, previewed: false, activatedHost: false };
+  }
+  const registration = validateRegistration(manifest, {
+    capabilities: [...manifest.capabilities.map((item) => item.id), ...extraCapabilities],
+  });
+  if (!registration.ok) {
+    return { ok: false, pluginId, staged: false, previewed: true, activatedHost: false };
   }
   writeLockfile([...readLockfile(), { pluginId, version: manifest.version }]);
   return {
