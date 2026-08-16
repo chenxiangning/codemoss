@@ -214,6 +214,7 @@ const sidebar = {
       catalogPermissions: "权限预览",
       catalogVersion: "版本",
       rackInstall: "插排安装态",
+      rackVersion: "插排版本",
       error: "无法读取 Host 插排：{{message}}",
       kinds: {
         engine: "引擎",

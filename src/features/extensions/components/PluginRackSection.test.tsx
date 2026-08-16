@@ -31,6 +31,7 @@ const translations: Record<string, string> = {
   "extensions.rack.catalogPermissions": "Permission preview",
   "extensions.rack.catalogVersion": "Version",
   "extensions.rack.rackInstall": "Rack install",
+  "extensions.rack.rackVersion": "Rack version",
   "extensions.rack.error": "Could not read the Host rack: {{message}}",
   "extensions.rack.kinds.engine": "Engines",
   "extensions.rack.kinds.feature": "Features",
@@ -135,6 +136,7 @@ describe("PluginRackSection", () => {
     const featureGroup = screen.getByRole("region", { name: "Features" });
     expect(featureGroup.textContent).toContain("Installed (local mark)");
     expect(featureGroup.textContent).toContain("Idle");
+    expect(featureGroup.textContent).toContain("1.0.0");
     expect(notesCard!.textContent).toContain("Installed (local mark)");
     expect(notesCard!.textContent).toContain("1.0.0");
     expect(notesCard!.querySelector("button")?.textContent).toBe("Uninstall");

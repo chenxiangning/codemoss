@@ -157,6 +157,10 @@ export function PluginRackSection() {
                               : t("extensions.rack.catalogNotInstalled")}
                           </dd>
                         </div>
+                        <div>
+                          <dt>{t("extensions.rack.rackVersion")}</dt>
+                          <dd>{lockfileVersions[plug.pluginId] ?? "1.0.0"}</dd>
+                        </div>
                       </dl>
                     </li>
                   ))}

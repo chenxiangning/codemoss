@@ -221,6 +221,7 @@ const sidebar = {
       catalogPermissions: "Permission preview",
       catalogVersion: "Version",
       rackInstall: "Rack install",
+      rackVersion: "Rack version",
       error: "Could not read the Host rack: {{message}}",
       kinds: {
         engine: "Engines",
