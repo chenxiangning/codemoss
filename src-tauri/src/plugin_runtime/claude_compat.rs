@@ -357,6 +357,23 @@ mod tests {
         assert!(!interrupt.contains("if let Some(facade)"));
     }
 
+    #[test]
+    fn history_inventory_lists_product_call_sites_without_deleting_implementation() {
+        let inventory = include_str!(
+            "../../../docs/architecture/plugin-platform/inventory/claude-history.json"
+        );
+        assert!(inventory.contains("session_history_commands.rs#list_claude_sessions"));
+        assert!(inventory.contains("daemon_state.rs#list_claude_sessions"));
+        assert!(inventory.contains("session_management.rs"));
+        assert!(inventory.contains("native_continuation/commands.rs"));
+        assert!(inventory.contains("claudeHistoryLoader.ts"));
+        assert!(inventory.contains("geminiHistoryParser.ts"));
+        assert!(std::path::Path::new("src/engine/claude_history.rs").exists());
+        let history = include_str!("../engine/session_history_commands.rs");
+        assert!(history.contains("claude_history::list_claude_sessions_with_config"));
+        assert!(!history.contains("claude_compat"));
+    }
+
     #[tokio::test]
     async fn facade_remove_clears_the_core_session_table() {
         let manager = Arc::new(ClaudeSessionManager::new());

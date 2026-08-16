@@ -1,0 +1,64 @@
+{
+  "pluginId": "com.mossx.engine.claude",
+  "wave": "3R",
+  "status": "inventory-only",
+  "deleteGate": "after-pilot-disable",
+  "kind": "disk-jsonl-not-runtime-session",
+  "implementation": [
+    "src-tauri/src/engine/claude_history.rs",
+    "src-tauri/src/engine/claude_history_entries.rs",
+    "src-tauri/src/engine/claude_history_subagents.rs",
+    "src-tauri/src/engine/claude_history_large_payload.rs"
+  ],
+  "tests": [
+    "src-tauri/src/engine/claude_history_*_tests.rs"
+  ],
+  "productCallSites": {
+    "guiCommands": [
+      "src-tauri/src/engine/session_history_commands.rs#list_claude_sessions",
+      "src-tauri/src/engine/session_history_commands.rs#load_claude_session",
+      "src-tauri/src/engine/session_history_commands.rs#hydrate_claude_deferred_image",
+      "src-tauri/src/engine/session_history_commands.rs#fork_claude_session",
+      "src-tauri/src/engine/session_history_commands.rs#delete_claude_session",
+      "src-tauri/src/engine/rewind_commands.rs#fork_claude_session_from_message"
+    ],
+    "daemon": [
+      "src-tauri/src/bin/cc_gui_daemon/daemon_state.rs#list_claude_sessions",
+      "src-tauri/src/bin/cc_gui_daemon/daemon_state.rs#load_claude_session",
+      "src-tauri/src/bin/cc_gui_daemon/daemon_state.rs#fork_claude_session",
+      "src-tauri/src/bin/cc_gui_daemon/daemon_state.rs#fork_claude_session_from_message",
+      "src-tauri/src/bin/cc_gui_daemon/daemon_state.rs#delete_claude_session"
+    ],
+    "sessionCatalog": [
+      "src-tauri/src/session_management.rs",
+      "src-tauri/src/session_management_catalog_projection.rs",
+      "src-tauri/src/session_management_catalog_helpers.rs"
+    ],
+    "nativeContinuation": [
+      "src-tauri/src/native_continuation/commands.rs#resolve_claude_session_file_with_config"
+    ],
+    "frontend": [
+      "src/services/tauri/session.ts",
+      "src/features/threads/loaders/claudeHistoryLoader.ts",
+      "src/features/threads/utils/claudeForkThread.ts",
+      "src/features/threads/utils/claudeRewindRestore.ts"
+    ]
+  },
+  "stayInCore": [
+    "src-tauri/src/engine/session_history_commands.rs",
+    "src-tauri/src/engine/rewind_commands.rs",
+    "src-tauri/src/session_management.rs"
+  ],
+  "reusedByOtherEngines": [
+    "src/features/threads/loaders/geminiHistoryParser.ts",
+    "src/features/threads/loaders/grokHistoryParser.ts",
+    "src/features/threads/loaders/kimiHistoryParser.ts"
+  ],
+  "mustNotMoveWithClaude": [
+    "src-tauri/src/engine/gemini_history.rs",
+    "src-tauri/src/engine/grok_history.rs",
+    "src-tauri/src/engine/kimi_history.rs",
+    "src-tauri/src/engine/pi_history.rs"
+  ],
+  "notes": "3R inventory only. History is disk JSONL, not ClaudeSessionManager. Do not dual-write or delete."
+}
