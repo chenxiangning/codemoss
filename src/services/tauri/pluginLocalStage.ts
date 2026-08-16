@@ -5,40 +5,68 @@ import { LOCAL_PLUGIN_CATALOG } from "./pluginLocalCatalog";
 
 export const LOCAL_PLUGIN_STAGE_KEY = "ccgui.pluginLocalStage.v1";
 
+export type LocalLockfileRow = {
+  pluginId: string;
+  version: string;
+};
+
 export type LocalStageResult = {
   ok: boolean;
   pluginId: string;
   staged: boolean;
   previewed: boolean;
   activatedHost: false;
+  version?: string;
 };
 
-function readStaged(): string[] {
+function isLockfileRow(value: unknown): value is LocalLockfileRow {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as LocalLockfileRow).pluginId === "string" &&
+    typeof (value as LocalLockfileRow).version === "string"
+  );
+}
+
+function readLockfile(): LocalLockfileRow[] {
   if (typeof localStorage === "undefined") {
     return [];
   }
   try {
     const raw = localStorage.getItem(LOCAL_PLUGIN_STAGE_KEY);
     const parsed = raw ? (JSON.parse(raw) as unknown) : [];
-    return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === "string") : [];
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+    return parsed.flatMap((item) => {
+      if (typeof item === "string") {
+        return [{ pluginId: item, version: "1.0.0" }];
+      }
+      return isLockfileRow(item) ? [item] : [];
+    });
   } catch {
     return [];
   }
 }
 
-function writeStaged(pluginIds: string[]): void {
+function writeLockfile(rows: LocalLockfileRow[]): void {
   if (typeof localStorage === "undefined") {
     return;
   }
-  localStorage.setItem(LOCAL_PLUGIN_STAGE_KEY, JSON.stringify([...new Set(pluginIds)]));
+  const unique = new Map(rows.map((row) => [row.pluginId, row]));
+  localStorage.setItem(LOCAL_PLUGIN_STAGE_KEY, JSON.stringify([...unique.values()]));
+}
+
+export function listLocalLockfile(): LocalLockfileRow[] {
+  return readLockfile();
 }
 
 export function listStagedLocalPlugins(): string[] {
-  return readStaged();
+  return readLockfile().map((row) => row.pluginId);
 }
 
 export function isLocalPluginStaged(pluginId: string): boolean {
-  return readStaged().includes(pluginId);
+  return readLockfile().some((row) => row.pluginId === pluginId);
 }
 
 export function catalogManifestStub(pluginId: string): ValidatedManifest | null {
@@ -70,11 +98,18 @@ export function stageLocalPlugin(pluginId: string): LocalStageResult {
   if (preview.loadsEntries || preview.pluginId !== pluginId) {
     return { ok: false, pluginId, staged: false, previewed: false, activatedHost: false };
   }
-  writeStaged([...readStaged(), pluginId]);
-  return { ok: true, pluginId, staged: true, previewed: true, activatedHost: false };
+  writeLockfile([...readLockfile(), { pluginId, version: manifest.version }]);
+  return {
+    ok: true,
+    pluginId,
+    staged: true,
+    previewed: true,
+    activatedHost: false,
+    version: manifest.version,
+  };
 }
 
 export function unstageLocalPlugin(pluginId: string): LocalStageResult {
-  writeStaged(readStaged().filter((item) => item !== pluginId));
+  writeLockfile(readLockfile().filter((row) => row.pluginId !== pluginId));
   return { ok: true, pluginId, staged: false, previewed: false, activatedHost: false };
 }

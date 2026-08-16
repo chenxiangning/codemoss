@@ -4,7 +4,13 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
-import { catalogManifestStub, LOCAL_PLUGIN_STAGE_KEY, stageLocalPlugin, unstageLocalPlugin } from "./pluginLocalStage";
+import {
+  catalogManifestStub,
+  listLocalLockfile,
+  LOCAL_PLUGIN_STAGE_KEY,
+  stageLocalPlugin,
+  unstageLocalPlugin,
+} from "./pluginLocalStage";
 
 const currentDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(currentDir, "../../..");
@@ -19,8 +25,12 @@ describe("pluginLocalStage", () => {
       staged: true,
       previewed: true,
       activatedHost: false,
+      version: "1.0.0",
     });
-    expect(JSON.parse(localStorage.getItem(LOCAL_PLUGIN_STAGE_KEY) ?? "[]")).toEqual(["com.mossx.notes"]);
+    expect(listLocalLockfile()).toEqual([{ pluginId: "com.mossx.notes", version: "1.0.0" }]);
+    expect(JSON.parse(localStorage.getItem(LOCAL_PLUGIN_STAGE_KEY) ?? "[]")).toEqual([
+      { pluginId: "com.mossx.notes", version: "1.0.0" },
+    ]);
     const stub = catalogManifestStub("com.mossx.notes");
     expect(stub?.entries).toEqual([]);
     expect(stub?.capabilities.map((item) => item.id)).toEqual([
@@ -38,7 +48,16 @@ describe("pluginLocalStage", () => {
     stageLocalPlugin("com.mossx.kanban");
     const result = unstageLocalPlugin("com.mossx.kanban");
     expect(result.staged).toBe(false);
+    expect(listLocalLockfile()).toEqual([]);
     expect(JSON.parse(localStorage.getItem(LOCAL_PLUGIN_STAGE_KEY) ?? "[]")).toEqual([]);
     expect(readFileSync(join(repoRoot, "src/features/kanban/types.ts"), "utf8")).toContain("KanbanTaskStatus");
+  });
+
+  it("rejects an unknown pluginId without writing a lockfile row", () => {
+    localStorage.clear();
+    const result = stageLocalPlugin("com.unknown.plugin");
+    expect(result.ok).toBe(false);
+    expect(result.staged).toBe(false);
+    expect(listLocalLockfile()).toEqual([]);
   });
 });
