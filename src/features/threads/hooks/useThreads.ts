@@ -51,7 +51,7 @@ import { useThreadAccountInfo } from "./useThreadAccountInfo";
 import { useThreadRateLimits } from "./useThreadRateLimits";
 import { useThreadSelectors } from "./useThreadSelectors";
 import { useThreadStatus } from "./useThreadStatus";
-import { registerCollabThreadProcessingMarker } from "../../multi-agent/runtime/collabThreadProcessingBridge";
+import { registerCollabThreadProcessingMarker } from "@mossx/plugin-multi-agent/runtime";
 import { useThreadUserInput } from "./useThreadUserInput";
 import { useThreadCompletionEmail } from "./useThreadCompletionEmail";
 import { useMailDrivenSessionContinuation } from "./useMailDrivenSessionContinuation";

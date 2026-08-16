@@ -10,11 +10,11 @@ import {
   upsertItem,
 } from "../../../utils/threadItems";
 import { settlePlanInProgressSteps } from "../utils/threadNormalize";
-import { isMultiAgentHistFoldItemId } from "../../multi-agent/utils/canvasItems";
+import { isMultiAgentHistFoldItemId } from "@mossx/plugin-multi-agent/runtime";
 import {
   isCollabWorkerNativeThreadId,
   rememberCollabWorkerNativeThreadId,
-} from "../../multi-agent/runtime/collabNativeHideRegistry";
+} from "@mossx/plugin-multi-agent/runtime";
 import {
   isCollabWorkerAgentNumberTitle,
   isSharedControlPlaneSpawnTitle,

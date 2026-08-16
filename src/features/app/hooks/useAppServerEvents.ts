@@ -50,13 +50,13 @@ import { useAppServerEventBatchDispatch } from "./useAppServerEventBatchDispatch
 import {
   isAgentAttempt,
   resolveAgentAttemptOwner,
-} from "../../multi-agent/store/agentStore";
+} from "@mossx/plugin-multi-agent/runtime";
 import {
   buildAgentCanvasThreadId,
   isAgentCanvasThreadId,
   parseAgentCanvasThreadId,
-} from "../../multi-agent/runtime/agentCanvasThread";
-import { rememberCollabWorkerNativeThreadId } from "../../multi-agent/runtime/collabNativeHideRegistry";
+} from "@mossx/plugin-multi-agent/runtime";
+import { rememberCollabWorkerNativeThreadId } from "@mossx/plugin-multi-agent/runtime";
 
 export {
   getAppServerEventBackpressureForTests,

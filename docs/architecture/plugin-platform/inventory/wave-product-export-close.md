@@ -33,6 +33,7 @@
 | `@mossx/plugin-client-ui-visibility` | AppShell / 布局 / Settings | `src/features/client-ui-visibility` |
 | `@mossx/plugin-code-annotations` | 布局 / Composer / Files / Git / Status | `src/features/code-annotations` |
 | `@mossx/plugin-live-edit-preview` | AppShell | `src/features/live-edit-preview` |
+| `@mossx/plugin-multi-agent` | 布局 / Composer / 会话 / Messages | `src/features/multi-agent` |
 
 ## 仍未做
 

@@ -83,7 +83,10 @@
       "@mossx/plugin-code-annotations": ["./packages/plugin-code-annotations/src/index.ts"],
       "@mossx/plugin-code-annotations/runtime": ["./packages/plugin-code-annotations/src/runtime.ts"],
       "@mossx/plugin-live-edit-preview": ["./packages/plugin-live-edit-preview/src/index.ts"],
-      "@mossx/plugin-live-edit-preview/runtime": ["./packages/plugin-live-edit-preview/src/runtime.ts"]
+      "@mossx/plugin-live-edit-preview/runtime": ["./packages/plugin-live-edit-preview/src/runtime.ts"],
+      "@mossx/plugin-multi-agent": ["./packages/plugin-multi-agent/src/index.ts"],
+      "@mossx/plugin-multi-agent/runtime": ["./packages/plugin-multi-agent/src/runtime.ts"],
+      "@mossx/plugin-multi-agent/ui": ["./packages/plugin-multi-agent/src/ui.ts"]
     },
 
     /* Linting */

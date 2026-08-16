@@ -13,7 +13,7 @@ import type { SharedProjectionItem } from "../../messages/presentation/sharedPro
 import {
   findCanonicalAgentRunId,
   registerAgentConversationEvidence,
-} from "../../multi-agent/store/agentStore";
+} from "@mossx/plugin-multi-agent/runtime";
 import {
   hydrateSharedTargetState,
   getSharedTargetState,

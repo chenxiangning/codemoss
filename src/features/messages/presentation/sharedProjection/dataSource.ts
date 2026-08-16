@@ -19,7 +19,7 @@ import { BUILTIN_ENGINE_TYPES } from "../../../engine/engineRegistry";
 import type { SharedProjectionItem } from "./types";
 import { LOCAL_PROVIDER_LABEL } from "../../../../utils/turnBadge";
 import { buildConversationItem } from "../../../../utils/threadItems";
-import { isMultiAgentSettledSummaryItemId } from "../../../multi-agent/utils/canvasItems";
+import { isMultiAgentSettledSummaryItemId } from "@mossx/plugin-multi-agent/runtime";
 
 export const SHARED_PROJECTION_STORAGE_KEY = "mossx.sharedProjection";
 

@@ -52,11 +52,11 @@ import {
   WorkingIndicator,
 } from "../../components/MessagesRows";
 import { ConversationRowErrorBoundary } from "../../components/conversation/ConversationRowErrorBoundary";
-import { MultiAgentHistoryFoldTimelineRow } from "../../../multi-agent/components/HistoryFoldCard";
+import { MultiAgentHistoryFoldTimelineRow } from "@mossx/plugin-multi-agent/ui";
 import {
   isHistoryFoldItemId,
-} from "../../../multi-agent/store/historyFoldRegistry";
-import { isMultiAgentSettledSummaryItemId } from "../../../multi-agent/utils/canvasItems";
+} from "@mossx/plugin-multi-agent/runtime";
+import { isMultiAgentSettledSummaryItemId } from "@mossx/plugin-multi-agent/runtime";
 import { MiddleStepsCollapsedChip } from "./MiddleStepsCollapsedChip";
 import type {
   TimelineRowRendererProps,

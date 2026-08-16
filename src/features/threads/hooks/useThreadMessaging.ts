@@ -66,12 +66,12 @@ import {
   freezeTurnSnapshot,
   isResolvedExecutionTarget,
 } from "@mossx/plugin-shared-session/runtime";
-import { requestAgentPlan } from "../../multi-agent/runtime/executor";
-import { injectCollabSkillContext } from "../../multi-agent/runtime/skillContextInjection";
-import { injectMainCanvasContext } from "../../multi-agent/runtime/mainCanvasContextInjection";
-import { getSelectedTemplate } from "../../multi-agent/templates/templateStore";
-import { templateToStageBindings } from "../../multi-agent/templates/types";
-import { subscribeMultiAgentConversationItems } from "../../multi-agent/runtime/conversationBridge";
+import { requestAgentPlan } from "@mossx/plugin-multi-agent/runtime";
+import { injectCollabSkillContext } from "@mossx/plugin-multi-agent/runtime";
+import { injectMainCanvasContext } from "@mossx/plugin-multi-agent/runtime";
+import { getSelectedTemplate } from "@mossx/plugin-multi-agent/runtime";
+import { templateToStageBindings } from "@mossx/plugin-multi-agent/runtime";
+import { subscribeMultiAgentConversationItems } from "@mossx/plugin-multi-agent/runtime";
 import { readExternalAbsoluteFile } from "../../../services/tauri/workspaceFiles";
 import { reconcileAtomicReasoningEffort } from "@mossx/plugin-models/runtime";
 import { projectMemoryFacade } from "../../project-memory/services/projectMemoryFacade";

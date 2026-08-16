@@ -16,8 +16,8 @@ import { WorkspaceNoteCardsLayoutProvider, useWorkspaceNoteCardsLayoutController
 import {
   useSubagentInspectorSelection,
 } from "../../subagent-ui";
-import { MultiAgentConversationHost } from "../../multi-agent";
-import { useAgentInspectorSelection } from "../../multi-agent/store/inspectorStore";
+import { MultiAgentConversationHost } from "@mossx/plugin-multi-agent/ui";
+import { useAgentInspectorSelection } from "@mossx/plugin-multi-agent/runtime";
 
 const NOTE_CARDS_SPLIT_RATIO_KEY = "noteCardsSplitRatio";
 const DEFAULT_NOTE_CARDS_SPLIT_RATIO = 66.667;

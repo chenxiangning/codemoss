@@ -1,6 +1,6 @@
 import type { ConversationItem, ThreadSummary } from "../../../types";
 import { previewThreadName } from "../../../utils/threadItems";
-import { getCollabWorkerNativeHideIds } from "../../multi-agent/runtime/collabNativeHideRegistry";
+import { getCollabWorkerNativeHideIds } from "@mossx/plugin-multi-agent/runtime";
 import { asNumber, asString } from "../utils/threadNormalize";
 import { hasCodexBackgroundHelperPreview } from "../utils/codexBackgroundHelpers";
 import {

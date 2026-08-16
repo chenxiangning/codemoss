@@ -5,7 +5,7 @@ import type {
   AgentPreparedAttempt,
   AgentProjectionV1,
   AgentStageBinding,
-} from "../../features/multi-agent/types";
+} from "@mossx/plugin-multi-agent/runtime";
 
 export async function sharedAgentRequestRun(
   workspaceId: string,

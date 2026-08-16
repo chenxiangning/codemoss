@@ -6,7 +6,7 @@ import {
   resetSharedTargetStoreForTests,
   selectNextTarget,
 } from "@mossx/plugin-shared-session/runtime";
-import { getAgentEvidenceRunId } from "../../multi-agent/store/agentStore";
+import { getAgentEvidenceRunId } from "@mossx/plugin-multi-agent/runtime";
 import { createSharedHistoryLoader } from "./sharedHistoryLoader";
 
 afterEach(() => {

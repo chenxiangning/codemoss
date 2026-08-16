@@ -313,6 +313,18 @@ export default defineConfig(({ command }) => ({
         find: /^@mossx\/plugin-live-edit-preview$/,
         replacement: path.resolve(__dirname, "./packages/plugin-live-edit-preview/src/index.ts"),
       },
+      {
+        find: /^@mossx\/plugin-multi-agent\/runtime$/,
+        replacement: path.resolve(__dirname, "./packages/plugin-multi-agent/src/runtime.ts"),
+      },
+      {
+        find: /^@mossx\/plugin-multi-agent\/ui$/,
+        replacement: path.resolve(__dirname, "./packages/plugin-multi-agent/src/ui.ts"),
+      },
+      {
+        find: /^@mossx\/plugin-multi-agent$/,
+        replacement: path.resolve(__dirname, "./packages/plugin-multi-agent/src/index.ts"),
+      },
       { find: "@", replacement: path.resolve(__dirname, "./src") },
     ],
     dedupe: [

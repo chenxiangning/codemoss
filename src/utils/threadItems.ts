@@ -3,7 +3,7 @@ import { parseIntentCanvasContextSummaries } from "@mossx/plugin-intent-canvas/r
 import {
   isMultiAgentHistFoldItemId,
   resolveMultiAgentHistFoldInsertIndex,
-} from "../features/multi-agent/utils/canvasItems";
+} from "@mossx/plugin-multi-agent/runtime";
 import {
   findEquivalentReasoningObservationIndex,
   withMessagePresentationMetadata,

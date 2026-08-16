@@ -174,13 +174,13 @@ import { BrowserContextPreview } from "@mossx/plugin-browser/ui";
 import { IntentCanvasAttachmentCard } from "@mossx/plugin-intent-canvas/ui";
 import type { IntentCanvasDocument } from "@mossx/plugin-intent-canvas/runtime";
 import { resolveBrowserNavigationUrl } from "../utils/browserNavigation";
-import { useAgentProjection } from "../../multi-agent/store/agentStore";
-import { useCollabUiState } from "../../multi-agent/store/collabUiStore";
-import { isTerminalAgentStatus } from "../../multi-agent/types";
+import { useAgentProjection } from "@mossx/plugin-multi-agent/runtime";
+import { useCollabUiState } from "@mossx/plugin-multi-agent/runtime";
+import { isTerminalAgentStatus } from "@mossx/plugin-multi-agent/runtime";
 import {
   isMultiAgentTargetSupported,
   MultiAgentComposerToggle,
-} from "../../multi-agent/components/ComposerToggle";
+} from "@mossx/plugin-multi-agent/ui";
 
 
 type RewindExecutionOptions = {

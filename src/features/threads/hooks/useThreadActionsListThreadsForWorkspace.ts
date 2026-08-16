@@ -43,7 +43,7 @@ import {
   remapThreadParentsToSharedOwners,
   toSharedThreadSummary,
 } from "@mossx/plugin-shared-session/runtime";
-import { getCollabWorkerNativeHideIds } from "../../multi-agent/runtime/collabNativeHideRegistry";
+import { getCollabWorkerNativeHideIds } from "@mossx/plugin-multi-agent/runtime";
 import { asString } from "../utils/threadNormalize";
 import { sanitizeNativeSessionTitle } from "../utils/sessionDisplayProjection";
 import { clearLiveAssistantText } from "../utils/liveAssistantTextChannel";

@@ -130,7 +130,7 @@ import {
 } from "@mossx/plugin-shared-session/runtime";
 import { buildShellRuntimeSummary } from "./layoutShellSummary";
 import { buildConversationCanvasNode } from "./conversationCanvasNode";
-import { CollabTimelineWaiting } from "../../multi-agent/components/CollabTimelineWaiting";
+import { CollabTimelineWaiting } from "@mossx/plugin-multi-agent/ui";
 import { useLayoutTopbarSessionTabs } from "./useLayoutTopbarSessionTabs";
 import { resolveIsSharedSession } from "@mossx/plugin-shared-session/runtime";
 import {
