@@ -408,6 +408,14 @@ mod tests {
         assert!(close.contains("\"8_slim\": \"forbidden\""));
         assert!(close.contains("delete engine/claude*"));
         assert!(std::path::Path::new("src/engine/claude.rs").exists());
+        let gaps = include_str!(
+            "../../../docs/architecture/plugin-platform/inventory/claude-conformance-gaps.json"
+        );
+        assert!(gaps.contains("\"interrupt\""));
+        assert!(gaps.contains("call-path-done"));
+        assert!(gaps.contains("missing-product-acceptance"));
+        assert!(gaps.contains("firstInteractive"));
+        assert!(gaps.contains("treat call-path asserts as product conformance"));
     }
 
     #[test]

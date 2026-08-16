@@ -1,0 +1,39 @@
+{
+  "pluginId": "com.mossx.engine.claude",
+  "wave": "3AO",
+  "status": "inventory-only",
+  "step": "6_conformance",
+  "axes": {
+    "interrupt": {
+      "status": "call-path-done",
+      "evidence": [
+        "claude_compat.rs#product_interrupt_goes_through_the_manager_entry",
+        "claude_compat.rs#product_turn_interrupt_goes_through_the_manager_entry",
+        "engine/manager.rs#interrupt_claude_sessions",
+        "engine/manager.rs#interrupt_claude_turn"
+      ],
+      "notProductAcceptance": true
+    },
+    "stream": {
+      "status": "missing-product-acceptance",
+      "notes": "Wire events map through builtin adapter. No product flag-on stream conformance."
+    },
+    "storage": {
+      "status": "host-fixture-only",
+      "notes": "Plugin storage gates exist on Host. Product Claude history still uses disk JSONL."
+    },
+    "rollback": {
+      "status": "missing-product-acceptance",
+      "notes": "No product rollback of a Claude plugin generation / LKG."
+    },
+    "firstInteractive": {
+      "status": "missing-product-acceptance",
+      "notes": "Boot does not activate Claude. No first-interactive measurement for the plugin path."
+    }
+  },
+  "forbiddenHere": [
+    "treat call-path asserts as product conformance",
+    "default-on MOSSX_CLAUDE_COMPAT_FACADE",
+    "delete engine/claude*"
+  ]
+}
