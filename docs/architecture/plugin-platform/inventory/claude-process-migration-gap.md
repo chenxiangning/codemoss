@@ -16,17 +16,21 @@
 
 ## 二、迁移的核心语义 gap（必须先解决才能迁）
 
-1. **多进程 vs 单进程**：Claude 一个 turn 可能 spawn 多个 CLI 子进程（如 claude-cli + claude-helper），而 `RestrictedProcessDriver` 的 catalog 是 `(plugin_id, entry_id)` 二维，不天然表达"turn 级进程组"。迁移需在插件运行时引入"turn 级进程组"概念，或让每个 turn 对应一个 activation generation。
+> 状态标注：✅ 已补齐（含实现位置 + 验证）· 🔲 待补齐。
 
-2. **进程组 kill 语义**：Claude 用 `setpgid` + `SIGKILL` 整组杀（确保孙进程也死），driver 是单 child kill。插件运行时的 RestrictedProcess 若 spawn 了会 fork 孙进程的 CLI，必须补进程组 kill，否则泄漏孤儿进程。
+1. 🔲 **多进程 vs 单进程**：Claude 一个 turn 可能 spawn 多个 CLI 子进程（如 claude-cli + claude-helper），而 `RestrictedProcessDriver` 的 catalog 是 `(plugin_id, entry_id)` 二维，不天然表达"turn 级进程组"。迁移需在插件运行时引入"turn 级进程组"概念，或让每个 turn 对应一个 activation generation。
 
-3. **turn 生命周期 vs generation 生命周期**：Claude 进程绑定 `turn_id`，插件运行时绑定 `generation`。两者不是同一概念，迁移需建立映射（一个 turn = 一个 generation activation），否则 interrupt/disable 会杀错对象。
+2. ✅ **进程组 kill 语义**：Claude 用 `setpgid` + `SIGKILL` 整组杀（确保孙进程也死），driver 是单 child kill。**已补齐**：`src-tauri/src/plugin_runtime/spawn.rs` 的 `spawn_child` 增加 `process_group(0)`（unix `CommandExt`，leader 设为组首），`kill_child` 改为 unix `libc::kill(-pid, SIGKILL)` 整组杀 + windows `taskkill /T /F` + `child.kill()`/`wait()` fallback。验证：`cargo test --lib plugin_runtime::spawn` 21/21 通过（含 `later_entry_crash_kills_the_earlier_child`、`ready_reactivate_does_not_leak_old_children` 等泄漏回归）。
 
-4. **中断标志与 ephemeral state**：Claude 的 `interrupt` 有 `interrupted` 标志 + `clear_turn_ephemeral_state`，插件运行时的 `disable` 无此语义。迁移需把这些带过去，否则 interrupt 后残留状态。
+3. 🔲 **turn 生命周期 vs generation 生命周期**：Claude 进程绑定 `turn_id`，插件运行时绑定 `generation`。两者不是同一概念，迁移需建立映射（一个 turn = 一个 generation activation），否则 interrupt/disable 会杀错对象。
+
+4. 🔲 **中断标志与 ephemeral state**：Claude 的 `interrupt` 有 `interrupted` 标志 + `clear_turn_ephemeral_state`，插件运行时的 `disable` 无此语义。迁移需把这些带过去，否则 interrupt 后残留状态。
 
 ## 三、结论
 
 「把 Claude 迁到插件运行时」不是"换个 driver 可执行文件路径"，而是要**在插件运行时补齐 turn 级多进程编排 + 进程组 kill + turn↔generation 映射 + 中断状态清理**四类语义。这四类 gap 是 P4.7 的真实工作量，也是"真实卸载 = 停掉真实进程组"的技术前提。
+
+进度：gap 2（进程组 kill）已补齐；剩余 gap 1/3/4 聚焦「turn 句柄 + interrupt 语义」的运行时 API 扩展，其中 turn↔generation 映射（gap 3）可由 `generation` 单调递增句柄承载，中断标志 + ephemeral state 清理（gap 4）是 Claude 迁入时须随业务带过去的中断语义（通用运行时只提供 `interrupt` 入口，业务 ephemeral state 由迁入方清理）。
 
 ## 四、不变量
 
