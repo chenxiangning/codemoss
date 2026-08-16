@@ -415,6 +415,39 @@ impl EngineManager {
             .await
     }
 
+    pub async fn interrupt_claude_turn(
+        &self,
+        workspace_id: &str,
+        turn_id: &str,
+        provider_profile_id: Option<&str>,
+    ) -> Result<(), String> {
+        let session = if provider_profile_id.is_some() {
+            let provider_session = if let Some(facade) = &self.claude_compat {
+                facade
+                    .get_session_for_provider(workspace_id, provider_profile_id)
+                    .await
+            } else {
+                self.claude_manager
+                    .get_session_for_provider(workspace_id, provider_profile_id)
+                    .await
+            };
+            match provider_session {
+                Some(session) if session.has_active_turn(turn_id).await => Some(session),
+                _ => None,
+            }
+        } else if let Some(facade) = &self.claude_compat {
+            facade.session_for_turn(workspace_id, turn_id).await
+        } else {
+            self.claude_manager
+                .session_for_turn(workspace_id, turn_id)
+                .await
+        };
+        if let Some(session) = session {
+            session.interrupt_turn(turn_id).await?;
+        }
+        Ok(())
+    }
+
     /// The GUI runtime no longer tracks Codex adapters locally. Keep cleanup callers stable.
     pub async fn remove_codex_adapter(&self, _workspace_id: &str) {}
 
@@ -1287,6 +1320,10 @@ mod tests {
             .interrupt_claude_sessions("ws-remove")
             .await
             .expect("interrupt empty workspace");
+        manager
+            .interrupt_claude_turn("ws-remove", "turn-missing", None)
+            .await
+            .expect("missing turn is idempotent");
     }
 
     #[tokio::test]

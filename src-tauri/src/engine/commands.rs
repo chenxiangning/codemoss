@@ -4151,25 +4151,9 @@ pub async fn engine_interrupt_turn(
                 .as_deref()
                 .map(str::trim)
                 .filter(|value| !value.is_empty());
-            let session = if provider_profile_id.is_some() {
-                let provider_session = manager
-                    .claude_manager
-                    .get_session_for_provider(&workspace_id, provider_profile_id)
-                    .await;
-                match provider_session {
-                    Some(session) if session.has_active_turn(&turn_id).await => Some(session),
-                    _ => None,
-                }
-            } else {
-                manager
-                    .claude_manager
-                    .session_for_turn(&workspace_id, &turn_id)
-                    .await
-            };
-            if let Some(session) = session {
-                session.interrupt_turn(&turn_id).await?;
-            }
-            Ok(())
+            manager
+                .interrupt_claude_turn(&workspace_id, &turn_id, provider_profile_id)
+                .await
         }
         EngineType::Codex => {
             // Codex interrupts are handled via turn_interrupt RPC from the frontend.

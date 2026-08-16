@@ -95,6 +95,24 @@ impl ClaudeCompatAdapter {
         self.builtin.map_wire_event(payload)
     }
 
+    pub async fn get_session_for_provider(
+        &self,
+        workspace_id: &str,
+        provider_profile_id: Option<&str>,
+    ) -> Option<Arc<ClaudeSession>> {
+        self.manager
+            .get_session_for_provider(workspace_id, provider_profile_id)
+            .await
+    }
+
+    pub async fn session_for_turn(
+        &self,
+        workspace_id: &str,
+        turn_id: &str,
+    ) -> Option<Arc<ClaudeSession>> {
+        self.manager.session_for_turn(workspace_id, turn_id).await
+    }
+
     pub async fn interrupt_workspace_sessions(&self, workspace_id: &str) -> Result<(), String> {
         self.manager.interrupt_workspace_sessions(workspace_id).await
     }
@@ -149,6 +167,11 @@ mod tests {
             .await;
         assert!(Arc::ptr_eq(&first, &second));
         assert!(Arc::ptr_eq(adapter.manager(), &manager));
+        let looked_up = adapter
+            .get_session_for_provider("ws-compat", None)
+            .await
+            .expect("lookup");
+        assert!(Arc::ptr_eq(&first, &looked_up));
     }
 
     #[test]
@@ -169,6 +192,26 @@ mod tests {
         assert!(!commands_interrupt.contains("claude_manager"));
         assert!(daemon_interrupt.contains("interrupt_claude_sessions"));
         assert!(!daemon_interrupt.contains("claude_manager"));
+    }
+
+    #[test]
+    fn product_turn_interrupt_goes_through_the_manager_entry() {
+        let commands = include_str!("../engine/commands.rs");
+        let daemon = include_str!("../bin/cc_gui_daemon/daemon_state.rs");
+        let commands_turn = commands
+            .split("pub async fn engine_interrupt_turn(")
+            .nth(1)
+            .and_then(|rest| rest.split("EngineType::Codex =>").next())
+            .expect("engine_interrupt_turn");
+        let daemon_turn = daemon
+            .split("pub(super) async fn engine_interrupt_turn(")
+            .nth(1)
+            .and_then(|rest| rest.split("engine::EngineType::Codex =>").next())
+            .expect("daemon engine_interrupt_turn");
+        assert!(commands_turn.contains("interrupt_claude_turn"));
+        assert!(!commands_turn.contains("claude_manager"));
+        assert!(daemon_turn.contains("interrupt_claude_turn"));
+        assert!(!daemon_turn.contains("claude_manager"));
     }
 
     #[tokio::test]
