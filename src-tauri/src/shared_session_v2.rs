@@ -4974,8 +4974,7 @@ pub async fn shared_session_v2_interrupt_turn(
             EngineType::Claude => {
                 let session = state
                     .engine_manager
-                    .claude_manager
-                    .get_session_for_provider(
+                    .get_claude_session_if_present(
                         &workspace_id,
                         route.provider_profile_id.as_deref(),
                     )
@@ -5524,8 +5523,7 @@ pub async fn shared_session_v2_probe_binding(
         Some(row) if row.engine == EngineType::Claude.icon() => {
             let session = state
                 .engine_manager
-                .claude_manager
-                .get_session_for_provider(&workspace_id, row.provider_profile_id.as_deref())
+                .get_claude_session_if_present(&workspace_id, row.provider_profile_id.as_deref())
                 .await;
             match session {
                 Some(session) => {

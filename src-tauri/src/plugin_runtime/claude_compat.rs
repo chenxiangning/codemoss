@@ -113,6 +113,23 @@ impl ClaudeCompatAdapter {
         self.manager.session_for_turn(workspace_id, turn_id).await
     }
 
+    pub async fn sessions_for_workspace(&self, workspace_id: &str) -> Vec<Arc<ClaudeSession>> {
+        self.manager.sessions_for_workspace(workspace_id).await
+    }
+
+    pub async fn runtime_sessions_for_workspace(
+        &self,
+        workspace_id: &str,
+    ) -> Vec<(String, Arc<ClaudeSession>)> {
+        self.manager
+            .runtime_sessions_for_workspace(workspace_id)
+            .await
+    }
+
+    pub async fn remove_runtime_session(&self, runtime_key: &str) -> Option<Arc<ClaudeSession>> {
+        self.manager.remove_runtime_session(runtime_key).await
+    }
+
     pub async fn interrupt_workspace_sessions(&self, workspace_id: &str) -> Result<(), String> {
         self.manager.interrupt_workspace_sessions(workspace_id).await
     }
@@ -236,6 +253,20 @@ mod tests {
         assert!(!runtime.contains("claude_manager.list_sessions"));
         assert!(commands.contains("list_claude_sessions"));
         assert!(!commands.contains("claude_manager.list_sessions"));
+    }
+
+    #[test]
+    fn remaining_lookups_go_through_the_manager_entry() {
+        let shared = include_str!("../shared_session_v2.rs");
+        let lifecycle = include_str!("../runtime/session_lifecycle.rs");
+        let state = include_str!("../state.rs");
+        assert!(shared.contains("get_claude_session_if_present"));
+        assert!(!shared.contains("claude_manager"));
+        assert!(lifecycle.contains("claude_runtime_sessions_for_workspace"));
+        assert!(lifecycle.contains("remove_claude_runtime_session"));
+        assert!(!lifecycle.contains("claude_manager"));
+        assert!(state.contains("list_claude_sessions"));
+        assert!(!state.contains("claude_manager.list_sessions"));
     }
 
     #[tokio::test]

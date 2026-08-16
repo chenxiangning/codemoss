@@ -463,6 +463,55 @@ impl EngineManager {
         self.claude_manager.interrupt_all().await
     }
 
+    pub async fn get_claude_session_if_present(
+        &self,
+        workspace_id: &str,
+        provider_profile_id: Option<&str>,
+    ) -> Option<Arc<ClaudeSession>> {
+        if let Some(facade) = &self.claude_compat {
+            return facade
+                .get_session_for_provider(workspace_id, provider_profile_id)
+                .await;
+        }
+        self.claude_manager
+            .get_session_for_provider(workspace_id, provider_profile_id)
+            .await
+    }
+
+    pub async fn claude_sessions_for_workspace(
+        &self,
+        workspace_id: &str,
+    ) -> Vec<Arc<ClaudeSession>> {
+        if let Some(facade) = &self.claude_compat {
+            return facade.sessions_for_workspace(workspace_id).await;
+        }
+        self.claude_manager
+            .sessions_for_workspace(workspace_id)
+            .await
+    }
+
+    pub async fn claude_runtime_sessions_for_workspace(
+        &self,
+        workspace_id: &str,
+    ) -> Vec<(String, Arc<ClaudeSession>)> {
+        if let Some(facade) = &self.claude_compat {
+            return facade.runtime_sessions_for_workspace(workspace_id).await;
+        }
+        self.claude_manager
+            .runtime_sessions_for_workspace(workspace_id)
+            .await
+    }
+
+    pub async fn remove_claude_runtime_session(
+        &self,
+        runtime_key: &str,
+    ) -> Option<Arc<ClaudeSession>> {
+        if let Some(facade) = &self.claude_compat {
+            return facade.remove_runtime_session(runtime_key).await;
+        }
+        self.claude_manager.remove_runtime_session(runtime_key).await
+    }
+
     /// The GUI runtime no longer tracks Codex adapters locally. Keep cleanup callers stable.
     pub async fn remove_codex_adapter(&self, _workspace_id: &str) {}
 
@@ -1341,6 +1390,18 @@ mod tests {
             .expect("missing turn is idempotent");
         assert!(manager.list_claude_sessions().await.is_empty());
         manager.interrupt_all_claude_sessions().await;
+        assert!(manager
+            .get_claude_session_if_present("ws-remove", None)
+            .await
+            .is_none());
+        assert!(manager
+            .claude_sessions_for_workspace("ws-remove")
+            .await
+            .is_empty());
+        assert!(manager
+            .claude_runtime_sessions_for_workspace("ws-remove")
+            .await
+            .is_empty());
     }
 
     #[tokio::test]

@@ -78,8 +78,7 @@ impl AppState {
         if previous_claude_bin != new_claude_bin {
             let workspace_ids = self
                 .engine_manager
-                .claude_manager
-                .list_sessions()
+                .list_claude_sessions()
                 .await
                 .into_iter()
                 .map(|(workspace_id, _session)| workspace_id)

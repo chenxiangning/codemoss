@@ -163,8 +163,7 @@ async fn stop_claude_workspace_session(state: &AppState, workspace_id: &str) -> 
         .await;
     let sessions = state
         .engine_manager
-        .claude_manager
-        .runtime_sessions_for_workspace(workspace_id)
+        .claude_runtime_sessions_for_workspace(workspace_id)
         .await;
     let mut failures = Vec::new();
     for (runtime_key, session) in sessions {
@@ -173,8 +172,7 @@ async fn stop_claude_workspace_session(state: &AppState, workspace_id: &str) -> 
                 session.mark_disposed();
                 state
                     .engine_manager
-                    .claude_manager
-                    .remove_runtime_session(&runtime_key)
+                    .remove_claude_runtime_session(&runtime_key)
                     .await;
             }
             Err(error) => failures.push(format!("{runtime_key}: {error}")),
