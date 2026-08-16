@@ -521,6 +521,14 @@ mod tests {
         assert!(!rewind_fn.contains("claude_history::"));
         assert!(manager.contains("fn fork_claude_history_session_from_message("));
         assert!(manager.contains("fork_history_session_from_message"));
+        let daemon = include_str!("../bin/cc_gui_daemon/daemon_state.rs");
+        let daemon_list = daemon
+            .split("pub(super) async fn list_claude_sessions(")
+            .nth(1)
+            .and_then(|rest| rest.split("pub(super) async fn load_claude_session(").next())
+            .expect("daemon list_claude_sessions");
+        assert!(daemon_list.contains("list_claude_history_sessions"));
+        assert!(!daemon_list.contains("claude_history::"));
     }
 
     #[tokio::test]

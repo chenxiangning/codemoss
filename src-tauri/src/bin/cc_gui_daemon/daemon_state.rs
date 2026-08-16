@@ -3379,13 +3379,10 @@ impl DaemonState {
         limit: Option<usize>,
     ) -> Result<Value, String> {
         let path = PathBuf::from(workspace_path);
-        let config = self
+        let sessions = self
             .engine_manager
-            .get_engine_config(engine::EngineType::Claude)
-            .await;
-        let sessions =
-            engine::claude_history::list_claude_sessions_with_config(&path, limit, config.as_ref())
-                .await?;
+            .list_claude_history_sessions(&path, limit)
+            .await?;
         serde_json::to_value(sessions).map_err(|error| error.to_string())
     }
 
