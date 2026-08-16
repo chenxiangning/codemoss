@@ -199,6 +199,20 @@ impl ClaudeCompatAdapter {
         )
         .await
     }
+
+    pub async fn fork_history_session(
+        &self,
+        workspace_path: &Path,
+        session_id: &str,
+        config: Option<&crate::engine::EngineConfig>,
+    ) -> Result<String, String> {
+        crate::engine::claude_history::fork_claude_session_with_config(
+            workspace_path,
+            session_id,
+            config,
+        )
+        .await
+    }
 }
 
 #[cfg(test)]
@@ -447,6 +461,16 @@ mod tests {
         assert!(!hydrate_fn.contains("claude_history::"));
         assert!(manager.contains("fn hydrate_claude_history_image("));
         assert!(manager.contains("hydrate_history_image"));
+        assert!(history.contains("fork_claude_history_session"));
+        let fork_fn = history
+            .split("pub async fn fork_claude_session(")
+            .nth(1)
+            .and_then(|rest| rest.split("pub async fn delete_claude_session(").next())
+            .expect("fork_claude_session");
+        assert!(fork_fn.contains("fork_claude_history_session"));
+        assert!(!fork_fn.contains("claude_history::"));
+        assert!(manager.contains("fn fork_claude_history_session("));
+        assert!(manager.contains("fork_history_session"));
     }
 
     #[tokio::test]

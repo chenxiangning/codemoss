@@ -173,7 +173,8 @@
 | 3R Claude history 调用面只盘点 | 完成 | `59033558d` |
 | 3S GUI list_claude_sessions 走 history 门面 | 完成 | `ed5e431a4` |
 | 3T GUI load_claude_session 走 history 门面 | 完成 | `14240da06` |
-| 3U GUI hydrate_claude_deferred_image 走 history 门面 | 完成 | 本刀 |
+| 3U GUI hydrate_claude_deferred_image 走 history 门面 | 完成 | `797ef2486` |
+| 3V GUI fork_claude_session 走 history 门面 | 完成 | 本刀 |
 
 ## 明确未做
 
