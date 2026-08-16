@@ -94,6 +94,26 @@ impl ClaudeCompatAdapter {
     pub fn map_wire_event(&self, payload: serde_json::Value) -> Result<EngineEvent, String> {
         self.builtin.map_wire_event(payload)
     }
+
+    pub async fn interrupt_workspace_sessions(&self, workspace_id: &str) -> Result<(), String> {
+        self.manager.interrupt_workspace_sessions(workspace_id).await
+    }
+
+    pub async fn remove_workspace_sessions(&self, workspace_id: &str) {
+        for (runtime_key, session) in self.manager.runtime_sessions_for_workspace(workspace_id).await
+        {
+            if let Err(error) = session.interrupt().await {
+                log::warn!(
+                    "[claude_compat] failed to interrupt claude session during remove (workspace={}): {}",
+                    workspace_id,
+                    error
+                );
+                continue;
+            }
+            session.mark_disposed();
+            self.manager.remove_runtime_session(&runtime_key).await;
+        }
+    }
 }
 
 #[cfg(test)]
@@ -129,6 +149,17 @@ mod tests {
             .await;
         assert!(Arc::ptr_eq(&first, &second));
         assert!(Arc::ptr_eq(adapter.manager(), &manager));
+    }
+
+    #[tokio::test]
+    async fn facade_remove_clears_the_core_session_table() {
+        let manager = Arc::new(ClaudeSessionManager::new());
+        let adapter = ClaudeCompatAdapter::wrapping(manager.clone());
+        let workspace = std::env::temp_dir().join("mossx-claude-compat-remove-ws");
+        let _session = adapter.get_or_create_session("ws-remove", &workspace).await;
+        assert!(manager.get_session("ws-remove").await.is_some());
+        adapter.remove_workspace_sessions("ws-remove").await;
+        assert!(manager.get_session("ws-remove").await.is_none());
     }
 
     #[test]

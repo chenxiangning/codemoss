@@ -55,8 +55,9 @@ pub struct EngineManager {
     /// Engine configurations
     engine_configs: RwLock<HashMap<EngineType, EngineConfig>>,
 
-    /// Optional Claude facade. When present, session getters go through it
-    /// but still share `claude_manager`. Default construction leaves this None.
+    /// Optional Claude facade. When present, session getters and lifecycle
+    /// go through it but still share `claude_manager`. Default construction
+    /// leaves this None.
     claude_compat: Option<crate::plugin_runtime::claude_compat::ClaudeCompatAdapter>,
 }
 
@@ -381,6 +382,10 @@ impl EngineManager {
 
     /// Remove a Claude session
     pub async fn remove_claude_session(&self, workspace_id: &str) {
+        if let Some(facade) = &self.claude_compat {
+            facade.remove_workspace_sessions(workspace_id).await;
+            return;
+        }
         for (runtime_key, session) in self
             .claude_manager
             .runtime_sessions_for_workspace(workspace_id)
@@ -399,6 +404,15 @@ impl EngineManager {
                 .remove_runtime_session(&runtime_key)
                 .await;
         }
+    }
+
+    pub async fn interrupt_claude_sessions(&self, workspace_id: &str) -> Result<(), String> {
+        if let Some(facade) = &self.claude_compat {
+            return facade.interrupt_workspace_sessions(workspace_id).await;
+        }
+        self.claude_manager
+            .interrupt_workspace_sessions(workspace_id)
+            .await
     }
 
     /// The GUI runtime no longer tracks Codex adapters locally. Keep cleanup callers stable.
@@ -1259,6 +1273,20 @@ mod tests {
             .get_claude_session_for_provider("ws-dual", &workspace, None)
             .await;
         assert!(Arc::ptr_eq(&via_getter, &via_provider));
+    }
+
+    #[tokio::test]
+    async fn flagged_claude_remove_clears_the_core_session() {
+        let manager = EngineManager::new_with_claude_compat(true);
+        let workspace = std::env::temp_dir().join("mossx-claude-dual-remove-ws");
+        let _session = manager.get_claude_session("ws-remove", &workspace).await;
+        assert!(manager.claude_manager.get_session("ws-remove").await.is_some());
+        manager.remove_claude_session("ws-remove").await;
+        assert!(manager.claude_manager.get_session("ws-remove").await.is_none());
+        manager
+            .interrupt_claude_sessions("ws-remove")
+            .await
+            .expect("interrupt empty workspace");
     }
 
     #[tokio::test]
