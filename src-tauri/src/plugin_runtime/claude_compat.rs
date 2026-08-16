@@ -438,6 +438,17 @@ mod tests {
             .and_then(|rest| rest.split("pub fn new_with_claude_compat(").next())
             .expect("EngineManager::new");
         assert!(manager_new.contains("claude_compat_facade_enabled()"));
+        let criteria = include_str!(
+            "../../../docs/architecture/plugin-platform/inventory/claude-wave3-goal-criteria.json"
+        );
+        assert!(criteria.contains("\"adapter\""));
+        assert!(criteria.contains("evidence-complete"));
+        assert!(criteria.contains("\"defaultOff\""));
+        assert!(criteria.contains("\"disableNotDelete\""));
+        assert!(criteria.contains("outOfScopeNotIncomplete"));
+        assert!(criteria.contains("product disable of Core Claude"));
+        assert!(std::path::Path::new("src/engine/claude.rs").exists());
+        assert!(!claude_compat_facade_enabled_from(None));
     }
 
     #[test]

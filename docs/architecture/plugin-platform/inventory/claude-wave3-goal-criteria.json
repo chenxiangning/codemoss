@@ -1,0 +1,47 @@
+{
+  "pluginId": "com.mossx.engine.claude",
+  "wave": "3AR",
+  "status": "inventory-only",
+  "objective": "按 Wave 3 推进第一根插头 Claude：双路径 compatibility adapter、默认 off、disable-not-delete；不 push、不删 engine/claude、不迁 note_cards、不开 Marketplace；每刀自评后再进下一刀。",
+  "required": {
+    "adapter": {
+      "status": "evidence-complete",
+      "evidence": [
+        "src-tauri/src/plugin_runtime/claude_compat.rs#ClaudeCompatAdapter",
+        "src-tauri/src/engine/manager.rs#claude_owner"
+      ]
+    },
+    "defaultOff": {
+      "status": "evidence-complete",
+      "evidence": [
+        "MOSSX_CLAUDE_COMPAT_FACADE defaults off",
+        "state.rs#EngineManager::new()",
+        "daemon_state.rs#EngineManager::new()",
+        "claude-product-boot-default-off.json"
+      ]
+    },
+    "disableNotDelete": {
+      "status": "evidence-complete",
+      "scope": "fixture-only",
+      "evidence": [
+        "claude_pilot.rs#disable_claude_fixture_keeps_core_implementation",
+        "src/engine/claude.rs exists",
+        "claude-disable-not-delete.json"
+      ]
+    }
+  },
+  "forbiddenAndHeld": {
+    "push": "held",
+    "deleteEngineClaude": "held",
+    "migrateNoteCards": "held",
+    "marketplace": "held"
+  },
+  "outOfScopeNotIncomplete": [
+    "product disable of Core Claude",
+    "slim delete engine/claude*",
+    "default-on flag",
+    "Marketplace publish",
+    "Notes product cutover"
+  ],
+  "notes": "3AR inventory only. The Wave 3 goal clauses have evidence. Product disable/slim remain forbidden, not leftover Wave 3 work."
+}
