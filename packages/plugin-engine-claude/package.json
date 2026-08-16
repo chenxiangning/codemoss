@@ -3,5 +3,9 @@
   "private": true,
   "version": "1.0.0",
   "description": "Transitional Claude Engine Pilot package. Default-off. Not wired into boot or Marketplace.",
-  "type": "module"
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./runtime": "./src/runtime.ts"
+  }
 }

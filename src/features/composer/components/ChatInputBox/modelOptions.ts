@@ -1,7 +1,7 @@
 import type { ModelInfo, ProviderId, ProviderModelCatalogs } from './types';
 import { AVAILABLE_PROVIDERS, CODEX_MODELS } from './types';
 import { STORAGE_KEYS, validateCodexCustomModels } from '../../types/provider';
-import { readClaudeCustomModelsFromStorage } from '../../../models/claudeCustomModels';
+import { readClaudeCustomModelsFromStorage } from '@mossx/plugin-engine-claude/runtime';
 import { getGeneratedModelFallbacks } from '../../../models/generatedModelFallbacks';
 
 export const RELEVANT_MODEL_STORAGE_KEYS = new Set<string>([

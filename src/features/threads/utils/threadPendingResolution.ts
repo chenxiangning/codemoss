@@ -1,4 +1,4 @@
-import { isClaudeSessionBootstrapThreadId } from "./claudeForkThread";
+import { isClaudeSessionBootstrapThreadId } from "@mossx/plugin-engine-claude/runtime";
 
 export type PendingResolutionInput = {
   workspaceId: string;

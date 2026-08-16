@@ -32,8 +32,8 @@ import {
 import {
   buildClaudeResumeCommand,
   extractClaudeNativeSessionId,
-  type ClaudeResumeCommandPlatform,
-} from "../utils/claudeResumeCommand";
+} from "@mossx/plugin-engine-claude/runtime";
+import type { ClaudeResumeCommandPlatform } from "@mossx/plugin-engine-claude/runtime";
 import type {
   EngineDisplayInfo,
   EngineRefreshResult,

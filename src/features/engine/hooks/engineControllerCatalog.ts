@@ -8,7 +8,7 @@ import {
   STORAGE_KEYS as PROVIDER_STORAGE_KEYS,
   validateCodexCustomModels,
 } from "../../composer/types/provider";
-import { readClaudeCustomModelsFromStorage } from "../../models/claudeCustomModels";
+import { readClaudeCustomModelsFromStorage } from "@mossx/plugin-engine-claude/runtime";
 import { getGeneratedModelFallbacks } from "../../models/generatedModelFallbacks";
 
 const UNKNOWN_MODEL_SOURCE = "unknown";

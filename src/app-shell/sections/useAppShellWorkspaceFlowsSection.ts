@@ -16,7 +16,7 @@ import { useWorkspaceRuntimeRun } from "../../features/app/hooks/useWorkspaceRun
 import { useWorkspaceLaunchScripts } from "../../features/app/hooks/useWorkspaceLaunchScripts";
 import type { CenterMode } from "../../features/app/hooks/useGitPanelController";
 import { useWorktreeSetupScript } from "../../features/app/hooks/useWorktreeSetupScript";
-import { buildClaudeResumeTerminalCommand } from "../../features/app/utils/claudeResumeCommand";
+import { buildClaudeResumeTerminalCommand } from "@mossx/plugin-engine-claude/runtime";
 import {
   TERMINAL_COMMAND_REQUEST_EVENT,
   type TerminalCommandRequest,

@@ -15,7 +15,7 @@ import {
   getReasoningOptionsForModel,
   upsertEngineSelectedModelId,
 } from "./modelSelection";
-import { resolveClaudeManagedRuntimeModel } from "../../features/models/claudeManagedRuntimeModel";
+import { resolveClaudeManagedRuntimeModel } from "@mossx/plugin-engine-claude/runtime";
 
 export function useAppShellComposerModelSection({
   accessMode,

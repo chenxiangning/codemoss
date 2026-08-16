@@ -30,7 +30,9 @@
       "@mossx/plugin-intent-canvas/ui": ["./packages/plugin-intent-canvas/src/ui.ts"],
       "@mossx/plugin-browser": ["./packages/plugin-browser/src/index.ts"],
       "@mossx/plugin-browser/runtime": ["./packages/plugin-browser/src/runtime.ts"],
-      "@mossx/plugin-browser/ui": ["./packages/plugin-browser/src/ui.ts"]
+      "@mossx/plugin-browser/ui": ["./packages/plugin-browser/src/ui.ts"],
+      "@mossx/plugin-engine-claude": ["./packages/plugin-engine-claude/src/index.ts"],
+      "@mossx/plugin-engine-claude/runtime": ["./packages/plugin-engine-claude/src/runtime.ts"]
     },
 
     /* Linting */

@@ -52,7 +52,7 @@ import {
   shouldDeduplicateCodexAssistantMessages,
 } from "./useThreadsReducerAssistantDedup";
 import { isOptimisticUserMessageId } from "../utils/queuedHandoffBubble";
-import { isClaudeForkThreadId } from "../utils/claudeForkThread";
+import { isClaudeForkThreadId } from "@mossx/plugin-engine-claude/runtime";
 import { resolvePendingThreadIdForSession } from "../utils/threadPendingResolution";
 import {
   isSameRequestUserInput,

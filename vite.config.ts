@@ -101,6 +101,14 @@ export default defineConfig(({ command }) => ({
         find: /^@mossx\/plugin-browser$/,
         replacement: path.resolve(__dirname, "./packages/plugin-browser/src/index.ts"),
       },
+      {
+        find: /^@mossx\/plugin-engine-claude\/runtime$/,
+        replacement: path.resolve(__dirname, "./packages/plugin-engine-claude/src/runtime.ts"),
+      },
+      {
+        find: /^@mossx\/plugin-engine-claude$/,
+        replacement: path.resolve(__dirname, "./packages/plugin-engine-claude/src/index.ts"),
+      },
       { find: "@", replacement: path.resolve(__dirname, "./src") },
     ],
     dedupe: [

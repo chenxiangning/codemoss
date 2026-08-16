@@ -161,7 +161,7 @@ import {
   sanitizeImageAttachmentPaths,
 } from "../../engine/utils/engineImageInput";
 import { getManualMemoryInjectionMode } from "../../project-memory/utils/manualInjectionMode";
-import { estimateClaudeContextWindow } from "../../models/claudeContextWindow";
+import { estimateClaudeContextWindow } from "@mossx/plugin-engine-claude/runtime";
 import type { RewindMode } from "../../threads/utils/rewindMode";
 import {
   buildRetainedContextChipKeys,

@@ -1,6 +1,6 @@
 import type { ThreadSummary } from "../../../types";
 import { prepareThreadItems } from "../../../utils/threadItems";
-import { isClaudeForkThreadId } from "../utils/claudeForkThread";
+import { isClaudeForkThreadId } from "@mossx/plugin-engine-claude/runtime";
 import type { ThreadState } from "./threadReducerTypes";
 
 export function attachReplacedThreadId(

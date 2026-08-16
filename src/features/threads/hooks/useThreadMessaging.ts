@@ -27,7 +27,7 @@ import type { AutoSessionMetadata } from "../../../services/tauri";
 import {
   extractClaudeForkParentSessionId,
   isClaudeForkThreadId,
-} from "../utils/claudeForkThread";
+} from "@mossx/plugin-engine-claude/runtime";
 import { emitMessagesForcePinBottom } from "../../../live-canvas/liveCanvasControls";
 import {
   sendUserMessage as sendUserMessageService,

@@ -6,5 +6,6 @@ Wave 3AK 过渡仓。`pluginId`：`com.mossx.engine.claude`。
 
 - 有：`.mossx-plugin/plugin.json`
 - 没有：`dist/`、`bin/`、`integrity.json`、`signature.json`、SBOM
+- 前端导入走：`@mossx/plugin-engine-claude/runtime`
 - 不进 Host / boot / Marketplace
 - 不删 `src-tauri/src/engine/claude*`
