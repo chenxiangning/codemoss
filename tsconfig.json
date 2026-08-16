@@ -118,7 +118,15 @@
       "@mossx/plugin-engine-codex": ["./packages/plugin-engine-codex/src/index.ts"],
       "@mossx/plugin-engine-codex/runtime": ["./packages/plugin-engine-codex/src/runtime.ts"],
       "@mossx/plugin-engine-gemini": ["./packages/plugin-engine-gemini/src/index.ts"],
-      "@mossx/plugin-engine-gemini/runtime": ["./packages/plugin-engine-gemini/src/runtime.ts"]
+      "@mossx/plugin-engine-gemini/runtime": ["./packages/plugin-engine-gemini/src/runtime.ts"],
+      "@mossx/plugin-engine-grok": ["./packages/plugin-engine-grok/src/index.ts"],
+      "@mossx/plugin-engine-grok/runtime": ["./packages/plugin-engine-grok/src/runtime.ts"],
+      "@mossx/plugin-engine-kimi": ["./packages/plugin-engine-kimi/src/index.ts"],
+      "@mossx/plugin-engine-kimi/runtime": ["./packages/plugin-engine-kimi/src/runtime.ts"],
+      "@mossx/plugin-engine-opencode": ["./packages/plugin-engine-opencode/src/index.ts"],
+      "@mossx/plugin-engine-opencode/runtime": ["./packages/plugin-engine-opencode/src/runtime.ts"],
+      "@mossx/plugin-engine-pi": ["./packages/plugin-engine-pi/src/index.ts"],
+      "@mossx/plugin-engine-pi/runtime": ["./packages/plugin-engine-pi/src/runtime.ts"]
     },
 
     /* Linting */

@@ -453,6 +453,38 @@ export default defineConfig(({ command }) => ({
         find: /^@mossx\/plugin-engine-gemini$/,
         replacement: path.resolve(__dirname, "./packages/plugin-engine-gemini/src/index.ts"),
       },
+      {
+        find: /^@mossx\/plugin-engine-grok\/runtime$/,
+        replacement: path.resolve(__dirname, "./packages/plugin-engine-grok/src/runtime.ts"),
+      },
+      {
+        find: /^@mossx\/plugin-engine-grok$/,
+        replacement: path.resolve(__dirname, "./packages/plugin-engine-grok/src/index.ts"),
+      },
+      {
+        find: /^@mossx\/plugin-engine-kimi\/runtime$/,
+        replacement: path.resolve(__dirname, "./packages/plugin-engine-kimi/src/runtime.ts"),
+      },
+      {
+        find: /^@mossx\/plugin-engine-kimi$/,
+        replacement: path.resolve(__dirname, "./packages/plugin-engine-kimi/src/index.ts"),
+      },
+      {
+        find: /^@mossx\/plugin-engine-opencode\/runtime$/,
+        replacement: path.resolve(__dirname, "./packages/plugin-engine-opencode/src/runtime.ts"),
+      },
+      {
+        find: /^@mossx\/plugin-engine-opencode$/,
+        replacement: path.resolve(__dirname, "./packages/plugin-engine-opencode/src/index.ts"),
+      },
+      {
+        find: /^@mossx\/plugin-engine-pi\/runtime$/,
+        replacement: path.resolve(__dirname, "./packages/plugin-engine-pi/src/runtime.ts"),
+      },
+      {
+        find: /^@mossx\/plugin-engine-pi$/,
+        replacement: path.resolve(__dirname, "./packages/plugin-engine-pi/src/index.ts"),
+      },
       { find: "@", replacement: path.resolve(__dirname, "./src") },
     ],
     dedupe: [

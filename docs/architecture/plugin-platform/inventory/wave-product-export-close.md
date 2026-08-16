@@ -46,6 +46,10 @@
 | `@mossx/plugin-shared` | Settings / Workspaces | `src/features/shared` |
 | `@mossx/plugin-engine-codex` | 会话 history factory / Settings | `src/features/threads/loaders/codex*` |
 | `@mossx/plugin-engine-gemini` | 会话 history factory / Settings / resume | `src/features/threads/loaders/gemini*` |
+| `@mossx/plugin-engine-grok` | 会话 history factory / resume | `src/features/threads/loaders/grok*` |
+| `@mossx/plugin-engine-kimi` | 会话 history factory / resume | `src/features/threads/loaders/kimi*` |
+| `@mossx/plugin-engine-opencode` | 会话 history factory | `src/features/threads/loaders/opencode*` |
+| `@mossx/plugin-engine-pi` | 会话 history factory / resume | `src/features/threads/loaders/pi*` |
 
 ## 仍未做
 

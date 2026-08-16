@@ -10,10 +10,10 @@ import {
 import { createClaudeHistoryLoader } from "@mossx/plugin-engine-claude/runtime";
 import { createCodexHistoryLoader } from "@mossx/plugin-engine-codex/runtime";
 import { createGeminiHistoryLoader } from "@mossx/plugin-engine-gemini/runtime";
-import { createGrokHistoryLoader } from "../loaders/grokHistoryLoader";
-import { createKimiHistoryLoader } from "../loaders/kimiHistoryLoader";
-import { createOpenCodeHistoryLoader } from "../loaders/opencodeHistoryLoader";
-import { createPiHistoryLoader } from "../loaders/piHistoryLoader";
+import { createGrokHistoryLoader } from "@mossx/plugin-engine-grok/runtime";
+import { createKimiHistoryLoader } from "@mossx/plugin-engine-kimi/runtime";
+import { createOpenCodeHistoryLoader } from "@mossx/plugin-engine-opencode/runtime";
+import { createPiHistoryLoader } from "@mossx/plugin-engine-pi/runtime";
 import { createSharedHistoryLoader } from "../loaders/sharedHistoryLoader";
 import {
   loadSharedProjection as loadSharedProjectionService,

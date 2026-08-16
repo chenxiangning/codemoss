@@ -22,9 +22,9 @@ import {
   parseClaudeHistoryMessagesWithShadowRecovery,
 } from "@mossx/plugin-engine-claude/runtime";
 import { parseGeminiHistoryMessages } from "@mossx/plugin-engine-gemini/runtime";
-import { parseGrokHistoryMessages } from "../loaders/grokHistoryParser";
-import { parseKimiHistoryMessages } from "../loaders/kimiHistoryParser";
-import { parsePiHistoryMessages } from "../loaders/piHistoryParser";
+import { parseGrokHistoryMessages } from "@mossx/plugin-engine-grok/runtime";
+import { parseKimiHistoryMessages } from "@mossx/plugin-engine-kimi/runtime";
+import { parsePiHistoryMessages } from "@mossx/plugin-engine-pi/runtime";
 import {
   hydrateHistory,
   mergeHistoryProjectionItems,
