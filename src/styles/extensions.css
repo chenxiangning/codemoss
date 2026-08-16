@@ -428,3 +428,13 @@
   margin: 4px 0 0;
   font-size: 13px;
 }
+
+.extensions-plugin-rack-stage {
+  justify-self: start;
+  padding: 6px 10px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 12px;
+}

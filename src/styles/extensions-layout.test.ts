@@ -56,6 +56,7 @@ describe("extensions layout", () => {
     expect(getCssRuleBlock(".extensions-plugin-rack-groups")).toContain("display: grid;");
     expect(getCssRuleBlock(".extensions-plugin-rack-catalog")).toContain("display: grid;");
     expect(getCssRuleBlock(".extensions-plugin-rack-card")).toContain("border-radius: 10px;");
+    expect(getCssRuleBlock(".extensions-plugin-rack-stage")).toContain("border-radius: 8px;");
     expect(css).not.toContain("Browse Marketplace");
   });
 });

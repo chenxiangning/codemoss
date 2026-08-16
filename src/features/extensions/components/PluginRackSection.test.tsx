@@ -24,6 +24,9 @@ const translations: Record<string, string> = {
   "extensions.rack.catalogPath": "Path",
   "extensions.rack.catalogStatus": "Status",
   "extensions.rack.catalogNotInstalled": "Not installed",
+  "extensions.rack.catalogInstalled": "Installed (local mark)",
+  "extensions.rack.catalogStage": "Install",
+  "extensions.rack.catalogUnstage": "Uninstall",
   "extensions.rack.error": "Could not read the Host rack: {{message}}",
   "extensions.rack.kinds.engine": "Engines",
   "extensions.rack.kinds.feature": "Features",
@@ -99,7 +102,10 @@ describe("PluginRackSection", () => {
     expect(catalog.textContent).toContain("com.mossx.engine.codex");
     expect(catalog.textContent).toContain("com.mossx.engine.pi");
     expect(screen.getByText("Marketplace stays closed.")).toBeTruthy();
-    expect(screen.queryByRole("button", { name: /install|enable|marketplace/i })).toBeNull();
+    expect(screen.getAllByRole("button", { name: "Install" }).length).toBeGreaterThan(0);
+    expect(screen.queryByRole("button", { name: /enable|marketplace/i })).toBeNull();
+    const notesPlug = featureGroup.textContent ?? "";
+    expect(notesPlug).toContain("Idle");
   });
 
   it("shows an error when the snapshot command fails", async () => {

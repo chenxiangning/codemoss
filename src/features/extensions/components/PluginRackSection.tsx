@@ -3,6 +3,11 @@ import { useTranslation } from "react-i18next";
 
 import { listLocalPluginCatalog } from "@/services/tauri/pluginLocalCatalog";
 import {
+  isLocalPluginStaged,
+  stageLocalPlugin,
+  unstageLocalPlugin,
+} from "@/services/tauri/pluginLocalStage";
+import {
   getPluginRackSnapshot,
   type PluginRackPlug,
   type PluginRackSnapshot,
@@ -51,6 +56,7 @@ export function PluginRackSection() {
   const stylesReady = useFeatureStylesReady(loadExtensionsStyles);
   const [snapshot, setSnapshot] = useState<PluginRackSnapshot | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [stagedIds, setStagedIds] = useState<string[]>([]);
 
   useEffect(() => {
     let cancelled = false;
@@ -65,6 +71,7 @@ export function PluginRackSection() {
           setError(cause instanceof Error ? cause.message : String(cause));
         }
       });
+    setStagedIds(listLocalPluginCatalog().filter((item) => isLocalPluginStaged(item.pluginId)).map((item) => item.pluginId));
     return () => {
       cancelled = true;
     };
@@ -137,24 +144,51 @@ export function PluginRackSection() {
           <h3>{t("extensions.rack.catalogTitle")}</h3>
           <p>{t("extensions.rack.catalogSubtitle")}</p>
           <ul className="extensions-plugin-rack-list">
-            {listLocalPluginCatalog().map((item) => (
-              <li key={item.pluginId} className="extensions-plugin-rack-card">
-                <div>
-                  <h4>{item.displayName}</h4>
-                  <p className="extensions-plugin-rack-id">{item.pluginId}</p>
-                </div>
-                <dl>
+            {listLocalPluginCatalog().map((item) => {
+              const staged = stagedIds.includes(item.pluginId);
+              return (
+                <li key={item.pluginId} className="extensions-plugin-rack-card">
                   <div>
-                    <dt>{t("extensions.rack.catalogPath")}</dt>
-                    <dd>{item.packageDir}</dd>
+                    <h4>{item.displayName}</h4>
+                    <p className="extensions-plugin-rack-id">{item.pluginId}</p>
                   </div>
-                  <div>
-                    <dt>{t("extensions.rack.catalogStatus")}</dt>
-                    <dd>{t("extensions.rack.catalogNotInstalled")}</dd>
-                  </div>
-                </dl>
-              </li>
-            ))}
+                  <dl>
+                    <div>
+                      <dt>{t("extensions.rack.catalogPath")}</dt>
+                      <dd>{item.packageDir}</dd>
+                    </div>
+                    <div>
+                      <dt>{t("extensions.rack.catalogStatus")}</dt>
+                      <dd>
+                        {staged
+                          ? t("extensions.rack.catalogInstalled")
+                          : t("extensions.rack.catalogNotInstalled")}
+                      </dd>
+                    </div>
+                  </dl>
+                  <button
+                    type="button"
+                    className="extensions-plugin-rack-stage"
+                    onClick={() => {
+                      const result = staged
+                        ? unstageLocalPlugin(item.pluginId)
+                        : stageLocalPlugin(item.pluginId);
+                      setStagedIds((current) => {
+                        const next = new Set(current);
+                        if (result.staged) {
+                          next.add(item.pluginId);
+                        } else {
+                          next.delete(item.pluginId);
+                        }
+                        return [...next];
+                      });
+                    }}
+                  >
+                    {staged ? t("extensions.rack.catalogUnstage") : t("extensions.rack.catalogStage")}
+                  </button>
+                </li>
+              );
+            })}
           </ul>
         </section>
         <p className="extensions-plugin-rack-footnote">{t("extensions.rack.marketplaceLater")}</p>
