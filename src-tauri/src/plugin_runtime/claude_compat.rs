@@ -153,6 +153,20 @@ impl ClaudeCompatAdapter {
     pub async fn remove_workspace_sessions(&self, workspace_id: &str) {
         self.manager.remove_workspace_sessions(workspace_id).await
     }
+
+    pub async fn list_history_sessions(
+        &self,
+        workspace_path: &Path,
+        limit: Option<usize>,
+        config: Option<&crate::engine::EngineConfig>,
+    ) -> Result<Vec<crate::engine::claude_history::ClaudeSessionSummary>, String> {
+        crate::engine::claude_history::list_claude_sessions_with_config(
+            workspace_path,
+            limit,
+            config,
+        )
+        .await
+    }
 }
 
 #[cfg(test)]
@@ -370,8 +384,17 @@ mod tests {
         assert!(inventory.contains("geminiHistoryParser.ts"));
         assert!(std::path::Path::new("src/engine/claude_history.rs").exists());
         let history = include_str!("../engine/session_history_commands.rs");
-        assert!(history.contains("claude_history::list_claude_sessions_with_config"));
-        assert!(!history.contains("claude_compat"));
+        assert!(history.contains("list_claude_history_sessions"));
+        let list_fn = history
+            .split("pub async fn list_claude_sessions(")
+            .nth(1)
+            .and_then(|rest| rest.split("pub async fn load_claude_session(").next())
+            .expect("list_claude_sessions");
+        assert!(list_fn.contains("list_claude_history_sessions"));
+        assert!(!list_fn.contains("claude_history::"));
+        let manager = include_str!("../engine/manager.rs");
+        assert!(manager.contains("fn list_claude_history_sessions("));
+        assert!(manager.contains("list_history_sessions"));
     }
 
     #[tokio::test]

@@ -191,6 +191,29 @@ impl ClaudeOwner<'_> {
             Self::Core(core) => core.set_config(config).await,
         }
     }
+
+    async fn list_history_sessions(
+        &self,
+        workspace_path: &Path,
+        limit: Option<usize>,
+        config: Option<&EngineConfig>,
+    ) -> Result<Vec<super::claude_history::ClaudeSessionSummary>, String> {
+        match self {
+            Self::Facade(facade) => {
+                facade
+                    .list_history_sessions(workspace_path, limit, config)
+                    .await
+            }
+            Self::Core(_) => {
+                super::claude_history::list_claude_sessions_with_config(
+                    workspace_path,
+                    limit,
+                    config,
+                )
+                .await
+            }
+        }
+    }
 }
 
 #[derive(Default)]
@@ -556,6 +579,17 @@ impl EngineManager {
 
     pub async fn list_claude_sessions(&self) -> Vec<(String, Arc<ClaudeSession>)> {
         self.claude_owner().list_sessions().await
+    }
+
+    pub async fn list_claude_history_sessions(
+        &self,
+        workspace_path: &Path,
+        limit: Option<usize>,
+    ) -> Result<Vec<super::claude_history::ClaudeSessionSummary>, String> {
+        let config = self.get_engine_config(EngineType::Claude).await;
+        self.claude_owner()
+            .list_history_sessions(workspace_path, limit, config.as_ref())
+            .await
     }
 
     pub async fn interrupt_all_claude_sessions(&self) {

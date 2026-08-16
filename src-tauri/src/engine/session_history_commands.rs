@@ -79,13 +79,10 @@ pub async fn list_claude_sessions(
         .await;
     }
     let path = std::path::PathBuf::from(&workspace_path);
-    let config = state
+    let sessions = state
         .engine_manager
-        .get_engine_config(EngineType::Claude)
-        .await;
-    let sessions =
-        super::claude_history::list_claude_sessions_with_config(&path, limit, config.as_ref())
-            .await?;
+        .list_claude_history_sessions(&path, limit)
+        .await?;
     serde_json::to_value(sessions).map_err(|error| error.to_string())
 }
 
