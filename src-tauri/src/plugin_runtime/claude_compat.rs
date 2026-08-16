@@ -213,6 +213,20 @@ impl ClaudeCompatAdapter {
         )
         .await
     }
+
+    pub async fn delete_history_session(
+        &self,
+        workspace_path: &Path,
+        session_id: &str,
+        config: Option<&crate::engine::EngineConfig>,
+    ) -> Result<(), String> {
+        crate::engine::claude_history::delete_claude_session_with_config(
+            workspace_path,
+            session_id,
+            config,
+        )
+        .await
+    }
 }
 
 #[cfg(test)]
@@ -471,6 +485,16 @@ mod tests {
         assert!(!fork_fn.contains("claude_history::"));
         assert!(manager.contains("fn fork_claude_history_session("));
         assert!(manager.contains("fork_history_session"));
+        assert!(history.contains("delete_claude_history_session"));
+        let delete_fn = history
+            .split("pub async fn delete_claude_session(")
+            .nth(1)
+            .and_then(|rest| rest.split("pub async fn list_gemini_sessions(").next())
+            .expect("delete_claude_session");
+        assert!(delete_fn.contains("delete_claude_history_session"));
+        assert!(!delete_fn.contains("claude_history::"));
+        assert!(manager.contains("fn delete_claude_history_session("));
+        assert!(manager.contains("delete_history_session"));
     }
 
     #[tokio::test]

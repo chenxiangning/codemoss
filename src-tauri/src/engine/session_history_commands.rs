@@ -192,11 +192,9 @@ pub async fn delete_claude_session(
         return Ok(());
     }
     let path = std::path::PathBuf::from(&workspace_path);
-    let config = state
+    state
         .engine_manager
-        .get_engine_config(EngineType::Claude)
-        .await;
-    super::claude_history::delete_claude_session_with_config(&path, &session_id, config.as_ref())
+        .delete_claude_history_session(&path, &session_id)
         .await
 }
 

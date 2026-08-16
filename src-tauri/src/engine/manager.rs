@@ -287,6 +287,29 @@ impl ClaudeOwner<'_> {
             }
         }
     }
+
+    async fn delete_history_session(
+        &self,
+        workspace_path: &Path,
+        session_id: &str,
+        config: Option<&EngineConfig>,
+    ) -> Result<(), String> {
+        match self {
+            Self::Facade(facade) => {
+                facade
+                    .delete_history_session(workspace_path, session_id, config)
+                    .await
+            }
+            Self::Core(_) => {
+                super::claude_history::delete_claude_session_with_config(
+                    workspace_path,
+                    session_id,
+                    config,
+                )
+                .await
+            }
+        }
+    }
 }
 
 #[derive(Default)]
@@ -697,6 +720,17 @@ impl EngineManager {
         let config = self.get_engine_config(EngineType::Claude).await;
         self.claude_owner()
             .fork_history_session(workspace_path, session_id, config.as_ref())
+            .await
+    }
+
+    pub async fn delete_claude_history_session(
+        &self,
+        workspace_path: &Path,
+        session_id: &str,
+    ) -> Result<(), String> {
+        let config = self.get_engine_config(EngineType::Claude).await;
+        self.claude_owner()
+            .delete_history_session(workspace_path, session_id, config.as_ref())
             .await
     }
 
