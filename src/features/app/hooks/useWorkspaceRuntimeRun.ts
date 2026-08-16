@@ -1,8 +1,8 @@
-import { useRuntimeLogSession } from "../../runtime-log/hooks/useRuntimeLogSession";
+import { useRuntimeLogSession } from "@mossx/plugin-runtime-log/runtime";
 import type {
   RuntimeConsoleStatus,
   RuntimeLogSessionState,
-} from "../../runtime-log/hooks/useRuntimeLogSession";
+} from "@mossx/plugin-runtime-log/runtime";
 import type { WorkspaceInfo } from "../../../types";
 
 type UseWorkspaceRuntimeRunOptions = {

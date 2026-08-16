@@ -385,6 +385,18 @@ export default defineConfig(({ command }) => ({
         find: /^@mossx\/plugin-client-documentation$/,
         replacement: path.resolve(__dirname, "./packages/plugin-client-documentation/src/index.ts"),
       },
+      {
+        find: /^@mossx\/plugin-runtime-log\/runtime$/,
+        replacement: path.resolve(__dirname, "./packages/plugin-runtime-log/src/runtime.ts"),
+      },
+      {
+        find: /^@mossx\/plugin-runtime-log\/ui$/,
+        replacement: path.resolve(__dirname, "./packages/plugin-runtime-log/src/ui.ts"),
+      },
+      {
+        find: /^@mossx\/plugin-runtime-log$/,
+        replacement: path.resolve(__dirname, "./packages/plugin-runtime-log/src/index.ts"),
+      },
       { find: "@", replacement: path.resolve(__dirname, "./src") },
     ],
     dedupe: [

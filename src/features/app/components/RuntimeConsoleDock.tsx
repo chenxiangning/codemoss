@@ -1,5 +1,5 @@
 import { useEffect, type ComponentProps } from "react";
-import { RuntimeLogPanel } from "../../runtime-log/components/RuntimeLogPanel";
+import { RuntimeLogPanel } from "@mossx/plugin-runtime-log/ui";
 import { loadRuntimeConsoleStyles } from "../../../styles/featureStyleLoaders";
 
 export function RuntimeConsoleDock(props: ComponentProps<typeof RuntimeLogPanel>) {

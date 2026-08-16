@@ -101,7 +101,10 @@
       "@mossx/plugin-agent-catalog/ui": ["./packages/plugin-agent-catalog/src/ui.ts"],
       "@mossx/plugin-client-documentation": ["./packages/plugin-client-documentation/src/index.ts"],
       "@mossx/plugin-client-documentation/runtime": ["./packages/plugin-client-documentation/src/runtime.ts"],
-      "@mossx/plugin-client-documentation/ui": ["./packages/plugin-client-documentation/src/ui.ts"]
+      "@mossx/plugin-client-documentation/ui": ["./packages/plugin-client-documentation/src/ui.ts"],
+      "@mossx/plugin-runtime-log": ["./packages/plugin-runtime-log/src/index.ts"],
+      "@mossx/plugin-runtime-log/runtime": ["./packages/plugin-runtime-log/src/runtime.ts"],
+      "@mossx/plugin-runtime-log/ui": ["./packages/plugin-runtime-log/src/ui.ts"]
     },
 
     /* Linting */
