@@ -367,9 +367,6 @@ async fn build_workspace_scope_catalog_data(
     let grok_config = engine_manager
         .get_engine_config(engine::EngineType::Grok)
         .await;
-    let claude_config = engine_manager
-        .get_engine_config(engine::EngineType::Claude)
-        .await;
     let claude_source_fact_cache_dir = source_fact_cache_dir(storage_path, "claude").ok();
     for workspace in &workspace_scope {
         let owner_workspace_id = workspace.id.clone();
@@ -507,24 +504,24 @@ async fn build_workspace_scope_catalog_data(
 
         let claude_source_facts_result = match attribution_mode {
             WorkspaceSessionAttributionMode::Related => {
-                engine::claude_history::list_claude_session_source_facts_for_attribution_scopes_with_config(
-                    &owner_workspace_path,
-                    build_claude_attribution_scopes(workspace),
-                    Some(scan_mode.limit()),
-                    claude_config.as_ref(),
-                    claude_source_fact_cache_dir.as_deref(),
-                )
-                .await
+                engine_manager
+                    .list_claude_history_source_facts_for_attribution_scopes(
+                        &owner_workspace_path,
+                        build_claude_attribution_scopes(workspace),
+                        Some(scan_mode.limit()),
+                        claude_source_fact_cache_dir.as_deref(),
+                    )
+                    .await
             }
             WorkspaceSessionAttributionMode::WorkspaceOnly => {
-                engine::claude_history::list_workspace_only_claude_session_source_facts_for_attribution_scopes_with_config(
-                    &owner_workspace_path,
-                    build_claude_attribution_scopes(workspace),
-                    Some(scan_mode.limit()),
-                    claude_config.as_ref(),
-                    claude_source_fact_cache_dir.as_deref(),
-                )
-                .await
+                engine_manager
+                    .list_workspace_only_claude_history_source_facts_for_attribution_scopes(
+                        &owner_workspace_path,
+                        build_claude_attribution_scopes(workspace),
+                        Some(scan_mode.limit()),
+                        claude_source_fact_cache_dir.as_deref(),
+                    )
+                    .await
             }
         };
 

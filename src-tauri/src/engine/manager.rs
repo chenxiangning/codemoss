@@ -370,6 +370,72 @@ impl ClaudeOwner<'_> {
             }
         }
     }
+
+    async fn list_history_source_facts_for_attribution_scopes(
+        &self,
+        workspace_path: &Path,
+        attribution_scopes: Vec<super::claude_history::ClaudeSessionAttributionScope>,
+        limit: Option<usize>,
+        config: Option<&EngineConfig>,
+        cache_dir: Option<&Path>,
+    ) -> Result<super::claude_history::ClaudeSessionSourceFactList, String> {
+        match self {
+            Self::Facade(facade) => {
+                facade
+                    .list_history_source_facts_for_attribution_scopes(
+                        workspace_path,
+                        attribution_scopes,
+                        limit,
+                        config,
+                        cache_dir,
+                    )
+                    .await
+            }
+            Self::Core(_) => {
+                super::claude_history::list_claude_session_source_facts_for_attribution_scopes_with_config(
+                    workspace_path,
+                    attribution_scopes,
+                    limit,
+                    config,
+                    cache_dir,
+                )
+                .await
+            }
+        }
+    }
+
+    async fn list_workspace_only_history_source_facts_for_attribution_scopes(
+        &self,
+        workspace_path: &Path,
+        attribution_scopes: Vec<super::claude_history::ClaudeSessionAttributionScope>,
+        limit: Option<usize>,
+        config: Option<&EngineConfig>,
+        cache_dir: Option<&Path>,
+    ) -> Result<super::claude_history::ClaudeSessionSourceFactList, String> {
+        match self {
+            Self::Facade(facade) => {
+                facade
+                    .list_workspace_only_history_source_facts_for_attribution_scopes(
+                        workspace_path,
+                        attribution_scopes,
+                        limit,
+                        config,
+                        cache_dir,
+                    )
+                    .await
+            }
+            Self::Core(_) => {
+                super::claude_history::list_workspace_only_claude_session_source_facts_for_attribution_scopes_with_config(
+                    workspace_path,
+                    attribution_scopes,
+                    limit,
+                    config,
+                    cache_dir,
+                )
+                .await
+            }
+        }
+    }
 }
 
 #[derive(Default)]
@@ -761,6 +827,44 @@ impl EngineManager {
                 attribution_scopes,
                 limit,
                 config.as_ref(),
+            )
+            .await
+    }
+
+    pub async fn list_claude_history_source_facts_for_attribution_scopes(
+        &self,
+        workspace_path: &Path,
+        attribution_scopes: Vec<super::claude_history::ClaudeSessionAttributionScope>,
+        limit: Option<usize>,
+        cache_dir: Option<&Path>,
+    ) -> Result<super::claude_history::ClaudeSessionSourceFactList, String> {
+        let config = self.get_engine_config(EngineType::Claude).await;
+        self.claude_owner()
+            .list_history_source_facts_for_attribution_scopes(
+                workspace_path,
+                attribution_scopes,
+                limit,
+                config.as_ref(),
+                cache_dir,
+            )
+            .await
+    }
+
+    pub async fn list_workspace_only_claude_history_source_facts_for_attribution_scopes(
+        &self,
+        workspace_path: &Path,
+        attribution_scopes: Vec<super::claude_history::ClaudeSessionAttributionScope>,
+        limit: Option<usize>,
+        cache_dir: Option<&Path>,
+    ) -> Result<super::claude_history::ClaudeSessionSourceFactList, String> {
+        let config = self.get_engine_config(EngineType::Claude).await;
+        self.claude_owner()
+            .list_workspace_only_history_source_facts_for_attribution_scopes(
+                workspace_path,
+                attribution_scopes,
+                limit,
+                config.as_ref(),
+                cache_dir,
             )
             .await
     }

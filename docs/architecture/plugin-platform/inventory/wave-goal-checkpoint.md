@@ -184,7 +184,8 @@
 | 3AC daemon rewind fork_from_message 走 history 门面 | 完成 | `46a6b4702` |
 | 3AD daemon delete_claude_session 走 history 门面 | 完成 | `e6e3dc082` |
 | 3AE catalog / native continuation 调用面只盘点 | 完成 | `16a8081c6` |
-| 3AF catalog attribution list 走 history 门面 | 完成 | 本刀 |
+| 3AF catalog attribution list 走 history 门面 | 完成 | `f6aac88c4` |
+| 3AG catalog source facts 走 history 门面 | 完成 | 本刀 |
 
 ## 明确未做
 

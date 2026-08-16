@@ -259,6 +259,42 @@ impl ClaudeCompatAdapter {
         )
         .await
     }
+
+    pub async fn list_history_source_facts_for_attribution_scopes(
+        &self,
+        workspace_path: &Path,
+        attribution_scopes: Vec<crate::engine::claude_history::ClaudeSessionAttributionScope>,
+        limit: Option<usize>,
+        config: Option<&crate::engine::EngineConfig>,
+        cache_dir: Option<&Path>,
+    ) -> Result<crate::engine::claude_history::ClaudeSessionSourceFactList, String> {
+        crate::engine::claude_history::list_claude_session_source_facts_for_attribution_scopes_with_config(
+            workspace_path,
+            attribution_scopes,
+            limit,
+            config,
+            cache_dir,
+        )
+        .await
+    }
+
+    pub async fn list_workspace_only_history_source_facts_for_attribution_scopes(
+        &self,
+        workspace_path: &Path,
+        attribution_scopes: Vec<crate::engine::claude_history::ClaudeSessionAttributionScope>,
+        limit: Option<usize>,
+        config: Option<&crate::engine::EngineConfig>,
+        cache_dir: Option<&Path>,
+    ) -> Result<crate::engine::claude_history::ClaudeSessionSourceFactList, String> {
+        crate::engine::claude_history::list_workspace_only_claude_session_source_facts_for_attribution_scopes_with_config(
+            workspace_path,
+            attribution_scopes,
+            limit,
+            config,
+            cache_dir,
+        )
+        .await
+    }
 }
 
 #[cfg(test)]
@@ -595,6 +631,11 @@ mod tests {
         let manager = include_str!("../engine/manager.rs");
         assert!(manager.contains("fn list_claude_history_sessions_for_attribution_scopes("));
         assert!(manager.contains("list_history_sessions_for_attribution_scopes"));
+        let projection = include_str!("../session_management_catalog_projection.rs");
+        assert!(projection.contains("list_claude_history_source_facts_for_attribution_scopes"));
+        assert!(projection.contains("list_workspace_only_claude_history_source_facts_for_attribution_scopes"));
+        assert!(!projection.contains("claude_history::list_claude_session_source_facts"));
+        assert!(!projection.contains("claude_history::list_workspace_only_claude_session_source_facts"));
         let native = include_str!("../native_continuation/commands.rs");
         assert!(native.contains("resolve_claude_session_file_with_config"));
     }
