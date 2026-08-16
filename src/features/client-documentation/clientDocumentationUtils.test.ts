@@ -8,7 +8,7 @@ import {
   CLIENT_DOCUMENTATION_TREE,
   CLIENT_DOCUMENTATION_WINDOW_LABEL,
 } from "./clientDocumentationData";
-import { CLIENT_UI_CONTROL_IDS } from "../client-ui-visibility/utils/clientUiVisibility";
+import { CLIENT_UI_CONTROL_IDS } from "@mossx/plugin-client-ui-visibility/runtime";
 import {
   findClientDocumentationNode,
   flattenClientDocumentationNodes,

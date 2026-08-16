@@ -41,12 +41,12 @@ import {
   GENERIC_APP_ICON,
   getKnownOpenAppIcon,
 } from "@/features/app/utils/openAppIcons";
-import { useClientUiVisibility } from "@/features/client-ui-visibility/hooks/useClientUiVisibility";
 import {
   CLIENT_UI_PANEL_REGISTRY,
   getClientUiControlDefinition,
-  type ClientUiVisibilityIconKey,
-} from "@/features/client-ui-visibility/utils/clientUiVisibility";
+  useClientUiVisibility,
+} from "@mossx/plugin-client-ui-visibility/runtime";
+import type { ClientUiVisibilityIconKey } from "@mossx/plugin-client-ui-visibility/runtime";
 import type { AppSettings, ThemePresetId } from "../../../../../types";
 import {
   CODE_FONT_SIZE_DEFAULT,

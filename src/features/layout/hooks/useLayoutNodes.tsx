@@ -95,7 +95,7 @@ import { resolvePresentationProfile } from "../../../conversation-presentation/p
 import { appendQueuedHandoffBubbleIfNeeded } from "../../threads/utils/queuedHandoffBubble";
 // DISABLED: disable-session-activity-and-solo-mode — keep empty stub only
 import { DISABLED_WORKSPACE_SESSION_ACTIVITY } from "../../session-activity/adapters/buildWorkspaceSessionActivity";
-import { useClientUiVisibility } from "../../client-ui-visibility/hooks/useClientUiVisibility";
+import { useClientUiVisibility } from "@mossx/plugin-client-ui-visibility/runtime";
 import {
   getHomeWorkspaceOptions,
   resolveHomeWorkspaceId,

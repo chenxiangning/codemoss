@@ -11,7 +11,7 @@ import { useExitedSessionVisibility } from "../../../features/app/hooks/useExite
 import { useModuleViewShortcuts } from "../../../features/app/hooks/useModuleViewShortcuts";
 import { GIT_GRAPH_TAB_ID } from "@mossx/plugin-git-history/runtime";
 import { WorkspaceAliasPrompt } from "../../../features/workspaces/components/WorkspaceAliasPrompt";
-import { useClientUiVisibility } from "../../../features/client-ui-visibility/hooks/useClientUiVisibility";
+import { useClientUiVisibility } from "@mossx/plugin-client-ui-visibility/runtime";
 import { useProjectMapDataset } from "@mossx/plugin-project-map/runtime";
 import {
   buildIntentCanvasContextAttachment,

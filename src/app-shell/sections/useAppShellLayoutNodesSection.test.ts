@@ -31,7 +31,7 @@ vi.mock("../../features/app/hooks/useModuleViewShortcuts", () => ({
 vi.mock("@mossx/plugin-project-map/runtime", () => ({
   useProjectMapDataset: () => ({}),
 }));
-vi.mock("../../features/client-ui-visibility/hooks/useClientUiVisibility", () => ({
+vi.mock("@mossx/plugin-client-ui-visibility/runtime", () => ({
   useClientUiVisibility: () => ({ isControlVisible: () => false }),
 }));
 vi.mock("../../features/browser-agent/browserAgentDockWindow", () => ({

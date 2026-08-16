@@ -69,7 +69,7 @@ vi.mock("react-i18next", () => ({
   }),
 }));
 
-vi.mock("../../client-ui-visibility/hooks/useClientUiVisibility", () => ({
+vi.mock("@mossx/plugin-client-ui-visibility/runtime", () => ({
   useClientUiVisibility: () => ({
     preference: {
       panels: {
