@@ -1,11 +1,9 @@
 import type { MouseEvent, ReactNode } from "react";
 import ArrowLeft from "lucide-react/dist/esm/icons/arrow-left";
 import { PanelTabs, type PanelToolbarTabId } from "../components/PanelTabs";
-import { TerminalDock } from "../../terminal/components/TerminalDock";
-import { TerminalPanel } from "../../terminal/components/TerminalPanel";
+import { TerminalDock, TerminalPanel } from "@mossx/plugin-terminal/ui";
 import { DebugPanel } from "../../debug/components/DebugPanel";
-import type { TerminalSessionState } from "../../terminal/hooks/useTerminalSession";
-import type { TerminalTab } from "../../terminal/hooks/useTerminalTabs";
+import type { TerminalSessionState, TerminalTab } from "@mossx/plugin-terminal/runtime";
 import type { DebugEntry } from "../../../types";
 import type { CenterMode } from "../../app/hooks/useGitPanelController";
 

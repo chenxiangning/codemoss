@@ -44,7 +44,10 @@
       "@mossx/plugin-quick-switcher/ui": ["./packages/plugin-quick-switcher/src/ui.ts"],
       "@mossx/plugin-tasks": ["./packages/plugin-tasks/src/index.ts"],
       "@mossx/plugin-tasks/runtime": ["./packages/plugin-tasks/src/runtime.ts"],
-      "@mossx/plugin-tasks/ui": ["./packages/plugin-tasks/src/ui.ts"]
+      "@mossx/plugin-tasks/ui": ["./packages/plugin-tasks/src/ui.ts"],
+      "@mossx/plugin-terminal": ["./packages/plugin-terminal/src/index.ts"],
+      "@mossx/plugin-terminal/runtime": ["./packages/plugin-terminal/src/runtime.ts"],
+      "@mossx/plugin-terminal/ui": ["./packages/plugin-terminal/src/ui.ts"]
     },
 
     /* Linting */

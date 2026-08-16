@@ -21,7 +21,7 @@ import {
   type PiAuthListResult,
   type PiAuthProviderSnapshot,
 } from "../../../services/tauri/piAuth";
-import { requestTerminalCommand } from "../../terminal/utils/terminalCommandRequestEvent";
+import { requestTerminalCommand } from "@mossx/plugin-terminal/runtime";
 import {
   PI_AUTH_APIKEY_PROVIDERS,
   PI_AUTH_OAUTH_PROVIDERS,

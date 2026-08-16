@@ -68,8 +68,7 @@ import type {
 } from "../../../types";
 import type { EngineDisplayInfo } from "../../engine/hooks/useEngineController";
 import type { UpdateState } from "../../update/hooks/useUpdater";
-import type { TerminalSessionState } from "../../terminal/hooks/useTerminalSession";
-import type { TerminalTab } from "../../terminal/hooks/useTerminalTabs";
+import type { TerminalSessionState, TerminalTab } from "@mossx/plugin-terminal/runtime";
 import type { ErrorToast } from "../../../services/toasts";
 import type { LoadingProgressDialogConfig } from "../../app/hooks/useLoadingProgressDialogState";
 import type { WorkspaceDirectoryEntry } from "../../../services/tauri";

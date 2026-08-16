@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { WorkspaceInfo } from "../../../types";
-import type { TerminalSessionState } from "../../terminal/hooks/useTerminalSession";
+import type { TerminalSessionState } from "@mossx/plugin-terminal/runtime";
 import type { WorkspaceSettings } from "../../../types";
 import { writeTerminalSession } from "../../../services/tauri";
 

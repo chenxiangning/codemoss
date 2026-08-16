@@ -13,11 +13,16 @@
 | `@mossx/plugin-project-map` | AppShell / 布局 runtime+ui | `src/features/project-map` |
 | `@mossx/plugin-intent-canvas` | AppShell / 会话 / Composer | `src/features/intent-canvas` |
 | `@mossx/plugin-browser` | AppShell / 会话 / Composer | `src/features/browser-agent` |
-| `@mossx/plugin-engine-claude` | AppShell / 会话 / 模型 | `engine/claude*` 未删 |
+| `@mossx/plugin-engine-claude` | AppShell / 会话 / 模型 / history | `engine/claude*` 未删 |
+| `@mossx/plugin-git-history` | AppShell / Git / Files | `src/features/git-history` |
+| `@mossx/plugin-spec` | AppShell / 布局 / 会话 / Files | `src/features/spec` |
+| `@mossx/plugin-quick-switcher` | AppShell / Git / Search 消费 | `src/features/quick-switcher` |
+| `@mossx/plugin-tasks` | AppShell / WorkspaceHome | `src/features/tasks` |
+| `@mossx/plugin-terminal` | AppShell / 布局 / launch script / vendors | `src/features/terminal` |
 
 ## 仍未做
 
+- Search 是 Core（`targetPluginId=null`），不能发明 `com.mossx.search`
 - 其余 later-plugin 产品导入仍直达 `src/features/**`
-- Claude history loader / realtime adapter 还有直达导入
 - 远程 Marketplace / 签名 / SBOM
 - 产品 disable-not-delete / Notes 切流

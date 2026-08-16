@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import type { TerminalSessionState } from "../../terminal/hooks/useTerminalSession";
+import type { TerminalSessionState } from "@mossx/plugin-terminal/runtime";
 import type { WorkspaceInfo } from "../../../types";
 import { writeTerminalSession } from "../../../services/tauri";
 import { useWorkspaceLaunchScript } from "./useWorkspaceLaunchScript";

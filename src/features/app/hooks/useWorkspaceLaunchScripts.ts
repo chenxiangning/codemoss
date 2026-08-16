@@ -5,7 +5,7 @@ import type {
   WorkspaceInfo,
   WorkspaceSettings,
 } from "../../../types";
-import type { TerminalSessionState } from "../../terminal/hooks/useTerminalSession";
+import type { TerminalSessionState } from "@mossx/plugin-terminal/runtime";
 import { writeTerminalSession } from "../../../services/tauri";
 import { pushErrorToast } from "../../../services/toasts";
 import {

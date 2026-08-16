@@ -10,7 +10,7 @@ import { writeClientStoreValue } from "../../services/clientStorage";
 import { setNotificationActionHandler } from "../../services/systemNotification";
 import { useRenameWorktreePrompt } from "../../features/workspaces/hooks/useRenameWorktreePrompt";
 import { useClonePrompt } from "../../features/workspaces/hooks/useClonePrompt";
-import { useTerminalController } from "../../features/terminal/hooks/useTerminalController";
+import { useTerminalController } from "@mossx/plugin-terminal/runtime";
 import { useWorkspaceLaunchScript } from "../../features/app/hooks/useWorkspaceLaunchScript";
 import { useWorkspaceRuntimeRun } from "../../features/app/hooks/useWorkspaceRuntimeRun";
 import { useWorkspaceLaunchScripts } from "../../features/app/hooks/useWorkspaceLaunchScripts";
@@ -19,8 +19,8 @@ import { useWorktreeSetupScript } from "../../features/app/hooks/useWorktreeSetu
 import { buildClaudeResumeTerminalCommand } from "@mossx/plugin-engine-claude/runtime";
 import {
   TERMINAL_COMMAND_REQUEST_EVENT,
-  type TerminalCommandRequest,
-} from "../../features/terminal/utils/terminalCommandRequestEvent";
+} from "@mossx/plugin-terminal/runtime";
+import type { TerminalCommandRequest } from "@mossx/plugin-terminal/runtime";
 import { writeTerminalSession } from "../../services/tauri/terminalRuntime";
 import type { AgentTaskScrollRequest } from "../../features/messages";
 import type {

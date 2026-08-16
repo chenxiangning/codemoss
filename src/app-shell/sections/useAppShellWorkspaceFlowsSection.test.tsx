@@ -4,8 +4,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { WorkspaceInfo } from "../../types";
 import * as systemNotification from "../../services/systemNotification";
 import { writeTerminalSession } from "../../services/tauri/terminalRuntime";
-import { useTerminalController } from "../../features/terminal/hooks/useTerminalController";
-import type { TerminalSessionState } from "../../features/terminal/hooks/useTerminalSession";
+import { useTerminalController } from "@mossx/plugin-terminal/runtime";
+import type { TerminalSessionState } from "@mossx/plugin-terminal/runtime";
 import { useWorkspaceRuntimeRun } from "../../features/app/hooks/useWorkspaceRuntimeRun";
 import { useAppShellWorkspaceFlowsSection } from "./useAppShellWorkspaceFlowsSection";
 
@@ -15,6 +15,7 @@ vi.mock("../../services/systemNotification", () => ({
 
 vi.mock("../../services/clientStorage", () => ({
   writeClientStoreValue: vi.fn(),
+  getClientStoreSync: vi.fn(),
 }));
 
 vi.mock("../../services/tauri/terminalRuntime", () => ({
@@ -47,7 +48,8 @@ vi.mock("../../features/workspaces/hooks/useClonePrompt", () => ({
   })),
 }));
 
-vi.mock("../../features/terminal/hooks/useTerminalController", () => ({
+vi.mock("@mossx/plugin-terminal/runtime", () => ({
+  TERMINAL_COMMAND_REQUEST_EVENT: "mossx:terminal-command-request",
   useTerminalController: vi.fn(() => ({
     terminalTabs: [],
     activeTerminalId: null,
