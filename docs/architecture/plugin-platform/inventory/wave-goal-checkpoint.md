@@ -188,7 +188,8 @@
 | 3AG catalog source facts 走 history 门面 | 完成 | `23bc40b5d` |
 | 3AH catalog delete 走 history 门面 | 完成 | `98bc4994a` |
 | 3AI native continuation resolve 走 history 门面 | 完成 | `f695b2379` |
-| 3AJ 剩余 claude_history 直调只盘点 | 完成 | 本刀 |
+| 3AJ 剩余 claude_history 直调只盘点 | 完成 | `aed7732db` |
+| 3AK Claude plugin 过渡仓骨架 | 完成 | 本刀 |
 
 ## 明确未做
 

@@ -702,6 +702,14 @@ mod tests {
         assert!(writers.contains("use crate::engine::claude_history::encode_project_path"));
         assert!(!writers.contains("list_claude_sessions"));
         assert!(!writers.contains("delete_claude_session"));
+        let package = include_str!("../../../packages/plugin-engine-claude/.mossx-plugin/plugin.json");
+        assert!(package.contains("\"pluginId\": \"com.mossx.engine.claude\""));
+        assert!(package.contains("\"id\": \"claude-cli\""));
+        assert!(package.contains("\"id\": \"claude-worker\""));
+        let boot = include_str!("boot.rs");
+        assert!(!boot.contains("plugin-engine-claude"));
+        assert!(!boot.contains("packages/plugin-engine-claude"));
+        assert!(std::path::Path::new("src/engine/claude.rs").exists());
     }
 
     #[tokio::test]
