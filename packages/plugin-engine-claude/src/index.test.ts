@@ -23,6 +23,12 @@ describe("@mossx/plugin-engine-claude export surface", () => {
     );
     expect(flows).toContain('from "@mossx/plugin-engine-claude/runtime"');
     expect(flows).not.toContain("features/app/utils/claudeResumeCommand");
+    const factory = readFileSync(
+      join(repoRoot, "src/features/threads/hooks/useThreadActions.historyLoaderFactory.ts"),
+      "utf8",
+    );
+    expect(factory).toContain('from "@mossx/plugin-engine-claude/runtime"');
+    expect(factory).not.toContain("loaders/claudeHistoryLoader");
     expect(existsSync(join(repoRoot, "src-tauri/src/engine/claude.rs"))).toBe(true);
     expect(existsSync(join(repoRoot, "src-tauri/src/engine/claude_history.rs"))).toBe(true);
   });

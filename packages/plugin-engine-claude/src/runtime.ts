@@ -14,6 +14,7 @@ export type {
 } from "../../../src/features/app/utils/claudeResumeCommand";
 export {
   createClaudeHistoryLoader,
+  extractClaudeHistoryTokenUsage,
   parseClaudeHistoryMessages,
   parseClaudeHistoryMessagesWithShadowRecovery,
 } from "../../../src/features/threads/loaders/claudeHistoryLoader";

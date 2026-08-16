@@ -7,7 +7,7 @@ import {
   loadPiSession as loadPiSessionService,
   resumeThread as resumeThreadService,
 } from "../../../services/tauri";
-import { createClaudeHistoryLoader } from "../loaders/claudeHistoryLoader";
+import { createClaudeHistoryLoader } from "@mossx/plugin-engine-claude/runtime";
 import { createCodexHistoryLoader } from "../loaders/codexHistoryLoader";
 import { createGeminiHistoryLoader } from "../loaders/geminiHistoryLoader";
 import { createGrokHistoryLoader } from "../loaders/grokHistoryLoader";

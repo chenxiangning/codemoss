@@ -24,16 +24,16 @@ import {
   startThread as startThreadService,
   writeClientCreatedSessionIndex,
 } from "../../../services/tauri";
-import { parseClaudeHistoryMessagesWithShadowRecovery } from "../loaders/claudeHistoryLoader";
+import {
+  isClaudeForkThreadId,
+  isClaudeRuntimeThreadId,
+  parseClaudeHistoryMessagesWithShadowRecovery,
+} from "@mossx/plugin-engine-claude/runtime";
 import {
   applyClaudeRewindWorkspaceRestore,
   findImpactedClaudeRewindItems,
   restoreClaudeRewindWorkspaceSnapshots,
 } from "../utils/claudeRewindRestore";
-import {
-  isClaudeForkThreadId,
-  isClaudeRuntimeThreadId,
-} from "../utils/claudeForkThread";
 import {
   findFirstHistoryUserMessageId,
   findLastUserMessageIndexById,

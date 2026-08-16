@@ -56,7 +56,7 @@ import {
   buildItemsFromThread,
   mergeThreadItems,
 } from "../../../../../utils/threadItems";
-import { parseClaudeHistoryMessagesWithShadowRecovery } from "../../../../threads/loaders/claudeHistoryLoader";
+import { parseClaudeHistoryMessagesWithShadowRecovery } from "@mossx/plugin-engine-claude/runtime";
 import { parseCodexSessionHistory } from "../../../../threads/loaders/codexSessionHistory";
 import { parseGeminiHistoryMessages } from "../../../../threads/loaders/geminiHistoryParser";
 import {

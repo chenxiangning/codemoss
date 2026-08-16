@@ -3,10 +3,10 @@ import type { Dispatch } from "react";
 import type { ConversationItem, DebugEntry, WorkspaceInfo } from "../../../types";
 import {
   isClaudeRuntimeThreadId,
-} from "../utils/claudeForkThread";
+  parseClaudeHistoryMessagesWithShadowRecovery,
+} from "@mossx/plugin-engine-claude/runtime";
 import { renameLiveAssistantTextThread } from "../utils/liveAssistantTextChannel";
 import { loadClaudeSession as loadClaudeSessionService } from "../../../services/tauri";
-import { parseClaudeHistoryMessagesWithShadowRecovery } from "../loaders/claudeHistoryLoader";
 import type { ThreadAction } from "./useThreadsReducer";
 
 type ThreadEngine = "claude" | "codex" | "gemini" | "grok" | "kimi" | "opencode" | "pi";

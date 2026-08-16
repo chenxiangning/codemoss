@@ -20,7 +20,7 @@ import {
 import {
   extractClaudeHistoryTokenUsage,
   parseClaudeHistoryMessagesWithShadowRecovery,
-} from "../loaders/claudeHistoryLoader";
+} from "@mossx/plugin-engine-claude/runtime";
 import { parseGeminiHistoryMessages } from "../loaders/geminiHistoryParser";
 import { parseGrokHistoryMessages } from "../loaders/grokHistoryParser";
 import { parseKimiHistoryMessages } from "../loaders/kimiHistoryParser";

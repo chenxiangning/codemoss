@@ -19,7 +19,7 @@ import { getThreadTimestamp } from "../../../utils/threadItems";
 import {
   isClaudeForkThreadId,
   isClaudeSessionBootstrapThreadId,
-} from "../utils/claudeForkThread";
+} from "@mossx/plugin-engine-claude/runtime";
 import {
   asString,
   normalizePlanUpdate,
