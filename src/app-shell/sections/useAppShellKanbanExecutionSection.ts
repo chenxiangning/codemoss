@@ -20,23 +20,19 @@ import type {
 } from "@mossx/plugin-kanban";
 import {
   beginKanbanTaskRunLifecycle,
-  patchKanbanTaskRunLifecycle,
-} from "../../features/tasks/utils/kanbanTaskRunLifecycle";
-import {
   beginTaskRunRecovery,
-  cancelTaskRunRecovery,
-} from "../../features/tasks/utils/taskRunRecovery";
-import { buildLatestRunSummary } from "../../features/tasks/utils/taskRunProjection";
-import { deriveTaskRunTelemetryPatch } from "../../features/tasks/utils/taskRunTelemetry";
-import {
+  buildLatestRunSummary,
   buildTaskRunBrowserEvidenceRef,
+  cancelTaskRunRecovery,
+  deriveTaskRunTelemetryPatch,
   loadTaskRunStore,
-} from "../../features/tasks/utils/taskRunStorage";
+  patchKanbanTaskRunLifecycle,
+} from "@mossx/plugin-tasks/runtime";
+import type { TaskRunRecord } from "@mossx/plugin-tasks/runtime";
 import {
   buildBrowserContextAttachment,
   getActiveBrowserContext,
 } from "@mossx/plugin-browser/runtime";
-import type { TaskRunRecord } from "../../features/tasks/types";
 import type { ThreadSummary, WorkspaceInfo } from "../../types";
 import { isEngineExecutionEnabled } from "../../utils/engineExecutionPolicy";
 import {

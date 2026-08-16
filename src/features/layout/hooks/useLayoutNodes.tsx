@@ -52,7 +52,7 @@ import {
   buildGitStatusProjectMapImpactInput,
 } from "@mossx/plugin-project-map/runtime";
 import type { ProjectMapImpactInput } from "@mossx/plugin-project-map/runtime";
-import { useTaskRunStore } from "../../tasks/hooks/useTaskRunStore";
+import { useTaskRunStore } from "@mossx/plugin-tasks/runtime";
 import { WorkspaceNoteCardPanel } from "@mossx/plugin-notes/ui";
 import type {
   NoteCaptureDraft,

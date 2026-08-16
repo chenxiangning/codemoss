@@ -3,13 +3,16 @@ import { useTranslation } from "react-i18next";
 import type { WorkspaceInfo } from "../../../types";
 import type { EngineType } from "../../../types";
 import type { EngineDisplayInfo } from "../../engine/hooks/useEngineController";
-import type { TaskRunRecord } from "../../tasks/types";
+import type { TaskRunRecord } from "@mossx/plugin-tasks/runtime";
 import type { ThreadDeleteErrorCode } from "../../threads/hooks/useThreads";
 import { EngineIcon } from "../../engine/components/EngineIcon";
 import { BrowserDock } from "@mossx/plugin-browser/ui";
-import { TaskCenterView } from "../../tasks/components/TaskCenterView";
-import { useTaskRunStore } from "../../tasks/hooks/useTaskRunStore";
-import { compareTaskRunSurfacePriority, describeTaskRunSurface } from "../../tasks/utils/taskRunSurface";
+import { TaskCenterView } from "@mossx/plugin-tasks/ui";
+import {
+  compareTaskRunSurfacePriority,
+  describeTaskRunSurface,
+  useTaskRunStore,
+} from "@mossx/plugin-tasks/runtime";
 import { loadWorkspaceHomeStyles } from "../../../styles/featureStyleLoaders";
 import { useFeatureStylesReady } from "../../../styles/useFeatureStylesReady";
 

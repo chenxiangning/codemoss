@@ -3,7 +3,10 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { WorkspaceInfo } from "../../../types";
 import { WorkspaceHome } from "./WorkspaceHome";
-import { loadTaskRunStore } from "../../tasks/utils/taskRunStorage";
+
+const { loadTaskRunStoreMock } = vi.hoisted(() => ({
+  loadTaskRunStoreMock: vi.fn(),
+}));
 
 vi.mock("../../tasks/utils/taskRunStorage", async (importOriginal) => {
   const actual = await importOriginal<
@@ -11,7 +14,17 @@ vi.mock("../../tasks/utils/taskRunStorage", async (importOriginal) => {
   >();
   return {
     ...actual,
-    loadTaskRunStore: vi.fn(),
+    loadTaskRunStore: loadTaskRunStoreMock,
+  };
+});
+
+vi.mock("@mossx/plugin-tasks/runtime", async (importOriginal) => {
+  const actual = await importOriginal<
+    typeof import("@mossx/plugin-tasks/runtime")
+  >();
+  return {
+    ...actual,
+    loadTaskRunStore: loadTaskRunStoreMock,
   };
 });
 
@@ -19,7 +32,7 @@ vi.mock("@mossx/plugin-browser/ui", () => ({
   BrowserDock: () => null,
 }));
 
-const mockedLoadTaskRunStore = vi.mocked(loadTaskRunStore);
+const mockedLoadTaskRunStore = loadTaskRunStoreMock;
 
 const baseWorkspace: WorkspaceInfo = {
   id: "workspace-1",

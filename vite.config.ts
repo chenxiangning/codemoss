@@ -145,6 +145,18 @@ export default defineConfig(({ command }) => ({
         find: /^@mossx\/plugin-quick-switcher$/,
         replacement: path.resolve(__dirname, "./packages/plugin-quick-switcher/src/index.ts"),
       },
+      {
+        find: /^@mossx\/plugin-tasks\/runtime$/,
+        replacement: path.resolve(__dirname, "./packages/plugin-tasks/src/runtime.ts"),
+      },
+      {
+        find: /^@mossx\/plugin-tasks\/ui$/,
+        replacement: path.resolve(__dirname, "./packages/plugin-tasks/src/ui.ts"),
+      },
+      {
+        find: /^@mossx\/plugin-tasks$/,
+        replacement: path.resolve(__dirname, "./packages/plugin-tasks/src/index.ts"),
+      },
       { find: "@", replacement: path.resolve(__dirname, "./src") },
     ],
     dedupe: [
