@@ -361,6 +361,19 @@ pub fn missing_executable() -> PathBuf {
     PathBuf::from("/nonexistent-mossx-restricted-process")
 }
 
+/// 从可审计来源（engine config 的 `bin_path`）构造带 handshake 的真实 driver。
+/// 无真实路径时 fallback 到 `missing_executable()`（default-off 安全闸门），
+/// 保证 boot / 生产路径绝不因缺配置而误 spawn 真实子进程。
+/// 仅用于 conformance 验证，不接 boot 生产启动链。
+pub fn restricted_process_driver_for(executable: Option<&str>) -> RestrictedProcessDriver {
+    match executable {
+        Some(path) if !path.trim().is_empty() => {
+            RestrictedProcessDriver::with_handshake(path.to_string())
+        }
+        _ => RestrictedProcessDriver::new(missing_executable()),
+    }
+}
+
 const DENIED_STEMS: &[&str] = &[
     "sh",
     "bash",
@@ -688,5 +701,24 @@ mod tests {
             .start("com.mossx.engine.claude", "claude-cli", 1)
             .is_err());
         assert_eq!(driver.live_count(), 0);
+    }
+
+    #[test]
+    fn restricted_process_driver_for_falls_back_to_missing_executable() {
+        // 无真实路径（None / 空串）→ 安全闸门 missing_executable
+        for executable in [None, Some(""), Some("  ")] {
+            let driver = restricted_process_driver_for(executable);
+            assert!(
+                driver.executable.to_string_lossy().contains("nonexistent"),
+                "must fall back to missing_executable for {executable:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn restricted_process_driver_for_uses_real_path_with_handshake() {
+        let driver = restricted_process_driver_for(Some("/path/to/claude"));
+        assert_eq!(driver.executable.to_string_lossy(), "/path/to/claude");
+        assert!(driver.handshake, "real path must enable handshake");
     }
 }
