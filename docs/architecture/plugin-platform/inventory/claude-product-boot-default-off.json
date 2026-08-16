@@ -1,0 +1,23 @@
+{
+  "pluginId": "com.mossx.engine.claude",
+  "wave": "3AQ",
+  "status": "inventory-only",
+  "productConstructors": {
+    "gui": "src-tauri/src/state.rs#EngineManager::new()",
+    "daemon": "src-tauri/src/bin/cc_gui_daemon/daemon_state.rs#EngineManager::new()"
+  },
+  "constructor": {
+    "fn": "EngineManager::new",
+    "reads": "claude_compat_facade_enabled()",
+    "env": "MOSSX_CLAUDE_COMPAT_FACADE",
+    "default": "off"
+  },
+  "testOnly": [
+    "EngineManager::new_with_claude_compat(true)"
+  ],
+  "bootHost": {
+    "activatesClaude": false,
+    "installsPackage": false
+  },
+  "notes": "3AQ inventory only. Product boot stays default-off. Injected true is test-only."
+}

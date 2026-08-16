@@ -194,7 +194,8 @@
 | 3AM disable-not-delete 证据只盘点 | 完成 | `e9acabcb5` |
 | 3AN dual-run 收口只盘点 | 完成 | `82995d8fa` |
 | 3AO conformance 缺口只盘点 | 完成 | `94e4a205a` |
-| 3AP flag-on history 调用路径单测 | 完成 | 本刀 |
+| 3AP flag-on history 调用路径单测 | 完成 | `609528662` |
+| 3AQ 产品启动链默认 off 只盘点 | 完成 | 本刀 |
 
 ## 明确未做
 

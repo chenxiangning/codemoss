@@ -420,6 +420,24 @@ mod tests {
         assert!(gaps.contains("missing-product-acceptance"));
         assert!(gaps.contains("firstInteractive"));
         assert!(gaps.contains("treat call-path asserts as product conformance"));
+        let boot_inventory = include_str!(
+            "../../../docs/architecture/plugin-platform/inventory/claude-product-boot-default-off.json"
+        );
+        assert!(boot_inventory.contains("EngineManager::new()"));
+        assert!(boot_inventory.contains("\"default\": \"off\""));
+        assert!(boot_inventory.contains("new_with_claude_compat(true)"));
+        let state = include_str!("../state.rs");
+        assert!(state.contains("EngineManager::new()"));
+        assert!(!state.contains("new_with_claude_compat(true)"));
+        let daemon_ctor = include_str!("../bin/cc_gui_daemon/daemon_state.rs");
+        assert!(daemon_ctor.contains("engine::EngineManager::new()"));
+        assert!(!daemon_ctor.contains("new_with_claude_compat(true)"));
+        let manager_new = include_str!("../engine/manager.rs")
+            .split("pub fn new() -> Self {")
+            .nth(1)
+            .and_then(|rest| rest.split("pub fn new_with_claude_compat(").next())
+            .expect("EngineManager::new");
+        assert!(manager_new.contains("claude_compat_facade_enabled()"));
     }
 
     #[test]
