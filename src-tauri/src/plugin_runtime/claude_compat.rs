@@ -44,6 +44,10 @@ impl OwnedClaudeHistory {
         Self { facade, config }
     }
 
+    pub fn uses_facade(&self) -> bool {
+        self.facade.is_some()
+    }
+
     pub async fn delete_session(
         &self,
         workspace_path: &Path,

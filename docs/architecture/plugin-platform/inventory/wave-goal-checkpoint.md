@@ -193,7 +193,8 @@
 | 3AL 过渡仓 Manifest 与 3B fixture 身份对齐 | 完成 | `e18e7a2d0` |
 | 3AM disable-not-delete 证据只盘点 | 完成 | `e9acabcb5` |
 | 3AN dual-run 收口只盘点 | 完成 | `82995d8fa` |
-| 3AO conformance 缺口只盘点 | 完成 | 本刀 |
+| 3AO conformance 缺口只盘点 | 完成 | `94e4a205a` |
+| 3AP flag-on history 调用路径单测 | 完成 | 本刀 |
 
 ## 明确未做
 

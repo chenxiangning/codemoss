@@ -1871,6 +1871,30 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn flagged_history_handle_uses_facade_without_changing_product_default() {
+        assert!(!crate::plugin_runtime::claude_compat::claude_compat_facade_enabled_from(None));
+        let off = EngineManager::new_with_claude_compat(false);
+        let on = EngineManager::new_with_claude_compat(true);
+        assert!(!off.claude_compat_enabled());
+        assert!(on.claude_compat_enabled());
+        assert!(!off.owned_claude_history().await.uses_facade());
+        assert!(on.owned_claude_history().await.uses_facade());
+        let missing_home = std::env::temp_dir().join("mossx-claude-flag-on-missing-home");
+        let config = EngineConfig {
+            home_dir: Some(missing_home.to_string_lossy().to_string()),
+            ..Default::default()
+        };
+        off.set_engine_config(EngineType::Claude, config.clone())
+            .await;
+        on.set_engine_config(EngineType::Claude, config).await;
+        let workspace = std::env::temp_dir().join("mossx-claude-flag-on-history");
+        let off_list = off.list_claude_history_sessions(&workspace, Some(1)).await;
+        let on_list = on.list_claude_history_sessions(&workspace, Some(1)).await;
+        assert_eq!(format!("{off_list:?}"), format!("{on_list:?}"));
+        assert!(std::path::Path::new("src/engine/claude.rs").exists());
+    }
+
+    #[tokio::test]
     async fn flagged_claude_path_still_shares_core_sessions() {
         let manager = EngineManager::new_with_claude_compat(true);
         assert!(manager.claude_compat_enabled());
