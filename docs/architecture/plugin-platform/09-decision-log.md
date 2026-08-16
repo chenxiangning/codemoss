@@ -60,6 +60,7 @@ status: active
 | D-046 | 2026-08-16 | DP-016：MXPC/MXPD little-endian framed binary；无压缩/无 shm/无跨进程 resume | 见 `14` §13 |
 | D-047 | 2026-08-16 | DP-017：官方 SDK = TypeScript + Rust；Go 仅 generated types | 其他语言走 conformance |
 | D-048 | 2026-08-16 | DP-018：Engine pilot = Claude；Feature pilot = Notes；Git/Search 留 Core；Trusted React 仅 system | 不把已删 CLI 拷回 Core |
+| D-049 | 2026-08-16 | Marketplace UI 必须在「插头真实迁出（Slim 删 Core 实现）」之后才开放；本地过渡仓 staging 仅只读展示，不得伪装成可安装/卸载 | 回退 2026-08-16 误入的「假卸载」市场（45 假插件 catalog + localStorage 标记 + 总闸/激活/停用命令）；真实插件状态以 `claude_compat_facade_enabled` + claude_owner 分发为准 |
 
 ## 2. 已拒绝或纠正的方案
 
@@ -72,6 +73,7 @@ status: active
 | Marketplace 先做下载列表 | 拒绝 | 缺少隔离、权限、回退时会放大风险 |
 | 用一个“热部署”词覆盖所有更新 | 纠正 | Worker、进程、renderer、Core 的重启语义不同 |
 | 现在直接建立总包式 OpenSpec proposal | 暂缓 | 先沉淀设计；实施时按 Phase 建小 change |
+| 45 插件 catalog + localStorage 标记 + 总闸/激活/停用命令伪装成「可安装/卸载市场」 | 已回退 | 真实插件化进度仅 Claude/Notes pilot；其余功能仍在 Core（src/features/*）未插件化，356 处静态 import 无运行时宿主可卸载。此形态违反 D-049 与 `15` §2 红线 |
 
 ## 3. 待确认问题队列
 

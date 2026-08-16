@@ -69,6 +69,8 @@ Wave 5+ 其余插头按风险排序一根根拔
 | 一个大分支“插件化全部” | 无法独立验收、无法回退 |
 | 把已删 CLI 拷回 Core 再迁 | D-048 明确禁止 |
 
+> ⚠️ 2026-08-16 实际误入并已回退：曾把「45 插件 catalog + localStorage 标记 + 总闸/激活/停用命令」伪装成可安装/卸载市场（commit `f12857580`～`4997a669b`，已 `git reset --hard cfea402f2` 回退）。真实插件化进度仅 Claude/Notes 是 pilot（claude_compat 门面 + activation fixture），其余功能仍在 Core 未插件化。详见 [`09-decision-log.md` D-049](09-decision-log.md)。市场 UI 的正确时机在插头真实迁出（Slim）之后。
+
 ## 3. 每根插头的切换协议
 
 对每一个要拔出的能力，固定走同一套，禁止跳步：
