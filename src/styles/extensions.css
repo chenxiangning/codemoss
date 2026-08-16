@@ -379,6 +379,11 @@
   gap: 12px;
 }
 
+.extensions-plugin-rack-catalog-group {
+  display: grid;
+  gap: 12px;
+}
+
 .extensions-plugin-rack-list {
   display: grid;
   gap: 12px;

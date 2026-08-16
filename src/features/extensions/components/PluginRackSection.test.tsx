@@ -81,9 +81,13 @@ describe("PluginRackSection", () => {
     expect(featureGroup.textContent).toContain("Later plugin");
     expect(featureGroup.textContent).toContain("com.mossx.kanban");
     const catalog = screen.getByRole("region", { name: "Local packages" });
-    expect(catalog.textContent).toContain("com.mossx.engine.claude");
-    expect(catalog.textContent).toContain("com.mossx.notes");
-    expect(catalog.textContent).toContain("com.mossx.kanban");
+    const catalogPilot = catalog.querySelectorAll('[aria-label="Pilot"]');
+    const catalogLater = catalog.querySelectorAll('[aria-label="Later plugin"]');
+    expect(catalogPilot.length).toBeGreaterThan(0);
+    expect(catalogLater.length).toBeGreaterThan(0);
+    expect(catalogPilot[0]?.textContent).toContain("com.mossx.engine.claude");
+    expect(catalogPilot[0]?.textContent).toContain("com.mossx.notes");
+    expect(catalogLater[0]?.textContent).toContain("com.mossx.kanban");
     expect(catalog.textContent).toContain("packages/plugin-engine-claude");
     expect(catalog.textContent).toContain("packages/plugin-notes");
     expect(catalog.textContent).toContain("packages/plugin-kanban");
