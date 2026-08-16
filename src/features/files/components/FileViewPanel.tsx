@@ -44,7 +44,7 @@ import {
   readWorkspaceFilePreview,
 } from "../../../services/tauri";
 import { pushErrorToast } from "../../../services/toasts";
-import type { IntentCanvasCodeSelectionAnchor } from "../../intent-canvas/types";
+import type { IntentCanvasCodeSelectionAnchor } from "@mossx/plugin-intent-canvas/runtime";
 import {
   formatShortcutForPlatform,
   isEditableShortcutTarget,

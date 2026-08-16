@@ -1,5 +1,5 @@
 import type { ConversationItem, IntentCanvasContextSendAttachment } from "../types";
-import { parseIntentCanvasContextSummaries } from "../features/intent-canvas/utils/messageContext";
+import { parseIntentCanvasContextSummaries } from "@mossx/plugin-intent-canvas/runtime";
 import {
   isMultiAgentHistFoldItemId,
   resolveMultiAgentHistFoldInsertIndex,

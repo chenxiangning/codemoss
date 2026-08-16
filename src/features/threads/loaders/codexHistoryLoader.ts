@@ -5,7 +5,7 @@ import {
   buildComparableConversationMessageSignature,
   normalizeUserImages,
 } from "../assembly/conversationNormalization";
-import { parseIntentCanvasContextSummaries } from "../../intent-canvas/utils/messageContext";
+import { parseIntentCanvasContextSummaries } from "@mossx/plugin-intent-canvas/runtime";
 import { normalizeHistorySnapshot } from "../contracts/conversationCurtainContracts";
 import { parseCodexSessionHistory } from "./codexSessionHistory";
 import { asRecord } from "./historyLoaderUtils";

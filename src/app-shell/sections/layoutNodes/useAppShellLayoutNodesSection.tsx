@@ -16,12 +16,12 @@ import { useProjectMapDataset } from "@mossx/plugin-project-map/runtime";
 import {
   buildIntentCanvasContextAttachment,
   formatIntentCanvasThreadContext,
-} from "../../../features/intent-canvas/utils/context";
+} from "@mossx/plugin-intent-canvas/runtime";
 import type {
   IntentCanvasCodeSelectionAnchor,
   IntentCanvasDocument,
   IntentCanvasOpenRequest,
-} from "../../../features/intent-canvas/types";
+} from "@mossx/plugin-intent-canvas/runtime";
 import {
   continueStaleThreadBindingForManualRecovery,
   recoverThreadBindingAndResendForManualRecovery,

@@ -12,14 +12,14 @@ import type {
 import {
   createProjectMapRelationshipEdgeSnapshot,
   getProjectMapRelationshipEdgeDisplayLabel,
-} from "../../intent-canvas/services/relationshipImportQueries";
+} from "@mossx/plugin-intent-canvas/runtime";
 import type {
   CanvasEvidenceRef,
   CanvasSemanticEdge,
   CanvasSemanticGraph,
   CanvasSemanticNode,
   IntentCanvasCodeSelectionAnchor,
-} from "../../intent-canvas/types";
+} from "@mossx/plugin-intent-canvas/runtime";
 
 function normalizeRelationshipPath(value: string | null | undefined): string {
   return typeof value === "string" ? value.replace(/\\/g, "/").replace(/^\/+/, "") : "";

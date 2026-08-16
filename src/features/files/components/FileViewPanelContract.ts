@@ -3,7 +3,7 @@ import type {
   GitRepositorySummary,
   OpenAppTarget,
 } from "../../../types";
-import type { IntentCanvasCodeSelectionAnchor } from "../../intent-canvas/types";
+import type { IntentCanvasCodeSelectionAnchor } from "@mossx/plugin-intent-canvas/runtime";
 import type {
   CodeAnnotationDraftInput,
   CodeAnnotationSelection,

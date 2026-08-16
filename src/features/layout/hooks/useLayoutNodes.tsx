@@ -46,7 +46,7 @@ import { ProjectMemoryPanel } from "../../project-memory/components/ProjectMemor
 import type {
   CanvasSemanticGraph,
   IntentCanvasCodeSelectionAnchor,
-} from "../../intent-canvas/types";
+} from "@mossx/plugin-intent-canvas/runtime";
 import { pushErrorToast } from "../../../services/toasts";
 import {
   buildGitStatusProjectMapImpactInput,
@@ -163,7 +163,7 @@ const ProjectMapPanel = lazy(() =>
   })),
 );
 const IntentCanvasManager = lazy(() =>
-  import("../../intent-canvas/components/IntentCanvasManager").then((m) => ({
+  import("@mossx/plugin-intent-canvas/ui").then((m) => ({
     default: m.IntentCanvasManager,
   })),
 );

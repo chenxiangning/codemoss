@@ -4,7 +4,7 @@ import type {
   IntentCanvasCodeSelectionAnchor,
   IntentCanvasDocument,
   IntentCanvasOpenRequest,
-} from "../../intent-canvas/types";
+} from "@mossx/plugin-intent-canvas/runtime";
 import type { AgentTaskScrollRequest } from "../../messages";
 import type { SubagentInfo } from "../../status-panel/types";
 import type {

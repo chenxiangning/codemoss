@@ -174,8 +174,8 @@ import {
   useBrowserContextAttachment,
 } from "../../browser-agent";
 import { requestBrowserDockOpenUrl } from "../../browser-agent/state/dockEvents";
-import { IntentCanvasAttachmentCard } from "../../intent-canvas/components/IntentCanvasAttachmentCard";
-import type { IntentCanvasDocument } from "../../intent-canvas/types";
+import { IntentCanvasAttachmentCard } from "@mossx/plugin-intent-canvas/ui";
+import type { IntentCanvasDocument } from "@mossx/plugin-intent-canvas/runtime";
 import { resolveBrowserNavigationUrl } from "../utils/browserNavigation";
 import { useAgentProjection } from "../../multi-agent/store/agentStore";
 import { useCollabUiState } from "../../multi-agent/store/collabUiStore";

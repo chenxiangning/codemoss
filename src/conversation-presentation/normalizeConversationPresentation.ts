@@ -14,7 +14,7 @@ import {
 import {
   parseIntentCanvasContextSummaries,
   stripIntentCanvasContextPrompt,
-} from "../features/intent-canvas/utils/messageContext";
+} from "@mossx/plugin-intent-canvas/runtime";
 import { NOTE_CARD_CONTEXT_SUMMARY_PREFIX } from "@mossx/plugin-notes/runtime";
 import {
   MEMORY_CONTEXT_SUMMARY_PREFIX,
