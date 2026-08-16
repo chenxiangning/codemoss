@@ -15,6 +15,9 @@ describe("listLocalPluginCatalog", () => {
       "com.mossx.engine.claude",
       "com.mossx.notes",
       "com.mossx.kanban",
+      "com.mossx.project-map",
+      "com.mossx.browser",
+      "com.mossx.intent-canvas",
     ]);
     expect(catalog.every((item) => item.installed === false)).toBe(true);
     expect(catalog.every((item) => item.remote === false)).toBe(true);

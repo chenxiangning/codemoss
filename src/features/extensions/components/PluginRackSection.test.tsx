@@ -82,7 +82,10 @@ describe("PluginRackSection", () => {
     expect(catalog.textContent).toContain("packages/plugin-engine-claude");
     expect(catalog.textContent).toContain("packages/plugin-notes");
     expect(catalog.textContent).toContain("packages/plugin-kanban");
-    expect(screen.getAllByText("Not installed").length).toBeGreaterThanOrEqual(3);
+    expect(catalog.textContent).toContain("packages/plugin-project-map");
+    expect(catalog.textContent).toContain("packages/plugin-browser");
+    expect(catalog.textContent).toContain("packages/plugin-intent-canvas");
+    expect(screen.getAllByText("Not installed").length).toBeGreaterThanOrEqual(6);
     expect(screen.getByText("com.mossx.engine.codex")).toBeTruthy();
     expect(screen.getByText("com.mossx.engine.gemini")).toBeTruthy();
     expect(screen.getByText("com.mossx.engine.grok")).toBeTruthy();

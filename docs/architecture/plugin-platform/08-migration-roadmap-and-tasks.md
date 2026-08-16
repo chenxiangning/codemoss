@@ -33,23 +33,23 @@ flowchart TD
 
 任务：
 
-- [ ] P0.1 建立当前 feature/engine/storage/process ownership inventory（对照 D-048：Claude 仍是唯一 Core compatibility adapter；Notes 是第一 Feature Pilot）。
-- [ ] P0.2 按 `14` §1–§2 实现 Manifest parser：Reverse-DNS `pluginId`、publisher、三轴 version、channel、`coreApi` range（禁止 `*` / 无上界）。
-- [ ] P0.3 按 `14` §9–§10 实现 Contribution / Capability / template schema。
-- [ ] P0.4 建立 Core Boundary fitness checks。
-- [ ] P0.5 定义 Plugin SDK package boundary 和 generated types（D-047：TS + Rust；Go 仅 types）。
-- [ ] P0.6 把 `14` §19 转成第一批小型 OpenSpec change，不做总包式实现。
-- [ ] P0.7 建立 Manifest envelope 与 Runtime Registration subset validator，禁止未声明 Contribution/capability 在 activation 阶段获得可见性。
-- [ ] P0.8 建立 install-time no-code-execution gate，证明 permission preview、compatibility check 与 diff 不加载插件入口。
-- [ ] P0.9 建立 `pluginId + version -> artifactHash` uniqueness gate，并覆盖重复发布、hash 冲突、未知 Manifest Schema 与不兼容 Core Contract fixtures。
-- [ ] P0.10 按 `14` §5 实现 discriminated `entries[]` parser、per-kind Closed Schema、artifact-relative path/integrity checks 与 `entryId` reference validator。
-- [ ] P0.11 按 `14` §6 实现 Physical Entry DAG 静态规则：cycle / missing / runtime mutation 拒绝。
-- [ ] P0.12 实现 Runtime `required/deferred/optional` Readiness Schema，并把 deadline 接到 `14` §8（默认 10s / 上限 30s）。
-- [ ] P0.13 把 `14` §9 Catalog 落成 schema 文件与 `mossx.*` / `<pluginId>.*` rejection gate。
-- [ ] P0.14 实现 exact + bounded template matcher（dynamic-eligible 仅 tool/search/context/status；maxInstances 1–256）。
-- [ ] P0.15 实现 `14` §3–§4 Activation Unit / Event Catalog、`onStartup` 白名单与 first-interactive fitness check。
-- [ ] P0.16 实现 `14` §13 MXPC/MXPD framing fixtures（非法 magic/超限/NDJSON 全部 fail closed）。
-- [ ] P0.17 实现 `14` §11 schema evolution：未知字段拒绝；仅 `extensions.<publisherDns>.*` 可忽略。
+- [x] P0.1 建立当前 feature/engine/storage/process ownership inventory（对照 D-048：Claude 仍是唯一 Core compatibility adapter；Notes 是第一 Feature Pilot）。
+- [x] P0.2 按 `14` §1–§2 实现 Manifest parser：Reverse-DNS `pluginId`、publisher、三轴 version、channel、`coreApi` range（禁止 `*` / 无上界）。
+- [x] P0.3 按 `14` §9–§10 实现 Contribution / Capability / template schema。
+- [x] P0.4 建立 Core Boundary fitness checks。
+- [x] P0.5 定义 Plugin SDK package boundary 和 generated types（D-047：TS + Rust；Go 仅 types）。
+- [x] P0.6 把 `14` §19 转成第一批小型 OpenSpec change，不做总包式实现。
+- [x] P0.7 建立 Manifest envelope 与 Runtime Registration subset validator，禁止未声明 Contribution/capability 在 activation 阶段获得可见性。
+- [x] P0.8 建立 install-time no-code-execution gate，证明 permission preview、compatibility check 与 diff 不加载插件入口。
+- [x] P0.9 建立 `pluginId + version -> artifactHash` uniqueness gate，并覆盖重复发布、hash 冲突、未知 Manifest Schema 与不兼容 Core Contract fixtures。
+- [x] P0.10 按 `14` §5 实现 discriminated `entries[]` parser、per-kind Closed Schema、artifact-relative path/integrity checks 与 `entryId` reference validator。
+- [x] P0.11 按 `14` §6 实现 Physical Entry DAG 静态规则：cycle / missing / runtime mutation 拒绝。
+- [x] P0.12 实现 Runtime `required/deferred/optional` Readiness Schema，并把 deadline 接到 `14` §8（默认 10s / 上限 30s）。
+- [x] P0.13 把 `14` §9 Catalog 落成 schema 文件与 `mossx.*` / `<pluginId>.*` rejection gate。
+- [x] P0.14 实现 exact + bounded template matcher（dynamic-eligible 仅 tool/search/context/status；maxInstances 1–256）。
+- [x] P0.15 实现 `14` §3–§4 Activation Unit / Event Catalog、`onStartup` 白名单与 first-interactive fitness check。
+- [x] P0.16 实现 `14` §13 MXPC/MXPD framing fixtures（非法 magic/超限/NDJSON 全部 fail closed）。
+- [x] P0.17 实现 `14` §11 schema evolution：未知字段拒绝；仅 `extensions.<publisherDns>.*` 可忽略。
 
 验收：没有插件 runtime 时 Core contract tests 可运行；新增具体 CLI 不需要扩大 Core contract 类型集合；仅凭 artifact metadata 即可完成安装前审计；运行时越界注册稳定 fail closed；同一 `pluginId` 在 display name、repository 与 publisher metadata 变化后仍映射到同一 Storage/permission/lockfile identity；相同 `pluginId + version` 的 hash 冲突、未知 Manifest Schema 和不兼容 Core Contract 均在执行插件前 fail closed；重复/未知 Entry、越界路径和悬空 `entryId` reference 均被拒绝。
 
@@ -61,24 +61,24 @@ flowchart TD
 
 任务：
 
-- [ ] P1.1 Extension Host Controller 启停、IPC、heartbeat。
-- [ ] P1.2 per-plugin Worker supervisor 与 generation token。
-- [ ] P1.3 Restricted Process supervisor、child cleanup、platform matrix。
-- [ ] P1.4 Capability Broker 初始 read-only workspace/storage APIs。
-- [ ] P1.5 per-plugin logs、metrics、quota 与 diagnostics。
-- [ ] P1.6 Core kill switch 与 Plugin Safe Mode。
-- [ ] P1.7 分离 Control Plane 与 Data Plane，保证 bulk stream 拥塞不阻塞 lifecycle/interrupt/fuse。
-- [ ] P1.8 Core-issued bounded data channel：identity/generation/scope/quota/backpressure/cancel/revoke contract。
-- [ ] P1.9 Rust Extension Host 内嵌 per-plugin QuickJS Runtime，默认只暴露 Mossx SDK/IPC bridge。
-- [ ] P1.10 Node/npm/CLI/native 作为 Restricted Process Entry 的 supervisor、sandbox policy 与 conformance fixture。
-- [ ] P1.11 JSON-RPC/JSON Schema Control Contract、length-prefixed framing 与 Rust/TypeScript SDK generation。
-- [ ] P1.12 Windows Named Pipe、macOS/Linux UDS、Process framed stdio 的 platform conformance。
-- [ ] P1.13 binary StreamHandle open/revoke/backpressure/cancel/abnormal-close fixture。
-- [ ] P1.14 Physical Entry DAG supervisor：拓扑启动、反向停止、cycle/missing reference rejection 与 partial-start cleanup。
-- [ ] P1.15 Runtime Capability Graph：generation-bound provide/require、provider-loss propagation、staging visibility 与 rebind fixtures。
-- [ ] P1.16 Readiness supervisor：required deadline/rollback、deferred waiting/rebind、optional omission/provider-loss 与 status projection fixtures。
-- [ ] P1.17 Contribution Envelope matcher：exact/template 唯一匹配、per-generation/per-scope quota、越界注册与 generation cleanup fixtures。
-- [ ] P1.18 Lazy Activation Coordinator：placeholder、single-flight、caller cancellation、partial-start cleanup、retry/LKG 与 structured surface error fixtures。
+- [x] P1.1 Extension Host Controller 启停、IPC、heartbeat。
+- [x] P1.2 per-plugin Worker supervisor 与 generation token。
+- [x] P1.3 Restricted Process supervisor、child cleanup、platform matrix。
+- [x] P1.4 Capability Broker 初始 read-only workspace/storage APIs。
+- [x] P1.5 per-plugin logs、metrics、quota 与 diagnostics。
+- [x] P1.6 Core kill switch 与 Plugin Safe Mode。
+- [x] P1.7 分离 Control Plane 与 Data Plane，保证 bulk stream 拥塞不阻塞 lifecycle/interrupt/fuse。
+- [x] P1.8 Core-issued bounded data channel：identity/generation/scope/quota/backpressure/cancel/revoke contract。
+- [x] P1.9 Rust Extension Host 内嵌 per-plugin QuickJS Runtime，默认只暴露 Mossx SDK/IPC bridge。
+- [x] P1.10 Node/npm/CLI/native 作为 Restricted Process Entry 的 supervisor、sandbox policy 与 conformance fixture。
+- [x] P1.11 JSON-RPC/JSON Schema Control Contract、length-prefixed framing 与 Rust/TypeScript SDK generation。
+- [x] P1.12 Windows Named Pipe、macOS/Linux UDS、Process framed stdio 的 platform conformance。
+- [x] P1.13 binary StreamHandle open/revoke/backpressure/cancel/abnormal-close fixture。
+- [x] P1.14 Physical Entry DAG supervisor：拓扑启动、反向停止、cycle/missing reference rejection 与 partial-start cleanup。
+- [x] P1.15 Runtime Capability Graph：generation-bound provide/require、provider-loss propagation、staging visibility 与 rebind fixtures。
+- [x] P1.16 Readiness supervisor：required deadline/rollback、deferred waiting/rebind、optional omission/provider-loss 与 status projection fixtures。
+- [x] P1.17 Contribution Envelope matcher：exact/template 唯一匹配、per-generation/per-scope quota、越界注册与 generation cleanup fixtures。
+- [x] P1.18 Lazy Activation Coordinator：placeholder、single-flight、caller cancellation、partial-start cleanup、retry/LKG 与 structured surface error fixtures。
 
 验收：crash/hang/quota/policy fixtures 证明单插件故障不扩散；stale token 全部 fail closed；Data Plane 注入拥塞时 Control Plane 仍能 interrupt、fuse 和 revoke；QuickJS Worker 不能访问 Node/OS API，Node Process Entry 故障不影响 Host 与其他插件；跨平台 framing/schema/stream conformance 全部通过；Physical DAG 与 Runtime Capability Graph 的 activation/deactivation 顺序可重复验证，runtime registration 无法新增 physical edge 或改变 placement；required 不会永久 pending，deferred/optional 缺失不会错误触发整个插件 rollback；普通插件数量增长不扩大 Core first-interactive activation set，同一 target 的并发触发只产生一个 generation。
 

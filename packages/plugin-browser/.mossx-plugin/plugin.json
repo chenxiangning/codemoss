@@ -1,0 +1,80 @@
+{
+  "manifestVersion": 1,
+  "pluginId": "com.mossx.browser",
+  "version": "1.0.0",
+  "displayName": "Browser",
+  "description": "Transitional Browser Feature package. In-repo layering only. Not installed by boot.",
+  "publisher": {
+    "id": "com.mossx",
+    "displayName": "Mossx",
+    "homepage": "https://mossx.dev"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mossx/mossx-plugin-browser",
+    "commit": "0000000000000000000000000000000000000000"
+  },
+  "license": "MIT",
+  "channel": "stable",
+  "compatibility": {
+    "coreApi": ">=1.0.0 <2.0.0",
+    "platforms": [
+      "darwin-arm64",
+      "darwin-x64",
+      "windows-x64",
+      "windows-arm64",
+      "linux-x64",
+      "linux-arm64"
+    ]
+  },
+  "entries": [
+    {
+      "id": "browser-ui",
+      "kind": "ui",
+      "mode": "trusted-react",
+      "path": "src/features/browser-agent",
+      "slot": "workspace.main",
+      "trustedReact": true,
+      "criticality": "required"
+    }
+  ],
+  "activationUnits": [
+    {
+      "id": "browser-main",
+      "entries": [
+        "browser-ui"
+      ],
+      "events": [
+        {
+          "type": "onView",
+          "viewId": "browser.main"
+        }
+      ]
+    }
+  ],
+  "contributions": [
+    {
+      "id": "browser.main",
+      "type": "mossx.ui.view",
+      "entryId": "browser-ui",
+      "slot": "workspace.main",
+      "mode": "trusted-react"
+    }
+  ],
+  "capabilities": [
+    {
+      "id": "mossx.ui.slot.workspace.main",
+      "role": "consumer"
+    },
+    {
+      "id": "mossx.storage.readwrite",
+      "role": "consumer",
+      "scopes": [
+        "namespace:self"
+      ]
+    }
+  ],
+  "budgets": {
+    "activationDeadlineMs": 10000
+  }
+}

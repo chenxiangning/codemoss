@@ -10,6 +10,9 @@ import notesPilot from "../../packages/plugin-contract/fixtures/valid/notes-pilo
 import claudeEngine from "../../packages/plugin-contract/fixtures/valid/claude-engine.json";
 import kanbanPlugin from "../../packages/plugin-kanban/.mossx-plugin/plugin.json";
 import notesPlugin from "../../packages/plugin-notes/.mossx-plugin/plugin.json";
+import projectMapPlugin from "../../packages/plugin-project-map/.mossx-plugin/plugin.json";
+import browserPlugin from "../../packages/plugin-browser/.mossx-plugin/plugin.json";
+import intentCanvasPlugin from "../../packages/plugin-intent-canvas/.mossx-plugin/plugin.json";
 
 const fixtureDir = dirname(fileURLToPath(import.meta.url));
 const contractRoot = join(fixtureDir, "../../packages/plugin-contract");
@@ -53,6 +56,21 @@ describe("parseManifestV1", () => {
     const boot = readFileSync(join(fixtureDir, "../../src-tauri/src/plugin_runtime/boot.rs"), "utf8");
     expect(boot).not.toContain("plugin-notes");
     expect(existsSync(join(fixtureDir, "../../src-tauri/src/note_cards.rs"))).toBe(true);
+  });
+
+  it("accepts later feature package layers without installing them", () => {
+    const later = [
+      { manifest: projectMapPlugin, pluginId: "com.mossx.project-map" },
+      { manifest: browserPlugin, pluginId: "com.mossx.browser" },
+      { manifest: intentCanvasPlugin, pluginId: "com.mossx.intent-canvas" },
+    ];
+    const boot = readFileSync(join(fixtureDir, "../../src-tauri/src/plugin_runtime/boot.rs"), "utf8");
+    for (const item of later) {
+      const result = parseManifestV1(item.manifest, systemOpts);
+      expect(result.ok).toBe(true);
+      expect(result.manifest?.pluginId).toBe(item.pluginId);
+      expect(boot).not.toContain(item.pluginId);
+    }
   });
 
   it("rejects templated engine providers on the claude fixture", () => {

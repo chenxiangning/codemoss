@@ -36,6 +36,33 @@ export const LOCAL_PLUGIN_CATALOG: LocalCatalogPackage[] = [
     installed: false,
     remote: false,
   },
+  {
+    pluginId: "com.mossx.project-map",
+    displayName: "Project Map",
+    packageDir: "packages/plugin-project-map",
+    ownerClass: "later-plugin",
+    kind: "feature",
+    installed: false,
+    remote: false,
+  },
+  {
+    pluginId: "com.mossx.browser",
+    displayName: "Browser",
+    packageDir: "packages/plugin-browser",
+    ownerClass: "later-plugin",
+    kind: "feature",
+    installed: false,
+    remote: false,
+  },
+  {
+    pluginId: "com.mossx.intent-canvas",
+    displayName: "Intent Canvas",
+    packageDir: "packages/plugin-intent-canvas",
+    ownerClass: "later-plugin",
+    kind: "feature",
+    installed: false,
+    remote: false,
+  },
 ];
 
 export function listLocalPluginCatalog(): LocalCatalogPackage[] {
