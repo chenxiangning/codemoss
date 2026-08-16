@@ -399,6 +399,15 @@ mod tests {
         assert!(pilot.contains("host.disable(\"com.mossx.engine.claude\")"));
         assert!(!boot.contains("disable(\"com.mossx.engine.claude\")"));
         assert!(!claude_compat_facade_enabled_from(None));
+        let close = include_str!(
+            "../../../docs/architecture/plugin-platform/inventory/claude-dual-run-close.json"
+        );
+        assert!(close.contains("\"3_adapter\": \"done\""));
+        assert!(close.contains("\"5_dualRun\": \"default-off-call-path-done\""));
+        assert!(close.contains("\"7_disable\": \"fixture-only\""));
+        assert!(close.contains("\"8_slim\": \"forbidden\""));
+        assert!(close.contains("delete engine/claude*"));
+        assert!(std::path::Path::new("src/engine/claude.rs").exists());
     }
 
     #[test]

@@ -1,0 +1,36 @@
+{
+  "pluginId": "com.mossx.engine.claude",
+  "wave": "3AN",
+  "status": "inventory-only",
+  "protocol": {
+    "1_inventory": "done",
+    "2_contract": "done",
+    "3_adapter": "done",
+    "4_pilotRepo": "transitional-package-only",
+    "5_dualRun": "default-off-call-path-done",
+    "6_conformance": "partial-not-product",
+    "7_disable": "fixture-only",
+    "8_slim": "forbidden",
+    "9_lkg": "forbidden"
+  },
+  "done": {
+    "adapter": "ClaudeCompatAdapter + ClaudeOwner",
+    "flagDefaultOff": "MOSSX_CLAUDE_COMPAT_FACADE",
+    "productHistoryFacade": [
+      "gui",
+      "daemon",
+      "catalog",
+      "nativeContinuation"
+    ],
+    "transitionalPackage": "packages/plugin-engine-claude/.mossx-plugin/plugin.json",
+    "fixtureDisable": "claude_pilot.rs#disable_claude_fixture_keeps_core_implementation"
+  },
+  "notDoneAndForbiddenHere": [
+    "product disable of Core Claude",
+    "delete engine/claude*",
+    "default-on flag",
+    "Marketplace publish",
+    "migrate note_cards"
+  ],
+  "notes": "3AN inventory only. Dual-run call path is closed default-off. Product disable and slim remain forbidden."
+}

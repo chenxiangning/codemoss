@@ -191,7 +191,8 @@
 | 3AJ 剩余 claude_history 直调只盘点 | 完成 | `aed7732db` |
 | 3AK Claude plugin 过渡仓骨架 | 完成 | `72538e72d` |
 | 3AL 过渡仓 Manifest 与 3B fixture 身份对齐 | 完成 | `e18e7a2d0` |
-| 3AM disable-not-delete 证据只盘点 | 完成 | 本刀 |
+| 3AM disable-not-delete 证据只盘点 | 完成 | `e9acabcb5` |
+| 3AN dual-run 收口只盘点 | 完成 | 本刀 |
 
 ## 明确未做
 
