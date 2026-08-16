@@ -26,7 +26,7 @@ vi.mock(
   }),
 );
 
-vi.mock("./features/about/components/AboutView", () => ({
+vi.mock("@mossx/plugin-about/ui", () => ({
   AboutView: () => <div>about-view</div>,
 }));
 
@@ -59,7 +59,7 @@ async function renderAppRouter() {
 describe("AppRouter", () => {
   beforeAll(async () => {
     await Promise.all([
-      import("./features/about/components/AboutView"),
+      import("@mossx/plugin-about/ui"),
       import("./features/files/components/DetachedFileExplorerWindow"),
       import("./features/spec/components/DetachedSpecHubWindow"),
       import("@mossx/plugin-client-documentation/ui"),

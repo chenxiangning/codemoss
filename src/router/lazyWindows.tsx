@@ -6,7 +6,7 @@ import { lazy } from "react";
 // (cold-start P0-3). AppShell stays in router.tsx as the main-window path.
 
 export const LazyAboutView = lazy(() =>
-  import("../features/about/components/AboutView").then((module) => ({
+  import("@mossx/plugin-about/ui").then((module) => ({
     default: module.AboutView,
   })),
 );
