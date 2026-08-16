@@ -564,6 +564,19 @@ mod tests {
             .expect("daemon delete_claude_session");
         assert!(daemon_delete.contains("delete_claude_history_session"));
         assert!(!daemon_delete.contains("claude_history::"));
+        let catalog_inventory = include_str!(
+            "../../../docs/architecture/plugin-platform/inventory/claude-history-catalog.json"
+        );
+        assert!(catalog_inventory.contains(
+            "list_claude_sessions_for_attribution_scopes_with_config"
+        ));
+        assert!(catalog_inventory.contains("delete_claude_session_with_config"));
+        assert!(catalog_inventory.contains("resolve_claude_session_file_with_config"));
+        let catalog = include_str!("../session_management.rs");
+        assert!(catalog.contains("list_claude_sessions_for_attribution_scopes_with_config"));
+        assert!(catalog.contains("delete_claude_session_with_config"));
+        let native = include_str!("../native_continuation/commands.rs");
+        assert!(native.contains("resolve_claude_session_file_with_config"));
     }
 
     #[tokio::test]

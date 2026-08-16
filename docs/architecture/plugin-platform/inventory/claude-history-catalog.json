@@ -1,0 +1,37 @@
+{
+  "pluginId": "com.mossx.engine.claude",
+  "wave": "3AE",
+  "status": "inventory-only",
+  "deleteGate": "after-pilot-disable",
+  "kind": "catalog-attribution-not-gui-list",
+  "productCallSites": {
+    "catalogList": [
+      "src-tauri/src/session_management.rs#list_claude_sessions_for_attribution_scopes_with_config"
+    ],
+    "catalogSourceFacts": [
+      "src-tauri/src/session_management_catalog_projection.rs#list_claude_session_source_facts_for_attribution_scopes_with_config",
+      "src-tauri/src/session_management_catalog_projection.rs#list_workspace_only_claude_session_source_facts_for_attribution_scopes_with_config"
+    ],
+    "catalogDelete": [
+      "src-tauri/src/session_management.rs#delete_claude_session_with_config"
+    ],
+    "catalogTypes": [
+      "src-tauri/src/session_management.rs#ClaudeSessionAttributionScope",
+      "src-tauri/src/session_management_catalog_helpers.rs#ClaudeSessionScanDiagnostic"
+    ],
+    "nativeContinuation": [
+      "src-tauri/src/native_continuation/commands.rs#resolve_claude_session_file_with_config"
+    ]
+  },
+  "cannotReuseGuiList": [
+    "list_claude_sessions_for_attribution_scopes_with_config",
+    "list_claude_session_source_facts_for_attribution_scopes_with_config",
+    "resolve_claude_session_file_with_config"
+  ],
+  "stayInCore": [
+    "src-tauri/src/session_management.rs",
+    "src-tauri/src/session_management_catalog_projection.rs",
+    "src-tauri/src/native_continuation/commands.rs"
+  ],
+  "notes": "3AE inventory only. Catalog uses attribution scopes and source facts, not GUI list_claude_history_sessions. Do not dual-write or delete."
+}
