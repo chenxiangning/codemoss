@@ -24,6 +24,8 @@ describe("listLocalPluginCatalog", () => {
     expect(catalog.every((item) => item.remote === false)).toBe(true);
     const notes = catalog.find((item) => item.pluginId === "com.mossx.notes");
     expect(notes?.capabilities).toEqual(["mossx.ui.slot.workspace.main", "mossx.storage.readwrite"]);
+    expect(notes?.artifactHash).toMatch(/^local-/);
+    expect(new Set(catalog.map((item) => item.artifactHash)).size).toBe(catalog.length);
     const claude = catalog.find((item) => item.pluginId === "com.mossx.engine.claude");
     expect(claude?.capabilities).toEqual([
       "mossx.engine.provider",

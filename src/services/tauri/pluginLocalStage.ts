@@ -8,6 +8,7 @@ export const LOCAL_PLUGIN_STAGE_KEY = "ccgui.pluginLocalStage.v1";
 export type LocalLockfileRow = {
   pluginId: string;
   version: string;
+  artifactHash: string;
 };
 
 export type LocalStageResult = {
@@ -17,6 +18,7 @@ export type LocalStageResult = {
   previewed: boolean;
   activatedHost: false;
   version?: string;
+  artifactHash?: string;
 };
 
 function isLockfileRow(value: unknown): value is LocalLockfileRow {
@@ -24,7 +26,8 @@ function isLockfileRow(value: unknown): value is LocalLockfileRow {
     typeof value === "object" &&
     value !== null &&
     typeof (value as LocalLockfileRow).pluginId === "string" &&
-    typeof (value as LocalLockfileRow).version === "string"
+    typeof (value as LocalLockfileRow).version === "string" &&
+    typeof (value as LocalLockfileRow).artifactHash === "string"
   );
 }
 
@@ -40,7 +43,10 @@ function readLockfile(): LocalLockfileRow[] {
     }
     return parsed.flatMap((item) => {
       if (typeof item === "string") {
-        return [{ pluginId: item, version: "1.0.0" }];
+        const catalog = LOCAL_PLUGIN_CATALOG.find((entry) => entry.pluginId === item);
+        return catalog
+          ? [{ pluginId: item, version: "1.0.0", artifactHash: catalog.artifactHash }]
+          : [];
       }
       return isLockfileRow(item) ? [item] : [];
     });
@@ -89,7 +95,11 @@ export function catalogManifestStub(pluginId: string): ValidatedManifest | null 
   };
 }
 
-export function stageLocalPlugin(pluginId: string, extraCapabilities: string[] = []): LocalStageResult {
+export function stageLocalPlugin(
+  pluginId: string,
+  extraCapabilities: string[] = [],
+  artifactHash?: string,
+): LocalStageResult {
   const manifest = catalogManifestStub(pluginId);
   if (!manifest) {
     return { ok: false, pluginId, staged: false, previewed: false, activatedHost: false };
@@ -104,7 +114,18 @@ export function stageLocalPlugin(pluginId: string, extraCapabilities: string[] =
   if (!registration.ok) {
     return { ok: false, pluginId, staged: false, previewed: true, activatedHost: false };
   }
-  writeLockfile([...readLockfile(), { pluginId, version: manifest.version }]);
+  const item = LOCAL_PLUGIN_CATALOG.find((entry) => entry.pluginId === pluginId);
+  const nextHash = artifactHash ?? item?.artifactHash;
+  if (!nextHash) {
+    return { ok: false, pluginId, staged: false, previewed: true, activatedHost: false };
+  }
+  const existing = readLockfile().find(
+    (row) => row.pluginId === pluginId && row.version === manifest.version,
+  );
+  if (existing && existing.artifactHash !== nextHash) {
+    return { ok: false, pluginId, staged: true, previewed: true, activatedHost: false, version: existing.version, artifactHash: existing.artifactHash };
+  }
+  writeLockfile([...readLockfile(), { pluginId, version: manifest.version, artifactHash: nextHash }]);
   return {
     ok: true,
     pluginId,
@@ -112,6 +133,7 @@ export function stageLocalPlugin(pluginId: string, extraCapabilities: string[] =
     previewed: true,
     activatedHost: false,
     version: manifest.version,
+    artifactHash: nextHash,
   };
 }
 

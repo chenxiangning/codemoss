@@ -5,6 +5,7 @@ export type LocalCatalogPackage = {
   ownerClass: "pilot" | "later-plugin";
   kind: "engine" | "feature";
   capabilities: string[];
+  artifactHash: string;
   installed: false;
   remote: false;
 };
@@ -154,9 +155,20 @@ function declaredCapabilities(item: CatalogSeed): string[] {
     : ["mossx.ui.slot.workspace.main"];
 }
 
+function localArtifactHash(item: CatalogSeed): string {
+  const raw = `${item.pluginId}@1.0.0:${item.packageDir}`;
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < raw.length; index += 1) {
+    hash ^= raw.charCodeAt(index);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return `local-${(hash >>> 0).toString(16).padStart(8, "0")}`;
+}
+
 export const LOCAL_PLUGIN_CATALOG: LocalCatalogPackage[] = CATALOG_SEEDS.map((item) => ({
   ...item,
   capabilities: declaredCapabilities(item),
+  artifactHash: localArtifactHash(item),
   installed: false,
   remote: false,
 }));

@@ -19,18 +19,20 @@ describe("pluginLocalStage", () => {
   it("stages a local package after install preview without activating Host", () => {
     localStorage.clear();
     const result = stageLocalPlugin("com.mossx.notes");
-    expect(result).toEqual({
-      ok: true,
-      pluginId: "com.mossx.notes",
-      staged: true,
-      previewed: true,
-      activatedHost: false,
-      version: "1.0.0",
-    });
-    expect(listLocalLockfile()).toEqual([{ pluginId: "com.mossx.notes", version: "1.0.0" }]);
-    expect(JSON.parse(localStorage.getItem(LOCAL_PLUGIN_STAGE_KEY) ?? "[]")).toEqual([
-      { pluginId: "com.mossx.notes", version: "1.0.0" },
+    expect(result.ok).toBe(true);
+    expect(result.pluginId).toBe("com.mossx.notes");
+    expect(result.staged).toBe(true);
+    expect(result.previewed).toBe(true);
+    expect(result.activatedHost).toBe(false);
+    expect(result.version).toBe("1.0.0");
+    expect(result.artifactHash).toMatch(/^local-/);
+    const notesHash = catalogManifestStub("com.mossx.notes")
+      ? listLocalLockfile()[0]?.artifactHash
+      : undefined;
+    expect(listLocalLockfile()).toEqual([
+      { pluginId: "com.mossx.notes", version: "1.0.0", artifactHash: notesHash },
     ]);
+    expect(notesHash).toMatch(/^local-/);
     const stub = catalogManifestStub("com.mossx.notes");
     expect(stub?.entries).toEqual([]);
     expect(stub?.capabilities.map((item) => item.id)).toEqual([
@@ -60,6 +62,17 @@ describe("pluginLocalStage", () => {
     expect(result.previewed).toBe(true);
     expect(result.staged).toBe(false);
     expect(listLocalLockfile()).toEqual([]);
+  });
+
+  it("rejects a conflicting artifactHash for the same pluginId+version", () => {
+    localStorage.clear();
+    const first = stageLocalPlugin("com.mossx.notes");
+    const conflict = stageLocalPlugin("com.mossx.notes", [], "local-deadbeef");
+    expect(first.ok).toBe(true);
+    expect(conflict.ok).toBe(false);
+    expect(listLocalLockfile()).toEqual([
+      { pluginId: "com.mossx.notes", version: "1.0.0", artifactHash: first.artifactHash },
+    ]);
   });
 
   it("rejects an unknown pluginId without writing a lockfile row", () => {
