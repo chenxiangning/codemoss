@@ -13,8 +13,8 @@
 |---|---|---|
 | 市场 UI | 只读 Host 快照（12 declared plugs），无安装/卸载 | `PluginRackSection.tsx` |
 | 后端命令 | 仅 `get_plugin_rack_snapshot` 只读 | `plugin_rack.rs` |
-| **Extension Host** | **真实实现**（in-memory，无 socket/spawn） | `host.rs` "In-memory Extension Host supervisor" |
-| **Restricted Process** | **真实实现**（`Command::spawn` + handshake + env 注入 + memory limit + cwd 校验） | `spawn.rs` `spawn_child` |
+| **Extension Host** | **真实实现**（in-memory，无 socket/spawn；含 `interrupt` 非终态中断） | `host.rs` "In-memory Extension Host supervisor" |
+| **Restricted Process** | **真实实现**（`Command::spawn` + handshake + env 注入 + memory limit + cwd 校验；含 `process_group(0)` + 进程组 `SIGKILL`） | `spawn.rs` `spawn_child` / `kill_child` |
 | **QuickJS Worker** | **真实实现**（`rquickjs::Runtime` 真 C 引擎） | `quickjs.rs` "Real C engine" |
 | **CompositeDriver** | **真实组合** process + worker | `composite.rs` |
 | 运行时是否接入生产 | **否** —— 全链标 "not in product path / not in boot" | 各文件头注释 |
@@ -45,3 +45,16 @@
 **缺口 1：建立 Claude 真实运行时接入**——把 `claude_pilot` 从 "manifest fixture 假激活" 升级为 "真实 RestrictedProcess 执行生产 `engine::claude`"，跑通 stream/interrupt/storage/rollback conformance（`08` §P1 验收）。
 
 这一步需独立 OpenSpec proposal，高风险，须严格按 `15` §3 切换协议走（当前已走到 step 6 Conformance，下一步 step 7 Disable）。
+
+### 运行时侧前置进度（2026-08-16 更新）
+
+迁移的运行时侧四类语义已补齐，剩余工作全部是迁入方 + 真实 CLI 验收（详见 [`claude-process-migration-gap.md`](claude-process-migration-gap.md)）：
+
+| gap | 状态 | 落地 |
+|---|---|---|
+| 进程组 kill | ✅ | `spawn.rs` `process_group(0)` + `kill_child` 整组 `SIGKILL`（`cargo test --lib plugin_runtime::spawn` 22/22） |
+| turn↔generation 映射 | ✅ | `generation` 单调递增句柄承载 turn 句柄，`dispatch` 校验 |
+| 中断状态清理 | ✅ | `host.rs` `interrupt` 非终态中断（`cargo test --lib plugin_runtime::host` 23/23） |
+| 多进程编排 | ✅ | entry 粒度 + 进程组覆盖「leader + 孙进程组」 |
+
+真实 CLI 环境的 stream/interrupt/rollback conformance 验收仍是独立 gate，未过验收前不得宣称生产 conformance 达成、不得删 `engine/claude*`。
