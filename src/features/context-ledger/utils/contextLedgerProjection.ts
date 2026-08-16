@@ -1,7 +1,7 @@
 import type { ContextCompactionState, DualContextUsageViewModel } from "../../composer/components/ChatInputBox/types";
 import type { MemoryContextInjectionMode, ThreadTokenUsage } from "../../../types";
 import { buildContextLine } from "../../project-memory/utils/memoryContextInjection";
-import { buildNoteBlock } from "../../note-cards/utils/noteCardContextInjection";
+import { buildNoteBlock } from "@mossx/plugin-notes/runtime";
 import {
   classifyManagedInstructionAttribution,
   normalizeManagedInstructionSource,

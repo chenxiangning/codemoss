@@ -404,7 +404,7 @@ vi.mock("../../files/components/FileViewPanel", () => ({
   },
 }));
 
-vi.mock("../../note-cards/components/WorkspaceNoteCardPanel", () => ({
+vi.mock("@mossx/plugin-notes/ui", () => ({
   WorkspaceNoteCardPanel: (
     props: typeof capturedWorkspaceNotePanelProps,
   ) => {

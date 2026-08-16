@@ -53,11 +53,11 @@ import {
   type ProjectMapImpactInput,
 } from "../../project-map/utils/impactSources";
 import { useTaskRunStore } from "../../tasks/hooks/useTaskRunStore";
-import { WorkspaceNoteCardPanel } from "../../note-cards/components/WorkspaceNoteCardPanel";
+import { WorkspaceNoteCardPanel } from "@mossx/plugin-notes/ui";
 import type {
   NoteCaptureDraft,
   WorkspaceNoteCaptureRequest,
-} from "../../note-cards/types";
+} from "@mossx/plugin-notes/runtime";
 import { WorkspaceSessionRadarPanel } from "../../session-activity/components/WorkspaceSessionRadarPanel";
 import { TabBar } from "../../app/components/TabBar";
 import { TabletNav } from "../../app/components/TabletNav";

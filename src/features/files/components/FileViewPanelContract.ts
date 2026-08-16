@@ -8,7 +8,7 @@ import type {
   CodeAnnotationDraftInput,
   CodeAnnotationSelection,
 } from "../../code-annotations/types";
-import type { NoteCaptureDraft } from "../../note-cards/types";
+import type { NoteCaptureDraft } from "@mossx/plugin-notes/runtime";
 import type { FileHistoryTarget } from "../../git-history/types";
 import type { GitLineMarkers } from "../utils/gitLineMarkers";
 import type { FileRenderPressure } from "../types/fileRenderPressure";

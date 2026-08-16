@@ -12,7 +12,7 @@ import { MainTopbar } from "../../app/components/MainTopbar";
 import { MemoryPanel } from "./MemoryPanel";
 import type { CenterMode, EditorSplitCompanion } from "../../app/hooks/useGitPanelController";
 import { getClientStoreSync, writeClientStoreValue } from "../../../services/clientStorage";
-import { WorkspaceNoteCardsLayoutProvider, useWorkspaceNoteCardsLayoutController } from "../../note-cards/components/WorkspaceNoteCardsLayoutContext";
+import { WorkspaceNoteCardsLayoutProvider, useWorkspaceNoteCardsLayoutController } from "@mossx/plugin-notes/ui";
 import {
   useSubagentInspectorSelection,
 } from "../../subagent-ui";

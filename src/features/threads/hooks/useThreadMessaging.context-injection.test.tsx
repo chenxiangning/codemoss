@@ -9,7 +9,7 @@ import {
   projectMemoryCaptureAuto,
 } from "../../../services/tauri";
 import { projectMemoryFacade } from "../../project-memory/services/projectMemoryFacade";
-import { noteCardsFacade } from "../../note-cards/services/noteCardsFacade";
+import { noteCardsFacade } from "@mossx/plugin-notes/runtime";
 
 vi.mock("@sentry/react", () => ({
   metrics: {
@@ -62,11 +62,17 @@ vi.mock("../../project-memory/services/projectMemoryFacade", () => ({
   },
 }));
 
-vi.mock("../../note-cards/services/noteCardsFacade", () => ({
-  noteCardsFacade: {
-    get: vi.fn(),
-  },
-}));
+vi.mock("@mossx/plugin-notes/runtime", async () => {
+  const actual = await vi.importActual<typeof import("@mossx/plugin-notes/runtime")>(
+    "@mossx/plugin-notes/runtime",
+  );
+  return {
+    ...actual,
+    noteCardsFacade: {
+      get: vi.fn(),
+    },
+  };
+});
 
 const workspace: WorkspaceInfo = {
   id: "ws-1",
@@ -860,7 +866,7 @@ describe("useThreadMessaging context injection", () => {
         item: expect.objectContaining({
           kind: "message",
           role: "user",
-          text: expect.stringContaining("<note-card-context>"),
+          text: "请按这个执行",
           images: ["/tmp/ws/.ccgui/note_card/ws/assets/note-1/deploy.png"],
         }),
       }),

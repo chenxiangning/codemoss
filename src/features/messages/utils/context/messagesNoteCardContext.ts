@@ -3,7 +3,7 @@ import {
   buildMessagePresentationMetadata,
   getPresentationContext,
 } from "../../../../conversation-presentation/normalizeConversationPresentation";
-import { NOTE_CARD_CONTEXT_SUMMARY_PREFIX } from "../../../note-cards/utils/noteCardContextInjection";
+import { NOTE_CARD_CONTEXT_SUMMARY_PREFIX } from "@mossx/plugin-notes/runtime";
 import { isEquivalentUserObservation } from "../../../threads/assembly/conversationNormalization";
 
 export type NoteCardContextAttachment = {

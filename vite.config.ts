@@ -48,10 +48,25 @@ export default defineConfig(({ command }) => ({
     tailwindcss(),
   ],
   resolve: {
-    alias: {
-      "@": path.resolve(__dirname, "./src"),
-      "@mossx/plugin-kanban": path.resolve(__dirname, "./packages/plugin-kanban/src/index.ts"),
-    },
+    alias: [
+      {
+        find: /^@mossx\/plugin-kanban$/,
+        replacement: path.resolve(__dirname, "./packages/plugin-kanban/src/index.ts"),
+      },
+      {
+        find: /^@mossx\/plugin-notes\/runtime$/,
+        replacement: path.resolve(__dirname, "./packages/plugin-notes/src/runtime.ts"),
+      },
+      {
+        find: /^@mossx\/plugin-notes\/ui$/,
+        replacement: path.resolve(__dirname, "./packages/plugin-notes/src/ui.ts"),
+      },
+      {
+        find: /^@mossx\/plugin-notes$/,
+        replacement: path.resolve(__dirname, "./packages/plugin-notes/src/index.ts"),
+      },
+      { find: "@", replacement: path.resolve(__dirname, "./src") },
+    ],
     dedupe: [
       "@codemirror/state",
       "@codemirror/view",

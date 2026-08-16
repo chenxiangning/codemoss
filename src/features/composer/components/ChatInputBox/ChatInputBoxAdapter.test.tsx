@@ -62,7 +62,7 @@ vi.mock('../../../project-memory/services/projectMemoryFacade', () => ({
   },
 }));
 
-vi.mock('../../../note-cards/services/noteCardsFacade', () => ({
+vi.mock('@mossx/plugin-notes/runtime', () => ({
   noteCardsFacade: {
     list: mockState.noteCardList,
   },

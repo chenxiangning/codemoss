@@ -3,7 +3,7 @@ import { useState, type ComponentProps } from "react";
 import { cleanup, fireEvent, render } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { DesktopLayout } from "./DesktopLayout";
-import { useWorkspaceNoteCardsLayout } from "../../note-cards/components/WorkspaceNoteCardsLayoutContext";
+import { useWorkspaceNoteCardsLayout } from "@mossx/plugin-notes/ui";
 
 const clientStorageMock = vi.hoisted(() => ({
   getClientStoreSync: vi.fn(),

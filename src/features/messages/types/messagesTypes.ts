@@ -17,7 +17,7 @@ import type { PresentationProfile } from "../../../conversation-presentation/pre
 import type { RuntimeReconnectRecoveryCallbackResult } from "../../../runtime-recovery/runtimeReconnect";
 import type { AgentTaskScrollRequest } from "../types";
 import type { TaskRunRecord } from "../../tasks/types";
-import type { NoteCaptureDraft } from "../../note-cards/types";
+import type { NoteCaptureDraft } from "@mossx/plugin-notes/runtime";
 import type { HistoryLoadingProgress } from "../../threads/utils/historyLoadingProgress";
 
 export type LastVisibleTextReport = {

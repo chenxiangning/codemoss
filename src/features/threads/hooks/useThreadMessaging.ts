@@ -191,12 +191,12 @@ function buildMemoryPickEmptyTimelineText(
     },
   });
 }
-import { noteCardsFacade } from "../../note-cards/services/noteCardsFacade";
 import {
   injectSelectedNoteCardsContext,
   NOTE_CARD_CONTEXT_SUMMARY_PREFIX,
-  type NoteCardInjectionResult,
-} from "../../note-cards/utils/noteCardContextInjection";
+  noteCardsFacade,
+} from "@mossx/plugin-notes/runtime";
+import type { NoteCardInjectionResult } from "@mossx/plugin-notes/runtime";
 import { MEMORY_CONTEXT_SUMMARY_PREFIX } from "../../project-memory/utils/memoryMarkers";
 import { expandCustomPromptText } from "../../../utils/customPrompts";
 import {

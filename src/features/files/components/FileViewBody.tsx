@@ -49,8 +49,8 @@ import type {
 import type { GitLineMarkers } from "../utils/gitLineMarkers";
 import type { GitFileBlameResponse } from "../../../types";
 import type { FileGitBlameStatus } from "../hooks/useFileGitBlame";
-import type { NoteCaptureDraft } from "../../note-cards/types";
-import { buildCodeSelectionNoteDraft } from "../../note-cards/utils/noteCapture";
+import type { NoteCaptureDraft } from "@mossx/plugin-notes/runtime";
+import { buildCodeSelectionNoteDraft } from "@mossx/plugin-notes/runtime";
 
 const EDITOR_CONTENT_PUBLISH_DELAY_MS = 120;
 

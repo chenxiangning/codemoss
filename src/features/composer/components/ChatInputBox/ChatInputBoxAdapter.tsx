@@ -44,7 +44,7 @@ import type { RateLimitSnapshot } from '../../../../types';
 import type { ComposerSendReadiness } from '../../utils/composerSendReadiness';
 import { formatEngineVersionLabel } from '../../../engine/utils/engineLabels';
 import { projectMemoryFacade } from '../../../project-memory/services/projectMemoryFacade';
-import { noteCardsFacade } from '../../../note-cards/services/noteCardsFacade';
+import { noteCardsFacade } from '@mossx/plugin-notes/runtime';
 import { isSharedSessionSupportedEngine } from '../../../shared-session/utils/sharedSessionEngines';
 import {
   getClaudeProviders,

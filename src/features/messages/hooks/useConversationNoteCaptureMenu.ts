@@ -14,7 +14,7 @@ import {
 } from "../../../components/ui/RendererContextMenu";
 import type { ConversationItem } from "../../../types";
 import { buildSemanticThreadNote } from "../../../utils/threadText";
-import type { NoteCaptureDraft } from "../../note-cards/types";
+import type { NoteCaptureDraft } from "@mossx/plugin-notes/runtime";
 import { resolveUserMessagePresentation } from "../presentation/messagesUserPresentation";
 import { snapshotConversationSelection } from "../utils/conversationSelection";
 
