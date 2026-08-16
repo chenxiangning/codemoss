@@ -1,4 +1,4 @@
-import type { FileHistoryTarget } from "../../git-history/types";
+import type { FileHistoryTarget } from "@mossx/plugin-git-history/runtime";
 import {
   resolveGitRootWorkspacePrefix,
   resolveWorkspaceRelativePath,

@@ -26,8 +26,8 @@ import { applyStrictTabPermutation } from "../../files/utils/fileTabOrder";
 import {
   GIT_GRAPH_TAB_ID,
   getFileHistoryTabId,
-  type FileHistoryTarget,
-} from "../../git-history/types";
+} from "@mossx/plugin-git-history/runtime";
+import type { FileHistoryTarget } from "@mossx/plugin-git-history/runtime";
 import { recordQuickSwitcherFileOpened } from "../../quick-switcher/recentFiles";
 
 const GIT_DIFF_LIST_VIEW_BY_WORKSPACE_KEY = "gitDiffListViewByWorkspace";

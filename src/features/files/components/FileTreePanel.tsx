@@ -70,7 +70,7 @@ import {
 } from "../../../utils/workspacePaths";
 import { createFileDocumentSnapshot } from "../utils/fileDocumentSnapshot";
 import { resolveFileGitScope } from "../utils/fileGitScope";
-import type { FileHistoryTarget } from "../../git-history/types";
+import type { FileHistoryTarget } from "@mossx/plugin-git-history/runtime";
 import {
   writeDetachedFileTreeDragSnapshot,
   DETACHED_FILE_TREE_DRAG_BRIDGE_EVENT,

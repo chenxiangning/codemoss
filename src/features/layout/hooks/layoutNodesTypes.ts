@@ -16,7 +16,7 @@ import type {
   OpenFileOptions,
 } from "../../app/hooks/useGitPanelController";
 import type { FileCompareSession } from "../../files/types/fileCompare";
-import type { FileHistoryTarget } from "../../git-history/types";
+import type { FileHistoryTarget } from "@mossx/plugin-git-history/runtime";
 import type {
   ReviewPromptState,
   ReviewPromptStep,

@@ -8,7 +8,7 @@ const srcDir = join(currentDir, "..", "..");
 
 const lazyFeatureImports = [
   "@mossx/plugin-kanban",
-  "../../features/git-history/components/GitHistoryPanel",
+  "@mossx/plugin-git-history/ui",
   "../../features/workspaces/components/WorkspaceHome",
   "../../features/spec/components/SpecHub",
   "../../features/search/components/SearchPalette",

@@ -2,7 +2,7 @@
 import { act, renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { WorkspaceInfo } from "../../../types";
-import { GIT_GRAPH_TAB_ID, getFileHistoryTabId } from "../../git-history/types";
+import { GIT_GRAPH_TAB_ID, getFileHistoryTabId } from "@mossx/plugin-git-history/runtime";
 import { useGitPanelController } from "./useGitPanelController";
 
 const useGitDiffsMock = vi.fn();

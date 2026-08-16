@@ -13,7 +13,7 @@ import type { CodeAnnotationBridgeProps } from "../../code-annotations/types";
 import type { PanelTabId } from "../../layout/components/PanelTabs";
 import type { RepositoryGitStatus } from "../hooks/useMultiRepositoryGitStatus";
 import type { RepositoryCommitSelection } from "./GitMultiRepositoryChanges";
-import type { FileHistoryTarget } from "../../git-history/types";
+import type { FileHistoryTarget } from "@mossx/plugin-git-history/runtime";
 
 export type GitModalPreviewRequest = {
   path: string;

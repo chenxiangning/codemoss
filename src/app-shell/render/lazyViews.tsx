@@ -19,7 +19,7 @@ export const KanbanView = lazy(() =>
 );
 
 export const GitHistoryPanel = lazy(() =>
-  import("../../features/git-history/components/GitHistoryPanel").then((module) => ({
+  import("@mossx/plugin-git-history/ui").then((module) => ({
     default: module.GitHistoryPanel,
   })),
 );
