@@ -121,12 +121,12 @@ import { buildComposerSendReadiness } from "../utils/composerSendReadiness";
 import type {
   CodeAnnotationDraftInput,
   CodeAnnotationSelection,
-} from "../../code-annotations/types";
+} from "@mossx/plugin-code-annotations/runtime";
 import {
   appendCodeAnnotationsToPrompt,
   buildCodeAnnotationDedupeKey,
   formatCodeAnnotationLineRange,
-} from "../../code-annotations/utils/codeAnnotations";
+} from "@mossx/plugin-code-annotations/runtime";
 import {
   buildLatestRewindPreview,
   buildRewindPreviewForMessage,

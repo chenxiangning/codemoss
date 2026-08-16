@@ -31,6 +31,7 @@
 | `@mossx/plugin-status` | 布局 / Composer / Settings / subagent-ui | `src/features/status-panel` |
 | `@mossx/plugin-shared-session` | AppShell / 布局 / Composer / 会话 / 设置 | `src/features/shared-session` |
 | `@mossx/plugin-client-ui-visibility` | AppShell / 布局 / Settings | `src/features/client-ui-visibility` |
+| `@mossx/plugin-code-annotations` | 布局 / Composer / Files / Git / Status | `src/features/code-annotations` |
 
 ## 仍未做
 

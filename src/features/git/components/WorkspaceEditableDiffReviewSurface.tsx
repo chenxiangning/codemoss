@@ -19,7 +19,7 @@ import { WorkspaceReadOnlyDiffCompare } from "./WorkspaceReadOnlyDiffCompare";
 import type {
   CodeAnnotationDraftInput,
   CodeAnnotationSelection,
-} from "../../code-annotations/types";
+} from "@mossx/plugin-code-annotations/runtime";
 import {
   normalizeDiffPresentationEntry,
   type DiffPresentationEntry,

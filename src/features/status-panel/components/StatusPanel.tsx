@@ -37,7 +37,7 @@ import {
 } from "../utils/checkpoint";
 import { resolvePlanStepStatusForDisplay } from "../../threads/utils/threadNormalize";
 import { CheckpointPanel } from "./CheckpointPanel";
-import type { CodeAnnotationBridgeProps } from "../../code-annotations/types";
+import type { CodeAnnotationBridgeProps } from "@mossx/plugin-code-annotations/runtime";
 import { PlanList } from "./PlanList";
 import { SubagentList } from "./SubagentList";
 import { TodoList } from "./TodoList";

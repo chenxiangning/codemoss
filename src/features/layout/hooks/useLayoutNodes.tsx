@@ -81,11 +81,11 @@ import type {
   CodeAnnotationBridgeProps,
   CodeAnnotationDraftInput,
   CodeAnnotationSelection,
-} from "../../code-annotations/types";
+} from "@mossx/plugin-code-annotations/runtime";
 import {
   buildCodeAnnotationDedupeKey,
   createCodeAnnotationSelection,
-} from "../../code-annotations/utils/codeAnnotations";
+} from "@mossx/plugin-code-annotations/runtime";
 import type {
   ConversationEngine,
   ConversationState,

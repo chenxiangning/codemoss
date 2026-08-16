@@ -2,7 +2,7 @@ import type { IntentCanvasCodeSelectionAnchor } from "@mossx/plugin-intent-canva
 import type {
   CodeAnnotationLineRange,
   CodeAnnotationSelection,
-} from "../../code-annotations/types";
+} from "@mossx/plugin-code-annotations/runtime";
 import type { GitLineMarkers } from "../utils/gitLineMarkers";
 import { readDocumentThemeAppearance } from "../../theme/utils/themeAppearance";
 import { parseShortcut } from "../../../utils/shortcuts";

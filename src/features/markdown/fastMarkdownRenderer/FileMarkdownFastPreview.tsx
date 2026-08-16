@@ -14,7 +14,7 @@ import { useFastMarkdownRender } from "./useFastMarkdownRender";
 import type {
   CodeAnnotationLineRange,
   CodeAnnotationSelection,
-} from "../../code-annotations/types";
+} from "@mossx/plugin-code-annotations/runtime";
 import type {
   FastMarkdownFeatureFlags,
   FastMarkdownRendererProfileId,

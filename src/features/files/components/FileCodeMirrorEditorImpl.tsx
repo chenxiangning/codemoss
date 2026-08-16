@@ -32,7 +32,7 @@ import {
   type EditorState,
   type Extension,
 } from "@codemirror/state";
-import type { CodeAnnotationSelection } from "../../code-annotations/types";
+import type { CodeAnnotationSelection } from "@mossx/plugin-code-annotations/runtime";
 import type { GitFileBlameResponse } from "../../../types";
 import type { GitLineMarkers } from "../utils/gitLineMarkers";
 import {

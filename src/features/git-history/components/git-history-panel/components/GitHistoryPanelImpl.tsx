@@ -138,7 +138,7 @@ import {
 import type {
   CodeAnnotationDraftInput,
   CodeAnnotationSelection,
-} from "../../../../code-annotations/types";
+} from "@mossx/plugin-code-annotations/runtime";
 import {
   isWorkingTreeDirtyBlockingError,
   localizeGitErrorMessage,

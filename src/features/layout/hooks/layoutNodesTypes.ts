@@ -72,7 +72,7 @@ import type { TerminalSessionState, TerminalTab } from "@mossx/plugin-terminal/r
 import type { ErrorToast } from "../../../services/toasts";
 import type { LoadingProgressDialogConfig } from "../../app/hooks/useLoadingProgressDialogState";
 import type { WorkspaceDirectoryEntry } from "../../../services/tauri";
-import type { CodeAnnotationBridgeProps } from "../../code-annotations/types";
+import type { CodeAnnotationBridgeProps } from "@mossx/plugin-code-annotations/runtime";
 import type { RuntimeReconnectRecoveryCallbackResult } from "../../../runtime-recovery/runtimeReconnect";
 import type { QueuedHandoffBubble } from "../../threads/utils/queuedHandoffBubble";
 import type { SessionRadarEntry } from "../../session-activity/hooks/useSessionRadarFeed";

@@ -18,7 +18,7 @@ import type {
   ContextLedgerProjection,
   ContextLedgerProjectionInput,
 } from "../types";
-import type { CodeAnnotationSelection } from "../../code-annotations/types";
+import type { CodeAnnotationSelection } from "@mossx/plugin-code-annotations/runtime";
 
 export function clampLedgerPercent(percent: number): number {
   if (!Number.isFinite(percent)) {

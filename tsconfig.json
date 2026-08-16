@@ -79,7 +79,9 @@
       "@mossx/plugin-shared-session/runtime": ["./packages/plugin-shared-session/src/runtime.ts"],
       "@mossx/plugin-shared-session/ui": ["./packages/plugin-shared-session/src/ui.ts"],
       "@mossx/plugin-client-ui-visibility": ["./packages/plugin-client-ui-visibility/src/index.ts"],
-      "@mossx/plugin-client-ui-visibility/runtime": ["./packages/plugin-client-ui-visibility/src/runtime.ts"]
+      "@mossx/plugin-client-ui-visibility/runtime": ["./packages/plugin-client-ui-visibility/src/runtime.ts"],
+      "@mossx/plugin-code-annotations": ["./packages/plugin-code-annotations/src/index.ts"],
+      "@mossx/plugin-code-annotations/runtime": ["./packages/plugin-code-annotations/src/runtime.ts"]
     },
 
     /* Linting */

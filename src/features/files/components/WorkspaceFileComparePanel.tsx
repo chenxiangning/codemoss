@@ -8,7 +8,7 @@ import ChevronUp from "lucide-react/dist/esm/icons/chevron-up";
 import Save from "lucide-react/dist/esm/icons/save";
 import X from "lucide-react/dist/esm/icons/x";
 import type { EditorView } from "@codemirror/view";
-import type { CodeAnnotationSelection } from "../../code-annotations/types";
+import type { CodeAnnotationSelection } from "@mossx/plugin-code-annotations/runtime";
 import type { FileCompareSession } from "../types/fileCompare";
 import { useFileDocumentState } from "../hooks/useFileDocumentState";
 import {

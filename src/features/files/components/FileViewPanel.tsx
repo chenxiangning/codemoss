@@ -60,11 +60,11 @@ import {
   type RendererContextMenuLeafItem,
   type RendererContextMenuState,
 } from "../../../components/ui/RendererContextMenu";
-import type { CodeAnnotationLineRange } from "../../code-annotations/types";
+import type { CodeAnnotationLineRange } from "@mossx/plugin-code-annotations/runtime";
 import {
   attachCodeAnnotationAnchor,
   resolveCodeAnnotationsForFile,
-} from "../../code-annotations/utils/codeAnnotations";
+} from "@mossx/plugin-code-annotations/runtime";
 import { loadCodeMirrorExtensionsForEditorLanguage } from "../utils/codemirrorLanguageExtensions";
 import { parseLineMarkersFromDiff, type GitLineMarkers } from "../utils/gitLineMarkers";
 import {

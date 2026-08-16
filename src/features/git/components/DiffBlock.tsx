@@ -2,7 +2,7 @@ import type { KeyboardEvent, MouseEvent, ReactNode } from "react";
 import { memo, useMemo } from "react";
 import { parseDiff, type ParsedDiffLine } from "../../../utils/diff";
 import { highlightLine } from "../../../utils/syntax";
-import type { CodeAnnotationLineRange } from "../../code-annotations/types";
+import type { CodeAnnotationLineRange } from "@mossx/plugin-code-annotations/runtime";
 
 type DiffStyle = "split" | "unified";
 

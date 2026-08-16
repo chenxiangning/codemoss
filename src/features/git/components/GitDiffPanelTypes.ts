@@ -9,7 +9,7 @@ import type {
   GitHubPullRequest,
   GitLogEntry,
 } from "../../../types";
-import type { CodeAnnotationBridgeProps } from "../../code-annotations/types";
+import type { CodeAnnotationBridgeProps } from "@mossx/plugin-code-annotations/runtime";
 import type { PanelTabId } from "../../layout/components/PanelTabs";
 import type { RepositoryGitStatus } from "../hooks/useMultiRepositoryGitStatus";
 import type { RepositoryCommitSelection } from "./GitMultiRepositoryChanges";

@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { FileMarkdownPreviewFast } from "../FileMarkdownPreviewFast";
 import { clearFastMarkdownRenderCache } from "../../../markdown/fastMarkdownRenderer/cache";
-import type { CodeAnnotationSelection } from "../../../code-annotations/types";
+import type { CodeAnnotationSelection } from "@mossx/plugin-code-annotations/runtime";
 
 beforeEach(() => {
   clearFastMarkdownRenderCache();

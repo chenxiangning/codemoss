@@ -27,7 +27,7 @@ import {
   type TurnValidationEvidence,
 } from "../../git/utils/semanticDiffSummary";
 import { useTurnSemanticReview } from "../hooks/useTurnSemanticReview";
-import type { CodeAnnotationBridgeProps } from "../../code-annotations/types";
+import type { CodeAnnotationBridgeProps } from "@mossx/plugin-code-annotations/runtime";
 import { Markdown } from "../../../markdown/components/Markdown";
 import {
   inferCommandOutputRenderMeta,

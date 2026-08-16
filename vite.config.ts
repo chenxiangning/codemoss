@@ -297,6 +297,14 @@ export default defineConfig(({ command }) => ({
         find: /^@mossx\/plugin-client-ui-visibility$/,
         replacement: path.resolve(__dirname, "./packages/plugin-client-ui-visibility/src/index.ts"),
       },
+      {
+        find: /^@mossx\/plugin-code-annotations\/runtime$/,
+        replacement: path.resolve(__dirname, "./packages/plugin-code-annotations/src/runtime.ts"),
+      },
+      {
+        find: /^@mossx\/plugin-code-annotations$/,
+        replacement: path.resolve(__dirname, "./packages/plugin-code-annotations/src/index.ts"),
+      },
       { find: "@", replacement: path.resolve(__dirname, "./src") },
     ],
     dedupe: [

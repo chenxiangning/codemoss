@@ -48,8 +48,8 @@ import {
 import type {
   CodeAnnotationLineRange,
   CodeAnnotationSelection,
-} from "../../code-annotations/types";
-import { formatCodeAnnotationLineRange } from "../../code-annotations/utils/codeAnnotations";
+} from "@mossx/plugin-code-annotations/runtime";
+import { formatCodeAnnotationLineRange } from "@mossx/plugin-code-annotations/runtime";
 import {
   DEFAULT_FILE_RENDER_PRESSURE,
   hasForegroundFileRenderPressure,

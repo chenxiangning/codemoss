@@ -7,7 +7,7 @@ import type { IntentCanvasCodeSelectionAnchor } from "@mossx/plugin-intent-canva
 import type {
   CodeAnnotationDraftInput,
   CodeAnnotationSelection,
-} from "../../code-annotations/types";
+} from "@mossx/plugin-code-annotations/runtime";
 import type { NoteCaptureDraft } from "@mossx/plugin-notes/runtime";
 import type { FileHistoryTarget } from "@mossx/plugin-git-history/runtime";
 import type { GitLineMarkers } from "../utils/gitLineMarkers";

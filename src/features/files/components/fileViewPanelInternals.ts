@@ -8,7 +8,7 @@ import { Decoration, EditorView, WidgetType } from "@codemirror/view";
 import type {
   CodeAnnotationLineRange,
   CodeAnnotationSelection,
-} from "../../code-annotations/types";
+} from "@mossx/plugin-code-annotations/runtime";
 import type { GitLineMarkers } from "../utils/gitLineMarkers";
 // 纯函数与类型的事实源统一在 fileViewPanelShared；本文件只保留 CodeMirror 专有实现。
 import {

@@ -8,7 +8,7 @@ import type {
   GitRepositorySummary,
   WorkspaceInfo,
 } from "../../../../../types";
-import type { CodeAnnotationBridgeProps } from "../../../../code-annotations/types";
+import type { CodeAnnotationBridgeProps } from "@mossx/plugin-code-annotations/runtime";
 import type { CommitActionId } from "./GitHistoryPanelImplHelpers";
 import type { GitHistoryDatePreset } from "../utils/gitHistoryCommitFilters";
 

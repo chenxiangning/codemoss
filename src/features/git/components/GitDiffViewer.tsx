@@ -22,12 +22,12 @@ import type {
   CodeAnnotationLineRange,
   CodeAnnotationSource,
   CodeAnnotationSelection,
-} from "../../code-annotations/types";
+} from "@mossx/plugin-code-annotations/runtime";
 import {
   createCodeAnnotationAnchorFromSnapshot,
   formatCodeAnnotationLineRange,
   isSameCodeAnnotationPath,
-} from "../../code-annotations/utils/codeAnnotations";
+} from "@mossx/plugin-code-annotations/runtime";
 import { WorkspaceReadOnlyDiffCompare } from "./WorkspaceReadOnlyDiffCompare";
 
 type GitDiffViewerItem = {

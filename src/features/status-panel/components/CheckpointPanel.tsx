@@ -11,7 +11,7 @@ import type { TFunction } from "i18next";
 import { FileIcon } from "../../../components/FileIcon";
 import { WorkspaceEditableDiffReviewSurface } from "../../git/components/WorkspaceEditableDiffReviewSurface";
 import type { EditableDiffDraftActions } from "../../git/components/WorkspaceEditableDiffCompare";
-import type { CodeAnnotationBridgeProps } from "../../code-annotations/types";
+import type { CodeAnnotationBridgeProps } from "@mossx/plugin-code-annotations/runtime";
 import { resolveWorkspaceRelativePath } from "../../../utils/workspacePaths";
 import { UnsavedChangesDialog } from "../../../components/ui/UnsavedChangesDialog";
 import type { GitFileStatus } from "../../../types";
