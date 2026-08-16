@@ -4089,12 +4089,7 @@ pub async fn engine_interrupt(
     let active_engine = manager.get_active_engine().await;
 
     match active_engine {
-        EngineType::Claude => {
-            manager
-                .claude_manager
-                .interrupt_workspace_sessions(&workspace_id)
-                .await
-        }
+        EngineType::Claude => manager.interrupt_claude_sessions(&workspace_id).await,
         EngineType::Codex => {
             // Codex interrupts are handled via turn_interrupt RPC from the frontend.
             // This path is a fallback; log for diagnostic visibility.

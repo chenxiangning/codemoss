@@ -2992,8 +2992,7 @@ impl DaemonState {
         match active_engine {
             engine::EngineType::Claude => {
                 self.engine_manager
-                    .claude_manager
-                    .interrupt_workspace_sessions(&workspace_id)
+                    .interrupt_claude_sessions(&workspace_id)
                     .await
             }
             engine::EngineType::Codex => Ok(()),

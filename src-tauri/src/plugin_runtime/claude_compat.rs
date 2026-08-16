@@ -151,6 +151,26 @@ mod tests {
         assert!(Arc::ptr_eq(adapter.manager(), &manager));
     }
 
+    #[test]
+    fn product_interrupt_goes_through_the_manager_entry() {
+        let commands = include_str!("../engine/commands.rs");
+        let daemon = include_str!("../bin/cc_gui_daemon/daemon_state.rs");
+        let commands_interrupt = commands
+            .split("pub async fn engine_interrupt(")
+            .nth(1)
+            .and_then(|rest| rest.split("pub async fn engine_interrupt_turn(").next())
+            .expect("engine_interrupt");
+        let daemon_interrupt = daemon
+            .split("pub(super) async fn engine_interrupt(")
+            .nth(1)
+            .and_then(|rest| rest.split("pub(super) async fn engine_interrupt_turn(").next())
+            .expect("daemon engine_interrupt");
+        assert!(commands_interrupt.contains("interrupt_claude_sessions"));
+        assert!(!commands_interrupt.contains("claude_manager"));
+        assert!(daemon_interrupt.contains("interrupt_claude_sessions"));
+        assert!(!daemon_interrupt.contains("claude_manager"));
+    }
+
     #[tokio::test]
     async fn facade_remove_clears_the_core_session_table() {
         let manager = Arc::new(ClaudeSessionManager::new());
