@@ -1232,7 +1232,7 @@ vi.mock("./features/app/hooks/useComposerController", () => ({
   }),
 }));
 
-vi.mock("./features/live-edit-preview/hooks/useLiveEditPreview", () => ({
+vi.mock("@mossx/plugin-live-edit-preview/runtime", () => ({
   useLiveEditPreview: () => ({
     markManualNavigation: createNoopFunction(),
   }),

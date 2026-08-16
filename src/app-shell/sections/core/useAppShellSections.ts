@@ -4,7 +4,7 @@ import { getWorkspaceFiles } from "../../../services/tauri/workspaceFiles";
 import { revealInFileManager } from "../../../services/tauri/workspaceRuntime";
 import { pushErrorToast } from "../../../services/toasts";
 import { useSoloMode } from "../../../features/layout/hooks/useSoloMode";
-import { useLiveEditPreview } from "../../../features/live-edit-preview/hooks/useLiveEditPreview";
+import { useLiveEditPreview } from "@mossx/plugin-live-edit-preview/runtime";
 import { useArchiveShortcut } from "../../../features/app/hooks/useArchiveShortcut";
 import type { OpenFileOptions } from "../../../features/app/hooks/useGitPanelController";
 import { useAppSurfaceShortcuts } from "../../../features/app/hooks/useAppSurfaceShortcuts";

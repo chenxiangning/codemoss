@@ -305,6 +305,14 @@ export default defineConfig(({ command }) => ({
         find: /^@mossx\/plugin-code-annotations$/,
         replacement: path.resolve(__dirname, "./packages/plugin-code-annotations/src/index.ts"),
       },
+      {
+        find: /^@mossx\/plugin-live-edit-preview\/runtime$/,
+        replacement: path.resolve(__dirname, "./packages/plugin-live-edit-preview/src/runtime.ts"),
+      },
+      {
+        find: /^@mossx\/plugin-live-edit-preview$/,
+        replacement: path.resolve(__dirname, "./packages/plugin-live-edit-preview/src/index.ts"),
+      },
       { find: "@", replacement: path.resolve(__dirname, "./src") },
     ],
     dedupe: [
