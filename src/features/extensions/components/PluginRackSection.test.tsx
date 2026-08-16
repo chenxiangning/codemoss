@@ -21,13 +21,13 @@ const translations: Record<string, string> = {
   "extensions.rack.generation": "Generation",
   "extensions.rack.marketplaceLater": "Marketplace stays closed.",
   "extensions.rack.catalogTitle": "Local packages",
-  "extensions.rack.catalogSubtitle": "In-repo plugin packages. Read-only. Not installed.",
+  "extensions.rack.catalogSubtitle": "In-repo plugin packages. Local marking only.",
   "extensions.rack.catalogPath": "Path",
   "extensions.rack.catalogStatus": "Status",
-  "extensions.rack.catalogNotInstalled": "Not installed",
-  "extensions.rack.catalogInstalled": "Installed (local mark)",
-  "extensions.rack.catalogStage": "Install",
-  "extensions.rack.catalogUnstage": "Uninstall",
+  "extensions.rack.catalogNotInstalled": "Not marked",
+  "extensions.rack.catalogInstalled": "Marked (local staging)",
+  "extensions.rack.catalogStage": "Mark",
+  "extensions.rack.catalogUnstage": "Unmark",
   "extensions.rack.catalogPermissions": "Permission preview",
   "extensions.rack.catalogVersion": "Version",
   "extensions.rack.rackInstall": "Rack install",
@@ -103,7 +103,7 @@ describe("PluginRackSection", () => {
     expect(catalog.textContent).toContain("packages/plugin-engine-pi");
     expect(catalog.textContent).toContain("packages/plugin-git-history");
     expect(catalog.textContent).toContain("packages/plugin-spec");
-    expect(screen.getAllByText("Not installed").length).toBeGreaterThanOrEqual(45);
+    expect(screen.getAllByText("Not marked").length).toBeGreaterThanOrEqual(45);
     expect(engineGroup.textContent).toContain("com.mossx.engine.codex");
     expect(engineGroup.textContent).toContain("com.mossx.engine.gemini");
     expect(engineGroup.textContent).toContain("com.mossx.engine.grok");
@@ -113,7 +113,7 @@ describe("PluginRackSection", () => {
     expect(catalog.textContent).toContain("com.mossx.engine.codex");
     expect(catalog.textContent).toContain("com.mossx.engine.pi");
     expect(screen.getByText("Marketplace stays closed.")).toBeTruthy();
-    expect(screen.getAllByRole("button", { name: "Install" }).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole("button", { name: "Mark" }).length).toBeGreaterThan(0);
     expect(screen.queryByRole("button", { name: /enable|marketplace/i })).toBeNull();
     const notesPlug = featureGroup.textContent ?? "";
     expect(notesPlug).toContain("Idle");
@@ -134,12 +134,12 @@ describe("PluginRackSection", () => {
     expect(notesCard).toBeTruthy();
     await user.click(notesCard!.querySelector("button") as HTMLButtonElement);
     const featureGroup = screen.getByRole("region", { name: "Features" });
-    expect(featureGroup.textContent).toContain("Installed (local mark)");
+    expect(featureGroup.textContent).toContain("Marked (local staging)");
     expect(featureGroup.textContent).toContain("Idle");
     expect(featureGroup.textContent).toContain("1.0.0");
-    expect(notesCard!.textContent).toContain("Installed (local mark)");
+    expect(notesCard!.textContent).toContain("Marked (local staging)");
     expect(notesCard!.textContent).toContain("1.0.0");
-    expect(notesCard!.querySelector("button")?.textContent).toBe("Uninstall");
+    expect(notesCard!.querySelector("button")?.textContent).toBe("Unmark");
   });
 
   it("shows an error when the snapshot command fails", async () => {
