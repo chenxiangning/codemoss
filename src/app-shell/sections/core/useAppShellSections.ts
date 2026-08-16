@@ -916,7 +916,7 @@ export function useAppShellSections(input: UseAppShellSectionsInput) {
 
   const handleOpenClientDocumentation = useCallback(() => {
     // Dynamic import keeps client documentation window out of AppShell first-hop mapDeps (P0-3).
-    void import("../../../features/client-documentation/clientDocumentationWindow")
+    void import("@mossx/plugin-client-documentation/runtime")
       .then(({ openOrFocusClientDocumentationWindow }) =>
         openOrFocusClientDocumentationWindow(),
       )

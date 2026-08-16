@@ -24,7 +24,7 @@ export const LazyDetachedSpecHubWindow = lazy(() =>
 );
 
 export const LazyClientDocumentationWindow = lazy(() =>
-  import("../features/client-documentation/components/ClientDocumentationWindow").then(
+  import("@mossx/plugin-client-documentation/ui").then(
     (module) => ({
       default: module.ClientDocumentationWindow,
     }),

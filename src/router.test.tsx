@@ -38,7 +38,7 @@ vi.mock("./features/spec/components/DetachedSpecHubWindow", () => ({
   DetachedSpecHubWindow: () => <div>detached-spec-hub-view</div>,
 }));
 
-vi.mock("./features/client-documentation/components/ClientDocumentationWindow", () => ({
+vi.mock("@mossx/plugin-client-documentation/ui", () => ({
   ClientDocumentationWindow: () => <div>client-documentation-view</div>,
 }));
 
@@ -62,7 +62,7 @@ describe("AppRouter", () => {
       import("./features/about/components/AboutView"),
       import("./features/files/components/DetachedFileExplorerWindow"),
       import("./features/spec/components/DetachedSpecHubWindow"),
-      import("./features/client-documentation/components/ClientDocumentationWindow"),
+      import("@mossx/plugin-client-documentation/ui"),
     ]);
   });
 

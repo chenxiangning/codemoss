@@ -38,6 +38,7 @@
 | `@mossx/plugin-dictation` | App 控制器 | `src/features/dictation` |
 | `@mossx/plugin-computer-use` | Settings Codex | `src/features/computer-use` |
 | `@mossx/plugin-agent-catalog` | AppShell / 会话 / Composer / Settings | `src/features/agent-catalog` |
+| `@mossx/plugin-client-documentation` | AppShell / router | `src/features/client-documentation` |
 
 ## 仍未做
 
