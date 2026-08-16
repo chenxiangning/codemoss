@@ -7,7 +7,7 @@ import {
   getOpenCodeProviders,
 } from "../../../services/tauri";
 import type { EngineModelInfo } from "../../../types";
-import { syncClaudeModelMappingForProfile } from "../../vendors/activateEngineProviderProfile";
+import { syncClaudeModelMappingForProfile } from "@mossx/plugin-vendors/runtime";
 import {
   LOCAL_PROVIDER_PROFILE_DISPLAY_NAME,
 } from "../../threads/constants/codexProviderProfiles";

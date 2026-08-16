@@ -20,11 +20,11 @@ import {
   PI_LOCAL_PROVIDER_PROFILE_ID,
 } from '../../../../threads/constants/codexProviderProfiles';
 import { EngineIcon } from '../../../../engine/components/EngineIcon';
-import { ProviderBrandIconImg } from '../../../../vendors/components/ProviderBrandIconImg';
 import {
   PROVIDER_BRAND_ICON_SRC,
+  ProviderBrandIconImg,
   resolveProviderBrandIcon,
-} from '../../../../vendors/providerBrandIcon';
+} from '@mossx/plugin-vendors/runtime';
 import {
   STORAGE_KEYS as MODEL_MAPPING_STORAGE_KEYS,
   getModelMapping,

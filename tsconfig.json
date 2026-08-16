@@ -47,7 +47,10 @@
       "@mossx/plugin-tasks/ui": ["./packages/plugin-tasks/src/ui.ts"],
       "@mossx/plugin-terminal": ["./packages/plugin-terminal/src/index.ts"],
       "@mossx/plugin-terminal/runtime": ["./packages/plugin-terminal/src/runtime.ts"],
-      "@mossx/plugin-terminal/ui": ["./packages/plugin-terminal/src/ui.ts"]
+      "@mossx/plugin-terminal/ui": ["./packages/plugin-terminal/src/ui.ts"],
+      "@mossx/plugin-vendors": ["./packages/plugin-vendors/src/index.ts"],
+      "@mossx/plugin-vendors/runtime": ["./packages/plugin-vendors/src/runtime.ts"],
+      "@mossx/plugin-vendors/ui": ["./packages/plugin-vendors/src/ui.ts"]
     },
 
     /* Linting */

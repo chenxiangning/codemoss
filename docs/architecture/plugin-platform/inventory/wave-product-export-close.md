@@ -19,6 +19,7 @@
 | `@mossx/plugin-quick-switcher` | AppShell / Git / Search 消费 | `src/features/quick-switcher` |
 | `@mossx/plugin-tasks` | AppShell / WorkspaceHome | `src/features/tasks` |
 | `@mossx/plugin-terminal` | AppShell / 布局 / launch script / vendors | `src/features/terminal` |
+| `@mossx/plugin-vendors` | AppShell / Settings / Composer / shared-session | `src/features/vendors` |
 
 ## 仍未做
 

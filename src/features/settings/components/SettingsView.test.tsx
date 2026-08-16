@@ -75,7 +75,7 @@ vi.mock("../../curated-skills/hooks/useCuratedSkills", () => ({
   }),
 }));
 
-vi.mock("../../vendors/components/VendorSettingsPanel", () => ({
+vi.mock("@mossx/plugin-vendors/ui", () => ({
   VendorSettingsPanel: () => <div data-testid="vendor-settings-panel" />,
 }));
 

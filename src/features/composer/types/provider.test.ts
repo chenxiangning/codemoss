@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   isValidModelId as isValidVendorModelId,
   MODEL_ID_PATTERN as VENDOR_MODEL_ID_PATTERN,
-} from "../../vendors/types";
+} from "@mossx/plugin-vendors/runtime";
 import {
   isValidModelId,
   MODEL_ID_PATTERN,

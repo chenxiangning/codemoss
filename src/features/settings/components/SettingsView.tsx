@@ -53,7 +53,7 @@ import {
 } from "../../../utils/fonts";
 import { DEFAULT_OPEN_APP_ID } from "../../app/constants";
 import { writeClientStoreValue } from "../../../services/clientStorage";
-import { VendorSettingsPanel } from "../../vendors/components/VendorSettingsPanel";
+import { VendorSettingsPanel } from "@mossx/plugin-vendors/ui";
 import { AgentSettingsSection } from "./AgentSettingsSection";
 import { CommitSection } from "./CommitSection";
 import { PromptSection } from "./PromptSection";

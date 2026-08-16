@@ -4,7 +4,7 @@ import type { DebugEntry, EngineType } from "../../types";
 import {
   activateEngineProviderProfileAndNotify,
   isActivatableProviderEngine,
-} from "../../features/vendors/activateEngineProviderProfile";
+} from "@mossx/plugin-vendors/runtime";
 
 type EngineControllerSection = ReturnType<typeof useEngineController>;
 

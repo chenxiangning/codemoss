@@ -1,5 +1,5 @@
 import { useCallback } from "react";
-import { requestVendorModelManager } from "../../features/vendors/modelManagerRequest";
+import { requestVendorModelManager } from "@mossx/plugin-vendors/runtime";
 
 /**
  * 打开自定义模型管理弹窗(当前页 overlay),不再跳转设置页。

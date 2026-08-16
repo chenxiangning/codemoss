@@ -8,7 +8,7 @@ import {
   getKimiProviders,
   getOpenCodeProviders,
 } from "../../../services/tauri";
-import { syncClaudeModelMappingForProfile } from "../../vendors/activateEngineProviderProfile";
+import { syncClaudeModelMappingForProfile } from "@mossx/plugin-vendors/runtime";
 
 import {
   loadAuthoritativeModelsForCreateProvider,
@@ -25,7 +25,7 @@ vi.mock("../../../services/tauri", () => ({
   getEngineModels: vi.fn(),
 }));
 
-vi.mock("../../vendors/activateEngineProviderProfile", () => ({
+vi.mock("@mossx/plugin-vendors/runtime", () => ({
   syncClaudeModelMappingForProfile: vi.fn(),
 }));
 

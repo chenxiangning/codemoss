@@ -313,10 +313,10 @@ vi.mock("./services/toasts", () => ({
   pushErrorToast: vi.fn(),
 }));
 
-vi.mock("./features/vendors/modelManagerRequest", async (importOriginal) => {
+vi.mock("@mossx/plugin-vendors/runtime", async (importOriginal) => {
   const actual =
     await importOriginal<
-      typeof import("./features/vendors/modelManagerRequest")
+      typeof import("@mossx/plugin-vendors/runtime")
     >();
   return {
     ...actual,

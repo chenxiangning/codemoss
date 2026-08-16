@@ -33,7 +33,10 @@ vi.mock("../../../../engine/components/EngineIcon", () => ({
   ),
 }));
 
-vi.mock("../../../../vendors/providerBrandIcon", () => ({
+vi.mock("@mossx/plugin-vendors/runtime", () => ({
+  ProviderBrandIconImg: ({ src }: { src?: string | null }) => (
+    <span data-testid="provider-brand-icon">{src}</span>
+  ),
   providerBrandIconNeedsDarkTile: () => false,
   PROVIDER_BRAND_ICON_SRC: {
     claude: "/icons/claude.svg",

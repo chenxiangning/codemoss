@@ -11,7 +11,7 @@ import type {
   OpenCodeCurrentConfig as VendorOpenCodeCurrentConfig,
   OpenCodeProviderConfig as VendorOpenCodeProviderConfig,
   ProviderConfig as VendorProviderConfig,
-} from "../../features/vendors/types";
+} from "@mossx/plugin-vendors/runtime";
 
 export async function getClaudeProviders(): Promise<VendorProviderConfig[]> {
   return invoke<VendorProviderConfig[]>("vendor_get_claude_providers");

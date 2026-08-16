@@ -6,7 +6,7 @@ import { useProviderModelCatalogSync } from "./useProviderModelCatalogSync";
 
 const activateMock = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
 
-vi.mock("../../features/vendors/activateEngineProviderProfile", () => ({
+vi.mock("@mossx/plugin-vendors/runtime", () => ({
   activateEngineProviderProfileAndNotify: activateMock,
   isActivatableProviderEngine: (engine: string) =>
     ["claude", "codex", "kimi", "grok", "opencode", "pi"].includes(engine),

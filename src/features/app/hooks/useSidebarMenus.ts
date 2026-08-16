@@ -64,7 +64,7 @@ import { isWeakSessionDisplayTitle } from "../../threads/utils/sessionDisplayPro
 import {
   activateEngineProviderProfileAndNotify,
   isActivatableProviderEngine,
-} from "../../vendors/activateEngineProviderProfile";
+} from "@mossx/plugin-vendors/runtime";
 
 /** 新建会话菜单项 id → 对应 CLI engine；用于 CLI 配置管理启停过滤。 */
 const NEW_SESSION_ENGINE_ACTION_IDS: Readonly<Record<string, EngineType>> = {

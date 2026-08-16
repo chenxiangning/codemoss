@@ -5,7 +5,7 @@ import { AppModals } from "../../features/app/components/AppModals";
 import { LockScreenOverlay } from "../../features/app/components/LockScreenOverlay";
 import { resolveDockIconSrc } from "../../features/theme/utils/dockIcon";
 import { RuntimeConsoleDock } from "../../features/app/components/RuntimeConsoleDock";
-import { VendorModelManagerDialogHost } from "../../features/vendors/components/VendorModelManagerDialogHost";
+import { VendorModelManagerDialogHost } from "@mossx/plugin-vendors/ui";
 import {
   GlobalSearchTitlebarButton,
   QuickSwitcherTitlebarButton,
