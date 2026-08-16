@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use super::broker::{BrokerError, CapabilityBroker, WorkspaceRead};
 use super::disk_storage::DiskStorage;
 use super::host::{ActivationRequest, EntryDriver, Host, HostConfig, HostError, SlotState};
-use super::host_data::{disable_and_revoke, fuse_and_revoke};
+use super::host_data::{disable_and_revoke, fuse_and_revoke, uninstall_and_revoke};
 use super::mxpd::DataPlane;
 use super::storage::{MigrationPlan, StorageError};
 
@@ -84,6 +84,10 @@ impl<D: EntryDriver> PluginRuntime<D> {
 
     pub fn fuse_plugin(&mut self, plugin_id: &str) -> Result<(), HostError> {
         fuse_and_revoke(&mut self.host, &mut self.plane, plugin_id)
+    }
+
+    pub fn uninstall_plugin(&mut self, plugin_id: &str) -> Result<(), HostError> {
+        uninstall_and_revoke(&mut self.host, &mut self.plane, plugin_id)
     }
 
     pub fn reset_plugin(&mut self, plugin_id: &str) -> Result<(), HostError> {

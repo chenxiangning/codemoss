@@ -35,3 +35,14 @@
 
 - **WHEN** 调用 `Host::slot_state_name(SlotState::Uninstalled)`
 - **THEN** MUST 返回 `"uninstalled"`
+
+### Requirement: PluginRuntime MUST uninstall a plugin and revoke its streams
+
+`PluginRuntime::uninstall_plugin(plugin_id)` MUST 组合 `Host::uninstall` 与 `DataPlane::revoke`，使卸载同时撤销状态机（进 `Uninstalled`）与 DataPlane stream，对称 `disable_plugin` / `fuse_plugin`。
+
+#### Scenario: uninstalling drops the slot into the terminal and revokes streams
+
+- **WHEN** Notes 已 `activate` 并 `open_stream`（stream_id = 3）
+- **AND** 调用 `uninstall_plugin("com.mossx.notes")`
+- **THEN** slot 的 `state` MUST 为 `Uninstalled`
+- **AND** `plane.codec(3)` MUST 为 `None`
