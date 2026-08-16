@@ -72,6 +72,16 @@ export const DECLARED_PLUGIN_RACK_SNAPSHOT: PluginRackSnapshot = {
       live: false,
     },
     {
+      pluginId: "com.mossx.kanban",
+      displayName: "Kanban",
+      kind: "feature",
+      ownerClass: "later-plugin",
+      state: "idle",
+      generation: 0,
+      unitId: null,
+      live: false,
+    },
+    {
       pluginId: "com.mossx.engine.codex",
       displayName: "Codex Engine",
       kind: "engine",

@@ -1,0 +1,62 @@
+{
+  "manifestVersion": 1,
+  "pluginId": "com.mossx.kanban",
+  "version": "1.0.0",
+  "displayName": "Kanban",
+  "description": "Transitional Kanban Feature package. In-repo layering only. Not installed by boot.",
+  "publisher": {
+    "id": "com.mossx",
+    "displayName": "Mossx",
+    "homepage": "https://mossx.dev"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mossx/mossx-plugin-kanban",
+    "commit": "0000000000000000000000000000000000000000"
+  },
+  "license": "MIT",
+  "channel": "stable",
+  "compatibility": {
+    "coreApi": ">=1.0.0 <2.0.0",
+    "platforms": [
+      "darwin-arm64",
+      "darwin-x64",
+      "windows-x64",
+      "windows-arm64",
+      "linux-x64",
+      "linux-arm64"
+    ]
+  },
+  "entries": [
+    {
+      "id": "kanban-ui",
+      "kind": "ui",
+      "mode": "trusted-react",
+      "path": "src/features/kanban/components/KanbanView.tsx",
+      "slot": "workspace.main",
+      "trustedReact": true,
+      "criticality": "required"
+    }
+  ],
+  "activationUnits": [
+    {
+      "id": "kanban-main",
+      "entries": ["kanban-ui"],
+      "events": [{ "type": "onView", "viewId": "kanban.main" }]
+    }
+  ],
+  "contributions": [
+    {
+      "id": "kanban.main",
+      "type": "mossx.ui.view",
+      "entryId": "kanban-ui",
+      "slot": "workspace.main",
+      "mode": "trusted-react"
+    }
+  ],
+  "capabilities": [
+    { "id": "mossx.ui.slot.workspace.main", "role": "consumer" },
+    { "id": "mossx.storage.readwrite", "role": "consumer", "scopes": ["namespace:self"] }
+  ],
+  "budgets": { "activationDeadlineMs": 10000 }
+}

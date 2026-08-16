@@ -8,6 +8,7 @@ import type { ManifestErrorCode, ParseManifestOptions } from "./types";
 import notesMinimal from "../../packages/plugin-contract/fixtures/valid/notes-minimal.json";
 import notesPilot from "../../packages/plugin-contract/fixtures/valid/notes-pilot.json";
 import claudeEngine from "../../packages/plugin-contract/fixtures/valid/claude-engine.json";
+import kanbanPlugin from "../../packages/plugin-kanban/.mossx-plugin/plugin.json";
 
 const fixtureDir = dirname(fileURLToPath(import.meta.url));
 const contractRoot = join(fixtureDir, "../../packages/plugin-contract");
@@ -31,6 +32,16 @@ describe("parseManifestV1", () => {
     expect(result.manifest?.contributions.some((item) => item.type === "mossx.engine.provider")).toBe(true);
     expect(result.manifest?.activationUnits[0]?.events.some((event) => event.type === "onEngine")).toBe(true);
     expect(JSON.stringify(claudeEngine)).not.toMatch(/onStartup|trusted-react/);
+  });
+
+  it("accepts the in-repo kanban package layer without installing it", () => {
+    const result = parseManifestV1(kanbanPlugin, systemOpts);
+    expect(result.ok).toBe(true);
+    expect(result.manifest?.pluginId).toBe("com.mossx.kanban");
+    expect(result.manifest?.contributions.some((item) => item.id === "kanban.main")).toBe(true);
+    const boot = readFileSync(join(fixtureDir, "../../src-tauri/src/plugin_runtime/boot.rs"), "utf8");
+    expect(boot).not.toContain("plugin-kanban");
+    expect(boot).not.toContain("com.mossx.kanban");
   });
 
   it("rejects templated engine providers on the claude fixture", () => {

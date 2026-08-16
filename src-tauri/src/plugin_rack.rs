@@ -40,6 +40,12 @@ const DECLARED_PLUGS: &[DeclaredPlug] = &[
         owner_class: "later-plugin",
     },
     DeclaredPlug {
+        plugin_id: "com.mossx.kanban",
+        display_name: "Kanban",
+        kind: "feature",
+        owner_class: "later-plugin",
+    },
+    DeclaredPlug {
         plugin_id: "com.mossx.engine.codex",
         display_name: "Codex Engine",
         kind: "engine",
@@ -195,18 +201,19 @@ mod tests {
         let snapshot = snapshot_boot_host(&host);
         assert!(snapshot.host_available);
         assert!(!snapshot.host_enabled);
-        assert_eq!(snapshot.plugs.len(), 11);
+        assert_eq!(snapshot.plugs.len(), 12);
         assert_eq!(snapshot.plugs[0].plugin_id, "com.mossx.engine.claude");
         assert_eq!(snapshot.plugs[1].plugin_id, "com.mossx.notes");
         assert_eq!(snapshot.plugs[2].plugin_id, "com.mossx.project-map");
         assert_eq!(snapshot.plugs[3].plugin_id, "com.mossx.browser");
         assert_eq!(snapshot.plugs[4].plugin_id, "com.mossx.intent-canvas");
-        assert_eq!(snapshot.plugs[5].plugin_id, "com.mossx.engine.codex");
-        assert_eq!(snapshot.plugs[6].plugin_id, "com.mossx.engine.gemini");
-        assert_eq!(snapshot.plugs[7].plugin_id, "com.mossx.engine.grok");
-        assert_eq!(snapshot.plugs[8].plugin_id, "com.mossx.engine.kimi");
-        assert_eq!(snapshot.plugs[9].plugin_id, "com.mossx.engine.opencode");
-        assert_eq!(snapshot.plugs[10].plugin_id, "com.mossx.engine.pi");
+        assert_eq!(snapshot.plugs[5].plugin_id, "com.mossx.kanban");
+        assert_eq!(snapshot.plugs[6].plugin_id, "com.mossx.engine.codex");
+        assert_eq!(snapshot.plugs[7].plugin_id, "com.mossx.engine.gemini");
+        assert_eq!(snapshot.plugs[8].plugin_id, "com.mossx.engine.grok");
+        assert_eq!(snapshot.plugs[9].plugin_id, "com.mossx.engine.kimi");
+        assert_eq!(snapshot.plugs[10].plugin_id, "com.mossx.engine.opencode");
+        assert_eq!(snapshot.plugs[11].plugin_id, "com.mossx.engine.pi");
         assert!(snapshot.plugs.iter().all(|plug| plug.state == "idle"));
         assert!(snapshot.plugs.iter().all(|plug| !plug.live));
         assert_eq!(snapshot.plugs[0].owner_class, "pilot");
@@ -253,6 +260,7 @@ mod tests {
             "com.mossx.project-map",
             "com.mossx.browser",
             "com.mossx.intent-canvas",
+            "com.mossx.kanban",
             "com.mossx.engine.codex",
             "com.mossx.engine.gemini",
             "com.mossx.engine.grok",

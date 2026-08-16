@@ -22,6 +22,7 @@ describe("DECLARED_PLUGIN_RACK_SNAPSHOT", () => {
       "com.mossx.project-map",
       "com.mossx.browser",
       "com.mossx.intent-canvas",
+      "com.mossx.kanban",
       "com.mossx.engine.codex",
       "com.mossx.engine.gemini",
       "com.mossx.engine.grok",
