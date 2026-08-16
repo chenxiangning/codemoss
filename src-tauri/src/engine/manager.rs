@@ -512,6 +512,21 @@ impl EngineManager {
         self.claude_manager.remove_runtime_session(runtime_key).await
     }
 
+    pub fn claude_ask_lookup(&self) -> super::claude::ClaudeAskLookup {
+        if let Some(facade) = &self.claude_compat {
+            return facade.ask_lookup();
+        }
+        super::claude::ClaudeAskLookup::from_manager(self.claude_manager.clone())
+    }
+
+    pub fn set_claude_ask_user_question_resume_diagnostic_sink(
+        &self,
+        sink: Option<super::claude::ClaudeAskUserQuestionResumeDiagnosticSink>,
+    ) {
+        self.claude_ask_lookup()
+            .set_ask_user_question_resume_diagnostic_sink(sink);
+    }
+
     /// The GUI runtime no longer tracks Codex adapters locally. Keep cleanup callers stable.
     pub async fn remove_codex_adapter(&self, _workspace_id: &str) {}
 
@@ -1402,6 +1417,8 @@ mod tests {
             .claude_runtime_sessions_for_workspace("ws-remove")
             .await
             .is_empty());
+        let lookup = manager.claude_ask_lookup();
+        assert!(lookup.get_session("ws-remove").await.is_none());
     }
 
     #[tokio::test]

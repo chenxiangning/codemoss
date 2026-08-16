@@ -281,9 +281,9 @@ pub fn run() {
                 let app_handle = app.handle().clone();
                 tauri::async_runtime::spawn(async move {
                     let state = app_handle.state::<state::AppState>();
-                    let claude_manager = state.engine_manager.claude_manager.clone();
+                    let lookup = state.engine_manager.claude_ask_lookup();
                     if let Err(error) =
-                        crate::engine::claude::init_askuser_mcp_global(claude_manager).await
+                        crate::engine::claude::init_askuser_mcp_global(lookup).await
                     {
                         log::warn!("Failed to start AskUserQuestion MCP server: {error}");
                     }

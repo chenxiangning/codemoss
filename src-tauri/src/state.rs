@@ -171,8 +171,7 @@ impl AppState {
         let engine_manager = EngineManager::new();
         let claude_resume_diagnostics_runtime = Arc::clone(&runtime_manager);
         engine_manager
-            .claude_manager
-            .set_ask_user_question_resume_diagnostic_sink(Some(Arc::new(move |diagnostic| {
+            .set_claude_ask_user_question_resume_diagnostic_sink(Some(Arc::new(move |diagnostic| {
                 let runtime_manager = Arc::clone(&claude_resume_diagnostics_runtime);
                 tauri::async_runtime::spawn(async move {
                     runtime_manager

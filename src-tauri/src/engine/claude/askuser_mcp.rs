@@ -30,11 +30,51 @@ use axum::{Json, Router};
 use serde_json::{json, Value};
 use tokio::net::TcpListener;
 
-use super::ClaudeSessionManager;
+use super::{ClaudeAskUserQuestionResumeDiagnosticSink, ClaudeSession, ClaudeSessionManager};
 
 /// The tool name the model sees (prefixed by the CLI as `mcp__ccgui__AskUserQuestion`).
 pub const MCP_SERVER_NAME: &str = "ccgui";
 pub const ASK_TOOL_NAME: &str = "AskUserQuestion";
+
+/// Cloneable lookup handle. Host / facade may wrap the same Core manager.
+#[derive(Clone)]
+pub struct ClaudeAskLookup {
+    manager: Arc<ClaudeSessionManager>,
+}
+
+impl ClaudeAskLookup {
+    pub fn from_manager(manager: Arc<ClaudeSessionManager>) -> Self {
+        Self { manager }
+    }
+
+    pub async fn get_session(&self, workspace_id: &str) -> Option<Arc<ClaudeSession>> {
+        self.manager.get_session(workspace_id).await
+    }
+
+    pub async fn get_session_by_locator(
+        &self,
+        workspace_id: &str,
+        runtime_locator: &str,
+    ) -> Option<Arc<ClaudeSession>> {
+        self.manager
+            .get_session_by_locator(workspace_id, runtime_locator)
+            .await
+    }
+
+    pub fn set_ask_user_question_resume_diagnostic_sink(
+        &self,
+        sink: Option<ClaudeAskUserQuestionResumeDiagnosticSink>,
+    ) {
+        self.manager
+            .set_ask_user_question_resume_diagnostic_sink(sink);
+    }
+}
+
+impl From<Arc<ClaudeSessionManager>> for ClaudeAskLookup {
+    fn from(manager: Arc<ClaudeSessionManager>) -> Self {
+        Self::from_manager(manager)
+    }
+}
 
 /// Process-global handle to the running server, set once at app startup.
 /// The CLI spawn wiring reads this to build the per-workspace `--mcp-config`.
@@ -42,11 +82,11 @@ static ASKUSER_MCP_SERVER: OnceLock<AskUserMcpServer> = OnceLock::new();
 
 /// Start the server (idempotent) and store it in the process-global slot.
 /// Call once during app setup. No-op if already started.
-pub async fn init_global(claude_manager: Arc<ClaudeSessionManager>) -> Result<(), String> {
+pub async fn init_global(lookup: impl Into<ClaudeAskLookup>) -> Result<(), String> {
     if ASKUSER_MCP_SERVER.get().is_some() {
         return Ok(());
     }
-    let server = AskUserMcpServer::start(claude_manager).await?;
+    let server = AskUserMcpServer::start(lookup.into()).await?;
     // Ignore the race where another caller set it first; either is valid.
     let _ = ASKUSER_MCP_SERVER.set(server);
     Ok(())
@@ -59,7 +99,7 @@ pub fn global() -> Option<&'static AskUserMcpServer> {
 
 #[derive(Clone)]
 struct McpServerState {
-    claude_manager: Arc<ClaudeSessionManager>,
+    lookup: ClaudeAskLookup,
     /// Random per-process bearer token; every request must present it (set in `start`).
     token: Arc<str>,
 }
@@ -76,7 +116,7 @@ impl AskUserMcpServer {
     /// Bind an ephemeral localhost port and start serving. Returns once the
     /// listener is bound (so `port()` is immediately usable); the accept loop
     /// runs on a detached task for the process lifetime.
-    pub async fn start(claude_manager: Arc<ClaudeSessionManager>) -> Result<Self, String> {
+    pub async fn start(lookup: ClaudeAskLookup) -> Result<Self, String> {
         let listener = TcpListener::bind(SocketAddr::from(([127, 0, 0, 1], 0)))
             .await
             .map_err(|err| format!("failed to bind AskUserQuestion MCP server: {err}"))?;
@@ -90,7 +130,7 @@ impl AskUserMcpServer {
         // loopback port cannot forge it.
         let token: Arc<str> = Arc::from(uuid::Uuid::new_v4().simple().to_string());
         let state = McpServerState {
-            claude_manager,
+            lookup,
             token: Arc::clone(&token),
         };
         let router = Router::new()
@@ -287,11 +327,11 @@ async fn handle_mcp_request(
             let session = match runtime_locator.as_deref() {
                 Some(locator) => {
                     state
-                        .claude_manager
+                        .lookup
                         .get_session_by_locator(&workspace_id, locator)
                         .await
                 }
-                None => state.claude_manager.get_session(&workspace_id).await,
+                None => state.lookup.get_session(&workspace_id).await,
             };
             let Some(session) = session else {
                 return McpResponse::Json(rpc_error(

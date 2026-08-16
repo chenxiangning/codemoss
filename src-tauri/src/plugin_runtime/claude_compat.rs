@@ -142,6 +142,10 @@ impl ClaudeCompatAdapter {
         self.manager.interrupt_all().await
     }
 
+    pub fn ask_lookup(&self) -> crate::engine::claude::ClaudeAskLookup {
+        crate::engine::claude::ClaudeAskLookup::from_manager(self.manager.clone())
+    }
+
     pub async fn remove_workspace_sessions(&self, workspace_id: &str) {
         for (runtime_key, session) in self.manager.runtime_sessions_for_workspace(workspace_id).await
         {
@@ -292,6 +296,19 @@ mod tests {
         assert!(!native.contains("claude_manager"));
         assert!(daemon_respond.contains("claude_sessions_for_workspace"));
         assert!(!daemon_respond.contains("claude_manager"));
+    }
+
+    #[test]
+    fn askuser_boot_goes_through_the_manager_entry() {
+        let lib = include_str!("../lib.rs");
+        let state = include_str!("../state.rs");
+        let mcp = include_str!("../engine/claude/askuser_mcp.rs");
+        assert!(lib.contains("claude_ask_lookup"));
+        assert!(!lib.contains("claude_manager.clone"));
+        assert!(state.contains("set_claude_ask_user_question_resume_diagnostic_sink"));
+        assert!(!state.contains("claude_manager.set_ask_user_question_resume_diagnostic_sink"));
+        assert!(mcp.contains("lookup.get_session"));
+        assert!(!mcp.contains("claude_manager.get_session"));
     }
 
     #[tokio::test]

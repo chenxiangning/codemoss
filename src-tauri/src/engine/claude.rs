@@ -71,7 +71,7 @@ pub use askuser_mcp::{global as askuser_mcp_global, AskUserMcpServer};
 // cc_gui_daemon binary compiles this module but never starts the askuser MCP server,
 // so the re-export is unused in that build — allow it rather than trip `-D warnings`.
 #[allow(unused_imports)]
-pub use askuser_mcp::init_global as init_askuser_mcp_global;
+pub use askuser_mcp::{init_global as init_askuser_mcp_global, ClaudeAskLookup};
 pub use manager::ClaudeSessionManager;
 pub(crate) use provider_profile::{
     resolve_claude_provider_launch_profile, CLAUDE_LOCAL_PROVIDER_PROFILE_ID,
