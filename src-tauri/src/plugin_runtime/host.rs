@@ -49,6 +49,7 @@ pub enum SlotState {
     Failed,
     Fused,
     Disabled,
+    Uninstalled,
 }
 
 #[derive(Debug, Clone)]
@@ -196,6 +197,7 @@ impl<D> Host<D> {
             SlotState::Failed => "failed",
             SlotState::Fused => "fused",
             SlotState::Disabled => "disabled",
+            SlotState::Uninstalled => "uninstalled",
         }
     }
 }
@@ -250,6 +252,9 @@ impl<D: EntryDriver> Host<D> {
             }
             if current.state == SlotState::Failed {
                 return Err(err("failed", "plugin is failed until reset"));
+            }
+            if current.state == SlotState::Uninstalled {
+                return Err(err("uninstalled", "plugin is uninstalled until install"));
             }
             if current.state == SlotState::Activating {
                 return Err(err("activation-busy", "plugin is already activating"));
@@ -355,6 +360,9 @@ impl<D: EntryDriver> Host<D> {
             }
             SlotState::Failed => return Err(err("failed", "plugin is failed until reset")),
             SlotState::Disabled => return Err(err("disabled", "plugin is disabled until reset")),
+            SlotState::Uninstalled => {
+                return Err(err("uninstalled", "plugin is uninstalled until install"));
+            }
             SlotState::Idle => return Err(err("plugin-unavailable", "plugin is idle until activate")),
             SlotState::Ready => {}
         }
@@ -381,6 +389,9 @@ impl<D: EntryDriver> Host<D> {
             }
             SlotState::Failed => return Err(err("failed", "plugin is failed until reset")),
             SlotState::Fused => return Err(err("fused", "plugin is fused until reset")),
+            SlotState::Uninstalled => {
+                return Err(err("uninstalled", "plugin is uninstalled until install"));
+            }
             SlotState::Idle => return Err(err("plugin-unavailable", "plugin is idle until activate")),
             SlotState::Ready => {}
         }
@@ -412,6 +423,9 @@ impl<D: EntryDriver> Host<D> {
             SlotState::Failed => return Err(err("failed", "plugin is failed until reset")),
             SlotState::Fused => return Err(err("fused", "plugin is fused until reset")),
             SlotState::Disabled => return Err(err("disabled", "plugin is disabled until reset")),
+            SlotState::Uninstalled => {
+                return Err(err("uninstalled", "plugin is uninstalled until install"));
+            }
             SlotState::Idle => return Err(err("plugin-unavailable", "plugin is idle until activate")),
             SlotState::Ready => {}
         }
@@ -428,6 +442,33 @@ impl<D: EntryDriver> Host<D> {
         Ok(())
     }
 
+    /// 不可恢复卸载：停掉当前 generation 的进程组并进入 `Uninstalled` 终态。
+    /// 与 `disable` 的差异：`disable` 可 `reset` 恢复，`uninstall` 需重新 install 才能再 activate。
+    pub fn uninstall(&mut self, plugin_id: &str) -> Result<(), HostError> {
+        require_plugin_id(plugin_id)?;
+        let slot = self
+            .slots
+            .get_mut(plugin_id)
+            .ok_or_else(|| err("plugin-unavailable", "plugin is not loaded"))?;
+        match slot.state {
+            SlotState::Uninstalled => return Ok(()),
+            SlotState::Activating => {
+                return Err(err("activation-busy", "cannot uninstall while activating"));
+            }
+            SlotState::Failed => return Err(err("failed", "plugin is failed until reset")),
+            SlotState::Ready | SlotState::Idle | SlotState::Disabled | SlotState::Fused => {}
+        }
+        let generation = slot.generation;
+        let started = slot.started.clone();
+        for entry_id in started.iter().rev() {
+            self.driver.stop(plugin_id, entry_id, generation);
+        }
+        slot.started.clear();
+        slot.unit_id = None;
+        slot.state = SlotState::Uninstalled;
+        Ok(())
+    }
+
     pub fn reset(&mut self, plugin_id: &str) -> Result<(), HostError> {
         require_plugin_id(plugin_id)?;
         let slot = self
@@ -436,6 +477,9 @@ impl<D: EntryDriver> Host<D> {
             .ok_or_else(|| err("plugin-unavailable", "plugin is not loaded"))?;
         if slot.state == SlotState::Activating {
             return Err(err("activation-busy", "cannot reset while activating"));
+        }
+        if slot.state == SlotState::Uninstalled {
+            return Err(err("uninstalled", "plugin is uninstalled until install"));
         }
         let generation = slot.generation;
         *slot = PluginSlot {
@@ -940,5 +984,74 @@ mod tests {
             );
         }
         assert!(host.driver().stopped.is_empty());
+    }
+
+    #[test]
+    fn uninstall_stops_process_group_and_becomes_irreversible() {
+        let mut host = enabled_host(FakeDriver::default());
+        host.activate(notes_request()).expect("activate");
+        host.uninstall("com.mossx.notes").expect("uninstall");
+        let slot = host.slot("com.mossx.notes").expect("slot");
+        assert_eq!(slot.state, SlotState::Uninstalled);
+        assert!(slot.started.is_empty());
+        assert!(slot.unit_id.is_none());
+        assert_eq!(
+            host.driver().stopped,
+            vec![
+                ("com.mossx.notes".into(), "notes-ui".into(), 1),
+                ("com.mossx.notes".into(), "notes-worker".into(), 1),
+            ]
+        );
+        // 不可恢复终态：activate 与 reset 一律拒绝。
+        assert_eq!(
+            host.activate(notes_request()).unwrap_err().code,
+            "uninstalled"
+        );
+        assert_eq!(host.reset("com.mossx.notes").unwrap_err().code, "uninstalled");
+        assert_eq!(host.fuse("com.mossx.notes").unwrap_err().code, "uninstalled");
+        assert_eq!(
+            host.disable("com.mossx.notes").unwrap_err().code,
+            "uninstalled"
+        );
+    }
+
+    #[test]
+    fn uninstall_is_idempotent_and_refuses_activating() {
+        let mut host = enabled_host(FakeDriver::default());
+        host.activate(notes_request()).expect("activate");
+        host.uninstall("com.mossx.notes").expect("first uninstall");
+        host.uninstall("com.mossx.notes").expect("idempotent uninstall");
+        assert_eq!(
+            host.slot("com.mossx.notes").unwrap().state,
+            SlotState::Uninstalled
+        );
+        host.test_force_state("com.mossx.engine.claude", SlotState::Activating, 1);
+        assert_eq!(
+            host.uninstall("com.mossx.engine.claude").unwrap_err().code,
+            "activation-busy"
+        );
+    }
+
+    #[test]
+    fn uninstall_from_non_ready_loaded_state_enters_terminal() {
+        let mut host = enabled_host(FakeDriver::default());
+        for state in [SlotState::Idle, SlotState::Disabled, SlotState::Fused] {
+            host.test_force_state("com.mossx.notes", state, 1);
+            host.uninstall("com.mossx.notes").expect("uninstall");
+            assert_eq!(
+                host.slot("com.mossx.notes").unwrap().state,
+                SlotState::Uninstalled,
+                "{state:?}"
+            );
+            // 进程已停，uninstall 不得再 stop。
+            assert!(host.driver().stopped.is_empty(), "{state:?}");
+        }
+        host.test_force_state("com.mossx.notes", SlotState::Failed, 2);
+        assert_eq!(host.uninstall("com.mossx.notes").unwrap_err().code, "failed");
+    }
+
+    #[test]
+    fn slot_state_name_exposes_uninstalled() {
+        assert_eq!(Host::<FakeDriver>::slot_state_name(SlotState::Uninstalled), "uninstalled");
     }
 }

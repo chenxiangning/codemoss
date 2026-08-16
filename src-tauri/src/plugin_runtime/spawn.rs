@@ -799,4 +799,32 @@ mod tests {
         assert_eq!(host.driver().live_count(), 0);
         let _ = std::fs::remove_file(binary);
     }
+
+    #[test]
+    fn uninstall_stops_a_real_peer_process_group_and_is_irreversible() {
+        // 端到端验证：真实 driver spawn peer → activate Ready → uninstall 杀真实
+        // 进程组（live_count 归零）→ 进入不可恢复 Uninstalled 终态 → activate 拒绝。
+        let binary = compile_peer("uninstall");
+        let mut host = enabled_host(restricted_process_driver_for(
+            Some(binary.to_str().expect("utf8 path")),
+        ));
+        host.activate(claude_activation_request()).expect("activate");
+        assert_eq!(
+            host.slot("com.mossx.engine.claude").unwrap().state,
+            SlotState::Ready
+        );
+        assert_eq!(host.driver().live_count(), 1);
+        host.uninstall("com.mossx.engine.claude").expect("uninstall");
+        assert_eq!(host.driver().live_count(), 0);
+        let slot = host.slot("com.mossx.engine.claude").expect("slot");
+        assert_eq!(slot.state, SlotState::Uninstalled);
+        assert!(slot.started.is_empty());
+        // 不可恢复：uninstall 后 activate 一律拒绝。
+        assert_eq!(
+            host.activate(claude_activation_request()).unwrap_err().code,
+            "uninstalled"
+        );
+        assert_eq!(host.driver().live_count(), 0);
+        let _ = std::fs::remove_file(binary);
+    }
 }
