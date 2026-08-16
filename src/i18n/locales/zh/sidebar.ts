@@ -181,7 +181,7 @@ const sidebar = {
       framework: "即将实现",
       skills: "即将实现",
       mcps: "即将实现",
-      plugins: "本地 Host 插排。市场安装仍关闭。",
+      plugins: "即将实现",
       hooks: "即将实现",
       rules: "即将实现",
       commands: "即将实现",
@@ -189,7 +189,7 @@ const sidebar = {
     },
     rack: {
       title: "插件插排",
-      subtitle: "已声明的 Host 插头。只读。本页不会激活任何插件。",
+      subtitle: "已声明的 Host 插头。只读。市场安装仍关闭。",
       loading: "正在读取 Host 快照…",
       hostUnavailable: "Host 快照不可用。已声明插头保持空闲。",
       hostDisabled: "Host 默认关闭。插头已声明，但未通电。",

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
+  AppMode,
   GitFileDiff,
   GitFileStatus,
   GitHubPullRequest,
@@ -256,7 +257,7 @@ export function useGitPanelController({
   prDiffsError: string | null;
   onOpenEditorLayoutRequest?: () => void;
   onOpenGitHistoryRequest?: () => void;
-  appMode?: "chat" | "kanban" | "gitHistory" | "extensions";
+  appMode?: AppMode;
 }) {
   const [centerMode, setCenterMode] = useState<CenterMode>("chat");
   const [fileCompareSession, setFileCompareSession] =

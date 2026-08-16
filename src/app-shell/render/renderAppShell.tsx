@@ -28,6 +28,7 @@ import {
 } from "../domains/appShellDomainContexts";
 import {
   ExtensionsView,
+  PluginRackSection,
   GitHistoryPanel,
   KanbanView,
   QuickSwitcher,
@@ -284,6 +285,7 @@ export function renderAppShell(ctx: RenderAppShellContext) {
     showGitDetail,
     showGitHistory,
     showExtensions,
+    showMarket,
     showHome,
     showKanban,
     showNextReleaseNotes,
@@ -527,6 +529,7 @@ export function renderAppShell(ctx: RenderAppShellContext) {
         showHome={showHome}
         showKanban={showKanban}
         showExtensions={showExtensions}
+        showMarket={showMarket}
         showGitHistory={showGitHistory}
         hideRightPanel={activeTab === "spec" && rightPanelCollapsed}
         isSoloMode={isSoloMode}
@@ -571,6 +574,13 @@ export function renderAppShell(ctx: RenderAppShellContext) {
           showExtensions ? (
             <Suspense fallback={null}>
               <ExtensionsView activeWorkspace={activeWorkspace} />
+            </Suspense>
+          ) : null
+        }
+        marketNode={
+          showMarket ? (
+            <Suspense fallback={null}>
+              <PluginRackSection />
             </Suspense>
           ) : null
         }

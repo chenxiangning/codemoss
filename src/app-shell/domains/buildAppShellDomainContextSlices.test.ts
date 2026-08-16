@@ -272,6 +272,7 @@ describe("buildAppShellDomainContextSlices", () => {
       centerMode: "chat",
       claudeAccessModeRef: { current: "default" },
       filePanelMode: "files",
+      showMarket: false,
     });
     expect(Object.keys(slice).sort()).toEqual(
       [
@@ -281,6 +282,7 @@ describe("buildAppShellDomainContextSlices", () => {
         "centerMode",
         "claudeAccessModeRef",
         "filePanelMode",
+        "showMarket",
       ].sort(),
     );
     expect(slice.appMode).toBe("chat");

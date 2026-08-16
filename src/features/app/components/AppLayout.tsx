@@ -9,11 +9,13 @@ type AppLayoutProps = {
   showHome: boolean;
   showKanban: boolean;
   showExtensions: boolean;
+  showMarket: boolean;
   showGitHistory: boolean;
   hideRightPanel: boolean;
   isSoloMode: boolean;
   kanbanNode: ReactNode;
   extensionsNode: ReactNode;
+  marketNode: ReactNode;
   gitHistoryNode: ReactNode;
   showGitDetail: boolean;
   activeTab: "projects" | "codex" | "spec" | "git" | "log";
@@ -68,11 +70,13 @@ export const AppLayout = memo(function AppLayout({
   showHome,
   showKanban,
   showExtensions,
+  showMarket,
   showGitHistory,
   hideRightPanel,
   isSoloMode,
   kanbanNode,
   extensionsNode,
+  marketNode,
   gitHistoryNode,
   centerMode,
   editorSplitLayout,
@@ -120,14 +124,16 @@ export const AppLayout = memo(function AppLayout({
       globalRuntimeNoticeDockNode={globalRuntimeNoticeDockNode}
       homeNode={homeNode}
       showHome={showHome}
-      showWorkspace={activeWorkspace && !showHome && !showKanban && !showExtensions}
+      showWorkspace={activeWorkspace && !showHome && !showKanban && !showExtensions && !showMarket}
       showKanban={showKanban}
       showExtensions={showExtensions}
+      showMarket={showMarket}
       showGitHistory={showGitHistory}
       hideRightPanel={hideRightPanel}
       isSoloMode={isSoloMode}
       kanbanNode={kanbanNode}
       extensionsNode={extensionsNode}
+      marketNode={marketNode}
       gitHistoryNode={gitHistoryNode}
       settingsOpen={settingsOpen}
       settingsNode={settingsNode}

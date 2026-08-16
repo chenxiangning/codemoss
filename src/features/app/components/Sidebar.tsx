@@ -2305,11 +2305,11 @@ function SidebarImpl({
             </button>
             <button
               type="button"
-              className="sidebar-primary-nav-item sidebar-primary-nav-subitem is-disabled"
+              className={`sidebar-primary-nav-item sidebar-primary-nav-subitem ${appMode === "market" ? "is-active" : ""}`}
+              onClick={() => onAppModeChange("market")}
               title={t("sidebar.plugins")}
               aria-label={t("sidebar.plugins")}
               data-tauri-drag-region="false"
-              disabled
             >
               <Store className="sidebar-primary-nav-icon" aria-hidden size={20} strokeWidth={1.8} />
               <span className="sidebar-primary-nav-text">{t("sidebar.plugins")}</span>

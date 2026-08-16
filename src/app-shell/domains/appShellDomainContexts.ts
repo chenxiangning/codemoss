@@ -195,6 +195,7 @@ export const APP_SHELL_DOMAIN_CONTEXT_OWNED_KEYS: Record<
     "centerMode",
     "claudeAccessModeRef",
     "filePanelMode",
+    "showMarket",
   ],
   accountSurfaceContext: [
     "accountByWorkspace",

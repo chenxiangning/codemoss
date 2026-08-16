@@ -30,6 +30,12 @@ export const ExtensionsView = lazy(() =>
   })),
 );
 
+export const PluginRackSection = lazy(() =>
+  import("../../features/extensions/components/PluginRackSection").then((module) => ({
+    default: module.PluginRackSection,
+  })),
+);
+
 export const WorkspaceHome = lazy(() =>
   import("../../features/workspaces/components/WorkspaceHome").then((module) => ({
     default: module.WorkspaceHome,

@@ -50,7 +50,7 @@ export type DockIconId =
   | "adaptive-routing-fabric"
   | "triadic-router";
 
-export type AppMode = "chat" | "kanban" | "gitHistory" | "extensions";
+export type AppMode = "chat" | "kanban" | "gitHistory" | "extensions" | "market";
 
 export type ComposerEditorPreset = "default" | "helpful" | "smart";
 

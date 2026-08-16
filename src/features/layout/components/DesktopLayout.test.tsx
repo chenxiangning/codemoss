@@ -100,6 +100,21 @@ describe("DesktopLayout", () => {
     clientStorageMock.writeClientStoreValue.mockReset();
   });
 
+  it("renders Market as a sibling workspace-independent page", () => {
+    const { container, getByText, queryByText } = renderDesktopLayout({
+      showMarket: true,
+      showWorkspace: false,
+      marketNode: <div>market-rack</div>,
+    });
+
+    expect(getByText("sidebar")).toBeTruthy();
+    expect(getByText("market-rack")).toBeTruthy();
+    expect(queryByText("extensions")).toBeNull();
+    expect(queryByText("messages")).toBeNull();
+    expect(container.querySelector(".market-main")).toBeTruthy();
+    expect(container.querySelector(".right-panel")).toBeNull();
+  });
+
   it("renders Extensions as a workspace-independent page", () => {
     const { container, getByText, queryByText } = renderDesktopLayout({
       showExtensions: true,

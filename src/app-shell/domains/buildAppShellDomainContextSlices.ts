@@ -413,6 +413,7 @@ export type ModeRoutingDomainFields = {
   centerMode: unknown;
   claudeAccessModeRef: unknown;
   filePanelMode: unknown;
+  showMarket: unknown;
 };
 
 export function buildModeRoutingDomainContextSlice(
@@ -425,6 +426,7 @@ export function buildModeRoutingDomainContextSlice(
     centerMode: input.centerMode,
     claudeAccessModeRef: input.claudeAccessModeRef,
     filePanelMode: input.filePanelMode,
+    showMarket: input.showMarket,
   };
 }
 

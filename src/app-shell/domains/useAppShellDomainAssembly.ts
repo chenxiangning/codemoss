@@ -185,6 +185,7 @@ export function assembleAppShellDomainContexts(
       centerMode: source.centerMode,
       claudeAccessModeRef: source.claudeAccessModeRef,
       filePanelMode: source.filePanelMode,
+      showMarket: source.showMarket,
     }),
     accountSurfaceContext: buildAccountSurfaceDomainContextSlice({
       accountByWorkspace: source.accountByWorkspace,

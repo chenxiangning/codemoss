@@ -17,7 +17,6 @@ import { loadExtensionsStyles } from "../../../styles/featureStyleLoaders";
 import { useFeatureStylesReady } from "../../../styles/useFeatureStylesReady";
 
 import { McpsDashboardSection } from "./McpsDashboardSection";
-import { PluginRackSection } from "./PluginRackSection";
 import { SkillsDashboardSection } from "./SkillsDashboardSection";
 import { UsageDashboardSection } from "./UsageDashboardSection";
 
@@ -118,8 +117,6 @@ export function ExtensionsView({ activeWorkspace }: ExtensionsViewProps) {
         <SkillsDashboardSection />
       ) : activeTab === "mcps" ? (
         <McpsDashboardSection activeWorkspace={activeWorkspace} />
-      ) : activeTab === "plugins" ? (
-        <PluginRackSection />
       ) : (
         <div className="extensions-empty-panel">
           <div className="extensions-empty-panel-icon" aria-hidden>

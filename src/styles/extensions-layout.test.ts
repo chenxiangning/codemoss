@@ -37,6 +37,9 @@ describe("extensions layout", () => {
 
     expect(viewRule).toContain("--extensions-view-padding-inline: clamp(24px, 5vw, 96px);");
     expect(css).not.toContain(".extensions-view-usage {\n  --extensions-view-padding-inline");
+    expect(getCssRuleBlock(".main.extensions-main,\n.main.market-main")).toContain(
+      "grid-template-columns: minmax(0, 1fr);",
+    );
   });
 
   it("pins Skills bulk actions below the extension tab row", () => {

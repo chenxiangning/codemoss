@@ -513,13 +513,16 @@ describe("Sidebar", () => {
     expect(container.querySelector(".sidebar-settings-dropdown")).toBeNull();
   });
 
-  it("keeps Market disabled and opens Extensions as a separate mode", () => {
+  it("opens Market as a sibling of Extensions", () => {
     const onAppModeChange = vi.fn();
     render(<Sidebar {...baseProps} onAppModeChange={onAppModeChange} />);
 
     expect(
       (screen.getByRole("button", { name: "Market" }) as HTMLButtonElement).disabled,
-    ).toBe(true);
+    ).toBe(false);
+
+    fireEvent.click(screen.getByRole("button", { name: "Market" }));
+    expect(onAppModeChange).toHaveBeenCalledWith("market");
 
     fireEvent.click(screen.getByRole("button", { name: "Extensions" }));
     expect(onAppModeChange).toHaveBeenCalledWith("extensions");

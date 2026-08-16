@@ -1,4 +1,4 @@
-//! Read-only Host rack snapshot for the Extensions → Plugins surface.
+//! Read-only Host rack snapshot for the Market surface.
 //! Does not activate, disable, or install plugins.
 
 use serde::Serialize;

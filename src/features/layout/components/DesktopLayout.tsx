@@ -68,11 +68,13 @@ type DesktopLayoutProps = {
   showWorkspace: boolean;
   showKanban: boolean;
   showExtensions?: boolean;
+  showMarket?: boolean;
   showGitHistory: boolean;
   hideRightPanel: boolean;
   isSoloMode: boolean;
   kanbanNode: ReactNode;
   extensionsNode?: ReactNode;
+  marketNode?: ReactNode;
   gitHistoryNode: ReactNode;
   settingsOpen: boolean;
   settingsNode: ReactNode;
@@ -117,11 +119,13 @@ export function DesktopLayout({
   showWorkspace,
   showKanban,
   showExtensions = false,
+  showMarket = false,
   showGitHistory,
   hideRightPanel,
   isSoloMode,
   kanbanNode,
   extensionsNode = null,
+  marketNode = null,
   gitHistoryNode,
   settingsOpen,
   settingsNode,
@@ -560,7 +564,7 @@ export function DesktopLayout({
     );
   }
 
-  if (showExtensions && !settingsOpen) {
+  if ((showExtensions || showMarket) && !settingsOpen) {
     return (
       <>
         {sidebarNode}
@@ -571,10 +575,10 @@ export function DesktopLayout({
           aria-label={t("layout.resizeSidebar")}
           onMouseDown={onSidebarResizeStart}
         />
-        <section className="main extensions-main">
+        <section className={`main ${showMarket ? "market-main" : "extensions-main"}`}>
           {errorToastsNode}
           {globalRuntimeNoticeDockNode}
-          {extensionsNode}
+          {showMarket ? marketNode : extensionsNode}
           {runtimeConsoleDockNode}
           {terminalDockNode}
         </section>

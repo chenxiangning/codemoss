@@ -191,6 +191,7 @@ export type RenderAppShellFlattenedContext = {
   showGitDetail: any;
   showGitHistory: any;
   showExtensions: any;
+  showMarket: any;
   showHome: any;
   showKanban: any;
   showNextReleaseNotes: any;

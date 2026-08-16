@@ -16,10 +16,13 @@ describe("resolveAppModeSurfaceFlags", () => {
     expect(resolveAppModeSurfaceFlags("extensions").isGitSurfaceMode).toBe(
       false,
     );
+    expect(resolveAppModeSurfaceFlags("market").isGitSurfaceMode).toBe(false);
   });
 
-  it("flags extensions and git history surfaces", () => {
+  it("flags extensions, market, and git history surfaces", () => {
     expect(resolveAppModeSurfaceFlags("extensions").showExtensions).toBe(true);
+    expect(resolveAppModeSurfaceFlags("market").showMarket).toBe(true);
+    expect(resolveAppModeSurfaceFlags("extensions").showMarket).toBe(false);
     expect(resolveAppModeSurfaceFlags("gitHistory").showGitHistory).toBe(true);
   });
 });

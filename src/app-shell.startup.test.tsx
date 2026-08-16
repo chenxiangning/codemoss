@@ -1396,6 +1396,28 @@ describe("AppShell startup", () => {
       expect(startupState.renderCtx?.appMode).toBe("extensions");
     });
     expect(startupState.renderCtx?.showExtensions).toBe(true);
+    expect(startupState.renderCtx?.showMarket).toBe(false);
+  });
+
+  it("propagates Market mode to the rendered layout context", async () => {
+    render(<AppShell />);
+
+    await waitFor(() => {
+      expect(startupState.renderCtx?.handleAppModeChange).toBeTypeOf("function");
+    });
+
+    act(() => {
+      const handleAppModeChange = startupState.renderCtx?.handleAppModeChange as
+        | ((mode: "market") => void)
+        | undefined;
+      handleAppModeChange?.("market");
+    });
+
+    await waitFor(() => {
+      expect(startupState.renderCtx?.appMode).toBe("market");
+    });
+    expect(startupState.renderCtx?.showMarket).toBe(true);
+    expect(startupState.renderCtx?.showExtensions).toBe(false);
   });
 
   it("mounts with a stored thread-scoped codex composer selection without entering an update loop", async () => {

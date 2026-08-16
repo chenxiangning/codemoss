@@ -1,4 +1,5 @@
-.main.extensions-main {
+.main.extensions-main,
+.main.market-main {
   grid-template-columns: minmax(0, 1fr);
 }
 

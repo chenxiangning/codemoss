@@ -12,6 +12,7 @@ export function resolveAppModeSurfaceFlags(appMode: AppMode) {
   const showKanban = appMode === "kanban";
   const showGitHistory = appMode === "gitHistory";
   const showExtensions = appMode === "extensions";
+  const showMarket = appMode === "market";
   const isChatSurface = appMode === "chat";
   /** chat / gitHistory 才需要右栏 Git active 轮询与 preload */
   const isGitSurfaceMode = appMode === "chat" || appMode === "gitHistory";
@@ -20,6 +21,7 @@ export function resolveAppModeSurfaceFlags(appMode: AppMode) {
     showKanban,
     showGitHistory,
     showExtensions,
+    showMarket,
     isChatSurface,
     isGitSurfaceMode,
   };

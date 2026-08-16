@@ -188,7 +188,7 @@ const sidebar = {
       framework: "Coming soon",
       skills: "Coming soon",
       mcps: "Coming soon",
-      plugins: "Local Host rack. Marketplace install stays closed.",
+      plugins: "Coming soon",
       hooks: "Coming soon",
       rules: "Coming soon",
       commands: "Coming soon",
@@ -196,7 +196,7 @@ const sidebar = {
     },
     rack: {
       title: "Plugin rack",
-      subtitle: "Declared Host plugs. Read-only. Nothing is activated from this page.",
+      subtitle: "Declared Host plugs. Read-only. Marketplace install stays closed.",
       loading: "Reading Host snapshot…",
       hostUnavailable: "Host snapshot unavailable. Declared plugs stay idle.",
       hostDisabled: "Host is default-off. Plugs are declared, not live.",
