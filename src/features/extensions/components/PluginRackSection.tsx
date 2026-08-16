@@ -40,7 +40,9 @@ function groupPlugs(plugs: PluginRackPlug[]): Array<{ kind: string; plugs: Plugi
       groups.set(plug.kind, [plug]);
     }
   }
-  const ordered = KIND_ORDER.filter((kind) => groups.has(kind)).map((kind) => ({
+  const ordered: Array<{ kind: string; plugs: PluginRackPlug[] }> = KIND_ORDER.filter(
+    (kind) => groups.has(kind),
+  ).map((kind) => ({
     kind,
     plugs: groups.get(kind) ?? [],
   }));
