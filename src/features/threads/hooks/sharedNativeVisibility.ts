@@ -1,5 +1,5 @@
 import type { ThreadSummary } from "../../../types";
-import { expandHiddenSharedBindingIds } from "../../shared-session/runtime/sharedSessionSummaries";
+import { expandHiddenSharedBindingIds } from "@mossx/plugin-shared-session/runtime";
 import { threadIdInHiddenSharedBindingSet } from "./useThreadActions.helpers";
 
 export type SharedNativeVisibilityFreshness = "verified" | "partial" | "unavailable" | string;

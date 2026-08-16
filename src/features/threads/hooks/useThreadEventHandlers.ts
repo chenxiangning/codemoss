@@ -40,7 +40,7 @@ import {
 import { buildCodexLivenessDiagnostic } from "../utils/codexConversationLiveness";
 import { domainEventFactories } from "../domain-events";
 import type { ThreadEventHandlersOptions } from "./threadEventHandlerTypes";
-import type { TurnExecutionSnapshot } from "../../shared-session/target/types";
+import type { TurnExecutionSnapshot } from "@mossx/plugin-shared-session/runtime";
 import { handleThreadAppServerEventDiagnostics } from "./threadAppServerEventDiagnostics";
 import {
   clearLiveAssistantText,

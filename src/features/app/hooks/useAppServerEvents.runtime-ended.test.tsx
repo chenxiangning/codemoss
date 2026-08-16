@@ -7,7 +7,7 @@ import {
   subscribeAppServerEvents,
   subscribeRawAppServerEvents,
 } from "../../../services/events";
-import { registerSharedSessionNativeBinding } from "../../shared-session/runtime/sharedSessionBridge";
+import { registerSharedSessionNativeBinding } from "@mossx/plugin-shared-session/runtime";
 import { useAppServerEvents } from "./useAppServerEvents";
 
 vi.mock("../../../services/events", async (importOriginal) => {

@@ -17,14 +17,14 @@ import { asNumber, asString } from "../utils/threadNormalize";
 import {
   deleteSharedSession as deleteSharedSessionService,
   startSharedSession as startSharedSessionService,
-} from "../../shared-session/services/sharedSessions";
-import { hydrateSharedTargetState } from "../../shared-session/target/targetStore";
+} from "@mossx/plugin-shared-session/runtime";
+import { hydrateSharedTargetState } from "@mossx/plugin-shared-session/runtime";
 import {
   isResolvedExecutionTarget,
   resolveBackendAuthoritativeExecutionTarget,
   type ExecutionTarget,
-} from "../../shared-session/target/types";
-import type { SharedSessionSupportedEngine } from "../../shared-session/utils/sharedSessionEngines";
+} from "@mossx/plugin-shared-session/runtime";
+import type { SharedSessionSupportedEngine } from "@mossx/plugin-shared-session/runtime";
 
 import type { ThreadAction } from "./useThreadsReducer";
 

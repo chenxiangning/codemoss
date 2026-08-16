@@ -5,7 +5,7 @@ import {
   getSharedTargetState,
   resetSharedTargetStoreForTests,
   selectNextTarget,
-} from "../../shared-session/target/targetStore";
+} from "@mossx/plugin-shared-session/runtime";
 import { getAgentEvidenceRunId } from "../../multi-agent/store/agentStore";
 import { createSharedHistoryLoader } from "./sharedHistoryLoader";
 

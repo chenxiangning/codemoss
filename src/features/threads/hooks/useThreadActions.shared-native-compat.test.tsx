@@ -22,7 +22,7 @@ import {
   getThreadTimestamp,
   previewThreadName,
 } from "../../../utils/threadItems";
-import { listSharedSessions } from "../../shared-session/services/sharedSessions";
+import { listSharedSessions } from "@mossx/plugin-shared-session/runtime";
 import { useThreadActions } from "./useThreadActions";
 
 vi.mock("../../../services/tauri", () => ({

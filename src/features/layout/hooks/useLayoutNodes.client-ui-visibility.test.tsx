@@ -20,7 +20,7 @@ import { getCodexProviders } from "../../../services/tauri";
 import {
   dispatchSharedSendEvent,
   resetSharedSendStateStoreForTests,
-} from "../../shared-session/runtime/sharedSendStateStore";
+} from "@mossx/plugin-shared-session/runtime";
 
 const clientUiVisibilityMock = vi.hoisted(() => ({
   visiblePanels: new Set<string>(),

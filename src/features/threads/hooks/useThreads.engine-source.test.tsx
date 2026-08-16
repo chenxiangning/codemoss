@@ -19,7 +19,7 @@ import {
   listSharedSessions,
   startSharedSession,
   syncSharedSessionSnapshot,
-} from "../../shared-session/services/sharedSessions";
+} from "@mossx/plugin-shared-session/runtime";
 import { WEB_SERVICE_RECONNECTED_EVENT } from "../../../services/events";
 import { useThreads } from "./useThreads";
 

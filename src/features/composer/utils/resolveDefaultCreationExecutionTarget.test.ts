@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { isResolvedExecutionTarget } from "../../shared-session/target/types";
+import { isResolvedExecutionTarget } from "@mossx/plugin-shared-session/runtime";
 import {
   GROK_LOCAL_PROVIDER_PROFILE_ID,
   LOCAL_PROVIDER_PROFILE_DISPLAY_NAME,

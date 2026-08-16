@@ -10,7 +10,7 @@ import {
 } from "./useProviderTargetCatalogOwners";
 import { buildProviderExecutionTarget } from "../selectors/ModelSelect";
 import { seedCliEngineVisibility } from "../../../hooks/cliEngineVisibilityStore";
-import { isResolvedExecutionTarget } from "../../../../shared-session/target/types";
+import { isResolvedExecutionTarget } from "@mossx/plugin-shared-session/runtime";
 import {
   discoverCodexModels,
   getClaudeProviders,

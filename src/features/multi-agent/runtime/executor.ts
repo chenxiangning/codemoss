@@ -1,4 +1,4 @@
-import { isSharedSessionThreadId } from "../../shared-session/utils/sharedSessionIdentity";
+import { isSharedSessionThreadId } from "@mossx/plugin-shared-session/runtime";
 import {
   sharedSessionV2AwaitTurnTerminal,
   sharedSessionV2CancelAttempt,
@@ -6,13 +6,13 @@ import {
   sharedSessionV2InterruptTurn,
   sharedSessionV2PrepareDelivery,
   sharedSessionV2RecoverAttempt,
-} from "../../shared-session/services/sharedSessions";
-import { sendSharedSessionTurnV2 } from "../../shared-session/runtime/sendSharedSessionTurnV2";
+} from "@mossx/plugin-shared-session/runtime";
+import { sendSharedSessionTurnV2 } from "@mossx/plugin-shared-session/runtime";
 import {
   isResolvedExecutionTarget,
   type ExecutionTarget,
-} from "../../shared-session/target/types";
-import { isSharedSessionSupportedEngine } from "../../shared-session/utils/sharedSessionEngines";
+} from "@mossx/plugin-shared-session/runtime";
+import { isSharedSessionSupportedEngine } from "@mossx/plugin-shared-session/runtime";
 import {
   sharedAgentApprove,
   sharedAgentCancel,

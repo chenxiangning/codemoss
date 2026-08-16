@@ -7,8 +7,8 @@ import type {
   WorkspaceGroup,
   WorkspaceInfo,
 } from "../../../types";
-import type { SharedSessionSupportedEngine } from "../../shared-session/utils/sharedSessionEngines";
-import { isSharedSessionThreadId } from "../../shared-session/utils/sharedSessionIdentity";
+import type { SharedSessionSupportedEngine } from "@mossx/plugin-shared-session/runtime";
+import { isSharedSessionThreadId } from "@mossx/plugin-shared-session/runtime";
 import {
   createNativeProviderContinuation,
   discardPreparedNativeProviderContinuation,

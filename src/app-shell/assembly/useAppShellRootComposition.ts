@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useThreads } from "../../features/threads/hooks/useThreads";
-import { resolveIsSharedSession } from "../../features/shared-session/utils/sharedSessionIdentity";
+import { resolveIsSharedSession } from "@mossx/plugin-shared-session/runtime";
 import { useGitPanelController } from "../../features/app/hooks/useGitPanelController";
 import { useGitRemote } from "../../features/git/hooks/useGitRemote";
 import { useGitRepoScan } from "../../features/git/hooks/useGitRepoScan";

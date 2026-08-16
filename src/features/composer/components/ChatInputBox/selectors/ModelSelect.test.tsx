@@ -13,7 +13,7 @@ import {
   resolveModelIdForIcon,
 } from "./ModelSelect";
 import { STORAGE_KEYS } from "../../../types/provider";
-import type { ExecutionTarget } from "../../../../shared-session/target/types";
+import type { ExecutionTarget } from "@mossx/plugin-shared-session/runtime";
 import type { ProviderTargetGroup } from "../hooks/useProviderTargetCatalogOwners";
 
 vi.mock("react-i18next", () => ({

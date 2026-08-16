@@ -27,16 +27,16 @@ import {
 import { getClientStoreSync } from "../../../services/clientStorage";
 import { pushErrorToast } from "../../../services/toasts";
 import { getGlobalRuntimeNoticesSnapshot } from "../../../services/globalRuntimeNotices";
-import { sendSharedSessionTurnRouted } from "../../shared-session/runtime/sendSharedSessionTurn";
-import { SharedActiveAttemptObserverError } from "../../shared-session/runtime/sendSharedSessionTurnV2";
+import { sendSharedSessionTurnRouted } from "@mossx/plugin-shared-session/runtime";
+import { SharedActiveAttemptObserverError } from "@mossx/plugin-shared-session/runtime";
 import {
   sharedSessionV2AwaitTurnTerminal,
   sharedSessionV2InterruptTurn,
-} from "../../shared-session/services/sharedSessions";
+} from "@mossx/plugin-shared-session/runtime";
 import {
   reattachSharedSessionAttempt,
   resetSharedSessionAttemptReattachmentsForTests,
-} from "../../shared-session/runtime/reattachSharedSessionAttempt";
+} from "@mossx/plugin-shared-session/runtime";
 import {
   consumeSharedSendAdmission,
   dispatchSharedSendEvent,
@@ -44,11 +44,11 @@ import {
   getSharedSendState,
   resetSharedSendStateStoreForTests,
   setSharedSendActiveAttempt,
-} from "../../shared-session/runtime/sharedSendStateStore";
+} from "@mossx/plugin-shared-session/runtime";
 import {
   resetSharedTargetStoreForTests,
   selectNextTarget,
-} from "../../shared-session/target/targetStore";
+} from "@mossx/plugin-shared-session/runtime";
 
 const CLAUDE_PENDING_NATIVE_SESSION_WAIT_MESSAGE =
   "Claude session is still initializing. Wait for the session to finish binding, then send again.";

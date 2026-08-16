@@ -37,7 +37,7 @@ import { useThreadEventHandlers } from "./useThreadEventHandlers";
 import { useThreadActions } from "./useThreadActions";
 import { useThreadMessaging } from "./useThreadMessaging";
 import { useThreadApprovals } from "./useThreadApprovals";
-import type { TurnExecutionSnapshot } from "../../shared-session/target/types";
+import type { TurnExecutionSnapshot } from "@mossx/plugin-shared-session/runtime";
 import {
   cleanupThreadScopedRefs,
   createWorkspaceScopedMap,
@@ -106,13 +106,13 @@ import {
 } from "../utils/memoryCaptureRace";
 import { buildItemsFromThread } from "../../../utils/threadItems";
 import i18n from "../../../i18n";
-import { clearSharedSessionBindingsForSharedThread } from "../../shared-session/runtime/sharedSessionBridge";
-import { isSharedSessionThreadId } from "../../shared-session/utils/sharedSessionIdentity";
+import { clearSharedSessionBindingsForSharedThread } from "@mossx/plugin-shared-session/runtime";
+import { isSharedSessionThreadId } from "@mossx/plugin-shared-session/runtime";
 import {
   syncSharedSessionSnapshot as syncSharedSessionSnapshotService,
-} from "../../shared-session/services/sharedSessions";
-import { isSharedV2SendEnabled } from "../../shared-session/runtime/sharedV2SendFlag";
-import { normalizeSharedSessionEngine } from "../../shared-session/utils/sharedSessionEngines";
+} from "@mossx/plugin-shared-session/runtime";
+import { isSharedV2SendEnabled } from "@mossx/plugin-shared-session/runtime";
+import { normalizeSharedSessionEngine } from "@mossx/plugin-shared-session/runtime";
 import { type ConversationCompletionEmailMetadata } from "../utils/conversationCompletionEmail";
 import {
   createDomainEventGovernanceConsumer,

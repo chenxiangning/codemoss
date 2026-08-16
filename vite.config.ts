@@ -277,6 +277,18 @@ export default defineConfig(({ command }) => ({
         find: /^@mossx\/plugin-status$/,
         replacement: path.resolve(__dirname, "./packages/plugin-status/src/index.ts"),
       },
+      {
+        find: /^@mossx\/plugin-shared-session\/runtime$/,
+        replacement: path.resolve(__dirname, "./packages/plugin-shared-session/src/runtime.ts"),
+      },
+      {
+        find: /^@mossx\/plugin-shared-session\/ui$/,
+        replacement: path.resolve(__dirname, "./packages/plugin-shared-session/src/ui.ts"),
+      },
+      {
+        find: /^@mossx\/plugin-shared-session$/,
+        replacement: path.resolve(__dirname, "./packages/plugin-shared-session/src/index.ts"),
+      },
       { find: "@", replacement: path.resolve(__dirname, "./src") },
     ],
     dedupe: [

@@ -8,7 +8,7 @@
  * listThreads strip 时与 expandHiddenSharedBindingIds 结果求并集。
  */
 
-import { expandHiddenSharedBindingIds } from "../../shared-session/runtime/sharedSessionSummaries";
+import { expandHiddenSharedBindingIds } from "@mossx/plugin-shared-session/runtime";
 
 const rawIds = new Set<string>();
 

@@ -4,7 +4,7 @@ import type {
   NormalizedHistorySnapshot,
 } from "../contracts/conversationCurtainContracts";
 import { normalizeHistorySnapshot } from "../contracts/conversationCurtainContracts";
-import { normalizeSharedSessionEngine } from "../../shared-session/utils/sharedSessionEngines";
+import { normalizeSharedSessionEngine } from "@mossx/plugin-shared-session/runtime";
 import {
   isSharedProjectionDataSourceEnabled,
   resolveSharedConversationItems,
@@ -19,11 +19,11 @@ import {
   getSharedTargetState,
   getPersistGeneration,
   isSharedTargetPersistInFlight,
-} from "../../shared-session/target/targetStore";
+} from "@mossx/plugin-shared-session/runtime";
 import {
   isResolvedExecutionTarget,
   normalizePersistedExecutionTarget,
-} from "../../shared-session/target/types";
+} from "@mossx/plugin-shared-session/runtime";
 import { mergeHistoryProjectionItems } from "../assembly/conversationAssembler";
 import {
   buildSharedHistoryFinalizeProgress,

@@ -28,7 +28,7 @@ import {
 } from "../utils/threadNormalize";
 import { previewThreadName } from "../../../utils/threadItems";
 import { resolveThreadStabilityDiagnostic } from "../utils/stabilityDiagnostics";
-import type { TurnExecutionSnapshot } from "../../shared-session/target/types";
+import type { TurnExecutionSnapshot } from "@mossx/plugin-shared-session/runtime";
 import { hasCodexBackgroundHelperPreview } from "../utils/codexBackgroundHelpers";
 import { isCodexPrewarmThreadStart } from "../utils/codexPendingPrewarm";
 import {

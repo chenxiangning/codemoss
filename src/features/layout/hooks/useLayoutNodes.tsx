@@ -118,21 +118,21 @@ import {
   type ActiveCanvasSnapshot,
 } from "./activeCanvasStore";
 import { ActiveCanvasComposer } from "./activeCanvasComposerNode";
-import { SharedSendStatusBar } from "../../shared-session/components/SharedSendStatusBar";
-import { ProviderContinuationContextCard } from "../../shared-session/components/ProviderContinuationContextCard";
-import { buildProviderContinuationSourceExcerpt } from "../../shared-session/components/providerContinuationSourceExcerpt";
-import { useSharedSendState } from "../../shared-session/runtime/sharedSendStateStore";
-import { useSharedSendStateRestore } from "../../shared-session/runtime/useSharedSendStateRestore";
+import { SharedSendStatusBar } from "@mossx/plugin-shared-session/ui";
+import { ProviderContinuationContextCard } from "@mossx/plugin-shared-session/ui";
+import { buildProviderContinuationSourceExcerpt } from "@mossx/plugin-shared-session/runtime";
+import { useSharedSendState } from "@mossx/plugin-shared-session/runtime";
+import { useSharedSendStateRestore } from "@mossx/plugin-shared-session/runtime";
 import {
   isComposerInputLocked,
   isComposerSubmitLocked,
   isPickerLocked,
-} from "../../shared-session/target/sendStateMachine";
+} from "@mossx/plugin-shared-session/runtime";
 import { buildShellRuntimeSummary } from "./layoutShellSummary";
 import { buildConversationCanvasNode } from "./conversationCanvasNode";
 import { CollabTimelineWaiting } from "../../multi-agent/components/CollabTimelineWaiting";
 import { useLayoutTopbarSessionTabs } from "./useLayoutTopbarSessionTabs";
-import { resolveIsSharedSession } from "../../shared-session/utils/sharedSessionIdentity";
+import { resolveIsSharedSession } from "@mossx/plugin-shared-session/runtime";
 import {
   buildCompactEmptyNode,
   buildCompactGitBackNode,

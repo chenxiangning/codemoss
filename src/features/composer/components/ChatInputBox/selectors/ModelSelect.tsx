@@ -9,7 +9,7 @@ import {
 } from '@mossx/plugin-models/runtime';
 import type { ProviderModelGroup } from '../modelOptions';
 import type { ProviderTargetGroup } from '../hooks/useProviderTargetCatalogOwners';
-import type { ExecutionTarget } from '../../../../shared-session/target/types';
+import type { ExecutionTarget } from '@mossx/plugin-shared-session/runtime';
 import { PROVIDER_CONTINUATION_UI_ROLLBACK_EVENT } from "../../../../threads/services/providerContinuationRequests";
 import {
   CLAUDE_LOCAL_PROVIDER_PROFILE_ID,

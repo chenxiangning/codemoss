@@ -1,5 +1,5 @@
 import type { EngineType, ThreadSummary } from "../../../types";
-import { resolveIsSharedSession } from "../../shared-session/utils/sharedSessionIdentity";
+import { resolveIsSharedSession } from "@mossx/plugin-shared-session/runtime";
 
 export const TOPBAR_SESSION_TAB_MAX = 5;
 

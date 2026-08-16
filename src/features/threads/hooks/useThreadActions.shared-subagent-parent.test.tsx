@@ -14,7 +14,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ConversationItem } from "../../../types";
 import { listThreads } from "../../../services/tauri";
 import { getThreadTimestamp } from "../../../utils/threadItems";
-import { listSharedSessions } from "../../shared-session/services/sharedSessions";
+import { listSharedSessions } from "@mossx/plugin-shared-session/runtime";
 import { renderActions, workspace } from "./useThreadActions.test-utils";
 
 vi.mock("../../../services/tauri", async (importOriginal) => {

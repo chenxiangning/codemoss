@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { ConversationItem, ThreadSummary } from "../../../types";
-import { expandHiddenSharedBindingIds } from "../../shared-session/runtime/sharedSessionSummaries";
+import { expandHiddenSharedBindingIds } from "@mossx/plugin-shared-session/runtime";
 import {
   buildHiddenAutomaticSessionIdSet,
   filterHiddenAutomaticThreadSummaries,

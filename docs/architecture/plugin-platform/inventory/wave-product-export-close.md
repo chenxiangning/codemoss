@@ -29,6 +29,7 @@
 | `@mossx/plugin-context-ledger` | Composer / Settings / Status / Governance | `src/features/context-ledger` |
 | `@mossx/plugin-governance` | Status Panel | `src/features/governance` |
 | `@mossx/plugin-status` | 布局 / Composer / Settings / subagent-ui | `src/features/status-panel` |
+| `@mossx/plugin-shared-session` | AppShell / 布局 / Composer / 会话 / 设置 | `src/features/shared-session` |
 
 ## 仍未做
 

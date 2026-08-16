@@ -1,10 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { startSharedSession } from "../../shared-session/services/sharedSessions";
+import { startSharedSession } from "@mossx/plugin-shared-session/runtime";
 import {
   getSharedTargetState,
   resetSharedTargetStoreForTests,
-} from "../../shared-session/target/targetStore";
+} from "@mossx/plugin-shared-session/runtime";
 import { createStartSharedSessionForWorkspace } from "./useThreadActions.sessionActions";
 
 vi.mock("../../shared-session/services/sharedSessions", () => ({

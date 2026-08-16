@@ -24,7 +24,7 @@ import {
   renameThreadTitleKey,
   setThreadTitle,
 } from "../../../services/tauri";
-import { listSharedSessions } from "../../shared-session/services/sharedSessions";
+import { listSharedSessions } from "@mossx/plugin-shared-session/runtime";
 import {
   getThreadTimestamp,
   mergeThreadItems,

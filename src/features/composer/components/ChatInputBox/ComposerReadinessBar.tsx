@@ -6,7 +6,7 @@ import type { ModelInfo, ProviderId } from './types';
 import type { ProviderModelGroup } from './modelOptions';
 import { ModelSelect } from './selectors/ModelSelect';
 import type { ProviderTargetGroup } from './hooks/useProviderTargetCatalogOwners';
-import type { ExecutionTarget } from '../../../shared-session/target/types';
+import type { ExecutionTarget } from '@mossx/plugin-shared-session/runtime';
 
 function parseContextChipCount(chip: string, prefix: string) {
   if (!chip.startsWith(prefix)) {

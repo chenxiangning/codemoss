@@ -12,7 +12,7 @@ import {
 } from "../../../services/tauri";
 import { getClientStoreSync } from "../../../services/clientStorage";
 import { clearGlobalRuntimeNotices } from "../../../services/globalRuntimeNotices";
-import { sendSharedSessionTurn } from "../../shared-session/runtime/sendSharedSessionTurn";
+import { sendSharedSessionTurn } from "@mossx/plugin-shared-session/runtime";
 import { useThreadMessaging } from "./useThreadMessaging";
 
 vi.mock("../../../services/toasts", () => ({

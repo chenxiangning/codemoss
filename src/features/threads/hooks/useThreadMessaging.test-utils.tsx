@@ -19,11 +19,11 @@ import { getClientStoreSync } from "../../../services/clientStorage";
 import {
   sendSharedSessionTurn,
   sendSharedSessionTurnRouted,
-} from "../../shared-session/runtime/sendSharedSessionTurn";
+} from "@mossx/plugin-shared-session/runtime";
 import {
   sharedSessionV2AwaitTurnTerminal,
   sharedSessionV2InterruptTurn,
-} from "../../shared-session/services/sharedSessions";
+} from "@mossx/plugin-shared-session/runtime";
 import type { CodexAcceptedTurnRecord } from "../utils/codexConversationLiveness";
 import { useThreadMessaging } from "./useThreadMessaging";
 import type { ThreadState } from "./useThreadsReducer";

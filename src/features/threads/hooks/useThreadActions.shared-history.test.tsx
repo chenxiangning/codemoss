@@ -5,7 +5,7 @@ import { resumeThread } from "../../../services/tauri";
 import {
   loadSharedProjection,
   loadSharedSession,
-} from "../../shared-session/services/sharedSessions";
+} from "@mossx/plugin-shared-session/runtime";
 import { renderActions } from "./useThreadActions.test-utils";
 
 vi.mock("../../../services/tauri", async (importOriginal) => {

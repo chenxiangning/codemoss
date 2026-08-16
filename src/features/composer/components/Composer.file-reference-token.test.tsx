@@ -21,12 +21,12 @@ import {
   getSharedTargetState,
   resetSharedTargetStoreForTests,
   selectNextTarget,
-} from "../../shared-session/target/targetStore";
+} from "@mossx/plugin-shared-session/runtime";
 import {
   dispatchSharedSendEvent,
   getSharedSendState,
   resetSharedSendStateStoreForTests,
-} from "../../shared-session/runtime/sharedSendStateStore";
+} from "@mossx/plugin-shared-session/runtime";
 import { subscribeProviderContinuationDialogRequests } from "../../threads/services/providerContinuationRequests";
 import { pushErrorToast } from "../../../services/toasts";
 

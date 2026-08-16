@@ -1,5 +1,5 @@
 import type { ThreadSummary } from "../../types";
-import { resolveIsSharedSession } from "../shared-session/utils/sharedSessionIdentity";
+import { resolveIsSharedSession } from "@mossx/plugin-shared-session/runtime";
 import {
   QUICK_SWITCHER_RECENT_LIMIT,
   type QuickSwitcherSession,

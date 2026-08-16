@@ -42,14 +42,14 @@ import {
   listPiSessions as listPiSessionsService,
   invalidateSessionIndexForWorkspace as invalidateSessionIndexForWorkspaceService,
 } from "../../../services/tauri";
-import { sendSharedSessionTurnRouted } from "../../shared-session/runtime/sendSharedSessionTurn";
+import { sendSharedSessionTurnRouted } from "@mossx/plugin-shared-session/runtime";
 import {
   SharedActiveAttemptObserverError,
   type SendSharedSessionTurnV2Result,
-} from "../../shared-session/runtime/sendSharedSessionTurnV2";
-import { subscribeSharedSessionAttemptSettlements } from "../../shared-session/runtime/reattachSharedSessionAttempt";
-import { isSharedV2SendEnabled } from "../../shared-session/runtime/sharedV2SendFlag";
-import { sharedSessionV2InterruptTurn as sharedSessionV2InterruptTurnService } from "../../shared-session/services/sharedSessions";
+} from "@mossx/plugin-shared-session/runtime";
+import { subscribeSharedSessionAttemptSettlements } from "@mossx/plugin-shared-session/runtime";
+import { isSharedV2SendEnabled } from "@mossx/plugin-shared-session/runtime";
+import { sharedSessionV2InterruptTurn as sharedSessionV2InterruptTurnService } from "@mossx/plugin-shared-session/runtime";
 import {
   dispatchSharedSendEvent,
   getSharedSendActiveAttemptId,
@@ -57,15 +57,15 @@ import {
   releaseSharedSendAdmission,
   setSharedSendActiveAttempt,
   tryAcquireSharedSend,
-} from "../../shared-session/runtime/sharedSendStateStore";
+} from "@mossx/plugin-shared-session/runtime";
 import {
   getSharedTargetState,
   selectNextTarget,
-} from "../../shared-session/target/targetStore";
+} from "@mossx/plugin-shared-session/runtime";
 import {
   freezeTurnSnapshot,
   isResolvedExecutionTarget,
-} from "../../shared-session/target/types";
+} from "@mossx/plugin-shared-session/runtime";
 import { requestAgentPlan } from "../../multi-agent/runtime/executor";
 import { injectCollabSkillContext } from "../../multi-agent/runtime/skillContextInjection";
 import { injectMainCanvasContext } from "../../multi-agent/runtime/mainCanvasContextInjection";
@@ -212,7 +212,7 @@ import { resolveAgentIconForAgent } from "../../../utils/agentIcons";
 import {
   isSharedSessionSupportedEngine,
   normalizeSharedSessionEngine,
-} from "../../shared-session/utils/sharedSessionEngines";
+} from "@mossx/plugin-shared-session/runtime";
 import {
   engineSupportsImageInput,
   formatEngineImageInputUnsupportedMessage,

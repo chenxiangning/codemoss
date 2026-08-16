@@ -38,20 +38,20 @@ import {
   getSharedTargetState,
   beginSharedTargetPersist,
   endSharedTargetPersist,
-} from "../../shared-session/target/targetStore";
+} from "@mossx/plugin-shared-session/runtime";
 import {
   freezeTurnSnapshot,
   isAtomicExecutionTarget,
   isResolvedExecutionTarget,
   resolveBackendAuthoritativeExecutionTarget,
   type ExecutionTarget,
-} from "../../shared-session/target/types";
-import { persistSharedSessionSelectedTarget } from "../../shared-session/services/sharedSessions";
-import { shouldSuppressSharedTargetPersistToast } from "../../shared-session/target/sharedTargetPersistErrors";
+} from "@mossx/plugin-shared-session/runtime";
+import { persistSharedSessionSelectedTarget } from "@mossx/plugin-shared-session/runtime";
+import { shouldSuppressSharedTargetPersistToast } from "@mossx/plugin-shared-session/runtime";
 import { resolveComposerAtomicSelectedModelId } from "../utils/resolveComposerAtomicSelectedModelId";
 import { resolveDefaultCreationExecutionTarget } from "../utils/resolveDefaultCreationExecutionTarget";
-import { isSharedSessionThreadId } from "../../shared-session/utils/sharedSessionIdentity";
-import { dispatchSharedSendEvent } from "../../shared-session/runtime/sharedSendStateStore";
+import { isSharedSessionThreadId } from "@mossx/plugin-shared-session/runtime";
+import { dispatchSharedSendEvent } from "@mossx/plugin-shared-session/runtime";
 import { requestProviderContinuationDialog } from "../../threads/services/providerContinuationRequests";
 import {
   CLAUDE_LOCAL_PROVIDER_PROFILE_ID,

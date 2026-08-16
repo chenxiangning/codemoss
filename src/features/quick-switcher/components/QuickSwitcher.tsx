@@ -29,7 +29,7 @@ import { formatRelativeTimeShort } from "../../../utils/time";
 import { formatShortcutForPlatform } from "../../../utils/shortcuts";
 import type { EngineType } from "../../../types";
 import { EngineIcon } from "../../engine/components/EngineIcon";
-import { SharedSessionIcon } from "../../shared-session/components/SharedSessionIcon";
+import { SharedSessionIcon } from "@mossx/plugin-shared-session/ui";
 import { useQuickSwitcherRecentFiles } from "../hooks/useQuickSwitcherRecentFiles";
 import type {
   QuickSwitcherNavigationId,

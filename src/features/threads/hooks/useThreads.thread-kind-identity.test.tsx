@@ -9,8 +9,8 @@ import { loadClaudeSession } from "../../../services/tauri";
 import { writeClientStoreData } from "../../../services/clientStorage";
 import type { useAppServerEvents } from "../../app/hooks/useAppServerEvents";
 import { useThreads } from "./useThreads";
-import { clearSharedSessionBindingsForSharedThread } from "../../shared-session/runtime/sharedSessionBridge";
-import { deleteSharedSession } from "../../shared-session/services/sharedSessions";
+import { clearSharedSessionBindingsForSharedThread } from "@mossx/plugin-shared-session/runtime";
+import { deleteSharedSession } from "@mossx/plugin-shared-session/runtime";
 
 type AppServerHandlers = Parameters<typeof useAppServerEvents>[0];
 

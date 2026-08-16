@@ -1,7 +1,7 @@
 import { memo } from "react";
 import type { TopbarSessionTabItem } from "../../layout/hooks/topbarSessionTabs";
 import { EngineIcon } from "../../engine/components/EngineIcon";
-import { SharedSessionIcon } from "../../shared-session/components/SharedSessionIcon";
+import { SharedSessionIcon } from "@mossx/plugin-shared-session/ui";
 
 type TopbarTabMenuPosition = {
   x: number;

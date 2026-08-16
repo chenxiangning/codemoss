@@ -9,7 +9,7 @@ import type {
 import {
   resetSharedTargetStoreForTests,
   selectNextTarget,
-} from "../../shared-session/target/targetStore";
+} from "@mossx/plugin-shared-session/runtime";
 import { MessageRow, ReasoningRow } from "./MessagesRows";
 import { parseReasoning } from "../presentation/messagesReasoning";
 import { toSharedConversationItems } from "../presentation/sharedProjection/dataSource";

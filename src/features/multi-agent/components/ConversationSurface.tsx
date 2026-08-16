@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { pushErrorToast } from "../../../services/toasts";
-import { isSharedSessionThreadId } from "../../shared-session/utils/sharedSessionIdentity";
+import { isSharedSessionThreadId } from "@mossx/plugin-shared-session/runtime";
 import {
   approveAndExecuteAgent,
   forceStopAndUnlock,

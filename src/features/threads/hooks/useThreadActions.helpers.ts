@@ -16,7 +16,7 @@ import {
   classifyContextProtocolText,
   isMossxProgramControlTitle,
 } from "../../../utils/contextProtocol";
-import { remapThreadParentsToSharedOwners } from "../../shared-session/runtime/sharedSessionSummaries";
+import { remapThreadParentsToSharedOwners } from "@mossx/plugin-shared-session/runtime";
 
 const CLAUDE_HISTORY_MESSAGE_ID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

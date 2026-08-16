@@ -5,8 +5,8 @@ import {
   EMPTY_ACTIVE_CANVAS_ITEMS,
   useActiveCanvasSelector,
 } from "../../layout/hooks/activeCanvasStore";
-import { freezeTurnSnapshot } from "../../shared-session/target/types";
-import type { TurnExecutionSnapshot } from "../../shared-session/target/types";
+import { freezeTurnSnapshot } from "@mossx/plugin-shared-session/runtime";
+import type { TurnExecutionSnapshot } from "@mossx/plugin-shared-session/runtime";
 import { buildAgentCanvasThreadId } from "../runtime/agentCanvasThread";
 import { pickLongestStageBody } from "../utils/stageBodyText";
 import type {

@@ -10,7 +10,7 @@ import {
 import {
   isResolvedExecutionTarget,
   normalizePersistedExecutionTarget,
-} from "../../shared-session/target/types";
+} from "@mossx/plugin-shared-session/runtime";
 
 const STORE_NAME = "composer";
 const STORE_KEY = "sharedQueuedFollowUps.v1";

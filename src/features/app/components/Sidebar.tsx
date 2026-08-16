@@ -8,7 +8,7 @@ import type {
   WorkspaceGroup as WorkspaceGroupConfig,
   WorkspaceInfo,
 } from "../../../types";
-import type { SharedSessionSupportedEngine } from "../../shared-session/utils/sharedSessionEngines";
+import type { SharedSessionSupportedEngine } from "@mossx/plugin-shared-session/runtime";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   Dispatch,
@@ -64,7 +64,7 @@ import type {
   EngineRefreshResult,
 } from "../../engine/hooks/useEngineController";
 import { TooltipIconButton } from "../../../components/ui/tooltip-icon-button";
-import { SharedSessionIcon } from "../../shared-session/components/SharedSessionIcon";
+import { SharedSessionIcon } from "@mossx/plugin-shared-session/ui";
 import { pushErrorToast } from "../../../services/toasts";
 import {
   EMPTY_SESSION_FOLDER_OVERRIDES,

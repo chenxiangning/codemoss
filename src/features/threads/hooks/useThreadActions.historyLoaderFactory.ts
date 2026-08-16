@@ -18,7 +18,7 @@ import { createSharedHistoryLoader } from "../loaders/sharedHistoryLoader";
 import {
   loadSharedProjection as loadSharedProjectionService,
   loadSharedSession as loadSharedSessionService,
-} from "../../shared-session/services/sharedSessions";
+} from "@mossx/plugin-shared-session/runtime";
 import type { NormalizedHistorySnapshot } from "../contracts/conversationCurtainContracts";
 import type { HistoryLoadingProgressListener } from "../utils/historyLoadingProgress";
 

@@ -5,7 +5,7 @@ import { useTranslation } from "react-i18next";
 import { pushErrorToast } from "../../../services/toasts";
 import { loadSubagentStyles } from "../../../styles/featureStyleLoaders";
 import { useFeatureStylesReady } from "../../../styles/useFeatureStylesReady";
-import { isSharedSessionSupportedEngine } from "../../shared-session/utils/sharedSessionEngines";
+import { isSharedSessionSupportedEngine } from "@mossx/plugin-shared-session/runtime";
 import type { EngineType } from "../../../types";
 import {
   selectTemplate,

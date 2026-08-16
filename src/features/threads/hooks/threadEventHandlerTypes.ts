@@ -6,7 +6,7 @@ import type {
 } from "../../../types";
 import type { ThreadAction } from "./useThreadsReducer";
 import type { DomainEventRuntimeController } from "../domain-events";
-import type { TurnExecutionSnapshot } from "../../shared-session/target/types";
+import type { TurnExecutionSnapshot } from "@mossx/plugin-shared-session/runtime";
 
 export type ThreadEventHandlersOptions = {
   activeThreadId: string | null;

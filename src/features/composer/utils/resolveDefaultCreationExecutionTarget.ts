@@ -1,6 +1,6 @@
 import type { EngineType } from "../../../types";
-import type { ExecutionTarget } from "../../shared-session/target/types";
-import { isSharedSessionSupportedEngine } from "../../shared-session/utils/sharedSessionEngines";
+import type { ExecutionTarget } from "@mossx/plugin-shared-session/runtime";
+import { isSharedSessionSupportedEngine } from "@mossx/plugin-shared-session/runtime";
 import {
   CLAUDE_LOCAL_PROVIDER_PROFILE_ID,
   CODEX_DISK_PROVIDER_PROFILE_ID,

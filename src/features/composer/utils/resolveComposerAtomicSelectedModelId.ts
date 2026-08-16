@@ -1,4 +1,4 @@
-import type { ExecutionTarget } from "../../shared-session/target/types";
+import type { ExecutionTarget } from "@mossx/plugin-shared-session/runtime";
 
 /**
  * Composer → Atomic ModelSelect 的 selectedModelId 投影。

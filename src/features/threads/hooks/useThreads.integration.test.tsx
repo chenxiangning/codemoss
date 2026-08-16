@@ -14,13 +14,13 @@ import {
   startThread,
 } from "../../../services/tauri";
 import { appendRendererDiagnostic } from "../../../services/rendererDiagnostics";
-import { sendSharedSessionTurnRouted } from "../../shared-session/runtime/sendSharedSessionTurn";
-import { resetSharedSendStateStoreForTests } from "../../shared-session/runtime/sharedSendStateStore";
-import { startSharedSession } from "../../shared-session/services/sharedSessions";
+import { sendSharedSessionTurnRouted } from "@mossx/plugin-shared-session/runtime";
+import { resetSharedSendStateStoreForTests } from "@mossx/plugin-shared-session/runtime";
+import { startSharedSession } from "@mossx/plugin-shared-session/runtime";
 import {
   resetSharedTargetStoreForTests,
   selectNextTarget,
-} from "../../shared-session/target/targetStore";
+} from "@mossx/plugin-shared-session/runtime";
 import { computeThreadItemCacheMax, useThreads } from "./useThreads";
 
 type AppServerHandlers = Parameters<typeof useAppServerEvents>[0];

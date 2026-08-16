@@ -1,6 +1,6 @@
 import { useEffect, useMemo } from "react";
 
-import type { ExecutionTarget } from "../../shared-session/target/types";
+import type { ExecutionTarget } from "@mossx/plugin-shared-session/runtime";
 import { resolveAtomicReasoningOptions } from "@mossx/plugin-models/runtime";
 import { ModelSelect } from "../../composer/components/ChatInputBox/selectors/ModelSelect";
 import { ReasoningSelect } from "../../composer/components/ChatInputBox/selectors/ReasoningSelect";

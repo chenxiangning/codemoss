@@ -21,13 +21,13 @@ import {
   getSharedSendState,
   getSharedSendStateRevision,
   useSharedSendState,
-} from "../../shared-session/runtime/sharedSendStateStore";
-import { getSharedTargetState } from "../../shared-session/target/targetStore";
+} from "@mossx/plugin-shared-session/runtime";
+import { getSharedTargetState } from "@mossx/plugin-shared-session/runtime";
 import {
   isResolvedExecutionTarget,
   type ResolvedExecutionTarget,
-} from "../../shared-session/target/types";
-import type { SharedSendState } from "../../shared-session/target/sendStateMachine";
+} from "@mossx/plugin-shared-session/runtime";
+import type { SharedSendState } from "@mossx/plugin-shared-session/runtime";
 import {
   buildQueuedHandoffBubbleItem,
   doesConversationItemMatchUserBubble,

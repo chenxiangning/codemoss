@@ -71,7 +71,7 @@ import {
   type AppShellDomainContexts,
   type DomainFlattenIdentityCache,
 } from "../../domains/appShellDomainContexts";
-import { isSharedSessionThreadId } from "../../../features/shared-session/utils/sharedSessionIdentity";
+import { isSharedSessionThreadId } from "@mossx/plugin-shared-session/runtime";
 
 type AppShellLayoutNodesContext = Record<string, any>;
 

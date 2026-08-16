@@ -94,7 +94,7 @@ import {
 import {
   loadSharedProjection,
   loadSharedSession,
-} from "../../../../shared-session/services/sharedSessions";
+} from "@mossx/plugin-shared-session/runtime";
 import { createSharedHistoryLoader } from "../../../../threads/loaders/sharedHistoryLoader";
 
 type NoticeState =

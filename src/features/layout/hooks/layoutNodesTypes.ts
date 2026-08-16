@@ -22,7 +22,7 @@ import type {
   ReviewPromptStep,
 } from "../../threads/hooks/useReviewPrompt";
 import type { WorkspaceLaunchScriptsState } from "../../app/hooks/useWorkspaceLaunchScripts";
-import type { SharedSessionSupportedEngine } from "../../shared-session/utils/sharedSessionEngines";
+import type { SharedSessionSupportedEngine } from "@mossx/plugin-shared-session/runtime";
 import type { HistoryLoadingProgress } from "../../threads/utils/historyLoadingProgress";
 import type { OpenAppMenuExtraAction } from "../../app/components/OpenAppMenu";
 import type {

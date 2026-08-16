@@ -29,11 +29,11 @@ import {
   resolveSharedSessionBindingByNativeThread,
   resolveSharedSessionBindingFromRuntimeOwner,
   resolveSharedRuntimeControlOwner,
-} from "../../shared-session/runtime/sharedSessionBridge";
-import { isSharedV2SendEnabled } from "../../shared-session/runtime/sharedV2SendFlag";
-import type { SharedSessionNativeBinding } from "../../shared-session/runtime/sharedSessionBridge";
-import { getActiveTurnTargetForAttempt } from "../../shared-session/target/targetStore";
-import { updateSharedSessionNativeBinding as updateSharedSessionNativeBindingService } from "../../shared-session/services/sharedSessions";
+} from "@mossx/plugin-shared-session/runtime";
+import { isSharedV2SendEnabled } from "@mossx/plugin-shared-session/runtime";
+import type { SharedSessionNativeBinding } from "@mossx/plugin-shared-session/runtime";
+import { getActiveTurnTargetForAttempt } from "@mossx/plugin-shared-session/runtime";
+import { updateSharedSessionNativeBinding as updateSharedSessionNativeBindingService } from "@mossx/plugin-shared-session/runtime";
 import { noteThreadAppServerEventReceived } from "../../threads/utils/streamLatencyDiagnostics";
 import {
   isAppServerEventBatchConsumerEnabled,

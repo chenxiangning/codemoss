@@ -11,14 +11,14 @@ import {
   clearSharedSessionBindingsForSharedThread,
   registerSharedSessionNativeBinding,
   resolveSharedSessionBindingByNativeThread,
-} from "../../shared-session/runtime/sharedSessionBridge";
-import { setSharedV2SendOverride } from "../../shared-session/runtime/sharedV2SendFlag";
+} from "@mossx/plugin-shared-session/runtime";
+import { setSharedV2SendOverride } from "@mossx/plugin-shared-session/runtime";
 import {
   beginTurn,
   resetSharedTargetStoreForTests,
-} from "../../shared-session/target/targetStore";
-import { freezeTurnSnapshot } from "../../shared-session/target/types";
-import { updateSharedSessionNativeBinding as updateSharedSessionNativeBindingService } from "../../shared-session/services/sharedSessions";
+} from "@mossx/plugin-shared-session/runtime";
+import { freezeTurnSnapshot } from "@mossx/plugin-shared-session/runtime";
+import { updateSharedSessionNativeBinding as updateSharedSessionNativeBindingService } from "@mossx/plugin-shared-session/runtime";
 import { useAppServerEvents } from "./useAppServerEvents";
 
 vi.mock("../../../services/events", async (importOriginal) => {

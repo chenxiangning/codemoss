@@ -6,7 +6,7 @@
 import type { ReactNode } from 'react';
 import { CODEX_MODEL_CATALOG } from "@mossx/plugin-models/runtime";
 import type { ComposerSendReadiness } from '../../utils/composerSendReadiness';
-import type { ExecutionTarget } from '../../../shared-session/target/types';
+import type { ExecutionTarget } from '@mossx/plugin-shared-session/runtime';
 
 // ============================================================
 // Core Entity Types

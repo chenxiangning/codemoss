@@ -23,7 +23,7 @@ import {
 import {
   expandHiddenSharedBindingIds,
   lookupSharedOwnerByNativeParent,
-} from "../../shared-session/runtime/sharedSessionSummaries";
+} from "@mossx/plugin-shared-session/runtime";
 
 export type WorkspaceGroupSection = {
   id: string | null;
@@ -107,7 +107,7 @@ export function isPendingEngineThreadId(threadId: string): boolean {
 
 // 身份判定唯一实现已上提：shared-session/utils/sharedSessionIdentity.ts
 // （fix-shared-session-identity-id-first）。此处仅 re-export 保 callsite 兼容。
-export { isSharedSessionThreadId } from "../../shared-session/utils/sharedSessionIdentity";
+export { isSharedSessionThreadId } from "@mossx/plugin-shared-session/runtime";
 
 export function isSessionCatalogNotReadyError(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error);

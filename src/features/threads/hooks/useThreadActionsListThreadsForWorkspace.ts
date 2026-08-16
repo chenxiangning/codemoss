@@ -35,14 +35,14 @@ import {
   unionHideSets,
 } from "./sharedNativeVisibility";
 import { getThreadTimestamp, previewThreadName } from "../../../utils/threadItems";
-import { listSharedSessions as listSharedSessionsService } from "../../shared-session/services/sharedSessions";
+import { listSharedSessions as listSharedSessionsService } from "@mossx/plugin-shared-session/runtime";
 import {
   buildNativeOwnerToSharedThreadMap,
   expandHiddenSharedBindingIds,
   normalizeSharedSessionSummaries,
   remapThreadParentsToSharedOwners,
   toSharedThreadSummary,
-} from "../../shared-session/runtime/sharedSessionSummaries";
+} from "@mossx/plugin-shared-session/runtime";
 import { getCollabWorkerNativeHideIds } from "../../multi-agent/runtime/collabNativeHideRegistry";
 import { asString } from "../utils/threadNormalize";
 import { sanitizeNativeSessionTitle } from "../utils/sessionDisplayProjection";

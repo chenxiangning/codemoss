@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { ExecutionTarget } from "../../shared-session/target/types";
+import type { ExecutionTarget } from "@mossx/plugin-shared-session/runtime";
 import { resolveComposerAtomicSelectedModelId } from "./resolveComposerAtomicSelectedModelId";
 
 const grokLocalTarget: ExecutionTarget = {

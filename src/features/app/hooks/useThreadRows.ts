@@ -5,7 +5,7 @@ import type { ThreadSummary } from "../../../types";
 import {
   buildSharedSidebarHiddenParentKeys,
   isSharedSidebarHiddenPup,
-} from "../../shared-session/runtime/sharedSessionSummaries";
+} from "@mossx/plugin-shared-session/runtime";
 
 type ThreadRow = {
   thread: ThreadSummary;

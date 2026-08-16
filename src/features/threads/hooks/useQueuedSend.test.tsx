@@ -8,11 +8,11 @@ import {
   resetSharedSendStateStoreForTests,
   setSharedSendActiveAttempt,
   tryAcquireSharedSend,
-} from "../../shared-session/runtime/sharedSendStateStore";
+} from "@mossx/plugin-shared-session/runtime";
 import {
   resetSharedTargetStoreForTests,
   selectNextTarget,
-} from "../../shared-session/target/targetStore";
+} from "@mossx/plugin-shared-session/runtime";
 import {
   __setEnableBackgroundQueueDrainForTests,
   buildQueueDrainSignal,

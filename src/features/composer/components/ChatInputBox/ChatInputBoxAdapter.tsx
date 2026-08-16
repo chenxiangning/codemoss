@@ -36,7 +36,7 @@ import type {
   SkillItem,
   NoteCardItem,
 } from './types';
-import type { ExecutionTarget } from '../../../shared-session/target/types';
+import type { ExecutionTarget } from '@mossx/plugin-shared-session/runtime';
 import type { QueuedMessage as ComposerQueuedMessage } from '../../../../types';
 import type { CustomCommandOption, CustomPromptOption } from '../../../../types';
 import type { EngineType } from '../../../../types';
@@ -45,7 +45,7 @@ import type { ComposerSendReadiness } from '../../utils/composerSendReadiness';
 import { formatEngineVersionLabel } from '../../../engine/utils/engineLabels';
 import { projectMemoryFacade } from '../../../project-memory/services/projectMemoryFacade';
 import { noteCardsFacade } from '@mossx/plugin-notes/runtime';
-import { isSharedSessionSupportedEngine } from '../../../shared-session/utils/sharedSessionEngines';
+import { isSharedSessionSupportedEngine } from '@mossx/plugin-shared-session/runtime';
 import {
   getClaudeProviders,
   getClaudeAlwaysThinkingEnabled,
