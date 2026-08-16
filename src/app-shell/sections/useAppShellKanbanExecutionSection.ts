@@ -35,7 +35,7 @@ import {
 import {
   buildBrowserContextAttachment,
   getActiveBrowserContext,
-} from "../../features/browser-agent";
+} from "@mossx/plugin-browser/runtime";
 import type { TaskRunRecord } from "../../features/tasks/types";
 import type { ThreadSummary, WorkspaceInfo } from "../../types";
 import { isEngineExecutionEnabled } from "../../utils/engineExecutionPolicy";

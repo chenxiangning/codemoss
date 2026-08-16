@@ -153,7 +153,7 @@ const FileViewPanel = lazy(() =>
   })),
 );
 const BrowserDock = lazy(() =>
-  import("../../browser-agent/components/BrowserDock").then((m) => ({
+  import("@mossx/plugin-browser/ui").then((m) => ({
     default: m.BrowserDock,
   })),
 );

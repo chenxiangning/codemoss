@@ -6,7 +6,7 @@ import type { EngineDisplayInfo } from "../../engine/hooks/useEngineController";
 import type { TaskRunRecord } from "../../tasks/types";
 import type { ThreadDeleteErrorCode } from "../../threads/hooks/useThreads";
 import { EngineIcon } from "../../engine/components/EngineIcon";
-import { BrowserDock } from "../../browser-agent";
+import { BrowserDock } from "@mossx/plugin-browser/ui";
 import { TaskCenterView } from "../../tasks/components/TaskCenterView";
 import { useTaskRunStore } from "../../tasks/hooks/useTaskRunStore";
 import { compareTaskRunSurfacePriority, describeTaskRunSurface } from "../../tasks/utils/taskRunSurface";

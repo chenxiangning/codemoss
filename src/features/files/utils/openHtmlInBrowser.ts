@@ -1,4 +1,4 @@
-import { requestBrowserDockOpenUrl } from "../../browser-agent/state/dockEvents";
+import { requestBrowserDockOpenUrl } from "@mossx/plugin-browser/runtime";
 
 const HTML_FILE_EXTENSION_PATTERN = /\.(html|htm)$/i;
 

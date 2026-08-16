@@ -10,7 +10,7 @@ import type {
 import {
   parseBrowserContextPrompt,
   stripBrowserContextPrompt,
-} from "../features/browser-agent/utils/attachment";
+} from "@mossx/plugin-browser/runtime";
 import {
   parseIntentCanvasContextSummaries,
   stripIntentCanvasContextPrompt,

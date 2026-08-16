@@ -89,6 +89,18 @@ export default defineConfig(({ command }) => ({
         find: /^@mossx\/plugin-intent-canvas$/,
         replacement: path.resolve(__dirname, "./packages/plugin-intent-canvas/src/index.ts"),
       },
+      {
+        find: /^@mossx\/plugin-browser\/runtime$/,
+        replacement: path.resolve(__dirname, "./packages/plugin-browser/src/runtime.ts"),
+      },
+      {
+        find: /^@mossx\/plugin-browser\/ui$/,
+        replacement: path.resolve(__dirname, "./packages/plugin-browser/src/ui.ts"),
+      },
+      {
+        find: /^@mossx\/plugin-browser$/,
+        replacement: path.resolve(__dirname, "./packages/plugin-browser/src/index.ts"),
+      },
       { find: "@", replacement: path.resolve(__dirname, "./src") },
     ],
     dedupe: [

@@ -1,7 +1,7 @@
 import { Suspense, useState } from "react";
 import { useWindowLabel } from "./features/layout/hooks/useWindowLabel";
 import { isDetachedFileExplorerWindowLabel } from "./features/files/detachedFileExplorer";
-import { isBrowserAgentDockWindowLabel } from "./features/browser-agent/browserAgentDockWindow";
+import { isBrowserAgentDockWindowLabel } from "@mossx/plugin-browser/runtime";
 import { StartupGateOverlay } from "./features/app/components/StartupGateOverlay";
 import { isStartupGateOverlayTestEnabled } from "./features/startup-orchestration/utils/startupGateOverlayTestFlag";
 import { LazyAppShell } from "./router/lazyAppShell";

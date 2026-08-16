@@ -264,7 +264,7 @@ import {
   shouldDeferCodexActivityUntilTurnAccepted,
 } from "../utils/codexConversationLiveness";
 import { drainLiveAssistantTextTail } from "../utils/liveAssistantTextChannel";
-import { formatBrowserContextPromptOnce } from "../../browser-agent";
+import { formatBrowserContextPromptOnce } from "@mossx/plugin-browser/runtime";
 import {
   buildLocalizedMemoryScoutPreviewText,
   extractClaudeCandidateSessionId,

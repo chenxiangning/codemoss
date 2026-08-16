@@ -169,11 +169,8 @@ import {
   filterRetainedEntries,
 } from "../../context-ledger/utils/contextLedgerGovernance";
 import { resolveDualContextUsageModel } from "../../context-ledger/utils/contextLedgerProjection";
-import {
-  BrowserContextPreview,
-  useBrowserContextAttachment,
-} from "../../browser-agent";
-import { requestBrowserDockOpenUrl } from "../../browser-agent/state/dockEvents";
+import { useBrowserContextAttachment, requestBrowserDockOpenUrl } from "@mossx/plugin-browser/runtime";
+import { BrowserContextPreview } from "@mossx/plugin-browser/ui";
 import { IntentCanvasAttachmentCard } from "@mossx/plugin-intent-canvas/ui";
 import type { IntentCanvasDocument } from "@mossx/plugin-intent-canvas/runtime";
 import { resolveBrowserNavigationUrl } from "../utils/browserNavigation";

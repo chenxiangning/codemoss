@@ -27,7 +27,10 @@
       "@mossx/plugin-project-map/ui": ["./packages/plugin-project-map/src/ui.ts"],
       "@mossx/plugin-intent-canvas": ["./packages/plugin-intent-canvas/src/index.ts"],
       "@mossx/plugin-intent-canvas/runtime": ["./packages/plugin-intent-canvas/src/runtime.ts"],
-      "@mossx/plugin-intent-canvas/ui": ["./packages/plugin-intent-canvas/src/ui.ts"]
+      "@mossx/plugin-intent-canvas/ui": ["./packages/plugin-intent-canvas/src/ui.ts"],
+      "@mossx/plugin-browser": ["./packages/plugin-browser/src/index.ts"],
+      "@mossx/plugin-browser/runtime": ["./packages/plugin-browser/src/runtime.ts"],
+      "@mossx/plugin-browser/ui": ["./packages/plugin-browser/src/ui.ts"]
     },
 
     /* Linting */

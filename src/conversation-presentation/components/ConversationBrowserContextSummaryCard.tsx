@@ -1,5 +1,5 @@
 import type { ConversationPresentationContext } from "../../types";
-import { BrowserContextSummaryCard } from "../../features/browser-agent";
+import { BrowserContextSummaryCard } from "@mossx/plugin-browser/ui";
 
 type BrowserPresentationContext = Extract<
   ConversationPresentationContext,

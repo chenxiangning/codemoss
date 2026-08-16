@@ -15,7 +15,7 @@ vi.mock("../../tasks/utils/taskRunStorage", async (importOriginal) => {
   };
 });
 
-vi.mock("../../browser-agent/components/BrowserDock", () => ({
+vi.mock("@mossx/plugin-browser/ui", () => ({
   BrowserDock: () => null,
 }));
 
