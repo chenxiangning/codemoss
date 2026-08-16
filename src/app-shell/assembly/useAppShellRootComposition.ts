@@ -9,7 +9,7 @@ import { useAutoExitEmptyDiff } from "../../features/git/hooks/useAutoExitEmptyD
 import { useModels } from "@mossx/plugin-models/runtime";
 import { useCollaborationModes } from "../../features/collaboration/hooks/useCollaborationModes";
 import { useSkills } from "@mossx/plugin-skills/runtime";
-import { useCustomCommands } from "../../features/commands/hooks/useCustomCommands";
+import { useCustomCommands } from "@mossx/plugin-commands/runtime";
 import { useCustomPrompts } from "../../features/prompts/hooks/useCustomPrompts";
 import { useWorkspaceFiles } from "../../features/workspaces/hooks/useWorkspaceFiles";
 import { useDebugLog } from "../../features/debug/hooks/useDebugLog";

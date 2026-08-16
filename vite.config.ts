@@ -205,6 +205,14 @@ export default defineConfig(({ command }) => ({
         find: /^@mossx\/plugin-skills$/,
         replacement: path.resolve(__dirname, "./packages/plugin-skills/src/index.ts"),
       },
+      {
+        find: /^@mossx\/plugin-commands\/runtime$/,
+        replacement: path.resolve(__dirname, "./packages/plugin-commands/src/runtime.ts"),
+      },
+      {
+        find: /^@mossx\/plugin-commands$/,
+        replacement: path.resolve(__dirname, "./packages/plugin-commands/src/index.ts"),
+      },
       { find: "@", replacement: path.resolve(__dirname, "./src") },
     ],
     dedupe: [

@@ -56,7 +56,9 @@
       "@mossx/plugin-models/ui": ["./packages/plugin-models/src/ui.ts"],
       "@mossx/plugin-skills": ["./packages/plugin-skills/src/index.ts"],
       "@mossx/plugin-skills/runtime": ["./packages/plugin-skills/src/runtime.ts"],
-      "@mossx/plugin-skills/ui": ["./packages/plugin-skills/src/ui.ts"]
+      "@mossx/plugin-skills/ui": ["./packages/plugin-skills/src/ui.ts"],
+      "@mossx/plugin-commands": ["./packages/plugin-commands/src/index.ts"],
+      "@mossx/plugin-commands/runtime": ["./packages/plugin-commands/src/runtime.ts"]
     },
 
     /* Linting */

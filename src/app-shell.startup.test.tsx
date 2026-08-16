@@ -704,7 +704,7 @@ vi.mock("./features/prompts/hooks/useCustomPrompts", () => ({
   }),
 }));
 
-vi.mock("./features/commands/hooks/useCustomCommands", () => ({
+vi.mock("@mossx/plugin-commands/runtime", () => ({
   useCustomCommands: () => ({
     commands: [],
   }),
