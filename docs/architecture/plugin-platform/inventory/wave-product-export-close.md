@@ -45,6 +45,7 @@
 | `@mossx/plugin-about` | router | `src/features/about` |
 | `@mossx/plugin-shared` | Settings / Workspaces | `src/features/shared` |
 | `@mossx/plugin-engine-codex` | 会话 history factory / Settings | `src/features/threads/loaders/codex*` |
+| `@mossx/plugin-engine-gemini` | 会话 history factory / Settings / resume | `src/features/threads/loaders/gemini*` |
 
 ## 仍未做
 

@@ -9,7 +9,7 @@ import {
 } from "../../../services/tauri";
 import { createClaudeHistoryLoader } from "@mossx/plugin-engine-claude/runtime";
 import { createCodexHistoryLoader } from "@mossx/plugin-engine-codex/runtime";
-import { createGeminiHistoryLoader } from "../loaders/geminiHistoryLoader";
+import { createGeminiHistoryLoader } from "@mossx/plugin-engine-gemini/runtime";
 import { createGrokHistoryLoader } from "../loaders/grokHistoryLoader";
 import { createKimiHistoryLoader } from "../loaders/kimiHistoryLoader";
 import { createOpenCodeHistoryLoader } from "../loaders/opencodeHistoryLoader";

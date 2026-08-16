@@ -116,7 +116,9 @@
       "@mossx/plugin-shared/runtime": ["./packages/plugin-shared/src/runtime.ts"],
       "@mossx/plugin-shared/ui": ["./packages/plugin-shared/src/ui.ts"],
       "@mossx/plugin-engine-codex": ["./packages/plugin-engine-codex/src/index.ts"],
-      "@mossx/plugin-engine-codex/runtime": ["./packages/plugin-engine-codex/src/runtime.ts"]
+      "@mossx/plugin-engine-codex/runtime": ["./packages/plugin-engine-codex/src/runtime.ts"],
+      "@mossx/plugin-engine-gemini": ["./packages/plugin-engine-gemini/src/index.ts"],
+      "@mossx/plugin-engine-gemini/runtime": ["./packages/plugin-engine-gemini/src/runtime.ts"]
     },
 
     /* Linting */

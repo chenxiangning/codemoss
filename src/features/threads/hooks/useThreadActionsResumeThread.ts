@@ -21,7 +21,7 @@ import {
   extractClaudeHistoryTokenUsage,
   parseClaudeHistoryMessagesWithShadowRecovery,
 } from "@mossx/plugin-engine-claude/runtime";
-import { parseGeminiHistoryMessages } from "../loaders/geminiHistoryParser";
+import { parseGeminiHistoryMessages } from "@mossx/plugin-engine-gemini/runtime";
 import { parseGrokHistoryMessages } from "../loaders/grokHistoryParser";
 import { parseKimiHistoryMessages } from "../loaders/kimiHistoryParser";
 import { parsePiHistoryMessages } from "../loaders/piHistoryParser";

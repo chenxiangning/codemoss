@@ -58,7 +58,7 @@ import {
 } from "../../../../../utils/threadItems";
 import { parseClaudeHistoryMessagesWithShadowRecovery } from "@mossx/plugin-engine-claude/runtime";
 import { parseCodexSessionHistory } from "@mossx/plugin-engine-codex/runtime";
-import { parseGeminiHistoryMessages } from "../../../../threads/loaders/geminiHistoryParser";
+import { parseGeminiHistoryMessages } from "@mossx/plugin-engine-gemini/runtime";
 import {
   buildWorkspaceSessionSelectionKey,
   useWorkspaceSessionCatalog,

@@ -445,6 +445,14 @@ export default defineConfig(({ command }) => ({
         find: /^@mossx\/plugin-engine-codex$/,
         replacement: path.resolve(__dirname, "./packages/plugin-engine-codex/src/index.ts"),
       },
+      {
+        find: /^@mossx\/plugin-engine-gemini\/runtime$/,
+        replacement: path.resolve(__dirname, "./packages/plugin-engine-gemini/src/runtime.ts"),
+      },
+      {
+        find: /^@mossx\/plugin-engine-gemini$/,
+        replacement: path.resolve(__dirname, "./packages/plugin-engine-gemini/src/index.ts"),
+      },
       { find: "@", replacement: path.resolve(__dirname, "./src") },
     ],
     dedupe: [
