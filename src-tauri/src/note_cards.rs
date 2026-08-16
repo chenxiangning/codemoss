@@ -1220,8 +1220,7 @@ pub(crate) fn note_card_list(
     )
 }
 
-#[tauri::command]
-pub(crate) fn note_card_get(
+pub(crate) fn note_card_get_core(
     note_id: String,
     workspace_id: String,
     workspace_name: Option<String>,
@@ -1252,7 +1251,24 @@ pub(crate) fn note_card_get(
 }
 
 #[tauri::command]
-pub(crate) fn note_card_create(
+pub(crate) fn note_card_get(
+    note_id: String,
+    workspace_id: String,
+    workspace_name: Option<String>,
+    workspace_path: Option<String>,
+) -> Result<Option<WorkspaceNoteCard>, String> {
+    if crate::plugin_runtime::notes_compat::notes_compat_facade_enabled() {
+        return crate::plugin_runtime::notes_compat::NotesCompatAdapter::core().get_note(
+            note_id,
+            workspace_id,
+            workspace_name,
+            workspace_path,
+        );
+    }
+    note_card_get_core(note_id, workspace_id, workspace_name, workspace_path)
+}
+
+pub(crate) fn note_card_create_core(
     input: CreateWorkspaceNoteCardInput,
 ) -> Result<WorkspaceNoteCard, String> {
     with_file_lock(|| {
@@ -1297,7 +1313,16 @@ pub(crate) fn note_card_create(
 }
 
 #[tauri::command]
-pub(crate) fn note_card_update(
+pub(crate) fn note_card_create(
+    input: CreateWorkspaceNoteCardInput,
+) -> Result<WorkspaceNoteCard, String> {
+    if crate::plugin_runtime::notes_compat::notes_compat_facade_enabled() {
+        return crate::plugin_runtime::notes_compat::NotesCompatAdapter::core().create_note(input);
+    }
+    note_card_create_core(input)
+}
+
+pub(crate) fn note_card_update_core(
     note_id: String,
     workspace_id: String,
     patch: UpdateWorkspaceNoteCardInput,
@@ -1380,7 +1405,22 @@ pub(crate) fn note_card_update(
 }
 
 #[tauri::command]
-pub(crate) fn note_card_archive(
+pub(crate) fn note_card_update(
+    note_id: String,
+    workspace_id: String,
+    patch: UpdateWorkspaceNoteCardInput,
+) -> Result<WorkspaceNoteCard, String> {
+    if crate::plugin_runtime::notes_compat::notes_compat_facade_enabled() {
+        return crate::plugin_runtime::notes_compat::NotesCompatAdapter::core().update_note(
+            note_id,
+            workspace_id,
+            patch,
+        );
+    }
+    note_card_update_core(note_id, workspace_id, patch)
+}
+
+pub(crate) fn note_card_archive_core(
     note_id: String,
     workspace_id: String,
     workspace_name: Option<String>,
@@ -1412,7 +1452,24 @@ pub(crate) fn note_card_archive(
 }
 
 #[tauri::command]
-pub(crate) fn note_card_restore(
+pub(crate) fn note_card_archive(
+    note_id: String,
+    workspace_id: String,
+    workspace_name: Option<String>,
+    workspace_path: Option<String>,
+) -> Result<WorkspaceNoteCard, String> {
+    if crate::plugin_runtime::notes_compat::notes_compat_facade_enabled() {
+        return crate::plugin_runtime::notes_compat::NotesCompatAdapter::core().archive_note(
+            note_id,
+            workspace_id,
+            workspace_name,
+            workspace_path,
+        );
+    }
+    note_card_archive_core(note_id, workspace_id, workspace_name, workspace_path)
+}
+
+pub(crate) fn note_card_restore_core(
     note_id: String,
     workspace_id: String,
     workspace_name: Option<String>,
@@ -1444,7 +1501,24 @@ pub(crate) fn note_card_restore(
 }
 
 #[tauri::command]
-pub(crate) fn note_card_delete(
+pub(crate) fn note_card_restore(
+    note_id: String,
+    workspace_id: String,
+    workspace_name: Option<String>,
+    workspace_path: Option<String>,
+) -> Result<WorkspaceNoteCard, String> {
+    if crate::plugin_runtime::notes_compat::notes_compat_facade_enabled() {
+        return crate::plugin_runtime::notes_compat::NotesCompatAdapter::core().restore_note(
+            note_id,
+            workspace_id,
+            workspace_name,
+            workspace_path,
+        );
+    }
+    note_card_restore_core(note_id, workspace_id, workspace_name, workspace_path)
+}
+
+pub(crate) fn note_card_delete_core(
     note_id: String,
     workspace_id: String,
     workspace_name: Option<String>,
@@ -1468,6 +1542,24 @@ pub(crate) fn note_card_delete(
         }
         Ok(())
     })
+}
+
+#[tauri::command]
+pub(crate) fn note_card_delete(
+    note_id: String,
+    workspace_id: String,
+    workspace_name: Option<String>,
+    workspace_path: Option<String>,
+) -> Result<(), String> {
+    if crate::plugin_runtime::notes_compat::notes_compat_facade_enabled() {
+        return crate::plugin_runtime::notes_compat::NotesCompatAdapter::core().delete_note(
+            note_id,
+            workspace_id,
+            workspace_name,
+            workspace_path,
+        );
+    }
+    note_card_delete_core(note_id, workspace_id, workspace_name, workspace_path)
 }
 
 #[cfg(test)]

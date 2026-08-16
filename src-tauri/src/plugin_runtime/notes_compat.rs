@@ -120,6 +120,62 @@ impl NotesCompatAdapter {
             page_size,
         )
     }
+
+    pub fn get_note(
+        &self,
+        note_id: String,
+        workspace_id: String,
+        workspace_name: Option<String>,
+        workspace_path: Option<String>,
+    ) -> Result<Option<crate::note_cards::WorkspaceNoteCard>, String> {
+        crate::note_cards::note_card_get_core(note_id, workspace_id, workspace_name, workspace_path)
+    }
+
+    pub fn create_note(
+        &self,
+        input: crate::note_cards::CreateWorkspaceNoteCardInput,
+    ) -> Result<crate::note_cards::WorkspaceNoteCard, String> {
+        crate::note_cards::note_card_create_core(input)
+    }
+
+    pub fn update_note(
+        &self,
+        note_id: String,
+        workspace_id: String,
+        patch: crate::note_cards::UpdateWorkspaceNoteCardInput,
+    ) -> Result<crate::note_cards::WorkspaceNoteCard, String> {
+        crate::note_cards::note_card_update_core(note_id, workspace_id, patch)
+    }
+
+    pub fn archive_note(
+        &self,
+        note_id: String,
+        workspace_id: String,
+        workspace_name: Option<String>,
+        workspace_path: Option<String>,
+    ) -> Result<crate::note_cards::WorkspaceNoteCard, String> {
+        crate::note_cards::note_card_archive_core(note_id, workspace_id, workspace_name, workspace_path)
+    }
+
+    pub fn restore_note(
+        &self,
+        note_id: String,
+        workspace_id: String,
+        workspace_name: Option<String>,
+        workspace_path: Option<String>,
+    ) -> Result<crate::note_cards::WorkspaceNoteCard, String> {
+        crate::note_cards::note_card_restore_core(note_id, workspace_id, workspace_name, workspace_path)
+    }
+
+    pub fn delete_note(
+        &self,
+        note_id: String,
+        workspace_id: String,
+        workspace_name: Option<String>,
+        workspace_path: Option<String>,
+    ) -> Result<(), String> {
+        crate::note_cards::note_card_delete_core(note_id, workspace_id, workspace_name, workspace_path)
+    }
 }
 
 #[cfg(test)]
