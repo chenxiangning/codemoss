@@ -213,6 +213,18 @@ export default defineConfig(({ command }) => ({
         find: /^@mossx\/plugin-commands$/,
         replacement: path.resolve(__dirname, "./packages/plugin-commands/src/index.ts"),
       },
+      {
+        find: /^@mossx\/plugin-prompts\/runtime$/,
+        replacement: path.resolve(__dirname, "./packages/plugin-prompts/src/runtime.ts"),
+      },
+      {
+        find: /^@mossx\/plugin-prompts\/ui$/,
+        replacement: path.resolve(__dirname, "./packages/plugin-prompts/src/ui.ts"),
+      },
+      {
+        find: /^@mossx\/plugin-prompts$/,
+        replacement: path.resolve(__dirname, "./packages/plugin-prompts/src/index.ts"),
+      },
       { find: "@", replacement: path.resolve(__dirname, "./src") },
     ],
     dedupe: [

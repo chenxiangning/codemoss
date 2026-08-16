@@ -6,7 +6,7 @@ import type { ComposerSendReadiness } from '../../utils/composerSendReadiness';
 import {
   clearPromptUsageForTests,
   recordPromptUsage,
-} from '../../../prompts/promptUsage';
+} from '@mossx/plugin-prompts/runtime';
 import { composerInputFixture100ime } from '../../../../test-fixtures/perf/composerInputFixture100ime';
 
 const mockState = vi.hoisted(() => ({
@@ -72,9 +72,15 @@ vi.mock('../../../../services/rendererDiagnostics', () => ({
   appendComposerRenderBudgetDiagnostic: mockState.appendComposerRenderBudgetDiagnostic,
 }));
 
-vi.mock('../../../prompts/promptEvents', () => ({
-  requestCustomPromptsRefresh: mockState.requestCustomPromptsRefresh,
-}));
+vi.mock('@mossx/plugin-prompts/runtime', async (importOriginal) => {
+  const actual = await importOriginal<
+    typeof import('@mossx/plugin-prompts/runtime')
+  >();
+  return {
+    ...actual,
+    requestCustomPromptsRefresh: mockState.requestCustomPromptsRefresh,
+  };
+});
 
 import { ChatInputBoxAdapter } from './ChatInputBoxAdapter';
 

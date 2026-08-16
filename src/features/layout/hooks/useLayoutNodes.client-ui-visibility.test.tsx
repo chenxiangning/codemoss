@@ -413,7 +413,7 @@ vi.mock("@mossx/plugin-notes/ui", () => ({
   },
 }));
 
-vi.mock("../../prompts/components/PromptPanel", () => ({
+vi.mock("@mossx/plugin-prompts/ui", () => ({
   PromptPanel: () => <div data-testid="prompt-panel" />,
 }));
 

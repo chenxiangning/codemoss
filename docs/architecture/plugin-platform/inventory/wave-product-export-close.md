@@ -23,6 +23,7 @@
 | `@mossx/plugin-models` | AppShell / Composer / Settings / Vendors / Engine | `src/features/models` |
 | `@mossx/plugin-skills` | AppShell / Composer / Settings / Context Ledger | `src/features/skills` + `curated-skills` |
 | `@mossx/plugin-commands` | AppShell | `src/features/commands` |
+| `@mossx/plugin-prompts` | AppShell / Composer / Settings / 布局 | `src/features/prompts` |
 
 ## 仍未做
 

@@ -692,7 +692,7 @@ vi.mock("./features/composer/hooks/useComposerMenuActions", () => ({
   useComposerMenuActions: () => undefined,
 }));
 
-vi.mock("./features/prompts/hooks/useCustomPrompts", () => ({
+vi.mock("@mossx/plugin-prompts/runtime", () => ({
   useCustomPrompts: () => ({
     prompts: [],
     createPrompt: createNoopFunction(),

@@ -41,7 +41,7 @@ import {
 } from "../../files/components/FileTreePanel";
 import { WorkspaceFileComparePanel } from "../../files/components/WorkspaceFileComparePanel";
 import { WorkspaceSearchPanel } from "../../search/components/WorkspaceSearchPanel";
-import { PromptPanel } from "../../prompts/components/PromptPanel";
+import { PromptPanel } from "@mossx/plugin-prompts/ui";
 import { ProjectMemoryPanel } from "../../project-memory/components/ProjectMemoryPanel";
 import type {
   CanvasSemanticGraph,

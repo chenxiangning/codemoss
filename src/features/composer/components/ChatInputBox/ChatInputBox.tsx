@@ -93,8 +93,7 @@ import {
 import type { CommitSnapshotOptions, UndoRedoSnapshot } from './hooks/useUndoRedoHistory.js';
 import { perfTimer } from '../../utils/debug.js';
 import { DEBOUNCE_TIMING } from '../../constants/performance.js';
-import { requestPromptCreation } from '../../../prompts/promptEvents';
-import { recordPromptUsage } from '../../../prompts/promptUsage';
+import { recordPromptUsage, requestPromptCreation } from '@mossx/plugin-prompts/runtime';
 import './styles.css';
 
 const INCREMENTAL_UNDO_REDO_ENABLED = true;

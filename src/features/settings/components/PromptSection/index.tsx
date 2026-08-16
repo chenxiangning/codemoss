@@ -10,11 +10,11 @@ import Copy from "lucide-react/dist/esm/icons/copy";
 import Download from "lucide-react/dist/esm/icons/download";
 import Upload from "lucide-react/dist/esm/icons/upload";
 import type { CustomPromptOption, WorkspaceInfo } from "../../../../types";
-import { useCustomPrompts } from "../../../prompts/hooks/useCustomPrompts";
 import {
   consumePendingPromptCreationRequest,
   subscribePromptCreationRequests,
-} from "../../../prompts/promptEvents";
+  useCustomPrompts,
+} from "@mossx/plugin-prompts/runtime";
 import { revealInFileManager } from "../../../../services/tauri";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";

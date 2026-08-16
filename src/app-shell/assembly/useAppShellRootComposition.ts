@@ -10,7 +10,7 @@ import { useModels } from "@mossx/plugin-models/runtime";
 import { useCollaborationModes } from "../../features/collaboration/hooks/useCollaborationModes";
 import { useSkills } from "@mossx/plugin-skills/runtime";
 import { useCustomCommands } from "@mossx/plugin-commands/runtime";
-import { useCustomPrompts } from "../../features/prompts/hooks/useCustomPrompts";
+import { useCustomPrompts } from "@mossx/plugin-prompts/runtime";
 import { useWorkspaceFiles } from "../../features/workspaces/hooks/useWorkspaceFiles";
 import { useDebugLog } from "../../features/debug/hooks/useDebugLog";
 import { useWorkspaceRefreshOnFocus } from "../../features/workspaces/hooks/useWorkspaceRefreshOnFocus";

@@ -62,8 +62,8 @@ import {
 import {
   getPromptHeatLevel,
   getPromptUsageEntry,
-} from '../../../prompts/promptUsage';
-import { requestCustomPromptsRefresh } from '../../../prompts/promptEvents';
+  requestCustomPromptsRefresh,
+} from '@mossx/plugin-prompts/runtime';
 import { appendComposerRenderBudgetDiagnostic } from '../../../../services/rendererDiagnostics';
 
 // Re-export the handle type for Composer to use
