@@ -437,6 +437,14 @@ export default defineConfig(({ command }) => ({
         find: /^@mossx\/plugin-shared$/,
         replacement: path.resolve(__dirname, "./packages/plugin-shared/src/index.ts"),
       },
+      {
+        find: /^@mossx\/plugin-engine-codex\/runtime$/,
+        replacement: path.resolve(__dirname, "./packages/plugin-engine-codex/src/runtime.ts"),
+      },
+      {
+        find: /^@mossx\/plugin-engine-codex$/,
+        replacement: path.resolve(__dirname, "./packages/plugin-engine-codex/src/index.ts"),
+      },
       { find: "@", replacement: path.resolve(__dirname, "./src") },
     ],
     dedupe: [

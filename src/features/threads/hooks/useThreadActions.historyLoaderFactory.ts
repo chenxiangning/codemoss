@@ -8,7 +8,7 @@ import {
   resumeThread as resumeThreadService,
 } from "../../../services/tauri";
 import { createClaudeHistoryLoader } from "@mossx/plugin-engine-claude/runtime";
-import { createCodexHistoryLoader } from "../loaders/codexHistoryLoader";
+import { createCodexHistoryLoader } from "@mossx/plugin-engine-codex/runtime";
 import { createGeminiHistoryLoader } from "../loaders/geminiHistoryLoader";
 import { createGrokHistoryLoader } from "../loaders/grokHistoryLoader";
 import { createKimiHistoryLoader } from "../loaders/kimiHistoryLoader";

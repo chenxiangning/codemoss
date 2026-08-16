@@ -44,6 +44,7 @@
 | `@mossx/plugin-operation-facts` | Status / Composer / session-activity | `src/features/operation-facts` |
 | `@mossx/plugin-about` | router | `src/features/about` |
 | `@mossx/plugin-shared` | Settings / Workspaces | `src/features/shared` |
+| `@mossx/plugin-engine-codex` | 会话 history factory / Settings | `src/features/threads/loaders/codex*` |
 
 ## 仍未做
 
