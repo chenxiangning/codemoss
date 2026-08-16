@@ -243,6 +243,22 @@ impl ClaudeCompatAdapter {
         )
         .await
     }
+
+    pub async fn list_history_sessions_for_attribution_scopes(
+        &self,
+        workspace_path: &Path,
+        attribution_scopes: Vec<crate::engine::claude_history::ClaudeSessionAttributionScope>,
+        limit: Option<usize>,
+        config: Option<&crate::engine::EngineConfig>,
+    ) -> Result<Vec<crate::engine::claude_history::ClaudeSessionSummary>, String> {
+        crate::engine::claude_history::list_claude_sessions_for_attribution_scopes_with_config(
+            workspace_path,
+            attribution_scopes,
+            limit,
+            config,
+        )
+        .await
+    }
 }
 
 #[cfg(test)]
@@ -573,8 +589,12 @@ mod tests {
         assert!(catalog_inventory.contains("delete_claude_session_with_config"));
         assert!(catalog_inventory.contains("resolve_claude_session_file_with_config"));
         let catalog = include_str!("../session_management.rs");
-        assert!(catalog.contains("list_claude_sessions_for_attribution_scopes_with_config"));
+        assert!(catalog.contains("list_claude_history_sessions_for_attribution_scopes"));
+        assert!(!catalog.contains("claude_history::list_claude_sessions_for_attribution_scopes_with_config"));
         assert!(catalog.contains("delete_claude_session_with_config"));
+        let manager = include_str!("../engine/manager.rs");
+        assert!(manager.contains("fn list_claude_history_sessions_for_attribution_scopes("));
+        assert!(manager.contains("list_history_sessions_for_attribution_scopes"));
         let native = include_str!("../native_continuation/commands.rs");
         assert!(native.contains("resolve_claude_session_file_with_config"));
     }

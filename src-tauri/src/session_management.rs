@@ -2856,20 +2856,16 @@ async fn build_global_engine_catalog_entries(
     let grok_config = engine_manager
         .get_engine_config(engine::EngineType::Grok)
         .await;
-    let claude_config = engine_manager
-        .get_engine_config(engine::EngineType::Claude)
-        .await;
-
     for workspace in workspace_entries {
         let workspace_path = PathBuf::from(&workspace.path);
         if include_engine("claude") {
-            match engine::claude_history::list_claude_sessions_for_attribution_scopes_with_config(
-                &workspace_path,
-                build_claude_attribution_scopes(&workspace),
-                Some(scan_mode.limit()),
-                claude_config.as_ref(),
-            )
-            .await
+            match engine_manager
+                .list_claude_history_sessions_for_attribution_scopes(
+                    &workspace_path,
+                    build_claude_attribution_scopes(&workspace),
+                    Some(scan_mode.limit()),
+                )
+                .await
             {
                 Ok(sessions) => {
                     for session in sessions {

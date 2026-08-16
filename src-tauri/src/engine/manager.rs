@@ -340,6 +340,36 @@ impl ClaudeOwner<'_> {
             }
         }
     }
+
+    async fn list_history_sessions_for_attribution_scopes(
+        &self,
+        workspace_path: &Path,
+        attribution_scopes: Vec<super::claude_history::ClaudeSessionAttributionScope>,
+        limit: Option<usize>,
+        config: Option<&EngineConfig>,
+    ) -> Result<Vec<super::claude_history::ClaudeSessionSummary>, String> {
+        match self {
+            Self::Facade(facade) => {
+                facade
+                    .list_history_sessions_for_attribution_scopes(
+                        workspace_path,
+                        attribution_scopes,
+                        limit,
+                        config,
+                    )
+                    .await
+            }
+            Self::Core(_) => {
+                super::claude_history::list_claude_sessions_for_attribution_scopes_with_config(
+                    workspace_path,
+                    attribution_scopes,
+                    limit,
+                    config,
+                )
+                .await
+            }
+        }
+    }
 }
 
 #[derive(Default)]
@@ -715,6 +745,23 @@ impl EngineManager {
         let config = self.get_engine_config(EngineType::Claude).await;
         self.claude_owner()
             .list_history_sessions(workspace_path, limit, config.as_ref())
+            .await
+    }
+
+    pub async fn list_claude_history_sessions_for_attribution_scopes(
+        &self,
+        workspace_path: &Path,
+        attribution_scopes: Vec<super::claude_history::ClaudeSessionAttributionScope>,
+        limit: Option<usize>,
+    ) -> Result<Vec<super::claude_history::ClaudeSessionSummary>, String> {
+        let config = self.get_engine_config(EngineType::Claude).await;
+        self.claude_owner()
+            .list_history_sessions_for_attribution_scopes(
+                workspace_path,
+                attribution_scopes,
+                limit,
+                config.as_ref(),
+            )
             .await
     }
 
