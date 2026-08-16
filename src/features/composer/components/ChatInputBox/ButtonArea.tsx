@@ -22,8 +22,7 @@ import type {
 } from './types';
 import { ConfigSelect, ModeSelect, ReasoningSelect } from './selectors';
 import { SessionControlQuotaPane } from './selectors/SessionControlQuotaPane';
-import { useCodingPlanQuota } from '../../../status-panel/hooks/useCodingPlanQuota';
-import { buildSessionOverviewQuota } from '../../../status-panel/utils/sessionOverviewViewModel';
+import { buildSessionOverviewQuota, useCodingPlanQuota } from '@mossx/plugin-status/runtime';
 import type { EngineType } from '../../../../types';
 import type { RateLimitSnapshot, RateLimitWindow } from '../../../../types/planning';
 import { Button } from '@/components/ui/button';

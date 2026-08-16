@@ -6,7 +6,7 @@ import type {
   IntentCanvasOpenRequest,
 } from "@mossx/plugin-intent-canvas/runtime";
 import type { AgentTaskScrollRequest } from "../../messages";
-import type { SubagentInfo } from "../../status-panel/types";
+import type { SubagentInfo } from "@mossx/plugin-status/runtime";
 import type {
   EditorHighlightTarget,
   EditorNavigationLocation,

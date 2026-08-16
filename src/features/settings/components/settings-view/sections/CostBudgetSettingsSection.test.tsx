@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { CostBudgetSection } from "../../../../status-panel/components/CostBudgetSection";
+import { CostBudgetSection } from "@mossx/plugin-status/ui";
 import { CostBudgetSettingsSection } from "./CostBudgetSettingsSection";
 
 vi.mock("react-i18next", () => ({

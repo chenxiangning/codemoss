@@ -2,7 +2,7 @@ import { useTranslation } from "react-i18next";
 import type {
   SessionOverviewQuotaView,
   SessionOverviewUsageSummaryView,
-} from "../../../../status-panel/utils/sessionOverviewViewModel";
+} from "@mossx/plugin-status/runtime";
 import { formatRelativeTime } from "../../../../../utils/time";
 
 export type SessionControlQuotaPaneProps = {

@@ -98,7 +98,7 @@ import type {
   PermissionMode,
   SelectedAgent as ChatInputSelectedAgent,
 } from "./ChatInputBox/types";
-import { useStatusPanelData } from "../../status-panel/hooks/useStatusPanelData";
+import { useStatusPanelData } from "@mossx/plugin-status/runtime";
 import {
   ComposerRunStatusStrip,
   collectRunStatusSubagentSourceItems,

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { TurnPlan } from "../../../../types";
-import type { SubagentInfo, TodoItem } from "../../../status-panel/types";
+import type { SubagentInfo, TodoItem } from "@mossx/plugin-status/runtime";
 import {
   fileChangeSignature,
   filterTurnFileChangesSummary,

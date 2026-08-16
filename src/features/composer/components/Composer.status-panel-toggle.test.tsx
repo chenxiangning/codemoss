@@ -24,7 +24,7 @@ vi.mock("../../engine/components/EngineSelector", () => ({
 }));
 
 
-vi.mock("../../status-panel/components/StatusPanel", () => ({
+vi.mock("@mossx/plugin-status/ui", () => ({
   StatusPanel: () => <div data-testid="status-panel" />,
 }));
 

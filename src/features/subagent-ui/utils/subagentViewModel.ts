@@ -5,7 +5,7 @@ import {
   resolveToolStatus,
 } from "../../../utils/toolSemantics";
 import type { EngineTaskOutputSource } from "../../engine-task-output/types";
-import type { SubagentInfo } from "../../status-panel/types";
+import type { SubagentInfo } from "@mossx/plugin-status/runtime";
 import { isCollabSpawnTool, isGrokSpawnSubagentTool } from "./isSubagentTool";
 
 /** 卡片固定展示名（UI 用 i18n `subagentUi.defaultName` 覆盖） */

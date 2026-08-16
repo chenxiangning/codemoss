@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildCheckpointViewModel } from "../../status-panel/utils/checkpoint";
+import { buildCheckpointViewModel } from "@mossx/plugin-status/runtime";
 import { createFrozenGovernanceEvidenceSnapshot } from "./governanceEvidenceBridge";
 import { governanceEvidenceReplayFixture } from "./fixtures/governanceEvidenceReplayFixtures";
 

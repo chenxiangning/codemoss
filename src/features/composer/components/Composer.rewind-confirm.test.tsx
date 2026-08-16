@@ -42,7 +42,7 @@ vi.mock("../../engine/components/EngineSelector", () => ({
 }));
 
 
-vi.mock("../../status-panel/hooks/useStatusPanelData", () => ({
+vi.mock("@mossx/plugin-status/runtime", () => ({
   useStatusPanelData: () => ({
     todos: [],
     subagents: [],

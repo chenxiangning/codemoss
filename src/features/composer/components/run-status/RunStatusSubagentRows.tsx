@@ -5,7 +5,7 @@
 import { memo, useEffect, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import ChevronRight from "lucide-react/dist/esm/icons/chevron-right";
-import type { SubagentInfo } from "../../../status-panel/types";
+import type { SubagentInfo } from "@mossx/plugin-status/runtime";
 import {
   buildSubagentCardFromSubagentInfo,
   enrichSubagentCardStatuses,

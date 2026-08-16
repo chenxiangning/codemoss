@@ -71,7 +71,10 @@
       "@mossx/plugin-context-ledger/runtime": ["./packages/plugin-context-ledger/src/runtime.ts"],
       "@mossx/plugin-context-ledger/ui": ["./packages/plugin-context-ledger/src/ui.ts"],
       "@mossx/plugin-governance": ["./packages/plugin-governance/src/index.ts"],
-      "@mossx/plugin-governance/runtime": ["./packages/plugin-governance/src/runtime.ts"]
+      "@mossx/plugin-governance/runtime": ["./packages/plugin-governance/src/runtime.ts"],
+      "@mossx/plugin-status": ["./packages/plugin-status/src/index.ts"],
+      "@mossx/plugin-status/runtime": ["./packages/plugin-status/src/runtime.ts"],
+      "@mossx/plugin-status/ui": ["./packages/plugin-status/src/ui.ts"]
     },
 
     /* Linting */

@@ -41,14 +41,20 @@ const codingPlanState = vi.hoisted(() => ({
   loading: false,
 }));
 
-vi.mock("../../../status-panel/hooks/useCodingPlanQuota", () => ({
-  useCodingPlanQuota: () => ({
-    snapshot: codingPlanState.snapshot,
-    loading: codingPlanState.loading,
-    error: null,
-    refresh: refreshCodingPlan,
-  }),
-}));
+vi.mock("@mossx/plugin-status/runtime", async (importOriginal) => {
+  const actual = await importOriginal<
+    typeof import("@mossx/plugin-status/runtime")
+  >();
+  return {
+    ...actual,
+    useCodingPlanQuota: () => ({
+      snapshot: codingPlanState.snapshot,
+      loading: codingPlanState.loading,
+      error: null,
+      refresh: refreshCodingPlan,
+    }),
+  };
+});
 
 describe("ButtonArea Session Control HUD quota", () => {
   it("opens dual-pane HUD with quota pane visible by default", async () => {

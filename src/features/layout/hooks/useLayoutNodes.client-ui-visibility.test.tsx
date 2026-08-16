@@ -484,7 +484,7 @@ vi.mock("../../terminal/components/TerminalPanel", () => ({
   TerminalPanel: () => <div data-testid="terminal-panel" />,
 }));
 
-vi.mock("../../status-panel/components/StatusPanel", () => ({
+vi.mock("@mossx/plugin-status/ui", () => ({
   StatusPanel: ({
     dockCollapsed,
     selectedEngine,
@@ -500,7 +500,7 @@ vi.mock("../../status-panel/components/StatusPanel", () => ({
   ),
 }));
 
-vi.mock("../../status-panel/hooks/useStatusPanelData", () => ({
+vi.mock("@mossx/plugin-status/runtime", () => ({
   useStatusPanelData: () => ({
     todoTotal: 0,
     subagentTotal: 0,

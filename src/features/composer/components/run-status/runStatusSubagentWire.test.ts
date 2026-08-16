@@ -3,7 +3,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { enrichTimelineWithSyntheticSubagentsBeforeCollapse } from "../../../subagent-ui";
-import { collectScopedToolEntries } from "../../../status-panel/hooks/useStatusPanelData";
+import { collectScopedToolEntries } from "@mossx/plugin-status/runtime";
 import type { ConversationItem, ThreadSummary } from "../../../../types";
 
 function userMsg(id: string): ConversationItem {

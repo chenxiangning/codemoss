@@ -28,6 +28,7 @@
 | `@mossx/plugin-collaboration` | AppShell | `src/features/collaboration` |
 | `@mossx/plugin-context-ledger` | Composer / Settings / Status / Governance | `src/features/context-ledger` |
 | `@mossx/plugin-governance` | Status Panel | `src/features/governance` |
+| `@mossx/plugin-status` | 布局 / Composer / Settings / subagent-ui | `src/features/status-panel` |
 
 ## 仍未做
 

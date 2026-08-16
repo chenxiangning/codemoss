@@ -1,6 +1,6 @@
 import { useDeferredValue, type ComponentProps } from "react";
 
-import { StatusPanel } from "../../status-panel/components/StatusPanel";
+import { StatusPanel } from "@mossx/plugin-status/ui";
 import {
   shallowEqual,
   useActiveCanvasSelector,

@@ -2,7 +2,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { SessionControlQuotaPane } from "./SessionControlQuotaPane";
-import type { SessionOverviewQuotaView } from "../../../../status-panel/utils/sessionOverviewViewModel";
+import type { SessionOverviewQuotaView } from "@mossx/plugin-status/runtime";
 
 const windowsQuota: SessionOverviewQuotaView = {
   source: "coding_plan",
