@@ -3392,16 +3392,10 @@ impl DaemonState {
         session_id: String,
     ) -> Result<Value, String> {
         let path = PathBuf::from(workspace_path);
-        let config = self
+        let result = self
             .engine_manager
-            .get_engine_config(engine::EngineType::Claude)
-            .await;
-        let result = engine::claude_history::load_claude_session_with_config(
-            &path,
-            &session_id,
-            config.as_ref(),
-        )
-        .await?;
+            .load_claude_history_session(&path, &session_id, None, None)
+            .await?;
         serde_json::to_value(result).map_err(|error| error.to_string())
     }
 

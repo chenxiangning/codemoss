@@ -177,7 +177,8 @@
 | 3V GUI fork_claude_session 走 history 门面 | 完成 | `9e31c2959` |
 | 3W GUI delete_claude_session 走 history 门面 | 完成 | `80d31dd46` |
 | 3X GUI rewind fork_from_message 走 history 门面 | 完成 | `2db85befe` |
-| 3Y daemon list_claude_sessions 走 history 门面 | 完成 | 本刀 |
+| 3Y daemon list_claude_sessions 走 history 门面 | 完成 | `0c8cbba20` |
+| 3Z daemon load_claude_session 走 history 门面 | 完成 | 本刀 |
 
 ## 明确未做
 

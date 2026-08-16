@@ -529,6 +529,13 @@ mod tests {
             .expect("daemon list_claude_sessions");
         assert!(daemon_list.contains("list_claude_history_sessions"));
         assert!(!daemon_list.contains("claude_history::"));
+        let daemon_load = daemon
+            .split("pub(super) async fn load_claude_session(")
+            .nth(1)
+            .and_then(|rest| rest.split("pub(super) async fn load_codex_session(").next())
+            .expect("daemon load_claude_session");
+        assert!(daemon_load.contains("load_claude_history_session"));
+        assert!(!daemon_load.contains("claude_history::"));
     }
 
     #[tokio::test]
