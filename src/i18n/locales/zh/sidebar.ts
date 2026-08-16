@@ -212,6 +212,7 @@ const sidebar = {
       catalogStage: "安装",
       catalogUnstage: "卸载",
       catalogPermissions: "权限预览",
+      catalogVersion: "版本",
       rackInstall: "插排安装态",
       error: "无法读取 Host 插排：{{message}}",
       kinds: {

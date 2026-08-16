@@ -29,6 +29,7 @@ const translations: Record<string, string> = {
   "extensions.rack.catalogStage": "Install",
   "extensions.rack.catalogUnstage": "Uninstall",
   "extensions.rack.catalogPermissions": "Permission preview",
+  "extensions.rack.catalogVersion": "Version",
   "extensions.rack.rackInstall": "Rack install",
   "extensions.rack.error": "Could not read the Host rack: {{message}}",
   "extensions.rack.kinds.engine": "Engines",
@@ -135,6 +136,7 @@ describe("PluginRackSection", () => {
     expect(featureGroup.textContent).toContain("Installed (local mark)");
     expect(featureGroup.textContent).toContain("Idle");
     expect(notesCard!.textContent).toContain("Installed (local mark)");
+    expect(notesCard!.textContent).toContain("1.0.0");
     expect(notesCard!.querySelector("button")?.textContent).toBe("Uninstall");
   });
 

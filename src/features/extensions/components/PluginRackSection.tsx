@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { listLocalPluginCatalog, type LocalCatalogPackage } from "@/services/tauri/pluginLocalCatalog";
 import {
   isLocalPluginStaged,
+  listLocalLockfile,
   stageLocalPlugin,
   unstageLocalPlugin,
 } from "@/services/tauri/pluginLocalStage";
@@ -66,6 +67,7 @@ export function PluginRackSection() {
   const [snapshot, setSnapshot] = useState<PluginRackSnapshot | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [stagedIds, setStagedIds] = useState<string[]>([]);
+  const [lockfileVersions, setLockfileVersions] = useState<Record<string, string>>({});
 
   useEffect(() => {
     let cancelled = false;
@@ -80,7 +82,13 @@ export function PluginRackSection() {
           setError(cause instanceof Error ? cause.message : String(cause));
         }
       });
-    setStagedIds(listLocalPluginCatalog().filter((item) => isLocalPluginStaged(item.pluginId)).map((item) => item.pluginId));
+    const staged = listLocalPluginCatalog()
+      .filter((item) => isLocalPluginStaged(item.pluginId))
+      .map((item) => item.pluginId);
+    setStagedIds(staged);
+    setLockfileVersions(
+      Object.fromEntries(listLocalLockfile().map((row) => [row.pluginId, row.version])),
+    );
     return () => {
       cancelled = true;
     };
@@ -195,6 +203,10 @@ export function PluginRackSection() {
                           <dt>{t("extensions.rack.catalogPermissions")}</dt>
                           <dd>{item.capabilities.join(", ")}</dd>
                         </div>
+                        <div>
+                          <dt>{t("extensions.rack.catalogVersion")}</dt>
+                          <dd>{lockfileVersions[item.pluginId] ?? "1.0.0"}</dd>
+                        </div>
                       </dl>
                       <button
                         type="button"
@@ -211,6 +223,15 @@ export function PluginRackSection() {
                               next.delete(item.pluginId);
                             }
                             return [...next];
+                          });
+                          setLockfileVersions((current) => {
+                            const next = { ...current };
+                            if (result.staged && result.version) {
+                              next[item.pluginId] = result.version;
+                            } else {
+                              delete next[item.pluginId];
+                            }
+                            return next;
                           });
                         }}
                       >

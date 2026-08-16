@@ -219,6 +219,7 @@ const sidebar = {
       catalogStage: "Install",
       catalogUnstage: "Uninstall",
       catalogPermissions: "Permission preview",
+      catalogVersion: "Version",
       rackInstall: "Rack install",
       error: "Could not read the Host rack: {{message}}",
       kinds: {
