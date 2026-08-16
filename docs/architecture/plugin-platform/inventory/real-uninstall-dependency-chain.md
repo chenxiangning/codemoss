@@ -29,7 +29,7 @@
 ```
 已建好：真实 Host + RestrictedProcess + QuickJS Worker + CompositeDriver（default-off）
   → 缺口 1：把生产 engine::claude 接到真实运行时（当前只有 fixture 假激活 + delegate 门面）
-  → 缺口 2：SlotState 补 Uninstalled + atomic contribution registry（P2.1）
+  → 缺口 2：SlotState 补 Uninstalled（✅ 已补）+ atomic contribution registry（🔵 待做，P2.1）
   → 缺口 3：Notes 同理（P5）
   只有到这一步，「卸载」=「停掉真实运行的插件运行时」
 ```
@@ -52,9 +52,10 @@
 
 | gap | 状态 | 落地 |
 |---|---|---|
-| 进程组 kill | ✅ | `spawn.rs` `process_group(0)` + `kill_child` 整组 `SIGKILL`（`cargo test --lib plugin_runtime::spawn` 22/22） |
+| 进程组 kill | ✅ | `spawn.rs` `process_group(0)` + `kill_child` 整组 `SIGKILL`（`cargo test --lib plugin_runtime::spawn` 23/23） |
 | turn↔generation 映射 | ✅ | `generation` 单调递增句柄承载 turn 句柄，`dispatch` 校验 |
-| 中断状态清理 | ✅ | `host.rs` `interrupt` 非终态中断（`cargo test --lib plugin_runtime::host` 23/23） |
+| 中断状态清理 | ✅ | `host.rs` `interrupt` 非终态中断（`cargo test --lib plugin_runtime::host` 27/27） |
 | 多进程编排 | ✅ | entry 粒度 + 进程组覆盖「leader + 孙进程组」 |
+| 卸载终态 | ✅ | `host.rs` `SlotState::Uninstalled` + `Host::uninstall` 不可恢复卸载（`cargo test --lib plugin_runtime` 287/287） |
 
 真实 CLI 环境的 stream/interrupt/rollback conformance 验收仍是独立 gate，未过验收前不得宣称生产 conformance 达成、不得删 `engine/claude*`。
