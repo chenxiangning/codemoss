@@ -269,6 +269,31 @@ mod tests {
         assert!(!state.contains("claude_manager.list_sessions"));
     }
 
+    #[test]
+    fn control_responses_go_through_the_manager_entry() {
+        let codex = include_str!("../codex/mod.rs");
+        let daemon = include_str!("../bin/cc_gui_daemon/daemon_state.rs");
+        let shared = codex
+            .split("async fn respond_to_shared_control_request(")
+            .nth(1)
+            .and_then(|rest| rest.split("pub(crate) async fn respond_to_server_request(").next())
+            .expect("shared control");
+        let native = codex
+            .split("// Native control request keeps the existing request-id routing contract.")
+            .nth(1)
+            .expect("native control");
+        let daemon_respond = daemon
+            .split("pub(super) async fn respond_to_server_request(")
+            .nth(1)
+            .expect("daemon respond");
+        assert!(shared.contains("get_claude_session_if_present"));
+        assert!(!shared.contains("claude_manager"));
+        assert!(native.contains("claude_sessions_for_workspace"));
+        assert!(!native.contains("claude_manager"));
+        assert!(daemon_respond.contains("claude_sessions_for_workspace"));
+        assert!(!daemon_respond.contains("claude_manager"));
+    }
+
     #[tokio::test]
     async fn facade_remove_clears_the_core_session_table() {
         let manager = Arc::new(ClaudeSessionManager::new());

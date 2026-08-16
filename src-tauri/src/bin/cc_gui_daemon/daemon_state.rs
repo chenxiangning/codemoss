@@ -4247,8 +4247,7 @@ impl DaemonState {
         if request_id.is_string() {
             for session in self
                 .engine_manager
-                .claude_manager
-                .sessions_for_workspace(&workspace_id)
+                .claude_sessions_for_workspace(&workspace_id)
                 .await
             {
                 if session.has_pending_user_input(&request_id) {

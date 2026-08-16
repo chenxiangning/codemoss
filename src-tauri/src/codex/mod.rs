@@ -2062,8 +2062,10 @@ async fn respond_to_shared_control_request(
         EngineType::Claude => {
             let session = state
                 .engine_manager
-                .claude_manager
-                .get_session_for_provider(&route.workspace_id, route.provider_profile_id.as_deref())
+                .get_claude_session_if_present(
+                    &route.workspace_id,
+                    route.provider_profile_id.as_deref(),
+                )
                 .await
                 .ok_or_else(|| {
                     format!(
@@ -2185,8 +2187,7 @@ pub(crate) async fn respond_to_server_request(
     // Native control request keeps the existing request-id routing contract.
     let claude_sessions_for_workspace = state
         .engine_manager
-        .claude_manager
-        .sessions_for_workspace(&workspace_id)
+        .claude_sessions_for_workspace(&workspace_id)
         .await;
     for session in &claude_sessions_for_workspace {
         if session.has_pending_user_input(&request_id) {
