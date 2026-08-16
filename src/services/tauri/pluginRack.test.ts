@@ -14,7 +14,7 @@ const ownership = JSON.parse(
 ) as { owners: Array<{ targetPluginId?: string | null }> };
 
 describe("DECLARED_PLUGIN_RACK_SNAPSHOT", () => {
-  it("lists inventoried later plugs after the two pilots without inventing ids", () => {
+  it("lists inventoried later feature and CLI plugs after the two pilots without inventing ids", () => {
     const pluginIds = DECLARED_PLUGIN_RACK_SNAPSHOT.plugs.map((plug) => plug.pluginId);
     expect(pluginIds).toEqual([
       "com.mossx.engine.claude",
@@ -22,6 +22,12 @@ describe("DECLARED_PLUGIN_RACK_SNAPSHOT", () => {
       "com.mossx.project-map",
       "com.mossx.browser",
       "com.mossx.intent-canvas",
+      "com.mossx.engine.codex",
+      "com.mossx.engine.gemini",
+      "com.mossx.engine.grok",
+      "com.mossx.engine.kimi",
+      "com.mossx.engine.opencode",
+      "com.mossx.engine.pi",
     ]);
     expect(DECLARED_PLUGIN_RACK_SNAPSHOT.hostEnabled).toBe(false);
     expect(DECLARED_PLUGIN_RACK_SNAPSHOT.plugs.every((plug) => plug.state === "idle")).toBe(true);

@@ -89,6 +89,60 @@ describe("PluginRackSection", () => {
           unitId: null,
           live: false,
         },
+        {
+          pluginId: "com.mossx.engine.codex",
+          displayName: "Codex Engine",
+          kind: "engine",
+          state: "idle",
+          generation: 0,
+          unitId: null,
+          live: false,
+        },
+        {
+          pluginId: "com.mossx.engine.gemini",
+          displayName: "Gemini Engine",
+          kind: "engine",
+          state: "idle",
+          generation: 0,
+          unitId: null,
+          live: false,
+        },
+        {
+          pluginId: "com.mossx.engine.grok",
+          displayName: "Grok Engine",
+          kind: "engine",
+          state: "idle",
+          generation: 0,
+          unitId: null,
+          live: false,
+        },
+        {
+          pluginId: "com.mossx.engine.kimi",
+          displayName: "Kimi Engine",
+          kind: "engine",
+          state: "idle",
+          generation: 0,
+          unitId: null,
+          live: false,
+        },
+        {
+          pluginId: "com.mossx.engine.opencode",
+          displayName: "OpenCode Engine",
+          kind: "engine",
+          state: "idle",
+          generation: 0,
+          unitId: null,
+          live: false,
+        },
+        {
+          pluginId: "com.mossx.engine.pi",
+          displayName: "Pi Engine",
+          kind: "engine",
+          state: "idle",
+          generation: 0,
+          unitId: null,
+          live: false,
+        },
       ],
     });
 
@@ -101,6 +155,12 @@ describe("PluginRackSection", () => {
     expect(screen.getByText("com.mossx.project-map")).toBeTruthy();
     expect(screen.getByText("com.mossx.browser")).toBeTruthy();
     expect(screen.getByText("com.mossx.intent-canvas")).toBeTruthy();
+    expect(screen.getByText("com.mossx.engine.codex")).toBeTruthy();
+    expect(screen.getByText("com.mossx.engine.gemini")).toBeTruthy();
+    expect(screen.getByText("com.mossx.engine.grok")).toBeTruthy();
+    expect(screen.getByText("com.mossx.engine.kimi")).toBeTruthy();
+    expect(screen.getByText("com.mossx.engine.opencode")).toBeTruthy();
+    expect(screen.getByText("com.mossx.engine.pi")).toBeTruthy();
     expect(screen.getByText("Marketplace stays closed.")).toBeTruthy();
     expect(screen.queryByRole("button", { name: /install|enable|marketplace/i })).toBeNull();
   });

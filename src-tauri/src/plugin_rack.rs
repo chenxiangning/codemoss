@@ -34,6 +34,36 @@ const DECLARED_PLUGS: &[DeclaredPlug] = &[
         display_name: "Intent Canvas",
         kind: "feature",
     },
+    DeclaredPlug {
+        plugin_id: "com.mossx.engine.codex",
+        display_name: "Codex Engine",
+        kind: "engine",
+    },
+    DeclaredPlug {
+        plugin_id: "com.mossx.engine.gemini",
+        display_name: "Gemini Engine",
+        kind: "engine",
+    },
+    DeclaredPlug {
+        plugin_id: "com.mossx.engine.grok",
+        display_name: "Grok Engine",
+        kind: "engine",
+    },
+    DeclaredPlug {
+        plugin_id: "com.mossx.engine.kimi",
+        display_name: "Kimi Engine",
+        kind: "engine",
+    },
+    DeclaredPlug {
+        plugin_id: "com.mossx.engine.opencode",
+        display_name: "OpenCode Engine",
+        kind: "engine",
+    },
+    DeclaredPlug {
+        plugin_id: "com.mossx.engine.pi",
+        display_name: "Pi Engine",
+        kind: "engine",
+    },
 ];
 
 struct DeclaredPlug {
@@ -149,19 +179,23 @@ mod tests {
         let snapshot = snapshot_boot_host(&host);
         assert!(snapshot.host_available);
         assert!(!snapshot.host_enabled);
-        assert_eq!(snapshot.plugs.len(), 5);
+        assert_eq!(snapshot.plugs.len(), 11);
         assert_eq!(snapshot.plugs[0].plugin_id, "com.mossx.engine.claude");
         assert_eq!(snapshot.plugs[1].plugin_id, "com.mossx.notes");
         assert_eq!(snapshot.plugs[2].plugin_id, "com.mossx.project-map");
         assert_eq!(snapshot.plugs[3].plugin_id, "com.mossx.browser");
         assert_eq!(snapshot.plugs[4].plugin_id, "com.mossx.intent-canvas");
+        assert_eq!(snapshot.plugs[5].plugin_id, "com.mossx.engine.codex");
+        assert_eq!(snapshot.plugs[6].plugin_id, "com.mossx.engine.gemini");
+        assert_eq!(snapshot.plugs[7].plugin_id, "com.mossx.engine.grok");
+        assert_eq!(snapshot.plugs[8].plugin_id, "com.mossx.engine.kimi");
+        assert_eq!(snapshot.plugs[9].plugin_id, "com.mossx.engine.opencode");
+        assert_eq!(snapshot.plugs[10].plugin_id, "com.mossx.engine.pi");
         assert!(snapshot.plugs.iter().all(|plug| plug.state == "idle"));
         assert!(snapshot.plugs.iter().all(|plug| !plug.live));
-        assert!(host.host.slot("com.mossx.engine.claude").is_none());
-        assert!(host.host.slot("com.mossx.notes").is_none());
-        assert!(host.host.slot("com.mossx.project-map").is_none());
-        assert!(host.host.slot("com.mossx.browser").is_none());
-        assert!(host.host.slot("com.mossx.intent-canvas").is_none());
+        for plug in &snapshot.plugs {
+            assert!(host.host.slot(&plug.plugin_id).is_none());
+        }
     }
 
     #[test]
@@ -200,6 +234,12 @@ mod tests {
             "com.mossx.project-map",
             "com.mossx.browser",
             "com.mossx.intent-canvas",
+            "com.mossx.engine.codex",
+            "com.mossx.engine.gemini",
+            "com.mossx.engine.grok",
+            "com.mossx.engine.kimi",
+            "com.mossx.engine.opencode",
+            "com.mossx.engine.pi",
         ] {
             assert!(
                 inventory.contains(&format!("\"targetPluginId\": \"{plugin_id}\"")),
