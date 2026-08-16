@@ -3416,16 +3416,10 @@ impl DaemonState {
         let locator = serde_json::from_value(locator)
             .map_err(|error| format!("Invalid Claude deferred image locator: {error}"))?;
         let path = PathBuf::from(workspace_path);
-        let config = self
+        let result = self
             .engine_manager
-            .get_engine_config(engine::EngineType::Claude)
-            .await;
-        let result = engine::claude_history::hydrate_claude_deferred_image_with_config(
-            &path,
-            locator,
-            config.as_ref(),
-        )
-        .await?;
+            .hydrate_claude_history_image(&path, locator)
+            .await?;
         serde_json::to_value(result).map_err(|error| error.to_string())
     }
 
