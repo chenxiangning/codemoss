@@ -1,0 +1,73 @@
+{
+  "manifestVersion": 1,
+  "pluginId": "com.mossx.prompts",
+  "version": "1.0.0",
+  "displayName": "Prompts",
+  "description": "Transitional Prompts package. In-repo layering only. Not installed by boot.",
+  "publisher": {
+    "id": "com.mossx",
+    "displayName": "Mossx",
+    "homepage": "https://mossx.dev"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mossx/mossx-plugin-prompts",
+    "commit": "0000000000000000000000000000000000000000"
+  },
+  "license": "MIT",
+  "channel": "stable",
+  "compatibility": {
+    "coreApi": ">=1.0.0 <2.0.0",
+    "platforms": [
+      "darwin-arm64",
+      "darwin-x64",
+      "windows-x64",
+      "windows-arm64",
+      "linux-x64",
+      "linux-arm64"
+    ]
+  },
+  "entries": [
+    {
+      "id": "prompts-ui",
+      "kind": "ui",
+      "mode": "trusted-react",
+      "path": "src/features/prompts",
+      "slot": "workspace.main",
+      "trustedReact": true,
+      "criticality": "required"
+    }
+  ],
+  "activationUnits": [
+    {
+      "id": "prompts-main",
+      "entries": [
+        "prompts-ui"
+      ],
+      "events": [
+        {
+          "type": "onView",
+          "viewId": "prompts.main"
+        }
+      ]
+    }
+  ],
+  "contributions": [
+    {
+      "id": "prompts.main",
+      "type": "mossx.ui.view",
+      "entryId": "prompts-ui",
+      "slot": "workspace.main",
+      "mode": "trusted-react"
+    }
+  ],
+  "capabilities": [
+    {
+      "id": "mossx.ui.slot.workspace.main",
+      "role": "consumer"
+    }
+  ],
+  "budgets": {
+    "activationDeadlineMs": 10000
+  }
+}

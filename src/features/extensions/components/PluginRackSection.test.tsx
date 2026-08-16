@@ -87,7 +87,9 @@ describe("PluginRackSection", () => {
     expect(catalog.textContent).toContain("packages/plugin-intent-canvas");
     expect(catalog.textContent).toContain("packages/plugin-engine-codex");
     expect(catalog.textContent).toContain("packages/plugin-engine-pi");
-    expect(screen.getAllByText("Not installed").length).toBeGreaterThanOrEqual(12);
+    expect(catalog.textContent).toContain("packages/plugin-git-history");
+    expect(catalog.textContent).toContain("packages/plugin-spec");
+    expect(screen.getAllByText("Not installed").length).toBeGreaterThanOrEqual(45);
     expect(engineGroup.textContent).toContain("com.mossx.engine.codex");
     expect(engineGroup.textContent).toContain("com.mossx.engine.gemini");
     expect(engineGroup.textContent).toContain("com.mossx.engine.grok");

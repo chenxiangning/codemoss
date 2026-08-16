@@ -1,0 +1,7 @@
+{
+  "name": "@mossx/plugin-operation-facts",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Transitional Operation Facts package. In-repo layering only. Not wired into boot or Marketplace.",
+  "type": "module"
+}

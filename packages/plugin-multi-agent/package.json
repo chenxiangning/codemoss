@@ -1,0 +1,7 @@
+{
+  "name": "@mossx/plugin-multi-agent",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Transitional Multi Agent package. In-repo layering only. Not wired into boot or Marketplace.",
+  "type": "module"
+}

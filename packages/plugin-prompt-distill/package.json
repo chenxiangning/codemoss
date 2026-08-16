@@ -1,0 +1,7 @@
+{
+  "name": "@mossx/plugin-prompt-distill",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Transitional Prompt Distill package. In-repo layering only. Not wired into boot or Marketplace.",
+  "type": "module"
+}

@@ -1,0 +1,7 @@
+{
+  "name": "@mossx/plugin-shared-session",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Transitional Shared Session package. In-repo layering only. Not wired into boot or Marketplace.",
+  "type": "module"
+}

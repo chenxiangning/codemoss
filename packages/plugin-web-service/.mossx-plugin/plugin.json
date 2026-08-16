@@ -1,0 +1,73 @@
+{
+  "manifestVersion": 1,
+  "pluginId": "com.mossx.web-service",
+  "version": "1.0.0",
+  "displayName": "Web Service",
+  "description": "Transitional Web Service package. In-repo layering only. Not installed by boot.",
+  "publisher": {
+    "id": "com.mossx",
+    "displayName": "Mossx",
+    "homepage": "https://mossx.dev"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mossx/mossx-plugin-web-service",
+    "commit": "0000000000000000000000000000000000000000"
+  },
+  "license": "MIT",
+  "channel": "stable",
+  "compatibility": {
+    "coreApi": ">=1.0.0 <2.0.0",
+    "platforms": [
+      "darwin-arm64",
+      "darwin-x64",
+      "windows-x64",
+      "windows-arm64",
+      "linux-x64",
+      "linux-arm64"
+    ]
+  },
+  "entries": [
+    {
+      "id": "web-service-ui",
+      "kind": "ui",
+      "mode": "trusted-react",
+      "path": "src-tauri/src/web_service",
+      "slot": "workspace.main",
+      "trustedReact": true,
+      "criticality": "required"
+    }
+  ],
+  "activationUnits": [
+    {
+      "id": "web-service-main",
+      "entries": [
+        "web-service-ui"
+      ],
+      "events": [
+        {
+          "type": "onView",
+          "viewId": "web-service.main"
+        }
+      ]
+    }
+  ],
+  "contributions": [
+    {
+      "id": "web-service.main",
+      "type": "mossx.ui.view",
+      "entryId": "web-service-ui",
+      "slot": "workspace.main",
+      "mode": "trusted-react"
+    }
+  ],
+  "capabilities": [
+    {
+      "id": "mossx.ui.slot.workspace.main",
+      "role": "consumer"
+    }
+  ],
+  "budgets": {
+    "activationDeadlineMs": 10000
+  }
+}

@@ -64,6 +64,29 @@ describe("parseManifestV1", () => {
     expect(existsSync(join(fixtureDir, "../../src-tauri/src/note_cards.rs"))).toBe(true);
   });
 
+  it("accepts remaining later-plugin package layers without adding them to boot or the Host rack", () => {
+    const remaining = [
+      "about",
+      "git-history",
+      "spec",
+      "terminal",
+      "skills",
+      "web-service",
+    ];
+    const boot = readFileSync(join(fixtureDir, "../../src-tauri/src/plugin_runtime/boot.rs"), "utf8");
+    const rack = readFileSync(join(fixtureDir, "../../src-tauri/src/plugin_rack.rs"), "utf8");
+    for (const slug of remaining) {
+      const manifest = JSON.parse(
+        readFileSync(join(fixtureDir, `../../packages/plugin-${slug}/.mossx-plugin/plugin.json`), "utf8"),
+      );
+      const result = parseManifestV1(manifest, systemOpts);
+      expect(result.ok).toBe(true);
+      expect(result.manifest?.pluginId).toBe(`com.mossx.${slug}`);
+      expect(boot).not.toContain(`plugin-${slug}`);
+      expect(rack).not.toContain(`com.mossx.${slug}`);
+    }
+  });
+
   it("accepts later feature package layers without installing them", () => {
     const later = [
       { manifest: projectMapPlugin, pluginId: "com.mossx.project-map" },

@@ -1,0 +1,7 @@
+{
+  "name": "@mossx/plugin-code-annotations",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Transitional Code Annotations package. In-repo layering only. Not wired into boot or Marketplace.",
+  "type": "module"
+}

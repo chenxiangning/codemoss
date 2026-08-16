@@ -1,0 +1,73 @@
+{
+  "manifestVersion": 1,
+  "pluginId": "com.mossx.git-history",
+  "version": "1.0.0",
+  "displayName": "Git History",
+  "description": "Transitional Git History package. In-repo layering only. Not installed by boot.",
+  "publisher": {
+    "id": "com.mossx",
+    "displayName": "Mossx",
+    "homepage": "https://mossx.dev"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mossx/mossx-plugin-git-history",
+    "commit": "0000000000000000000000000000000000000000"
+  },
+  "license": "MIT",
+  "channel": "stable",
+  "compatibility": {
+    "coreApi": ">=1.0.0 <2.0.0",
+    "platforms": [
+      "darwin-arm64",
+      "darwin-x64",
+      "windows-x64",
+      "windows-arm64",
+      "linux-x64",
+      "linux-arm64"
+    ]
+  },
+  "entries": [
+    {
+      "id": "git-history-ui",
+      "kind": "ui",
+      "mode": "trusted-react",
+      "path": "src/features/git-history",
+      "slot": "workspace.main",
+      "trustedReact": true,
+      "criticality": "required"
+    }
+  ],
+  "activationUnits": [
+    {
+      "id": "git-history-main",
+      "entries": [
+        "git-history-ui"
+      ],
+      "events": [
+        {
+          "type": "onView",
+          "viewId": "git-history.main"
+        }
+      ]
+    }
+  ],
+  "contributions": [
+    {
+      "id": "git-history.main",
+      "type": "mossx.ui.view",
+      "entryId": "git-history-ui",
+      "slot": "workspace.main",
+      "mode": "trusted-react"
+    }
+  ],
+  "capabilities": [
+    {
+      "id": "mossx.ui.slot.workspace.main",
+      "role": "consumer"
+    }
+  ],
+  "budgets": {
+    "activationDeadlineMs": 10000
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "name": "@mossx/plugin-models",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Transitional Models package. In-repo layering only. Not wired into boot or Marketplace.",
+  "type": "module"
+}
