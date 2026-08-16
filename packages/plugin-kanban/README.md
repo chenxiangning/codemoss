@@ -6,5 +6,6 @@
 
 - 有：`.mossx-plugin/plugin.json`
 - 产品实现仍在：`src/features/kanban`
+- AppShell 生产导入走：`@mossx/plugin-kanban`
 - 没有：`dist/`、签名、SBOM
 - 不进 Host / boot / 远程 Marketplace

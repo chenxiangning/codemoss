@@ -18,7 +18,7 @@ import {
   type SearchActionDescriptor,
 } from "../../features/search/providers/actionsProvider";
 import { projectRecentDiscoveryResults } from "../../features/search/providers/recentDiscoveryProvider";
-import type { KanbanTask } from "../../features/kanban/types";
+import type { KanbanTask } from "@mossx/plugin-kanban";
 import type {
   SearchContentFilter,
   SearchResult,

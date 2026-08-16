@@ -75,6 +75,7 @@ describe("AppShell S4 host boundaries", () => {
     expect(source).not.toContain(
       'from "../../features/kanban/hooks/useKanbanStore"',
     );
+    expect(source).not.toContain('from "@mossx/plugin-kanban"');
     expect(source).not.toContain(
       'from "../../features/threads/hooks/useCopyThread"',
     );

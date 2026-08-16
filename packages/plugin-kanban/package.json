@@ -3,5 +3,8 @@
   "private": true,
   "version": "1.0.0",
   "description": "Transitional Kanban Feature package. In-repo layering only. Not wired into boot or Marketplace.",
-  "type": "module"
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  }
 }

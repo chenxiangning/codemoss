@@ -13,7 +13,7 @@ export const GitHubPanelData = lazy(() =>
 );
 
 export const KanbanView = lazy(() =>
-  import("../../features/kanban/components/KanbanView").then((module) => ({
+  import("@mossx/plugin-kanban").then((module) => ({
     default: module.KanbanView,
   })),
 );

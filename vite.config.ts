@@ -50,6 +50,7 @@ export default defineConfig(({ command }) => ({
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
+      "@mossx/plugin-kanban": path.resolve(__dirname, "./packages/plugin-kanban/src/index.ts"),
     },
     dedupe: [
       "@codemirror/state",
@@ -189,7 +190,7 @@ export default defineConfig(({ command }) => ({
   },
   test: {
     environment: "node",
-    include: ["src/**/*.test.ts", "src/**/*.test.tsx"],
+    include: ["src/**/*.test.ts", "src/**/*.test.tsx", "packages/plugin-*/src/**/*.test.ts"],
     setupFiles: ["src/test/vitest.setup.ts"],
     maxWorkers: 2,
     minWorkers: 1,

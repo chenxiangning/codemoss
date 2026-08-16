@@ -17,7 +17,8 @@
     /* Path aliases */
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@mossx/plugin-kanban": ["./packages/plugin-kanban/src/index.ts"]
     },
 
     /* Linting */

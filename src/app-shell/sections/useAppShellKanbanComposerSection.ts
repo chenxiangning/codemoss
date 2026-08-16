@@ -2,8 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { homeDir } from "@tauri-apps/api/path";
 import { ensureWorkspacePathDir } from "../../services/tauri/workspaceRuntime";
 import { isWebServiceRuntime } from "../../services/tauri/runtimeMode";
-import { resolveKanbanThreadCreationStrategy } from "../../features/kanban/utils/contextMode";
-import { deriveKanbanTaskTitle } from "../../features/kanban/utils/taskTitle";
+import { deriveKanbanTaskTitle, resolveKanbanThreadCreationStrategy } from "@mossx/plugin-kanban";
 import {
   getDefaultWorkspaceCandidatePaths,
   isDefaultWorkspacePath,
@@ -13,8 +12,7 @@ import type {
   ThreadSummary,
   WorkspaceInfo,
 } from "../../types";
-import type { KanbanPanel } from "../../features/kanban/types";
-import type { KanbanContextMode } from "../../features/kanban/utils/contextMode";
+import type { KanbanContextMode, KanbanPanel } from "@mossx/plugin-kanban";
 import { stripComposerKanbanTagsPreserveFormatting } from "./useAppShellSections.kanbanHelpers";
 import type { UseAppShellSectionsContext } from "./useAppShellSectionsTypes";
 

@@ -7,7 +7,7 @@ const currentDir = dirname(fileURLToPath(import.meta.url));
 const srcDir = join(currentDir, "..", "..");
 
 const lazyFeatureImports = [
-  "../../features/kanban/components/KanbanView",
+  "@mossx/plugin-kanban",
   "../../features/git-history/components/GitHistoryPanel",
   "../../features/workspaces/components/WorkspaceHome",
   "../../features/spec/components/SpecHub",

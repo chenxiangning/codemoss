@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import type { AppMode } from "../../types";
-import { useKanbanStore } from "../../features/kanban/hooks/useKanbanStore";
+import { useKanbanStore } from "@mossx/plugin-kanban";
 import type { WorkspaceInfo } from "../../types";
 
 /**

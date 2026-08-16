@@ -664,8 +664,11 @@ vi.mock("./features/engine/hooks/useEngineController", () => ({
   }),
 }));
 
-vi.mock("./features/kanban/hooks/useKanbanStore", () => ({
-  useKanbanStore: () => ({
+vi.mock("@mossx/plugin-kanban", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@mossx/plugin-kanban")>();
+  return {
+    ...actual,
+    useKanbanStore: () => ({
     panels: [],
     tasks: [],
     kanbanViewState: null,
@@ -677,8 +680,9 @@ vi.mock("./features/kanban/hooks/useKanbanStore", () => ({
     updateTask: createNoopFunction(),
     deleteTask: createNoopFunction(),
     reorderTask: createNoopFunction(),
-  }),
-}));
+    }),
+  };
+});
 
 vi.mock("./features/composer/hooks/useComposerShortcuts", () => ({
   useComposerShortcuts: () => undefined,

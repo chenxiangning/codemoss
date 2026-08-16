@@ -15,7 +15,7 @@ import type {
 import { useComposerInsert } from "../../features/app/hooks/useComposerInsert";
 import { loadHistoryWithImportance } from "../../features/composer/hooks/useInputHistoryStore";
 import type { HistoryItem } from "../../features/composer/hooks/useInputHistoryStore";
-import type { KanbanTask } from "../../features/kanban/types";
+import type { KanbanTask } from "@mossx/plugin-kanban";
 import {
   readProjectMapRelationships,
   scanProjectMapRelationships,

@@ -1,11 +1,23 @@
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import { captureBrowserAgentSnapshot } from "../../services/tauri/browserAgent";
-import { isKanbanThreadCompatibleWithEngine } from "../../features/kanban/utils/contextMode";
-import { findTaskDownstream } from "../../features/kanban/utils/chaining";
 import {
+  applyMissedRunPolicy,
   buildChainedPromptPrefix,
   extractKanbanResultSnapshot,
-} from "../../features/kanban/utils/resultSnapshot";
+  findTaskDownstream,
+  hasReachedRecurringRoundLimit,
+  isKanbanThreadCompatibleWithEngine,
+  isScheduleDue,
+  markRecurringScheduleCompleted,
+  markScheduleTriggered,
+  resolvePostProcessingStatus,
+} from "@mossx/plugin-kanban";
+import type {
+  KanbanTask,
+  KanbanTaskExecutionSource,
+  KanbanTaskStatus,
+  KanbanViewState,
+} from "@mossx/plugin-kanban";
 import {
   beginKanbanTaskRunLifecycle,
   patchKanbanTaskRunLifecycle,
@@ -25,20 +37,6 @@ import {
   getActiveBrowserContext,
 } from "../../features/browser-agent";
 import type { TaskRunRecord } from "../../features/tasks/types";
-import {
-  applyMissedRunPolicy,
-  hasReachedRecurringRoundLimit,
-  isScheduleDue,
-  markRecurringScheduleCompleted,
-  markScheduleTriggered,
-  resolvePostProcessingStatus,
-} from "../../features/kanban/utils/scheduling";
-import type {
-  KanbanTask,
-  KanbanTaskExecutionSource,
-  KanbanTaskStatus,
-  KanbanViewState,
-} from "../../features/kanban/types";
 import type { ThreadSummary, WorkspaceInfo } from "../../types";
 import { isEngineExecutionEnabled } from "../../utils/engineExecutionPolicy";
 import {
