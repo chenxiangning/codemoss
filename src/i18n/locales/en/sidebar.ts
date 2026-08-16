@@ -210,6 +210,11 @@ const sidebar = {
       state: "State",
       generation: "Generation",
       marketplaceLater: "Marketplace install, enable, and remote catalog stay closed.",
+      catalogTitle: "Local packages",
+      catalogSubtitle: "In-repo plugin packages. Read-only. Not installed.",
+      catalogPath: "Path",
+      catalogStatus: "Status",
+      catalogNotInstalled: "Not installed",
       error: "Could not read the Host rack: {{message}}",
       kinds: {
         engine: "Engines",

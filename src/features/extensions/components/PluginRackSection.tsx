@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
+import { listLocalPluginCatalog } from "@/services/tauri/pluginLocalCatalog";
 import {
   getPluginRackSnapshot,
   type PluginRackPlug,
@@ -132,6 +133,30 @@ export function PluginRackSection() {
             ))}
           </div>
         )}
+        <section className="extensions-plugin-rack-catalog" aria-label={t("extensions.rack.catalogTitle")}>
+          <h3>{t("extensions.rack.catalogTitle")}</h3>
+          <p>{t("extensions.rack.catalogSubtitle")}</p>
+          <ul className="extensions-plugin-rack-list">
+            {listLocalPluginCatalog().map((item) => (
+              <li key={item.pluginId} className="extensions-plugin-rack-card">
+                <div>
+                  <h4>{item.displayName}</h4>
+                  <p className="extensions-plugin-rack-id">{item.pluginId}</p>
+                </div>
+                <dl>
+                  <div>
+                    <dt>{t("extensions.rack.catalogPath")}</dt>
+                    <dd>{item.packageDir}</dd>
+                  </div>
+                  <div>
+                    <dt>{t("extensions.rack.catalogStatus")}</dt>
+                    <dd>{t("extensions.rack.catalogNotInstalled")}</dd>
+                  </div>
+                </dl>
+              </li>
+            ))}
+          </ul>
+        </section>
         <p className="extensions-plugin-rack-footnote">{t("extensions.rack.marketplaceLater")}</p>
       </div>
     </section>

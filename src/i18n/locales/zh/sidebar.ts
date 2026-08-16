@@ -203,6 +203,11 @@ const sidebar = {
       state: "状态",
       generation: "代数",
       marketplaceLater: "市场安装、启用与远程目录仍关闭。",
+      catalogTitle: "本地过渡仓",
+      catalogSubtitle: "当前仓库内的插件分包。只读，未安装。",
+      catalogPath: "路径",
+      catalogStatus: "状态",
+      catalogNotInstalled: "未安装",
       error: "无法读取 Host 插排：{{message}}",
       kinds: {
         engine: "引擎",

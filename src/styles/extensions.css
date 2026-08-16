@@ -364,13 +364,19 @@
   gap: 24px;
 }
 
-.extensions-plugin-rack-group h3 {
+.extensions-plugin-rack-group h3,
+.extensions-plugin-rack-catalog h3 {
   margin: 0 0 12px;
   font-size: 13px;
   font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
   color: var(--text-muted);
+}
+
+.extensions-plugin-rack-catalog {
+  display: grid;
+  gap: 12px;
 }
 
 .extensions-plugin-rack-list {

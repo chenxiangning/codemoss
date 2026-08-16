@@ -1,4 +1,4 @@
-import { readFileSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
@@ -9,6 +9,7 @@ import notesMinimal from "../../packages/plugin-contract/fixtures/valid/notes-mi
 import notesPilot from "../../packages/plugin-contract/fixtures/valid/notes-pilot.json";
 import claudeEngine from "../../packages/plugin-contract/fixtures/valid/claude-engine.json";
 import kanbanPlugin from "../../packages/plugin-kanban/.mossx-plugin/plugin.json";
+import notesPlugin from "../../packages/plugin-notes/.mossx-plugin/plugin.json";
 
 const fixtureDir = dirname(fileURLToPath(import.meta.url));
 const contractRoot = join(fixtureDir, "../../packages/plugin-contract");
@@ -42,6 +43,16 @@ describe("parseManifestV1", () => {
     const boot = readFileSync(join(fixtureDir, "../../src-tauri/src/plugin_runtime/boot.rs"), "utf8");
     expect(boot).not.toContain("plugin-kanban");
     expect(boot).not.toContain("com.mossx.kanban");
+  });
+
+  it("accepts the in-repo notes package layer without migrating product data", () => {
+    const result = parseManifestV1(notesPlugin, systemOpts);
+    expect(result.ok).toBe(true);
+    expect(result.manifest?.pluginId).toBe("com.mossx.notes");
+    expect(result.manifest?.contributions.some((item) => item.id === "notes.main")).toBe(true);
+    const boot = readFileSync(join(fixtureDir, "../../src-tauri/src/plugin_runtime/boot.rs"), "utf8");
+    expect(boot).not.toContain("plugin-notes");
+    expect(existsSync(join(fixtureDir, "../../src-tauri/src/note_cards.rs"))).toBe(true);
   });
 
   it("rejects templated engine providers on the claude fixture", () => {

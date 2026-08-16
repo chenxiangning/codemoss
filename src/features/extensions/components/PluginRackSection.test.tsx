@@ -19,6 +19,11 @@ const translations: Record<string, string> = {
   "extensions.rack.state": "State",
   "extensions.rack.generation": "Generation",
   "extensions.rack.marketplaceLater": "Marketplace stays closed.",
+  "extensions.rack.catalogTitle": "Local packages",
+  "extensions.rack.catalogSubtitle": "In-repo plugin packages. Read-only. Not installed.",
+  "extensions.rack.catalogPath": "Path",
+  "extensions.rack.catalogStatus": "Status",
+  "extensions.rack.catalogNotInstalled": "Not installed",
   "extensions.rack.error": "Could not read the Host rack: {{message}}",
   "extensions.rack.kinds.engine": "Engines",
   "extensions.rack.kinds.feature": "Features",
@@ -69,11 +74,15 @@ describe("PluginRackSection", () => {
     expect(featureGroup.textContent).toContain("com.mossx.project-map");
     expect(featureGroup.textContent).toContain("Pilot");
     expect(featureGroup.textContent).toContain("Later plugin");
-    expect(screen.getByText("com.mossx.engine.claude")).toBeTruthy();
-    expect(screen.getByText("com.mossx.notes")).toBeTruthy();
-    expect(screen.getByText("com.mossx.project-map")).toBeTruthy();
-    expect(screen.getByText("com.mossx.browser")).toBeTruthy();
-    expect(screen.getByText("com.mossx.intent-canvas")).toBeTruthy();
+    expect(featureGroup.textContent).toContain("com.mossx.kanban");
+    const catalog = screen.getByRole("region", { name: "Local packages" });
+    expect(catalog.textContent).toContain("com.mossx.engine.claude");
+    expect(catalog.textContent).toContain("com.mossx.notes");
+    expect(catalog.textContent).toContain("com.mossx.kanban");
+    expect(catalog.textContent).toContain("packages/plugin-engine-claude");
+    expect(catalog.textContent).toContain("packages/plugin-notes");
+    expect(catalog.textContent).toContain("packages/plugin-kanban");
+    expect(screen.getAllByText("Not installed").length).toBeGreaterThanOrEqual(3);
     expect(screen.getByText("com.mossx.engine.codex")).toBeTruthy();
     expect(screen.getByText("com.mossx.engine.gemini")).toBeTruthy();
     expect(screen.getByText("com.mossx.engine.grok")).toBeTruthy();
