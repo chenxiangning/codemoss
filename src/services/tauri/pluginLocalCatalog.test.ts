@@ -22,6 +22,14 @@ describe("listLocalPluginCatalog", () => {
     expect(catalog).toHaveLength(45);
     expect(catalog.every((item) => item.installed === false)).toBe(true);
     expect(catalog.every((item) => item.remote === false)).toBe(true);
+    const notes = catalog.find((item) => item.pluginId === "com.mossx.notes");
+    expect(notes?.capabilities).toEqual(["mossx.ui.slot.workspace.main", "mossx.storage.readwrite"]);
+    const claude = catalog.find((item) => item.pluginId === "com.mossx.engine.claude");
+    expect(claude?.capabilities).toEqual([
+      "mossx.engine.provider",
+      "mossx.process.spawn",
+      "mossx.workspace.read",
+    ]);
     for (const item of catalog) {
       expect(existsSync(join(repoRoot, item.packageDir, ".mossx-plugin/plugin.json"))).toBe(true);
     }

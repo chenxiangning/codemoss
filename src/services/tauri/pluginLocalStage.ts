@@ -56,7 +56,7 @@ export function catalogManifestStub(pluginId: string): ValidatedManifest | null 
     activationUnits: [],
     contributions: [],
     contributionTemplates: [],
-    capabilities: [],
+    capabilities: item.capabilities.map((id) => ({ id, role: "consumer" as const })),
     requiredClosureByUnit: {},
   };
 }

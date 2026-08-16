@@ -23,6 +23,10 @@ describe("pluginLocalStage", () => {
     expect(JSON.parse(localStorage.getItem(LOCAL_PLUGIN_STAGE_KEY) ?? "[]")).toEqual(["com.mossx.notes"]);
     const stub = catalogManifestStub("com.mossx.notes");
     expect(stub?.entries).toEqual([]);
+    expect(stub?.capabilities.map((item) => item.id)).toEqual([
+      "mossx.ui.slot.workspace.main",
+      "mossx.storage.readwrite",
+    ]);
     const registry = readFileSync(join(repoRoot, "src-tauri/src/command_registry.rs"), "utf8");
     expect(registry).toContain("get_plugin_rack_snapshot");
     expect(registry).not.toContain("activate_plugin");

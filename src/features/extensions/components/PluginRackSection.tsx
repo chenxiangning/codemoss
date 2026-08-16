@@ -191,6 +191,10 @@ export function PluginRackSection() {
                               : t("extensions.rack.catalogNotInstalled")}
                           </dd>
                         </div>
+                        <div>
+                          <dt>{t("extensions.rack.catalogPermissions")}</dt>
+                          <dd>{item.capabilities.join(", ")}</dd>
+                        </div>
                       </dl>
                       <button
                         type="button"

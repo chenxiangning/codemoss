@@ -28,6 +28,7 @@ const translations: Record<string, string> = {
   "extensions.rack.catalogInstalled": "Installed (local mark)",
   "extensions.rack.catalogStage": "Install",
   "extensions.rack.catalogUnstage": "Uninstall",
+  "extensions.rack.catalogPermissions": "Permission preview",
   "extensions.rack.rackInstall": "Rack install",
   "extensions.rack.error": "Could not read the Host rack: {{message}}",
   "extensions.rack.kinds.engine": "Engines",
@@ -87,6 +88,8 @@ describe("PluginRackSection", () => {
     expect(catalogLater.length).toBeGreaterThan(0);
     expect(catalogPilot[0]?.textContent).toContain("com.mossx.engine.claude");
     expect(catalogPilot[0]?.textContent).toContain("com.mossx.notes");
+    expect(catalogPilot[0]?.textContent).toContain("mossx.storage.readwrite");
+    expect(catalogPilot[0]?.textContent).toContain("mossx.ui.slot.workspace.main");
     expect(catalogLater[0]?.textContent).toContain("com.mossx.kanban");
     expect(catalog.textContent).toContain("packages/plugin-engine-claude");
     expect(catalog.textContent).toContain("packages/plugin-notes");

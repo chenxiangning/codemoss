@@ -4,6 +4,7 @@ export type LocalCatalogPackage = {
   packageDir: string;
   ownerClass: "pilot" | "later-plugin";
   kind: "engine" | "feature";
+  capabilities: string[];
   installed: false;
   remote: false;
 };
@@ -136,8 +137,26 @@ const CATALOG_SEEDS: CatalogSeed[] = [
   { pluginId: "com.mossx.web-service", displayName: "Web Service", packageDir: "packages/plugin-web-service", ownerClass: "later-plugin", kind: "feature" },
 ];
 
+const FEATURE_STORAGE_IDS = new Set([
+  "com.mossx.notes",
+  "com.mossx.kanban",
+  "com.mossx.project-map",
+  "com.mossx.browser",
+  "com.mossx.intent-canvas",
+]);
+
+function declaredCapabilities(item: CatalogSeed): string[] {
+  if (item.kind === "engine") {
+    return ["mossx.engine.provider", "mossx.process.spawn", "mossx.workspace.read"];
+  }
+  return FEATURE_STORAGE_IDS.has(item.pluginId)
+    ? ["mossx.ui.slot.workspace.main", "mossx.storage.readwrite"]
+    : ["mossx.ui.slot.workspace.main"];
+}
+
 export const LOCAL_PLUGIN_CATALOG: LocalCatalogPackage[] = CATALOG_SEEDS.map((item) => ({
   ...item,
+  capabilities: declaredCapabilities(item),
   installed: false,
   remote: false,
 }));
