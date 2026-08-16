@@ -121,6 +121,18 @@ export default defineConfig(({ command }) => ({
         find: /^@mossx\/plugin-git-history$/,
         replacement: path.resolve(__dirname, "./packages/plugin-git-history/src/index.ts"),
       },
+      {
+        find: /^@mossx\/plugin-spec\/runtime$/,
+        replacement: path.resolve(__dirname, "./packages/plugin-spec/src/runtime.ts"),
+      },
+      {
+        find: /^@mossx\/plugin-spec\/ui$/,
+        replacement: path.resolve(__dirname, "./packages/plugin-spec/src/ui.ts"),
+      },
+      {
+        find: /^@mossx\/plugin-spec$/,
+        replacement: path.resolve(__dirname, "./packages/plugin-spec/src/index.ts"),
+      },
       { find: "@", replacement: path.resolve(__dirname, "./src") },
     ],
     dedupe: [

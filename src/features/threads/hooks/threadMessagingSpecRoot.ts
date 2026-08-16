@@ -4,7 +4,7 @@ import {
   listExternalSpecTree as listExternalSpecTreeService,
 } from "../../../services/tauri";
 import { getClientStoreSync } from "../../../services/clientStorage";
-import { normalizeSpecRootInput } from "../../spec/pathUtils";
+import { normalizeSpecRootInput } from "@mossx/plugin-spec/runtime";
 
 const SPEC_ROOT_PRIORITY_MARKER = "[Spec Root Priority]";
 const SPEC_ROOT_SESSION_MARKER = "[Session Spec Link]";

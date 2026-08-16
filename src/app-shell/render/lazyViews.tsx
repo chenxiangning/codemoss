@@ -43,7 +43,7 @@ export const WorkspaceHome = lazy(() =>
 );
 
 export const SpecHub = lazy(() =>
-  import("../../features/spec/components/SpecHub").then((module) => ({
+  import("@mossx/plugin-spec/ui").then((module) => ({
     default: module.SpecHub,
   })),
 );

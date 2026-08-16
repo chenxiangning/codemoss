@@ -8,7 +8,7 @@ import { pushErrorToast } from "../../../services/toasts";
 import {
   buildDetachedSpecHubSession,
   openOrFocusDetachedSpecHub,
-} from "../../spec/detachedSpecHub";
+} from "@mossx/plugin-spec/runtime";
 import {
   FileTreePanel,
   type FileTreeRevealRequest,

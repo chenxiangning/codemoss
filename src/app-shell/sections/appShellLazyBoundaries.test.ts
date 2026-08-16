@@ -10,7 +10,7 @@ const lazyFeatureImports = [
   "@mossx/plugin-kanban",
   "@mossx/plugin-git-history/ui",
   "../../features/workspaces/components/WorkspaceHome",
-  "../../features/spec/components/SpecHub",
+  "@mossx/plugin-spec/ui",
   "../../features/search/components/SearchPalette",
   "../../features/update/components/ReleaseNotesModal",
 ] as const;

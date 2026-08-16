@@ -76,7 +76,7 @@ import {
   type WorkspaceNoteCard,
   type WorkspaceNoteCardSource,
 } from "../../../services/tauri";
-import { normalizeSpecRootInput } from "../../spec/pathUtils";
+import { normalizeSpecRootInput } from "@mossx/plugin-spec/runtime";
 import type {
   CodeAnnotationBridgeProps,
   CodeAnnotationDraftInput,

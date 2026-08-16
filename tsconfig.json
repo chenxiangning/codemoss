@@ -35,7 +35,10 @@
       "@mossx/plugin-engine-claude/runtime": ["./packages/plugin-engine-claude/src/runtime.ts"],
       "@mossx/plugin-git-history": ["./packages/plugin-git-history/src/index.ts"],
       "@mossx/plugin-git-history/runtime": ["./packages/plugin-git-history/src/runtime.ts"],
-      "@mossx/plugin-git-history/ui": ["./packages/plugin-git-history/src/ui.ts"]
+      "@mossx/plugin-git-history/ui": ["./packages/plugin-git-history/src/ui.ts"],
+      "@mossx/plugin-spec": ["./packages/plugin-spec/src/index.ts"],
+      "@mossx/plugin-spec/runtime": ["./packages/plugin-spec/src/runtime.ts"],
+      "@mossx/plugin-spec/ui": ["./packages/plugin-spec/src/ui.ts"]
     },
 
     /* Linting */
