@@ -1,7 +1,6 @@
 import { memo, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { EngineType, ThreadTokenUsage } from "../../../types";
-import type { SessionBudgetConfig } from "../../context-ledger/cost-budget";
 import {
   aggregateWorkspaceCost,
   buildTokenBreakdownViewModel,
@@ -9,8 +8,11 @@ import {
   projectCostRecord,
   resolveBudgetThresholdSignal,
   useMonthlyBudgetConfig,
-} from "../../context-ledger/cost-budget";
-import type { TokenBreakdownSegment } from "../../context-ledger/cost-budget";
+} from "@mossx/plugin-context-ledger/runtime";
+import type {
+  SessionBudgetConfig,
+  TokenBreakdownSegment,
+} from "@mossx/plugin-context-ledger/runtime";
 
 const costHistoryStore = createCostHistoryStore();
 

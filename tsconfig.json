@@ -66,7 +66,10 @@
       "@mossx/plugin-debug/runtime": ["./packages/plugin-debug/src/runtime.ts"],
       "@mossx/plugin-debug/ui": ["./packages/plugin-debug/src/ui.ts"],
       "@mossx/plugin-collaboration": ["./packages/plugin-collaboration/src/index.ts"],
-      "@mossx/plugin-collaboration/runtime": ["./packages/plugin-collaboration/src/runtime.ts"]
+      "@mossx/plugin-collaboration/runtime": ["./packages/plugin-collaboration/src/runtime.ts"],
+      "@mossx/plugin-context-ledger": ["./packages/plugin-context-ledger/src/index.ts"],
+      "@mossx/plugin-context-ledger/runtime": ["./packages/plugin-context-ledger/src/runtime.ts"],
+      "@mossx/plugin-context-ledger/ui": ["./packages/plugin-context-ledger/src/ui.ts"]
     },
 
     /* Linting */

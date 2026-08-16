@@ -1,10 +1,10 @@
 import { useCallback } from "react";
 import type { Dispatch, SetStateAction } from "react";
-import type { ContextLedgerBlock } from "../../context-ledger/types";
 import {
   buildContextLedgerGovernanceBuckets,
   parseContextLedgerChipSourceRef,
-} from "../../context-ledger/utils/contextLedgerGovernance";
+} from "@mossx/plugin-context-ledger/runtime";
+import type { ContextLedgerBlock } from "@mossx/plugin-context-ledger/runtime";
 
 type IdentifiedEntry = {
   id: string;

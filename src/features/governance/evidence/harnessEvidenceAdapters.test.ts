@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { resolveBudgetThresholdSignal } from "../../context-ledger/budget/budgetThresholds";
-import type { CostRecord } from "../../context-ledger/cost/costTypes";
+import { resolveBudgetThresholdSignal } from "@mossx/plugin-context-ledger/runtime";
+import type { CostRecord } from "@mossx/plugin-context-ledger/runtime";
 import type { EngineCapabilityRuntimeStatus } from "../../engine/engineCapabilityMatrix";
 import {
   consolidateHarnessGateEvidence,

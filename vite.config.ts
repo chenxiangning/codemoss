@@ -245,6 +245,18 @@ export default defineConfig(({ command }) => ({
         find: /^@mossx\/plugin-collaboration$/,
         replacement: path.resolve(__dirname, "./packages/plugin-collaboration/src/index.ts"),
       },
+      {
+        find: /^@mossx\/plugin-context-ledger\/runtime$/,
+        replacement: path.resolve(__dirname, "./packages/plugin-context-ledger/src/runtime.ts"),
+      },
+      {
+        find: /^@mossx\/plugin-context-ledger\/ui$/,
+        replacement: path.resolve(__dirname, "./packages/plugin-context-ledger/src/ui.ts"),
+      },
+      {
+        find: /^@mossx\/plugin-context-ledger$/,
+        replacement: path.resolve(__dirname, "./packages/plugin-context-ledger/src/index.ts"),
+      },
       { find: "@", replacement: path.resolve(__dirname, "./src") },
     ],
     dedupe: [

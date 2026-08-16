@@ -167,8 +167,8 @@ import {
   buildRetainedContextChipKeys,
   filterRetainedChipNames,
   filterRetainedEntries,
-} from "../../context-ledger/utils/contextLedgerGovernance";
-import { resolveDualContextUsageModel } from "../../context-ledger/utils/contextLedgerProjection";
+  resolveDualContextUsageModel,
+} from "@mossx/plugin-context-ledger/runtime";
 import { useBrowserContextAttachment, requestBrowserDockOpenUrl } from "@mossx/plugin-browser/runtime";
 import { BrowserContextPreview } from "@mossx/plugin-browser/ui";
 import { IntentCanvasAttachmentCard } from "@mossx/plugin-intent-canvas/ui";

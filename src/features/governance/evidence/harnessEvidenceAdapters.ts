@@ -1,5 +1,4 @@
-import type { BudgetThresholdSignal } from "../../context-ledger/budget/budgetTypes";
-import type { CostRecord } from "../../context-ledger/cost/costTypes";
+import type { BudgetThresholdSignal, CostRecord } from "@mossx/plugin-context-ledger/runtime";
 import type { EngineCapabilityRuntimeStatus } from "../../engine/engineCapabilityMatrix";
 import { normalizeGovernanceEvidenceId } from "./governanceEvidence";
 import { createHarnessGovernanceEvidence } from "./governanceEvidenceBridge";

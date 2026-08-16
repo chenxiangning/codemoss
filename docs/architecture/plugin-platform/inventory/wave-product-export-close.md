@@ -26,6 +26,7 @@
 | `@mossx/plugin-prompts` | AppShell / Composer / Settings / 布局 | `src/features/prompts` |
 | `@mossx/plugin-debug` | AppShell / 布局 / 存储维护 / 会话诊断 | `src/features/debug` |
 | `@mossx/plugin-collaboration` | AppShell | `src/features/collaboration` |
+| `@mossx/plugin-context-ledger` | Composer / Settings / Status / Governance | `src/features/context-ledger` |
 
 ## 仍未做
 

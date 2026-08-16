@@ -3,7 +3,7 @@ import { act, renderHook } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { useState } from "react";
 import { useContextLedgerGovernance } from "./useContextLedgerGovernance";
-import type { ContextLedgerBlock } from "../../context-ledger/types";
+import type { ContextLedgerBlock } from "@mossx/plugin-context-ledger/runtime";
 
 type InlineFileReference = {
   path: string;

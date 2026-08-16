@@ -50,7 +50,7 @@ import {
   collectSessionQuotaTargets,
   formatSessionQuotaTargetTitle,
 } from "../utils/sessionQuotaTargets";
-import { projectCostRecord } from "../../context-ledger/cost-budget";
+import { projectCostRecord } from "@mossx/plugin-context-ledger/runtime";
 interface StatusPanelProps extends CodeAnnotationBridgeProps {
   workspaceId?: string | null;
   workspacePath?: string | null;

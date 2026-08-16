@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useMonthlyBudgetConfig } from "../../../../context-ledger/cost-budget";
+import { useMonthlyBudgetConfig } from "@mossx/plugin-context-ledger/runtime";
 
 function parseBudgetInput(value: string) {
   const trimmed = value.trim();
