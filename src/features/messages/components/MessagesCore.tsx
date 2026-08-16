@@ -51,8 +51,8 @@ import {
   isUserMessageConversationItem,
 } from "../utils/messageItemPredicates";
 import { parseAgentTaskNotification } from "../../engine-task-output/contracts/agentTaskNotification";
-import { usePromptDistillation } from "../../prompt-distill/hooks/usePromptDistillation";
-import { PromptDistillDialog } from "../../prompt-distill/components/PromptDistillDialog";
+import { usePromptDistillation } from "@mossx/plugin-prompt-distill/runtime";
+import { PromptDistillDialog } from "@mossx/plugin-prompt-distill/ui";
 import { dedupeExitPlanItemsKeepFirst } from "../utils/messagesExitPlan";
 import {
   filterContextProtocolConversationItems,
