@@ -2561,7 +2561,7 @@ pub(crate) async fn shutdown_managed_runtimes(state: &AppState) {
         )
         .await;
     }
-    let claude_sessions = state.engine_manager.claude_manager.list_sessions().await;
+    let claude_sessions = state.engine_manager.list_claude_sessions().await;
     for (workspace_id, session) in claude_sessions {
         let _ = session.interrupt().await;
         state

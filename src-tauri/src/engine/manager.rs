@@ -448,6 +448,21 @@ impl EngineManager {
         Ok(())
     }
 
+    pub async fn list_claude_sessions(&self) -> Vec<(String, Arc<ClaudeSession>)> {
+        if let Some(facade) = &self.claude_compat {
+            return facade.list_sessions().await;
+        }
+        self.claude_manager.list_sessions().await
+    }
+
+    pub async fn interrupt_all_claude_sessions(&self) {
+        if let Some(facade) = &self.claude_compat {
+            facade.interrupt_all().await;
+            return;
+        }
+        self.claude_manager.interrupt_all().await
+    }
+
     /// The GUI runtime no longer tracks Codex adapters locally. Keep cleanup callers stable.
     pub async fn remove_codex_adapter(&self, _workspace_id: &str) {}
 
@@ -1324,6 +1339,8 @@ mod tests {
             .interrupt_claude_turn("ws-remove", "turn-missing", None)
             .await
             .expect("missing turn is idempotent");
+        assert!(manager.list_claude_sessions().await.is_empty());
+        manager.interrupt_all_claude_sessions().await;
     }
 
     #[tokio::test]

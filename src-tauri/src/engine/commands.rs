@@ -1298,7 +1298,7 @@ pub async fn get_engine_active_process_diagnostics(
     }
 
     let mut workspaces = Vec::new();
-    for (workspace_id, session) in state.engine_manager.claude_manager.list_sessions().await {
+    for (workspace_id, session) in state.engine_manager.list_claude_sessions().await {
         let active_process_ids = session.active_process_ids().await;
         let registered_active_processes = active_process_ids
             .iter()

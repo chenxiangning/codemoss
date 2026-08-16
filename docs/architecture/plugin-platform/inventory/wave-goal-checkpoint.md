@@ -162,7 +162,8 @@
 | 1H10 Host Ready 必须先有一次成功 heartbeat | 完成 | `e46cd810c` |
 | 3H Claude 门面补 remove / interrupt | 完成 | `1ee9f9def` |
 | 3I 产品 workspace interrupt 走门面 | 完成 | `0a0ff74b7` |
-| 3J 产品 turn interrupt 走门面 | 完成 | 本刀 |
+| 3J 产品 turn interrupt 走门面 | 完成 | `7b006d58a` |
+| 3K Claude shutdown / list 走门面 | 完成 | 本刀 |
 
 ## 明确未做
 

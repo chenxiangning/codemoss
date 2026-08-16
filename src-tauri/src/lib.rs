@@ -469,7 +469,7 @@ pub fn run() {
             let state = app_handle.state::<state::AppState>();
             let manager = &state.engine_manager;
             tauri::async_runtime::block_on(async {
-                manager.claude_manager.interrupt_all().await;
+                manager.interrupt_all_claude_sessions().await;
                 if let Err(error) = manager.shutdown_gemini_sessions().await {
                     log::error!("[app_exit] Gemini shutdown failed: {error}");
                 }

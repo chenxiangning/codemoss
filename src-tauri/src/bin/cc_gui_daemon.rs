@@ -2780,7 +2780,7 @@ fn main() {
         client_tasks.abort_all();
         while client_tasks.join_next().await.is_some() {}
         state.runtime_manager.begin_shutdown();
-        state.engine_manager.claude_manager.interrupt_all().await;
+        state.engine_manager.interrupt_all_claude_sessions().await;
         if let Err(error) = state.engine_manager.shutdown_gemini_sessions().await {
             eprintln!("cc_gui_daemon Gemini shutdown failed: {error}");
         }

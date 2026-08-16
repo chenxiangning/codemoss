@@ -117,6 +117,14 @@ impl ClaudeCompatAdapter {
         self.manager.interrupt_workspace_sessions(workspace_id).await
     }
 
+    pub async fn list_sessions(&self) -> Vec<(String, Arc<ClaudeSession>)> {
+        self.manager.list_sessions().await
+    }
+
+    pub async fn interrupt_all(&self) {
+        self.manager.interrupt_all().await
+    }
+
     pub async fn remove_workspace_sessions(&self, workspace_id: &str) {
         for (runtime_key, session) in self.manager.runtime_sessions_for_workspace(workspace_id).await
         {
@@ -212,6 +220,22 @@ mod tests {
         assert!(!commands_turn.contains("claude_manager"));
         assert!(daemon_turn.contains("interrupt_claude_turn"));
         assert!(!daemon_turn.contains("claude_manager"));
+    }
+
+    #[test]
+    fn product_shutdown_and_list_go_through_the_manager_entry() {
+        let lib = include_str!("../lib.rs");
+        let daemon = include_str!("../bin/cc_gui_daemon.rs");
+        let runtime = include_str!("../runtime/mod.rs");
+        let commands = include_str!("../engine/commands.rs");
+        assert!(lib.contains("interrupt_all_claude_sessions"));
+        assert!(!lib.contains("claude_manager.interrupt_all"));
+        assert!(daemon.contains("interrupt_all_claude_sessions"));
+        assert!(!daemon.contains("claude_manager.interrupt_all"));
+        assert!(runtime.contains("list_claude_sessions"));
+        assert!(!runtime.contains("claude_manager.list_sessions"));
+        assert!(commands.contains("list_claude_sessions"));
+        assert!(!commands.contains("claude_manager.list_sessions"));
     }
 
     #[tokio::test]
