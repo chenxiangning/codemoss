@@ -132,6 +132,14 @@ export function PluginRackSection() {
                           <dt>{t("extensions.rack.generation")}</dt>
                           <dd>{plug.generation}</dd>
                         </div>
+                        <div>
+                          <dt>{t("extensions.rack.rackInstall")}</dt>
+                          <dd>
+                            {stagedIds.includes(plug.pluginId)
+                              ? t("extensions.rack.catalogInstalled")
+                              : t("extensions.rack.catalogNotInstalled")}
+                          </dd>
+                        </div>
                       </dl>
                     </li>
                   ))}

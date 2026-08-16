@@ -218,6 +218,7 @@ const sidebar = {
       catalogInstalled: "Installed (local mark)",
       catalogStage: "Install",
       catalogUnstage: "Uninstall",
+      rackInstall: "Rack install",
       error: "Could not read the Host rack: {{message}}",
       kinds: {
         engine: "Engines",

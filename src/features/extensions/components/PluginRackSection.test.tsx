@@ -1,5 +1,6 @@
 /** @vitest-environment jsdom */
 import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
 import { DECLARED_PLUGIN_RACK_SNAPSHOT } from "@/services/tauri/pluginRack";
@@ -27,6 +28,7 @@ const translations: Record<string, string> = {
   "extensions.rack.catalogInstalled": "Installed (local mark)",
   "extensions.rack.catalogStage": "Install",
   "extensions.rack.catalogUnstage": "Uninstall",
+  "extensions.rack.rackInstall": "Rack install",
   "extensions.rack.error": "Could not read the Host rack: {{message}}",
   "extensions.rack.kinds.engine": "Engines",
   "extensions.rack.kinds.feature": "Features",
@@ -106,6 +108,27 @@ describe("PluginRackSection", () => {
     expect(screen.queryByRole("button", { name: /enable|marketplace/i })).toBeNull();
     const notesPlug = featureGroup.textContent ?? "";
     expect(notesPlug).toContain("Idle");
+  });
+
+  it("marks a local package installed without changing the Host idle state", async () => {
+    getPluginRackSnapshot.mockResolvedValue({
+      ...DECLARED_PLUGIN_RACK_SNAPSHOT,
+      hostAvailable: true,
+    });
+    localStorage.clear();
+    const user = userEvent.setup();
+    render(<PluginRackSection />);
+    const catalog = await screen.findByRole("region", { name: "Local packages" });
+    const notesCard = Array.from(catalog.querySelectorAll(".extensions-plugin-rack-card")).find((card) =>
+      card.textContent?.includes("com.mossx.notes"),
+    );
+    expect(notesCard).toBeTruthy();
+    await user.click(notesCard!.querySelector("button") as HTMLButtonElement);
+    const featureGroup = screen.getByRole("region", { name: "Features" });
+    expect(featureGroup.textContent).toContain("Installed (local mark)");
+    expect(featureGroup.textContent).toContain("Idle");
+    expect(notesCard!.textContent).toContain("Installed (local mark)");
+    expect(notesCard!.querySelector("button")?.textContent).toBe("Uninstall");
   });
 
   it("shows an error when the snapshot command fails", async () => {
