@@ -557,6 +557,13 @@ mod tests {
             .expect("daemon fork_claude_session_from_message");
         assert!(daemon_rewind.contains("fork_claude_history_session_from_message"));
         assert!(!daemon_rewind.contains("claude_history::"));
+        let daemon_delete = daemon
+            .split("pub(super) async fn delete_claude_session(")
+            .nth(1)
+            .and_then(|rest| rest.split("pub(super) async fn list_gemini_sessions(").next())
+            .expect("daemon delete_claude_session");
+        assert!(daemon_delete.contains("delete_claude_history_session"));
+        assert!(!daemon_delete.contains("claude_history::"));
     }
 
     #[tokio::test]

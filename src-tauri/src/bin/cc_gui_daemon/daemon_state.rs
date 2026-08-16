@@ -3466,16 +3466,9 @@ impl DaemonState {
         session_id: String,
     ) -> Result<(), String> {
         let path = PathBuf::from(workspace_path);
-        let config = self
-            .engine_manager
-            .get_engine_config(engine::EngineType::Claude)
-            .await;
-        engine::claude_history::delete_claude_session_with_config(
-            &path,
-            &session_id,
-            config.as_ref(),
-        )
-        .await
+        self.engine_manager
+            .delete_claude_history_session(&path, &session_id)
+            .await
     }
 
     pub(super) async fn list_gemini_sessions(
