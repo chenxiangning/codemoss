@@ -1,0 +1,28 @@
+{
+  "pluginId": "com.mossx.engine.claude",
+  "wave": "3AM",
+  "status": "inventory-only",
+  "deleteGate": "after-pilot-disable",
+  "fixtureDisable": {
+    "exists": true,
+    "site": "src-tauri/src/plugin_runtime/claude_pilot.rs#disable_claude_fixture_keeps_core_implementation",
+    "meaning": "Host FakeDriver can disable the Claude fixture slot. This is not product disable."
+  },
+  "productOwner": {
+    "stillCoreClaude": true,
+    "flag": "MOSSX_CLAUDE_COMPAT_FACADE",
+    "flagDefault": "off",
+    "registry": "builtin.claude",
+    "implementation": [
+      "src-tauri/src/engine/claude.rs",
+      "src-tauri/src/engine/claude_history.rs"
+    ]
+  },
+  "mustNotHappenInThisWave": [
+    "delete src-tauri/src/engine/claude*",
+    "boot.host.disable(com.mossx.engine.claude)",
+    "default-on MOSSX_CLAUDE_COMPAT_FACADE",
+    "Marketplace publish"
+  ],
+  "notes": "3AM inventory only. Fixture disable is evidence that Host can revoke. Product Claude remains the only runtime owner."
+}

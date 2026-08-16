@@ -388,6 +388,17 @@ mod tests {
         let boot = include_str!("boot.rs");
         assert!(!boot.contains("plugin-engine-claude"));
         assert!(std::path::Path::new("src/engine/claude.rs").exists());
+        let disable_inventory = include_str!(
+            "../../../docs/architecture/plugin-platform/inventory/claude-disable-not-delete.json"
+        );
+        assert!(disable_inventory.contains("fixtureDisable"));
+        assert!(disable_inventory.contains("stillCoreClaude"));
+        assert!(disable_inventory.contains("flagDefault"));
+        let pilot = include_str!("claude_pilot.rs");
+        assert!(pilot.contains("fn disable_claude_fixture_keeps_core_implementation"));
+        assert!(pilot.contains("host.disable(\"com.mossx.engine.claude\")"));
+        assert!(!boot.contains("disable(\"com.mossx.engine.claude\")"));
+        assert!(!claude_compat_facade_enabled_from(None));
     }
 
     #[test]
