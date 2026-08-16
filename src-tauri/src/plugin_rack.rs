@@ -19,6 +19,21 @@ const DECLARED_PLUGS: &[DeclaredPlug] = &[
         display_name: "Notes",
         kind: "feature",
     },
+    DeclaredPlug {
+        plugin_id: "com.mossx.project-map",
+        display_name: "Project Map",
+        kind: "feature",
+    },
+    DeclaredPlug {
+        plugin_id: "com.mossx.browser",
+        display_name: "Browser",
+        kind: "feature",
+    },
+    DeclaredPlug {
+        plugin_id: "com.mossx.intent-canvas",
+        display_name: "Intent Canvas",
+        kind: "feature",
+    },
 ];
 
 struct DeclaredPlug {
@@ -134,13 +149,19 @@ mod tests {
         let snapshot = snapshot_boot_host(&host);
         assert!(snapshot.host_available);
         assert!(!snapshot.host_enabled);
-        assert_eq!(snapshot.plugs.len(), 2);
+        assert_eq!(snapshot.plugs.len(), 5);
         assert_eq!(snapshot.plugs[0].plugin_id, "com.mossx.engine.claude");
         assert_eq!(snapshot.plugs[1].plugin_id, "com.mossx.notes");
+        assert_eq!(snapshot.plugs[2].plugin_id, "com.mossx.project-map");
+        assert_eq!(snapshot.plugs[3].plugin_id, "com.mossx.browser");
+        assert_eq!(snapshot.plugs[4].plugin_id, "com.mossx.intent-canvas");
         assert!(snapshot.plugs.iter().all(|plug| plug.state == "idle"));
         assert!(snapshot.plugs.iter().all(|plug| !plug.live));
         assert!(host.host.slot("com.mossx.engine.claude").is_none());
         assert!(host.host.slot("com.mossx.notes").is_none());
+        assert!(host.host.slot("com.mossx.project-map").is_none());
+        assert!(host.host.slot("com.mossx.browser").is_none());
+        assert!(host.host.slot("com.mossx.intent-canvas").is_none());
     }
 
     #[test]
@@ -170,5 +191,20 @@ mod tests {
         assert!(!registry.contains("activate_plugin"));
         assert!(!registry.contains("plugin_runtime"));
         assert!(std::path::Path::new("src/engine/claude.rs").exists());
+    }
+
+    #[test]
+    fn later_declared_plugs_come_from_ownership_inventory() {
+        let inventory = include_str!("../../docs/architecture/plugin-platform/inventory/ownership.json");
+        for plugin_id in [
+            "com.mossx.project-map",
+            "com.mossx.browser",
+            "com.mossx.intent-canvas",
+        ] {
+            assert!(
+                inventory.contains(&format!("\"targetPluginId\": \"{plugin_id}\"")),
+                "{plugin_id} must already exist in ownership inventory"
+            );
+        }
     }
 }

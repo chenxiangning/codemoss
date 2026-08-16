@@ -62,6 +62,33 @@ describe("PluginRackSection", () => {
           unitId: null,
           live: false,
         },
+        {
+          pluginId: "com.mossx.project-map",
+          displayName: "Project Map",
+          kind: "feature",
+          state: "idle",
+          generation: 0,
+          unitId: null,
+          live: false,
+        },
+        {
+          pluginId: "com.mossx.browser",
+          displayName: "Browser",
+          kind: "feature",
+          state: "idle",
+          generation: 0,
+          unitId: null,
+          live: false,
+        },
+        {
+          pluginId: "com.mossx.intent-canvas",
+          displayName: "Intent Canvas",
+          kind: "feature",
+          state: "idle",
+          generation: 0,
+          unitId: null,
+          live: false,
+        },
       ],
     });
 
@@ -71,6 +98,9 @@ describe("PluginRackSection", () => {
     expect(screen.getByText("Host is default-off.")).toBeTruthy();
     expect(screen.getByText("com.mossx.engine.claude")).toBeTruthy();
     expect(screen.getByText("com.mossx.notes")).toBeTruthy();
+    expect(screen.getByText("com.mossx.project-map")).toBeTruthy();
+    expect(screen.getByText("com.mossx.browser")).toBeTruthy();
+    expect(screen.getByText("com.mossx.intent-canvas")).toBeTruthy();
     expect(screen.getByText("Marketplace stays closed.")).toBeTruthy();
     expect(screen.queryByRole("button", { name: /install|enable|marketplace/i })).toBeNull();
   });

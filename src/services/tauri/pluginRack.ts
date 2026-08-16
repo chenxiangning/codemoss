@@ -38,6 +38,33 @@ export const DECLARED_PLUGIN_RACK_SNAPSHOT: PluginRackSnapshot = {
       unitId: null,
       live: false,
     },
+    {
+      pluginId: "com.mossx.project-map",
+      displayName: "Project Map",
+      kind: "feature",
+      state: "idle",
+      generation: 0,
+      unitId: null,
+      live: false,
+    },
+    {
+      pluginId: "com.mossx.browser",
+      displayName: "Browser",
+      kind: "feature",
+      state: "idle",
+      generation: 0,
+      unitId: null,
+      live: false,
+    },
+    {
+      pluginId: "com.mossx.intent-canvas",
+      displayName: "Intent Canvas",
+      kind: "feature",
+      state: "idle",
+      generation: 0,
+      unitId: null,
+      live: false,
+    },
   ],
 };
 
