@@ -5,7 +5,7 @@ import {
   listBuiltInAgents,
 } from "../../../../../services/tauri";
 import type { BuiltInAgentDivision } from "../../../../../types";
-import { BUILT_IN_AGENT_CATALOG_CHANGED_EVENT } from "../../../../agent-catalog/events";
+import { BUILT_IN_AGENT_CATALOG_CHANGED_EVENT } from "@mossx/plugin-agent-catalog/runtime";
 import {
   getAgentIconRenderValue,
   resolveAgentIconForAgent,

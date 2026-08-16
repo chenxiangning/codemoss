@@ -361,6 +361,18 @@ export default defineConfig(({ command }) => ({
         find: /^@mossx\/plugin-computer-use$/,
         replacement: path.resolve(__dirname, "./packages/plugin-computer-use/src/index.ts"),
       },
+      {
+        find: /^@mossx\/plugin-agent-catalog\/runtime$/,
+        replacement: path.resolve(__dirname, "./packages/plugin-agent-catalog/src/runtime.ts"),
+      },
+      {
+        find: /^@mossx\/plugin-agent-catalog\/ui$/,
+        replacement: path.resolve(__dirname, "./packages/plugin-agent-catalog/src/ui.ts"),
+      },
+      {
+        find: /^@mossx\/plugin-agent-catalog$/,
+        replacement: path.resolve(__dirname, "./packages/plugin-agent-catalog/src/index.ts"),
+      },
       { find: "@", replacement: path.resolve(__dirname, "./src") },
     ],
     dedupe: [

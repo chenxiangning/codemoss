@@ -10,7 +10,7 @@ import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import Pencil from "lucide-react/dist/esm/icons/pencil";
 import Trash2 from "lucide-react/dist/esm/icons/trash-2";
-import { BuiltInAgentCatalogSection } from "../../agent-catalog/components/BuiltInAgentCatalogSection";
+import { BuiltInAgentCatalogSection } from "@mossx/plugin-agent-catalog/ui";
 import { AgentIcon } from "../../../components/AgentIcon";
 import type { AppSettings } from "../../../types";
 import {

@@ -274,7 +274,7 @@ import {
 import { useCodexMessageRecovery } from "./useCodexMessageRecovery";
 import { assertEngineExecutionEnabled } from "../../../utils/engineExecutionPolicy";
 import { resolveSelectedAgentForSend } from "../utils/resolveSelectedAgentForSend";
-import { BUILT_IN_AGENT_RESOLUTION_FAILED_EVENT } from "../../agent-catalog/events";
+import { BUILT_IN_AGENT_RESOLUTION_FAILED_EVENT } from "@mossx/plugin-agent-catalog/runtime";
 
 type SendMessageOptions = {
   skillInvocations?: SkillInvocation[];

@@ -37,6 +37,7 @@
 | `@mossx/plugin-subagent-ui` | 布局 / Composer / Status / Git History | `src/features/subagent-ui` |
 | `@mossx/plugin-dictation` | App 控制器 | `src/features/dictation` |
 | `@mossx/plugin-computer-use` | Settings Codex | `src/features/computer-use` |
+| `@mossx/plugin-agent-catalog` | AppShell / 会话 / Composer / Settings | `src/features/agent-catalog` |
 
 ## 仍未做
 

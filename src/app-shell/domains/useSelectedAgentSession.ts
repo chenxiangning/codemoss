@@ -7,7 +7,7 @@ import type { DebugEntry, SelectedAgentOption } from "../../types";
 import {
   BUILT_IN_AGENT_CATALOG_CHANGED_EVENT,
   BUILT_IN_AGENT_RESOLUTION_FAILED_EVENT,
-} from "../../features/agent-catalog/events";
+} from "@mossx/plugin-agent-catalog/runtime";
 import {
   getThreadAgentSelectionStorageKey,
   normalizeSelectedAgentOption,
