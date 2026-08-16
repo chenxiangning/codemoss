@@ -382,6 +382,7 @@ describe("buildAppShellDomainContextSlices", () => {
       kimiDoctor: null,
       grokDoctor: null,
       opencodeDoctor: null,
+      piDoctor: null,
       editorHighlightTarget: null,
       editorNavigationTarget: null,
       editorSplitCompanion: null,
@@ -403,8 +404,9 @@ describe("buildAppShellDomainContextSlices", () => {
       getThreadRows: () => [],
       globalSearchFilesByWorkspace: {},
     } as any);
-    expect(Object.keys(slice).length).toBe(78);
+    expect(Object.keys(slice).length).toBe(79);
     expect(slice).toHaveProperty("appSettings");
+    expect(slice).toHaveProperty("piDoctor");
     expect(slice).not.toHaveProperty("activeWorkspaceId");
     expect(slice).not.toHaveProperty("gitStatus");
   });

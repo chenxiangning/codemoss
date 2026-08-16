@@ -264,6 +264,7 @@ export function assembleAppShellDomainContexts(
       kimiDoctor: source.kimiDoctor,
       grokDoctor: source.grokDoctor,
       opencodeDoctor: source.opencodeDoctor,
+      piDoctor: source.piDoctor,
       editorHighlightTarget: source.editorHighlightTarget,
       editorNavigationTarget: source.editorNavigationTarget,
       editorSplitCompanion: source.editorSplitCompanion,
