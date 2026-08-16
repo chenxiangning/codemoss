@@ -1,0 +1,98 @@
+{
+  "manifestVersion": 1,
+  "pluginId": "com.mossx.engine.kimi",
+  "version": "1.0.0",
+  "displayName": "Kimi Engine",
+  "description": "Transitional Kimi Engine package. In-repo layering only. Not installed by boot.",
+  "publisher": {
+    "id": "com.mossx",
+    "displayName": "Mossx",
+    "homepage": "https://mossx.dev"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mossx/mossx-plugin-engine-kimi",
+    "commit": "0000000000000000000000000000000000000000"
+  },
+  "license": "MIT",
+  "channel": "stable",
+  "compatibility": {
+    "coreApi": ">=1.0.0 <2.0.0",
+    "platforms": [
+      "darwin-arm64",
+      "darwin-x64",
+      "windows-x64",
+      "windows-arm64",
+      "linux-x64",
+      "linux-arm64"
+    ]
+  },
+  "entries": [
+    {
+      "id": "kimi-cli",
+      "kind": "process",
+      "criticality": "required",
+      "platforms": {
+        "darwin-arm64": "bin/darwin-arm64/kimi",
+        "darwin-x64": "bin/darwin-x64/kimi",
+        "windows-x64": "bin/windows-x64/kimi.exe",
+        "windows-arm64": "bin/windows-arm64/kimi.exe",
+        "linux-x64": "bin/linux-x64/kimi",
+        "linux-arm64": "bin/linux-arm64/kimi"
+      }
+    },
+    {
+      "id": "kimi-worker",
+      "kind": "worker",
+      "path": "dist/worker.js",
+      "runtime": "quickjs",
+      "criticality": "required",
+      "dependsOn": [
+        {
+          "entryId": "kimi-cli",
+          "criticality": "required"
+        }
+      ]
+    }
+  ],
+  "activationUnits": [
+    {
+      "id": "kimi-engine",
+      "entries": [
+        "kimi-cli",
+        "kimi-worker"
+      ],
+      "events": [
+        {
+          "type": "onEngine",
+          "engineId": "kimi"
+        }
+      ]
+    }
+  ],
+  "contributions": [
+    {
+      "id": "kimi.engine",
+      "type": "mossx.engine.provider",
+      "entryId": "kimi-worker",
+      "engineId": "kimi"
+    }
+  ],
+  "capabilities": [
+    {
+      "id": "mossx.engine.provider",
+      "role": "provider"
+    },
+    {
+      "id": "mossx.process.spawn",
+      "role": "consumer"
+    },
+    {
+      "id": "mossx.workspace.read",
+      "role": "consumer"
+    }
+  ],
+  "budgets": {
+    "activationDeadlineMs": 10000
+  }
+}

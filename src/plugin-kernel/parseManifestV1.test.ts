@@ -13,6 +13,12 @@ import notesPlugin from "../../packages/plugin-notes/.mossx-plugin/plugin.json";
 import projectMapPlugin from "../../packages/plugin-project-map/.mossx-plugin/plugin.json";
 import browserPlugin from "../../packages/plugin-browser/.mossx-plugin/plugin.json";
 import intentCanvasPlugin from "../../packages/plugin-intent-canvas/.mossx-plugin/plugin.json";
+import codexPlugin from "../../packages/plugin-engine-codex/.mossx-plugin/plugin.json";
+import geminiPlugin from "../../packages/plugin-engine-gemini/.mossx-plugin/plugin.json";
+import grokPlugin from "../../packages/plugin-engine-grok/.mossx-plugin/plugin.json";
+import kimiPlugin from "../../packages/plugin-engine-kimi/.mossx-plugin/plugin.json";
+import opencodePlugin from "../../packages/plugin-engine-opencode/.mossx-plugin/plugin.json";
+import piPlugin from "../../packages/plugin-engine-pi/.mossx-plugin/plugin.json";
 
 const fixtureDir = dirname(fileURLToPath(import.meta.url));
 const contractRoot = join(fixtureDir, "../../packages/plugin-contract");
@@ -64,8 +70,16 @@ describe("parseManifestV1", () => {
       { manifest: browserPlugin, pluginId: "com.mossx.browser" },
       { manifest: intentCanvasPlugin, pluginId: "com.mossx.intent-canvas" },
     ];
+    const laterEngines = [
+      { manifest: codexPlugin, pluginId: "com.mossx.engine.codex" },
+      { manifest: geminiPlugin, pluginId: "com.mossx.engine.gemini" },
+      { manifest: grokPlugin, pluginId: "com.mossx.engine.grok" },
+      { manifest: kimiPlugin, pluginId: "com.mossx.engine.kimi" },
+      { manifest: opencodePlugin, pluginId: "com.mossx.engine.opencode" },
+      { manifest: piPlugin, pluginId: "com.mossx.engine.pi" },
+    ];
     const boot = readFileSync(join(fixtureDir, "../../src-tauri/src/plugin_runtime/boot.rs"), "utf8");
-    for (const item of later) {
+    for (const item of [...later, ...laterEngines]) {
       const result = parseManifestV1(item.manifest, systemOpts);
       expect(result.ok).toBe(true);
       expect(result.manifest?.pluginId).toBe(item.pluginId);

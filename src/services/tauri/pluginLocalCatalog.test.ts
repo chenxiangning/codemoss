@@ -18,6 +18,12 @@ describe("listLocalPluginCatalog", () => {
       "com.mossx.project-map",
       "com.mossx.browser",
       "com.mossx.intent-canvas",
+      "com.mossx.engine.codex",
+      "com.mossx.engine.gemini",
+      "com.mossx.engine.grok",
+      "com.mossx.engine.kimi",
+      "com.mossx.engine.opencode",
+      "com.mossx.engine.pi",
     ]);
     expect(catalog.every((item) => item.installed === false)).toBe(true);
     expect(catalog.every((item) => item.remote === false)).toBe(true);

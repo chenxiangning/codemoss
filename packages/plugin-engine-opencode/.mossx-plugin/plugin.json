@@ -1,0 +1,98 @@
+{
+  "manifestVersion": 1,
+  "pluginId": "com.mossx.engine.opencode",
+  "version": "1.0.0",
+  "displayName": "OpenCode Engine",
+  "description": "Transitional OpenCode Engine package. In-repo layering only. Not installed by boot.",
+  "publisher": {
+    "id": "com.mossx",
+    "displayName": "Mossx",
+    "homepage": "https://mossx.dev"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mossx/mossx-plugin-engine-opencode",
+    "commit": "0000000000000000000000000000000000000000"
+  },
+  "license": "MIT",
+  "channel": "stable",
+  "compatibility": {
+    "coreApi": ">=1.0.0 <2.0.0",
+    "platforms": [
+      "darwin-arm64",
+      "darwin-x64",
+      "windows-x64",
+      "windows-arm64",
+      "linux-x64",
+      "linux-arm64"
+    ]
+  },
+  "entries": [
+    {
+      "id": "opencode-cli",
+      "kind": "process",
+      "criticality": "required",
+      "platforms": {
+        "darwin-arm64": "bin/darwin-arm64/opencode",
+        "darwin-x64": "bin/darwin-x64/opencode",
+        "windows-x64": "bin/windows-x64/opencode.exe",
+        "windows-arm64": "bin/windows-arm64/opencode.exe",
+        "linux-x64": "bin/linux-x64/opencode",
+        "linux-arm64": "bin/linux-arm64/opencode"
+      }
+    },
+    {
+      "id": "opencode-worker",
+      "kind": "worker",
+      "path": "dist/worker.js",
+      "runtime": "quickjs",
+      "criticality": "required",
+      "dependsOn": [
+        {
+          "entryId": "opencode-cli",
+          "criticality": "required"
+        }
+      ]
+    }
+  ],
+  "activationUnits": [
+    {
+      "id": "opencode-engine",
+      "entries": [
+        "opencode-cli",
+        "opencode-worker"
+      ],
+      "events": [
+        {
+          "type": "onEngine",
+          "engineId": "opencode"
+        }
+      ]
+    }
+  ],
+  "contributions": [
+    {
+      "id": "opencode.engine",
+      "type": "mossx.engine.provider",
+      "entryId": "opencode-worker",
+      "engineId": "opencode"
+    }
+  ],
+  "capabilities": [
+    {
+      "id": "mossx.engine.provider",
+      "role": "provider"
+    },
+    {
+      "id": "mossx.process.spawn",
+      "role": "consumer"
+    },
+    {
+      "id": "mossx.workspace.read",
+      "role": "consumer"
+    }
+  ],
+  "budgets": {
+    "activationDeadlineMs": 10000
+  }
+}

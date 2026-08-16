@@ -1,0 +1,98 @@
+{
+  "manifestVersion": 1,
+  "pluginId": "com.mossx.engine.codex",
+  "version": "1.0.0",
+  "displayName": "Codex Engine",
+  "description": "Transitional Codex Engine package. In-repo layering only. Not installed by boot.",
+  "publisher": {
+    "id": "com.mossx",
+    "displayName": "Mossx",
+    "homepage": "https://mossx.dev"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mossx/mossx-plugin-engine-codex",
+    "commit": "0000000000000000000000000000000000000000"
+  },
+  "license": "MIT",
+  "channel": "stable",
+  "compatibility": {
+    "coreApi": ">=1.0.0 <2.0.0",
+    "platforms": [
+      "darwin-arm64",
+      "darwin-x64",
+      "windows-x64",
+      "windows-arm64",
+      "linux-x64",
+      "linux-arm64"
+    ]
+  },
+  "entries": [
+    {
+      "id": "codex-cli",
+      "kind": "process",
+      "criticality": "required",
+      "platforms": {
+        "darwin-arm64": "bin/darwin-arm64/codex",
+        "darwin-x64": "bin/darwin-x64/codex",
+        "windows-x64": "bin/windows-x64/codex.exe",
+        "windows-arm64": "bin/windows-arm64/codex.exe",
+        "linux-x64": "bin/linux-x64/codex",
+        "linux-arm64": "bin/linux-arm64/codex"
+      }
+    },
+    {
+      "id": "codex-worker",
+      "kind": "worker",
+      "path": "dist/worker.js",
+      "runtime": "quickjs",
+      "criticality": "required",
+      "dependsOn": [
+        {
+          "entryId": "codex-cli",
+          "criticality": "required"
+        }
+      ]
+    }
+  ],
+  "activationUnits": [
+    {
+      "id": "codex-engine",
+      "entries": [
+        "codex-cli",
+        "codex-worker"
+      ],
+      "events": [
+        {
+          "type": "onEngine",
+          "engineId": "codex"
+        }
+      ]
+    }
+  ],
+  "contributions": [
+    {
+      "id": "codex.engine",
+      "type": "mossx.engine.provider",
+      "entryId": "codex-worker",
+      "engineId": "codex"
+    }
+  ],
+  "capabilities": [
+    {
+      "id": "mossx.engine.provider",
+      "role": "provider"
+    },
+    {
+      "id": "mossx.process.spawn",
+      "role": "consumer"
+    },
+    {
+      "id": "mossx.workspace.read",
+      "role": "consumer"
+    }
+  ],
+  "budgets": {
+    "activationDeadlineMs": 10000
+  }
+}

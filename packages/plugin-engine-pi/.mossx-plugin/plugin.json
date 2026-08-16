@@ -1,0 +1,98 @@
+{
+  "manifestVersion": 1,
+  "pluginId": "com.mossx.engine.pi",
+  "version": "1.0.0",
+  "displayName": "Pi Engine",
+  "description": "Transitional Pi Engine package. In-repo layering only. Not installed by boot.",
+  "publisher": {
+    "id": "com.mossx",
+    "displayName": "Mossx",
+    "homepage": "https://mossx.dev"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mossx/mossx-plugin-engine-pi",
+    "commit": "0000000000000000000000000000000000000000"
+  },
+  "license": "MIT",
+  "channel": "stable",
+  "compatibility": {
+    "coreApi": ">=1.0.0 <2.0.0",
+    "platforms": [
+      "darwin-arm64",
+      "darwin-x64",
+      "windows-x64",
+      "windows-arm64",
+      "linux-x64",
+      "linux-arm64"
+    ]
+  },
+  "entries": [
+    {
+      "id": "pi-cli",
+      "kind": "process",
+      "criticality": "required",
+      "platforms": {
+        "darwin-arm64": "bin/darwin-arm64/pi",
+        "darwin-x64": "bin/darwin-x64/pi",
+        "windows-x64": "bin/windows-x64/pi.exe",
+        "windows-arm64": "bin/windows-arm64/pi.exe",
+        "linux-x64": "bin/linux-x64/pi",
+        "linux-arm64": "bin/linux-arm64/pi"
+      }
+    },
+    {
+      "id": "pi-worker",
+      "kind": "worker",
+      "path": "dist/worker.js",
+      "runtime": "quickjs",
+      "criticality": "required",
+      "dependsOn": [
+        {
+          "entryId": "pi-cli",
+          "criticality": "required"
+        }
+      ]
+    }
+  ],
+  "activationUnits": [
+    {
+      "id": "pi-engine",
+      "entries": [
+        "pi-cli",
+        "pi-worker"
+      ],
+      "events": [
+        {
+          "type": "onEngine",
+          "engineId": "pi"
+        }
+      ]
+    }
+  ],
+  "contributions": [
+    {
+      "id": "pi.engine",
+      "type": "mossx.engine.provider",
+      "entryId": "pi-worker",
+      "engineId": "pi"
+    }
+  ],
+  "capabilities": [
+    {
+      "id": "mossx.engine.provider",
+      "role": "provider"
+    },
+    {
+      "id": "mossx.process.spawn",
+      "role": "consumer"
+    },
+    {
+      "id": "mossx.workspace.read",
+      "role": "consumer"
+    }
+  ],
+  "budgets": {
+    "activationDeadlineMs": 10000
+  }
+}

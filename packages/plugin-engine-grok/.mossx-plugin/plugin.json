@@ -1,0 +1,98 @@
+{
+  "manifestVersion": 1,
+  "pluginId": "com.mossx.engine.grok",
+  "version": "1.0.0",
+  "displayName": "Grok Engine",
+  "description": "Transitional Grok Engine package. In-repo layering only. Not installed by boot.",
+  "publisher": {
+    "id": "com.mossx",
+    "displayName": "Mossx",
+    "homepage": "https://mossx.dev"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mossx/mossx-plugin-engine-grok",
+    "commit": "0000000000000000000000000000000000000000"
+  },
+  "license": "MIT",
+  "channel": "stable",
+  "compatibility": {
+    "coreApi": ">=1.0.0 <2.0.0",
+    "platforms": [
+      "darwin-arm64",
+      "darwin-x64",
+      "windows-x64",
+      "windows-arm64",
+      "linux-x64",
+      "linux-arm64"
+    ]
+  },
+  "entries": [
+    {
+      "id": "grok-cli",
+      "kind": "process",
+      "criticality": "required",
+      "platforms": {
+        "darwin-arm64": "bin/darwin-arm64/grok",
+        "darwin-x64": "bin/darwin-x64/grok",
+        "windows-x64": "bin/windows-x64/grok.exe",
+        "windows-arm64": "bin/windows-arm64/grok.exe",
+        "linux-x64": "bin/linux-x64/grok",
+        "linux-arm64": "bin/linux-arm64/grok"
+      }
+    },
+    {
+      "id": "grok-worker",
+      "kind": "worker",
+      "path": "dist/worker.js",
+      "runtime": "quickjs",
+      "criticality": "required",
+      "dependsOn": [
+        {
+          "entryId": "grok-cli",
+          "criticality": "required"
+        }
+      ]
+    }
+  ],
+  "activationUnits": [
+    {
+      "id": "grok-engine",
+      "entries": [
+        "grok-cli",
+        "grok-worker"
+      ],
+      "events": [
+        {
+          "type": "onEngine",
+          "engineId": "grok"
+        }
+      ]
+    }
+  ],
+  "contributions": [
+    {
+      "id": "grok.engine",
+      "type": "mossx.engine.provider",
+      "entryId": "grok-worker",
+      "engineId": "grok"
+    }
+  ],
+  "capabilities": [
+    {
+      "id": "mossx.engine.provider",
+      "role": "provider"
+    },
+    {
+      "id": "mossx.process.spawn",
+      "role": "consumer"
+    },
+    {
+      "id": "mossx.workspace.read",
+      "role": "consumer"
+    }
+  ],
+  "budgets": {
+    "activationDeadlineMs": 10000
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "name": "@mossx/plugin-engine-codex",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Transitional Codex Engine package. In-repo layering only. Not wired into boot or Marketplace.",
+  "type": "module"
+}
