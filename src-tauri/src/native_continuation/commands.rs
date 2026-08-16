@@ -263,15 +263,13 @@ async fn resolve_source_path(
     let workspace_path = workspace_path(state, workspace_id).await?;
     match source.engine {
         NativeHistoryEngine::Claude => {
-            let config = state
+            state
                 .engine_manager
-                .get_engine_config(EngineType::Claude)
-                .await;
-            crate::engine::claude_history::resolve_claude_session_file_with_config(
-                &workspace_path,
-                &source.native_session_id,
-                config.as_ref(),
-            )
+                .resolve_claude_history_session_file(
+                    &workspace_path,
+                    &source.native_session_id,
+                )
+                .await
         }
         NativeHistoryEngine::Codex => {
             let provider = source
@@ -897,15 +895,10 @@ async fn claude_history_bootstrap_evidence(
     acceptance_marker: &str,
 ) -> Result<ClaudeBootstrapEvidence, String> {
     let workspace_path = workspace_path(state, workspace_id).await?;
-    let config = state
+    let path = state
         .engine_manager
-        .get_engine_config(EngineType::Claude)
-        .await;
-    let path = crate::engine::claude_history::resolve_claude_session_file_with_config(
-        &workspace_path,
-        target_session_id,
-        config.as_ref(),
-    )?;
+        .resolve_claude_history_session_file(&workspace_path, target_session_id)
+        .await?;
     let package_marker = package_marker.to_string();
     let acceptance_marker = acceptance_marker.to_string();
     tokio::task::spawn_blocking(move || {

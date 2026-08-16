@@ -333,6 +333,19 @@ impl ClaudeCompatAdapter {
         )
         .await
     }
+
+    pub fn resolve_history_session_file(
+        &self,
+        workspace_path: &Path,
+        session_id: &str,
+        config: Option<&crate::engine::EngineConfig>,
+    ) -> Result<std::path::PathBuf, String> {
+        crate::engine::claude_history::resolve_claude_session_file_with_config(
+            workspace_path,
+            session_id,
+            config,
+        )
+    }
 }
 
 #[cfg(test)]
@@ -677,7 +690,8 @@ mod tests {
         assert!(!projection.contains("claude_history::list_claude_session_source_facts"));
         assert!(!projection.contains("claude_history::list_workspace_only_claude_session_source_facts"));
         let native = include_str!("../native_continuation/commands.rs");
-        assert!(native.contains("resolve_claude_session_file_with_config"));
+        assert!(native.contains("resolve_claude_history_session_file"));
+        assert!(!native.contains("claude_history::resolve_claude_session_file_with_config"));
     }
 
     #[tokio::test]

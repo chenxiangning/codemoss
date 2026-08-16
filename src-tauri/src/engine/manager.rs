@@ -436,6 +436,24 @@ impl ClaudeOwner<'_> {
             }
         }
     }
+
+    fn resolve_history_session_file(
+        &self,
+        workspace_path: &Path,
+        session_id: &str,
+        config: Option<&EngineConfig>,
+    ) -> Result<std::path::PathBuf, String> {
+        match self {
+            Self::Facade(facade) => {
+                facade.resolve_history_session_file(workspace_path, session_id, config)
+            }
+            Self::Core(_) => super::claude_history::resolve_claude_session_file_with_config(
+                workspace_path,
+                session_id,
+                config,
+            ),
+        }
+    }
 }
 
 #[derive(Default)]
@@ -922,6 +940,16 @@ impl EngineManager {
             self.claude_compat.clone(),
             self.get_engine_config(EngineType::Claude).await,
         )
+    }
+
+    pub async fn resolve_claude_history_session_file(
+        &self,
+        workspace_path: &Path,
+        session_id: &str,
+    ) -> Result<std::path::PathBuf, String> {
+        let config = self.get_engine_config(EngineType::Claude).await;
+        self.claude_owner()
+            .resolve_history_session_file(workspace_path, session_id, config.as_ref())
     }
 
     pub async fn fork_claude_history_session_from_message(
