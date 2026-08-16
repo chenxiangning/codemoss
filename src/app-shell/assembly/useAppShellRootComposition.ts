@@ -12,7 +12,7 @@ import { useSkills } from "@mossx/plugin-skills/runtime";
 import { useCustomCommands } from "@mossx/plugin-commands/runtime";
 import { useCustomPrompts } from "@mossx/plugin-prompts/runtime";
 import { useWorkspaceFiles } from "../../features/workspaces/hooks/useWorkspaceFiles";
-import { useDebugLog } from "../../features/debug/hooks/useDebugLog";
+import { useDebugLog } from "@mossx/plugin-debug/runtime";
 import { useWorkspaceRefreshOnFocus } from "../../features/workspaces/hooks/useWorkspaceRefreshOnFocus";
 import { useWorkspaceRestore } from "../../features/workspaces/hooks/useWorkspaceRestore";
 import { useLayoutController } from "../../features/app/hooks/useLayoutController";

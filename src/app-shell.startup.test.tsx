@@ -371,7 +371,7 @@ vi.mock("./features/app/hooks/useDictationController", () => ({
   }),
 }));
 
-vi.mock("./features/debug/hooks/useDebugLog", () => ({
+vi.mock("@mossx/plugin-debug/runtime", () => ({
   useDebugLog: () => ({
     debugOpen: false,
     setDebugOpen: createNoopFunction(),

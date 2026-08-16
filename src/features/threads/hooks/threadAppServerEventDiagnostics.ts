@@ -1,5 +1,5 @@
 import type { AppServerEvent, DebugEntry } from "../../../types";
-import { classifyClientStderr } from "../../debug/utils/clientErrorLog";
+import { classifyClientStderr } from "@mossx/plugin-debug/runtime";
 import { captureClaudeMcpRuntimeSnapshotFromRaw } from "../utils/claudeMcpRuntimeSnapshot";
 import { stripBackendErrorPrefix } from "../utils/networkErrors";
 import { buildThreadStreamCorrelationDimensions } from "../utils/streamLatencyDiagnostics";

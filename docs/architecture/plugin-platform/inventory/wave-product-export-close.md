@@ -24,6 +24,7 @@
 | `@mossx/plugin-skills` | AppShell / Composer / Settings / Context Ledger | `src/features/skills` + `curated-skills` |
 | `@mossx/plugin-commands` | AppShell | `src/features/commands` |
 | `@mossx/plugin-prompts` | AppShell / Composer / Settings / 布局 | `src/features/prompts` |
+| `@mossx/plugin-debug` | AppShell / 布局 / 存储维护 / 会话诊断 | `src/features/debug` |
 
 ## 仍未做
 

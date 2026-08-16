@@ -10,7 +10,7 @@ import { MAX_CUSTOM_NAME_ENTRIES } from "../features/threads/utils/threadStorage
 import {
   MAX_THREAD_SESSION_LOG_ENTRIES,
   MAX_THREAD_SESSION_LOG_PAYLOAD_CHARS,
-} from "../features/debug/hooks/useDebugLog";
+} from "@mossx/plugin-debug/runtime";
 
 const THREAD_SESSION_LOG_KEY = "diagnostics.threadSessionLog";
 const RENDERER_LOG_KEY = "diagnostics.rendererLifecycleLog";

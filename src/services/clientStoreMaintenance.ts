@@ -7,7 +7,7 @@ import {
   MAX_THREAD_SESSION_LOG_ENTRIES,
   isBlockedThreadSessionLogLabel,
   normalizeThreadSessionLogPayload,
-} from "../features/debug/hooks/useDebugLog";
+} from "@mossx/plugin-debug/runtime";
 import {
   pruneCustomNames,
   type CustomNamesMap,

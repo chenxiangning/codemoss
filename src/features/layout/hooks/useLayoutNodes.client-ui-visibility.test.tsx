@@ -436,7 +436,7 @@ vi.mock("../../session-activity/components/WorkspaceSessionRadarPanel", () => ({
   ),
 }));
 
-vi.mock("../../debug/components/DebugPanel", () => ({
+vi.mock("@mossx/plugin-debug/ui", () => ({
   DebugPanel: () => <div data-testid="debug-panel" />,
 }));
 
