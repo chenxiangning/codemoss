@@ -151,19 +151,7 @@ impl ClaudeCompatAdapter {
     }
 
     pub async fn remove_workspace_sessions(&self, workspace_id: &str) {
-        for (runtime_key, session) in self.manager.runtime_sessions_for_workspace(workspace_id).await
-        {
-            if let Err(error) = session.interrupt().await {
-                log::warn!(
-                    "[claude_compat] failed to interrupt claude session during remove (workspace={}): {}",
-                    workspace_id,
-                    error
-                );
-                continue;
-            }
-            session.mark_disposed();
-            self.manager.remove_runtime_session(&runtime_key).await;
-        }
+        self.manager.remove_workspace_sessions(workspace_id).await
     }
 }
 
@@ -344,6 +332,29 @@ mod tests {
             method_calls, 0,
             "flag-off paths must not call methods on self.claude_manager"
         );
+        assert!(manager.contains("fn claude_owner("));
+        assert!(manager.contains("self.claude_owner()"));
+        let get_session = manager
+            .split("pub async fn get_claude_session(")
+            .nth(1)
+            .and_then(|rest| rest.split("pub async fn get_claude_session_for_provider(").next())
+            .expect("get_claude_session");
+        assert!(get_session.contains("claude_owner()"));
+        assert!(!get_session.contains("if let Some(facade)"));
+        let remove = manager
+            .split("pub async fn remove_claude_session(")
+            .nth(1)
+            .and_then(|rest| rest.split("pub async fn interrupt_claude_sessions(").next())
+            .expect("remove_claude_session");
+        assert!(remove.contains("claude_owner()"));
+        assert!(!remove.contains("if let Some(facade)"));
+        let interrupt = manager
+            .split("pub async fn interrupt_claude_sessions(")
+            .nth(1)
+            .and_then(|rest| rest.split("pub async fn interrupt_claude_turn(").next())
+            .expect("interrupt_claude_sessions");
+        assert!(interrupt.contains("claude_owner()"));
+        assert!(!interrupt.contains("if let Some(facade)"));
     }
 
     #[tokio::test]

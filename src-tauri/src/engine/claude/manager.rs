@@ -147,6 +147,21 @@ impl ClaudeSessionManager {
         self.sessions.lock().await.remove(runtime_key)
     }
 
+    pub async fn remove_workspace_sessions(&self, workspace_id: &str) {
+        for (runtime_key, session) in self.runtime_sessions_for_workspace(workspace_id).await {
+            if let Err(error) = session.interrupt().await {
+                log::warn!(
+                    "[claude] failed to interrupt claude session during remove (workspace={}): {}",
+                    workspace_id,
+                    error
+                );
+                continue;
+            }
+            session.mark_disposed();
+            self.remove_runtime_session(&runtime_key).await;
+        }
+    }
+
     pub async fn runtime_sessions_for_workspace(
         &self,
         workspace_id: &str,

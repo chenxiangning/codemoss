@@ -168,7 +168,8 @@
 | 3M Codex / daemon respond 走门面 | 完成 | `3f9b12aae` |
 | 3N AskUser MCP / diagnostic 走门面 | 完成 | `b9bb50104` |
 | 3O Claude config 走门面，字段不再公开 | 完成 | `4145bbfe8` |
-| 3P EngineManager 内部只走 core_claude | 完成 | 本刀 |
+| 3P EngineManager 内部只走 core_claude | 完成 | `52bc83940` |
+| 3Q flag-on / flag-off 经 claude_owner 分发 | 完成 | 本刀 |
 
 ## 明确未做
 

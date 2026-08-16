@@ -60,6 +60,139 @@ pub struct EngineManager {
     claude_compat: Option<crate::plugin_runtime::claude_compat::ClaudeCompatAdapter>,
 }
 
+enum ClaudeOwner<'a> {
+    Facade(&'a crate::plugin_runtime::claude_compat::ClaudeCompatAdapter),
+    Core(&'a ClaudeSessionManager),
+}
+
+impl ClaudeOwner<'_> {
+    async fn get_or_create_session(
+        &self,
+        workspace_id: &str,
+        workspace_path: &Path,
+    ) -> Arc<ClaudeSession> {
+        match self {
+            Self::Facade(facade) => facade.get_or_create_session(workspace_id, workspace_path).await,
+            Self::Core(core) => core.get_or_create_session(workspace_id, workspace_path).await,
+        }
+    }
+
+    async fn get_or_create_session_for_provider(
+        &self,
+        workspace_id: &str,
+        workspace_path: &Path,
+        provider_profile_id: Option<&str>,
+    ) -> Arc<ClaudeSession> {
+        match self {
+            Self::Facade(facade) => {
+                facade
+                    .get_or_create_session_for_provider(
+                        workspace_id,
+                        workspace_path,
+                        provider_profile_id,
+                    )
+                    .await
+            }
+            Self::Core(core) => {
+                core.get_or_create_session_for_provider(
+                    workspace_id,
+                    workspace_path,
+                    provider_profile_id,
+                )
+                .await
+            }
+        }
+    }
+
+    async fn remove_workspace_sessions(&self, workspace_id: &str) {
+        match self {
+            Self::Facade(facade) => facade.remove_workspace_sessions(workspace_id).await,
+            Self::Core(core) => core.remove_workspace_sessions(workspace_id).await,
+        }
+    }
+
+    async fn interrupt_workspace_sessions(&self, workspace_id: &str) -> Result<(), String> {
+        match self {
+            Self::Facade(facade) => facade.interrupt_workspace_sessions(workspace_id).await,
+            Self::Core(core) => core.interrupt_workspace_sessions(workspace_id).await,
+        }
+    }
+
+    async fn get_session_for_provider(
+        &self,
+        workspace_id: &str,
+        provider_profile_id: Option<&str>,
+    ) -> Option<Arc<ClaudeSession>> {
+        match self {
+            Self::Facade(facade) => {
+                facade
+                    .get_session_for_provider(workspace_id, provider_profile_id)
+                    .await
+            }
+            Self::Core(core) => {
+                core.get_session_for_provider(workspace_id, provider_profile_id)
+                    .await
+            }
+        }
+    }
+
+    async fn session_for_turn(
+        &self,
+        workspace_id: &str,
+        turn_id: &str,
+    ) -> Option<Arc<ClaudeSession>> {
+        match self {
+            Self::Facade(facade) => facade.session_for_turn(workspace_id, turn_id).await,
+            Self::Core(core) => core.session_for_turn(workspace_id, turn_id).await,
+        }
+    }
+
+    async fn list_sessions(&self) -> Vec<(String, Arc<ClaudeSession>)> {
+        match self {
+            Self::Facade(facade) => facade.list_sessions().await,
+            Self::Core(core) => core.list_sessions().await,
+        }
+    }
+
+    async fn interrupt_all(&self) {
+        match self {
+            Self::Facade(facade) => facade.interrupt_all().await,
+            Self::Core(core) => core.interrupt_all().await,
+        }
+    }
+
+    async fn sessions_for_workspace(&self, workspace_id: &str) -> Vec<Arc<ClaudeSession>> {
+        match self {
+            Self::Facade(facade) => facade.sessions_for_workspace(workspace_id).await,
+            Self::Core(core) => core.sessions_for_workspace(workspace_id).await,
+        }
+    }
+
+    async fn runtime_sessions_for_workspace(
+        &self,
+        workspace_id: &str,
+    ) -> Vec<(String, Arc<ClaudeSession>)> {
+        match self {
+            Self::Facade(facade) => facade.runtime_sessions_for_workspace(workspace_id).await,
+            Self::Core(core) => core.runtime_sessions_for_workspace(workspace_id).await,
+        }
+    }
+
+    async fn remove_runtime_session(&self, runtime_key: &str) -> Option<Arc<ClaudeSession>> {
+        match self {
+            Self::Facade(facade) => facade.remove_runtime_session(runtime_key).await,
+            Self::Core(core) => core.remove_runtime_session(runtime_key).await,
+        }
+    }
+
+    async fn set_config(&self, config: EngineConfig) {
+        match self {
+            Self::Facade(facade) => facade.set_config(config).await,
+            Self::Core(core) => core.set_config(config).await,
+        }
+    }
+}
+
 #[derive(Default)]
 struct GeminiSessionRegistry {
     sessions: HashMap<String, Arc<GeminiSession>>,
@@ -330,11 +463,7 @@ impl EngineManager {
         configs.insert(engine_type, config.clone());
 
         if engine_type == EngineType::Claude {
-            if let Some(facade) = &self.claude_compat {
-                facade.set_config(config).await;
-            } else {
-                self.core_claude().set_config(config).await;
-            }
+            self.claude_owner().set_config(config).await;
         }
     }
 
@@ -344,6 +473,14 @@ impl EngineManager {
 
     fn core_claude_arc(&self) -> Arc<ClaudeSessionManager> {
         Arc::clone(&self.claude_manager)
+    }
+
+    fn claude_owner(&self) -> ClaudeOwner<'_> {
+        if let Some(facade) = &self.claude_compat {
+            ClaudeOwner::Facade(facade)
+        } else {
+            ClaudeOwner::Core(self.core_claude())
+        }
     }
 
     /// Get engine configuration
@@ -360,12 +497,7 @@ impl EngineManager {
         workspace_id: &str,
         workspace_path: &Path,
     ) -> Arc<ClaudeSession> {
-        if let Some(facade) = &self.claude_compat {
-            return facade
-                .get_or_create_session(workspace_id, workspace_path)
-                .await;
-        }
-        self.core_claude()
+        self.claude_owner()
             .get_or_create_session(workspace_id, workspace_path)
             .await
     }
@@ -376,51 +508,24 @@ impl EngineManager {
         workspace_path: &Path,
         provider_profile_id: Option<&str>,
     ) -> Arc<ClaudeSession> {
-        if let Some(facade) = &self.claude_compat {
-            return facade
-                .get_or_create_session_for_provider(
-                    workspace_id,
-                    workspace_path,
-                    provider_profile_id,
-                )
-                .await;
-        }
-        self.core_claude()
-            .get_or_create_session_for_provider(workspace_id, workspace_path, provider_profile_id)
+        self.claude_owner()
+            .get_or_create_session_for_provider(
+                workspace_id,
+                workspace_path,
+                provider_profile_id,
+            )
             .await
     }
 
     /// Remove a Claude session
     pub async fn remove_claude_session(&self, workspace_id: &str) {
-        if let Some(facade) = &self.claude_compat {
-            facade.remove_workspace_sessions(workspace_id).await;
-            return;
-        }
-        for (runtime_key, session) in self
-            .core_claude()
-            .runtime_sessions_for_workspace(workspace_id)
+        self.claude_owner()
+            .remove_workspace_sessions(workspace_id)
             .await
-        {
-            if let Err(error) = session.interrupt().await {
-                log::warn!(
-                    "[engine_manager] failed to interrupt claude session during remove (workspace={}): {}",
-                    workspace_id,
-                    error
-                );
-                continue;
-            }
-            session.mark_disposed();
-            self.core_claude()
-                .remove_runtime_session(&runtime_key)
-                .await;
-        }
     }
 
     pub async fn interrupt_claude_sessions(&self, workspace_id: &str) -> Result<(), String> {
-        if let Some(facade) = &self.claude_compat {
-            return facade.interrupt_workspace_sessions(workspace_id).await;
-        }
-        self.core_claude()
+        self.claude_owner()
             .interrupt_workspace_sessions(workspace_id)
             .await
     }
@@ -431,26 +536,17 @@ impl EngineManager {
         turn_id: &str,
         provider_profile_id: Option<&str>,
     ) -> Result<(), String> {
+        let owner = self.claude_owner();
         let session = if provider_profile_id.is_some() {
-            let provider_session = if let Some(facade) = &self.claude_compat {
-                facade
-                    .get_session_for_provider(workspace_id, provider_profile_id)
-                    .await
-            } else {
-                self.core_claude()
-                    .get_session_for_provider(workspace_id, provider_profile_id)
-                    .await
-            };
-            match provider_session {
+            match owner
+                .get_session_for_provider(workspace_id, provider_profile_id)
+                .await
+            {
                 Some(session) if session.has_active_turn(turn_id).await => Some(session),
                 _ => None,
             }
-        } else if let Some(facade) = &self.claude_compat {
-            facade.session_for_turn(workspace_id, turn_id).await
         } else {
-            self.core_claude()
-                .session_for_turn(workspace_id, turn_id)
-                .await
+            owner.session_for_turn(workspace_id, turn_id).await
         };
         if let Some(session) = session {
             session.interrupt_turn(turn_id).await?;
@@ -459,18 +555,11 @@ impl EngineManager {
     }
 
     pub async fn list_claude_sessions(&self) -> Vec<(String, Arc<ClaudeSession>)> {
-        if let Some(facade) = &self.claude_compat {
-            return facade.list_sessions().await;
-        }
-        self.core_claude().list_sessions().await
+        self.claude_owner().list_sessions().await
     }
 
     pub async fn interrupt_all_claude_sessions(&self) {
-        if let Some(facade) = &self.claude_compat {
-            facade.interrupt_all().await;
-            return;
-        }
-        self.core_claude().interrupt_all().await
+        self.claude_owner().interrupt_all().await
     }
 
     pub async fn get_claude_session_if_present(
@@ -478,12 +567,7 @@ impl EngineManager {
         workspace_id: &str,
         provider_profile_id: Option<&str>,
     ) -> Option<Arc<ClaudeSession>> {
-        if let Some(facade) = &self.claude_compat {
-            return facade
-                .get_session_for_provider(workspace_id, provider_profile_id)
-                .await;
-        }
-        self.core_claude()
+        self.claude_owner()
             .get_session_for_provider(workspace_id, provider_profile_id)
             .await
     }
@@ -492,10 +576,7 @@ impl EngineManager {
         &self,
         workspace_id: &str,
     ) -> Vec<Arc<ClaudeSession>> {
-        if let Some(facade) = &self.claude_compat {
-            return facade.sessions_for_workspace(workspace_id).await;
-        }
-        self.core_claude()
+        self.claude_owner()
             .sessions_for_workspace(workspace_id)
             .await
     }
@@ -504,10 +585,7 @@ impl EngineManager {
         &self,
         workspace_id: &str,
     ) -> Vec<(String, Arc<ClaudeSession>)> {
-        if let Some(facade) = &self.claude_compat {
-            return facade.runtime_sessions_for_workspace(workspace_id).await;
-        }
-        self.core_claude()
+        self.claude_owner()
             .runtime_sessions_for_workspace(workspace_id)
             .await
     }
@@ -516,17 +594,18 @@ impl EngineManager {
         &self,
         runtime_key: &str,
     ) -> Option<Arc<ClaudeSession>> {
-        if let Some(facade) = &self.claude_compat {
-            return facade.remove_runtime_session(runtime_key).await;
-        }
-        self.core_claude().remove_runtime_session(runtime_key).await
+        self.claude_owner()
+            .remove_runtime_session(runtime_key)
+            .await
     }
 
     pub fn claude_ask_lookup(&self) -> super::claude::ClaudeAskLookup {
-        if let Some(facade) = &self.claude_compat {
-            return facade.ask_lookup();
+        match self.claude_owner() {
+            ClaudeOwner::Facade(facade) => facade.ask_lookup(),
+            ClaudeOwner::Core(_) => {
+                super::claude::ClaudeAskLookup::from_manager(self.core_claude_arc())
+            }
         }
-        super::claude::ClaudeAskLookup::from_manager(self.core_claude_arc())
     }
 
     pub fn set_claude_ask_user_question_resume_diagnostic_sink(
