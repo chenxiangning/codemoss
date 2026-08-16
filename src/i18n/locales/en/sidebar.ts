@@ -202,6 +202,11 @@ const sidebar = {
       hostDisabled: "Host is default-off. Plugs are declared, not live.",
       hostEnabled: "Host is enabled.",
       kind: "Kind",
+      ownerClass: "Class",
+      ownerClasses: {
+        pilot: "Pilot",
+        "later-plugin": "Later plugin",
+      },
       state: "State",
       generation: "Generation",
       marketplaceLater: "Marketplace install, enable, and remote catalog stay closed.",

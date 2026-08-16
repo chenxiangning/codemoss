@@ -2,6 +2,7 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
+import { DECLARED_PLUGIN_RACK_SNAPSHOT } from "@/services/tauri/pluginRack";
 import { PluginRackSection } from "./PluginRackSection";
 
 const translations: Record<string, string> = {
@@ -12,6 +13,9 @@ const translations: Record<string, string> = {
   "extensions.rack.hostDisabled": "Host is default-off.",
   "extensions.rack.hostEnabled": "Host is enabled.",
   "extensions.rack.kind": "Kind",
+  "extensions.rack.ownerClass": "Class",
+  "extensions.rack.ownerClasses.pilot": "Pilot",
+  "extensions.rack.ownerClasses.later-plugin": "Later plugin",
   "extensions.rack.state": "State",
   "extensions.rack.generation": "Generation",
   "extensions.rack.marketplaceLater": "Marketplace stays closed.",
@@ -34,116 +38,19 @@ vi.mock("react-i18next", () => ({
 
 const getPluginRackSnapshot = vi.hoisted(() => vi.fn());
 
-vi.mock("@/services/tauri/pluginRack", () => ({
-  getPluginRackSnapshot,
-}));
+vi.mock("@/services/tauri/pluginRack", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/services/tauri/pluginRack")>();
+  return {
+    ...actual,
+    getPluginRackSnapshot,
+  };
+});
 
 describe("PluginRackSection", () => {
   it("renders declared idle plugs without a marketplace action", async () => {
     getPluginRackSnapshot.mockResolvedValue({
+      ...DECLARED_PLUGIN_RACK_SNAPSHOT,
       hostAvailable: true,
-      hostEnabled: false,
-      plugs: [
-        {
-          pluginId: "com.mossx.engine.claude",
-          displayName: "Claude Engine",
-          kind: "engine",
-          state: "idle",
-          generation: 0,
-          unitId: null,
-          live: false,
-        },
-        {
-          pluginId: "com.mossx.notes",
-          displayName: "Notes",
-          kind: "feature",
-          state: "idle",
-          generation: 0,
-          unitId: null,
-          live: false,
-        },
-        {
-          pluginId: "com.mossx.project-map",
-          displayName: "Project Map",
-          kind: "feature",
-          state: "idle",
-          generation: 0,
-          unitId: null,
-          live: false,
-        },
-        {
-          pluginId: "com.mossx.browser",
-          displayName: "Browser",
-          kind: "feature",
-          state: "idle",
-          generation: 0,
-          unitId: null,
-          live: false,
-        },
-        {
-          pluginId: "com.mossx.intent-canvas",
-          displayName: "Intent Canvas",
-          kind: "feature",
-          state: "idle",
-          generation: 0,
-          unitId: null,
-          live: false,
-        },
-        {
-          pluginId: "com.mossx.engine.codex",
-          displayName: "Codex Engine",
-          kind: "engine",
-          state: "idle",
-          generation: 0,
-          unitId: null,
-          live: false,
-        },
-        {
-          pluginId: "com.mossx.engine.gemini",
-          displayName: "Gemini Engine",
-          kind: "engine",
-          state: "idle",
-          generation: 0,
-          unitId: null,
-          live: false,
-        },
-        {
-          pluginId: "com.mossx.engine.grok",
-          displayName: "Grok Engine",
-          kind: "engine",
-          state: "idle",
-          generation: 0,
-          unitId: null,
-          live: false,
-        },
-        {
-          pluginId: "com.mossx.engine.kimi",
-          displayName: "Kimi Engine",
-          kind: "engine",
-          state: "idle",
-          generation: 0,
-          unitId: null,
-          live: false,
-        },
-        {
-          pluginId: "com.mossx.engine.opencode",
-          displayName: "OpenCode Engine",
-          kind: "engine",
-          state: "idle",
-          generation: 0,
-          unitId: null,
-          live: false,
-        },
-        {
-          pluginId: "com.mossx.engine.pi",
-          displayName: "Pi Engine",
-          kind: "engine",
-          state: "idle",
-          generation: 0,
-          unitId: null,
-          live: false,
-        },
-      ],
     });
 
     render(<PluginRackSection />);
@@ -156,8 +63,12 @@ describe("PluginRackSection", () => {
     const featureGroup = screen.getByRole("region", { name: "Features" });
     expect(engineGroup.textContent).toContain("com.mossx.engine.claude");
     expect(engineGroup.textContent).toContain("com.mossx.engine.codex");
+    expect(engineGroup.textContent).toContain("Pilot");
+    expect(engineGroup.textContent).toContain("Later plugin");
     expect(featureGroup.textContent).toContain("com.mossx.notes");
     expect(featureGroup.textContent).toContain("com.mossx.project-map");
+    expect(featureGroup.textContent).toContain("Pilot");
+    expect(featureGroup.textContent).toContain("Later plugin");
     expect(screen.getByText("com.mossx.engine.claude")).toBeTruthy();
     expect(screen.getByText("com.mossx.notes")).toBeTruthy();
     expect(screen.getByText("com.mossx.project-map")).toBeTruthy();

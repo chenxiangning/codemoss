@@ -109,6 +109,14 @@ export function PluginRackSection() {
                       </div>
                       <dl>
                         <div>
+                          <dt>{t("extensions.rack.ownerClass")}</dt>
+                          <dd>
+                            {t(`extensions.rack.ownerClasses.${plug.ownerClass}`, {
+                              defaultValue: plug.ownerClass,
+                            })}
+                          </dd>
+                        </div>
+                        <div>
                           <dt>{t("extensions.rack.state")}</dt>
                           <dd>{t(`extensions.rack.states.${plug.state}`, { defaultValue: plug.state })}</dd>
                         </div>

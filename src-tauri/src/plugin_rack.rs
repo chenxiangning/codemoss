@@ -13,56 +13,67 @@ const DECLARED_PLUGS: &[DeclaredPlug] = &[
         plugin_id: "com.mossx.engine.claude",
         display_name: "Claude Engine",
         kind: "engine",
+        owner_class: "pilot",
     },
     DeclaredPlug {
         plugin_id: "com.mossx.notes",
         display_name: "Notes",
         kind: "feature",
+        owner_class: "pilot",
     },
     DeclaredPlug {
         plugin_id: "com.mossx.project-map",
         display_name: "Project Map",
         kind: "feature",
+        owner_class: "later-plugin",
     },
     DeclaredPlug {
         plugin_id: "com.mossx.browser",
         display_name: "Browser",
         kind: "feature",
+        owner_class: "later-plugin",
     },
     DeclaredPlug {
         plugin_id: "com.mossx.intent-canvas",
         display_name: "Intent Canvas",
         kind: "feature",
+        owner_class: "later-plugin",
     },
     DeclaredPlug {
         plugin_id: "com.mossx.engine.codex",
         display_name: "Codex Engine",
         kind: "engine",
+        owner_class: "later-plugin",
     },
     DeclaredPlug {
         plugin_id: "com.mossx.engine.gemini",
         display_name: "Gemini Engine",
         kind: "engine",
+        owner_class: "later-plugin",
     },
     DeclaredPlug {
         plugin_id: "com.mossx.engine.grok",
         display_name: "Grok Engine",
         kind: "engine",
+        owner_class: "later-plugin",
     },
     DeclaredPlug {
         plugin_id: "com.mossx.engine.kimi",
         display_name: "Kimi Engine",
         kind: "engine",
+        owner_class: "later-plugin",
     },
     DeclaredPlug {
         plugin_id: "com.mossx.engine.opencode",
         display_name: "OpenCode Engine",
         kind: "engine",
+        owner_class: "later-plugin",
     },
     DeclaredPlug {
         plugin_id: "com.mossx.engine.pi",
         display_name: "Pi Engine",
         kind: "engine",
+        owner_class: "later-plugin",
     },
 ];
 
@@ -70,6 +81,7 @@ struct DeclaredPlug {
     plugin_id: &'static str,
     display_name: &'static str,
     kind: &'static str,
+    owner_class: &'static str,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -78,6 +90,7 @@ pub struct PluginRackPlug {
     pub plugin_id: String,
     pub display_name: String,
     pub kind: String,
+    pub owner_class: String,
     pub state: String,
     pub generation: u64,
     pub unit_id: Option<String>,
@@ -99,6 +112,7 @@ fn declared_idle() -> Vec<PluginRackPlug> {
             plugin_id: plug.plugin_id.to_string(),
             display_name: plug.display_name.to_string(),
             kind: plug.kind.to_string(),
+            owner_class: plug.owner_class.to_string(),
             state: "idle".to_string(),
             generation: 0,
             unit_id: None,
@@ -117,6 +131,7 @@ fn snapshot_from_host<D: crate::plugin_runtime::host::EntryDriver>(
                 plugin_id: plug.plugin_id.to_string(),
                 display_name: plug.display_name.to_string(),
                 kind: plug.kind.to_string(),
+                owner_class: plug.owner_class.to_string(),
                 state: Host::<D>::slot_state_name(slot.state).to_string(),
                 generation: slot.generation,
                 unit_id: slot.unit_id.clone(),
@@ -126,6 +141,7 @@ fn snapshot_from_host<D: crate::plugin_runtime::host::EntryDriver>(
                 plugin_id: plug.plugin_id.to_string(),
                 display_name: plug.display_name.to_string(),
                 kind: plug.kind.to_string(),
+                owner_class: plug.owner_class.to_string(),
                 state: Host::<D>::slot_state_name(SlotState::Idle).to_string(),
                 generation: 0,
                 unit_id: None,
@@ -193,6 +209,9 @@ mod tests {
         assert_eq!(snapshot.plugs[10].plugin_id, "com.mossx.engine.pi");
         assert!(snapshot.plugs.iter().all(|plug| plug.state == "idle"));
         assert!(snapshot.plugs.iter().all(|plug| !plug.live));
+        assert_eq!(snapshot.plugs[0].owner_class, "pilot");
+        assert_eq!(snapshot.plugs[1].owner_class, "pilot");
+        assert!(snapshot.plugs[2..].iter().all(|plug| plug.owner_class == "later-plugin"));
         for plug in &snapshot.plugs {
             assert!(host.host.slot(&plug.plugin_id).is_none());
         }

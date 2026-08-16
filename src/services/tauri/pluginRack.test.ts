@@ -31,6 +31,16 @@ describe("DECLARED_PLUGIN_RACK_SNAPSHOT", () => {
     ]);
     expect(DECLARED_PLUGIN_RACK_SNAPSHOT.hostEnabled).toBe(false);
     expect(DECLARED_PLUGIN_RACK_SNAPSHOT.plugs.every((plug) => plug.state === "idle")).toBe(true);
+    expect(
+      DECLARED_PLUGIN_RACK_SNAPSHOT.plugs
+        .filter((plug) => plug.pluginId === "com.mossx.engine.claude" || plug.pluginId === "com.mossx.notes")
+        .every((plug) => plug.ownerClass === "pilot"),
+    ).toBe(true);
+    expect(
+      DECLARED_PLUGIN_RACK_SNAPSHOT.plugs
+        .filter((plug) => plug.pluginId !== "com.mossx.engine.claude" && plug.pluginId !== "com.mossx.notes")
+        .every((plug) => plug.ownerClass === "later-plugin"),
+    ).toBe(true);
 
     const inventoried = new Set(
       ownership.owners

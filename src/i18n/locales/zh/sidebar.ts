@@ -195,6 +195,11 @@ const sidebar = {
       hostDisabled: "Host 默认关闭。插头已声明，但未通电。",
       hostEnabled: "Host 已启用。",
       kind: "类型",
+      ownerClass: "分类",
+      ownerClasses: {
+        pilot: "试点",
+        "later-plugin": "后续插件",
+      },
       state: "状态",
       generation: "代数",
       marketplaceLater: "市场安装、启用与远程目录仍关闭。",
