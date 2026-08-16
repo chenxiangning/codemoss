@@ -3429,16 +3429,10 @@ impl DaemonState {
         session_id: String,
     ) -> Result<Value, String> {
         let path = PathBuf::from(workspace_path);
-        let config = self
+        let forked_session_id = self
             .engine_manager
-            .get_engine_config(engine::EngineType::Claude)
-            .await;
-        let forked_session_id = engine::claude_history::fork_claude_session_with_config(
-            &path,
-            &session_id,
-            config.as_ref(),
-        )
-        .await?;
+            .fork_claude_history_session(&path, &session_id)
+            .await?;
         Ok(json!({
             "thread": {
                 "id": format!("claude:{}", forked_session_id)

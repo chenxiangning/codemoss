@@ -543,6 +543,13 @@ mod tests {
             .expect("daemon hydrate_claude_deferred_image");
         assert!(daemon_hydrate.contains("hydrate_claude_history_image"));
         assert!(!daemon_hydrate.contains("claude_history::"));
+        let daemon_fork = daemon
+            .split("pub(super) async fn fork_claude_session(")
+            .nth(1)
+            .and_then(|rest| rest.split("pub(super) async fn fork_claude_session_from_message(").next())
+            .expect("daemon fork_claude_session");
+        assert!(daemon_fork.contains("fork_claude_history_session"));
+        assert!(!daemon_fork.contains("claude_history::"));
     }
 
     #[tokio::test]
