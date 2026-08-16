@@ -27,8 +27,11 @@ use super::claude_history_entries::{
 use super::claude_history_large_payload::{
     estimate_base64_decoded_bytes, extract_images_and_deferred_from_content,
     is_supported_image_media_type, parse_claude_summary_entry, ClaudeDeferredImage,
-    ClaudeDeferredImageLocator, ClaudeHydratedImage, CLAUDE_HYDRATED_IMAGE_BASE64_BYTE_BUDGET,
+    ClaudeDeferredImageLocator as DeferredImageLocator,
+    ClaudeHydratedImage as HydratedImage, CLAUDE_HYDRATED_IMAGE_BASE64_BYTE_BUDGET,
 };
+
+pub use super::claude_history_large_payload::{ClaudeDeferredImageLocator, ClaudeHydratedImage};
 use super::claude_history_subagents::{
     normalize_claude_session_id, read_subagent_meta, ClaudeSubagentSessionId,
 };
@@ -2450,9 +2453,9 @@ async fn parse_claude_session_from_reader<R: tokio::io::AsyncRead + Unpin>(
 
 pub async fn hydrate_claude_deferred_image_with_config(
     workspace_path: &Path,
-    locator: ClaudeDeferredImageLocator,
+    locator: DeferredImageLocator,
     config: Option<&EngineConfig>,
-) -> Result<ClaudeHydratedImage, String> {
+) -> Result<HydratedImage, String> {
     let normalized_session_id = normalize_session_id(&locator.session_id)?;
     if normalized_session_id != locator.session_id {
         return Err("Invalid Claude deferred image session id".to_string());
@@ -2464,8 +2467,8 @@ pub async fn hydrate_claude_deferred_image_with_config(
 pub(crate) async fn hydrate_claude_deferred_image_from_base_dir(
     base_dir: &Path,
     workspace_path: &Path,
-    locator: ClaudeDeferredImageLocator,
-) -> Result<ClaudeHydratedImage, String> {
+    locator: DeferredImageLocator,
+) -> Result<HydratedImage, String> {
     if !is_supported_image_media_type(Some(&locator.media_type)) {
         return Err(format!(
             "Unsupported Claude deferred image media type: {}",
@@ -2539,7 +2542,7 @@ pub(crate) async fn hydrate_claude_deferred_image_from_base_dir(
             return Err("Claude deferred image payload exceeds hydration budget".to_string());
         }
         let byte_size = estimate_base64_decoded_bytes(payload);
-        return Ok(ClaudeHydratedImage {
+        return Ok(HydratedImage {
             locator,
             src: format!("data:{};base64,{}", media_type, payload),
             media_type,

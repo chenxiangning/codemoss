@@ -185,6 +185,20 @@ impl ClaudeCompatAdapter {
         )
         .await
     }
+
+    pub async fn hydrate_history_image(
+        &self,
+        workspace_path: &Path,
+        locator: crate::engine::claude_history::ClaudeDeferredImageLocator,
+        config: Option<&crate::engine::EngineConfig>,
+    ) -> Result<crate::engine::claude_history::ClaudeHydratedImage, String> {
+        crate::engine::claude_history::hydrate_claude_deferred_image_with_config(
+            workspace_path,
+            locator,
+            config,
+        )
+        .await
+    }
 }
 
 #[cfg(test)]
@@ -423,6 +437,16 @@ mod tests {
         assert!(!load_fn.contains("claude_history::"));
         assert!(manager.contains("fn load_claude_history_session("));
         assert!(manager.contains("load_history_session"));
+        assert!(history.contains("hydrate_claude_history_image"));
+        let hydrate_fn = history
+            .split("pub async fn hydrate_claude_deferred_image(")
+            .nth(1)
+            .and_then(|rest| rest.split("pub async fn fork_claude_session(").next())
+            .expect("hydrate_claude_deferred_image");
+        assert!(hydrate_fn.contains("hydrate_claude_history_image"));
+        assert!(!hydrate_fn.contains("claude_history::"));
+        assert!(manager.contains("fn hydrate_claude_history_image("));
+        assert!(manager.contains("hydrate_history_image"));
     }
 
     #[tokio::test]

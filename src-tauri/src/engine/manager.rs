@@ -241,6 +241,29 @@ impl ClaudeOwner<'_> {
             }
         }
     }
+
+    async fn hydrate_history_image(
+        &self,
+        workspace_path: &Path,
+        locator: super::claude_history::ClaudeDeferredImageLocator,
+        config: Option<&EngineConfig>,
+    ) -> Result<super::claude_history::ClaudeHydratedImage, String> {
+        match self {
+            Self::Facade(facade) => {
+                facade
+                    .hydrate_history_image(workspace_path, locator, config)
+                    .await
+            }
+            Self::Core(_) => {
+                super::claude_history::hydrate_claude_deferred_image_with_config(
+                    workspace_path,
+                    locator,
+                    config,
+                )
+                .await
+            }
+        }
+    }
 }
 
 #[derive(Default)]
@@ -629,6 +652,17 @@ impl EngineManager {
         let config = self.get_engine_config(EngineType::Claude).await;
         self.claude_owner()
             .load_history_session(workspace_path, session_id, config.as_ref(), limit, before)
+            .await
+    }
+
+    pub async fn hydrate_claude_history_image(
+        &self,
+        workspace_path: &Path,
+        locator: super::claude_history::ClaudeDeferredImageLocator,
+    ) -> Result<super::claude_history::ClaudeHydratedImage, String> {
+        let config = self.get_engine_config(EngineType::Claude).await;
+        self.claude_owner()
+            .hydrate_history_image(workspace_path, locator, config.as_ref())
             .await
     }
 
