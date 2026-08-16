@@ -1,13 +1,6 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import { listLocalPluginCatalog, type LocalCatalogPackage } from "@/services/tauri/pluginLocalCatalog";
-import {
-  isLocalPluginStaged,
-  listLocalLockfile,
-  stageLocalPlugin,
-  unstageLocalPlugin,
-} from "@/services/tauri/pluginLocalStage";
 import {
   getPluginRackSnapshot,
   type PluginRackPlug,
@@ -54,22 +47,11 @@ function groupPlugs(plugs: PluginRackPlug[]): Array<{ kind: string; plugs: Plugi
   return ordered;
 }
 
-const CATALOG_CLASS_ORDER = ["pilot", "later-plugin"] as const;
-
-function groupCatalog(items: LocalCatalogPackage[]): Array<{ ownerClass: string; items: LocalCatalogPackage[] }> {
-  return CATALOG_CLASS_ORDER.map((ownerClass) => ({
-    ownerClass,
-    items: items.filter((item) => item.ownerClass === ownerClass),
-  })).filter((group) => group.items.length > 0);
-}
-
 export function PluginRackSection() {
   const { t } = useTranslation();
   const stylesReady = useFeatureStylesReady(loadExtensionsStyles);
   const [snapshot, setSnapshot] = useState<PluginRackSnapshot | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [stagedIds, setStagedIds] = useState<string[]>([]);
-  const [lockfileVersions, setLockfileVersions] = useState<Record<string, string>>({});
 
   useEffect(() => {
     let cancelled = false;
@@ -84,13 +66,6 @@ export function PluginRackSection() {
           setError(cause instanceof Error ? cause.message : String(cause));
         }
       });
-    const staged = listLocalPluginCatalog()
-      .filter((item) => isLocalPluginStaged(item.pluginId))
-      .map((item) => item.pluginId);
-    setStagedIds(staged);
-    setLockfileVersions(
-      Object.fromEntries(listLocalLockfile().map((row) => [row.pluginId, row.version])),
-    );
     return () => {
       cancelled = true;
     };
@@ -151,18 +126,6 @@ export function PluginRackSection() {
                           <dt>{t("extensions.rack.generation")}</dt>
                           <dd>{plug.generation}</dd>
                         </div>
-                        <div>
-                          <dt>{t("extensions.rack.rackInstall")}</dt>
-                          <dd>
-                            {stagedIds.includes(plug.pluginId)
-                              ? t("extensions.rack.catalogInstalled")
-                              : t("extensions.rack.catalogNotInstalled")}
-                          </dd>
-                        </div>
-                        <div>
-                          <dt>{t("extensions.rack.rackVersion")}</dt>
-                          <dd>{lockfileVersions[plug.pluginId] ?? "1.0.0"}</dd>
-                        </div>
                       </dl>
                     </li>
                   ))}
@@ -171,85 +134,6 @@ export function PluginRackSection() {
             ))}
           </div>
         )}
-        <section className="extensions-plugin-rack-catalog" aria-label={t("extensions.rack.catalogTitle")}>
-          <h3>{t("extensions.rack.catalogTitle")}</h3>
-          <p>{t("extensions.rack.catalogSubtitle")}</p>
-          {groupCatalog(listLocalPluginCatalog()).map((group) => (
-            <section
-              key={group.ownerClass}
-              className="extensions-plugin-rack-catalog-group"
-              aria-label={t(`extensions.rack.ownerClasses.${group.ownerClass}`, {
-                defaultValue: group.ownerClass,
-              })}
-            >
-              <h4>{t(`extensions.rack.ownerClasses.${group.ownerClass}`, { defaultValue: group.ownerClass })}</h4>
-              <ul className="extensions-plugin-rack-list">
-                {group.items.map((item) => {
-                  const staged = stagedIds.includes(item.pluginId);
-                  return (
-                    <li key={item.pluginId} className="extensions-plugin-rack-card">
-                      <div>
-                        <h4>{item.displayName}</h4>
-                        <p className="extensions-plugin-rack-id">{item.pluginId}</p>
-                      </div>
-                      <dl>
-                        <div>
-                          <dt>{t("extensions.rack.catalogPath")}</dt>
-                          <dd>{item.packageDir}</dd>
-                        </div>
-                        <div>
-                          <dt>{t("extensions.rack.catalogStatus")}</dt>
-                          <dd>
-                            {staged
-                              ? t("extensions.rack.catalogInstalled")
-                              : t("extensions.rack.catalogNotInstalled")}
-                          </dd>
-                        </div>
-                        <div>
-                          <dt>{t("extensions.rack.catalogPermissions")}</dt>
-                          <dd>{item.capabilities.join(", ")}</dd>
-                        </div>
-                        <div>
-                          <dt>{t("extensions.rack.catalogVersion")}</dt>
-                          <dd>{lockfileVersions[item.pluginId] ?? "1.0.0"}</dd>
-                        </div>
-                      </dl>
-                      <button
-                        type="button"
-                        className="extensions-plugin-rack-stage"
-                        onClick={() => {
-                          const result = staged
-                            ? unstageLocalPlugin(item.pluginId)
-                            : stageLocalPlugin(item.pluginId);
-                          setStagedIds((current) => {
-                            const next = new Set(current);
-                            if (result.staged) {
-                              next.add(item.pluginId);
-                            } else {
-                              next.delete(item.pluginId);
-                            }
-                            return [...next];
-                          });
-                          setLockfileVersions((current) => {
-                            const next = { ...current };
-                            if (result.staged && result.version) {
-                              next[item.pluginId] = result.version;
-                            } else {
-                              delete next[item.pluginId];
-                            }
-                            return next;
-                          });
-                        }}
-                      >
-                        {staged ? t("extensions.rack.catalogUnstage") : t("extensions.rack.catalogStage")}
-                      </button>
-                    </li>
-                  );
-                })}
-              </ul>
-            </section>
-          ))}
-        </section>
         <p className="extensions-plugin-rack-footnote">{t("extensions.rack.marketplaceLater")}</p>
       </div>
     </section>
