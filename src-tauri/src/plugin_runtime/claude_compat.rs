@@ -167,6 +167,24 @@ impl ClaudeCompatAdapter {
         )
         .await
     }
+
+    pub async fn load_history_session(
+        &self,
+        workspace_path: &Path,
+        session_id: &str,
+        config: Option<&crate::engine::EngineConfig>,
+        limit: Option<usize>,
+        before: Option<&str>,
+    ) -> Result<crate::engine::claude_history::ClaudeSessionLoadResult, String> {
+        crate::engine::claude_history::load_claude_session_with_config_window(
+            workspace_path,
+            session_id,
+            config,
+            limit,
+            before,
+        )
+        .await
+    }
 }
 
 #[cfg(test)]
@@ -395,6 +413,16 @@ mod tests {
         let manager = include_str!("../engine/manager.rs");
         assert!(manager.contains("fn list_claude_history_sessions("));
         assert!(manager.contains("list_history_sessions"));
+        assert!(history.contains("load_claude_history_session"));
+        let load_fn = history
+            .split("pub async fn load_claude_session(")
+            .nth(1)
+            .and_then(|rest| rest.split("pub async fn hydrate_claude_deferred_image(").next())
+            .expect("load_claude_session");
+        assert!(load_fn.contains("load_claude_history_session"));
+        assert!(!load_fn.contains("claude_history::"));
+        assert!(manager.contains("fn load_claude_history_session("));
+        assert!(manager.contains("load_history_session"));
     }
 
     #[tokio::test]

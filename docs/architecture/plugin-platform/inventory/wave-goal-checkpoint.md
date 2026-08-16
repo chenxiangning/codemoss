@@ -171,7 +171,8 @@
 | 3P EngineManager 内部只走 core_claude | 完成 | `52bc83940` |
 | 3Q flag-on / flag-off 经 claude_owner 分发 | 完成 | `1766e7a8b` |
 | 3R Claude history 调用面只盘点 | 完成 | `59033558d` |
-| 3S GUI list_claude_sessions 走 history 门面 | 完成 | 本刀 |
+| 3S GUI list_claude_sessions 走 history 门面 | 完成 | `ed5e431a4` |
+| 3T GUI load_claude_session 走 history 门面 | 完成 | 本刀 |
 
 ## 明确未做
 

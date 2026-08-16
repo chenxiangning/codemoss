@@ -214,6 +214,33 @@ impl ClaudeOwner<'_> {
             }
         }
     }
+
+    async fn load_history_session(
+        &self,
+        workspace_path: &Path,
+        session_id: &str,
+        config: Option<&EngineConfig>,
+        limit: Option<usize>,
+        before: Option<&str>,
+    ) -> Result<super::claude_history::ClaudeSessionLoadResult, String> {
+        match self {
+            Self::Facade(facade) => {
+                facade
+                    .load_history_session(workspace_path, session_id, config, limit, before)
+                    .await
+            }
+            Self::Core(_) => {
+                super::claude_history::load_claude_session_with_config_window(
+                    workspace_path,
+                    session_id,
+                    config,
+                    limit,
+                    before,
+                )
+                .await
+            }
+        }
+    }
 }
 
 #[derive(Default)]
@@ -589,6 +616,19 @@ impl EngineManager {
         let config = self.get_engine_config(EngineType::Claude).await;
         self.claude_owner()
             .list_history_sessions(workspace_path, limit, config.as_ref())
+            .await
+    }
+
+    pub async fn load_claude_history_session(
+        &self,
+        workspace_path: &Path,
+        session_id: &str,
+        limit: Option<usize>,
+        before: Option<&str>,
+    ) -> Result<super::claude_history::ClaudeSessionLoadResult, String> {
+        let config = self.get_engine_config(EngineType::Claude).await;
+        self.claude_owner()
+            .load_history_session(workspace_path, session_id, config.as_ref(), limit, before)
             .await
     }
 
