@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useRef } from "react";
-import { useDictation } from "../../dictation/hooks/useDictation";
-import { useDictationModel } from "../../dictation/hooks/useDictationModel";
-import { useHoldToDictate } from "../../dictation/hooks/useHoldToDictate";
+import {
+  useDictation,
+  useDictationModel,
+  useHoldToDictate,
+} from "@mossx/plugin-dictation/runtime";
 import type { AppSettings } from "../../../types";
 import { requestDictationPermission } from "../../../services/tauri";
 import { registerKeydownHandler } from "./keyboardDispatcher";

@@ -337,6 +337,18 @@ export default defineConfig(({ command }) => ({
         find: /^@mossx\/plugin-subagent-ui$/,
         replacement: path.resolve(__dirname, "./packages/plugin-subagent-ui/src/index.ts"),
       },
+      {
+        find: /^@mossx\/plugin-dictation\/runtime$/,
+        replacement: path.resolve(__dirname, "./packages/plugin-dictation/src/runtime.ts"),
+      },
+      {
+        find: /^@mossx\/plugin-dictation\/ui$/,
+        replacement: path.resolve(__dirname, "./packages/plugin-dictation/src/ui.ts"),
+      },
+      {
+        find: /^@mossx\/plugin-dictation$/,
+        replacement: path.resolve(__dirname, "./packages/plugin-dictation/src/index.ts"),
+      },
       { find: "@", replacement: path.resolve(__dirname, "./src") },
     ],
     dedupe: [
