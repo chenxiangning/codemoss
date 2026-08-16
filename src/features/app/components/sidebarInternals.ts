@@ -19,7 +19,7 @@ import {
   isGrokSpawnSubagentTool,
   isSubagentTool,
   resolveSubagentSessionThreadId,
-} from "../../subagent-ui";
+} from "@mossx/plugin-subagent-ui/runtime";
 import {
   expandHiddenSharedBindingIds,
   lookupSharedOwnerByNativeParent,

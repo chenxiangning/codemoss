@@ -15,7 +15,7 @@ import { getClientStoreSync, writeClientStoreValue } from "../../../services/cli
 import { WorkspaceNoteCardsLayoutProvider, useWorkspaceNoteCardsLayoutController } from "@mossx/plugin-notes/ui";
 import {
   useSubagentInspectorSelection,
-} from "../../subagent-ui";
+} from "@mossx/plugin-subagent-ui/runtime";
 import { MultiAgentConversationHost } from "@mossx/plugin-multi-agent/ui";
 import { useAgentInspectorSelection } from "@mossx/plugin-multi-agent/runtime";
 

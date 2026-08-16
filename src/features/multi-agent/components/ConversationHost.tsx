@@ -8,10 +8,12 @@ import {
 import {
   closeSubagentInspector,
   closeSubagentInspectorIfScopeChanged,
+  useSubagentInspectorSelection,
+} from "@mossx/plugin-subagent-ui/runtime";
+import {
   ConversationInspectorSplit,
   SubagentInspectorDrawer,
-  useSubagentInspectorSelection,
-} from "../../subagent-ui";
+} from "@mossx/plugin-subagent-ui/ui";
 import { isTerminalAgentStatus } from "../types";
 import {
   closeAgentInspector,

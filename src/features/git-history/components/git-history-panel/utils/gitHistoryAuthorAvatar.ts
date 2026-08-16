@@ -2,8 +2,8 @@ import {
   PERSONA_AUTHOR_POOL,
   resolveGithubAvatarUrl,
   resolveGithubProfileUrl,
-} from "../../../../subagent-ui";
-import { resolveLocalPersonaAvatarSrc } from "../../../../subagent-ui/constants/personaAvatarAssets";
+  resolveLocalPersonaAvatarSrc,
+} from "@mossx/plugin-subagent-ui/runtime";
 
 export type GitHistoryAuthorAvatar = {
   avatarSrc: string | null;

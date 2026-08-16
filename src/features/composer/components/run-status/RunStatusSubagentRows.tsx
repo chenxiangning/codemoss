@@ -13,12 +13,12 @@ import {
   mergeConversationItemSources,
   openSubagentInspector,
   type SubagentCardViewModel,
-} from "../../../subagent-ui";
+} from "@mossx/plugin-subagent-ui/runtime";
 import {
   mergeSubagentEnrichmentSources,
   useSubagentSessionProbeVersion,
-} from "../../../subagent-ui/hooks/useSubagentSessionProbeStore";
-import { syncSubagentInspectorFromCards } from "../../../subagent-ui/hooks/useSubagentInspectorStore";
+} from "@mossx/plugin-subagent-ui/runtime";
+import { syncSubagentInspectorFromCards } from "@mossx/plugin-subagent-ui/runtime";
 import { useActiveCanvasSelector } from "../../../layout/hooks/activeCanvasStore";
 
 type RunStatusSubagentRowsProps = {

@@ -2,7 +2,7 @@
  * 回归：S10 合成 tool 必须进入 useStatusPanelData 扫得到的 itemsByThread 槽位。
  */
 import { describe, expect, it } from "vitest";
-import { enrichTimelineWithSyntheticSubagentsBeforeCollapse } from "../../../subagent-ui";
+import { enrichTimelineWithSyntheticSubagentsBeforeCollapse } from "@mossx/plugin-subagent-ui/runtime";
 import { collectScopedToolEntries } from "@mossx/plugin-status/runtime";
 import type { ConversationItem, ThreadSummary } from "../../../../types";
 

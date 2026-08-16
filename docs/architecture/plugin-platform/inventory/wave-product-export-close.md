@@ -34,6 +34,7 @@
 | `@mossx/plugin-code-annotations` | 布局 / Composer / Files / Git / Status | `src/features/code-annotations` |
 | `@mossx/plugin-live-edit-preview` | AppShell | `src/features/live-edit-preview` |
 | `@mossx/plugin-multi-agent` | 布局 / Composer / 会话 / Messages | `src/features/multi-agent` |
+| `@mossx/plugin-subagent-ui` | 布局 / Composer / Status / Git History | `src/features/subagent-ui` |
 
 ## 仍未做
 

@@ -325,6 +325,18 @@ export default defineConfig(({ command }) => ({
         find: /^@mossx\/plugin-multi-agent$/,
         replacement: path.resolve(__dirname, "./packages/plugin-multi-agent/src/index.ts"),
       },
+      {
+        find: /^@mossx\/plugin-subagent-ui\/runtime$/,
+        replacement: path.resolve(__dirname, "./packages/plugin-subagent-ui/src/runtime.ts"),
+      },
+      {
+        find: /^@mossx\/plugin-subagent-ui\/ui$/,
+        replacement: path.resolve(__dirname, "./packages/plugin-subagent-ui/src/ui.ts"),
+      },
+      {
+        find: /^@mossx\/plugin-subagent-ui$/,
+        replacement: path.resolve(__dirname, "./packages/plugin-subagent-ui/src/index.ts"),
+      },
       { find: "@", replacement: path.resolve(__dirname, "./src") },
     ],
     dedupe: [

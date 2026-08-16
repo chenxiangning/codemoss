@@ -6,14 +6,12 @@ import {
   enrichSubagentCardStatuses,
   enrichSubagentCardsFromTaskNotifications,
   mergeConversationItemSources,
-  openSubagentInspector,
-  SubagentPersonaCard,
-} from "../../subagent-ui";
-import {
   mergeSubagentEnrichmentSources,
+  openSubagentInspector,
+  syncSubagentInspectorFromCards,
   useSubagentSessionProbeVersion,
-} from "../../subagent-ui/hooks/useSubagentSessionProbeStore";
-import { syncSubagentInspectorFromCards } from "../../subagent-ui/hooks/useSubagentInspectorStore";
+} from "@mossx/plugin-subagent-ui/runtime";
+import { SubagentPersonaCard } from "@mossx/plugin-subagent-ui/ui";
 import { useActiveCanvasSelector } from "../../layout/hooks/activeCanvasStore";
 
 interface SubagentListProps {

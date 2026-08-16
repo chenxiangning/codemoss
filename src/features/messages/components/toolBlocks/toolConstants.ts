@@ -28,7 +28,7 @@ import {
   resolveToolStatus,
   truncateText,
 } from "../../../../utils/toolSemantics";
-import { isSubagentTool } from "../../../subagent-ui";
+import { isSubagentTool } from "@mossx/plugin-subagent-ui/runtime";
 import type { ToolStatusTone } from "../../../../utils/toolSemantics";
 
 export {

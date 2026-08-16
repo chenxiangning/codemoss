@@ -24,7 +24,7 @@ import {
   isCollabLifecycleTool,
   isCollabSpawnTool,
   isSubagentTool,
-} from "../../subagent-ui/utils/isSubagentTool";
+} from "@mossx/plugin-subagent-ui/runtime";
 
 interface StatusPanelData {
   todos: TodoItem[];

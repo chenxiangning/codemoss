@@ -86,7 +86,10 @@
       "@mossx/plugin-live-edit-preview/runtime": ["./packages/plugin-live-edit-preview/src/runtime.ts"],
       "@mossx/plugin-multi-agent": ["./packages/plugin-multi-agent/src/index.ts"],
       "@mossx/plugin-multi-agent/runtime": ["./packages/plugin-multi-agent/src/runtime.ts"],
-      "@mossx/plugin-multi-agent/ui": ["./packages/plugin-multi-agent/src/ui.ts"]
+      "@mossx/plugin-multi-agent/ui": ["./packages/plugin-multi-agent/src/ui.ts"],
+      "@mossx/plugin-subagent-ui": ["./packages/plugin-subagent-ui/src/index.ts"],
+      "@mossx/plugin-subagent-ui/runtime": ["./packages/plugin-subagent-ui/src/runtime.ts"],
+      "@mossx/plugin-subagent-ui/ui": ["./packages/plugin-subagent-ui/src/ui.ts"]
     },
 
     /* Linting */

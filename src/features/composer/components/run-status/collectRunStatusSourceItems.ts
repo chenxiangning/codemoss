@@ -8,7 +8,7 @@
  * 字符串匹配 agent-canvas 前缀，避免 composer → multi-agent 深层耦合。
  */
 import type { ConversationItem } from "../../../../types";
-import { isSubagentTool } from "../../../subagent-ui/utils/isSubagentTool";
+import { isSubagentTool } from "@mossx/plugin-subagent-ui/runtime";
 
 const AGENT_CANVAS_PREFIX = "agent-canvas:";
 

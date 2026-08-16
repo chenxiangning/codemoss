@@ -110,7 +110,7 @@ import {
   removeFileEditPaths,
 } from "../../session-side-effects/sessionSideEffectLedger";
 import { useActiveCanvasSelector } from "../../layout/hooks/activeCanvasStore";
-import { enrichTimelineWithSyntheticSubagentsBeforeCollapse } from "../../subagent-ui";
+import { enrichTimelineWithSyntheticSubagentsBeforeCollapse } from "@mossx/plugin-subagent-ui/runtime";
 import {
   assembleSinglePrompt,
   expandLeadingManagedCommand,
