@@ -907,9 +907,7 @@ pub(crate) async fn delete_workspace_sessions_core(
         }
     }
 
-    let claude_config = engine_manager
-        .get_engine_config(engine::EngineType::Claude)
-        .await;
+    let claude_history = engine_manager.owned_claude_history().await;
     let gemini_home_dir = engine_manager
         .get_engine_config(engine::EngineType::Gemini)
         .await
@@ -931,16 +929,12 @@ pub(crate) async fn delete_workspace_sessions_core(
         match target.engine.as_str() {
             "claude" => {
                 let workspace_path = target.owner_workspace_path.clone();
-                let claude_config = claude_config.clone();
+                let claude_history = claude_history.clone();
                 let raw_id = target.native_session_id.clone();
                 let handle = tokio::spawn(async move {
-                    engine::claude_history::delete_claude_session_with_config(
-                        &workspace_path,
-                        &raw_id,
-                        claude_config.as_ref(),
-                    )
-                    .await
-                    .map(|_| ())
+                    claude_history
+                        .delete_session(&workspace_path, &raw_id)
+                        .await
                 });
                 async_delete_handles.push((target, handle));
             }

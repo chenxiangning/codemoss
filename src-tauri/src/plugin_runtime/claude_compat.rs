@@ -22,11 +22,49 @@ pub enum CompatOwner {
     CoreClaude,
 }
 
+#[derive(Clone)]
 pub struct ClaudeCompatAdapter {
     owner: CompatOwner,
     plugin_id: String,
     manager: Arc<ClaudeSessionManager>,
     builtin: BuiltinEngineAdapter,
+}
+
+#[derive(Clone)]
+pub struct OwnedClaudeHistory {
+    facade: Option<ClaudeCompatAdapter>,
+    config: Option<crate::engine::EngineConfig>,
+}
+
+impl OwnedClaudeHistory {
+    pub fn new(
+        facade: Option<ClaudeCompatAdapter>,
+        config: Option<crate::engine::EngineConfig>,
+    ) -> Self {
+        Self { facade, config }
+    }
+
+    pub async fn delete_session(
+        &self,
+        workspace_path: &Path,
+        session_id: &str,
+    ) -> Result<(), String> {
+        match &self.facade {
+            Some(facade) => {
+                facade
+                    .delete_history_session(workspace_path, session_id, self.config.as_ref())
+                    .await
+            }
+            None => {
+                crate::engine::claude_history::delete_claude_session_with_config(
+                    workspace_path,
+                    session_id,
+                    self.config.as_ref(),
+                )
+                .await
+            }
+        }
+    }
 }
 
 pub fn claude_compat_facade_enabled() -> bool {
@@ -627,7 +665,9 @@ mod tests {
         let catalog = include_str!("../session_management.rs");
         assert!(catalog.contains("list_claude_history_sessions_for_attribution_scopes"));
         assert!(!catalog.contains("claude_history::list_claude_sessions_for_attribution_scopes_with_config"));
-        assert!(catalog.contains("delete_claude_session_with_config"));
+        assert!(catalog.contains("owned_claude_history"));
+        assert!(catalog.contains("delete_session"));
+        assert!(!catalog.contains("claude_history::delete_claude_session_with_config"));
         let manager = include_str!("../engine/manager.rs");
         assert!(manager.contains("fn list_claude_history_sessions_for_attribution_scopes("));
         assert!(manager.contains("list_history_sessions_for_attribution_scopes"));

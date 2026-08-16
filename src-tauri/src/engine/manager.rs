@@ -915,6 +915,15 @@ impl EngineManager {
             .await
     }
 
+    pub async fn owned_claude_history(
+        &self,
+    ) -> crate::plugin_runtime::claude_compat::OwnedClaudeHistory {
+        crate::plugin_runtime::claude_compat::OwnedClaudeHistory::new(
+            self.claude_compat.clone(),
+            self.get_engine_config(EngineType::Claude).await,
+        )
+    }
+
     pub async fn fork_claude_history_session_from_message(
         &self,
         workspace_path: &Path,
