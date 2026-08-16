@@ -207,8 +207,8 @@ const sidebar = {
       marketplaceLater: "Marketplace install, enable, and remote catalog stay closed.",
       error: "Could not read the Host rack: {{message}}",
       kinds: {
-        engine: "Engine",
-        feature: "Feature",
+        engine: "Engines",
+        feature: "Features",
       },
       states: {
         idle: "Idle",

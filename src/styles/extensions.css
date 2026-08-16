@@ -359,6 +359,20 @@
   font-size: 12px;
 }
 
+.extensions-plugin-rack-groups {
+  display: grid;
+  gap: 24px;
+}
+
+.extensions-plugin-rack-group h3 {
+  margin: 0 0 12px;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
 .extensions-plugin-rack-list {
   display: grid;
   gap: 12px;
@@ -376,7 +390,8 @@
   background: var(--surface-elevated);
 }
 
-.extensions-plugin-rack-card h3 {
+.extensions-plugin-rack-card h3,
+.extensions-plugin-rack-card h4 {
   margin: 0 0 4px;
   font-size: 15px;
   font-weight: 600;

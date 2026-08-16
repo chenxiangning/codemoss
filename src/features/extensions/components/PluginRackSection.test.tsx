@@ -16,8 +16,8 @@ const translations: Record<string, string> = {
   "extensions.rack.generation": "Generation",
   "extensions.rack.marketplaceLater": "Marketplace stays closed.",
   "extensions.rack.error": "Could not read the Host rack: {{message}}",
-  "extensions.rack.kinds.engine": "Engine",
-  "extensions.rack.kinds.feature": "Feature",
+  "extensions.rack.kinds.engine": "Engines",
+  "extensions.rack.kinds.feature": "Features",
   "extensions.rack.states.idle": "Idle",
 };
 
@@ -149,7 +149,15 @@ describe("PluginRackSection", () => {
     render(<PluginRackSection />);
 
     expect(await screen.findByRole("heading", { name: "Plugin rack" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Engines" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Features" })).toBeTruthy();
     expect(screen.getByText("Host is default-off.")).toBeTruthy();
+    const engineGroup = screen.getByRole("region", { name: "Engines" });
+    const featureGroup = screen.getByRole("region", { name: "Features" });
+    expect(engineGroup.textContent).toContain("com.mossx.engine.claude");
+    expect(engineGroup.textContent).toContain("com.mossx.engine.codex");
+    expect(featureGroup.textContent).toContain("com.mossx.notes");
+    expect(featureGroup.textContent).toContain("com.mossx.project-map");
     expect(screen.getByText("com.mossx.engine.claude")).toBeTruthy();
     expect(screen.getByText("com.mossx.notes")).toBeTruthy();
     expect(screen.getByText("com.mossx.project-map")).toBeTruthy();
