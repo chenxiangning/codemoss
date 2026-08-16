@@ -1,6 +1,6 @@
 import { memo } from "react";
 import { useTranslation } from "react-i18next";
-import type { GovernanceEvidence } from "../../governance/evidence";
+import type { GovernanceEvidence } from "@mossx/plugin-governance/runtime";
 import { groupGovernanceEvidence } from "../utils/governanceEvidenceViewModel";
 import type { GovernanceEvidenceGroupId } from "../utils/governanceEvidenceViewModel";
 

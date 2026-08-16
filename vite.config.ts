@@ -257,6 +257,14 @@ export default defineConfig(({ command }) => ({
         find: /^@mossx\/plugin-context-ledger$/,
         replacement: path.resolve(__dirname, "./packages/plugin-context-ledger/src/index.ts"),
       },
+      {
+        find: /^@mossx\/plugin-governance\/runtime$/,
+        replacement: path.resolve(__dirname, "./packages/plugin-governance/src/runtime.ts"),
+      },
+      {
+        find: /^@mossx\/plugin-governance$/,
+        replacement: path.resolve(__dirname, "./packages/plugin-governance/src/index.ts"),
+      },
       { find: "@", replacement: path.resolve(__dirname, "./src") },
     ],
     dedupe: [

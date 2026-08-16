@@ -1,4 +1,4 @@
-import type { GovernanceEvidence } from "../../governance/evidence";
+import type { GovernanceEvidence } from "@mossx/plugin-governance/runtime";
 
 export type GovernanceEvidenceGroupId = "needs_action" | "watch" | "passed";
 

@@ -6,7 +6,7 @@ import type {
   FileChangeSummary,
   SubagentInfo,
 } from "../../types";
-import type { GovernanceEvidenceSnapshot } from "../../../governance/evidence";
+import type { GovernanceEvidenceSnapshot } from "@mossx/plugin-governance/runtime";
 
 export type PolicyVerdictContribution = CheckpointVerdict | "no_contribution";
 export type PolicyDecisionEnforcement = "blocking" | "advisory" | "informational";

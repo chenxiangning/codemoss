@@ -1,5 +1,5 @@
 import type { ConversationItem } from "../../../types";
-import type { GovernanceEvidenceSnapshot } from "../../governance/evidence";
+import type { GovernanceEvidenceSnapshot } from "@mossx/plugin-governance/runtime";
 import type {
   CheckpointAction,
   CheckpointKeyChange,

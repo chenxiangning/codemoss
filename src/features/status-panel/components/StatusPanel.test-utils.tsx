@@ -1,6 +1,6 @@
 import { vi } from "vitest";
 import type { ConversationItem, TurnPlan } from "../../../types";
-import type { GovernanceEvidenceState } from "../../governance/evidence/useGovernanceEvidence";
+import type { GovernanceEvidenceState } from "@mossx/plugin-governance/runtime";
 
 export const EMPTY_GOVERNANCE_EVIDENCE_STATE: GovernanceEvidenceState = {
   evidence: [],

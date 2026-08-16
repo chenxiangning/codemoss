@@ -27,6 +27,7 @@
 | `@mossx/plugin-debug` | AppShell / 布局 / 存储维护 / 会话诊断 | `src/features/debug` |
 | `@mossx/plugin-collaboration` | AppShell | `src/features/collaboration` |
 | `@mossx/plugin-context-ledger` | Composer / Settings / Status / Governance | `src/features/context-ledger` |
+| `@mossx/plugin-governance` | Status Panel | `src/features/governance` |
 
 ## 仍未做
 

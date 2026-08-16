@@ -28,8 +28,8 @@ import { useFeatureStylesReady } from "../../../styles/useFeatureStylesReady";
 import {
   createFrozenGovernanceEvidenceSnapshot,
   createHarnessGovernanceEvidence,
-} from "../../governance/evidence";
-import { useGovernanceEvidence } from "../../governance/evidence/useGovernanceEvidence";
+  useGovernanceEvidence,
+} from "@mossx/plugin-governance/runtime";
 import type { FileChangeSummary, SubagentInfo, TabType } from "../types";
 import {
   buildCheckpointViewModel,

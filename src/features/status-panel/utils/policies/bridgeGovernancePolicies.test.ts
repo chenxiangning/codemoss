@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   createFrozenGovernanceEvidenceSnapshot,
   createHarnessGovernanceEvidence,
-} from "../../../governance/evidence";
+} from "@mossx/plugin-governance/runtime";
 import {
   bridgeGovernancePolicies,
   costBudgetGovernancePolicy,
