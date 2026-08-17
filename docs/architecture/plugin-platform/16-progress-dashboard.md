@@ -10,7 +10,7 @@ status: active
 > 阶段图：[08 · Migration Roadmap](08-migration-roadmap-and-tasks.md)
 > 卸载链：[inventory/real-uninstall-dependency-chain.md](inventory/real-uninstall-dependency-chain.md)
 > 快照日期：**2026-08-17**
-> 证据 change：`plugin-rack-claude-install-loop`（Notes + Claude 真实安装/卸载）
+> 证据 change：`archive/2026-08-17-plugin-rack-claude-install-loop`（Notes + Claude 真实安装/卸载）
 > 验收：focused rust 19/19 + vitest 3/3 + `openspec validate plugin-rack-claude-install-loop --strict` green。`claude_process` 27/28，唯一失败是既有 `artifact_root_reaps_a_real_claude_result_when_cli_exists` 真实 CLI 探测 flake，不计入本刀回归。
 > 工作树：`feature/plugin-mossx-0.8.9`
 
@@ -128,7 +128,7 @@ P4 75% 容易误导：那是「pilot 协议走完 Disable 且能拔插头」，�
 └── 知识地图 Inventory（P4.7-30）：24 条 command，memory 跟 map，intent-canvas / search 不跟
 
 当前刀尖
-└── Claude 闭环已接线待提交。诚实下一刀是知识地图 5B Contract，或 Wave 2 LKG；later-plugin 仍 0/9，禁止套装/卸模板。知识地图 5B 仍暂停，除非另开刀。
+└── Claude 闭环已提交 `6511b8290` 并归档。诚实下一刀：知识地图 5B Contract（Manifest / storage 归属）。later-plugin 仍 0/9，禁止套装/卸模板。
 
 刻意不做
 ├── Slim / 删 Core
@@ -155,6 +155,4 @@ P4 75% 容易误导：那是「pilot 协议走完 Disable 且能拔插头」，�
 
 ## 8. 下一刀预告
 
-本刀 `plugin-rack-claude-install-loop` 已立项并实施。知识地图 5B **暂停**。
-
-两根 Disable 插头都已套上 Notes 模板。下一刀不要给 0/9 插头装假按钮；诚实选项是知识地图 Contract（5B）或 Wave 2 LKG。不要开 Marketplace，不要 Slim。
+Claude 闭环已提交并归档。知识地图 5B Contract 是诚实下一刀；Wave 2 LKG 是备选。不要给 0/9 插头装假按钮。不要开 Marketplace，不要 Slim。
