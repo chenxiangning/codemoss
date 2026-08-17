@@ -1,7 +1,7 @@
 {
   "pluginId": "com.mossx.notes",
   "wave": "4A-refresh",
-  "status": "inventory-plus-default-off-facade",
+  "status": "product-default-isolated-sqlite",
   "deleteGate": "after-pilot-disable",
   "productOwner": "src-tauri/src/note_cards.rs",
   "surfaces": {

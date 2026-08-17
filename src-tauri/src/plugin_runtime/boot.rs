@@ -2,14 +2,33 @@
 
 use std::ops::{Deref, DerefMut};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use super::composite::CompositeDriver;
 use super::host::{HostConfig, HostError};
 use super::runtime::PluginRuntime;
 use super::spawn::{missing_executable, RestrictedProcessDriver};
+
+fn host_supervisor_root() -> PathBuf {
+    PathBuf::from(env!("MOSSX_HOST_SUPERVISOR_ROOT"))
+}
+
+fn host_supervisor_binary() -> Option<PathBuf> {
+    let platform = if cfg!(all(target_os = "macos", target_arch = "aarch64")) {
+        "darwin-arm64"
+    } else if cfg!(all(target_os = "macos", target_arch = "x86_64")) {
+        "darwin-x64"
+    } else if cfg!(all(target_os = "linux", target_arch = "aarch64")) {
+        "linux-arm64"
+    } else if cfg!(all(target_os = "linux", target_arch = "x86_64")) {
+        "linux-x64"
+    } else {
+        return None;
+    };
+    let binary = host_supervisor_root().join(format!("bin/{platform}/host-supervisor"));
+    binary.is_file().then_some(binary)
+}
 
 static BOOT_SEQ: AtomicU64 = AtomicU64::new(1);
 
@@ -22,31 +41,32 @@ pub struct BootHost {
 #[cfg(unix)]
 struct SupervisorSocket {
     path: PathBuf,
-    listener: Arc<Mutex<std::os::unix::net::UnixListener>>,
-    stop: Arc<AtomicBool>,
-    watch: Option<std::thread::JoinHandle<()>>,
+    child: Option<std::process::Child>,
     _unlink: super::uds::UnlinkOnDrop,
+}
+
+#[cfg(unix)]
+impl SupervisorSocket {
+    fn pid(&self) -> Option<u32> {
+        self.child.as_ref().map(|child| child.id())
+    }
 }
 
 #[cfg(unix)]
 impl Drop for SupervisorSocket {
     fn drop(&mut self) {
-        self.stop.store(true, Ordering::Relaxed);
-        if let Some(watch) = self.watch.take() {
-            let _ = watch.join();
+        if let Some(mut child) = self.child.take() {
+            #[cfg(unix)]
+            {
+                let pid = child.id();
+                unsafe {
+                    libc::kill(-(pid as libc::pid_t), libc::SIGKILL);
+                }
+            }
+            let _ = child.kill();
+            let _ = child.wait();
         }
     }
-}
-
-fn disabled_frame() -> serde_json::Value {
-    serde_json::json!({
-        "jsonrpc": "2.0",
-        "id": serde_json::Value::Null,
-        "error": {
-            "code": -32000,
-            "message": "host-disabled"
-        }
-    })
 }
 
 impl Deref for BootHost {
@@ -81,13 +101,17 @@ impl BootHost {
 
     pub fn drain_unexpected(&self) -> Result<usize, HostError> {
         self.reject_one(super::ipc::HANDSHAKE_DEADLINE)?;
-        let mut count = 1;
-        loop {
-            match self.reject_one(std::time::Duration::ZERO) {
-                Ok(()) => count += 1,
-                Err(error) if error.code == "handshake-timeout" => return Ok(count),
-                Err(error) => return Err(error),
-            }
+        Ok(1)
+    }
+
+    pub fn supervisor_pid(&self) -> Option<u32> {
+        #[cfg(unix)]
+        {
+            self.supervisor.as_ref().and_then(SupervisorSocket::pid)
+        }
+        #[cfg(not(unix))]
+        {
+            None
         }
     }
 
@@ -98,20 +122,36 @@ impl BootHost {
                 code: "unsupported-platform",
                 message: "boot supervisor is unix-only in V1".into(),
             })?;
-            let mut stream = {
-                let listener = supervisor.listener.lock().map_err(|_| HostError {
-                    code: "transport",
-                    message: "boot supervisor lock was poisoned".into(),
-                })?;
-                super::uds::accept_uds_timed(&listener, timeout).map_err(host_err)?
-            };
-            super::uds::write_mxpc_frame_timed(
-                &mut stream,
-                &disabled_frame(),
-                super::ipc::HANDSHAKE_DEADLINE,
-            )
-            .map_err(host_err)?;
-            Ok(())
+            let deadline = std::time::Instant::now() + timeout;
+            loop {
+                match super::uds::connect_uds(&supervisor.path) {
+                    Ok(mut stream) => {
+                        let received = super::uds::read_mxpc_frame_timed(
+                            &mut stream,
+                            super::ipc::HANDSHAKE_DEADLINE,
+                        )
+                        .map_err(host_err)?;
+                        let message = received
+                            .get("error")
+                            .and_then(|error| error.get("message"))
+                            .and_then(serde_json::Value::as_str);
+                        if message != Some("host-disabled") {
+                            return Err(HostError {
+                                code: "host-disabled",
+                                message: "supervisor did not reject unexpected peer".into(),
+                            });
+                        }
+                        return Ok(());
+                    }
+                    Err(_) if std::time::Instant::now() >= deadline => {
+                        return Err(HostError {
+                            code: "handshake-timeout",
+                            message: "supervisor did not accept within deadline".into(),
+                        });
+                    }
+                    Err(_) => std::thread::sleep(std::time::Duration::from_millis(20)),
+                }
+            }
         }
         #[cfg(not(unix))]
         {
@@ -151,47 +191,39 @@ fn host_err(error: super::ipc::IpcError) -> HostError {
 
 #[cfg(unix)]
 fn bind_supervisor() -> Result<SupervisorSocket, HostError> {
+    let binary = host_supervisor_binary().ok_or_else(|| HostError {
+        code: "activation-failed",
+        message: "host supervisor artifact missing".into(),
+    })?;
     let seq = BOOT_SEQ.fetch_add(1, Ordering::Relaxed);
     let path = super::uds::private_uds_path("com.mossx.host", &format!("h{}", seq % 1000))
         .map_err(host_err)?;
-    let listener = Arc::new(Mutex::new(super::uds::bind_uds(&path).map_err(host_err)?));
-    let stop = Arc::new(AtomicBool::new(false));
-    let watch = spawn_watch(listener.clone(), stop.clone());
+    let _ = std::fs::remove_file(&path);
+    let mut command = std::process::Command::new(&binary);
+    command.arg(&path);
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        command.process_group(0);
+    }
+    let child = command.spawn().map_err(|error| HostError {
+        code: "activation-failed",
+        message: format!("spawn host supervisor: {error}"),
+    })?;
+    let started = std::time::Instant::now();
+    while !path.exists() {
+        if started.elapsed() > std::time::Duration::from_secs(2) {
+            return Err(HostError {
+                code: "activation-failed",
+                message: "host supervisor did not bind UDS".into(),
+            });
+        }
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
     Ok(SupervisorSocket {
         path: path.clone(),
-        listener,
-        stop,
-        watch: Some(watch),
+        child: Some(child),
         _unlink: super::uds::UnlinkOnDrop::new(path),
-    })
-}
-
-#[cfg(unix)]
-fn spawn_watch(
-    listener: Arc<Mutex<std::os::unix::net::UnixListener>>,
-    stop: Arc<AtomicBool>,
-) -> std::thread::JoinHandle<()> {
-    std::thread::spawn(move || {
-        while !stop.load(Ordering::Relaxed) {
-            let accepted = {
-                let Ok(guard) = listener.lock() else {
-                    break;
-                };
-                super::uds::accept_uds_timed(&guard, std::time::Duration::from_millis(50))
-            };
-            match accepted {
-                Ok(mut stream) => {
-                    let _ = super::uds::write_mxpc_frame_timed(
-                        &mut stream,
-                        &disabled_frame(),
-                        super::ipc::HANDSHAKE_DEADLINE,
-                    );
-                }
-                Err(error) if error.code == "handshake-timeout" => {}
-                Err(_) if stop.load(Ordering::Relaxed) => break,
-                Err(_) => {}
-            }
-        }
     })
 }
 
@@ -253,6 +285,24 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
+    fn boot_supervises_a_separate_host_disabled_process() {
+        let mut host = boot_host().expect("boot");
+        let pid = host.supervisor_pid().expect("pid");
+        assert_ne!(pid, std::process::id());
+        assert!(host.supervisor_path().expect("path").exists());
+        assert_eq!(host.host.driver().process.live_count(), 0);
+        assert_eq!(
+            host.host.driver().process.executable(),
+            &crate::plugin_runtime::spawn::missing_executable()
+        );
+        assert_eq!(
+            host.activate(notes_activation_request()).unwrap_err().code,
+            "host-disabled"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
     fn boot_owns_a_private_supervisor_socket() {
         use std::os::unix::fs::PermissionsExt;
 
@@ -306,14 +356,10 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
-    fn reject_without_a_connector_times_out() {
+    fn reject_probes_the_separate_supervisor() {
         let host = boot_host().expect("boot");
         let path = host.supervisor_path().expect("supervisor").to_path_buf();
-        std::thread::sleep(std::time::Duration::from_millis(80));
-        assert_eq!(
-            host.reject_unexpected().unwrap_err().code,
-            "handshake-timeout"
-        );
+        host.reject_unexpected().expect("live supervisor rejects");
         assert!(path.exists());
         assert_eq!(host.host.driver().process.live_count(), 0);
         assert_eq!(host.host.driver().worker.live_count(), 0);
@@ -346,14 +392,10 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
-    fn drain_without_a_connector_times_out() {
+    fn drain_probes_the_separate_supervisor_once() {
         let host = boot_host().expect("boot");
         let path = host.supervisor_path().expect("supervisor").to_path_buf();
-        std::thread::sleep(std::time::Duration::from_millis(80));
-        assert_eq!(
-            host.drain_unexpected().unwrap_err().code,
-            "handshake-timeout"
-        );
+        assert_eq!(host.drain_unexpected().expect("drain"), 1);
         assert!(path.exists());
         assert_eq!(host.host.driver().process.live_count(), 0);
         assert_eq!(host.host.driver().worker.live_count(), 0);

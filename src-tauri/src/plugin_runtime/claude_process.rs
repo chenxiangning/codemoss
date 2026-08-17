@@ -1811,7 +1811,7 @@ mod tests {
         assert!(claude_process_entry_enabled_from(None));
         assert!(!claude_process_entry_enabled_from(Some(std::ffi::OsStr::new("0"))));
         assert!(!crate::plugin_runtime::claude_compat::claude_compat_facade_enabled_from(None));
-        assert!(!crate::plugin_runtime::notes_compat::notes_compat_facade_enabled_from(None));
+        assert!(crate::plugin_runtime::notes_compat::notes_compat_facade_enabled_from(None));
         let sleep = PathBuf::from("/bin/sleep");
         let plan = sleep
             .is_file()

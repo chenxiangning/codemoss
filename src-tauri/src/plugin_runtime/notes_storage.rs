@@ -472,7 +472,7 @@ mod tests {
                 "{command}"
             );
         }
-        assert!(!crate::plugin_runtime::notes_compat::notes_compat_facade_enabled_from(None));
+        assert!(crate::plugin_runtime::notes_compat::notes_compat_facade_enabled_from(None));
         remove_path(Path::new(&root));
     }
 
@@ -518,7 +518,7 @@ mod tests {
                 "{command}"
             );
         }
-        assert!(!crate::plugin_runtime::notes_compat::notes_compat_facade_enabled_from(None));
+        assert!(crate::plugin_runtime::notes_compat::notes_compat_facade_enabled_from(None));
         remove_path(Path::new(&root));
     }
 
@@ -562,7 +562,7 @@ mod tests {
         assert_eq!(namespace.import_legacy_once(&source).expect("second"), 0);
         assert_eq!(namespace.count_notes("ws-legacy").unwrap(), 1);
         assert!(!namespace.data_file().to_string_lossy().contains("note_card"));
-        assert!(!crate::plugin_runtime::notes_compat::notes_compat_facade_enabled_from(None));
+        assert!(crate::plugin_runtime::notes_compat::notes_compat_facade_enabled_from(None));
         remove_path(Path::new(&source));
         remove_path(Path::new(&dest));
     }

@@ -31,6 +31,7 @@ fn main() {
     validate_agent_catalog();
     validate_agent_catalog_bundled_in_conf();
     compile_claude_process_entry();
+    compile_host_supervisor();
 }
 
 fn validate_agent_catalog_bundled_in_conf() {
@@ -639,6 +640,53 @@ fn compile_claude_process_entry() {
         format!("bin/{platform}/claude.exe")
     } else {
         format!("bin/{platform}/claude")
+    };
+    let binary = artifact_root.join(relative);
+    if source_is_not_newer(&source, &binary) {
+        return;
+    }
+    if let Some(parent) = binary.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+    let rustc = env::var("RUSTC").unwrap_or_else(|_| "rustc".into());
+    let mut command = Command::new(rustc);
+    command
+        .args(["--edition", "2021", "-O", "-o"])
+        .arg(&binary)
+        .arg(&source);
+    if let (Ok(target), Ok(host)) = (env::var("TARGET"), env::var("HOST")) {
+        if target != host {
+            command.arg("--target").arg(target);
+        }
+    }
+    match command.status() {
+        Ok(status) if status.success() => {}
+        _ => {
+            let _ = fs::remove_file(&binary);
+        }
+    }
+}
+
+fn compile_host_supervisor() {
+    let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR"));
+    let out_dir = PathBuf::from(env::var("OUT_DIR").expect("OUT_DIR"));
+    let source = manifest_dir
+        .join("../packages/plugin-host/src/supervisor.rs")
+        .canonicalize()
+        .unwrap_or_else(|_| manifest_dir.join("../packages/plugin-host/src/supervisor.rs"));
+    println!("cargo:rerun-if-changed={}", source.display());
+    let artifact_root = out_dir.join("plugin-host");
+    println!(
+        "cargo:rustc-env=MOSSX_HOST_SUPERVISOR_ROOT={}",
+        artifact_root.display()
+    );
+    let Some(platform) = target_platform_id() else {
+        return;
+    };
+    let relative = if platform.starts_with("windows-") {
+        format!("bin/{platform}/host-supervisor.exe")
+    } else {
+        format!("bin/{platform}/host-supervisor")
     };
     let binary = artifact_root.join(relative);
     if source_is_not_newer(&source, &binary) {

@@ -67,10 +67,12 @@ pub fn notes_compat_facade_enabled() -> bool {
 }
 
 pub fn notes_compat_facade_enabled_from(value: Option<&OsStr>) -> bool {
-    matches!(
-        value.and_then(OsStr::to_str).map(str::trim),
-        Some("1" | "true" | "TRUE" | "yes")
-    )
+    match value.and_then(OsStr::to_str).map(str::trim) {
+        None | Some("") => true,
+        Some("0" | "false" | "FALSE" | "no" | "off") => false,
+        Some("1" | "true" | "TRUE" | "yes" | "on") => true,
+        _ => true,
+    }
 }
 
 impl NotesCompatAdapter {
@@ -326,8 +328,8 @@ mod tests {
     }
 
     #[test]
-    fn flag_defaults_to_off() {
-        assert!(!notes_compat_facade_enabled_from(None));
+    fn flag_defaults_to_on_and_explicit_off_keeps_files() {
+        assert!(notes_compat_facade_enabled_from(None));
         assert!(!notes_compat_facade_enabled_from(Some(OsStr::new("0"))));
         assert!(!notes_compat_facade_enabled_from(Some(OsStr::new("false"))));
         assert!(notes_compat_facade_enabled_from(Some(OsStr::new("1"))));
@@ -362,8 +364,9 @@ mod tests {
     }
 
     #[test]
-    fn product_notes_stay_core_while_claude_defaults_to_process_entry() {
-        assert!(!notes_compat_facade_enabled_from(None));
+    fn product_notes_and_claude_default_to_plugin_paths() {
+        assert!(notes_compat_facade_enabled_from(None));
+        assert!(!notes_compat_facade_enabled_from(Some(OsStr::new("0"))));
         assert!(crate::plugin_runtime::claude_process::claude_process_entry_enabled_from(None));
         let registry = include_str!("../command_registry.rs");
         for command in NOTES_COMMAND_IDS {
@@ -450,7 +453,7 @@ mod tests {
             .is_none());
         let commands = include_str!("../note_cards.rs");
         assert!(commands.contains("NotesCompatAdapter::isolated_product()?"));
-        assert!(!notes_compat_facade_enabled_from(None));
+        assert!(notes_compat_facade_enabled_from(None));
         remove_path(std::path::Path::new(&root));
     }
 }
