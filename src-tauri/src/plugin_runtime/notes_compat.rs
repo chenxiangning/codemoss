@@ -1,4 +1,4 @@
-//! Wave 4E/P4.7-22: Notes facade. Flag-off stays note_cards files; flag-on uses isolated sqlite.
+//! Notes facade. Default isolated sqlite; explicit 0 stays note_cards files.
 
 use std::ffi::OsStr;
 use std::path::PathBuf;

@@ -103,6 +103,7 @@ pub struct PluginRackPlug {
     pub live: bool,
     pub product_path: String,
     pub circuit: String,
+    pub core_owner: String,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -161,6 +162,9 @@ fn declared_plug(plug: &DeclaredPlug, state: &str, generation: u64, unit_id: Opt
         live,
         product_path: product_path.to_string(),
         circuit: circuit.to_string(),
+        core_owner: crate::plugin_runtime::disable::core_owner_for_plugin(plug.plugin_id)
+            .as_str()
+            .to_string(),
     }
 }
 
@@ -271,10 +275,14 @@ mod tests {
         assert!(snapshot.plugs.iter().all(|plug| !plug.live));
         assert_eq!(snapshot.plugs[0].product_path, "process-entry");
         assert_eq!(snapshot.plugs[0].circuit, "live");
+        assert_eq!(snapshot.plugs[0].core_owner, "disabled");
         assert_eq!(snapshot.plugs[1].product_path, "isolated-sqlite");
         assert_eq!(snapshot.plugs[1].circuit, "live");
+        assert_eq!(snapshot.plugs[1].core_owner, "disabled");
         assert!(snapshot.plugs[2..].iter().all(|plug| {
-            plug.product_path == "undeclared" && plug.circuit == "idle"
+            plug.product_path == "undeclared"
+                && plug.circuit == "idle"
+                && plug.core_owner == "active"
         }));
         assert_eq!(snapshot.plugs[0].owner_class, "pilot");
         assert_eq!(snapshot.plugs[1].owner_class, "pilot");

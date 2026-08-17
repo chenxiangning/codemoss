@@ -1,21 +1,18 @@
-# Claude Disable-Not-Delete Inventory（Wave 3AM）
+# Claude Disable-Not-Delete（P4.7-29）
 
 > pluginId：`com.mossx.engine.claude`  
-> 状态：**inventory-only**。本刀不改实现、不 disable 产品 Claude、不删代码。
+> 状态：**产品默认 disable Core owner**。源码保留。不是 Slim。
 
-## 已有证据
-
-Host fixture `disable_claude_fixture_keeps_core_implementation`：FakeDriver 激活后可 disable，Broker 拒绝，`engine/claude.rs` 仍在。
-
-## 还不是产品 disable
+## 现在
 
 | 面 | 现状 |
 |---|---|
-| 产品 runtime owner | 仍是 Core `engine/claude*` |
-| flag | `MOSSX_CLAUDE_COMPAT_FACADE` 默认 off |
-| registry | `builtin.claude` |
-| boot | 不调用 `disable("com.mossx.engine.claude")` |
+| 产品路径 | Process Entry（未设旗） |
+| Core owner | `disabled` |
+| 显式 `MOSSX_CLAUDE_PROCESS_ENTRY=0` | `fallback`，`cmd.spawn()` |
+| 源码 | `src-tauri/src/engine/claude.rs` 仍在 |
+| boot | 仍不 activate / 不 Slim |
 
 ## 禁止
 
-从 3AM 跳到删 `engine/claude*`、在 boot 里 disable 产品 Claude、默认开 flag、开 Marketplace。
+删 `engine/claude*`、开 Marketplace、把 Host slot 改成 ready。

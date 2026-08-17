@@ -37,11 +37,8 @@
     "marketplace": "held"
   },
   "outOfScopeNotIncomplete": [
-    "product disable of Core Claude",
     "slim delete engine/claude*",
-    "default-on flag",
-    "Marketplace publish",
-    "Notes product cutover"
+    "Marketplace publish"
   ],
-  "notes": "3AR inventory only. The Wave 3 goal clauses have evidence. Product disable/slim remain forbidden, not leftover Wave 3 work."
+  "notes": "P4.7-29 product-disabled Core owner. Slim and Marketplace remain forbidden."
 }

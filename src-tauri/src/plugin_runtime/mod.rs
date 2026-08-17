@@ -7,6 +7,7 @@ pub mod claude_compat;
 pub mod claude_pilot;
 pub mod claude_process;
 pub mod composite;
+pub mod disable;
 pub mod disk_storage;
 pub mod host;
 pub mod host_data;

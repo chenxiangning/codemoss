@@ -446,7 +446,7 @@ mod tests {
         assert!(criteria.contains("\"defaultOff\""));
         assert!(criteria.contains("\"disableNotDelete\""));
         assert!(criteria.contains("outOfScopeNotIncomplete"));
-        assert!(criteria.contains("product disable of Core Claude"));
+        assert!(criteria.contains("slim delete engine/claude*"));
         assert!(std::path::Path::new("src/engine/claude.rs").exists());
         assert!(!claude_compat_facade_enabled_from(None));
     }

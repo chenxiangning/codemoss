@@ -28,6 +28,10 @@ const translations: Record<string, string> = {
   "extensions.rack.productPaths.process-entry": "Process Entry",
   "extensions.rack.productPaths.isolated-sqlite": "Isolated sqlite",
   "extensions.rack.productPaths.undeclared": "Undeclared",
+  "extensions.rack.coreOwner": "Core owner",
+  "extensions.rack.coreOwners.disabled": "Disabled, source kept",
+  "extensions.rack.coreOwners.fallback": "Explicit fallback",
+  "extensions.rack.coreOwners.active": "Still Core",
   "extensions.rack.state": "Host slot",
   "extensions.rack.generation": "Generation",
   "extensions.rack.marketplaceLater": "Marketplace stays closed.",
@@ -93,8 +97,10 @@ describe("PluginRackSection", () => {
     expect(notesPlug).toContain("Idle");
     expect(engineGroup.textContent).toContain("Process Entry");
     expect(engineGroup.textContent).toContain("Product path live");
+    expect(engineGroup.textContent).toContain("Disabled, source kept");
     expect(featureGroup.textContent).toContain("Isolated sqlite");
     expect(featureGroup.textContent).toContain("Not wired");
+    expect(featureGroup.textContent).toContain("Still Core");
   });
 
   it("shows an error when the snapshot command fails", async () => {

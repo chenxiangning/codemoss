@@ -1,7 +1,7 @@
 # Notes Pilot Inventory（Wave 4A 复核 · P4.7-19）
 
 > pluginId：`com.mossx.notes`  
-> 状态：**产品默认隔离 sqlite**。显式 `0` 回 `note_cards` 文件。不 Slim。
+> 状态：**产品默认隔离 sqlite**。Core owner 默认 disabled，源码保留。显式 `0` 回 `note_cards` 文件。不 Slim。
 
 ## 必须留下的 Core
 
@@ -11,7 +11,7 @@
 
 | 层 | 落点 | owner |
 |---|---|---|
-| Persistence + 7 条命令 | `src-tauri/src/note_cards.rs` | **产品唯一 owner** |
+| Persistence + 7 条命令 | `src-tauri/src/note_cards.rs` | 源码保留；默认不走 `*_core` |
 | Registry | `command_registry.rs` → `note_card_*` | Core |
 | Workspace UI | `src/features/note-cards/**` | Core |
 | IPC client | `src/services/tauri/noteCards.ts` | Core |

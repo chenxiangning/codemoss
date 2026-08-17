@@ -218,6 +218,12 @@ const sidebar = {
         fallback: "Explicit Core fallback",
         idle: "Not wired",
       },
+      coreOwner: "Core owner",
+      coreOwners: {
+        disabled: "Disabled, source kept",
+        fallback: "Explicit fallback",
+        active: "Still Core",
+      },
       productPath: "Product path",
       productPaths: {
         "process-entry": "Process Entry",

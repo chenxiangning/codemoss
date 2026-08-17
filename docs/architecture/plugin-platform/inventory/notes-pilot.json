@@ -1,9 +1,10 @@
 {
   "pluginId": "com.mossx.notes",
   "wave": "4A-refresh",
-  "status": "product-default-isolated-sqlite",
+  "status": "product-core-owner-disabled",
   "deleteGate": "after-pilot-disable",
-  "productOwner": "src-tauri/src/note_cards.rs",
+  "productOwner": "isolated-sqlite",
+  "coreOwner": "disabled",
   "surfaces": {
     "backend": [
       "src-tauri/src/note_cards.rs"
@@ -54,12 +55,13 @@
     "src-tauri/src/plugin_runtime/host.rs",
     "src-tauri/src/plugin_runtime/boot.rs"
   ],
-  "storageNote": "Product notes still live in note_cards.rs. Isolated NotesNamespace at plugin-runtime/data/com.mossx.notes/store.sqlite is NOT the product store and MUST NOT be treated as cutover.",
+  "storageNote": "Product default is isolated sqlite. note_cards.rs stays as explicit-0 fallback. Do not Slim.",
   "dualRun": {
     "notesFlag": "MOSSX_NOTES_COMPAT_FACADE",
     "claudeFlag": "MOSSX_CLAUDE_PROCESS_ENTRY",
-    "default": "off",
-    "activeOwner": "Core"
+    "default": "on",
+    "activeOwner": "IsolatedNotes",
+    "coreOwner": "disabled"
   },
-  "notes": "4A refresh. Do not migrate tables, do not dual-write, do not Slim, do not copy note_cards into plugin_runtime as the product store."
+  "notes": "P4.7-29 disable-not-delete. Core files stay. Marketplace stays closed."
 }

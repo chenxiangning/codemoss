@@ -211,6 +211,12 @@ const sidebar = {
         fallback: "显式回 Core",
         idle: "未接线",
       },
+      coreOwner: "Core owner",
+      coreOwners: {
+        disabled: "已停用，源码保留",
+        fallback: "显式回退",
+        active: "仍在 Core",
+      },
       productPath: "产品路径",
       productPaths: {
         "process-entry": "Process Entry",

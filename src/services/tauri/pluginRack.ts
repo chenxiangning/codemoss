@@ -11,6 +11,7 @@ export type PluginRackPlug = {
   live: boolean;
   productPath: string;
   circuit: string;
+  coreOwner: string;
 };
 
 export type PluginRackSnapshot = {
@@ -23,9 +24,9 @@ export type PluginRackSnapshot = {
 };
 
 export const DECLARED_PLUGIN_CIRCUITS = {
-  claude: { productPath: "process-entry", circuit: "live" },
-  notes: { productPath: "isolated-sqlite", circuit: "live" },
-  later: { productPath: "undeclared", circuit: "idle" },
+  claude: { productPath: "process-entry", circuit: "live", coreOwner: "disabled" },
+  notes: { productPath: "isolated-sqlite", circuit: "live", coreOwner: "disabled" },
+  later: { productPath: "undeclared", circuit: "idle", coreOwner: "active" },
 } as const;
 
 function declaredPlug(
@@ -33,7 +34,7 @@ function declaredPlug(
   displayName: string,
   kind: string,
   ownerClass: string,
-  circuit: { productPath: string; circuit: string },
+  circuit: { productPath: string; circuit: string; coreOwner: string },
 ): PluginRackPlug {
   return {
     pluginId,
@@ -46,6 +47,7 @@ function declaredPlug(
     live: false,
     productPath: circuit.productPath,
     circuit: circuit.circuit,
+    coreOwner: circuit.coreOwner,
   };
 }
 

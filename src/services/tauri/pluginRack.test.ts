@@ -36,15 +36,22 @@ describe("DECLARED_PLUGIN_RACK_SNAPSHOT", () => {
     expect(DECLARED_PLUGIN_RACK_SNAPSHOT.plugs[0]).toMatchObject({
       productPath: "process-entry",
       circuit: "live",
+      coreOwner: "disabled",
     });
     expect(DECLARED_PLUGIN_RACK_SNAPSHOT.plugs[1]).toMatchObject({
       productPath: "isolated-sqlite",
       circuit: "live",
+      coreOwner: "disabled",
     });
     expect(
       DECLARED_PLUGIN_RACK_SNAPSHOT.plugs
         .slice(2)
-        .every((plug) => plug.productPath === "undeclared" && plug.circuit === "idle"),
+        .every(
+          (plug) =>
+            plug.productPath === "undeclared" &&
+            plug.circuit === "idle" &&
+            plug.coreOwner === "active",
+        ),
     ).toBe(true);
     expect(
       DECLARED_PLUGIN_RACK_SNAPSHOT.plugs
