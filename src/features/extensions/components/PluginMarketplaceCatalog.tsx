@@ -6,21 +6,29 @@ import {
   type PluginRackPlug,
 } from "@/services/tauri/pluginRack";
 
+const NOTES_PLUGIN_ID = "com.mossx.notes";
+
 type PluginMarketplaceCatalogProps = {
   live: PluginRackPlug[];
   later: PluginRackPlug[];
   pendingId: string | null;
+  allowLocalSource?: boolean;
   onAction: (plug: PluginRackPlug) => void;
+  onInstallFromPath?: (plug: PluginRackPlug) => void;
 };
 
 function MarketplaceListing({
   plug,
   pendingId,
+  allowLocalSource,
   onAction,
+  onInstallFromPath,
 }: {
   plug: PluginRackPlug;
   pendingId: string | null;
+  allowLocalSource?: boolean;
   onAction: (plug: PluginRackPlug) => void;
+  onInstallFromPath?: (plug: PluginRackPlug) => void;
 }) {
   const { t } = useTranslation();
   const copyKey = listingCopyKey(plug.pluginId);
@@ -54,16 +62,30 @@ function MarketplaceListing({
         {t(`extensions.rack.kinds.${plug.kind}`, { defaultValue: plug.kind })}
       </p>
       {plug.installable ? (
-        <button
-          type="button"
-          className="extensions-plugin-rack-stage"
-          disabled={pendingId === plug.pluginId}
-          onClick={() => {
-            onAction(plug);
-          }}
-        >
-          {plugged ? t("extensions.rack.uninstall") : t("extensions.rack.install")}
-        </button>
+        <div className="extensions-plugin-market-actions">
+          <button
+            type="button"
+            className="extensions-plugin-rack-stage"
+            disabled={pendingId === plug.pluginId}
+            onClick={() => {
+              onAction(plug);
+            }}
+          >
+            {plugged ? t("extensions.rack.uninstall") : t("extensions.rack.install")}
+          </button>
+          {allowLocalSource && plug.pluginId === NOTES_PLUGIN_ID && !plugged ? (
+            <button
+              type="button"
+              className="extensions-plugin-rack-stage is-secondary"
+              disabled={pendingId === plug.pluginId}
+              onClick={() => {
+                onInstallFromPath?.(plug);
+              }}
+            >
+              {t("extensions.market.installFromFolder")}
+            </button>
+          ) : null}
+        </div>
       ) : null}
     </li>
   );
@@ -73,7 +95,9 @@ export function PluginMarketplaceCatalog({
   live,
   later,
   pendingId,
+  allowLocalSource = false,
   onAction,
+  onInstallFromPath,
 }: PluginMarketplaceCatalogProps) {
   const { t } = useTranslation();
 
@@ -90,7 +114,9 @@ export function PluginMarketplaceCatalog({
               key={plug.pluginId}
               plug={plug}
               pendingId={pendingId}
+              allowLocalSource={allowLocalSource}
               onAction={onAction}
+              onInstallFromPath={onInstallFromPath}
             />
           ))}
         </ul>
@@ -106,7 +132,9 @@ export function PluginMarketplaceCatalog({
               key={plug.pluginId}
               plug={plug}
               pendingId={pendingId}
+              allowLocalSource={allowLocalSource}
               onAction={onAction}
+              onInstallFromPath={onInstallFromPath}
             />
           ))}
         </ul>

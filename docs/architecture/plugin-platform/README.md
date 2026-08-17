@@ -7,7 +7,8 @@ status: active
 
 > **状态**：Architecture baseline + V1 Contract Freeze（2026-08-16）；0.8.9 实验面已收口
 > **最后更新**：2026-08-18
-> **进度快照**：[`16-progress-dashboard.md`](16-progress-dashboard.md)（2026-08-18；允许线 67% / 终态 15% / 真实卸载 70%；本地市场 UI 100%；三根产品 LKG 已落地；远程 Marketplace 0%）
+> **进度快照**：[`16-progress-dashboard.md`](16-progress-dashboard.md)（2026-08-18；允许线 82% / 终态 22% / 真实卸载 70%；Notes 9/9 last-mile；Claude/Map 7/9；远程 Marketplace 0%）
+> **停刀备忘**：[`18-notes-complete-baseline.md`](18-notes-complete-baseline.md)（回来先读；磁盘位置 / 已证未证 / 不要做）
 > **0.9 移植**：[`17-contract-port-to-0.9.md`](17-contract-port-to-0.9.md)（十流合同重写清单；禁止 merge）
 > **目标读者**：产品设计、平台架构、Core 开发、插件开发、Release 与安全治理
 > **一句话目标**：把 Mossx 从“持续增长的桌面应用”演进成“稳定 Core + 可隔离、可撤销、可回滚的独立插件生态”。
@@ -112,6 +113,7 @@ Mossx 不使用一个模糊的“全部无重启热部署”承诺，而是区�
 | [15 · Implementation Wave Plan](15-implementation-wave-plan.md) | 当前工作树怎么开工：先插排、再一根根拔、瘦身跟插头走 |
 | [16 · Progress Dashboard](16-progress-dashboard.md) | 允许线 / 终态 / 真实卸载三把尺子；插头九步与 08 Phase 对照 |
 | [17 · 0.9 Contract Port](17-contract-port-to-0.9.md) | 十流合同怎么重写到 0.9；与产品能力移植清单分开；禁止 merge |
+| [18 · Notes 完全体停刀备忘](18-notes-complete-baseline.md) | 回来先读：停在哪、磁盘在哪、证了什么、下次别踩什么 |
 | [Client Modernization 综合改善](../client-modernization/README.md) | 插件性能、冷启动、对话式安装、Developer Platform 与 W0-W12 如何协同？ |
 
 ## 6. 双写协议

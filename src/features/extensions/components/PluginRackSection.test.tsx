@@ -56,6 +56,7 @@ const translations: Record<string, string> = {
   "extensions.market.comingSoonBadge": "Sealed",
   "extensions.market.publisher": "mossx",
   "extensions.market.footnote": "Local curated catalog only. Remote Marketplace stays closed.",
+  "extensions.market.installFromFolder": "Install from folder",
   "extensions.market.listings.claude": "Claude Engine listing.",
   "extensions.market.listings.notes": "Notes listing.",
   "extensions.market.listings.projectMap": "Project Map listing.",
@@ -81,7 +82,19 @@ vi.mock("react-i18next", () => ({
 
 const getPluginRackSnapshot = vi.hoisted(() => vi.fn());
 const installPlugin = vi.hoisted(() => vi.fn());
+const installPluginFromPath = vi.hoisted(() => vi.fn());
 const uninstallPlugin = vi.hoisted(() => vi.fn());
+const pickWorkspacePath = vi.hoisted(() => vi.fn());
+const tauriState = vi.hoisted(() => ({ desktop: false }));
+
+vi.mock("@tauri-apps/api/core", () => ({
+  isTauri: () => tauriState.desktop,
+  invoke: vi.fn(),
+}));
+
+vi.mock("@/services/tauri/filePickers", () => ({
+  pickWorkspacePath,
+}));
 
 vi.mock("@/services/tauri/pluginRack", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/services/tauri/pluginRack")>();
@@ -89,15 +102,19 @@ vi.mock("@/services/tauri/pluginRack", async (importOriginal) => {
     ...actual,
     getPluginRackSnapshot,
     installPlugin,
+    installPluginFromPath,
     uninstallPlugin,
   };
 });
 
 describe("PluginRackSection", () => {
   beforeEach(() => {
+    tauriState.desktop = false;
     getPluginRackSnapshot.mockReset();
     installPlugin.mockReset();
+    installPluginFromPath.mockReset();
     uninstallPlugin.mockReset();
+    pickWorkspacePath.mockReset();
   });
 
   it("renders a visual strip with three live sockets and nine sealed sockets", async () => {
@@ -306,6 +323,39 @@ describe("PluginRackSection", () => {
         .getAllByRole("button")
         .map((button) => button.textContent),
     ).toEqual(["Install", "Uninstall", "Uninstall"]);
+  });
+
+  it("lets the desktop Notes card install from a local folder", async () => {
+    tauriState.desktop = true;
+    const emptyNotes = {
+      ...DECLARED_PLUGIN_RACK_SNAPSHOT,
+      plugs: DECLARED_PLUGIN_RACK_SNAPSHOT.plugs.map((plug) =>
+        plug.pluginId === "com.mossx.notes" ? { ...plug, desiredState: "uninstalled" } : plug,
+      ),
+    };
+    getPluginRackSnapshot.mockResolvedValue(emptyNotes);
+    pickWorkspacePath.mockResolvedValue("/tmp/mossx-plugin-notes");
+    installPluginFromPath.mockResolvedValue(DECLARED_PLUGIN_RACK_SNAPSHOT);
+
+    render(<PluginRackSection />);
+
+    const availableShelf = await screen.findByRole("region", { name: "Available plugs" });
+    expect(within(availableShelf).getAllByRole("button").map((button) => button.textContent)).toEqual([
+      "Uninstall",
+      "Install",
+      "Install from folder",
+      "Uninstall",
+    ]);
+    const notesCard = (await within(availableShelf).findByText("com.mossx.notes")).closest("li");
+    await act(async () => {
+      within(notesCard as HTMLElement).getByRole("button", { name: "Install from folder" }).click();
+    });
+
+    await waitFor(() => {
+      expect(pickWorkspacePath).toHaveBeenCalledTimes(1);
+      expect(installPluginFromPath).toHaveBeenCalledWith("com.mossx.notes", "/tmp/mossx-plugin-notes");
+    });
+    expect(installPlugin).not.toHaveBeenCalled();
   });
 
   it("shows an error when the snapshot command fails", async () => {

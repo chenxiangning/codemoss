@@ -280,9 +280,10 @@ const sidebar = {
       comingSoonBadge: "Sealed",
       publisher: "mossx",
       footnote: "Local curated catalog only. Remote Marketplace stays closed. Uninstall stops the plug and keeps notes, Claude history, and project map data on disk.",
+      installFromFolder: "Install from folder",
       listings: {
         claude: "Claude Engine on the Process Entry path. Uninstall stops the worker isolate and keeps history on disk.",
-        notes: "Isolated notes. Uninstall hides the notes surface and keeps the sqlite namespace.",
+        notes: "Isolated notes. Uninstall hides the notes surface and keeps the sqlite namespace. Desktop can install from a local plugin repository.",
         projectMap: "Project Map with isolated sqlite. Uninstall stops the 24 product commands and keeps map data.",
         later: "Inventoried later plugin. Protocol still 0/9. This listing cannot be installed.",
       },

@@ -485,6 +485,12 @@
   font-size: 13px;
 }
 
+.extensions-plugin-market-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .extensions-plugin-rack-stage {
   justify-self: start;
   padding: 6px 10px;
@@ -493,6 +499,10 @@
   background: transparent;
   color: var(--text-primary);
   font-size: 12px;
+}
+
+.extensions-plugin-rack-stage.is-secondary {
+  color: var(--text-muted);
 }
 
 .extensions-plugin-rack-stage:disabled {

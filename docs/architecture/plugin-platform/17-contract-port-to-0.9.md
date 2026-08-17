@@ -4,6 +4,7 @@ status: active
 created: 2026-08-18
 source_branch: feature/plugin-mossx-0.8.9
 source_tip: 4de8765a9
+notes_last_mile: see-18-and-this-land
 target_refs:
   - origin/cxn-version-0.9
   - upstream/main
@@ -15,7 +16,8 @@ merge_base: bd92e1388
 
 > 主线入口：[Mossx Plugin Platform](README.md)
 > 进度尺：[16 · Progress Dashboard](16-progress-dashboard.md)
-> 决策：[09 · Decision Log](09-decision-log.md) D-049～D-055
+> 停刀备忘：[18 · Notes 完全体停刀备忘](18-notes-complete-baseline.md)
+> 决策：[09 · Decision Log](09-decision-log.md) D-049～D-056
 > 本文件不改生产代码。禁止把本文当成 cherry-pick / merge 脚本。
 
 ## 0. 先把两本账分开
@@ -64,7 +66,7 @@ merge_base: bd92e1388
 | Claude 引擎 | 3402 行；闸门 + Process Entry dual-run + uninstall interrupt | 3045 行；`cmd.spawn` 仍是产品路径；live channel 已外置 | 整文件 theirs 丢掉闸门；ours 丢掉 0.9 流式合同 |
 | 知识地图 | 24 条 command 全部先过 `project_map_commands_allowed` | 同源 command 在 `project_map.rs` / `project_map_relations.rs` / `project_memory/**`，**无闸门** | 漏接一条 = 假卸载 |
 | 启动 | `lib.rs` `boot_host_at(app_home)` + `restore_allowlisted` | 无 Host | 把 default-on Host 带进 0.9 会污染 first-interactive |
-| 文档 SoT | `docs/architecture/plugin-platform/` 16+1 册 | 0.9 **0 个文件** | 直接拷目录可以，但 Decision 必须按 0.9 重新编号 |
+| 文档 SoT | `docs/architecture/plugin-platform/` 18 册 | 0.9 **0 个文件** | 直接拷目录可以，但 Decision 必须按 0.9 重新编号 |
 
 Merge Guardrails 适用：高风险文件禁止整文件 `--ours` / `--theirs`。本清单按 **十流合同** 重写，不按文件覆盖。
 
@@ -77,7 +79,7 @@ Merge Guardrails 适用：高风险文件禁止整文件 `--ours` / `--theirs`�
 5. **Host 仍 default-off。** 0.9 第一刀不要 `HostConfig.enabled = true`，不要 `missing_executable()` 变真 executable。
 6. **presence 不进 AppShell bag。** 继续 `useSyncExternalStore`；0.9 消费点改挂 S4 的 layout / engine / settings owner，而不是新 domain。
 7. **45 个 `packages/plugin-*` 过渡仓默认不搬成活插头。** 只搬 `plugin-contract` fixture + 三根真实 adapter 需要的 identity。
-8. **Slim / 独立仓 / 远程 Registry / 签名 / 12 插头可写 / P2.6 / P2.7 冻结。** D-049 仍有效；D-055 只豁本地 3 listing。
+8. **Claude / Map Slim、远程 Registry、签名、12 插头可写、P2.6 / P2.7 仍冻结。** Notes 本地独立仓（D-056）已在 0.8.9 探通，0.9 只搬「from-path stage + 卸后留 staged」合同，不搬本机仓路径。D-049 仍有效；D-055 只豁本地 3 listing。
 9. **0.9 先立 OpenSpec change，再写代码。** 本分支 255 个 plugin change 不得整包搬进 0.9 `openspec/changes/`。
 10. **ADR 校准。** 若命中 engine registry / provider binding / session foundation，按 `AGENTS.md` 回写 `docs/research/mossx-multi-cli-provider-session-foundation-design.md`。
 
@@ -353,11 +355,11 @@ Claude health **只认** bookkeeping sqlite + slot Ready。禁止用会话 JSONL
 
 - 把测试用 ephemeral `boot_host()` 当产品 boot
 - 把 P2.5 update stage/complete 当成本流完成
-- Slim 之后的「完整 LKG」（artifact hash / 签名 / 独立仓）
+- Slim 之后的「完整 LKG」（artifact hash / 签名 / 远程独立仓发布）。Notes 本地 from-path（D-056）是 0.8.9 证据，0.9 另开流再搬
 
 ### 验收
 
-把本分支 4 个 LKG 产品测试按 0.9 存储 API 重写，全绿。允许线仍记 67%，协议仍记 7/9。
+把本分支 4 个 LKG 产品测试按 0.9 存储 API 重写，全绿。0.9 允许线从 0 起算；本分支收口是 82%，不是 67%。Claude / Map 协议仍记 7/9。
 
 ---
 
@@ -571,13 +573,14 @@ Render Perf 红线（`docs/perf/render-jank-knife-experiments-2026-07-08.md`）�
 | `plugin-rack-and-local-market` | 7 | D-053 / D-055 |
 | `plugin-hide-on-uninstall` | 8 + 9 的 UI/interrupt | `plugin-product-surface-hide-on-uninstall` |
 
-Decision 在 0.9 重记一版（建议从 D-100 起，或写 `0.9-D-001`），正文引用本分支 D-049～D-055 为证据，不把旧 ID 假装是 0.9 已确认。
+Decision 在 0.9 重记一版（建议从 D-100 起，或写 `0.9-D-001`），正文引用本分支 D-049～D-056 为证据，不把旧 ID 假装是 0.9 已确认。
 
 必须同步的设计册（精简拷，不要 16 册一次性当已实现）：
 
 - `14-v1-contract-freeze.md`（字段 SoT）
-- `09-decision-log.md` 的 D-049～D-055
+- `09-decision-log.md` 的 D-049～D-056
 - `16-progress-dashboard.md`（到 0.9 后重新打快照，百分比归零再涨）
+- `18-notes-complete-baseline.md`（0.8.9 停刀事实，不当 0.9 已交付）
 - 本文
 
 `08` / `15` / inventory 长文只作附录，不作为 0.9 已交付声明。
@@ -586,7 +589,7 @@ Decision 在 0.9 重记一版（建议从 D-100 起，或写 `0.9-D-001`），�
 
 - 402 个 `openspec/changes/*` 整包拷到 0.9
 - 把 Wave 1「真实 Host 在测试里转」写成 0.9 产品已通电
-- 把 dashboard 67% 原样贴到 0.9（0.9 起步允许线是 0%）
+- 把 dashboard 82% 原样贴到 0.9（0.9 起步允许线是 0%）
 
 ### 验收
 
@@ -600,8 +603,8 @@ Decision 在 0.9 重记一版（建议从 D-100 起，或写 `0.9-D-001`），�
 
 | 资产 | 为什么不搬 | 何时才能再谈 |
 |---|---|---|
-| Slim / 删 Core 实现 | 允许线停在第 7 步；P8 = 0% | 0.9 三根插头再次走到 Disable 且产品稳定一个版本之后 |
-| 独立 Git 仓发布 | D-014 终态；现在搬是沉没成本 | Slim 之后 |
+| Slim / 删 Core 实现 | Claude / Map 仍 7/9；P8 = 8%（只 Notes ownership） | 0.9 三根插头再次走到 Disable 且产品稳定一个版本之后 |
+| 远程独立仓发布 / 签名 artifact | D-014 终态；Notes 本地仓只是 last-mile 证据 | 真 Slim 之后 |
 | 远程 Marketplace / 签名 / SBOM | D-049 + P6 = 0% | Slim + Registry governance |
 | 12 插头可写 / later-plugin 协议 | 9 根仍 0/9 | 下一根必须重新走九步 |
 | 45 个 `packages/plugin-*` 当活插头 | 过渡仓 / re-export，不是抽出 | 永远不要当 installable |
@@ -639,13 +642,13 @@ Decision 在 0.9 重记一版（建议从 D-100 起，或写 `0.9-D-001`），�
 
 ## 7. 0.9 落地后尺子怎么记
 
-0.9 起步全部归零。本分支的 67 / 15 / 70 **不得**抄过去当 0.9 进度。
+0.9 起步全部归零。本分支的 82 / 22 / 70 **不得**抄过去当 0.9 进度。
 
 | 尺子 | 本分支收口 | 0.9 刚开 | 0.9 十流完成（目标） |
 |---|---:|---:|---:|
-| 允许线 | 67% | 0% | ~67%（仍不含 Slim / Host 真 boot） |
+| 允许线 | 82% | 0% | ~82%（仍不含 Claude/Map Slim / Host 真 boot） |
 | 真实卸载 | 70% | 0% | ~70%（仍只有三根） |
-| 终态 | 15% | 0% | ~15% |
+| 终态 | 22% | 0% | ~22% |
 | 插排 3/9 | ~100% | 0% | ~100% |
 | 本地市场 | 100% | 0% | 100% |
 | 三根产品 LKG | 已落地 | 无 | 已落地 |
@@ -671,6 +674,7 @@ B+C+D 任一波都比「把 `plugin_runtime` 目录拷过去」大。拷目录�
 |---|---|
 | 本地市场 + 卸后藏 | `9e5b07b68` |
 | 三根产品 LKG | `4de8765a9` |
+| Notes 本地独立仓 from-path | D-056；`local_source.rs`；[18](18-notes-complete-baseline.md) |
 | allowlist 三根 | D-052；`install.rs::is_install_allowlisted` |
 | 插排 3/9 | D-053；`PluginRackSection.tsx` |
 | 本地市场 | D-055；`PluginMarketplaceCatalog.tsx` |
@@ -680,4 +684,4 @@ B+C+D 任一波都比「把 `plugin_runtime` 目录拷过去」大。拷目录�
 
 ## 10. 下一刀
 
-本实验分支 **停刀**。下一刀在 0.9：先开 `plugin-lockfile-and-presence` OpenSpec change，不要在 `feature/plugin-mossx-0.8.9` 上继续 Slim / 独立仓 / Host 真 boot。
+本实验分支 **停刀**。Notes last-mile 已探通（见 [18](18-notes-complete-baseline.md)）。下一刀在 0.9：先开 `plugin-lockfile-and-presence` OpenSpec change，不要在 `feature/plugin-mossx-0.8.9` 上继续 Slim Claude/Map 或 Host 真 boot。

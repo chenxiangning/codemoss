@@ -4,40 +4,18 @@
 use serde_json::Value;
 
 use super::host::{ActivationRequest, FakeDriver, Host, HostConfig, SlotState};
+use super::local_source;
+
+pub fn notes_activation_from_value(manifest: &Value) -> ActivationRequest {
+    local_source::activation_request_from_manifest(manifest).expect("notes manifest")
+}
 
 pub fn notes_activation_request() -> ActivationRequest {
     let manifest: Value = serde_json::from_str(include_str!(
         "../../../packages/plugin-contract/fixtures/valid/notes-pilot.json"
     ))
     .expect("notes fixture");
-    let plugin_id = manifest
-        .get("pluginId")
-        .and_then(Value::as_str)
-        .expect("pluginId")
-        .to_string();
-    let unit = manifest
-        .get("activationUnits")
-        .and_then(Value::as_array)
-        .and_then(|units| units.first())
-        .expect("unit");
-    let unit_id = unit
-        .get("id")
-        .and_then(Value::as_str)
-        .expect("unit id")
-        .to_string();
-    let required_entries = unit
-        .get("entries")
-        .and_then(Value::as_array)
-        .expect("entries")
-        .iter()
-        .filter_map(Value::as_str)
-        .map(ToOwned::to_owned)
-        .collect();
-    ActivationRequest {
-        plugin_id,
-        unit_id,
-        required_entries,
-    }
+    notes_activation_from_value(&manifest)
 }
 
 #[cfg(test)]

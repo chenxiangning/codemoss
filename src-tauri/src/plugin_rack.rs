@@ -300,6 +300,18 @@ pub(crate) fn install_plugin(
 }
 
 #[tauri::command]
+pub(crate) fn install_plugin_from_path(
+    app: tauri::AppHandle,
+    plugin_id: String,
+    source_path: String,
+) -> Result<PluginRackSnapshot, String> {
+    with_boot_host(&app, |host| {
+        install::install_plugin_from_path(&mut **host, &plugin_id, &source_path)
+            .map_err(map_host_error)
+    })
+}
+
+#[tauri::command]
 pub(crate) async fn uninstall_plugin(
     app: tauri::AppHandle,
     plugin_id: String,
@@ -440,6 +452,7 @@ mod tests {
         let registry = include_str!("command_registry.rs");
         assert!(registry.contains("get_plugin_rack_snapshot"));
         assert!(registry.contains("install_plugin"));
+        assert!(registry.contains("install_plugin_from_path"));
         assert!(registry.contains("uninstall_plugin"));
         assert!(!registry.contains("activate_plugin"));
         assert!(!registry.contains("plugin_runtime"));

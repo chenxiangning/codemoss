@@ -5,9 +5,11 @@ import { isTauri } from "@tauri-apps/api/core";
 
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { publishPluginRackSnapshot } from "@/services/pluginPresence";
+import { pickWorkspacePath } from "@/services/tauri/filePickers";
 import {
   getPluginRackSnapshot,
   installPlugin,
+  installPluginFromPath,
   isPlugged,
   partitionPluginRackPlugs,
   uninstallPlugin,
@@ -155,6 +157,23 @@ export function PluginRackSection() {
     await runPlugAction(plug);
   };
 
+  const handleInstallFromPath = async (plug: PluginRackPlug) => {
+    const sourcePath = await pickWorkspacePath();
+    if (!sourcePath) {
+      return;
+    }
+    setPendingId(plug.pluginId);
+    try {
+      const next = await installPluginFromPath(plug.pluginId, sourcePath);
+      applySnapshot(next);
+      setError(null);
+    } catch (cause: unknown) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setPendingId(null);
+    }
+  };
+
   const handleConfirmClaudeUninstall = () => {
     setClaudeUninstallOpen(false);
     const claudePlug = snapshot?.plugs.find((plug) => plug.pluginId === CLAUDE_PLUGIN_ID);
@@ -249,8 +268,12 @@ export function PluginRackSection() {
               live={banks.live}
               later={banks.later}
               pendingId={pendingId}
+              allowLocalSource={!previewMode}
               onAction={(next) => {
                 void handlePlugAction(next);
+              }}
+              onInstallFromPath={(next) => {
+                void handleInstallFromPath(next);
               }}
             />
           </>

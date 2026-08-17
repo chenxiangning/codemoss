@@ -15,6 +15,7 @@ pub mod host_data;
 pub mod install;
 pub mod ipc;
 pub mod lkg;
+pub mod local_source;
 pub mod lockfile;
 pub mod loopback;
 pub mod manifest;

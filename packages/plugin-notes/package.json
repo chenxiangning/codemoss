@@ -2,7 +2,7 @@
   "name": "@mossx/plugin-notes",
   "private": true,
   "version": "1.0.0",
-  "description": "Transitional Notes Feature package. In-repo layering only. Not wired into boot or Marketplace.",
+  "description": "Pointer package. Artifact owner is the independent mossx-plugin-notes repository.",
   "type": "module",
   "exports": {
     ".": "./src/index.ts",

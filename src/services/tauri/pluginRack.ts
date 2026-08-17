@@ -178,6 +178,21 @@ export async function installPlugin(pluginId: string): Promise<PluginRackSnapsho
   return publishAndReturn(await invoke<PluginRackSnapshot>("install_plugin", { pluginId }));
 }
 
+export async function installPluginFromPath(
+  pluginId: string,
+  sourcePath: string,
+): Promise<PluginRackSnapshot> {
+  if (!isAllowlistedPluginId(pluginId)) {
+    throw new Error("plugin-not-allowlisted");
+  }
+  if (!isTauri()) {
+    throw new Error("install-from-path-unavailable");
+  }
+  return publishAndReturn(
+    await invoke<PluginRackSnapshot>("install_plugin_from_path", { pluginId, sourcePath }),
+  );
+}
+
 export async function uninstallPlugin(pluginId: string): Promise<PluginRackSnapshot> {
   if (!isTauri()) {
     return publishAndReturn(applyPreviewDesiredState(pluginId, "uninstalled"));

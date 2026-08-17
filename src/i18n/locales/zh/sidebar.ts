@@ -273,9 +273,10 @@ const sidebar = {
       comingSoonBadge: "封口",
       publisher: "mossx",
       footnote: "仅本地 curated 目录。远程 Marketplace 仍关闭。卸载停用插头，笔记、Claude history 与知识地图数据保留。",
+      installFromFolder: "从本地仓库安装",
       listings: {
         claude: "Claude Engine，走 Process Entry。卸载停止 worker isolate，history 留在磁盘。",
-        notes: "隔离笔记。卸载隐藏笔记面，sqlite namespace 保留。",
+        notes: "隔离笔记。卸载隐藏笔记面，sqlite namespace 保留。桌面端可从本地插件仓库安装。",
         projectMap: "知识地图，隔离 sqlite。卸载挡住 24 条产品命令，地图数据保留。",
         later: "已盘点的后续插头。协议仍是 0/9。此条目不能安装。",
       },

@@ -6,6 +6,7 @@ use super::contributions;
 use super::host::{EntryDriver, HostError};
 use super::lockfile::{self, DesiredState};
 use super::lkg::PRODUCT_LKG_VERSION;
+use super::local_source;
 use super::notes_compat::notes_compat_facade_enabled;
 use super::notes_pilot::notes_activation_request;
 use super::notes_storage::NOTES_PLUGIN_ID;
@@ -131,6 +132,31 @@ pub fn install_plugin<D: EntryDriver>(
     }
 }
 
+pub fn install_plugin_from_path<D: EntryDriver>(
+    runtime: &mut PluginRuntime<D>,
+    plugin_id: &str,
+    source_path: &str,
+) -> Result<(), HostError> {
+    require_allowlisted(plugin_id)?;
+    if plugin_id != NOTES_PLUGIN_ID {
+        return Err(HostError {
+            code: "local-source-unsupported",
+            message: format!("{plugin_id} cannot install from a local repository yet"),
+        });
+    }
+    install_notes_from_path(runtime, source_path)
+}
+
+fn notes_activation_for_runtime<D: EntryDriver>(
+    runtime: &PluginRuntime<D>,
+) -> Result<crate::plugin_runtime::host::ActivationRequest, HostError> {
+    if local_source::has_staged_manifest(runtime.storage.root(), NOTES_PLUGIN_ID) {
+        local_source::staged_activation_request(runtime.storage.root(), NOTES_PLUGIN_ID)
+    } else {
+        Ok(notes_activation_request())
+    }
+}
+
 pub fn uninstall_plugin<D: EntryDriver>(
     runtime: &mut PluginRuntime<D>,
     plugin_id: &str,
@@ -145,7 +171,8 @@ pub fn uninstall_plugin<D: EntryDriver>(
 
 pub fn install_notes<D: EntryDriver>(runtime: &mut PluginRuntime<D>) -> Result<(), HostError> {
     require_allowlisted(NOTES_PLUGIN_ID)?;
-    runtime.install_allowlisted(notes_activation_request())?;
+    let request = notes_activation_for_runtime(runtime)?;
+    runtime.install_allowlisted(request)?;
     pin_product_lkg(runtime, NOTES_PLUGIN_ID)?;
     contributions::register_notes().map_err(|message| HostError {
         code: "contribution-failed",
@@ -155,6 +182,19 @@ pub fn install_notes<D: EntryDriver>(runtime: &mut PluginRuntime<D>) -> Result<(
         code: "lockfile",
         message,
     })
+}
+
+pub fn install_notes_from_path<D: EntryDriver>(
+    runtime: &mut PluginRuntime<D>,
+    source_path: &str,
+) -> Result<(), HostError> {
+    require_allowlisted(NOTES_PLUGIN_ID)?;
+    local_source::stage_local_plugin(
+        std::path::Path::new(source_path),
+        runtime.storage.root(),
+        NOTES_PLUGIN_ID,
+    )?;
+    install_notes(runtime)
 }
 
 pub fn uninstall_notes<D: EntryDriver>(runtime: &mut PluginRuntime<D>) -> Result<(), HostError> {
@@ -677,6 +717,113 @@ mod tests {
             assert!(gate < facade, "gate must precede facade");
         });
         let _ = std::fs::remove_file(&path);
+        contributions::reset_for_test();
+    }
+
+    fn write_temp_notes_repo(root: &std::path::Path) {
+        std::fs::create_dir_all(root.join(".mossx-plugin")).expect("mkdir");
+        std::fs::write(
+            root.join(".mossx-plugin/plugin.json"),
+            r#"{
+              "pluginId": "com.mossx.notes",
+              "activationUnits": [
+                { "id": "notes-main", "entries": ["notes-worker", "notes-ui"] }
+              ]
+            }"#,
+        )
+        .expect("manifest");
+        std::fs::create_dir_all(root.join("dist")).expect("dist");
+        std::fs::write(root.join("dist/worker.js"), "export const ok = true;").expect("worker");
+    }
+
+    #[test]
+    fn install_from_path_stages_notes_and_reinstall_keeps_artifact() {
+        contributions::reset_for_test();
+        let path = temp_lockfile("from-path");
+        let root = std::env::temp_dir().join(format!(
+            "mossx-install-from-path-{}-{}",
+            std::process::id(),
+            path.file_stem().unwrap().to_string_lossy()
+        ));
+        let source = std::env::temp_dir().join(format!(
+            "mossx-notes-repo-{}-{}",
+            std::process::id(),
+            path.file_stem().unwrap().to_string_lossy()
+        ));
+        let _ = std::fs::remove_file(&path);
+        let _ = std::fs::remove_dir_all(&root);
+        let _ = std::fs::remove_dir_all(&source);
+        write_temp_notes_repo(&source);
+        lockfile::with_lockfile_path(&path, || {
+            let mut runtime = runtime(&root);
+            install_plugin_from_path(&mut runtime, NOTES_PLUGIN_ID, source.to_str().unwrap())
+                .expect("install from path");
+            let staged = root.join("plugin-runtime/plugins/com.mossx.notes");
+            assert!(staged.join(".mossx-plugin/plugin.json").is_file());
+            assert!(staged.join(".mossx-install.json").is_file());
+            assert_eq!(
+                runtime.host.slot(NOTES_PLUGIN_ID).unwrap().state,
+                SlotState::Ready
+            );
+            uninstall_plugin(&mut runtime, NOTES_PLUGIN_ID).expect("uninstall");
+            assert!(staged.join(".mossx-plugin/plugin.json").is_file());
+            install_plugin(&mut runtime, NOTES_PLUGIN_ID).expect("reinstall staged");
+            assert_eq!(
+                runtime.host.slot(NOTES_PLUGIN_ID).unwrap().state,
+                SlotState::Ready
+            );
+            assert!(local_source::has_staged_manifest(&root, NOTES_PLUGIN_ID));
+        });
+        let _ = std::fs::remove_file(&path);
+        let _ = std::fs::remove_dir_all(&root);
+        let _ = std::fs::remove_dir_all(&source);
+        contributions::reset_for_test();
+    }
+
+    #[test]
+    fn install_from_path_rejects_claude_and_wrong_manifest() {
+        contributions::reset_for_test();
+        let path = temp_lockfile("from-path-reject");
+        let root = std::env::temp_dir().join(format!(
+            "mossx-install-from-path-reject-{}-{}",
+            std::process::id(),
+            path.file_stem().unwrap().to_string_lossy()
+        ));
+        let source = std::env::temp_dir().join(format!(
+            "mossx-notes-repo-reject-{}-{}",
+            std::process::id(),
+            path.file_stem().unwrap().to_string_lossy()
+        ));
+        let _ = std::fs::remove_file(&path);
+        let _ = std::fs::remove_dir_all(&root);
+        let _ = std::fs::remove_dir_all(&source);
+        write_temp_notes_repo(&source);
+        lockfile::with_lockfile_path(&path, || {
+            let mut runtime = runtime(&root);
+            let unsupported = install_plugin_from_path(
+                &mut runtime,
+                CLAUDE_PLUGIN_ID,
+                source.to_str().unwrap(),
+            )
+            .unwrap_err();
+            assert_eq!(unsupported.code, "local-source-unsupported");
+            std::fs::write(
+                source.join(".mossx-plugin/plugin.json"),
+                r#"{"pluginId":"com.mossx.project-map","activationUnits":[{"id":"x","entries":["a"]}]}"#,
+            )
+            .expect("wrong id");
+            let mismatch = install_plugin_from_path(
+                &mut runtime,
+                NOTES_PLUGIN_ID,
+                source.to_str().unwrap(),
+            )
+            .unwrap_err();
+            assert_eq!(mismatch.code, "plugin-id-mismatch");
+            assert!(!root.join("plugin-runtime/plugins/com.mossx.notes").exists());
+        });
+        let _ = std::fs::remove_file(&path);
+        let _ = std::fs::remove_dir_all(&root);
+        let _ = std::fs::remove_dir_all(&source);
         contributions::reset_for_test();
     }
 

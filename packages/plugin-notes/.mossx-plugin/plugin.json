@@ -3,7 +3,7 @@
   "pluginId": "com.mossx.notes",
   "version": "1.0.0",
   "displayName": "Notes",
-  "description": "Transitional Notes Feature package. In-repo layering only. Not installed by boot.",
+  "description": "Pointer only. Artifact owner is the independent mossx-plugin-notes repository. Not installed by boot.",
   "publisher": {
     "id": "com.mossx",
     "displayName": "Mossx",

@@ -12,6 +12,7 @@ import {
   DECLARED_PLUGIN_RACK_SNAPSHOT,
   getPluginRackSnapshot,
   installPlugin,
+  installPluginFromPath,
   resetPreviewPluginRackSnapshot,
   uninstallPlugin,
 } from "./pluginRack";
@@ -143,6 +144,14 @@ describe("browser preview plugin rack", () => {
       "installed",
     );
     expect(reinstalled.plugs.slice(3).every((plug) => plug.desiredState === "uninstalled")).toBe(true);
+  });
+
+  it("rejects install from path in the browser preview", async () => {
+    await expect(installPluginFromPath("com.mossx.notes", "/tmp/mossx-plugin-notes")).rejects.toThrow(
+      "install-from-path-unavailable",
+    );
+    const snapshot = await getPluginRackSnapshot();
+    expect(snapshot.plugs.find((plug) => plug.pluginId === "com.mossx.notes")?.desiredState).toBe("installed");
   });
 
   it("rejects a sealed later plugin without changing the snapshot", async () => {

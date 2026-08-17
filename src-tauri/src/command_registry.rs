@@ -62,6 +62,7 @@ pub(crate) fn invoke_handler(
         crate::renderer_stability::get_renderer_platform_hook_support,
         crate::plugin_rack::get_plugin_rack_snapshot,
         crate::plugin_rack::install_plugin,
+        crate::plugin_rack::install_plugin_from_path,
         crate::plugin_rack::uninstall_plugin,
         crate::runtime::commands::get_runtime_pool_snapshot,
         crate::runtime::commands::mutate_runtime_pool,
