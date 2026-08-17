@@ -118,7 +118,7 @@ Wave 5+ 其余插头按风险排序一根根拔
 | Workspace / file preview / search | `src/features/workspaces`、`src/features/files`、`src/features/search` |
 | Git foundation | `src/features/git`、`src-tauri/src/git`（不含 PR / AI commit / History 高级流） |
 | Engine Contract | `src-tauri/src/engine/{adapter_registry,commands,events}.rs` |
-| Plugin Kernel（待建） | 尚无 `src/plugin-kernel` / `src-tauri/src/plugin_runtime` |
+| Plugin Kernel（骨架已建，default-off） | `src/plugin-kernel/**`、`src-tauri/src/plugin_runtime/**`；boot 用 `missing_executable()`，不激活产品插头 |
 
 ### 5.2 第一批拔出（Pilot）
 

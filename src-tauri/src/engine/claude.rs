@@ -202,6 +202,30 @@ impl Drop for ClaudeSession {
         if active.is_empty() {
             return;
         }
+        if let Ok(mut entries) = self.active_process_entries.try_lock() {
+            for (turn_id, mut handle) in entries.drain() {
+                let pid = handle.child_pid();
+                match handle.interrupt() {
+                    Ok(()) => {
+                        log::info!(
+                            "[claude] drop fallback interrupted process entry workspace={} turn={} pid={:?}",
+                            self.workspace_id,
+                            turn_id,
+                            pid
+                        );
+                    }
+                    Err(error) => {
+                        log::warn!(
+                            "[claude] drop fallback failed to interrupt process entry workspace={} turn={} pid={:?}: {}",
+                            self.workspace_id,
+                            turn_id,
+                            pid,
+                            error.message
+                        );
+                    }
+                }
+            }
+        }
         for (turn_id, mut child) in active.drain() {
             let pid = child.id();
             match child.start_kill() {
@@ -449,6 +473,11 @@ pub struct ClaudeSession {
     custom_args: Option<String>,
     /// Active child processes by turn ID (supports concurrent turns)
     active_processes: Mutex<HashMap<String, Child>>,
+    /// Flag-on Process Entry turns. Dual-run: never lives beside a Core child
+    /// for the same turn.
+    active_process_entries: Mutex<
+        HashMap<String, crate::plugin_runtime::claude_process::ProcessEntryTurn>,
+    >,
     /// Flag set by interrupt() so send_message() knows the process was killed intentionally
     interrupted: AtomicBool,
     /// Disposal flag set when workspace/session is being torn down.
@@ -653,27 +682,7 @@ impl ClaudeSession {
     }
 
     fn is_valid_claude_stream_event(event: &Value) -> bool {
-        matches!(
-            event.get("type").and_then(|value| value.as_str()),
-            Some(
-                "stream_event"
-                    | "system"
-                    | "assistant"
-                    | "assistant_message_delta"
-                    | "message_delta"
-                    | "text_delta"
-                    | "output_text_delta"
-                    | "assistant_message"
-                    | "message"
-                    | "user"
-                    | "result"
-                    | "reasoning_delta"
-                    | "thinking_delta"
-                    | "error"
-                    | "tool_use"
-                    | "tool_result"
-            )
-        )
+        crate::plugin_runtime::claude_process::is_product_valid_claude_stream_event(event)
     }
 
     async fn fail_stream_no_event_timeout(
@@ -692,6 +701,15 @@ impl ClaudeSession {
                     "[claude] failed to terminate stream-timeout child for turn={}: {}",
                     turn_id,
                     error
+                );
+            }
+        }
+        if let Some(mut handle) = self.active_process_entries.lock().await.remove(turn_id) {
+            if let Err(error) = handle.interrupt() {
+                log::warn!(
+                    "[claude] failed to interrupt stream-timeout process entry for turn={}: {}",
+                    turn_id,
+                    error.message
                 );
             }
         }
@@ -765,6 +783,7 @@ impl ClaudeSession {
             home_dir: config.home_dir,
             custom_args: config.custom_args,
             active_processes: Mutex::new(HashMap::new()),
+            active_process_entries: Mutex::new(HashMap::new()),
             interrupted: AtomicBool::new(false),
             disposed: AtomicBool::new(false),
             tool_name_by_id: StdMutex::new(HashMap::new()),
@@ -799,6 +818,7 @@ impl ClaudeSession {
 
     pub(crate) async fn has_active_turn(&self, turn_id: &str) -> bool {
         self.active_processes.lock().await.contains_key(turn_id)
+            || self.active_process_entries.lock().await.contains_key(turn_id)
     }
 
     pub(crate) fn register_turn_thread_id(&self, turn_id: &str, thread_id: &str) {
@@ -904,8 +924,13 @@ impl ClaudeSession {
     }
 
     pub async fn active_process_ids(&self) -> Vec<u32> {
-        let active = self.active_processes.lock().await;
-        active.values().filter_map(|child| child.id()).collect()
+        let mut ids: Vec<u32> = {
+            let active = self.active_processes.lock().await;
+            active.values().filter_map(|child| child.id()).collect()
+        };
+        let entries = self.active_process_entries.lock().await;
+        ids.extend(entries.values().filter_map(|handle| handle.child_pid()));
+        ids
     }
 
     fn is_disposed(&self) -> bool {
@@ -984,6 +1009,98 @@ impl ClaudeSession {
         }
         self.clear_turn_ephemeral_state(turn_id);
         Err(error_msg)
+    }
+
+    async fn next_claude_line(
+        &self,
+        turn_id: &str,
+        lines: &mut Option<tokio::io::Lines<BufReader<tokio::process::ChildStdout>>>,
+    ) -> Result<Option<String>, std::io::Error> {
+        if self.active_process_entries.lock().await.contains_key(turn_id) {
+            loop {
+                let poll = {
+                    let mut entries = self.active_process_entries.lock().await;
+                    let Some(handle) = entries.get_mut(turn_id) else {
+                        return Ok(None);
+                    };
+                    handle.poll_stdout_line()
+                };
+                match poll {
+                    Ok(crate::plugin_runtime::claude_process::LinePoll::Line(line)) => {
+                        return Ok(Some(line));
+                    }
+                    Ok(crate::plugin_runtime::claude_process::LinePoll::Eof) => {
+                        return Ok(None);
+                    }
+                    Ok(crate::plugin_runtime::claude_process::LinePoll::Pending) => {
+                        tokio::time::sleep(Duration::from_millis(20)).await;
+                    }
+                    Err(error) => {
+                        return Err(std::io::Error::other(error.message));
+                    }
+                }
+            }
+        }
+        match lines.as_mut() {
+            Some(lines) => lines.next_line().await,
+            None => Ok(None),
+        }
+    }
+
+    pub(super) async fn try_resume_process_entry_turn(
+        &self,
+        turn_id: &str,
+        cmd: &tokio::process::Command,
+        stdin: Option<&[u8]>,
+    ) -> Result<bool, String> {
+        if !crate::plugin_runtime::claude_process::claude_process_entry_enabled() {
+            return Ok(false);
+        }
+        if let Some(mut handle) = self.active_process_entries.lock().await.remove(turn_id) {
+            let _ = handle.interrupt();
+        }
+        let Some(plan) = crate::plugin_runtime::claude_process::spawn_plan_from_command(
+            cmd.as_std().get_program(),
+            &cmd.as_std()
+                .get_args()
+                .map(|arg| arg.to_string_lossy().into_owned())
+                .collect::<Vec<_>>(),
+            cmd.as_std().get_current_dir(),
+        ) else {
+            return Err("process-entry-bin-denied".into());
+        };
+        let mut handle = crate::plugin_runtime::claude_process::spawn_process_entry_turn(
+            &crate::plugin_runtime::claude_process::claude_plugin_package_root(),
+            plan,
+        )
+        .map_err(|error| format!("{}: {}", error.code, error.message))?;
+        if let Some(bytes) = stdin {
+            if let Err(error) = handle.write_stdin(bytes) {
+                let _ = handle.interrupt();
+                return Err(format!("Failed to write to stdin: {}", error.message));
+            }
+            if let Err(error) = handle.write_stdin(b"\n") {
+                let _ = handle.interrupt();
+                return Err(format!("Failed to write newline: {}", error.message));
+            }
+        }
+        if let Err(error) = handle.close_stdin() {
+            let _ = handle.interrupt();
+            return Err(format!("Failed to close stdin: {}", error.message));
+        }
+        {
+            let mut active = self.active_process_entries.lock().await;
+            if self.is_disposed() {
+                drop(active);
+                let _ = handle.interrupt();
+                return Err(
+                    "Claude session disposed during resume; terminated pending child process"
+                        .into(),
+                );
+            }
+            active.insert(turn_id.to_string(), handle);
+        }
+        Ok(true)
     }
 
     /// Set session ID (after successful execution)
@@ -1565,12 +1682,139 @@ impl ClaudeSession {
             profile,
         );
         Self::configure_spawn_command(&mut cmd);
-
-        // Spawn the process
+        let process_entry_enabled =
+            crate::plugin_runtime::claude_process::claude_process_entry_enabled();
+        let spawn_plan = crate::plugin_runtime::claude_process::spawn_plan_from_command(
+            cmd.as_std().get_program(),
+            &cmd.as_std()
+                .get_args()
+                .map(|arg| arg.to_string_lossy().into_owned())
+                .collect::<Vec<_>>(),
+            cmd.as_std().get_current_dir(),
+        );
+        let spawn_owner = crate::plugin_runtime::claude_process::decide_claude_spawn_owner(
+            process_entry_enabled,
+            spawn_plan.as_ref(),
+        );
+        if let Some(error) =
+            crate::plugin_runtime::claude_process::claude_spawn_owner_error(spawn_owner)
+        {
+            let error_msg = format!("Failed to spawn claude: {error}");
+            self.emit_turn_event(
+                turn_id,
+                EngineEvent::TurnError {
+                    workspace_id: self.workspace_id.clone(),
+                    error: error_msg.clone(),
+                    code: Some(error.to_string()),
+                },
+            );
+            self.clear_turn_ephemeral_state(turn_id);
+            return Err(error_msg);
+        }
         let mut stream_startup_timing = ClaudeStreamStartupTiming {
             process_spawn_started_at_ms: Some(unix_timestamp_ms()),
             ..ClaudeStreamStartupTiming::default()
         };
+        let line_source = crate::plugin_runtime::claude_process::decide_claude_line_source(
+            process_entry_enabled,
+        );
+        let mut core_stdout: Option<tokio::process::ChildStdout> = None;
+        let mut core_stderr: Option<tokio::process::ChildStderr> = None;
+        if matches!(
+            line_source,
+            crate::plugin_runtime::claude_process::ClaudeLineSource::ProcessEntry
+        ) {
+            let Some(plan) = spawn_plan else {
+                let error = "process-entry-bin-denied";
+                let error_msg = format!("Failed to spawn claude: {error}");
+                self.emit_turn_event(
+                    turn_id,
+                    EngineEvent::TurnError {
+                        workspace_id: self.workspace_id.clone(),
+                        error: error_msg.clone(),
+                        code: Some(error.to_string()),
+                    },
+                );
+                self.clear_turn_ephemeral_state(turn_id);
+                return Err(error_msg);
+            };
+            let mut handle = match crate::plugin_runtime::claude_process::spawn_process_entry_turn(
+                &crate::plugin_runtime::claude_process::claude_plugin_package_root(),
+                plan,
+            ) {
+                Ok(handle) => handle,
+                Err(error) => {
+                    let error_msg = format!("Failed to spawn claude: {}", error.message);
+                    self.emit_turn_event(
+                        turn_id,
+                        EngineEvent::TurnError {
+                            workspace_id: self.workspace_id.clone(),
+                            error: error_msg.clone(),
+                            code: Some(error.code.to_string()),
+                        },
+                    );
+                    self.clear_turn_ephemeral_state(turn_id);
+                    return Err(error_msg);
+                }
+            };
+            stream_startup_timing.process_spawned_at_ms = Some(unix_timestamp_ms());
+            if use_stream_json_input {
+                stream_startup_timing.stdin_write_started_at_ms = Some(unix_timestamp_ms());
+                let message = match build_message_content(&params) {
+                    Ok(value) => value,
+                    Err(error) => {
+                        let _ = handle.interrupt();
+                        self.clear_turn_ephemeral_state(turn_id);
+                        return Err(format!("Failed to build message: {}", error));
+                    }
+                };
+                let message_str = match serde_json::to_string(&message) {
+                    Ok(value) => value,
+                    Err(error) => {
+                        let _ = handle.interrupt();
+                        self.clear_turn_ephemeral_state(turn_id);
+                        return Err(format!("Failed to serialize message: {}", error));
+                    }
+                };
+                if let Err(error) = handle.write_stdin(message_str.as_bytes()) {
+                    let _ = handle.interrupt();
+                    self.clear_turn_ephemeral_state(turn_id);
+                    return Err(format!("Failed to write to stdin: {}", error.message));
+                }
+                if let Err(error) = handle.write_stdin(b"\n") {
+                    let _ = handle.interrupt();
+                    self.clear_turn_ephemeral_state(turn_id);
+                    return Err(format!("Failed to write newline: {}", error.message));
+                }
+            }
+            if let Err(error) = handle.close_stdin() {
+                let _ = handle.interrupt();
+                self.clear_turn_ephemeral_state(turn_id);
+                return Err(format!("Failed to close stdin: {}", error.message));
+            }
+            stream_startup_timing.stdin_closed_at_ms = Some(unix_timestamp_ms());
+            {
+                let mut active = self.active_process_entries.lock().await;
+                if self.is_disposed() {
+                    drop(active);
+                    let _ = handle.interrupt();
+                    let error_msg =
+                        "Claude session disposed during startup; terminated pending child process"
+                            .to_string();
+                    self.emit_turn_event(
+                        turn_id,
+                        EngineEvent::TurnError {
+                            workspace_id: self.workspace_id.clone(),
+                            error: error_msg.clone(),
+                            code: None,
+                        },
+                    );
+                    self.clear_turn_ephemeral_state(turn_id);
+                    return Err(error_msg);
+                }
+                active.insert(turn_id.to_string(), handle);
+            }
+        } else {
         let mut child = match cmd.spawn() {
             Ok(child) => child,
             Err(e) => {
@@ -1685,6 +1929,8 @@ impl ClaudeSession {
                     .await;
             }
         };
+        core_stdout = Some(stdout);
+        core_stderr = Some(stderr);
 
         // Store child for interruption (per turn)
         let mut spawned_child = Some(child);
@@ -1712,6 +1958,7 @@ impl ClaudeSession {
             self.clear_turn_ephemeral_state(turn_id);
             return Err(error_msg);
         }
+        }
 
         // Emit session started event
         self.emit_turn_event(
@@ -1734,9 +1981,9 @@ impl ClaudeSession {
             },
         );
 
-        // Read stdout line by line
-        let reader = BufReader::new(stdout);
-        let mut lines = reader.lines();
+        // Dual-run 行源：flag-on 走 Process Entry cursor；默认仍 Tokio。
+        let mut lines = core_stdout.map(|stdout| BufReader::new(stdout).lines());
+        let stderr = core_stderr;
         let mut response_text = String::new();
         let mut saw_text_delta = false;
         let mut new_session_id: Option<String> = None;
@@ -1770,12 +2017,13 @@ impl ClaudeSession {
         // exit-status failure checks are skipped for the process we force-kill.
         let mut settled_by_grace = false;
 
-        // Spawn stderr reader
-        let stderr_reader = BufReader::new(stderr);
-        let _workspace_id_clone = self.workspace_id.clone();
+        // Spawn stderr reader. Process Entry 路径在 poll_line 里抽 stderr。
         let stderr_diagnostic_sample = Arc::clone(&stream_diagnostic_sample);
         let mut stderr_handle = tokio::spawn(async move {
-            let mut lines = stderr_reader.lines();
+            let Some(stderr) = stderr else {
+                return String::new();
+            };
+            let mut lines = BufReader::new(stderr).lines();
             let mut stderr_text = String::new();
             while let Ok(Some(line)) = lines.next_line().await {
                 stderr_text.push_str(&line);
@@ -1804,12 +2052,12 @@ impl ClaudeSession {
                         //   (no grace tree-kill; issue #983)
                         // - otherwise GraceWaitEof bounded by post_result_grace_deadline
                         if !active_background_task_ids.is_empty() {
-                            lines.next_line().await
+                            self.next_claude_line(turn_id, &mut lines).await
                         } else {
                             let deadline = post_result_grace_deadline
                                 .get_or_insert_with(|| Instant::now() + CLAUDE_POST_RESULT_GRACE);
                             let remaining = deadline.saturating_duration_since(Instant::now());
-                            match tokio::time::timeout(remaining, lines.next_line()).await {
+                            match tokio::time::timeout(remaining, self.next_claude_line(turn_id, &mut lines)).await {
                                 Ok(result) => result,
                                 Err(_) => {
                                     if can_force_kill_for_grace(
@@ -1826,13 +2074,13 @@ impl ClaudeSession {
                             }
                         }
                     } else {
-                        lines.next_line().await
+                        self.next_claude_line(turn_id, &mut lines).await
                     }
                 } else {
                     let wait_duration = first_event_deadline
                         .checked_duration_since(Instant::now())
                         .unwrap_or(Duration::ZERO);
-                    match tokio::time::timeout(wait_duration, lines.next_line()).await {
+                    match tokio::time::timeout(wait_duration, self.next_claude_line(turn_id, &mut lines)).await {
                         Ok(result) => result,
                         Err(_) => {
                             return self
@@ -1863,7 +2111,7 @@ impl ClaudeSession {
                     wait_duration =
                         wait_duration.min(deadline.saturating_duration_since(Instant::now()));
                 }
-                match tokio::time::timeout(wait_duration, lines.next_line()).await {
+                match tokio::time::timeout(wait_duration, self.next_claude_line(turn_id, &mut lines)).await {
                     Ok(result) => result,
                     Err(_) => {
                         if result_seen_at.is_some()
@@ -2111,7 +2359,7 @@ impl ClaudeSession {
                                 .await
                             {
                                 Ok(Some(new_lines)) => {
-                                    lines = new_lines;
+                                    lines = Some(new_lines);
                                     continue;
                                 }
                                 Ok(None) => {}
@@ -2145,7 +2393,7 @@ impl ClaudeSession {
                                 .await
                             {
                                 Ok(Some(new_lines)) => {
-                                    lines = new_lines;
+                                    lines = Some(new_lines);
                                     continue;
                                 }
                                 Ok(None) => {}
@@ -2211,6 +2459,22 @@ impl ClaudeSession {
         } else {
             None
         };
+        let mut process_entry_stderr = String::new();
+        let mut process_entry_code: Option<i32> = None;
+        if let Some(mut handle) = self.active_process_entries.lock().await.remove(turn_id) {
+            process_entry_stderr = handle.take_stderr();
+            if settled_by_grace {
+                let _ = handle.interrupt();
+            } else {
+                let deadline = Instant::now() + Duration::from_millis(200);
+                match handle.wait_until(deadline) {
+                    Ok(Some(code)) => process_entry_code = Some(code),
+                    Ok(None) | Err(_) => {
+                        let _ = handle.interrupt();
+                    }
+                }
+            }
+        }
 
         // Get stderr, but bound the drain: if a descendant escaped the CLI's
         // process group (setsid) and still holds the inherited stderr write end
@@ -2226,6 +2490,9 @@ impl ClaudeSession {
                     String::new()
                 }
             };
+        if !process_entry_stderr.trim().is_empty() {
+            error_output.push_str(&process_entry_stderr);
+        }
         if !stderr_text.trim().is_empty() {
             error_output.push_str(&stderr_text);
         }
@@ -2278,6 +2545,37 @@ impl ClaudeSession {
                     },
                 );
 
+                self.clear_turn_ephemeral_state(turn_id);
+                return Err(error_msg);
+            }
+        } else if let Some(code) = process_entry_code {
+            if code != 0 {
+                let sample = Self::stream_diagnostic_sample_snapshot(&stream_diagnostic_sample);
+                let error_msg = if !error_output.trim().is_empty() {
+                    error_output.trim().to_string()
+                } else {
+                    format!(
+                        "Claude exited with status: {code}. Diagnostics: input_format={}, include_hook_events={}, permission_mode={}. {}",
+                        if use_stream_json_input { "stream-json" } else { "argv" },
+                        include_hook_events,
+                        params.access_mode.as_deref().unwrap_or("current"),
+                        if sample.trim().is_empty() {
+                            "No stdout/stderr diagnostics were observed.".to_string()
+                        } else {
+                            format!("Diagnostic sample:\n{}", sample.trim())
+                        }
+                    )
+                };
+                log::error!("Claude process failed: {}", error_msg);
+                self.emit_pending_ask_user_question_resume_failure(turn_id, &error_msg);
+                self.emit_turn_event(
+                    turn_id,
+                    EngineEvent::TurnError {
+                        workspace_id: self.workspace_id.clone(),
+                        error: error_msg.clone(),
+                        code: None,
+                    },
+                );
                 self.clear_turn_ephemeral_state(turn_id);
                 return Err(error_msg);
             }
@@ -2512,8 +2810,29 @@ impl ClaudeSession {
             let mut active = self.active_processes.lock().await;
             active.drain().collect()
         };
+        let entries: Vec<(
+            String,
+            crate::plugin_runtime::claude_process::ProcessEntryTurn,
+        )> = {
+            let mut active = self.active_process_entries.lock().await;
+            active.drain().collect()
+        };
         let mut first_terminate_error: Option<String> = None;
         let mut failed_children = Vec::new();
+        for (turn_id, mut handle) in entries {
+            if let Err(error) = handle.interrupt() {
+                log::warn!(
+                    "[claude] interrupt failed to terminate process entry for turn={}: {}",
+                    turn_id,
+                    error.message
+                );
+                if first_terminate_error.is_none() {
+                    first_terminate_error = Some(error.message.clone());
+                }
+            } else {
+                self.clear_turn_ephemeral_state(&turn_id);
+            }
+        }
         for (turn_id, mut child) in children {
             if let Err(error) = self.terminate_child_process(&turn_id, &mut child).await {
                 log::warn!(
@@ -2604,6 +2923,15 @@ impl ClaudeSession {
                         .insert(turn_id.to_string(), child);
                 }
                 return Err(error);
+            }
+        }
+        if let Some(mut handle) = self.active_process_entries.lock().await.remove(turn_id) {
+            if let Err(error) = handle.interrupt() {
+                self.active_process_entries
+                    .lock()
+                    .await
+                    .insert(turn_id.to_string(), handle);
+                return Err(error.message);
             }
         }
         self.clear_turn_ephemeral_state(turn_id);

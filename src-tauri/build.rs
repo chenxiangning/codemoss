@@ -9,10 +9,12 @@
 // Reads `skills-lock.json` from the repo root (sibling of src-tauri/), and the
 // curated skill bodies from src-tauri/resources/curated-skills/.
 
+use std::env;
 use std::fs;
 use std::io::Read;
 use std::path::Component;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 
 use sha2::{Digest, Sha256};
 
@@ -28,6 +30,7 @@ fn main() {
     validate_curated_skills_bundled_in_conf();
     validate_agent_catalog();
     validate_agent_catalog_bundled_in_conf();
+    compile_claude_process_entry();
 }
 
 fn validate_agent_catalog_bundled_in_conf() {
@@ -610,6 +613,85 @@ fn is_safe_http_url(value: &str) -> bool {
         .next_back()
         .unwrap_or("");
     !host.is_empty() && !host.starts_with(':') && !host.contains('\\')
+}
+
+fn compile_claude_process_entry() {
+    let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR"));
+    let out_dir = PathBuf::from(env::var("OUT_DIR").expect("OUT_DIR"));
+    let source = manifest_dir
+        .join("../packages/plugin-engine-claude/src/process_entry.rs")
+        .canonicalize()
+        .unwrap_or_else(|_| {
+            manifest_dir.join("../packages/plugin-engine-claude/src/process_entry.rs")
+        });
+    println!("cargo:rerun-if-changed={}", source.display());
+
+    let artifact_root = out_dir.join("plugin-engine-claude");
+    println!(
+        "cargo:rustc-env=MOSSX_CLAUDE_PROCESS_ENTRY_ROOT={}",
+        artifact_root.display()
+    );
+
+    let Some(platform) = target_platform_id() else {
+        return;
+    };
+    let relative = if platform.starts_with("windows-") {
+        format!("bin/{platform}/claude.exe")
+    } else {
+        format!("bin/{platform}/claude")
+    };
+    let binary = artifact_root.join(relative);
+    if source_is_not_newer(&source, &binary) {
+        return;
+    }
+    if let Some(parent) = binary.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+    let rustc = env::var("RUSTC").unwrap_or_else(|_| "rustc".into());
+    let mut command = Command::new(rustc);
+    command
+        .args(["--edition", "2021", "-O", "-o"])
+        .arg(&binary)
+        .arg(&source);
+    if let (Ok(target), Ok(host)) = (env::var("TARGET"), env::var("HOST")) {
+        if target != host {
+            command.arg("--target").arg(target);
+        }
+    }
+    match command.status() {
+        Ok(status) if status.success() => {}
+        _ => {
+            let _ = fs::remove_file(&binary);
+        }
+    }
+}
+
+fn target_platform_id() -> Option<&'static str> {
+    match (
+        env::var("CARGO_CFG_TARGET_OS").ok()?.as_str(),
+        env::var("CARGO_CFG_TARGET_ARCH").ok()?.as_str(),
+    ) {
+        ("macos", "aarch64") => Some("darwin-arm64"),
+        ("macos", "x86_64") => Some("darwin-x64"),
+        ("windows", "x86_64") => Some("windows-x64"),
+        ("windows", "aarch64") => Some("windows-arm64"),
+        ("linux", "x86_64") => Some("linux-x64"),
+        ("linux", "aarch64") => Some("linux-arm64"),
+        _ => None,
+    }
+}
+
+fn source_is_not_newer(source: &Path, binary: &Path) -> bool {
+    let Ok(source_meta) = fs::metadata(source) else {
+        return false;
+    };
+    let Ok(binary_meta) = fs::metadata(binary) else {
+        return false;
+    };
+    match (source_meta.modified(), binary_meta.modified()) {
+        (Ok(source_time), Ok(binary_time)) => binary_time >= source_time,
+        _ => false,
+    }
 }
 
 fn sha256_file(path: &Path) -> Result<String, String> {

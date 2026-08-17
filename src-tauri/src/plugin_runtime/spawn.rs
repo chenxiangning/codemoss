@@ -26,6 +26,13 @@ struct ChildKey {
     generation: u64,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SuperviseTarget {
+    pub executable: PathBuf,
+    pub argv: Vec<String>,
+    pub cwd: Option<PathBuf>,
+}
+
 pub struct RestrictedProcessDriver {
     executable: PathBuf,
     data_root: PathBuf,
@@ -34,6 +41,7 @@ pub struct RestrictedProcessDriver {
     fail_on: Option<String>,
     corrupt_ack_on: Option<String>,
     handshake: bool,
+    supervise: Option<SuperviseTarget>,
 }
 
 impl RestrictedProcessDriver {
@@ -46,6 +54,7 @@ impl RestrictedProcessDriver {
             fail_on: None,
             corrupt_ack_on: None,
             handshake: false,
+            supervise: None,
         }
     }
 
@@ -55,8 +64,146 @@ impl RestrictedProcessDriver {
         driver
     }
 
+    pub fn with_supervise(mut self, target: SuperviseTarget) -> Self {
+        self.supervise = Some(target);
+        self
+    }
+
     pub fn live_count(&self) -> usize {
         self.children.len()
+    }
+
+    pub fn executable(&self) -> &Path {
+        &self.executable
+    }
+
+    pub fn child_pid(&self, plugin_id: &str, entry_id: &str, generation: u64) -> Option<u32> {
+        self.children
+            .get(&ChildKey {
+                plugin_id: plugin_id.to_string(),
+                entry_id: entry_id.to_string(),
+                generation,
+            })
+            .map(Child::id)
+    }
+
+    pub fn write_supervised_stdio(
+        &mut self,
+        plugin_id: &str,
+        entry_id: &str,
+        generation: u64,
+        data: &[u8],
+    ) -> Result<(), DriverError> {
+        let child = self
+            .children
+            .get_mut(&ChildKey {
+                plugin_id: plugin_id.to_string(),
+                entry_id: entry_id.to_string(),
+                generation,
+            })
+            .ok_or(DriverError::Crash)?;
+        stdio_call(
+            child,
+            "io-1",
+            "mossx.process.stdio.write",
+            json!({ "dataHex": encode_hex(data) }),
+        )?;
+        Ok(())
+    }
+
+    pub fn read_supervised_stdio(
+        &mut self,
+        plugin_id: &str,
+        entry_id: &str,
+        generation: u64,
+    ) -> Result<(Vec<u8>, bool), DriverError> {
+        let child = self
+            .children
+            .get_mut(&ChildKey {
+                plugin_id: plugin_id.to_string(),
+                entry_id: entry_id.to_string(),
+                generation,
+            })
+            .ok_or(DriverError::Crash)?;
+        let received = stdio_call(child, "io-2", "mossx.process.stdio.read", json!({}))?;
+        let hex = received
+            .pointer("/result/dataHex")
+            .and_then(Value::as_str)
+            .ok_or(DriverError::Crash)?;
+        let eof = received
+            .pointer("/result/eof")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+        Ok((decode_hex(hex).ok_or(DriverError::Crash)?, eof))
+    }
+
+    pub fn read_supervised_stderr(
+        &mut self,
+        plugin_id: &str,
+        entry_id: &str,
+        generation: u64,
+    ) -> Result<(Vec<u8>, bool), DriverError> {
+        let child = self
+            .children
+            .get_mut(&ChildKey {
+                plugin_id: plugin_id.to_string(),
+                entry_id: entry_id.to_string(),
+                generation,
+            })
+            .ok_or(DriverError::Crash)?;
+        let received = stdio_call(child, "io-4", "mossx.process.stdio.read-stderr", json!({}))?;
+        let hex = received
+            .pointer("/result/dataHex")
+            .and_then(Value::as_str)
+            .ok_or(DriverError::Crash)?;
+        let eof = received
+            .pointer("/result/eof")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+        Ok((decode_hex(hex).ok_or(DriverError::Crash)?, eof))
+    }
+
+    pub fn wait_supervised(
+        &mut self,
+        plugin_id: &str,
+        entry_id: &str,
+        generation: u64,
+    ) -> Result<Option<i32>, DriverError> {
+        let child = self
+            .children
+            .get_mut(&ChildKey {
+                plugin_id: plugin_id.to_string(),
+                entry_id: entry_id.to_string(),
+                generation,
+            })
+            .ok_or(DriverError::Crash)?;
+        let received = stdio_call(child, "io-5", "mossx.process.wait", json!({}))?;
+        let exited = received
+            .pointer("/result/exited")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+        if !exited {
+            return Ok(None);
+        }
+        Ok(received.pointer("/result/code").and_then(Value::as_i64).map(|code| code as i32))
+    }
+
+    pub fn close_supervised_stdin(
+        &mut self,
+        plugin_id: &str,
+        entry_id: &str,
+        generation: u64,
+    ) -> Result<(), DriverError> {
+        let child = self
+            .children
+            .get_mut(&ChildKey {
+                plugin_id: plugin_id.to_string(),
+                entry_id: entry_id.to_string(),
+                generation,
+            })
+            .ok_or(DriverError::Crash)?;
+        stdio_call(child, "io-3", "mossx.process.stdio.close-stdin", json!({}))?;
+        Ok(())
     }
 
     #[cfg(test)]
@@ -137,6 +284,12 @@ impl RestrictedProcessDriver {
                 kill_child(&mut child);
                 return Err(error);
             }
+            if let Some(target) = &self.supervise {
+                if let Err(error) = supervise_child(&mut child, target) {
+                    kill_child(&mut child);
+                    return Err(error);
+                }
+            }
             return Ok(child);
         } else {
             command
@@ -177,6 +330,105 @@ fn handshake_child(
         read_mxpc_frame_timed(stdout, HANDSHAKE_DEADLINE).map_err(|_| DriverError::Crash)?;
     validate_handshake_ack(&received, nonce, plugin_id, generation, "1.0.0")
         .map_err(|_| DriverError::Crash)?;
+    Ok(())
+}
+
+fn supervise_request(target: &SuperviseTarget) -> Value {
+    let mut params = json!({
+        "executable": target.executable.to_string_lossy(),
+        "argv": target.argv,
+    });
+    if let Some(cwd) = &target.cwd {
+        params["cwd"] = json!(cwd.to_string_lossy());
+    }
+    json!({
+        "jsonrpc": "2.0",
+        "id": "sup-1",
+        "method": "mossx.process.supervise",
+        "params": params
+    })
+}
+
+fn encode_hex(data: &[u8]) -> String {
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    let mut out = String::with_capacity(data.len() * 2);
+    for byte in data {
+        out.push(HEX[(byte >> 4) as usize] as char);
+        out.push(HEX[(byte & 0x0f) as usize] as char);
+    }
+    out
+}
+
+fn decode_hex(src: &str) -> Option<Vec<u8>> {
+    if src.len() % 2 != 0 {
+        return None;
+    }
+    let bytes = src.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len() / 2);
+    let mut index = 0;
+    while index < bytes.len() {
+        let hi = hex_val(bytes[index])?;
+        let lo = hex_val(bytes[index + 1])?;
+        out.push((hi << 4) | lo);
+        index += 2;
+    }
+    Some(out)
+}
+
+fn hex_val(byte: u8) -> Option<u8> {
+    match byte {
+        b'0'..=b'9' => Some(byte - b'0'),
+        b'a'..=b'f' => Some(byte - b'a' + 10),
+        b'A'..=b'F' => Some(byte - b'A' + 10),
+        _ => None,
+    }
+}
+
+fn stdio_call(
+    child: &mut Child,
+    id: &str,
+    method: &str,
+    params: Value,
+) -> Result<Value, DriverError> {
+    let stdin = child.stdin.as_mut().ok_or(DriverError::Crash)?;
+    write_mxpc_frame_timed(
+        stdin,
+        &json!({
+            "jsonrpc": "2.0",
+            "id": id,
+            "method": method,
+            "params": params,
+        }),
+        HANDSHAKE_DEADLINE,
+    )
+    .map_err(|_| DriverError::Crash)?;
+    let stdout = child.stdout.as_mut().ok_or(DriverError::Crash)?;
+    let received =
+        read_mxpc_frame_timed(stdout, HANDSHAKE_DEADLINE).map_err(|_| DriverError::Crash)?;
+    if received.get("error").is_some() {
+        return Err(DriverError::Crash);
+    }
+    Ok(received)
+}
+
+fn supervise_child(child: &mut Child, target: &SuperviseTarget) -> Result<(), DriverError> {
+    if !process_executable_ok(&target.executable) || !target.executable.is_file() {
+        return Err(DriverError::Crash);
+    }
+    if let Some(cwd) = &target.cwd {
+        if !supervise_cwd_ok(cwd) {
+            return Err(DriverError::Crash);
+        }
+    }
+    let stdin = child.stdin.as_mut().ok_or(DriverError::Crash)?;
+    write_mxpc_frame_timed(stdin, &supervise_request(target), HANDSHAKE_DEADLINE)
+        .map_err(|_| DriverError::Crash)?;
+    let stdout = child.stdout.as_mut().ok_or(DriverError::Crash)?;
+    let received =
+        read_mxpc_frame_timed(stdout, HANDSHAKE_DEADLINE).map_err(|_| DriverError::Crash)?;
+    if received.get("error").is_some() || received.pointer("/result/ok") != Some(&json!(true)) {
+        return Err(DriverError::Crash);
+    }
     Ok(())
 }
 
@@ -414,6 +666,14 @@ const DENIED_STEMS: &[&str] = &[
     "deno",
     "bun",
 ];
+
+pub fn supervise_cwd_ok(cwd: &Path) -> bool {
+    cwd.is_absolute()
+        && !cwd.as_os_str().is_empty()
+        && !cwd
+            .components()
+            .any(|component| matches!(component, std::path::Component::ParentDir))
+}
 
 pub fn process_executable_ok(path: &Path) -> bool {
     if !path.is_absolute() {

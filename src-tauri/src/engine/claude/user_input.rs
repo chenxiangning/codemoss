@@ -169,6 +169,9 @@ impl ClaudeSession {
                 );
             }
         }
+        if let Some(mut handle) = self.active_process_entries.lock().await.remove(turn_id) {
+            let _ = handle.interrupt();
+        }
 
         let approvals_resolved = tokio::select! {
             _ = notify.notified() => true,
@@ -223,6 +226,23 @@ impl ClaudeSession {
             provider_settings_path,
         );
         Self::configure_spawn_command(&mut cmd);
+        let resume_stdin = if use_stream_json_input {
+            Some(
+                serde_json::to_string(&build_message_content(&resume_params).map_err(|error| {
+                    format!("Failed to build approval resume message: {error}")
+                })?)
+                .map_err(|error| format!("Failed to serialize approval resume message: {error}"))?,
+            )
+        } else {
+            None
+        };
+        if self
+            .try_resume_process_entry_turn(turn_id, &cmd, resume_stdin.as_deref().map(str::as_bytes))
+            .await?
+        {
+            log::info!("Resumed Claude after approval resolution via process entry");
+            return Ok(None);
+        }
         match cmd.spawn() {
             Ok(mut new_child) => {
                 if use_stream_json_input {
@@ -615,6 +635,9 @@ impl ClaudeSession {
             parent_pid,
             resume_wrapper_kind
         );
+        if let Some(mut handle) = self.active_process_entries.lock().await.remove(turn_id) {
+            let _ = handle.interrupt();
+        }
         if let Some(mut child) = existing_child.take() {
             if let Err(error) = self.terminate_child_process(turn_id, &mut child).await {
                 let failure = format!(
@@ -665,6 +688,43 @@ impl ClaudeSession {
             provider_settings_path,
         );
         Self::configure_spawn_command(&mut cmd);
+        let resume_stdin = if use_stream_json_input {
+            Some(
+                serde_json::to_string(&build_message_content(&resume_params).map_err(|error| {
+                    format!("Failed to build AskUserQuestion resume message: {error}")
+                })?)
+                .map_err(|error| {
+                    format!("Failed to serialize AskUserQuestion resume message: {error}")
+                })?,
+            )
+        } else {
+            None
+        };
+        match self
+            .try_resume_process_entry_turn(turn_id, &cmd, resume_stdin.as_deref().map(str::as_bytes))
+            .await
+        {
+            Ok(true) => {
+                log::info!("Resumed Claude after AskUserQuestion via process entry");
+                self.emit_ask_user_question_resume_diagnostic(
+                    turn_id,
+                    resume_request_id.clone(),
+                    true,
+                    None,
+                );
+                return Ok(None);
+            }
+            Ok(false) => {}
+            Err(error) => {
+                self.emit_ask_user_question_resume_diagnostic(
+                    turn_id,
+                    resume_request_id.clone(),
+                    false,
+                    Some(error.clone()),
+                );
+                return Err(error);
+            }
+        }
         match cmd.spawn() {
             Ok(mut new_child) => {
                 if use_stream_json_input {

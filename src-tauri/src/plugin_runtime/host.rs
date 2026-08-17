@@ -1,4 +1,4 @@
-//! In-memory Extension Host supervisor. No sockets, no spawn, not in the app boot path.
+//! In-process Extension Host supervisor. Drivers may spawn; boot constructs it default-off.
 
 use std::collections::{HashMap, HashSet};
 use std::time::Duration;
@@ -493,6 +493,10 @@ impl<D: EntryDriver> Host<D> {
 
     pub fn driver(&self) -> &D {
         &self.driver
+    }
+
+    pub fn driver_mut(&mut self) -> &mut D {
+        &mut self.driver
     }
 
     #[cfg(test)]
