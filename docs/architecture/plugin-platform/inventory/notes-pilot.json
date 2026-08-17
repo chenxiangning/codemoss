@@ -1,8 +1,9 @@
 {
   "pluginId": "com.mossx.notes",
-  "wave": "4A",
-  "status": "inventory-only",
+  "wave": "4A-refresh",
+  "status": "inventory-plus-default-off-facade",
   "deleteGate": "after-pilot-disable",
+  "productOwner": "src-tauri/src/note_cards.rs",
   "surfaces": {
     "backend": [
       "src-tauri/src/note_cards.rs"
@@ -30,7 +31,13 @@
       "src/features/messages/utils/context/messagesNoteCardContext.ts",
       "src/features/messages/components/context/NoteCardContextSummaryCard.tsx"
     ],
-    "i18n": ["src/i18n/locales/*/noteCards.ts"]
+    "i18n": ["src/i18n/locales/*/noteCards.ts"],
+    "defaultOffFacade": [
+      "src-tauri/src/plugin_runtime/notes_compat.rs"
+    ],
+    "isolatedNamespace": [
+      "src-tauri/src/plugin_runtime/notes_storage.rs"
+    ]
   },
   "stayInCore": [
     "src-tauri/src/app_paths.rs",
@@ -44,8 +51,15 @@
     "src/features/update/hooks/useReleaseNotes.ts",
     "src/styles/release-notes.css",
     "src-tauri/src/engine/claude*",
-    "src-tauri/src/plugin_runtime/*"
+    "src-tauri/src/plugin_runtime/host.rs",
+    "src-tauri/src/plugin_runtime/boot.rs"
   ],
-  "storageNote": "note_cards.rs uses app_paths and workspace-local files. 4A does not migrate tables or write plugin-runtime/data. Wave 2 DiskStorage stays unused by Notes.",
-  "notes": "4A inventory only. Do not dual-write, do not disable Claude, do not copy note_cards into plugin_runtime."
+  "storageNote": "Product notes still live in note_cards.rs. Isolated NotesNamespace at plugin-runtime/data/com.mossx.notes/store.sqlite is NOT the product store and MUST NOT be treated as cutover.",
+  "dualRun": {
+    "notesFlag": "MOSSX_NOTES_COMPAT_FACADE",
+    "claudeFlag": "MOSSX_CLAUDE_PROCESS_ENTRY",
+    "default": "off",
+    "activeOwner": "Core"
+  },
+  "notes": "4A refresh. Do not migrate tables, do not dual-write, do not Slim, do not copy note_cards into plugin_runtime as the product store."
 }

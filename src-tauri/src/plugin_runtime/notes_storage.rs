@@ -101,6 +101,10 @@ impl NotesNamespace {
         Ok(())
     }
 
+    pub fn data_file(&self) -> PathBuf {
+        self.storage.data_file(NOTES_PLUGIN_ID)
+    }
+
     pub fn count_notes(&self, workspace_id: &str) -> Result<usize, String> {
         let connection = Connection::open(self.storage.data_file(NOTES_PLUGIN_ID))
             .map_err(|error| error.to_string())?;
@@ -113,6 +117,191 @@ impl NotesNamespace {
             .map_err(|error| error.to_string())?;
         Ok(count as usize)
     }
+
+    pub fn get_note(
+        &self,
+        note_id: &str,
+        workspace_id: &str,
+    ) -> Result<Option<crate::note_cards::WorkspaceNoteCard>, String> {
+        let connection = Connection::open(self.storage.data_file(NOTES_PLUGIN_ID))
+            .map_err(|error| error.to_string())?;
+        let mut statement = connection
+            .prepare(
+                "SELECT id, workspace_id, workspace_name, workspace_path, project_name, title, \
+                 body_markdown, plain_text_excerpt, attachments_json, source_json, created_at, \
+                 updated_at, archived_at FROM notes WHERE id = ?1 AND workspace_id = ?2",
+            )
+            .map_err(|error| error.to_string())?;
+        let mut rows = statement
+            .query(rusqlite::params![note_id, workspace_id])
+            .map_err(|error| error.to_string())?;
+        match rows.next().map_err(|error| error.to_string())? {
+            Some(row) => Ok(Some(row_to_note(row)?)),
+            None => Ok(None),
+        }
+    }
+
+    pub fn list_notes(
+        &self,
+        workspace_id: &str,
+        archived: bool,
+    ) -> Result<Vec<crate::note_cards::WorkspaceNoteCard>, String> {
+        let connection = Connection::open(self.storage.data_file(NOTES_PLUGIN_ID))
+            .map_err(|error| error.to_string())?;
+        let sql = if archived {
+            "SELECT id, workspace_id, workspace_name, workspace_path, project_name, title, \
+             body_markdown, plain_text_excerpt, attachments_json, source_json, created_at, \
+             updated_at, archived_at FROM notes WHERE workspace_id = ?1 AND archived_at IS NOT NULL \
+             ORDER BY updated_at DESC"
+        } else {
+            "SELECT id, workspace_id, workspace_name, workspace_path, project_name, title, \
+             body_markdown, plain_text_excerpt, attachments_json, source_json, created_at, \
+             updated_at, archived_at FROM notes WHERE workspace_id = ?1 AND archived_at IS NULL \
+             ORDER BY updated_at DESC"
+        };
+        let mut statement = connection.prepare(sql).map_err(|error| error.to_string())?;
+        let mut rows = statement
+            .query([workspace_id])
+            .map_err(|error| error.to_string())?;
+        let mut notes = Vec::new();
+        while let Some(row) = rows.next().map_err(|error| error.to_string())? {
+            notes.push(row_to_note(row)?);
+        }
+        Ok(notes)
+    }
+
+    pub fn update_note(
+        &self,
+        note_id: &str,
+        workspace_id: &str,
+        patch: crate::note_cards::UpdateWorkspaceNoteCardInput,
+    ) -> Result<crate::note_cards::WorkspaceNoteCard, String> {
+        let mut note = self
+            .get_note(note_id, workspace_id)?
+            .ok_or_else(|| "note card not found".to_string())?;
+        if patch.workspace_name.is_some() {
+            note.workspace_name = patch.workspace_name;
+        }
+        if patch.workspace_path.is_some() {
+            note.workspace_path = patch.workspace_path;
+        }
+        if let Some(title) = patch.title {
+            note.title = title;
+        }
+        if let Some(body) = patch.body_markdown {
+            note.body_markdown = body;
+        }
+        note.updated_at = note.updated_at.saturating_add(1);
+        let attachments_json =
+            serde_json::to_string(&note.attachments).map_err(|error| error.to_string())?;
+        let source_json = note
+            .source
+            .as_ref()
+            .map(serde_json::to_string)
+            .transpose()
+            .map_err(|error| error.to_string())?;
+        let connection = Connection::open(self.storage.data_file(NOTES_PLUGIN_ID))
+            .map_err(|error| error.to_string())?;
+        let changed = connection
+            .execute(
+                "UPDATE notes SET workspace_name = ?1, workspace_path = ?2, title = ?3, \
+                 body_markdown = ?4, attachments_json = ?5, source_json = ?6, updated_at = ?7 \
+                 WHERE id = ?8 AND workspace_id = ?9",
+                rusqlite::params![
+                    note.workspace_name,
+                    note.workspace_path,
+                    note.title,
+                    note.body_markdown,
+                    attachments_json,
+                    source_json,
+                    note.updated_at,
+                    note.id,
+                    note.workspace_id,
+                ],
+            )
+            .map_err(|error| error.to_string())?;
+        if changed == 0 {
+            return Err("note card not found".into());
+        }
+        Ok(note)
+    }
+
+    pub fn archive_note(
+        &self,
+        note_id: &str,
+        workspace_id: &str,
+    ) -> Result<crate::note_cards::WorkspaceNoteCard, String> {
+        self.set_archived(note_id, workspace_id, Some(1))
+    }
+
+    pub fn restore_note(
+        &self,
+        note_id: &str,
+        workspace_id: &str,
+    ) -> Result<crate::note_cards::WorkspaceNoteCard, String> {
+        self.set_archived(note_id, workspace_id, None)
+    }
+
+    pub fn delete_note(&self, note_id: &str, workspace_id: &str) -> Result<(), String> {
+        let connection = Connection::open(self.storage.data_file(NOTES_PLUGIN_ID))
+            .map_err(|error| error.to_string())?;
+        let changed = connection
+            .execute(
+                "DELETE FROM notes WHERE id = ?1 AND workspace_id = ?2",
+                rusqlite::params![note_id, workspace_id],
+            )
+            .map_err(|error| error.to_string())?;
+        if changed == 0 {
+            return Err("note card not found".into());
+        }
+        Ok(())
+    }
+
+    fn set_archived(
+        &self,
+        note_id: &str,
+        workspace_id: &str,
+        archived_at: Option<i64>,
+    ) -> Result<crate::note_cards::WorkspaceNoteCard, String> {
+        let connection = Connection::open(self.storage.data_file(NOTES_PLUGIN_ID))
+            .map_err(|error| error.to_string())?;
+        let changed = connection
+            .execute(
+                "UPDATE notes SET archived_at = ?1, updated_at = COALESCE(updated_at, 0) + 1 \
+                 WHERE id = ?2 AND workspace_id = ?3",
+                rusqlite::params![archived_at, note_id, workspace_id],
+            )
+            .map_err(|error| error.to_string())?;
+        if changed == 0 {
+            return Err("note card not found".into());
+        }
+        self.get_note(note_id, workspace_id)?
+            .ok_or_else(|| "note card not found".to_string())
+    }
+}
+
+fn row_to_note(row: &rusqlite::Row<'_>) -> Result<crate::note_cards::WorkspaceNoteCard, String> {
+    let attachments_json: String = row.get(8).map_err(|error| error.to_string())?;
+    let source_json: Option<String> = row.get(9).map_err(|error| error.to_string())?;
+    Ok(crate::note_cards::WorkspaceNoteCard {
+        id: row.get(0).map_err(|error| error.to_string())?,
+        workspace_id: row.get(1).map_err(|error| error.to_string())?,
+        workspace_name: row.get(2).map_err(|error| error.to_string())?,
+        workspace_path: row.get(3).map_err(|error| error.to_string())?,
+        project_name: row.get(4).map_err(|error| error.to_string())?,
+        title: row.get(5).map_err(|error| error.to_string())?,
+        body_markdown: row.get(6).map_err(|error| error.to_string())?,
+        plain_text_excerpt: row.get(7).map_err(|error| error.to_string())?,
+        attachments: serde_json::from_str(&attachments_json).map_err(|error| error.to_string())?,
+        source: source_json
+            .as_deref()
+            .map(serde_json::from_str)
+            .transpose()
+            .map_err(|error| error.to_string())?,
+        created_at: row.get(10).map_err(|error| error.to_string())?,
+        updated_at: row.get(11).map_err(|error| error.to_string())?,
+        archived_at: row.get(12).map_err(|error| error.to_string())?,
+    })
 }
 
 #[cfg(test)]
@@ -175,6 +364,72 @@ mod tests {
             .data_file(NOTES_PLUGIN_ID)
             .to_string_lossy()
             .contains("note_cards"));
+        remove_path(Path::new(&root));
+    }
+
+    #[test]
+    fn isolated_namespace_supports_full_crud_without_product_files() {
+        use crate::note_cards::{UpdateWorkspaceNoteCardInput, WorkspaceNoteCard};
+
+        let root = unique_temp_root("notes-full-crud");
+        let namespace = NotesNamespace::open(&root).expect("open namespace");
+        let note = WorkspaceNoteCard {
+            id: "n-full".into(),
+            workspace_id: "ws-full".into(),
+            workspace_name: Some("Workspace".into()),
+            workspace_path: None,
+            project_name: "Workspace".into(),
+            title: "hello".into(),
+            body_markdown: "# hello".into(),
+            plain_text_excerpt: "hello".into(),
+            attachments: Vec::new(),
+            source: None,
+            created_at: 1,
+            updated_at: 2,
+            archived_at: None,
+        };
+        namespace.create_note(&note).expect("create");
+        let loaded = namespace
+            .get_note("n-full", "ws-full")
+            .expect("get")
+            .expect("exists");
+        assert_eq!(loaded.title, "hello");
+        let updated = namespace
+            .update_note(
+                "n-full",
+                "ws-full",
+                UpdateWorkspaceNoteCardInput {
+                    workspace_name: None,
+                    workspace_path: None,
+                    title: Some("renamed".into()),
+                    body_markdown: None,
+                    attachment_inputs: None,
+                },
+            )
+            .expect("update");
+        assert_eq!(updated.title, "renamed");
+        assert_eq!(namespace.list_notes("ws-full", false).unwrap().len(), 1);
+        let archived = namespace.archive_note("n-full", "ws-full").expect("archive");
+        assert!(archived.archived_at.is_some());
+        assert_eq!(namespace.list_notes("ws-full", false).unwrap().len(), 0);
+        assert_eq!(namespace.list_notes("ws-full", true).unwrap().len(), 1);
+        let restored = namespace.restore_note("n-full", "ws-full").expect("restore");
+        assert!(restored.archived_at.is_none());
+        namespace.delete_note("n-full", "ws-full").expect("delete");
+        assert!(namespace.get_note("n-full", "ws-full").unwrap().is_none());
+        assert!(!namespace
+            .storage
+            .data_file(NOTES_PLUGIN_ID)
+            .to_string_lossy()
+            .contains("note_cards"));
+        let registry = include_str!("../command_registry.rs");
+        for command in crate::plugin_runtime::notes_compat::NOTES_COMMAND_IDS {
+            assert!(
+                registry.contains(&format!("crate::note_cards::{command}")),
+                "{command}"
+            );
+        }
+        assert!(!crate::plugin_runtime::notes_compat::notes_compat_facade_enabled_from(None));
         remove_path(Path::new(&root));
     }
 }

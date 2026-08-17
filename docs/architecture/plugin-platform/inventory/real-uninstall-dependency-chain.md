@@ -28,10 +28,31 @@
 
 ```
 已建好：真实 Host + RestrictedProcess + QuickJS Worker + CompositeDriver（default-off）
-  → 缺口 1：把生产 engine::claude 接到真实运行时（当前只有 fixture 假激活 + delegate 门面）
+  → 缺口 1a：Claude Process Entry 身份（✅ Manifest 平台路径 + MXPC peer）
+  → 缺口 1a2：Process Entry 封闭 supervise CLI（✅ 本批：同进程组，interrupt 杀组）
+  → 缺口 1b：claudeBin → supervise 映射（✅ 本批：default-off，不替换生产 spawn）
+  → 缺口 1c：生产 SpawnPlan（bin+argv+cwd）接线（✅ 本批：flag 开 fail closed，默认仍 cmd.spawn）
+  → 缺口 1d：封闭 MXPC 中继 CLI stdin/stdout（✅ 本批：echo/cat 可读可写，不切产品 stream）
+  → 缺口 1e：产品 turn IO 合同（写/关/读到 EOF）（✅ 本批：run_supervised_turn_io，不切 send_message）
+  → 缺口 1f：增量行读 + stderr 中继（✅ 本批：next_line / read-stderr，不切 send_message）
+  → 缺口 1g：产品行读循环合同（✅ 本批：stream_loop + first-event timeout，不切 send_message）
+  → 缺口 1h：产品行源 dual-run 开关（✅ 本批：decide_claude_line_source，默认 Tokio）
+  → 缺口 1i：产品 turn 句柄（✅ 本批：flag-on 真 spawn Process Entry；行读未切则杀组）
+  → 缺口 1j：产品行读接到 cursor（✅ 本批：flag-on next_claude_line / poll_line；默认仍 Tokio）
+  → 缺口 1k：resume 闸门（✅ 本批：flag-on 拒绝第二条 Core Child）
+  → 缺口 1l：resume 再走 Process Entry（✅ 本批：try_resume_process_entry_turn）
+  → 缺口 1m：收割 exit-status（✅ 本批：mossx.process.wait；非零不当成功）
+  → 缺口 1n：可激活制品（✅ 本批：build.rs 编到 OUT_DIR；源码仓仍无 bin）
+  → 缺口 1o：制品根 first-event / interrupt 闸门（✅ 本批：echo 先行，sleep 超时杀组）
+  → 缺口 1p：真实 CLI first-interactive（✅ 本批：制品根读到 system/init 后杀组；缺 CLI 跳过）
+  → 缺口 1q：真实 CLI result / 退出码（✅ 本批：制品根读到 result 且 wait=0；缺 CLI 跳过）
+  → 缺口 1r：dual-run 默认 Core（✅ 本批：两旗默认关；flag-on 才走 PE；boot 仍 missing）
+  → 缺口 1s：产品默认路径未切 PE；storage / rollback / Slim 仍禁止
   → 缺口 2：SlotState 补 Uninstalled（✅ 已补）+ atomic contribution registry（🔵 待做，P2.1）
-  → 缺口 3：Notes 同理（P5）
-  只有到这一步，「卸载」=「停掉真实运行的插件运行时」
+  → 缺口 3：Notes owner 复核（✅ P4.7-19）
+  → 缺口 3b：隔离 Notes CRUD（✅ P4.7-21）
+  → 缺口 3c：flag-on 走隔离 sqlite（✅ 本批：IsolatedNotes；默认仍 note_cards 文件；不迁存量）
+  只有 1b 完成，「卸载」才等于停掉产品引擎
 ```
 
 ## 四、不变量
@@ -42,7 +63,9 @@
 
 ## 五、正确下一步（P4.7 前置）
 
-**缺口 1：建立 Claude 真实运行时接入**——把 `claude_pilot` 从 "manifest fixture 假激活" 升级为 "真实 RestrictedProcess 执行生产 `engine::claude`"，跑通 stream/interrupt/storage/rollback conformance（`08` §P1 验收）。
+**缺口 1a（本批）**：Claude Process Entry 从「测试里手塞绝对路径」升级为「Manifest `platforms[PlatformId]` 解析出的 Host 拥有 peer」。不改生产 `engine/claude.rs`。
+
+**缺口 1b（下一批）**：把生产 `engine::claude` 的 CLI spawn / interrupt 映射到该 Process Entry，再跑真实 CLI stream/interrupt/storage/rollback conformance。
 
 这一步需独立 OpenSpec proposal，高风险，须严格按 `15` §3 切换协议走（当前已走到 step 6 Conformance，下一步 step 7 Disable）。
 

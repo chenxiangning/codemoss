@@ -1199,15 +1199,16 @@ pub(crate) fn note_card_list(
     page_size: Option<usize>,
 ) -> Result<WorkspaceNoteCardListResult, String> {
     if crate::plugin_runtime::notes_compat::notes_compat_facade_enabled() {
-        return crate::plugin_runtime::notes_compat::NotesCompatAdapter::core().list_notes(
-            workspace_id,
-            workspace_name,
-            workspace_path,
-            archived,
-            query,
-            page,
-            page_size,
-        );
+        return crate::plugin_runtime::notes_compat::NotesCompatAdapter::isolated_product()?
+            .list_notes(
+                workspace_id,
+                workspace_name,
+                workspace_path,
+                archived,
+                query,
+                page,
+                page_size,
+            );
     }
     note_card_list_core(
         workspace_id,
@@ -1258,7 +1259,8 @@ pub(crate) fn note_card_get(
     workspace_path: Option<String>,
 ) -> Result<Option<WorkspaceNoteCard>, String> {
     if crate::plugin_runtime::notes_compat::notes_compat_facade_enabled() {
-        return crate::plugin_runtime::notes_compat::NotesCompatAdapter::core().get_note(
+        return crate::plugin_runtime::notes_compat::NotesCompatAdapter::isolated_product()?
+            .get_note(
             note_id,
             workspace_id,
             workspace_name,
@@ -1317,7 +1319,8 @@ pub(crate) fn note_card_create(
     input: CreateWorkspaceNoteCardInput,
 ) -> Result<WorkspaceNoteCard, String> {
     if crate::plugin_runtime::notes_compat::notes_compat_facade_enabled() {
-        return crate::plugin_runtime::notes_compat::NotesCompatAdapter::core().create_note(input);
+        return crate::plugin_runtime::notes_compat::NotesCompatAdapter::isolated_product()?
+            .create_note(input);
     }
     note_card_create_core(input)
 }
@@ -1411,11 +1414,8 @@ pub(crate) fn note_card_update(
     patch: UpdateWorkspaceNoteCardInput,
 ) -> Result<WorkspaceNoteCard, String> {
     if crate::plugin_runtime::notes_compat::notes_compat_facade_enabled() {
-        return crate::plugin_runtime::notes_compat::NotesCompatAdapter::core().update_note(
-            note_id,
-            workspace_id,
-            patch,
-        );
+        return crate::plugin_runtime::notes_compat::NotesCompatAdapter::isolated_product()?
+            .update_note(note_id, workspace_id, patch);
     }
     note_card_update_core(note_id, workspace_id, patch)
 }
@@ -1459,7 +1459,8 @@ pub(crate) fn note_card_archive(
     workspace_path: Option<String>,
 ) -> Result<WorkspaceNoteCard, String> {
     if crate::plugin_runtime::notes_compat::notes_compat_facade_enabled() {
-        return crate::plugin_runtime::notes_compat::NotesCompatAdapter::core().archive_note(
+        return crate::plugin_runtime::notes_compat::NotesCompatAdapter::isolated_product()?
+            .archive_note(
             note_id,
             workspace_id,
             workspace_name,
@@ -1508,7 +1509,8 @@ pub(crate) fn note_card_restore(
     workspace_path: Option<String>,
 ) -> Result<WorkspaceNoteCard, String> {
     if crate::plugin_runtime::notes_compat::notes_compat_facade_enabled() {
-        return crate::plugin_runtime::notes_compat::NotesCompatAdapter::core().restore_note(
+        return crate::plugin_runtime::notes_compat::NotesCompatAdapter::isolated_product()?
+            .restore_note(
             note_id,
             workspace_id,
             workspace_name,
@@ -1552,7 +1554,8 @@ pub(crate) fn note_card_delete(
     workspace_path: Option<String>,
 ) -> Result<(), String> {
     if crate::plugin_runtime::notes_compat::notes_compat_facade_enabled() {
-        return crate::plugin_runtime::notes_compat::NotesCompatAdapter::core().delete_note(
+        return crate::plugin_runtime::notes_compat::NotesCompatAdapter::isolated_product()?
+            .delete_note(
             note_id,
             workspace_id,
             workspace_name,
