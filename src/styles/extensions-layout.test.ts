@@ -51,12 +51,16 @@ describe("extensions layout", () => {
     expect(stickyActionsRule).toContain("background: var(--surface-messages);");
   });
 
-  it("styles the read-only plugin rack cards", () => {
+  it("styles the visual plugin rack strip and keeps the old cards", () => {
     expect(getCssRuleBlock(".extensions-plugin-rack")).toContain("display: grid;");
     expect(getCssRuleBlock(".extensions-plugin-rack-groups")).toContain("display: grid;");
     expect(getCssRuleBlock(".extensions-plugin-rack-catalog")).toContain("display: grid;");
     expect(getCssRuleBlock(".extensions-plugin-rack-card")).toContain("border-radius: 10px;");
     expect(getCssRuleBlock(".extensions-plugin-rack-stage")).toContain("border-radius: 8px;");
+    expect(getCssRuleBlock(".extensions-plugin-rack-strip")).toContain("display: grid;");
+    expect(getCssRuleBlock(".extensions-plugin-rack-bank")).toContain("display: grid;");
+    expect(getCssRuleBlock(".extensions-plugin-rack-socket")).toContain("border-radius: var(--radius);");
+    expect(getCssRuleBlock(".extensions-plugin-rack-well")).toContain("border-radius: 8px;");
     expect(css).not.toContain("Browse Marketplace");
   });
 });

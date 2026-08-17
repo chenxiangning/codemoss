@@ -36,30 +36,111 @@ function circuitTone(circuit: string): string {
   return "is-idle";
 }
 
-const KIND_ORDER = ["engine", "feature"] as const;
-
-function groupPlugs(plugs: PluginRackPlug[]): Array<{ kind: string; plugs: PluginRackPlug[] }> {
-  const groups = new Map<string, PluginRackPlug[]>();
+function partitionPlugs(plugs: PluginRackPlug[]): { live: PluginRackPlug[]; later: PluginRackPlug[] } {
+  const live: PluginRackPlug[] = [];
+  const later: PluginRackPlug[] = [];
   for (const plug of plugs) {
-    const existing = groups.get(plug.kind);
-    if (existing) {
-      existing.push(plug);
+    if (plug.installable) {
+      live.push(plug);
     } else {
-      groups.set(plug.kind, [plug]);
+      later.push(plug);
     }
   }
-  const ordered: Array<{ kind: string; plugs: PluginRackPlug[] }> = KIND_ORDER.filter(
-    (kind) => groups.has(kind),
-  ).map((kind) => ({
-    kind,
-    plugs: groups.get(kind) ?? [],
-  }));
-  for (const [kind, kindPlugs] of groups) {
-    if (!KIND_ORDER.includes(kind as (typeof KIND_ORDER)[number])) {
-      ordered.push({ kind, plugs: kindPlugs });
-    }
+  return { live, later };
+}
+
+function isPlugged(plug: PluginRackPlug): boolean {
+  return plug.desiredState !== "uninstalled";
+}
+
+function socketClassName(plug: PluginRackPlug): string {
+  const role = plug.installable ? "is-writable" : "is-sealed";
+  const occupancy = plug.installable
+    ? isPlugged(plug)
+      ? "is-plugged"
+      : "is-unplugged"
+    : "is-capped";
+  return `extensions-plugin-rack-socket ${role} ${occupancy} ${circuitTone(plug.circuit)}`;
+}
+
+function SocketWell({ plug }: { plug: PluginRackPlug }) {
+  if (!plug.installable) {
+    return (
+      <div className="extensions-plugin-rack-well is-capped" aria-hidden>
+        <span className="extensions-plugin-rack-cap" />
+      </div>
+    );
   }
-  return ordered;
+  if (isPlugged(plug)) {
+    return (
+      <div className="extensions-plugin-rack-well is-occupied" aria-hidden>
+        <span className="extensions-plugin-rack-plug" />
+      </div>
+    );
+  }
+  return (
+    <div className="extensions-plugin-rack-well is-empty" aria-hidden>
+      <span className="extensions-plugin-rack-pins">
+        <span className="extensions-plugin-rack-pin is-earth" />
+        <span className="extensions-plugin-rack-pin is-line" />
+        <span className="extensions-plugin-rack-pin is-neutral" />
+      </span>
+    </div>
+  );
+}
+
+function SocketMeta({ plug }: { plug: PluginRackPlug }) {
+  const { t } = useTranslation();
+  return (
+    <p className="extensions-plugin-rack-meta">
+      {t(`extensions.rack.circuits.${plug.circuit}`, { defaultValue: plug.circuit })}
+      {" · "}
+      {t(`extensions.rack.productPaths.${plug.productPath}`, { defaultValue: plug.productPath })}
+      {" · "}
+      {plug.kind}
+    </p>
+  );
+}
+
+function PlugSocket({
+  plug,
+  pendingId,
+  onAction,
+}: {
+  plug: PluginRackPlug;
+  pendingId: string | null;
+  onAction: (plug: PluginRackPlug) => void;
+}) {
+  const { t } = useTranslation();
+  const statusKey = plug.installable
+    ? isPlugged(plug)
+      ? "extensions.rack.plugged"
+      : "extensions.rack.unplugged"
+    : "extensions.rack.sealed";
+
+  return (
+    <li className={socketClassName(plug)}>
+      <SocketWell plug={plug} />
+      <div>
+        <h4>{plug.displayName}</h4>
+        <p className="extensions-plugin-rack-id">{plug.pluginId}</p>
+      </div>
+      <SocketMeta plug={plug} />
+      <p className="extensions-plugin-rack-status">{t(statusKey)}</p>
+      {plug.installable ? (
+        <button
+          type="button"
+          className="extensions-plugin-rack-stage"
+          disabled={pendingId === plug.pluginId}
+          onClick={() => {
+            onAction(plug);
+          }}
+        >
+          {isPlugged(plug) ? t("extensions.rack.uninstall") : t("extensions.rack.install")}
+        </button>
+      ) : null}
+    </li>
+  );
 }
 
 export function PluginRackSection() {
@@ -68,6 +149,7 @@ export function PluginRackSection() {
   const [snapshot, setSnapshot] = useState<PluginRackSnapshot | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pendingId, setPendingId] = useState<string | null>(null);
+  const banks = partitionPlugs(snapshot?.plugs ?? []);
 
   const handlePlugAction = async (plug: PluginRackPlug) => {
     setPendingId(plug.pluginId);
@@ -142,83 +224,31 @@ export function PluginRackSection() {
             {t("extensions.rack.error", { message: error })}
           </p>
         ) : (
-          <div className="extensions-plugin-rack-groups">
-            {groupPlugs(snapshot?.plugs ?? []).map((group) => (
-              <section
-                key={group.kind}
-                className="extensions-plugin-rack-group"
-                aria-label={t(`extensions.rack.kinds.${group.kind}`, { defaultValue: group.kind })}
-              >
-                <h3>{t(`extensions.rack.kinds.${group.kind}`, { defaultValue: group.kind })}</h3>
-                <ul className="extensions-plugin-rack-list">
-                  {group.plugs.map((plug) => (
-                    <li
-                      key={plug.pluginId}
-                      className={`extensions-plugin-rack-card ${circuitTone(plug.circuit)}`}
-                    >
-                      <div>
-                        <h4>{plug.displayName}</h4>
-                        <p className="extensions-plugin-rack-id">{plug.pluginId}</p>
-                      </div>
-                      <p
-                        className={`extensions-plugin-rack-circuit ${circuitTone(plug.circuit)}`}
-                        aria-label={t("extensions.rack.circuit")}
-                      >
-                        {t(`extensions.rack.circuits.${plug.circuit}`, { defaultValue: plug.circuit })}
-                      </p>
-                      <dl>
-                        <div>
-                          <dt>{t("extensions.rack.ownerClass")}</dt>
-                          <dd>
-                            {t(`extensions.rack.ownerClasses.${plug.ownerClass}`, {
-                              defaultValue: plug.ownerClass,
-                            })}
-                          </dd>
-                        </div>
-                        <div>
-                          <dt>{t("extensions.rack.productPath")}</dt>
-                          <dd>
-                            {t(`extensions.rack.productPaths.${plug.productPath}`, {
-                              defaultValue: plug.productPath,
-                            })}
-                          </dd>
-                        </div>
-                        <div>
-                          <dt>{t("extensions.rack.coreOwner")}</dt>
-                          <dd>
-                            {t(`extensions.rack.coreOwners.${plug.coreOwner}`, {
-                              defaultValue: plug.coreOwner,
-                            })}
-                          </dd>
-                        </div>
-                        <div>
-                          <dt>{t("extensions.rack.state")}</dt>
-                          <dd>{t(`extensions.rack.states.${plug.state}`, { defaultValue: plug.state })}</dd>
-                        </div>
-                        <div>
-                          <dt>{t("extensions.rack.generation")}</dt>
-                          <dd>{plug.generation}</dd>
-                        </div>
-                      </dl>
-                      {plug.installable ? (
-                        <button
-                          type="button"
-                          className="extensions-plugin-rack-stage"
-                          disabled={pendingId === plug.pluginId}
-                          onClick={() => {
-                            void handlePlugAction(plug);
-                          }}
-                        >
-                          {plug.desiredState === "uninstalled"
-                            ? t("extensions.rack.install")
-                            : t("extensions.rack.uninstall")}
-                        </button>
-                      ) : null}
-                    </li>
-                  ))}
-                </ul>
-              </section>
-            ))}
+          <div className="extensions-plugin-rack-strip">
+            <div className="extensions-plugin-rack-bus" aria-hidden />
+            <section className="extensions-plugin-rack-bank is-live" aria-label={t("extensions.rack.liveBank")}>
+              <h3>{t("extensions.rack.liveBank")}</h3>
+              <ul className="extensions-plugin-rack-sockets">
+                {banks.live.map((plug) => (
+                  <PlugSocket
+                    key={plug.pluginId}
+                    plug={plug}
+                    pendingId={pendingId}
+                    onAction={(next) => {
+                      void handlePlugAction(next);
+                    }}
+                  />
+                ))}
+              </ul>
+            </section>
+            <section className="extensions-plugin-rack-bank is-later" aria-label={t("extensions.rack.laterBank")}>
+              <h3>{t("extensions.rack.laterBank")}</h3>
+              <ul className="extensions-plugin-rack-sockets">
+                {banks.later.map((plug) => (
+                  <PlugSocket key={plug.pluginId} plug={plug} pendingId={pendingId} onAction={handlePlugAction} />
+                ))}
+              </ul>
+            </section>
           </div>
         )}
         <p className="extensions-plugin-rack-footnote">{t("extensions.rack.marketplaceLater")}</p>

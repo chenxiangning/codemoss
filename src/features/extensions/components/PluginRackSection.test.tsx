@@ -1,5 +1,5 @@
 /** @vitest-environment jsdom */
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { DECLARED_PLUGIN_RACK_SNAPSHOT } from "@/services/tauri/pluginRack";
@@ -7,7 +7,7 @@ import { PluginRackSection } from "./PluginRackSection";
 
 const translations: Record<string, string> = {
   "extensions.rack.title": "Plugin rack",
-  "extensions.rack.subtitle": "Declared Host plugs. Read-only.",
+  "extensions.rack.subtitle": "Visual Host strip. Three plugs can be installed or uninstalled.",
   "extensions.rack.loading": "Reading Host snapshot…",
   "extensions.rack.hostUnavailable": "Host snapshot unavailable.",
   "extensions.rack.hostDisabled": "Host is default-off.",
@@ -17,6 +17,11 @@ const translations: Record<string, string> = {
   "extensions.rack.supervisorLive": "Separate process, rejecting activation",
   "extensions.rack.supervisorPid": "PID",
   "extensions.rack.supervisorPath": "Socket",
+  "extensions.rack.liveBank": "Live sockets",
+  "extensions.rack.laterBank": "Sealed sockets",
+  "extensions.rack.sealed": "Sealed",
+  "extensions.rack.plugged": "Plugged",
+  "extensions.rack.unplugged": "Unplugged",
   "extensions.rack.ownerClass": "Class",
   "extensions.rack.ownerClasses.pilot": "Pilot",
   "extensions.rack.ownerClasses.later-plugin": "Later plugin",
@@ -65,7 +70,7 @@ vi.mock("@/services/tauri/pluginRack", async (importOriginal) => {
 });
 
 describe("PluginRackSection", () => {
-  it("renders declared idle plugs with Notes and Claude install/uninstall actions", async () => {
+  it("renders a visual strip with three live sockets and nine sealed sockets", async () => {
     getPluginRackSnapshot.mockResolvedValue({
       ...DECLARED_PLUGIN_RACK_SNAPSHOT,
       hostAvailable: true,
@@ -77,36 +82,58 @@ describe("PluginRackSection", () => {
     render(<PluginRackSection />);
 
     expect(await screen.findByRole("heading", { name: "Plugin rack" })).toBeTruthy();
-    expect(screen.getByRole("heading", { name: "Engines" })).toBeTruthy();
-    expect(screen.getByRole("heading", { name: "Features" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Live sockets" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Sealed sockets" })).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "Engines" })).toBeNull();
+    expect(screen.queryByRole("heading", { name: "Features" })).toBeNull();
     expect(screen.getByText("Supervisor is live. Host activation stays off.")).toBeTruthy();
     expect(screen.getByText("4242")).toBeTruthy();
     expect(screen.getByText("/tmp/host.s")).toBeTruthy();
 
-    const engineGroup = screen.getByRole("region", { name: "Engines" });
-    const featureGroup = screen.getByRole("region", { name: "Features" });
-    expect(engineGroup.textContent).toContain("com.mossx.engine.claude");
-    expect(engineGroup.textContent).toContain("com.mossx.engine.codex");
-    expect(engineGroup.textContent).toContain("Pilot");
-    expect(engineGroup.textContent).toContain("Later plugin");
-    expect(featureGroup.textContent).toContain("com.mossx.notes");
-    expect(featureGroup.textContent).toContain("com.mossx.project-map");
-    expect(featureGroup.textContent).toContain("com.mossx.kanban");
+    const liveBank = screen.getByRole("region", { name: "Live sockets" });
+    const laterBank = screen.getByRole("region", { name: "Sealed sockets" });
+    expect(liveBank.textContent).toContain("com.mossx.engine.claude");
+    expect(liveBank.textContent).toContain("com.mossx.notes");
+    expect(liveBank.textContent).toContain("com.mossx.project-map");
+    expect(liveBank.textContent).toContain("Process Entry");
+    expect(liveBank.textContent).toContain("Isolated sqlite");
+    expect(liveBank.textContent).toContain("Product path live");
+    expect(liveBank.textContent).toContain("Plugged");
+    expect(laterBank.textContent).toContain("com.mossx.browser");
+    expect(laterBank.textContent).toContain("com.mossx.intent-canvas");
+    expect(laterBank.textContent).toContain("com.mossx.kanban");
+    expect(laterBank.textContent).toContain("com.mossx.engine.codex");
+    expect(laterBank.textContent).toContain("Sealed");
     expect(screen.getByText("Marketplace stays closed.")).toBeTruthy();
+
     const actions = screen.getAllByRole("button");
-    expect(actions).toHaveLength(2);
-    expect(actions[0].textContent).toBe("Uninstall");
-    expect(actions[1].textContent).toBe("Uninstall");
-    expect(engineGroup.contains(actions[0])).toBe(true);
-    expect(featureGroup.contains(actions[1])).toBe(true);
-    const notesPlug = featureGroup.textContent ?? "";
-    expect(notesPlug).toContain("Idle");
-    expect(engineGroup.textContent).toContain("Process Entry");
-    expect(engineGroup.textContent).toContain("Product path live");
-    expect(engineGroup.textContent).toContain("Disabled, source kept");
-    expect(featureGroup.textContent).toContain("Isolated sqlite");
-    expect(featureGroup.textContent).toContain("Not wired");
-    expect(featureGroup.textContent).toContain("Still Core");
+    expect(actions).toHaveLength(3);
+    expect(actions.map((button) => button.textContent)).toEqual(["Uninstall", "Uninstall", "Uninstall"]);
+    expect(liveBank.contains(actions[0])).toBe(true);
+    expect(liveBank.contains(actions[1])).toBe(true);
+    expect(liveBank.contains(actions[2])).toBe(true);
+    expect(laterBank.querySelectorAll("button")).toHaveLength(0);
+    expect(within(laterBank).queryByRole("button")).toBeNull();
+  });
+
+  it("shows Install on an empty live socket", async () => {
+    getPluginRackSnapshot.mockResolvedValue({
+      ...DECLARED_PLUGIN_RACK_SNAPSHOT,
+      plugs: DECLARED_PLUGIN_RACK_SNAPSHOT.plugs.map((plug) =>
+        plug.pluginId === "com.mossx.notes" ? { ...plug, desiredState: "uninstalled" } : plug,
+      ),
+    });
+
+    render(<PluginRackSection />);
+
+    const liveBank = await screen.findByRole("region", { name: "Live sockets" });
+    expect(within(liveBank).getAllByRole("button").map((button) => button.textContent)).toEqual([
+      "Uninstall",
+      "Install",
+      "Uninstall",
+    ]);
+    expect(liveBank.textContent).toContain("Unplugged");
+    expect(screen.getAllByRole("button")).toHaveLength(3);
   });
 
   it("shows an error when the snapshot command fails", async () => {

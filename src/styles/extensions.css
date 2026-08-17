@@ -498,3 +498,168 @@
 .extensions-plugin-rack-stage:disabled {
   opacity: 0.5;
 }
+
+.extensions-plugin-rack-strip {
+  display: grid;
+  gap: 20px;
+  padding: 16px 18px 18px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--surface-card);
+}
+
+.extensions-plugin-rack-bus {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--border-stronger);
+}
+
+.extensions-plugin-rack-bank {
+  display: grid;
+  gap: 12px;
+}
+
+.extensions-plugin-rack-bank h3 {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.extensions-plugin-rack-sockets {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.extensions-plugin-rack-bank.is-later .extensions-plugin-rack-sockets {
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+}
+
+.extensions-plugin-rack-socket {
+  display: grid;
+  justify-items: start;
+  gap: 10px;
+  padding: 14px 12px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius);
+  background: var(--surface-card-muted);
+}
+
+.extensions-plugin-rack-socket.is-sealed {
+  pointer-events: none;
+}
+
+.extensions-plugin-rack-well {
+  width: 56px;
+  height: 56px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: var(--surface-control);
+}
+
+.extensions-plugin-rack-socket.is-live .extensions-plugin-rack-well {
+  border-color: var(--status-success);
+}
+
+.extensions-plugin-rack-socket.is-fallback .extensions-plugin-rack-well {
+  border-color: var(--status-warning);
+}
+
+.extensions-plugin-rack-socket.is-idle .extensions-plugin-rack-well {
+  border-color: var(--text-dim);
+}
+
+.extensions-plugin-rack-pins {
+  display: grid;
+  grid-template-columns: 8px 8px;
+  grid-template-rows: 8px 14px;
+  gap: 4px 8px;
+  justify-content: center;
+}
+
+.extensions-plugin-rack-pin {
+  background: var(--surface-messages);
+  border: 1px solid var(--border-stronger);
+}
+
+.extensions-plugin-rack-pin.is-earth {
+  grid-column: 1 / -1;
+  justify-self: center;
+  width: 12px;
+  height: 6px;
+  border-radius: 999px;
+}
+
+.extensions-plugin-rack-pin.is-line,
+.extensions-plugin-rack-pin.is-neutral {
+  width: 6px;
+  height: 14px;
+  border-radius: 2px;
+}
+
+.extensions-plugin-rack-plug {
+  position: relative;
+  width: 28px;
+  height: 22px;
+  margin-top: 8px;
+  border: 1px solid var(--border-stronger);
+  border-radius: 6px;
+  background: var(--surface-control-hover);
+  box-shadow: inset 0 -4px 0 var(--border-strong);
+}
+
+.extensions-plugin-rack-plug::after {
+  content: "";
+  position: absolute;
+  top: -8px;
+  left: 50%;
+  width: 8px;
+  height: 8px;
+  margin-left: -4px;
+  background: var(--border-stronger);
+  border-radius: 6px 6px 0 0;
+}
+
+.extensions-plugin-rack-cap {
+  width: 44px;
+  height: 44px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: repeating-linear-gradient(
+    -45deg,
+    var(--surface-control),
+    var(--surface-control) 4px,
+    var(--border-subtle) 4px,
+    var(--border-subtle) 8px
+  );
+}
+
+.extensions-plugin-rack-socket h4 {
+  margin: 0 0 2px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.extensions-plugin-rack-meta {
+  margin: 0;
+  color: var(--text-faint, var(--text-muted));
+  font-size: 11px;
+}
+
+.extensions-plugin-rack-status {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.extensions-plugin-rack-socket.is-plugged .extensions-plugin-rack-status {
+  color: var(--status-success);
+}

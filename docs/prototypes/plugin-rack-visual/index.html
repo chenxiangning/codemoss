@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Plugin rack — visual strip</title>
+  <link rel="stylesheet" href="../../previews/intent-canvas-ui-2026-08-13/tokens.css" />
+  <style>
+    /* inline fallback if tokens.css is opened off-tree */
+    :root {
+      --ui-font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+      --code-font-family: "SF Mono", "SFMono-Regular", Menlo, Monaco, "Sarasa Mono SC", "Noto Sans Mono CJK SC", monospace;
+      --text-strong: #09090b;
+      --text-primary: #18181b;
+      --text-quiet: rgba(24, 24, 27, 0.75);
+      --text-muted: rgba(24, 24, 27, 0.7);
+      --text-subtle: rgba(24, 24, 27, 0.6);
+      --text-faint: rgba(24, 24, 27, 0.5);
+      --text-dim: rgba(24, 24, 27, 0.35);
+      --text-accent: rgba(45, 93, 170, 0.85);
+      --surface-messages: #ffffff;
+      --surface-sidebar: rgba(24, 24, 27, 0.03);
+      --surface-card: #ffffff;
+      --surface-card-muted: rgba(24, 24, 27, 0.03);
+      --surface-control: rgba(24, 24, 27, 0.06);
+      --surface-control-hover: rgba(24, 24, 27, 0.09);
+      --border-muted: rgba(24, 24, 27, 0.07);
+      --border-subtle: rgba(24, 24, 27, 0.09);
+      --border-strong: rgba(24, 24, 27, 0.18);
+      --border-stronger: rgba(24, 24, 27, 0.26);
+      --status-success: #1a7f4b;
+      --status-warning: #b25e09;
+      --radius: 10px;
+      --radius-md: 8px;
+      --radius-sm: 6px;
+    }
+    [data-theme="dark"] {
+      --text-strong: #ffffff;
+      --text-primary: #e6e7ea;
+      --text-quiet: #bfbfbf;
+      --text-muted: #b3b3b3;
+      --text-subtle: #999999;
+      --text-faint: #808080;
+      --text-dim: #595959;
+      --text-accent: #7a9dcc;
+      --surface-messages: oklch(0.141 0.005 285.823);
+      --surface-sidebar: oklch(0.165 0.004 286);
+      --surface-card: oklch(0.21 0.006 285.885);
+      --surface-card-muted: oklch(0.235 0.006 286);
+      --surface-control: oklch(0.274 0.006 286.033);
+      --surface-control-hover: oklch(0.32 0.006 286);
+      --border-muted: oklch(0.225 0.005 286);
+      --border-subtle: oklch(0.245 0.005 286);
+      --border-strong: oklch(0.32 0.006 286);
+      --border-stronger: oklch(0.35 0.006 286);
+      --status-success: #78ebbe;
+      --status-warning: #ffaf55;
+    }
+
+    * { box-sizing: border-box; }
+    html, body { margin: 0; min-height: 100%; }
+    body {
+      background: var(--surface-messages);
+      color: var(--text-primary);
+      font: 13px/1.5 var(--ui-font-family);
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .proto-shell {
+      max-width: 1080px;
+      margin: 0 auto;
+      padding: 28px 24px 64px;
+      display: grid;
+      gap: 20px;
+    }
+
+    .proto-toolbar {
+      display: flex;
+      justify-content: flex-end;
+    }
+
+    .proto-toolbar button {
+      padding: 6px 10px;
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-md);
+      background: var(--surface-control);
+      color: var(--text-primary);
+      font-size: 12px;
+    }
+
+    .extensions-plugin-rack {
+      display: grid;
+      gap: 20px;
+    }
+
+    .extensions-plugin-rack-header {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px 24px;
+      align-items: flex-start;
+      justify-content: space-between;
+    }
+
+    .extensions-plugin-rack-header h2 {
+      margin: 0 0 6px;
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--text-strong);
+    }
+
+    .extensions-plugin-rack-header p,
+    .extensions-plugin-rack-footnote {
+      margin: 0;
+      color: var(--text-quiet);
+      font-size: 13px;
+      line-height: 1.5;
+      max-width: 52rem;
+    }
+
+    .extensions-plugin-rack-host {
+      padding: 6px 10px;
+      border: 1px solid var(--border-subtle);
+      border-radius: 999px;
+      background: var(--surface-card);
+      color: var(--text-muted);
+      font-size: 12px;
+    }
+
+    .extensions-plugin-rack-strip {
+      display: grid;
+      gap: 20px;
+      padding: 16px 18px 18px;
+      border: 1px solid var(--border-strong);
+      border-radius: var(--radius);
+      background: var(--surface-card);
+    }
+
+    .extensions-plugin-rack-bus {
+      height: 6px;
+      border-radius: 999px;
+      background: var(--border-stronger);
+    }
+
+    .extensions-plugin-rack-bank {
+      display: grid;
+      gap: 12px;
+    }
+
+    .extensions-plugin-rack-bank h3 {
+      margin: 0;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+    }
+
+    .extensions-plugin-rack-sockets {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 12px;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .extensions-plugin-rack-bank.is-later .extensions-plugin-rack-sockets {
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    }
+
+    .extensions-plugin-rack-socket {
+      display: grid;
+      justify-items: start;
+      gap: 10px;
+      padding: 14px 12px;
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius);
+      background: var(--surface-card-muted);
+    }
+
+    .extensions-plugin-rack-socket.is-sealed {
+      pointer-events: none;
+    }
+
+    .extensions-plugin-rack-well {
+      width: 56px;
+      height: 56px;
+      display: grid;
+      place-items: center;
+      border: 1px solid var(--border-strong);
+      border-radius: var(--radius-md);
+      background: var(--surface-control);
+    }
+
+    .extensions-plugin-rack-socket.is-live .extensions-plugin-rack-well {
+      border-color: var(--status-success);
+    }
+
+    .extensions-plugin-rack-socket.is-fallback .extensions-plugin-rack-well {
+      border-color: var(--status-warning);
+    }
+
+    .extensions-plugin-rack-socket.is-idle .extensions-plugin-rack-well {
+      border-color: var(--text-dim);
+    }
+
+    .extensions-plugin-rack-pins {
+      display: grid;
+      grid-template-columns: 8px 8px;
+      grid-template-rows: 8px 14px;
+      gap: 4px 8px;
+      justify-content: center;
+    }
+
+    .extensions-plugin-rack-pin {
+      background: var(--surface-messages);
+      border: 1px solid var(--border-stronger);
+    }
+
+    .extensions-plugin-rack-pin.is-earth {
+      grid-column: 1 / -1;
+      justify-self: center;
+      width: 12px;
+      height: 6px;
+      border-radius: 999px;
+    }
+
+    .extensions-plugin-rack-pin.is-line,
+    .extensions-plugin-rack-pin.is-neutral {
+      width: 6px;
+      height: 14px;
+      border-radius: 2px;
+    }
+
+    .extensions-plugin-rack-plug {
+      position: relative;
+      width: 28px;
+      height: 22px;
+      margin-top: 8px;
+      border: 1px solid var(--border-stronger);
+      border-radius: var(--radius-sm);
+      background: var(--surface-control-hover);
+      box-shadow: inset 0 -4px 0 var(--border-strong);
+    }
+
+    .extensions-plugin-rack-plug::after {
+      content: "";
+      position: absolute;
+      top: -8px;
+      left: 50%;
+      width: 8px;
+      height: 8px;
+      margin-left: -4px;
+      background: var(--border-stronger);
+      border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+    }
+
+    .extensions-plugin-rack-cap {
+      width: 44px;
+      height: 44px;
+      border: 1px solid var(--border-strong);
+      border-radius: var(--radius-sm);
+      background: repeating-linear-gradient(
+        -45deg,
+        var(--surface-control),
+        var(--surface-control) 4px,
+        var(--border-subtle) 4px,
+        var(--border-subtle) 8px
+      );
+    }
+
+    .extensions-plugin-rack-socket h4 {
+      margin: 0 0 2px;
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-strong);
+    }
+
+    .extensions-plugin-rack-id {
+      margin: 0;
+      color: var(--text-dim);
+      font-family: var(--code-font-family);
+      font-size: 10px;
+    }
+
+    .extensions-plugin-rack-meta {
+      margin: 0;
+      color: var(--text-faint);
+      font-size: 11px;
+    }
+
+    .extensions-plugin-rack-status {
+      margin: 0;
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    .extensions-plugin-rack-socket.is-plugged .extensions-plugin-rack-status {
+      color: var(--status-success);
+    }
+
+    .extensions-plugin-rack-stage {
+      padding: 6px 10px;
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-md);
+      background: transparent;
+      color: var(--text-primary);
+      font-size: 12px;
+    }
+
+    .extensions-plugin-rack-stage:hover {
+      background: var(--surface-control);
+    }
+  </style>
+</head>
+<body>
+  <div class="proto-shell">
+    <div class="proto-toolbar">
+      <button type="button" id="theme-toggle">Light</button>
+    </div>
+
+    <section class="extensions-plugin-rack" aria-label="Plugin rack">
+      <header class="extensions-plugin-rack-header">
+        <div>
+          <h2>Plugin rack</h2>
+          <p>Visual Host strip. Three plugs can be installed or uninstalled. Nine later sockets stay sealed. Marketplace stays closed.</p>
+        </div>
+        <p class="extensions-plugin-rack-host" role="status">Host is default-off. Plugs are declared, not live.</p>
+      </header>
+
+      <div class="extensions-plugin-rack-strip">
+        <div class="extensions-plugin-rack-bus" aria-hidden="true"></div>
+
+        <section class="extensions-plugin-rack-bank is-live" aria-label="Live sockets">
+          <h3>Live sockets</h3>
+          <ul class="extensions-plugin-rack-sockets" id="live-bank"></ul>
+        </section>
+
+        <section class="extensions-plugin-rack-bank is-later" aria-label="Sealed sockets">
+          <h3>Sealed sockets</h3>
+          <ul class="extensions-plugin-rack-sockets" id="later-bank"></ul>
+        </section>
+      </div>
+
+      <p class="extensions-plugin-rack-footnote">Remote Marketplace stays closed. Only Notes, Claude, and Project Map can be installed or uninstalled here. Uninstall stops the plug and keeps notes, Claude history, and project map data on disk.</p>
+    </section>
+  </div>
+
+  <script>
+    const livePlugs = [
+      { pluginId: "com.mossx.engine.claude", displayName: "Claude Engine", kind: "engine", circuit: "live", productPath: "Process Entry", plugged: true },
+      { pluginId: "com.mossx.notes", displayName: "Notes", kind: "feature", circuit: "live", productPath: "Isolated sqlite", plugged: true },
+      { pluginId: "com.mossx.project-map", displayName: "Project Map", kind: "feature", circuit: "live", productPath: "Isolated sqlite", plugged: true },
+    ];
+
+    const laterPlugs = [
+      { pluginId: "com.mossx.browser", displayName: "Browser" },
+      { pluginId: "com.mossx.intent-canvas", displayName: "Intent Canvas" },
+      { pluginId: "com.mossx.kanban", displayName: "Kanban" },
+      { pluginId: "com.mossx.engine.codex", displayName: "Codex Engine" },
+      { pluginId: "com.mossx.engine.gemini", displayName: "Gemini Engine" },
+      { pluginId: "com.mossx.engine.grok", displayName: "Grok Engine" },
+      { pluginId: "com.mossx.engine.kimi", displayName: "Kimi Engine" },
+      { pluginId: "com.mossx.engine.opencode", displayName: "OpenCode Engine" },
+      { pluginId: "com.mossx.engine.pi", displayName: "Pi Engine" },
+    ];
+
+    function wellMarkup(kind, plugged) {
+      if (kind === "sealed") {
+        return '<div class="extensions-plugin-rack-well" aria-hidden="true"><span class="extensions-plugin-rack-cap"></span></div>';
+      }
+      if (plugged) {
+        return '<div class="extensions-plugin-rack-well" aria-hidden="true"><span class="extensions-plugin-rack-plug"></span></div>';
+      }
+      return [
+        '<div class="extensions-plugin-rack-well is-empty" aria-hidden="true">',
+        '<span class="extensions-plugin-rack-pins">',
+        '<span class="extensions-plugin-rack-pin is-earth"></span>',
+        '<span class="extensions-plugin-rack-pin is-line"></span>',
+        '<span class="extensions-plugin-rack-pin is-neutral"></span>',
+        "</span></div>",
+      ].join("");
+    }
+
+    function renderLive() {
+      const list = document.getElementById("live-bank");
+      list.innerHTML = livePlugs.map((plug) => {
+        const occupancy = plug.plugged ? "is-plugged" : "is-unplugged";
+        const status = plug.plugged ? "Plugged" : "Unplugged";
+        const action = plug.plugged ? "Uninstall" : "Install";
+        return [
+          `<li class="extensions-plugin-rack-socket is-writable ${occupancy} is-${plug.circuit}" data-plugin-id="${plug.pluginId}">`,
+          wellMarkup("live", plug.plugged),
+          "<div>",
+          `<h4>${plug.displayName}</h4>`,
+          `<p class="extensions-plugin-rack-id">${plug.pluginId}</p>`,
+          "</div>",
+          `<p class="extensions-plugin-rack-meta">${plug.productPath} · ${plug.kind}</p>`,
+          `<p class="extensions-plugin-rack-status">${status}</p>`,
+          `<button type="button" class="extensions-plugin-rack-stage" data-toggle="${plug.pluginId}">${action}</button>`,
+          "</li>",
+        ].join("");
+      }).join("");
+    }
+
+    function renderLater() {
+      const list = document.getElementById("later-bank");
+      list.innerHTML = laterPlugs.map((plug) => [
+        `<li class="extensions-plugin-rack-socket is-sealed is-capped is-idle">`,
+        wellMarkup("sealed"),
+        "<div>",
+        `<h4>${plug.displayName}</h4>`,
+        `<p class="extensions-plugin-rack-id">${plug.pluginId}</p>`,
+        "</div>",
+        '<p class="extensions-plugin-rack-status">Sealed</p>',
+        "</li>",
+      ].join("")).join("");
+    }
+
+    document.getElementById("live-bank").addEventListener("click", (event) => {
+      const button = event.target.closest("[data-toggle]");
+      if (!button) return;
+      const plug = livePlugs.find((item) => item.pluginId === button.dataset.toggle);
+      if (!plug) return;
+      plug.plugged = !plug.plugged;
+      renderLive();
+    });
+
+    document.getElementById("theme-toggle").addEventListener("click", () => {
+      const root = document.documentElement;
+      const next = root.getAttribute("data-theme") === "dark" ? "light" : "dark";
+      root.setAttribute("data-theme", next);
+      document.getElementById("theme-toggle").textContent = next === "dark" ? "Light" : "Dark";
+    });
+
+    renderLive();
+    renderLater();
+  </script>
+</body>
+</html>
