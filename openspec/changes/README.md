@@ -4,14 +4,13 @@
 
 - Updated At: `2026-08-17`
 - Active proposals: `5+`（以磁盘 `openspec/changes/*` 为准）
-- Archived proposals: `848+`
-- Main capability specs: `494`
+- Archived proposals: `849+`
+- Main capability specs: `496`
 
 ## Active Proposals
 
 | Change | Progress | Current gate | Artifacts |
 | ------ | -------: | ------------ | --------- |
-| [`plugin-rack-real-install-loop`](plugin-rack-real-install-loop/proposal.md) | applying | D-050 Notes-only 真实装/卸；无 Slim / 无 Marketplace | [proposal](plugin-rack-real-install-loop/proposal.md) · [design](plugin-rack-real-install-loop/design.md) · [tasks](plugin-rack-real-install-loop/tasks.md) · [specs](plugin-rack-real-install-loop/specs/) |
 | [`plugin-kernel-ownership-inventory`](plugin-kernel-ownership-inventory/proposal.md) | implemented | Wave 0A 已落地：ownership 表 + fitness；不删产品 | [proposal](plugin-kernel-ownership-inventory/proposal.md) · [design](plugin-kernel-ownership-inventory/design.md) · [tasks](plugin-kernel-ownership-inventory/tasks.md) · [specs](plugin-kernel-ownership-inventory/specs/) |
 | [`plugin-manifest-v1-parser`](plugin-manifest-v1-parser/proposal.md) | implemented | Wave 0B 已落地：Manifest/Catalog/DAG parser，不接生产路径 | [proposal](plugin-manifest-v1-parser/proposal.md) · [design](plugin-manifest-v1-parser/design.md) · [tasks](plugin-manifest-v1-parser/tasks.md) · [specs](plugin-manifest-v1-parser/specs/) |
 | [`plugin-ipc-v1-framing`](plugin-ipc-v1-framing/proposal.md) | implemented | Wave 1A 已落地：MXPC/MXPD 纯编解码，不听端口 | [proposal](plugin-ipc-v1-framing/proposal.md) · [design](plugin-ipc-v1-framing/design.md) · [tasks](plugin-ipc-v1-framing/tasks.md) · [specs](plugin-ipc-v1-framing/specs/) |
@@ -303,6 +302,7 @@
 
 ## Active backlog notes（2026-08-08）
 
+- **已归档** `plugin-rack-real-install-loop` → `archive/2026-08-17-plugin-rack-real-install-loop`：D-050 Notes-only 真实装/卸（lockfile + activate_allowlisted + 原子 contribution + note_card 闸门）；主 specs 已同步 `plugin-rack-real-install-loop-v1` / `plugin-pilot-disable-not-delete-v1` / `plugin-runtime-uninstall-v1`。无 Slim / 无 Marketplace。
 - **已归档** `fix-pi-at-reference-transport` → `archive/2026-08-14-fix-pi-at-reference-transport`：pi prompt 内 `@文件` 引用提取为 `@file` argv + folder/missing 降级纯文本 + leading-`@` guard；主 specs 已同步 `pi-file-reference-transport`；用户 2026-08-14 验收通过。
 - **新增并落地** `fix-deferred-feature-style-surfaces`（2026-08-13）：延迟 CSS 入口漏接 + Git Diff 弹窗单栏/双栏滚动合同；用户手测通过，待 commit。
 - **已归档** `fix-pi-session-index-cold-start` → `archive/2026-08-13-fix-pi-session-index-cold-start`：重启后左侧 Native PI 行从 Session Index 投影；warm SQLite first-paint + cwd fingerprint + 并行 writer；用户 2026-08-13 手测通过。
