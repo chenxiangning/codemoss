@@ -12,6 +12,7 @@ status: active
 ## Draft / pending confirmation
 
 - [Shared Session recovery exit closure](./2026-08-04-shared-session-recovery-exit-closure.md) — P0：恢复出口闭环（跨平台）；**尚未** OpenSpec 化、未改代码。
+- [0.9 插件合同移植（十流）](../architecture/plugin-platform/17-contract-port-to-0.9.md) — 从 `feature/plugin-mossx-0.8.9` **重写**插排/三根插头/本地市场到 0.9；不是 cherry-pick。与 0.9 上已有的「产品能力移植」（PI/Dock/Ask）分开。未在 0.9 立 OpenSpec 前禁止改 0.9 代码。
 
 ## Active execution plans
 

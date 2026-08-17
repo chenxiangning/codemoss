@@ -10,6 +10,7 @@ status: active
 
 ## 架构与治理
 
+- [Plugin Platform](plugin-platform/README.md) — 插排 / 三根插头实验收口；进度尺见 `16`；0.9 十流重写见 `17`
 - [Harness Governance Layer — mossx 战略架构文档](harness-governance-strategy.md) — accepted 战略；2026-05 正文保留，文首含 2026-08-03 / 0.7.16 六引擎、AppShell 与 gate audit 校准
 - [多引擎协作编排设计（Multi-Engine Collaboration）](multi-engine-collaboration-orchestration-design.md) — Shared 内分环节绑定不同 CLI·供应商的编排产品与控制面设计
 - [Composer 会话文件变更账本设计（Session File-Edit Ledger）](composer-session-file-edit-ledger-design.md) — Shared/协作「已编辑」Strip 的 durable 数据面（**UI 零改**；draft 2026-08-08）

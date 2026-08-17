@@ -12,7 +12,8 @@ status: active
 > 快照日期：**2026-08-18**
 > 证据 change：`plugin-storage-lkg-product-path`（D-054 三根插头产品 LKG）+ `plugin-marketplace-local-catalog`（D-055）+ `plugin-product-surface-hide-on-uninstall`
 > 验收：市场页 3 张可装/卸 listing + 9 张即将开放 + 插排状态条；卸后藏产品入口/面板；卸载 Claude 先确认再 interrupt；三根插头首次 install 各自 pin，同 root 重启读回，schema 坏了回滚，卸后留 pin。浏览器预览只改内存。远程 Marketplace 仍关。Host 仍 `enabled=false`。allowlist 仍 Notes + Claude + Project Map。P2.5 整行 / P2.6 / P2.7 未勾。
-> 工作树：`feature/plugin-mossx-0.8.9`
+> 工作树：`feature/plugin-mossx-0.8.9` tip `4de8765a9`
+> 0.9 移植：[17 · 合同移植清单](17-contract-port-to-0.9.md)
 
 本文是**带日期的进度总视图**，不是产品行为 SoT。行为以当前代码和 OpenSpec 为准。百分比是人工校准的工程判断，用来防止把「200+ OpenSpec change」误读成「产品已经插件化」。
 
@@ -174,7 +175,9 @@ P4 75% 容易误导：那是「pilot 协议走完 Disable 且能拔插头」，�
 
 ## 8. 下一刀预告
 
-三根产品 LKG 已落地。0.8.9 上**建议停刀**：合同已够迁 0.9。不要在本分支 Slim、不要开独立仓、不要 Host 真 boot、不要 P2.6 / P2.7、不要远程 Marketplace。不要把 P6 或 P2.5 整行勾完。
+三根产品 LKG 已落地。0.8.9 上**停刀**：合同已够迁 0.9。不要在本分支 Slim、不要开独立仓、不要 Host 真 boot、不要 P2.6 / P2.7、不要远程 Marketplace。不要把 P6 或 P2.5 整行勾完。
+
+0.9 重写按 [17 · 合同移植清单](17-contract-port-to-0.9.md) 十流走。先立 OpenSpec，先 lockfile + 闸门，最后才碰 Claude Process Entry。0.9 进度尺从 0 起算，禁止抄本页 67 / 15 / 70。
 
 ## 9. 用户目标校准（2026-08-17）
 
