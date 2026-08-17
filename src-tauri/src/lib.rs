@@ -262,7 +262,14 @@ pub fn run() {
             app.manage(baidu_tongji::BaiduTongjiState::load());
             let state = state::AppState::load(&app.handle());
             app.manage(state);
-            match plugin_runtime::boot::boot_host() {
+            let boot_host = match app_paths::app_home_dir() {
+                Ok(root) => plugin_runtime::boot::boot_host_at(root),
+                Err(error) => {
+                    log::warn!("Plugin LKG storage falling back to ephemeral: {error}");
+                    plugin_runtime::boot::boot_host()
+                }
+            };
+            match boot_host {
                 Ok(mut host) => {
                     if let Err(error) =
                         plugin_runtime::install::restore_allowlisted(&mut *host)

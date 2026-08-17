@@ -228,11 +228,15 @@ fn bind_supervisor() -> Result<SupervisorSocket, HostError> {
 }
 
 pub fn boot_host() -> Result<BootHost, HostError> {
+    boot_host_at(boot_storage_root())
+}
+
+pub fn boot_host_at(storage_root: impl Into<PathBuf>) -> Result<BootHost, HostError> {
     let runtime = PluginRuntime::new(
         HostConfig::default(),
         boot_driver(),
         "/fixture/workspace",
-        boot_storage_root(),
+        storage_root,
     )?;
     #[cfg(unix)]
     let supervisor = Some(bind_supervisor()?);
@@ -247,7 +251,27 @@ pub fn boot_host() -> Result<BootHost, HostError> {
 mod tests {
     use super::*;
     use crate::plugin_runtime::claude_pilot::claude_activation_request;
+    use crate::plugin_runtime::disk_storage::{remove_path, unique_temp_root};
+    use crate::plugin_runtime::lkg::LKG_LOCK_FILE_NAME;
     use crate::plugin_runtime::notes_pilot::notes_activation_request;
+
+    #[test]
+    fn boot_host_at_uses_injected_root_for_lkg() {
+        let root = unique_temp_root("boot-lkg");
+        let host = boot_host_at(&root).expect("boot");
+        assert_eq!(host.lkg.path(), root.join(LKG_LOCK_FILE_NAME));
+        assert_eq!(host.storage.root(), root.as_path());
+        remove_path(&root);
+    }
+
+    #[test]
+    fn boot_host_stays_ephemeral() {
+        let host = boot_host().expect("boot");
+        if let Ok(home) = crate::app_paths::app_home_dir() {
+            assert_ne!(host.storage.root(), home.as_path());
+            assert!(!host.lkg.path().starts_with(&home));
+        }
+    }
 
     #[test]
     fn boot_host_rejects_notes_activation() {

@@ -6,6 +6,7 @@ use super::broker::{BrokerError, CapabilityBroker, WorkspaceRead};
 use super::disk_storage::DiskStorage;
 use super::host::{ActivationRequest, EntryDriver, Host, HostConfig, HostError, SlotState};
 use super::host_data::{disable_and_revoke, fuse_and_revoke, uninstall_and_revoke};
+use super::lkg::{HealthVerdict, LkgLedger, LkgPin, StagedCandidate, UpdateOutcome};
 use super::mxpd::DataPlane;
 use super::storage::{MigrationPlan, StorageError};
 
@@ -14,6 +15,7 @@ pub struct PluginRuntime<D: EntryDriver> {
     pub broker: CapabilityBroker,
     pub plane: DataPlane,
     pub storage: DiskStorage,
+    pub lkg: LkgLedger,
 }
 
 impl<D: EntryDriver> PluginRuntime<D> {
@@ -23,14 +25,17 @@ impl<D: EntryDriver> PluginRuntime<D> {
         workspace_root: impl Into<String>,
         storage_root: impl Into<PathBuf>,
     ) -> Result<Self, HostError> {
+        let storage = DiskStorage::open(storage_root).map_err(|error| HostError {
+            code: "invalid-storage",
+            message: error.message,
+        })?;
+        let lkg = LkgLedger::load(storage.root());
         Ok(Self {
             host: Host::new(config, driver)?,
             broker: CapabilityBroker::new(workspace_root),
             plane: DataPlane::default(),
-            storage: DiskStorage::open(storage_root).map_err(|error| HostError {
-                code: "invalid-storage",
-                message: error.message,
-            })?,
+            storage,
+            lkg,
         })
     }
 
@@ -175,6 +180,80 @@ impl<D: EntryDriver> PluginRuntime<D> {
         self.storage.migrate(plugin_id, plan)
     }
 
+    pub fn stage_own_update(
+        &mut self,
+        plugin_id: &str,
+        candidate_version: &str,
+        plan: MigrationPlan,
+    ) -> Result<StagedCandidate, StorageError> {
+        self.ensure_ready(plugin_id)?;
+        if candidate_version.trim().is_empty() {
+            return Err(StorageError {
+                code: "schema",
+                message: "candidateVersion must be canonical".into(),
+            });
+        }
+        self.open_own_store(plugin_id)?;
+        let checkpoint_id = self.storage.last_checkpoint_id(plugin_id)?;
+        let from_schema = self.storage.read_schema(plugin_id)?;
+        let to_schema = plan.to;
+        self.storage.migrate(plugin_id, plan)?;
+        let candidate = StagedCandidate {
+            plugin_id: plugin_id.to_string(),
+            candidate_version: candidate_version.to_string(),
+            checkpoint_id,
+            from_schema,
+            to_schema,
+        };
+        self.lkg.stage(candidate.clone())?;
+        Ok(candidate)
+    }
+
+    pub fn complete_own_update(
+        &mut self,
+        plugin_id: &str,
+        health: HealthVerdict,
+    ) -> Result<UpdateOutcome, StorageError> {
+        self.ensure_ready(plugin_id)?;
+        let candidate = self.lkg.take_staged(plugin_id)?;
+        match health {
+            HealthVerdict::Pass => {
+                let pin = LkgPin {
+                    plugin_id: plugin_id.to_string(),
+                    plugin_version: candidate.candidate_version,
+                    checkpoint_id: candidate.checkpoint_id,
+                    schema_version: candidate.to_schema,
+                };
+                self.storage
+                    .protect_checkpoint(plugin_id, &pin.checkpoint_id)?;
+                self.storage
+                    .set_plugin_version(plugin_id, &pin.plugin_version)?;
+                let pin = self.lkg.commit(pin)?;
+                Ok(UpdateOutcome::Committed(pin))
+            }
+            HealthVerdict::Fail => match self.storage.restore_to(plugin_id, &candidate.checkpoint_id)
+            {
+                Ok(restored_schema) => {
+                    if let Some(lkg) = self.lkg.pin(plugin_id).cloned() {
+                        Ok(UpdateOutcome::RolledBack {
+                            restored_schema,
+                            lkg,
+                        })
+                    } else {
+                        Ok(UpdateOutcome::Quarantined {
+                            restored_schema: Some(restored_schema),
+                            reason: "no-lkg",
+                        })
+                    }
+                }
+                Err(_) => Ok(UpdateOutcome::Quarantined {
+                    restored_schema: None,
+                    reason: "restore-failed",
+                }),
+            },
+        }
+    }
+
     pub fn access_store(
         &self,
         caller_id: &str,
@@ -188,6 +267,51 @@ impl<D: EntryDriver> PluginRuntime<D> {
             });
         }
         self.storage.access_file(caller_id, target_id)
+    }
+
+    fn store_matches_pin(&self, plugin_id: &str, pin: &LkgPin) -> bool {
+        if !self.storage.data_file(plugin_id).exists() {
+            return false;
+        }
+        self.storage
+            .read_schema(plugin_id)
+            .is_ok_and(|schema| schema == pin.schema_version)
+    }
+
+    pub fn establish_own_lkg(
+        &mut self,
+        plugin_id: &str,
+        plugin_version: &str,
+    ) -> Result<LkgPin, StorageError> {
+        self.ensure_ready(plugin_id)?;
+        if plugin_version.trim().is_empty() {
+            return Err(StorageError {
+                code: "schema",
+                message: "pluginVersion must be canonical".into(),
+            });
+        }
+        if let Some(pin) = self.lkg.pin(plugin_id).cloned() {
+            if !self.store_matches_pin(plugin_id, &pin) {
+                self.storage.restore_pinned(&pin)?;
+            } else {
+                self.storage.adopt_plugin(plugin_id, &pin.plugin_version)?;
+            }
+            return Ok(pin);
+        }
+        self.storage.adopt_plugin(plugin_id, plugin_version)?;
+        let schema = self.storage.read_schema(plugin_id)?;
+        let checkpoint_id = match self.storage.last_checkpoint_id(plugin_id) {
+            Ok(id) => id,
+            Err(_) => self.storage.checkpoint(plugin_id, 2)?,
+        };
+        self.storage
+            .protect_checkpoint(plugin_id, &checkpoint_id)?;
+        self.lkg.commit(LkgPin {
+            plugin_id: plugin_id.to_string(),
+            plugin_version: plugin_version.to_string(),
+            checkpoint_id,
+            schema_version: schema,
+        })
     }
 }
 
@@ -3367,6 +3491,255 @@ mod tests {
                 "{capability}"
             );
         }
+        remove_path(&root);
+    }
+
+    fn compatible_plan(from: u32, to: u32) -> MigrationPlan {
+        MigrationPlan {
+            from,
+            to,
+            destructive: false,
+            export_required: false,
+            confirmed: false,
+            exported: false,
+            reader_schema: to,
+        }
+    }
+
+    #[test]
+    fn ready_plugin_can_stage_a_compatible_candidate_without_pinning() {
+        use crate::plugin_runtime::lkg::LKG_LOCK_FILE_NAME;
+
+        let root = unique_temp_root("runtime-lkg-stage");
+        let mut runtime = PluginRuntime::new(
+            HostConfig {
+                enabled: true,
+                ..HostConfig::default()
+            },
+            FakeDriver::default(),
+            "/fixture/workspace",
+            &root,
+        )
+        .expect("runtime");
+        runtime
+            .activate(notes_activation_request())
+            .expect("activate");
+        let checkpoint = runtime
+            .checkpoint_own_store("com.mossx.notes")
+            .expect("ckpt");
+        let staged = runtime
+            .stage_own_update("com.mossx.notes", "1.1.0", compatible_plan(1, 2))
+            .expect("stage");
+        assert_eq!(staged.checkpoint_id, checkpoint);
+        assert_eq!(staged.from_schema, 1);
+        assert_eq!(staged.to_schema, 2);
+        assert_eq!(runtime.storage.read_schema("com.mossx.notes").unwrap(), 2);
+        assert!(runtime.lkg.pin("com.mossx.notes").is_none());
+        assert!(!root.join(LKG_LOCK_FILE_NAME).exists());
+        remove_path(&root);
+    }
+
+    #[test]
+    fn disabled_plugin_cannot_stage_an_update() {
+        let root = unique_temp_root("runtime-lkg-disabled");
+        let mut runtime = PluginRuntime::new(
+            HostConfig {
+                enabled: true,
+                ..HostConfig::default()
+            },
+            FakeDriver::default(),
+            "/fixture/workspace",
+            &root,
+        )
+        .expect("runtime");
+        runtime
+            .activate(notes_activation_request())
+            .expect("activate");
+        runtime
+            .checkpoint_own_store("com.mossx.notes")
+            .expect("ckpt");
+        runtime.disable_plugin("com.mossx.notes").expect("disable");
+        assert_eq!(
+            runtime
+                .stage_own_update("com.mossx.notes", "1.1.0", compatible_plan(1, 2))
+                .unwrap_err()
+                .code,
+            "plugin-unavailable"
+        );
+        remove_path(&root);
+    }
+
+    #[test]
+    fn health_pass_commits_lkg_pin_and_skips_product_lockfile() {
+        use crate::plugin_runtime::lkg::{LKG_LOCK_FILE_NAME, PRODUCT_LOCK_FILE_NAME};
+
+        let root = unique_temp_root("runtime-lkg-pass");
+        let mut runtime = PluginRuntime::new(
+            HostConfig {
+                enabled: true,
+                ..HostConfig::default()
+            },
+            FakeDriver::default(),
+            "/fixture/workspace",
+            &root,
+        )
+        .expect("runtime");
+        runtime
+            .activate(notes_activation_request())
+            .expect("activate");
+        let checkpoint = runtime
+            .checkpoint_own_store("com.mossx.notes")
+            .expect("ckpt");
+        runtime
+            .stage_own_update("com.mossx.notes", "1.1.0", compatible_plan(1, 2))
+            .expect("stage");
+        let outcome = runtime
+            .complete_own_update("com.mossx.notes", HealthVerdict::Pass)
+            .expect("complete");
+        match outcome {
+            UpdateOutcome::Committed(pin) => {
+                assert_eq!(pin.plugin_id, "com.mossx.notes");
+                assert_eq!(pin.plugin_version, "1.1.0");
+                assert_eq!(pin.checkpoint_id, checkpoint);
+                assert_eq!(pin.schema_version, 2);
+            }
+            other => panic!("expected committed pin, got {other:?}"),
+        }
+        let pin = runtime.lkg.pin("com.mossx.notes").expect("pin");
+        assert_eq!(pin.checkpoint_id, checkpoint);
+        assert_eq!(pin.schema_version, 2);
+        assert!(root.join(LKG_LOCK_FILE_NAME).exists());
+        assert!(!root.join(PRODUCT_LOCK_FILE_NAME).exists());
+        remove_path(&root);
+    }
+
+    #[test]
+    fn health_fail_restores_and_keeps_previous_pin() {
+        let root = unique_temp_root("runtime-lkg-fail-keep");
+        let mut runtime = PluginRuntime::new(
+            HostConfig {
+                enabled: true,
+                ..HostConfig::default()
+            },
+            FakeDriver::default(),
+            "/fixture/workspace",
+            &root,
+        )
+        .expect("runtime");
+        runtime
+            .activate(notes_activation_request())
+            .expect("activate");
+        runtime
+            .checkpoint_own_store("com.mossx.notes")
+            .expect("ckpt-1");
+        runtime
+            .stage_own_update("com.mossx.notes", "1.1.0", compatible_plan(1, 2))
+            .expect("stage-1");
+        runtime
+            .complete_own_update("com.mossx.notes", HealthVerdict::Pass)
+            .expect("pin first lkg");
+        let previous = runtime
+            .lkg
+            .pin("com.mossx.notes")
+            .cloned()
+            .expect("previous pin");
+        runtime
+            .checkpoint_own_store("com.mossx.notes")
+            .expect("ckpt-2");
+        runtime
+            .stage_own_update("com.mossx.notes", "1.2.0", compatible_plan(2, 3))
+            .expect("stage-2");
+        assert_eq!(runtime.storage.read_schema("com.mossx.notes").unwrap(), 3);
+        let outcome = runtime
+            .complete_own_update("com.mossx.notes", HealthVerdict::Fail)
+            .expect("fail");
+        match outcome {
+            UpdateOutcome::RolledBack {
+                restored_schema,
+                lkg,
+            } => {
+                assert_eq!(restored_schema, 2);
+                assert_eq!(lkg, previous);
+            }
+            other => panic!("expected rolled back, got {other:?}"),
+        }
+        assert_eq!(runtime.storage.read_schema("com.mossx.notes").unwrap(), 2);
+        assert_eq!(runtime.lkg.pin("com.mossx.notes"), Some(&previous));
+        remove_path(&root);
+    }
+
+    #[test]
+    fn health_fail_without_lkg_quarantines() {
+        use crate::plugin_runtime::lkg::LKG_LOCK_FILE_NAME;
+
+        let root = unique_temp_root("runtime-lkg-quarantine");
+        let mut runtime = PluginRuntime::new(
+            HostConfig {
+                enabled: true,
+                ..HostConfig::default()
+            },
+            FakeDriver::default(),
+            "/fixture/workspace",
+            &root,
+        )
+        .expect("runtime");
+        runtime
+            .activate(notes_activation_request())
+            .expect("activate");
+        runtime
+            .checkpoint_own_store("com.mossx.notes")
+            .expect("ckpt");
+        runtime
+            .stage_own_update("com.mossx.notes", "1.1.0", compatible_plan(1, 2))
+            .expect("stage");
+        let outcome = runtime
+            .complete_own_update("com.mossx.notes", HealthVerdict::Fail)
+            .expect("fail");
+        match outcome {
+            UpdateOutcome::Quarantined {
+                restored_schema,
+                reason,
+            } => {
+                assert_eq!(restored_schema, Some(1));
+                assert_eq!(reason, "no-lkg");
+            }
+            other => panic!("expected quarantine, got {other:?}"),
+        }
+        assert_eq!(runtime.storage.read_schema("com.mossx.notes").unwrap(), 1);
+        assert!(runtime.lkg.pin("com.mossx.notes").is_none());
+        assert!(!root.join(LKG_LOCK_FILE_NAME).exists());
+        remove_path(&root);
+    }
+
+    #[test]
+    fn first_ready_plugin_establishes_product_lkg_pin() {
+        use crate::plugin_runtime::lkg::{LKG_LOCK_FILE_NAME, PRODUCT_LKG_VERSION};
+
+        let root = unique_temp_root("runtime-lkg-establish");
+        let mut runtime = PluginRuntime::new(
+            HostConfig {
+                enabled: true,
+                ..HostConfig::default()
+            },
+            FakeDriver::default(),
+            "/fixture/workspace",
+            &root,
+        )
+        .expect("runtime");
+        runtime
+            .activate(notes_activation_request())
+            .expect("activate");
+        let pin = runtime
+            .establish_own_lkg("com.mossx.notes", PRODUCT_LKG_VERSION)
+            .expect("establish");
+        assert_eq!(pin.plugin_id, "com.mossx.notes");
+        assert_eq!(pin.plugin_version, PRODUCT_LKG_VERSION);
+        assert_eq!(pin.schema_version, 1);
+        assert!(root.join(LKG_LOCK_FILE_NAME).exists());
+        let again = runtime
+            .establish_own_lkg("com.mossx.notes", PRODUCT_LKG_VERSION)
+            .expect("idempotent");
+        assert_eq!(again, pin);
         remove_path(&root);
     }
 }

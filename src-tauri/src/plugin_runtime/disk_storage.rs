@@ -6,6 +6,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use rusqlite::Connection;
 
+use super::lkg::LkgPin;
 use super::storage::{MigrationPlan, StorageError, StorageService};
 
 fn err(code: &'static str, message: impl Into<String>) -> StorageError {
@@ -30,6 +31,10 @@ impl DiskStorage {
             root,
             logic: StorageService::default(),
         })
+    }
+
+    pub fn root(&self) -> &Path {
+        &self.root
     }
 
     pub fn data_file(&self, plugin_id: &str) -> PathBuf {
@@ -86,6 +91,48 @@ impl DiskStorage {
         Ok(path)
     }
 
+    /// Open an existing on-disk store without rewriting `schema_version`.
+    pub fn adopt_plugin(
+        &mut self,
+        plugin_id: &str,
+        plugin_version: &str,
+    ) -> Result<PathBuf, StorageError> {
+        let path = self.data_file(plugin_id);
+        if path.exists() {
+            let schema = self.read_schema(plugin_id).unwrap_or(1);
+            self.logic
+                .open_or_create(plugin_id, plugin_version, "1.0.0", schema)?;
+            return Ok(path);
+        }
+        self.open_plugin(plugin_id, plugin_version, "1.0.0", 1)
+    }
+
+    pub fn restore_pinned(&mut self, pin: &LkgPin) -> Result<u32, StorageError> {
+        let source = self.checkpoint_file(&pin.plugin_id, &pin.checkpoint_id);
+        if !source.exists() {
+            return Err(err(
+                "checkpoint-required",
+                format!("lkg checkpoint missing on disk: {}", pin.checkpoint_id),
+            ));
+        }
+        let target = self.data_file(&pin.plugin_id);
+        if let Some(parent) = target.parent() {
+            fs::create_dir_all(parent)
+                .map_err(|error| err("invalid-storage", format!("mkdir data: {error}")))?;
+        }
+        fs::copy(&source, &target)
+            .map_err(|error| err("invalid-storage", format!("restore pinned copy: {error}")))?;
+        self.logic.adopt_checkpoint(
+            &pin.plugin_id,
+            &pin.checkpoint_id,
+            pin.schema_version,
+            &pin.plugin_version,
+        )?;
+        self.logic
+            .protect_checkpoint(&pin.plugin_id, &pin.checkpoint_id)?;
+        Ok(pin.schema_version)
+    }
+
     pub fn checkpoint(&mut self, plugin_id: &str, retain_previous: u32) -> Result<String, StorageError> {
         let id = self.logic.checkpoint(plugin_id, retain_previous)?;
         let source = self.data_file(plugin_id);
@@ -112,14 +159,34 @@ impl DiskStorage {
         Ok(to)
     }
 
+    pub fn last_checkpoint_id(&self, plugin_id: &str) -> Result<String, StorageError> {
+        Ok(self.logic.last_checkpoint(plugin_id)?.id.clone())
+    }
+
+    pub fn protect_checkpoint(
+        &mut self,
+        plugin_id: &str,
+        checkpoint_id: &str,
+    ) -> Result<(), StorageError> {
+        self.logic.protect_checkpoint(plugin_id, checkpoint_id)
+    }
+
+    pub fn set_plugin_version(
+        &mut self,
+        plugin_id: &str,
+        plugin_version: &str,
+    ) -> Result<(), StorageError> {
+        self.logic.set_plugin_version(plugin_id, plugin_version)
+    }
+
     pub fn restore(&mut self, plugin_id: &str) -> Result<u32, StorageError> {
-        let schema = self.logic.restore(plugin_id)?;
-        let namespace = self.logic.namespace(plugin_id)?;
-        let checkpoint = namespace
-            .checkpoints
-            .last()
-            .ok_or_else(|| err("checkpoint-required", "no checkpoint to restore"))?;
-        let source = self.checkpoint_file(plugin_id, &checkpoint.id);
+        let checkpoint_id = self.last_checkpoint_id(plugin_id)?;
+        self.restore_to(plugin_id, &checkpoint_id)
+    }
+
+    pub fn restore_to(&mut self, plugin_id: &str, checkpoint_id: &str) -> Result<u32, StorageError> {
+        let schema = self.logic.restore_to(plugin_id, checkpoint_id)?;
+        let source = self.checkpoint_file(plugin_id, checkpoint_id);
         let target = self.data_file(plugin_id);
         fs::copy(&source, &target)
             .map_err(|error| err("invalid-storage", format!("restore copy: {error}")))?;
@@ -200,6 +267,50 @@ mod tests {
         assert_eq!(storage.read_schema("com.mossx.notes").unwrap(), 2);
         storage.restore("com.mossx.notes").expect("restore");
         assert_eq!(storage.read_schema("com.mossx.notes").unwrap(), 1);
+        remove_path(&root);
+    }
+
+    #[test]
+    fn adopt_plugin_does_not_rewrite_existing_schema() {
+        let root = unique_temp_root("adopt-schema");
+        let mut storage = DiskStorage::open(&root).expect("open root");
+        storage
+            .open_plugin("com.mossx.notes", "1.0.0", "1.0.0", 1)
+            .expect("open");
+        storage.checkpoint("com.mossx.notes", 2).expect("ckpt");
+        storage
+            .migrate("com.mossx.notes", notes_plan(1, 2, 2))
+            .expect("migrate");
+        let mut reopened = DiskStorage::open(&root).expect("reopen");
+        reopened
+            .adopt_plugin("com.mossx.notes", "1.0.0")
+            .expect("adopt");
+        assert_eq!(reopened.read_schema("com.mossx.notes").unwrap(), 2);
+        remove_path(&root);
+    }
+
+    #[test]
+    fn restore_pinned_copies_checkpoint_without_memory_namespace() {
+        use crate::plugin_runtime::lkg::LkgPin;
+
+        let root = unique_temp_root("restore-pinned");
+        let mut storage = DiskStorage::open(&root).expect("open root");
+        storage
+            .open_plugin("com.mossx.notes", "1.0.0", "1.0.0", 1)
+            .expect("open");
+        let checkpoint = storage.checkpoint("com.mossx.notes", 2).expect("ckpt");
+        storage
+            .migrate("com.mossx.notes", notes_plan(1, 2, 2))
+            .expect("migrate");
+        let pin = LkgPin {
+            plugin_id: "com.mossx.notes".into(),
+            plugin_version: "1.0.0".into(),
+            checkpoint_id: checkpoint,
+            schema_version: 1,
+        };
+        let mut cold = DiskStorage::open(&root).expect("cold");
+        assert_eq!(cold.restore_pinned(&pin).expect("restore"), 1);
+        assert_eq!(cold.read_schema("com.mossx.notes").unwrap(), 1);
         remove_path(&root);
     }
 

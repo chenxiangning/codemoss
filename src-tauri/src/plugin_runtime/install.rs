@@ -5,6 +5,7 @@ use super::claude_process::{claude_process_entry_enabled, CLAUDE_PLUGIN_ID};
 use super::contributions;
 use super::host::{EntryDriver, HostError};
 use super::lockfile::{self, DesiredState};
+use super::lkg::PRODUCT_LKG_VERSION;
 use super::notes_compat::notes_compat_facade_enabled;
 use super::notes_pilot::notes_activation_request;
 use super::notes_storage::NOTES_PLUGIN_ID;
@@ -105,6 +106,19 @@ fn restore_project_map<D: EntryDriver>(runtime: &mut PluginRuntime<D>) -> Result
     }
 }
 
+fn pin_product_lkg<D: EntryDriver>(
+    runtime: &mut PluginRuntime<D>,
+    plugin_id: &str,
+) -> Result<(), HostError> {
+    runtime
+        .establish_own_lkg(plugin_id, PRODUCT_LKG_VERSION)
+        .map(|_| ())
+        .map_err(|error| HostError {
+            code: error.code,
+            message: error.message,
+        })
+}
+
 pub fn install_plugin<D: EntryDriver>(
     runtime: &mut PluginRuntime<D>,
     plugin_id: &str,
@@ -132,6 +146,7 @@ pub fn uninstall_plugin<D: EntryDriver>(
 pub fn install_notes<D: EntryDriver>(runtime: &mut PluginRuntime<D>) -> Result<(), HostError> {
     require_allowlisted(NOTES_PLUGIN_ID)?;
     runtime.install_allowlisted(notes_activation_request())?;
+    pin_product_lkg(runtime, NOTES_PLUGIN_ID)?;
     contributions::register_notes().map_err(|message| HostError {
         code: "contribution-failed",
         message,
@@ -164,6 +179,7 @@ pub fn uninstall_notes<D: EntryDriver>(runtime: &mut PluginRuntime<D>) -> Result
 pub fn install_claude<D: EntryDriver>(runtime: &mut PluginRuntime<D>) -> Result<(), HostError> {
     require_allowlisted(CLAUDE_PLUGIN_ID)?;
     runtime.install_allowlisted(claude_lifecycle_activation_request())?;
+    pin_product_lkg(runtime, CLAUDE_PLUGIN_ID)?;
     contributions::register_claude().map_err(|message| HostError {
         code: "contribution-failed",
         message,
@@ -198,6 +214,7 @@ pub fn install_project_map<D: EntryDriver>(
 ) -> Result<(), HostError> {
     require_allowlisted(PROJECT_MAP_PLUGIN_ID)?;
     runtime.install_allowlisted(project_map_activation_request())?;
+    pin_product_lkg(runtime, PROJECT_MAP_PLUGIN_ID)?;
     contributions::register_project_map().map_err(|message| HostError {
         code: "contribution-failed",
         message,
@@ -660,6 +677,153 @@ mod tests {
             assert!(gate < facade, "gate must precede facade");
         });
         let _ = std::fs::remove_file(&path);
+        contributions::reset_for_test();
+    }
+
+    fn compatible_plan(from: u32, to: u32) -> crate::plugin_runtime::storage::MigrationPlan {
+        crate::plugin_runtime::storage::MigrationPlan {
+            from,
+            to,
+            destructive: false,
+            export_required: false,
+            confirmed: false,
+            exported: false,
+            reader_schema: to,
+        }
+    }
+
+    #[test]
+    fn three_plugs_pin_independently_and_skip_product_lockfile() {
+        use crate::plugin_runtime::lkg::{LKG_LOCK_FILE_NAME, PRODUCT_LOCK_FILE_NAME};
+
+        contributions::reset_for_test();
+        let path = temp_lockfile("lkg-three");
+        let root = std::env::temp_dir().join(format!(
+            "mossx-install-lkg-three-{}-{}",
+            std::process::id(),
+            path.file_stem().unwrap().to_string_lossy()
+        ));
+        let _ = std::fs::remove_file(&path);
+        let _ = std::fs::remove_dir_all(&root);
+        lockfile::with_lockfile_path(&path, || {
+            let mut runtime = runtime(&root);
+            install_notes(&mut runtime).expect("notes");
+            install_claude(&mut runtime).expect("claude");
+            install_project_map(&mut runtime).expect("map");
+            let notes = runtime.lkg.pin(NOTES_PLUGIN_ID).expect("notes pin");
+            let claude = runtime.lkg.pin(CLAUDE_PLUGIN_ID).expect("claude pin");
+            let map = runtime.lkg.pin(PROJECT_MAP_PLUGIN_ID).expect("map pin");
+            assert_eq!(notes.plugin_id, NOTES_PLUGIN_ID);
+            assert_eq!(claude.plugin_id, CLAUDE_PLUGIN_ID);
+            assert_eq!(map.plugin_id, PROJECT_MAP_PLUGIN_ID);
+            assert_eq!(notes.schema_version, 1);
+            assert_eq!(claude.schema_version, 1);
+            assert_eq!(map.schema_version, 1);
+            assert!(root.join(LKG_LOCK_FILE_NAME).exists());
+            assert!(!root.join(PRODUCT_LOCK_FILE_NAME).exists());
+            assert!(runtime
+                .storage
+                .data_file(CLAUDE_PLUGIN_ID)
+                .ends_with("plugin-runtime/data/com.mossx.engine.claude/store.sqlite"));
+        });
+        let _ = std::fs::remove_file(&path);
+        let _ = std::fs::remove_dir_all(&root);
+        contributions::reset_for_test();
+    }
+
+    #[test]
+    fn uninstall_keeps_notes_lkg_pin() {
+        contributions::reset_for_test();
+        let path = temp_lockfile("lkg-keep");
+        let root = std::env::temp_dir().join(format!(
+            "mossx-install-lkg-keep-{}-{}",
+            std::process::id(),
+            path.file_stem().unwrap().to_string_lossy()
+        ));
+        let _ = std::fs::remove_file(&path);
+        let _ = std::fs::remove_dir_all(&root);
+        lockfile::with_lockfile_path(&path, || {
+            let mut runtime = runtime(&root);
+            install_notes(&mut runtime).expect("install");
+            let pin = runtime
+                .lkg
+                .pin(NOTES_PLUGIN_ID)
+                .cloned()
+                .expect("pin before uninstall");
+            uninstall_notes(&mut runtime).expect("uninstall");
+            assert_eq!(runtime.lkg.pin(NOTES_PLUGIN_ID), Some(&pin));
+            assert!(runtime.storage.data_file(NOTES_PLUGIN_ID).exists());
+        });
+        let _ = std::fs::remove_file(&path);
+        let _ = std::fs::remove_dir_all(&root);
+        contributions::reset_for_test();
+    }
+
+    #[test]
+    fn new_runtime_on_same_root_reloads_pins() {
+        contributions::reset_for_test();
+        let path = temp_lockfile("lkg-reload");
+        let root = std::env::temp_dir().join(format!(
+            "mossx-install-lkg-reload-{}-{}",
+            std::process::id(),
+            path.file_stem().unwrap().to_string_lossy()
+        ));
+        let _ = std::fs::remove_file(&path);
+        let _ = std::fs::remove_dir_all(&root);
+        lockfile::with_lockfile_path(&path, || {
+            let mut first = runtime(&root);
+            install_notes(&mut first).expect("notes");
+            install_claude(&mut first).expect("claude");
+            install_project_map(&mut first).expect("map");
+            let notes = first.lkg.pin(NOTES_PLUGIN_ID).cloned().expect("notes");
+            let claude = first.lkg.pin(CLAUDE_PLUGIN_ID).cloned().expect("claude");
+            let map = first
+                .lkg
+                .pin(PROJECT_MAP_PLUGIN_ID)
+                .cloned()
+                .expect("map");
+            drop(first);
+            let second = runtime(&root);
+            assert_eq!(second.lkg.pin(NOTES_PLUGIN_ID), Some(&notes));
+            assert_eq!(second.lkg.pin(CLAUDE_PLUGIN_ID), Some(&claude));
+            assert_eq!(second.lkg.pin(PROJECT_MAP_PLUGIN_ID), Some(&map));
+        });
+        let _ = std::fs::remove_file(&path);
+        let _ = std::fs::remove_dir_all(&root);
+        contributions::reset_for_test();
+    }
+
+    #[test]
+    fn mutated_notes_schema_rolls_back_to_pin_on_reinstall() {
+        contributions::reset_for_test();
+        let path = temp_lockfile("lkg-heal");
+        let root = std::env::temp_dir().join(format!(
+            "mossx-install-lkg-heal-{}-{}",
+            std::process::id(),
+            path.file_stem().unwrap().to_string_lossy()
+        ));
+        let _ = std::fs::remove_file(&path);
+        let _ = std::fs::remove_dir_all(&root);
+        lockfile::with_lockfile_path(&path, || {
+            let mut runtime = runtime(&root);
+            install_notes(&mut runtime).expect("install");
+            let pin = runtime
+                .lkg
+                .pin(NOTES_PLUGIN_ID)
+                .cloned()
+                .expect("pin");
+            runtime
+                .migrate_own_store(NOTES_PLUGIN_ID, compatible_plan(1, 2))
+                .expect("mutate");
+            assert_eq!(runtime.storage.read_schema(NOTES_PLUGIN_ID).unwrap(), 2);
+            runtime
+                .establish_own_lkg(NOTES_PLUGIN_ID, crate::plugin_runtime::lkg::PRODUCT_LKG_VERSION)
+                .expect("heal");
+            assert_eq!(runtime.storage.read_schema(NOTES_PLUGIN_ID).unwrap(), 1);
+            assert_eq!(runtime.lkg.pin(NOTES_PLUGIN_ID), Some(&pin));
+        });
+        let _ = std::fs::remove_file(&path);
+        let _ = std::fs::remove_dir_all(&root);
         contributions::reset_for_test();
     }
 }

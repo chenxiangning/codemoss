@@ -31,6 +31,7 @@ pub struct Namespace {
     pub checkpoint_format_version: u32,
     pub checkpoints: Vec<CheckpointMeta>,
     pub last_export_schema: Option<u32>,
+    pub protected_checkpoint_id: Option<String>,
 }
 
 impl Namespace {
@@ -80,6 +81,7 @@ impl StorageService {
                 checkpoint_format_version: 1,
                 checkpoints: Vec::new(),
                 last_export_schema: None,
+                protected_checkpoint_id: None,
             });
         Ok(self.namespaces.get(plugin_id).expect("just inserted"))
     }
@@ -115,10 +117,84 @@ impl StorageService {
             schema_version: namespace.storage_schema_version,
             plugin_version: namespace.plugin_version.clone(),
         });
-        while namespace.checkpoints.len() > retain_previous as usize {
-            namespace.checkpoints.remove(0);
-        }
+        evict_unprotected_checkpoints(namespace, retain_previous);
         Ok(id)
+    }
+
+    pub fn last_checkpoint(&self, plugin_id: &str) -> Result<&CheckpointMeta, StorageError> {
+        self.namespace(plugin_id)?
+            .checkpoints
+            .last()
+            .ok_or_else(|| err("checkpoint-required", "no checkpoint to restore"))
+    }
+
+    pub fn protect_checkpoint(
+        &mut self,
+        plugin_id: &str,
+        checkpoint_id: &str,
+    ) -> Result<(), StorageError> {
+        let namespace = self
+            .namespaces
+            .get_mut(plugin_id)
+            .ok_or_else(|| err("plugin-unavailable", "namespace missing"))?;
+        let exists = namespace
+            .checkpoints
+            .iter()
+            .any(|checkpoint| checkpoint.id == checkpoint_id);
+        if !exists {
+            return Err(err("checkpoint-required", "protected checkpoint missing"));
+        }
+        namespace.protected_checkpoint_id = Some(checkpoint_id.to_string());
+        Ok(())
+    }
+
+    pub fn adopt_checkpoint(
+        &mut self,
+        plugin_id: &str,
+        checkpoint_id: &str,
+        schema_version: u32,
+        plugin_version: &str,
+    ) -> Result<(), StorageError> {
+        self.open_or_create(plugin_id, plugin_version, "1.0.0", schema_version)?;
+        let namespace = self.namespaces.get_mut(plugin_id).expect("just created");
+        namespace.storage_schema_version = schema_version;
+        namespace.plugin_version = plugin_version.to_string();
+        if !namespace
+            .checkpoints
+            .iter()
+            .any(|checkpoint| checkpoint.id == checkpoint_id)
+        {
+            namespace.checkpoints.push(CheckpointMeta {
+                id: checkpoint_id.to_string(),
+                schema_version,
+                plugin_version: plugin_version.to_string(),
+            });
+        }
+        if let Some(seq) = checkpoint_id
+            .strip_prefix("ckpt-")
+            .and_then(|value| value.parse::<u64>().ok())
+        {
+            if seq > self.next_checkpoint {
+                self.next_checkpoint = seq;
+            }
+        }
+        Ok(())
+    }
+
+    pub fn set_plugin_version(
+        &mut self,
+        plugin_id: &str,
+        plugin_version: &str,
+    ) -> Result<(), StorageError> {
+        if plugin_version.trim().is_empty() {
+            return Err(err("schema", "pluginVersion must be canonical"));
+        }
+        let namespace = self
+            .namespaces
+            .get_mut(plugin_id)
+            .ok_or_else(|| err("plugin-unavailable", "namespace missing"))?;
+        namespace.plugin_version = plugin_version.to_string();
+        Ok(())
     }
 
     pub fn migrate(&mut self, plugin_id: &str, plan: MigrationPlan) -> Result<u32, StorageError> {
@@ -156,16 +232,38 @@ impl StorageService {
     }
 
     pub fn restore(&mut self, plugin_id: &str) -> Result<u32, StorageError> {
+        let checkpoint_id = self.last_checkpoint(plugin_id)?.id.clone();
+        self.restore_to(plugin_id, &checkpoint_id)
+    }
+
+    pub fn restore_to(&mut self, plugin_id: &str, checkpoint_id: &str) -> Result<u32, StorageError> {
         let namespace = self
             .namespaces
             .get_mut(plugin_id)
             .ok_or_else(|| err("plugin-unavailable", "namespace missing"))?;
-        let checkpoint = namespace
+        let schema = namespace
             .checkpoints
-            .last()
-            .ok_or_else(|| err("checkpoint-required", "no checkpoint to restore"))?;
-        namespace.storage_schema_version = checkpoint.schema_version;
-        Ok(checkpoint.schema_version)
+            .iter()
+            .find(|checkpoint| checkpoint.id == checkpoint_id)
+            .map(|checkpoint| checkpoint.schema_version)
+            .ok_or_else(|| err("checkpoint-required", "restore checkpoint missing"))?;
+        namespace.storage_schema_version = schema;
+        Ok(schema)
+    }
+}
+
+fn evict_unprotected_checkpoints(namespace: &mut Namespace, retain_previous: u32) {
+    let retain = retain_previous as usize;
+    while namespace.checkpoints.len() > retain {
+        let evict_at = namespace.checkpoints.iter().position(|checkpoint| {
+            Some(&checkpoint.id) != namespace.protected_checkpoint_id.as_ref()
+        });
+        match evict_at {
+            Some(index) => {
+                namespace.checkpoints.remove(index);
+            }
+            None => break,
+        }
     }
 }
 
@@ -298,6 +396,25 @@ mod tests {
     }
 
     #[test]
+    fn protected_checkpoint_survives_retain_eviction() {
+        let mut service = StorageService::default();
+        notes(&mut service);
+        let first = service.checkpoint("com.mossx.notes", 2).expect("ckpt-1");
+        service
+            .protect_checkpoint("com.mossx.notes", &first)
+            .expect("protect");
+        let _second = service.checkpoint("com.mossx.notes", 1).expect("ckpt-2");
+        let namespace = service.namespace("com.mossx.notes").expect("ns");
+        assert!(
+            namespace
+                .checkpoints
+                .iter()
+                .any(|checkpoint| checkpoint.id == first),
+            "LKG checkpoint must survive retainPrevious=1"
+        );
+        assert_eq!(namespace.protected_checkpoint_id.as_deref(), Some(first.as_str()));
+    }
+
     fn path_unsafe_plugin_id_cannot_open_a_namespace() {
         let mut service = StorageService::default();
         for plugin_id in ["../escape", "com.mossx.notes/../escape", "com\\mossx", "Notes"] {
