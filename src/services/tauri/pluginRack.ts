@@ -9,138 +9,65 @@ export type PluginRackPlug = {
   generation: number;
   unitId: string | null;
   live: boolean;
+  productPath: string;
+  circuit: string;
 };
 
 export type PluginRackSnapshot = {
   hostAvailable: boolean;
   hostEnabled: boolean;
+  supervisorLive: boolean;
+  supervisorPid: number | null;
+  supervisorPath: string | null;
   plugs: PluginRackPlug[];
 };
+
+export const DECLARED_PLUGIN_CIRCUITS = {
+  claude: { productPath: "process-entry", circuit: "live" },
+  notes: { productPath: "isolated-sqlite", circuit: "live" },
+  later: { productPath: "undeclared", circuit: "idle" },
+} as const;
+
+function declaredPlug(
+  pluginId: string,
+  displayName: string,
+  kind: string,
+  ownerClass: string,
+  circuit: { productPath: string; circuit: string },
+): PluginRackPlug {
+  return {
+    pluginId,
+    displayName,
+    kind,
+    ownerClass,
+    state: "idle",
+    generation: 0,
+    unitId: null,
+    live: false,
+    productPath: circuit.productPath,
+    circuit: circuit.circuit,
+  };
+}
 
 export const DECLARED_PLUGIN_RACK_SNAPSHOT: PluginRackSnapshot = {
   hostAvailable: false,
   hostEnabled: false,
+  supervisorLive: false,
+  supervisorPid: null,
+  supervisorPath: null,
   plugs: [
-    {
-      pluginId: "com.mossx.engine.claude",
-      displayName: "Claude Engine",
-      kind: "engine",
-      ownerClass: "pilot",
-      state: "idle",
-      generation: 0,
-      unitId: null,
-      live: false,
-    },
-    {
-      pluginId: "com.mossx.notes",
-      displayName: "Notes",
-      kind: "feature",
-      ownerClass: "pilot",
-      state: "idle",
-      generation: 0,
-      unitId: null,
-      live: false,
-    },
-    {
-      pluginId: "com.mossx.project-map",
-      displayName: "Project Map",
-      kind: "feature",
-      ownerClass: "later-plugin",
-      state: "idle",
-      generation: 0,
-      unitId: null,
-      live: false,
-    },
-    {
-      pluginId: "com.mossx.browser",
-      displayName: "Browser",
-      kind: "feature",
-      ownerClass: "later-plugin",
-      state: "idle",
-      generation: 0,
-      unitId: null,
-      live: false,
-    },
-    {
-      pluginId: "com.mossx.intent-canvas",
-      displayName: "Intent Canvas",
-      kind: "feature",
-      ownerClass: "later-plugin",
-      state: "idle",
-      generation: 0,
-      unitId: null,
-      live: false,
-    },
-    {
-      pluginId: "com.mossx.kanban",
-      displayName: "Kanban",
-      kind: "feature",
-      ownerClass: "later-plugin",
-      state: "idle",
-      generation: 0,
-      unitId: null,
-      live: false,
-    },
-    {
-      pluginId: "com.mossx.engine.codex",
-      displayName: "Codex Engine",
-      kind: "engine",
-      ownerClass: "later-plugin",
-      state: "idle",
-      generation: 0,
-      unitId: null,
-      live: false,
-    },
-    {
-      pluginId: "com.mossx.engine.gemini",
-      displayName: "Gemini Engine",
-      kind: "engine",
-      ownerClass: "later-plugin",
-      state: "idle",
-      generation: 0,
-      unitId: null,
-      live: false,
-    },
-    {
-      pluginId: "com.mossx.engine.grok",
-      displayName: "Grok Engine",
-      kind: "engine",
-      ownerClass: "later-plugin",
-      state: "idle",
-      generation: 0,
-      unitId: null,
-      live: false,
-    },
-    {
-      pluginId: "com.mossx.engine.kimi",
-      displayName: "Kimi Engine",
-      kind: "engine",
-      ownerClass: "later-plugin",
-      state: "idle",
-      generation: 0,
-      unitId: null,
-      live: false,
-    },
-    {
-      pluginId: "com.mossx.engine.opencode",
-      displayName: "OpenCode Engine",
-      kind: "engine",
-      ownerClass: "later-plugin",
-      state: "idle",
-      generation: 0,
-      unitId: null,
-      live: false,
-    },
-    {
-      pluginId: "com.mossx.engine.pi",
-      displayName: "Pi Engine",
-      kind: "engine",
-      ownerClass: "later-plugin",
-      state: "idle",
-      generation: 0,
-      unitId: null,
-      live: false,
-    },
+    declaredPlug("com.mossx.engine.claude", "Claude Engine", "engine", "pilot", DECLARED_PLUGIN_CIRCUITS.claude),
+    declaredPlug("com.mossx.notes", "Notes", "feature", "pilot", DECLARED_PLUGIN_CIRCUITS.notes),
+    declaredPlug("com.mossx.project-map", "Project Map", "feature", "later-plugin", DECLARED_PLUGIN_CIRCUITS.later),
+    declaredPlug("com.mossx.browser", "Browser", "feature", "later-plugin", DECLARED_PLUGIN_CIRCUITS.later),
+    declaredPlug("com.mossx.intent-canvas", "Intent Canvas", "feature", "later-plugin", DECLARED_PLUGIN_CIRCUITS.later),
+    declaredPlug("com.mossx.kanban", "Kanban", "feature", "later-plugin", DECLARED_PLUGIN_CIRCUITS.later),
+    declaredPlug("com.mossx.engine.codex", "Codex Engine", "engine", "later-plugin", DECLARED_PLUGIN_CIRCUITS.later),
+    declaredPlug("com.mossx.engine.gemini", "Gemini Engine", "engine", "later-plugin", DECLARED_PLUGIN_CIRCUITS.later),
+    declaredPlug("com.mossx.engine.grok", "Grok Engine", "engine", "later-plugin", DECLARED_PLUGIN_CIRCUITS.later),
+    declaredPlug("com.mossx.engine.kimi", "Kimi Engine", "engine", "later-plugin", DECLARED_PLUGIN_CIRCUITS.later),
+    declaredPlug("com.mossx.engine.opencode", "OpenCode Engine", "engine", "later-plugin", DECLARED_PLUGIN_CIRCUITS.later),
+    declaredPlug("com.mossx.engine.pi", "Pi Engine", "engine", "later-plugin", DECLARED_PLUGIN_CIRCUITS.later),
   ],
 };
 

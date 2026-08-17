@@ -16,9 +16,22 @@ function hostStatusKey(snapshot: PluginRackSnapshot | null): string {
   if (!snapshot.hostAvailable) {
     return "extensions.rack.hostUnavailable";
   }
+  if (snapshot.supervisorLive && !snapshot.hostEnabled) {
+    return "extensions.rack.hostSupervisorLive";
+  }
   return snapshot.hostEnabled
     ? "extensions.rack.hostEnabled"
     : "extensions.rack.hostDisabled";
+}
+
+function circuitTone(circuit: string): string {
+  if (circuit === "live") {
+    return "is-live";
+  }
+  if (circuit === "fallback") {
+    return "is-fallback";
+  }
+  return "is-idle";
 }
 
 const KIND_ORDER = ["engine", "feature"] as const;
@@ -89,6 +102,22 @@ export function PluginRackSection() {
             {t(hostStatusKey(snapshot))}
           </p>
         </header>
+        {snapshot?.supervisorLive ? (
+          <dl className="extensions-plugin-rack-supervisor">
+            <div>
+              <dt>{t("extensions.rack.supervisor")}</dt>
+              <dd>{t("extensions.rack.supervisorLive")}</dd>
+            </div>
+            <div>
+              <dt>{t("extensions.rack.supervisorPid")}</dt>
+              <dd>{snapshot.supervisorPid ?? "—"}</dd>
+            </div>
+            <div>
+              <dt>{t("extensions.rack.supervisorPath")}</dt>
+              <dd className="extensions-plugin-rack-id">{snapshot.supervisorPath ?? "—"}</dd>
+            </div>
+          </dl>
+        ) : null}
         {error ? (
           <p className="extensions-plugin-rack-error" role="alert">
             {t("extensions.rack.error", { message: error })}
@@ -104,17 +133,34 @@ export function PluginRackSection() {
                 <h3>{t(`extensions.rack.kinds.${group.kind}`, { defaultValue: group.kind })}</h3>
                 <ul className="extensions-plugin-rack-list">
                   {group.plugs.map((plug) => (
-                    <li key={plug.pluginId} className="extensions-plugin-rack-card">
+                    <li
+                      key={plug.pluginId}
+                      className={`extensions-plugin-rack-card ${circuitTone(plug.circuit)}`}
+                    >
                       <div>
                         <h4>{plug.displayName}</h4>
                         <p className="extensions-plugin-rack-id">{plug.pluginId}</p>
                       </div>
+                      <p
+                        className={`extensions-plugin-rack-circuit ${circuitTone(plug.circuit)}`}
+                        aria-label={t("extensions.rack.circuit")}
+                      >
+                        {t(`extensions.rack.circuits.${plug.circuit}`, { defaultValue: plug.circuit })}
+                      </p>
                       <dl>
                         <div>
                           <dt>{t("extensions.rack.ownerClass")}</dt>
                           <dd>
                             {t(`extensions.rack.ownerClasses.${plug.ownerClass}`, {
                               defaultValue: plug.ownerClass,
+                            })}
+                          </dd>
+                        </div>
+                        <div>
+                          <dt>{t("extensions.rack.productPath")}</dt>
+                          <dd>
+                            {t(`extensions.rack.productPaths.${plug.productPath}`, {
+                              defaultValue: plug.productPath,
                             })}
                           </dd>
                         </div>

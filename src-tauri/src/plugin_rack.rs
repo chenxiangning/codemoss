@@ -101,6 +101,8 @@ pub struct PluginRackPlug {
     pub generation: u64,
     pub unit_id: Option<String>,
     pub live: bool,
+    pub product_path: String,
+    pub circuit: String,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -108,22 +110,64 @@ pub struct PluginRackPlug {
 pub struct PluginRackSnapshot {
     pub host_available: bool,
     pub host_enabled: bool,
+    pub supervisor_live: bool,
+    pub supervisor_pid: Option<u32>,
+    pub supervisor_path: Option<String>,
     pub plugs: Vec<PluginRackPlug>,
+}
+
+fn product_circuit(plugin_id: &str) -> (&'static str, &'static str) {
+    product_circuit_from(
+        plugin_id,
+        crate::plugin_runtime::claude_process::claude_process_entry_enabled(),
+        crate::plugin_runtime::notes_compat::notes_compat_facade_enabled(),
+    )
+}
+
+fn product_circuit_from(
+    plugin_id: &str,
+    claude_process_entry: bool,
+    notes_isolated: bool,
+) -> (&'static str, &'static str) {
+    match plugin_id {
+        "com.mossx.engine.claude" => {
+            if claude_process_entry {
+                ("process-entry", "live")
+            } else {
+                ("core-spawn", "fallback")
+            }
+        }
+        "com.mossx.notes" => {
+            if notes_isolated {
+                ("isolated-sqlite", "live")
+            } else {
+                ("core-files", "fallback")
+            }
+        }
+        _ => ("undeclared", "idle"),
+    }
+}
+
+fn declared_plug(plug: &DeclaredPlug, state: &str, generation: u64, unit_id: Option<String>, live: bool) -> PluginRackPlug {
+    let (product_path, circuit) = product_circuit(plug.plugin_id);
+    PluginRackPlug {
+        plugin_id: plug.plugin_id.to_string(),
+        display_name: plug.display_name.to_string(),
+        kind: plug.kind.to_string(),
+        owner_class: plug.owner_class.to_string(),
+        state: state.to_string(),
+        generation,
+        unit_id,
+        live,
+        product_path: product_path.to_string(),
+        circuit: circuit.to_string(),
+    }
 }
 
 fn declared_idle() -> Vec<PluginRackPlug> {
     DECLARED_PLUGS
         .iter()
-        .map(|plug| PluginRackPlug {
-            plugin_id: plug.plugin_id.to_string(),
-            display_name: plug.display_name.to_string(),
-            kind: plug.kind.to_string(),
-            owner_class: plug.owner_class.to_string(),
-            state: "idle".to_string(),
-            generation: 0,
-            unit_id: None,
-            live: false,
-        })
+        .map(|plug| declared_plug(plug, "idle", 0, None, false))
         .collect()
 }
 
@@ -133,31 +177,28 @@ fn snapshot_from_host<D: crate::plugin_runtime::host::EntryDriver>(
     let plugs = DECLARED_PLUGS
         .iter()
         .map(|plug| match host.slot(plug.plugin_id) {
-            Some(slot) => PluginRackPlug {
-                plugin_id: plug.plugin_id.to_string(),
-                display_name: plug.display_name.to_string(),
-                kind: plug.kind.to_string(),
-                owner_class: plug.owner_class.to_string(),
-                state: Host::<D>::slot_state_name(slot.state).to_string(),
-                generation: slot.generation,
-                unit_id: slot.unit_id.clone(),
-                live: slot.state == SlotState::Ready,
-            },
-            None => PluginRackPlug {
-                plugin_id: plug.plugin_id.to_string(),
-                display_name: plug.display_name.to_string(),
-                kind: plug.kind.to_string(),
-                owner_class: plug.owner_class.to_string(),
-                state: Host::<D>::slot_state_name(SlotState::Idle).to_string(),
-                generation: 0,
-                unit_id: None,
-                live: false,
-            },
+            Some(slot) => declared_plug(
+                plug,
+                Host::<D>::slot_state_name(slot.state),
+                slot.generation,
+                slot.unit_id.clone(),
+                slot.state == SlotState::Ready,
+            ),
+            None => declared_plug(
+                plug,
+                Host::<D>::slot_state_name(SlotState::Idle),
+                0,
+                None,
+                false,
+            ),
         })
         .collect();
     PluginRackSnapshot {
         host_available: true,
         host_enabled: host.enabled(),
+        supervisor_live: false,
+        supervisor_pid: None,
+        supervisor_path: None,
         plugs,
     }
 }
@@ -166,12 +207,21 @@ pub fn unavailable_snapshot() -> PluginRackSnapshot {
     PluginRackSnapshot {
         host_available: false,
         host_enabled: false,
+        supervisor_live: false,
+        supervisor_pid: None,
+        supervisor_path: None,
         plugs: declared_idle(),
     }
 }
 
 pub fn snapshot_boot_host(host: &BootHost) -> PluginRackSnapshot {
-    snapshot_from_host(&host.host)
+    let mut snapshot = snapshot_from_host(&host.host);
+    snapshot.supervisor_pid = host.supervisor_pid();
+    snapshot.supervisor_live = snapshot.supervisor_pid.is_some();
+    snapshot.supervisor_path = host
+        .supervisor_path()
+        .map(|path| path.display().to_string());
+    snapshot
 }
 
 #[tauri::command]
@@ -201,6 +251,9 @@ mod tests {
         let snapshot = snapshot_boot_host(&host);
         assert!(snapshot.host_available);
         assert!(!snapshot.host_enabled);
+        assert!(snapshot.supervisor_live);
+        assert!(snapshot.supervisor_pid.is_some());
+        assert_ne!(snapshot.supervisor_pid, Some(std::process::id()));
         assert_eq!(snapshot.plugs.len(), 12);
         assert_eq!(snapshot.plugs[0].plugin_id, "com.mossx.engine.claude");
         assert_eq!(snapshot.plugs[1].plugin_id, "com.mossx.notes");
@@ -216,6 +269,13 @@ mod tests {
         assert_eq!(snapshot.plugs[11].plugin_id, "com.mossx.engine.pi");
         assert!(snapshot.plugs.iter().all(|plug| plug.state == "idle"));
         assert!(snapshot.plugs.iter().all(|plug| !plug.live));
+        assert_eq!(snapshot.plugs[0].product_path, "process-entry");
+        assert_eq!(snapshot.plugs[0].circuit, "live");
+        assert_eq!(snapshot.plugs[1].product_path, "isolated-sqlite");
+        assert_eq!(snapshot.plugs[1].circuit, "live");
+        assert!(snapshot.plugs[2..].iter().all(|plug| {
+            plug.product_path == "undeclared" && plug.circuit == "idle"
+        }));
         assert_eq!(snapshot.plugs[0].owner_class, "pilot");
         assert_eq!(snapshot.plugs[1].owner_class, "pilot");
         assert!(snapshot.plugs[2..].iter().all(|plug| plug.owner_class == "later-plugin"));
@@ -251,6 +311,22 @@ mod tests {
         assert!(!registry.contains("activate_plugin"));
         assert!(!registry.contains("plugin_runtime"));
         assert!(std::path::Path::new("src/engine/claude.rs").exists());
+    }
+
+    #[test]
+    fn explicit_off_maps_product_circuits_to_fallback() {
+        assert_eq!(
+            product_circuit_from("com.mossx.engine.claude", false, true),
+            ("core-spawn", "fallback")
+        );
+        assert_eq!(
+            product_circuit_from("com.mossx.notes", true, false),
+            ("core-files", "fallback")
+        );
+        assert_eq!(
+            product_circuit_from("com.mossx.engine.codex", true, true),
+            ("undeclared", "idle")
+        );
     }
 
     #[test]

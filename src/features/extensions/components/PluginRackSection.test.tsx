@@ -11,11 +11,24 @@ const translations: Record<string, string> = {
   "extensions.rack.loading": "Reading Host snapshot…",
   "extensions.rack.hostUnavailable": "Host snapshot unavailable.",
   "extensions.rack.hostDisabled": "Host is default-off.",
+  "extensions.rack.hostSupervisorLive": "Supervisor is live. Host activation stays off.",
   "extensions.rack.hostEnabled": "Host is enabled.",
+  "extensions.rack.supervisor": "Supervisor",
+  "extensions.rack.supervisorLive": "Separate process, rejecting activation",
+  "extensions.rack.supervisorPid": "PID",
+  "extensions.rack.supervisorPath": "Socket",
   "extensions.rack.ownerClass": "Class",
   "extensions.rack.ownerClasses.pilot": "Pilot",
   "extensions.rack.ownerClasses.later-plugin": "Later plugin",
-  "extensions.rack.state": "State",
+  "extensions.rack.circuit": "Circuit",
+  "extensions.rack.circuits.live": "Product path live",
+  "extensions.rack.circuits.fallback": "Explicit Core fallback",
+  "extensions.rack.circuits.idle": "Not wired",
+  "extensions.rack.productPath": "Product path",
+  "extensions.rack.productPaths.process-entry": "Process Entry",
+  "extensions.rack.productPaths.isolated-sqlite": "Isolated sqlite",
+  "extensions.rack.productPaths.undeclared": "Undeclared",
+  "extensions.rack.state": "Host slot",
   "extensions.rack.generation": "Generation",
   "extensions.rack.marketplaceLater": "Marketplace stays closed.",
   "extensions.rack.error": "Could not read the Host rack: {{message}}",
@@ -50,6 +63,9 @@ describe("PluginRackSection", () => {
     getPluginRackSnapshot.mockResolvedValue({
       ...DECLARED_PLUGIN_RACK_SNAPSHOT,
       hostAvailable: true,
+      supervisorLive: true,
+      supervisorPid: 4242,
+      supervisorPath: "/tmp/host.s",
     });
 
     render(<PluginRackSection />);
@@ -57,7 +73,9 @@ describe("PluginRackSection", () => {
     expect(await screen.findByRole("heading", { name: "Plugin rack" })).toBeTruthy();
     expect(screen.getByRole("heading", { name: "Engines" })).toBeTruthy();
     expect(screen.getByRole("heading", { name: "Features" })).toBeTruthy();
-    expect(screen.getByText("Host is default-off.")).toBeTruthy();
+    expect(screen.getByText("Supervisor is live. Host activation stays off.")).toBeTruthy();
+    expect(screen.getByText("4242")).toBeTruthy();
+    expect(screen.getByText("/tmp/host.s")).toBeTruthy();
 
     const engineGroup = screen.getByRole("region", { name: "Engines" });
     const featureGroup = screen.getByRole("region", { name: "Features" });
@@ -73,6 +91,10 @@ describe("PluginRackSection", () => {
     expect(screen.queryByRole("button")).toBeNull();
     const notesPlug = featureGroup.textContent ?? "";
     expect(notesPlug).toContain("Idle");
+    expect(engineGroup.textContent).toContain("Process Entry");
+    expect(engineGroup.textContent).toContain("Product path live");
+    expect(featureGroup.textContent).toContain("Isolated sqlite");
+    expect(featureGroup.textContent).toContain("Not wired");
   });
 
   it("shows an error when the snapshot command fails", async () => {

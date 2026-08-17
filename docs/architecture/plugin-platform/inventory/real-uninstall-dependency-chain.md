@@ -51,7 +51,8 @@
   → 缺口 1t：Notes 存量一次性导入（✅ 本批：flag-on 首次扫 note_card json；源文件保留）
   → 缺口 1u：Notes 产品默认隔离 sqlite（✅ 本批：未设即 on；0 回文件）
   → 缺口 1v：Host supervisor 独立进程（✅ 本批：OUT_DIR 制品；连接仍 host-disabled；不激活产品）
-  → 缺口 1w：Disable-not-delete / Slim / Marketplace 仍禁止
+  → 缺口 1w：插排只读报产品通电（✅ 本批：circuit/productPath + supervisor pid；Host slot 仍 idle）
+  → 缺口 1x：Disable-not-delete / Slim / Marketplace 仍禁止
   → 缺口 2：SlotState 补 Uninstalled（✅ 已补）+ atomic contribution registry（🔵 待做，P2.1）
   → 缺口 3：Notes owner 复核（✅ P4.7-19）
   → 缺口 3b：隔离 Notes CRUD（✅ P4.7-21）

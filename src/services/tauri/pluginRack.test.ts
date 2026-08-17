@@ -31,7 +31,21 @@ describe("DECLARED_PLUGIN_RACK_SNAPSHOT", () => {
       "com.mossx.engine.pi",
     ]);
     expect(DECLARED_PLUGIN_RACK_SNAPSHOT.hostEnabled).toBe(false);
+    expect(DECLARED_PLUGIN_RACK_SNAPSHOT.supervisorLive).toBe(false);
     expect(DECLARED_PLUGIN_RACK_SNAPSHOT.plugs.every((plug) => plug.state === "idle")).toBe(true);
+    expect(DECLARED_PLUGIN_RACK_SNAPSHOT.plugs[0]).toMatchObject({
+      productPath: "process-entry",
+      circuit: "live",
+    });
+    expect(DECLARED_PLUGIN_RACK_SNAPSHOT.plugs[1]).toMatchObject({
+      productPath: "isolated-sqlite",
+      circuit: "live",
+    });
+    expect(
+      DECLARED_PLUGIN_RACK_SNAPSHOT.plugs
+        .slice(2)
+        .every((plug) => plug.productPath === "undeclared" && plug.circuit === "idle"),
+    ).toBe(true);
     expect(
       DECLARED_PLUGIN_RACK_SNAPSHOT.plugs
         .filter((plug) => plug.pluginId === "com.mossx.engine.claude" || plug.pluginId === "com.mossx.notes")
