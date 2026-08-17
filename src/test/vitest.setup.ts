@@ -49,6 +49,8 @@ afterEach(async () => {
     "../features/composer/hooks/composerDraftStore"
   );
   __resetComposerDraftStoreForTests();
+  const { __resetPluginPresenceForTests } = await import("../services/pluginPresence");
+  __resetPluginPresenceForTests();
 });
 
 if (typeof Element !== "undefined" && !Element.prototype.getAnimations) {
@@ -1308,6 +1310,7 @@ if (!existingLocalStorage || typeof (existingLocalStorage as Storage).clear !== 
 vi.mock("@tauri-apps/api/core", () => ({
   convertFileSrc: (path: string) => `asset://localhost/${path}`,
   invoke: vi.fn(() => Promise.resolve(null)),
+  isTauri: () => false,
 }));
 
 // Mock client storage to use in-memory cache without Tauri backend

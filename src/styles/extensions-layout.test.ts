@@ -61,6 +61,9 @@ describe("extensions layout", () => {
     expect(getCssRuleBlock(".extensions-plugin-rack-bank")).toContain("display: grid;");
     expect(getCssRuleBlock(".extensions-plugin-rack-socket")).toContain("border-radius: var(--radius);");
     expect(getCssRuleBlock(".extensions-plugin-rack-well")).toContain("border-radius: 8px;");
+    expect(getCssRuleBlock(".extensions-plugin-market")).toContain("display: grid;");
+    expect(getCssRuleBlock(".extensions-plugin-market-listings")).toContain("display: grid;");
+    expect(getCssRuleBlock(".extensions-plugin-market-card")).toContain("border-radius: var(--radius);");
     expect(css).not.toContain("Browse Marketplace");
   });
 });

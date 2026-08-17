@@ -300,13 +300,22 @@ pub(crate) fn install_plugin(
 }
 
 #[tauri::command]
-pub(crate) fn uninstall_plugin(
+pub(crate) async fn uninstall_plugin(
     app: tauri::AppHandle,
     plugin_id: String,
 ) -> Result<PluginRackSnapshot, String> {
-    with_boot_host(&app, |host| {
+    let snapshot = with_boot_host(&app, |host| {
         install::uninstall_plugin(&mut **host, &plugin_id).map_err(map_host_error)
-    })
+    })?;
+    if plugin_id == CLAUDE_PLUGIN_ID {
+        if let Some(app_state) = app.try_state::<crate::state::AppState>() {
+            app_state
+                .engine_manager
+                .interrupt_all_claude_sessions()
+                .await;
+        }
+    }
+    Ok(snapshot)
 }
 
 #[cfg(test)]
@@ -435,6 +444,28 @@ mod tests {
         assert!(!registry.contains("activate_plugin"));
         assert!(!registry.contains("plugin_runtime"));
         assert!(std::path::Path::new("src/engine/claude.rs").exists());
+    }
+
+    #[test]
+    fn uninstall_claude_interrupts_sessions_after_lockfile() {
+        let source = include_str!("plugin_rack.rs");
+        assert!(source.contains("pub(crate) async fn uninstall_plugin"));
+        assert!(source.contains("interrupt_all_claude_sessions"));
+        assert!(source.contains("try_state::<crate::state::AppState>()"));
+        let uninstall_fn = source
+            .split("pub(crate) async fn uninstall_plugin")
+            .nth(1)
+            .expect("async uninstall_plugin");
+        let lockfile_pos = uninstall_fn
+            .find("install::uninstall_plugin")
+            .expect("lockfile uninstall first");
+        let interrupt_pos = uninstall_fn
+            .find("interrupt_all_claude_sessions")
+            .expect("interrupt after lockfile");
+        assert!(
+            lockfile_pos < interrupt_pos,
+            "lockfile uninstall must precede interrupt_all"
+        );
     }
 
     #[test]

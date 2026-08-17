@@ -1,6 +1,6 @@
 /** @vitest-environment jsdom */
-import { render, screen, waitFor, within } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { DECLARED_PLUGIN_RACK_SNAPSHOT } from "@/services/tauri/pluginRack";
 import { PluginRackSection } from "./PluginRackSection";
@@ -46,6 +46,26 @@ const translations: Record<string, string> = {
   "extensions.rack.kinds.engine": "Engines",
   "extensions.rack.kinds.feature": "Features",
   "extensions.rack.states.idle": "Idle",
+  "extensions.market.title": "Plugin Market",
+  "extensions.market.subtitle": "Local curated catalog.",
+  "extensions.market.previewBanner": "Browser preview only.",
+  "extensions.market.available": "Available plugs",
+  "extensions.market.comingSoon": "Coming soon",
+  "extensions.market.installed": "Installed",
+  "extensions.market.availableBadge": "Not installed",
+  "extensions.market.comingSoonBadge": "Sealed",
+  "extensions.market.publisher": "mossx",
+  "extensions.market.footnote": "Local curated catalog only. Remote Marketplace stays closed.",
+  "extensions.market.listings.claude": "Claude Engine listing.",
+  "extensions.market.listings.notes": "Notes listing.",
+  "extensions.market.listings.projectMap": "Project Map listing.",
+  "extensions.market.listings.later": "Later plugin listing.",
+  "extensions.market.claudeUninstallTitle": "Uninstall Claude Engine",
+  "extensions.market.claudeUninstallBody":
+    "Uninstalling will interrupt every in-flight Claude turn and hide the Claude entry. Cancel keeps Claude installed.",
+  "extensions.market.claudeUninstallConfirm": "Uninstall and interrupt",
+  "common.cancel": "Cancel",
+  "common.confirm": "Confirm",
 };
 
 vi.mock("react-i18next", () => ({
@@ -60,16 +80,26 @@ vi.mock("react-i18next", () => ({
 }));
 
 const getPluginRackSnapshot = vi.hoisted(() => vi.fn());
+const installPlugin = vi.hoisted(() => vi.fn());
+const uninstallPlugin = vi.hoisted(() => vi.fn());
 
 vi.mock("@/services/tauri/pluginRack", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/services/tauri/pluginRack")>();
   return {
     ...actual,
     getPluginRackSnapshot,
+    installPlugin,
+    uninstallPlugin,
   };
 });
 
 describe("PluginRackSection", () => {
+  beforeEach(() => {
+    getPluginRackSnapshot.mockReset();
+    installPlugin.mockReset();
+    uninstallPlugin.mockReset();
+  });
+
   it("renders a visual strip with three live sockets and nine sealed sockets", async () => {
     getPluginRackSnapshot.mockResolvedValue({
       ...DECLARED_PLUGIN_RACK_SNAPSHOT,
@@ -81,9 +111,11 @@ describe("PluginRackSection", () => {
 
     render(<PluginRackSection />);
 
-    expect(await screen.findByRole("heading", { name: "Plugin rack" })).toBeTruthy();
-    expect(screen.getByRole("heading", { name: "Live sockets" })).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "Plugin Market" })).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "Live sockets" })).toBeTruthy();
     expect(screen.getByRole("heading", { name: "Sealed sockets" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Available plugs" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Coming soon" })).toBeTruthy();
     expect(screen.queryByRole("heading", { name: "Engines" })).toBeNull();
     expect(screen.queryByRole("heading", { name: "Features" })).toBeNull();
     expect(screen.getByText("Supervisor is live. Host activation stays off.")).toBeTruthy();
@@ -92,6 +124,8 @@ describe("PluginRackSection", () => {
 
     const liveBank = screen.getByRole("region", { name: "Live sockets" });
     const laterBank = screen.getByRole("region", { name: "Sealed sockets" });
+    const availableShelf = screen.getByRole("region", { name: "Available plugs" });
+    const comingSoonShelf = screen.getByRole("region", { name: "Coming soon" });
     expect(liveBank.textContent).toContain("com.mossx.engine.claude");
     expect(liveBank.textContent).toContain("com.mossx.notes");
     expect(liveBank.textContent).toContain("com.mossx.project-map");
@@ -104,15 +138,22 @@ describe("PluginRackSection", () => {
     expect(laterBank.textContent).toContain("com.mossx.kanban");
     expect(laterBank.textContent).toContain("com.mossx.engine.codex");
     expect(laterBank.textContent).toContain("Sealed");
-    expect(screen.getByText("Marketplace stays closed.")).toBeTruthy();
+    expect(availableShelf.textContent).toContain("Claude Engine listing.");
+    expect(availableShelf.textContent).toContain("Notes listing.");
+    expect(availableShelf.textContent).toContain("Project Map listing.");
+    expect(comingSoonShelf.textContent).toContain("Later plugin listing.");
+    expect(screen.getByText("Local curated catalog only. Remote Marketplace stays closed.")).toBeTruthy();
+    expect(screen.queryByText("Browse Marketplace")).toBeNull();
 
     const actions = screen.getAllByRole("button");
     expect(actions).toHaveLength(3);
     expect(actions.map((button) => button.textContent)).toEqual(["Uninstall", "Uninstall", "Uninstall"]);
-    expect(liveBank.contains(actions[0])).toBe(true);
-    expect(liveBank.contains(actions[1])).toBe(true);
-    expect(liveBank.contains(actions[2])).toBe(true);
+    expect(availableShelf.contains(actions[0])).toBe(true);
+    expect(availableShelf.contains(actions[1])).toBe(true);
+    expect(availableShelf.contains(actions[2])).toBe(true);
+    expect(liveBank.querySelectorAll("button")).toHaveLength(0);
     expect(laterBank.querySelectorAll("button")).toHaveLength(0);
+    expect(comingSoonShelf.querySelectorAll("button")).toHaveLength(0);
     expect(within(laterBank).queryByRole("button")).toBeNull();
   });
 
@@ -127,13 +168,144 @@ describe("PluginRackSection", () => {
     render(<PluginRackSection />);
 
     const liveBank = await screen.findByRole("region", { name: "Live sockets" });
-    expect(within(liveBank).getAllByRole("button").map((button) => button.textContent)).toEqual([
+    const availableShelf = screen.getByRole("region", { name: "Available plugs" });
+    expect(within(availableShelf).getAllByRole("button").map((button) => button.textContent)).toEqual([
       "Uninstall",
       "Install",
       "Uninstall",
     ]);
     expect(liveBank.textContent).toContain("Unplugged");
+    expect(availableShelf.textContent).toContain("Not installed");
+    expect(within(liveBank).queryByRole("button")).toBeNull();
     expect(screen.getAllByRole("button")).toHaveLength(3);
+  });
+
+  it("uninstalls from the marketplace listing and leaves sealed cards inert", async () => {
+    const nextSnapshot = {
+      ...DECLARED_PLUGIN_RACK_SNAPSHOT,
+      plugs: DECLARED_PLUGIN_RACK_SNAPSHOT.plugs.map((plug) =>
+        plug.pluginId === "com.mossx.notes" ? { ...plug, desiredState: "uninstalled" } : plug,
+      ),
+    };
+    getPluginRackSnapshot.mockResolvedValue(DECLARED_PLUGIN_RACK_SNAPSHOT);
+    uninstallPlugin.mockResolvedValue(nextSnapshot);
+
+    render(<PluginRackSection />);
+
+    const availableShelf = await screen.findByRole("region", { name: "Available plugs" });
+    const notesCard = (await within(availableShelf).findByText("com.mossx.notes")).closest("li");
+    expect(notesCard).toBeTruthy();
+    await act(async () => {
+      within(notesCard as HTMLElement).getByRole("button", { name: "Uninstall" }).click();
+    });
+
+    await waitFor(() => {
+      expect(uninstallPlugin).toHaveBeenCalledWith("com.mossx.notes");
+    });
+    expect(await screen.findByRole("region", { name: "Available plugs" })).toBeTruthy();
+    expect(within(screen.getByRole("region", { name: "Available plugs" })).getAllByRole("button").map((button) => button.textContent)).toEqual([
+      "Uninstall",
+      "Install",
+      "Uninstall",
+    ]);
+    expect(installPlugin).not.toHaveBeenCalled();
+  });
+
+  it("installs from the marketplace listing and occupies the matching socket", async () => {
+    const emptyNotes = {
+      ...DECLARED_PLUGIN_RACK_SNAPSHOT,
+      plugs: DECLARED_PLUGIN_RACK_SNAPSHOT.plugs.map((plug) =>
+        plug.pluginId === "com.mossx.notes" ? { ...plug, desiredState: "uninstalled" } : plug,
+      ),
+    };
+    getPluginRackSnapshot.mockResolvedValue(emptyNotes);
+    installPlugin.mockResolvedValue(DECLARED_PLUGIN_RACK_SNAPSHOT);
+
+    render(<PluginRackSection />);
+
+    const availableShelf = await screen.findByRole("region", { name: "Available plugs" });
+    const notesCard = (await within(availableShelf).findByText("com.mossx.notes")).closest("li");
+    expect(notesCard).toBeTruthy();
+    await act(async () => {
+      within(notesCard as HTMLElement).getByRole("button", { name: "Install" }).click();
+    });
+
+    await waitFor(() => {
+      expect(installPlugin).toHaveBeenCalledWith("com.mossx.notes");
+    });
+    expect(
+      within(screen.getByRole("region", { name: "Available plugs" }))
+        .getAllByRole("button")
+        .map((button) => button.textContent),
+    ).toEqual(["Uninstall", "Uninstall", "Uninstall"]);
+    expect(screen.getByRole("region", { name: "Live sockets" }).textContent).toContain("Plugged");
+    expect(uninstallPlugin).not.toHaveBeenCalled();
+  });
+
+  it("asks before uninstalling Claude and keeps it installed on cancel", async () => {
+    getPluginRackSnapshot.mockResolvedValue(DECLARED_PLUGIN_RACK_SNAPSHOT);
+
+    render(<PluginRackSection />);
+
+    const availableShelf = await screen.findByRole("region", { name: "Available plugs" });
+    const claudeCard = (await within(availableShelf).findByText("com.mossx.engine.claude")).closest("li");
+    expect(claudeCard).toBeTruthy();
+    await act(async () => {
+      within(claudeCard as HTMLElement).getByRole("button", { name: "Uninstall" }).click();
+    });
+
+    const dialog = await screen.findByRole("alertdialog");
+    expect(dialog.textContent).toContain("Uninstall Claude Engine");
+    expect(dialog.textContent).toContain("interrupt every in-flight Claude turn");
+    expect(uninstallPlugin).not.toHaveBeenCalled();
+
+    await act(async () => {
+      within(dialog).getByRole("button", { name: "Cancel" }).click();
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByRole("alertdialog")).toBeNull();
+    });
+    expect(uninstallPlugin).not.toHaveBeenCalled();
+    expect(
+      within(screen.getByRole("region", { name: "Available plugs" }))
+        .getAllByRole("button")
+        .map((button) => button.textContent),
+    ).toEqual(["Uninstall", "Uninstall", "Uninstall"]);
+  });
+
+  it("uninstalls Claude only after the interrupt prompt is confirmed", async () => {
+    const nextSnapshot = {
+      ...DECLARED_PLUGIN_RACK_SNAPSHOT,
+      plugs: DECLARED_PLUGIN_RACK_SNAPSHOT.plugs.map((plug) =>
+        plug.pluginId === "com.mossx.engine.claude" ? { ...plug, desiredState: "uninstalled" } : plug,
+      ),
+    };
+    getPluginRackSnapshot.mockResolvedValue(DECLARED_PLUGIN_RACK_SNAPSHOT);
+    uninstallPlugin.mockResolvedValue(nextSnapshot);
+
+    render(<PluginRackSection />);
+
+    const availableShelf = await screen.findByRole("region", { name: "Available plugs" });
+    const claudeCard = (await within(availableShelf).findByText("com.mossx.engine.claude")).closest("li");
+    expect(claudeCard).toBeTruthy();
+    await act(async () => {
+      within(claudeCard as HTMLElement).getByRole("button", { name: "Uninstall" }).click();
+    });
+
+    const dialog = await screen.findByRole("alertdialog");
+    await act(async () => {
+      within(dialog).getByRole("button", { name: "Uninstall and interrupt" }).click();
+    });
+
+    await waitFor(() => {
+      expect(uninstallPlugin).toHaveBeenCalledWith("com.mossx.engine.claude");
+    });
+    expect(
+      within(screen.getByRole("region", { name: "Available plugs" }))
+        .getAllByRole("button")
+        .map((button) => button.textContent),
+    ).toEqual(["Install", "Uninstall", "Uninstall"]);
   });
 
   it("shows an error when the snapshot command fails", async () => {

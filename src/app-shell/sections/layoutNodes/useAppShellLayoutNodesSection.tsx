@@ -72,6 +72,7 @@ import {
   type DomainFlattenIdentityCache,
 } from "../../domains/appShellDomainContexts";
 import { isSharedSessionThreadId } from "@mossx/plugin-shared-session/runtime";
+import { usePluginPresence } from "../../../services/pluginPresence";
 
 type AppShellLayoutNodesContext = Record<string, any>;
 
@@ -147,6 +148,7 @@ export function useAppShellLayoutNodesSection(
   const runtimeRunState = input.appShellDomainContexts.runtimeContext
     .runtimeRunState as any;
   const clientUiVisibility = useClientUiVisibility();
+  const pluginPresence = usePluginPresence();
   const { isExitedSessionsHidden, toggleExitedSessionsHidden } =
     useExitedSessionVisibility();
   const [rootSessionFolderDraftRequestByWorkspaceId, setRootSessionFolderDraftRequestByWorkspaceId] =
@@ -1572,6 +1574,9 @@ export function useAppShellLayoutNodesSection(
     );
   });
   const handleOpenProjectMap = useEventCallback(() => {
+    if (!pluginPresence.projectMap) {
+      return;
+    }
     closeSettings();
     collapseSidebar();
     setAppMode("chat");
@@ -1829,6 +1834,9 @@ export function useAppShellLayoutNodesSection(
   });
   const handleGoProjects = useEventCallback(() => setActiveTab("projects"));
   const handleOpenMemory = useEventCallback(() => {
+    if (!pluginPresence.projectMap) {
+      return;
+    }
     setFocusedProjectMemoryId(null);
     setFocusedWorkspaceNoteId(null);
     closeSettings();
@@ -1836,6 +1844,9 @@ export function useAppShellLayoutNodesSection(
     setCenterMode("memory");
   });
   const handleOpenProjectMemory = useEventCallback(() => {
+    if (!pluginPresence.projectMap) {
+      return;
+    }
     setFocusedProjectMemoryId(null);
     setFocusedWorkspaceNoteId(null);
     closeSettings();
@@ -1848,6 +1859,9 @@ export function useAppShellLayoutNodesSection(
     }
   });
   const handleOpenNotes = useEventCallback(() => {
+    if (!pluginPresence.notes) {
+      return;
+    }
     setFocusedProjectMemoryId(null);
     setFocusedWorkspaceNoteId(null);
     closeSettings();
@@ -1872,6 +1886,40 @@ export function useAppShellLayoutNodesSection(
   const handleOpenReleaseNotes = useEventCallback(() => {
     void openReleaseNotes();
   });
+
+  useEffect(() => {
+    if (!pluginPresence.notes) {
+      if (centerMode === "notes") {
+        setCenterMode("chat");
+      }
+      if (filePanelMode === "notes") {
+        setFilePanelMode("files");
+      }
+      if (editorSplitCompanion === "notes") {
+        setEditorSplitCompanion("chat");
+      }
+    }
+    if (!pluginPresence.projectMap) {
+      if (centerMode === "projectMap" || centerMode === "memory") {
+        setCenterMode("chat");
+      }
+      if (filePanelMode === "memory") {
+        setFilePanelMode("files");
+      }
+      if (editorSplitCompanion === "projectMap") {
+        setEditorSplitCompanion("chat");
+      }
+    }
+  }, [
+    pluginPresence.notes,
+    pluginPresence.projectMap,
+    centerMode,
+    filePanelMode,
+    editorSplitCompanion,
+    setCenterMode,
+    setFilePanelMode,
+    setEditorSplitCompanion,
+  ]);
 
   useModuleViewShortcuts({
     toggleGitGraphShortcut: appSettings.toggleGitGraphShortcut,

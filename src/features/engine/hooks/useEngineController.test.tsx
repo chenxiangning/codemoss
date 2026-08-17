@@ -16,6 +16,8 @@ import {
 } from "../../../services/clientStorage";
 import type { DebugEntry, EngineStatus } from "../../../types";
 import { STORAGE_KEYS as MODEL_STORAGE_KEYS } from "@mossx/plugin-models/runtime";
+import { publishPluginRackSnapshot } from "../../../services/pluginPresence";
+import { DECLARED_PLUGIN_RACK_SNAPSHOT } from "../../../services/tauri/pluginRack";
 import { STORAGE_KEYS as PROVIDER_STORAGE_KEYS } from "../../composer/types/provider";
 
 function createDeferred<T>() {
@@ -523,6 +525,7 @@ describe("useEngineController", () => {
       "grok",
       "kimi",
       "opencode",
+      "pi",
     ]);
     expect(
       result.current.availableEngines.every(
@@ -1710,5 +1713,33 @@ describe("useEngineController", () => {
         missedByGuiPath: true,
       },
     });
+  });
+
+  it("hides Claude and switches away after the plug is uninstalled", async () => {
+    detectEnginesMock.mockResolvedValue([
+      createEngineStatus("claude", true),
+      createEngineStatus("codex", true),
+    ]);
+    getActiveEngineMock.mockResolvedValue("claude");
+    getEngineModelsMock.mockResolvedValue([]);
+    publishPluginRackSnapshot({
+      ...DECLARED_PLUGIN_RACK_SNAPSHOT,
+      plugs: DECLARED_PLUGIN_RACK_SNAPSHOT.plugs.map((plug) =>
+        plug.pluginId === "com.mossx.engine.claude"
+          ? { ...plug, desiredState: "uninstalled" }
+          : plug,
+      ),
+    });
+
+    const { result } = renderHook(() =>
+      useEngineController({ activeWorkspace: null }),
+    );
+
+    await waitFor(() => expect(result.current.isInitialized).toBe(true));
+    await waitFor(() => expect(result.current.activeEngine).toBe("codex"));
+    expect(result.current.availableEngines.map((engine) => engine.type)).not.toContain(
+      "claude",
+    );
+    expect(switchEngineMock).toHaveBeenCalledWith("codex");
   });
 });

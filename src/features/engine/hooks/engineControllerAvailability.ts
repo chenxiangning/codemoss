@@ -22,6 +22,32 @@ export const ENABLED_ENGINE_TYPES: readonly EngineType[] = Object.freeze(
   ),
 );
 
+export function excludeUninstalledPluginEngines(
+  engines: readonly EngineDisplayInfo[],
+  claudePresent: boolean,
+): EngineDisplayInfo[] {
+  if (claudePresent) {
+    return engines.slice();
+  }
+  return engines.filter((engine) => engine.type !== "claude");
+}
+
+export function resolveEngineWhenClaudeUninstalled(
+  current: EngineType,
+  installedTypes: readonly EngineType[],
+  enabledTypes: readonly EngineType[],
+  claudePresent: boolean,
+): EngineType {
+  if (claudePresent || current !== "claude") {
+    return current;
+  }
+  return (
+    installedTypes.find((engineType) => engineType !== "claude") ??
+    enabledTypes.find((engineType) => engineType !== "claude") ??
+    current
+  );
+}
+
 export function buildAvailableEngines(
   engineStatuses: readonly EngineStatus[],
   isInitialized: boolean,

@@ -47,6 +47,7 @@ import type {
   CanvasSemanticGraph,
   IntentCanvasCodeSelectionAnchor,
 } from "@mossx/plugin-intent-canvas/runtime";
+import { usePluginPresence } from "../../../services/pluginPresence";
 import { pushErrorToast } from "../../../services/toasts";
 import {
   buildGitStatusProjectMapImpactInput,
@@ -318,6 +319,7 @@ export function useLayoutNodes(input: LayoutNodesOptions): LayoutNodesResult {
   const options = flattenLayoutNodesOptions(input);
   const { t } = useTranslation();
   const clientUiVisibility = useClientUiVisibility();
+  const pluginPresence = usePluginPresence();
   const onOpenFile = options.onOpenFile;
   const onFilePanelModeChange = options.onFilePanelModeChange;
   const [rewindDialogRequest, setRewindDialogRequest] =
@@ -456,14 +458,17 @@ export function useLayoutNodes(input: LayoutNodesOptions): LayoutNodesResult {
     () => ({
       // Kill-switched: never show activity entry even if client UI visibility allows it.
       activity: false as const,
-      projectMap: clientUiVisibility.isControlVisible("rightToolbar.projectMap"),
+      projectMap:
+        pluginPresence.projectMap &&
+        clientUiVisibility.isControlVisible("rightToolbar.projectMap"),
       radar: clientUiVisibility.isControlVisible("rightToolbar.radar"),
       git: clientUiVisibility.isControlVisible("rightToolbar.git"),
       files: clientUiVisibility.isControlVisible("rightToolbar.files"),
       search: clientUiVisibility.isControlVisible("rightToolbar.search"),
-      notes: clientUiVisibility.isControlVisible("rightToolbar.notes"),
+      notes:
+        pluginPresence.notes && clientUiVisibility.isControlVisible("rightToolbar.notes"),
     }),
-    [clientUiVisibility],
+    [clientUiVisibility, pluginPresence.notes, pluginPresence.projectMap],
   );
   const hasVisibleRightToolbarControl = Object.values(
     rightToolbarVisibleTabs,
@@ -2301,6 +2306,9 @@ export function useLayoutNodes(input: LayoutNodesOptions): LayoutNodesResult {
         return;
       }
       if (tabId === "projectMap") {
+        if (!pluginPresence.projectMap) {
+          return;
+        }
         if (isProjectMapSurfaceActive) {
           if (centerMode === "editor") {
             setEditorSplitCompanion("chat");
@@ -2320,6 +2328,9 @@ export function useLayoutNodes(input: LayoutNodesOptions): LayoutNodesResult {
         return;
       }
       if (tabId === "notes") {
+        if (!pluginPresence.notes) {
+          return;
+        }
         onFilePanelModeChange("notes");
         setCenterMode(centerMode === "notes" ? "chat" : "notes");
         return;
@@ -2340,6 +2351,8 @@ export function useLayoutNodes(input: LayoutNodesOptions): LayoutNodesResult {
       onOpenDetachedFileExplorer,
       isEditorFileMaximized,
       onToggleEditorFileMaximized,
+      pluginPresence.notes,
+      pluginPresence.projectMap,
       setCenterMode,
       setEditorSplitCompanion,
     ],
@@ -2452,6 +2465,9 @@ export function useLayoutNodes(input: LayoutNodesOptions): LayoutNodesResult {
       );
     }
     if (options.filePanelMode === "memory") {
+      if (!pluginPresence.projectMap) {
+        return null;
+      }
       return (
         <ProjectMemoryPanel
           workspaceId={options.activeWorkspace?.id ?? null}
@@ -2745,6 +2761,7 @@ export function useLayoutNodes(input: LayoutNodesOptions): LayoutNodesResult {
     handleCreateCodeAnnotation,
     handleRemoveCodeAnnotation,
     selectedCodeAnnotations,
+    pluginPresence.projectMap,
   ]);
 
   const gitDiffViewerNode = useMemo(
@@ -2865,9 +2882,10 @@ export function useLayoutNodes(input: LayoutNodesOptions): LayoutNodesResult {
     ) : null;
 
   const isWorkspaceNoteCardsMounted =
-    options.centerMode === "notes" ||
-    (options.centerMode === "editor" &&
-      options.editorSplitCompanion === "notes");
+    pluginPresence.notes &&
+    (options.centerMode === "notes" ||
+      (options.centerMode === "editor" &&
+        options.editorSplitCompanion === "notes"));
   const noteCardsPanelNode = isWorkspaceNoteCardsMounted ? (
     <WorkspaceNoteCardPanel
       workspaceId={options.activeWorkspace?.id ?? null}
@@ -2900,7 +2918,7 @@ export function useLayoutNodes(input: LayoutNodesOptions): LayoutNodesResult {
         : EMPTY_PROJECT_MAP_IMPACT_INPUT,
     [isProjectMapSurfaceActive, options.gitStatus.files],
   );
-  const projectMapPanelNode = isProjectMapSurfaceActive ? (
+  const projectMapPanelNode = pluginPresence.projectMap && isProjectMapSurfaceActive ? (
     <Suspense fallback={<HeavyPanelFallback />}>
       <ProjectMapPanel
         key={options.activeWorkspace?.id ?? "no-workspace"}

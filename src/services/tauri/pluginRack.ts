@@ -1,5 +1,7 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
 
+import { publishPluginRackSnapshot } from "../pluginPresence";
+
 export type PluginRackPlug = {
   pluginId: string;
   displayName: string;
@@ -27,6 +29,51 @@ export type PluginRackSnapshot = {
   plugs: PluginRackPlug[];
 };
 
+export const ALLOWLISTED_PLUGIN_IDS = [
+  "com.mossx.engine.claude",
+  "com.mossx.notes",
+  "com.mossx.project-map",
+] as const;
+
+export type AllowlistedPluginId = (typeof ALLOWLISTED_PLUGIN_IDS)[number];
+
+export function isAllowlistedPluginId(pluginId: string): pluginId is AllowlistedPluginId {
+  return (ALLOWLISTED_PLUGIN_IDS as readonly string[]).includes(pluginId);
+}
+
+export function isPlugged(plug: PluginRackPlug): boolean {
+  return plug.desiredState !== "uninstalled";
+}
+
+export function partitionPluginRackPlugs(plugs: PluginRackPlug[]): {
+  live: PluginRackPlug[];
+  later: PluginRackPlug[];
+} {
+  const live: PluginRackPlug[] = [];
+  const later: PluginRackPlug[] = [];
+  for (const plug of plugs) {
+    if (plug.installable) {
+      live.push(plug);
+    } else {
+      later.push(plug);
+    }
+  }
+  return { live, later };
+}
+
+export function listingCopyKey(pluginId: string): "claude" | "notes" | "projectMap" | "later" {
+  if (pluginId === "com.mossx.engine.claude") {
+    return "claude";
+  }
+  if (pluginId === "com.mossx.notes") {
+    return "notes";
+  }
+  if (pluginId === "com.mossx.project-map") {
+    return "projectMap";
+  }
+  return "later";
+}
+
 export const DECLARED_PLUGIN_CIRCUITS = {
   claude: { productPath: "process-entry", circuit: "live", coreOwner: "disabled" },
   notes: { productPath: "isolated-sqlite", circuit: "live", coreOwner: "disabled" },
@@ -53,16 +100,8 @@ function declaredPlug(
     productPath: circuit.productPath,
     circuit: circuit.circuit,
     coreOwner: circuit.coreOwner,
-    installable:
-      pluginId === "com.mossx.notes"
-      || pluginId === "com.mossx.engine.claude"
-      || pluginId === "com.mossx.project-map",
-    desiredState:
-      pluginId === "com.mossx.notes"
-      || pluginId === "com.mossx.engine.claude"
-      || pluginId === "com.mossx.project-map"
-        ? "installed"
-        : "uninstalled",
+    installable: isAllowlistedPluginId(pluginId),
+    desiredState: isAllowlistedPluginId(pluginId) ? "installed" : "uninstalled",
     contributionsLive: false,
     allowlistedLive: false,
   };
@@ -90,23 +129,58 @@ export const DECLARED_PLUGIN_RACK_SNAPSHOT: PluginRackSnapshot = {
   ],
 };
 
+function clonePluginRackSnapshot(snapshot: PluginRackSnapshot): PluginRackSnapshot {
+  return {
+    ...snapshot,
+    plugs: snapshot.plugs.map((plug) => ({ ...plug })),
+  };
+}
+
+let previewSnapshot = clonePluginRackSnapshot(DECLARED_PLUGIN_RACK_SNAPSHOT);
+
+export function resetPreviewPluginRackSnapshot(): void {
+  previewSnapshot = clonePluginRackSnapshot(DECLARED_PLUGIN_RACK_SNAPSHOT);
+  publishPluginRackSnapshot(previewSnapshot);
+}
+
+function applyPreviewDesiredState(
+  pluginId: string,
+  desiredState: "installed" | "uninstalled",
+): PluginRackSnapshot {
+  if (!isAllowlistedPluginId(pluginId)) {
+    throw new Error("plugin-not-allowlisted");
+  }
+  previewSnapshot = {
+    ...previewSnapshot,
+    plugs: previewSnapshot.plugs.map((plug) =>
+      plug.pluginId === pluginId ? { ...plug, desiredState } : plug,
+    ),
+  };
+  return clonePluginRackSnapshot(previewSnapshot);
+}
+
+function publishAndReturn(snapshot: PluginRackSnapshot): PluginRackSnapshot {
+  publishPluginRackSnapshot(snapshot);
+  return snapshot;
+}
+
 export async function getPluginRackSnapshot(): Promise<PluginRackSnapshot> {
   if (!isTauri()) {
-    return DECLARED_PLUGIN_RACK_SNAPSHOT;
+    return publishAndReturn(clonePluginRackSnapshot(previewSnapshot));
   }
-  return invoke<PluginRackSnapshot>("get_plugin_rack_snapshot");
+  return publishAndReturn(await invoke<PluginRackSnapshot>("get_plugin_rack_snapshot"));
 }
 
 export async function installPlugin(pluginId: string): Promise<PluginRackSnapshot> {
   if (!isTauri()) {
-    throw new Error("plugin-host-unavailable");
+    return publishAndReturn(applyPreviewDesiredState(pluginId, "installed"));
   }
-  return invoke<PluginRackSnapshot>("install_plugin", { pluginId });
+  return publishAndReturn(await invoke<PluginRackSnapshot>("install_plugin", { pluginId }));
 }
 
 export async function uninstallPlugin(pluginId: string): Promise<PluginRackSnapshot> {
   if (!isTauri()) {
-    throw new Error("plugin-host-unavailable");
+    return publishAndReturn(applyPreviewDesiredState(pluginId, "uninstalled"));
   }
-  return invoke<PluginRackSnapshot>("uninstall_plugin", { pluginId });
+  return publishAndReturn(await invoke<PluginRackSnapshot>("uninstall_plugin", { pluginId }));
 }

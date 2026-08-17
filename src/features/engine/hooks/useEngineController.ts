@@ -15,10 +15,16 @@ import {
   runCodexDoctor,
   switchEngine,
 } from "../../../services/tauri";
+import {
+  getPluginPresenceSnapshot,
+  usePluginPresence,
+} from "../../../services/pluginPresence";
 import { startupOrchestrator } from "../../startup-orchestration/utils/startupOrchestrator";
 import {
   buildAvailableEngines,
   ENABLED_ENGINE_TYPES,
+  excludeUninstalledPluginEngines,
+  resolveEngineWhenClaudeUninstalled,
   type EngineDisplayInfo,
 } from "./engineControllerAvailability";
 import {
@@ -89,6 +95,7 @@ export function useEngineController({
   const workspaceId = activeWorkspace?.id ?? null;
   const isConnected = Boolean(activeWorkspace?.connected);
   const enabledEngineTypes = ENABLED_ENGINE_TYPES;
+  const pluginPresence = usePluginPresence();
 
   const loadModelsForEngine = useCallback(
     async (
@@ -249,6 +256,9 @@ export function useEngineController({
             "claude";
         }
         const persistedEngine = readPersistedEngineSelection();
+        const claudePresent = getPluginPresenceSnapshot().claude;
+        const persistedEngineAllowed =
+          persistedEngine !== "claude" || claudePresent;
         const persistedEngineInstalled = persistedEngine
           ? Boolean(
               statuses.find((status) => status.engineType === persistedEngine)
@@ -257,6 +267,7 @@ export function useEngineController({
           : false;
         if (
           persistedEngine &&
+          persistedEngineAllowed &&
           enabledEngineTypes.includes(persistedEngine) &&
           persistedEngineInstalled &&
           persistedEngine !== detectedEngine
@@ -310,7 +321,40 @@ export function useEngineController({
           payload: { statuses, currentEngine: nextActiveEngine },
         });
 
-        const nextAvailableEngines = buildAvailableEngines(statuses, true);
+        const installedTypes = statuses
+          .filter((status) => status.installed)
+          .map((status) => status.engineType);
+        const engineAfterUninstall = resolveEngineWhenClaudeUninstalled(
+          nextActiveEngine,
+          installedTypes,
+          enabledEngineTypes,
+          claudePresent,
+        );
+        if (engineAfterUninstall !== nextActiveEngine) {
+          nextActiveEngine = engineAfterUninstall;
+          if (installedTypes.includes(engineAfterUninstall)) {
+            try {
+              await switchEngine(engineAfterUninstall);
+            } catch (error) {
+              onDebug?.({
+                id: `${Date.now()}-engine-leave-uninstalled-claude-error`,
+                timestamp: Date.now(),
+                source: "error",
+                label: "engine/leave uninstalled claude error",
+                payload: {
+                  to: engineAfterUninstall,
+                  error: error instanceof Error ? error.message : String(error),
+                },
+              });
+            }
+          }
+          persistEngineSelection(engineAfterUninstall);
+        }
+
+        const nextAvailableEngines = excludeUninstalledPluginEngines(
+          buildAvailableEngines(statuses, true),
+          claudePresent,
+        );
 
         setEngineStatuses(statuses);
         setActiveEngineState(nextActiveEngine);
@@ -474,8 +518,12 @@ export function useEngineController({
    * Get display information for all engines
    */
   const availableEngines = useMemo(
-    () => buildAvailableEngines(engineStatuses, isInitialized),
-    [engineStatuses, isInitialized],
+    () =>
+      excludeUninstalledPluginEngines(
+        buildAvailableEngines(engineStatuses, isInitialized),
+        pluginPresence.claude,
+      ),
+    [engineStatuses, isInitialized, pluginPresence.claude],
   );
 
   /**
@@ -555,6 +603,25 @@ export function useEngineController({
     currentEngineStatus?.installed,
     refreshEngineModels,
   ]);
+
+  useEffect(() => {
+    if (pluginPresence.claude || activeEngine !== "claude") {
+      return;
+    }
+    const installedFallback = installedEngines.find(
+      (engine) => engine.type !== "claude",
+    );
+    if (installedFallback) {
+      void setActiveEngine(installedFallback.type);
+      return;
+    }
+    const firstEnabled = ENABLED_ENGINE_TYPES.find((engineType) => engineType !== "claude");
+    if (!firstEnabled) {
+      return;
+    }
+    setActiveEngineState(firstEnabled);
+    persistEngineSelection(firstEnabled);
+  }, [activeEngine, installedEngines, pluginPresence.claude, setActiveEngine]);
 
   useEngineRuntimeNotices(availableEngines, isInitialized);
 

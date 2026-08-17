@@ -663,3 +663,100 @@
 .extensions-plugin-rack-socket.is-plugged .extensions-plugin-rack-status {
   color: var(--status-success);
 }
+
+.extensions-plugin-market {
+  display: grid;
+  gap: 24px;
+}
+
+.extensions-plugin-market-preview {
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md, 8px);
+  background: var(--surface-card-muted);
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.extensions-plugin-market-shelf {
+  display: grid;
+  gap: 12px;
+}
+
+.extensions-plugin-market-shelf h3 {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.extensions-plugin-market-listings {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.extensions-plugin-market-card {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+  padding: 16px 16px 14px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius);
+  background: var(--surface-elevated, var(--surface-card));
+}
+
+.extensions-plugin-market-card.is-installed {
+  border-color: color-mix(in srgb, var(--status-success) 40%, var(--border-subtle));
+}
+
+.extensions-plugin-market-card.is-sealed {
+  opacity: 0.78;
+}
+
+.extensions-plugin-market-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.extensions-plugin-market-card-head h4 {
+  margin: 0 0 4px;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.extensions-plugin-market-badge {
+  margin: 0;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: var(--surface-messages);
+  color: var(--text-secondary);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.extensions-plugin-market-card.is-installed .extensions-plugin-market-badge {
+  color: var(--status-success);
+}
+
+.extensions-plugin-market-summary,
+.extensions-plugin-market-meta {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.extensions-plugin-market-meta {
+  color: var(--text-muted);
+  font-size: 12px;
+}

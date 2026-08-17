@@ -1,6 +1,8 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { publishPluginRackSnapshot } from "../../../services/pluginPresence";
+import { DECLARED_PLUGIN_RACK_SNAPSHOT } from "../../../services/tauri/pluginRack";
 import { QuickSwitcher } from "./QuickSwitcher";
 
 vi.mock("react-i18next", () => ({
@@ -389,5 +391,25 @@ describe("QuickSwitcher", () => {
       .closest("button");
     expect(pendingRow).toBeTruthy();
     expect(pendingRow!.querySelector("time")).toBeNull();
+  });
+
+  it("hides notes, project map and memory after those plugs are uninstalled", () => {
+    publishPluginRackSnapshot({
+      ...DECLARED_PLUGIN_RACK_SNAPSHOT,
+      plugs: DECLARED_PLUGIN_RACK_SNAPSHOT.plugs.map((plug) =>
+        plug.pluginId === "com.mossx.notes" ||
+        plug.pluginId === "com.mossx.project-map"
+          ? { ...plug, desiredState: "uninstalled" }
+          : plug,
+      ),
+    });
+
+    render(<QuickSwitcher {...baseProps} />);
+
+    expect(screen.queryByText("quickSwitcher.nav.notes")).toBeNull();
+    expect(screen.queryByText("quickSwitcher.nav.projectMap")).toBeNull();
+    expect(screen.queryByText("quickSwitcher.nav.memory")).toBeNull();
+    expect(screen.getByText("quickSwitcher.nav.chat")).toBeTruthy();
+    expect(screen.getByText("quickSwitcher.nav.settings")).toBeTruthy();
   });
 });

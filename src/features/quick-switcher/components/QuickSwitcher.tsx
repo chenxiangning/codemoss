@@ -23,6 +23,7 @@ import Settings2 from "lucide-react/dist/esm/icons/settings-2";
 import Sparkles from "lucide-react/dist/esm/icons/sparkles";
 import TerminalSquare from "lucide-react/dist/esm/icons/terminal-square";
 import { FileIcon } from "../../../components/FileIcon";
+import { usePluginPresence } from "../../../services/pluginPresence";
 import { loadQuickSwitcherStyles } from "../../../styles/featureStyleLoaders";
 import { useFeatureStylesReady } from "../../../styles/useFeatureStylesReady";
 import { formatRelativeTimeShort } from "../../../utils/time";
@@ -138,6 +139,20 @@ export function QuickSwitcher({
 }: QuickSwitcherProps) {
   const stylesReady = useFeatureStylesReady(loadQuickSwitcherStyles, true);
   const { t } = useTranslation();
+  const pluginPresence = usePluginPresence();
+  const navigationItems = useMemo(
+    () =>
+      NAVIGATION_ITEMS.filter((item) => {
+        if (item === "notes") {
+          return pluginPresence.notes;
+        }
+        if (item === "projectMap" || item === "memory") {
+          return pluginPresence.projectMap;
+        }
+        return true;
+      }),
+    [pluginPresence.notes, pluginPresence.projectMap],
+  );
   const fileGroups = useQuickSwitcherRecentFiles(workspaces);
   // is-active 纯展示态：不改变键盘导航模型（D3）。
   const activeNavigationIdSet = useMemo(
@@ -246,6 +261,12 @@ export function QuickSwitcher({
   }, [files.length]);
 
   useEffect(() => {
+    setNavigationIndex((current) =>
+      Math.min(current, Math.max(0, navigationItems.length - 1)),
+    );
+  }, [navigationItems.length]);
+
+  useEffect(() => {
     const selectedRow = dialogRef.current?.querySelector<HTMLElement>(
       ".quick-switcher-row.is-selected",
     );
@@ -275,7 +296,7 @@ export function QuickSwitcher({
       if (activePane === "navigation") {
         setNavigationIndex(
           (current) =>
-            (current + delta + NAVIGATION_ITEMS.length) % NAVIGATION_ITEMS.length,
+            (current + delta + navigationItems.length) % navigationItems.length,
         );
       } else if (activePane === "sessions" && sessionRows.length) {
         setSessionIndex(
@@ -291,7 +312,7 @@ export function QuickSwitcher({
     }
     event.preventDefault();
     if (activePane === "navigation") {
-      onNavigate(NAVIGATION_ITEMS[navigationIndex] ?? "chat");
+      onNavigate(navigationItems[navigationIndex] ?? "chat");
     } else if (activePane === "sessions") {
       const row = sessionRows[sessionIndex];
       if (row) {
@@ -342,7 +363,7 @@ export function QuickSwitcher({
             <div className="quick-switcher-section-label">
               {t("quickSwitcher.navigation")}
             </div>
-            {NAVIGATION_ITEMS.map((item, index) => {
+            {navigationItems.map((item, index) => {
               const Icon = NAVIGATION_ICONS[item];
               const selected = activePane === "navigation" && navigationIndex === index;
               const active = activeNavigationIdSet.has(item);

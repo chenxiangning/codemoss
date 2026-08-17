@@ -1,15 +1,25 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
+import { isTauri } from "@tauri-apps/api/core";
+
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { publishPluginRackSnapshot } from "@/services/pluginPresence";
 import {
   getPluginRackSnapshot,
   installPlugin,
+  isPlugged,
+  partitionPluginRackPlugs,
   uninstallPlugin,
   type PluginRackPlug,
   type PluginRackSnapshot,
 } from "@/services/tauri/pluginRack";
 import { loadExtensionsStyles } from "../../../styles/featureStyleLoaders";
 import { useFeatureStylesReady } from "../../../styles/useFeatureStylesReady";
+
+import { PluginMarketplaceCatalog } from "./PluginMarketplaceCatalog";
+
+const CLAUDE_PLUGIN_ID = "com.mossx.engine.claude";
 
 function hostStatusKey(snapshot: PluginRackSnapshot | null): string {
   if (!snapshot) {
@@ -34,23 +44,6 @@ function circuitTone(circuit: string): string {
     return "is-fallback";
   }
   return "is-idle";
-}
-
-function partitionPlugs(plugs: PluginRackPlug[]): { live: PluginRackPlug[]; later: PluginRackPlug[] } {
-  const live: PluginRackPlug[] = [];
-  const later: PluginRackPlug[] = [];
-  for (const plug of plugs) {
-    if (plug.installable) {
-      live.push(plug);
-    } else {
-      later.push(plug);
-    }
-  }
-  return { live, later };
-}
-
-function isPlugged(plug: PluginRackPlug): boolean {
-  return plug.desiredState !== "uninstalled";
 }
 
 function socketClassName(plug: PluginRackPlug): string {
@@ -102,15 +95,7 @@ function SocketMeta({ plug }: { plug: PluginRackPlug }) {
   );
 }
 
-function PlugSocket({
-  plug,
-  pendingId,
-  onAction,
-}: {
-  plug: PluginRackPlug;
-  pendingId: string | null;
-  onAction: (plug: PluginRackPlug) => void;
-}) {
+function PlugSocket({ plug }: { plug: PluginRackPlug }) {
   const { t } = useTranslation();
   const statusKey = plug.installable
     ? isPlugged(plug)
@@ -127,18 +112,6 @@ function PlugSocket({
       </div>
       <SocketMeta plug={plug} />
       <p className="extensions-plugin-rack-status">{t(statusKey)}</p>
-      {plug.installable ? (
-        <button
-          type="button"
-          className="extensions-plugin-rack-stage"
-          disabled={pendingId === plug.pluginId}
-          onClick={() => {
-            onAction(plug);
-          }}
-        >
-          {isPlugged(plug) ? t("extensions.rack.uninstall") : t("extensions.rack.install")}
-        </button>
-      ) : null}
     </li>
   );
 }
@@ -149,16 +122,23 @@ export function PluginRackSection() {
   const [snapshot, setSnapshot] = useState<PluginRackSnapshot | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pendingId, setPendingId] = useState<string | null>(null);
-  const banks = partitionPlugs(snapshot?.plugs ?? []);
+  const [claudeUninstallOpen, setClaudeUninstallOpen] = useState(false);
+  const banks = partitionPluginRackPlugs(snapshot?.plugs ?? []);
+  const previewMode = !isTauri();
 
-  const handlePlugAction = async (plug: PluginRackPlug) => {
+  const applySnapshot = (next: PluginRackSnapshot) => {
+    publishPluginRackSnapshot(next);
+    setSnapshot(next);
+  };
+
+  const runPlugAction = async (plug: PluginRackPlug) => {
     setPendingId(plug.pluginId);
     try {
       const next =
         plug.desiredState === "uninstalled"
           ? await installPlugin(plug.pluginId)
           : await uninstallPlugin(plug.pluginId);
-      setSnapshot(next);
+      applySnapshot(next);
       setError(null);
     } catch (cause: unknown) {
       setError(cause instanceof Error ? cause.message : String(cause));
@@ -167,12 +147,28 @@ export function PluginRackSection() {
     }
   };
 
+  const handlePlugAction = async (plug: PluginRackPlug) => {
+    if (plug.pluginId === CLAUDE_PLUGIN_ID && plug.desiredState !== "uninstalled") {
+      setClaudeUninstallOpen(true);
+      return;
+    }
+    await runPlugAction(plug);
+  };
+
+  const handleConfirmClaudeUninstall = () => {
+    setClaudeUninstallOpen(false);
+    const claudePlug = snapshot?.plugs.find((plug) => plug.pluginId === CLAUDE_PLUGIN_ID);
+    if (claudePlug && claudePlug.desiredState !== "uninstalled") {
+      void runPlugAction(claudePlug);
+    }
+  };
+
   useEffect(() => {
     let cancelled = false;
     getPluginRackSnapshot()
       .then((next) => {
         if (!cancelled) {
-          setSnapshot(next);
+          applySnapshot(next);
         }
       })
       .catch((cause: unknown) => {
@@ -187,22 +183,27 @@ export function PluginRackSection() {
 
   if (!stylesReady) {
     return (
-      <section className="extensions-view market-view" aria-label={t("extensions.rack.title")} aria-busy="true" />
+      <section className="extensions-view market-view" aria-label={t("extensions.market.title")} aria-busy="true" />
     );
   }
 
   return (
-    <section className="extensions-view market-view" aria-label={t("extensions.rack.title")}>
+    <section className="extensions-view market-view" aria-label={t("extensions.market.title")}>
       <div className="extensions-plugin-rack">
         <header className="extensions-plugin-rack-header">
           <div>
-            <h2>{t("extensions.rack.title")}</h2>
-            <p>{t("extensions.rack.subtitle")}</p>
+            <h2>{t("extensions.market.title")}</h2>
+            <p>{t("extensions.market.subtitle")}</p>
           </div>
           <p className="extensions-plugin-rack-host" role="status">
             {t(hostStatusKey(snapshot))}
           </p>
         </header>
+        {previewMode ? (
+          <p className="extensions-plugin-market-preview" role="note">
+            {t("extensions.market.previewBanner")}
+          </p>
+        ) : null}
         {snapshot?.supervisorLive ? (
           <dl className="extensions-plugin-rack-supervisor">
             <div>
@@ -223,36 +224,48 @@ export function PluginRackSection() {
           <p className="extensions-plugin-rack-error" role="alert">
             {t("extensions.rack.error", { message: error })}
           </p>
-        ) : (
-          <div className="extensions-plugin-rack-strip">
-            <div className="extensions-plugin-rack-bus" aria-hidden />
-            <section className="extensions-plugin-rack-bank is-live" aria-label={t("extensions.rack.liveBank")}>
-              <h3>{t("extensions.rack.liveBank")}</h3>
-              <ul className="extensions-plugin-rack-sockets">
-                {banks.live.map((plug) => (
-                  <PlugSocket
-                    key={plug.pluginId}
-                    plug={plug}
-                    pendingId={pendingId}
-                    onAction={(next) => {
-                      void handlePlugAction(next);
-                    }}
-                  />
-                ))}
-              </ul>
-            </section>
-            <section className="extensions-plugin-rack-bank is-later" aria-label={t("extensions.rack.laterBank")}>
-              <h3>{t("extensions.rack.laterBank")}</h3>
-              <ul className="extensions-plugin-rack-sockets">
-                {banks.later.map((plug) => (
-                  <PlugSocket key={plug.pluginId} plug={plug} pendingId={pendingId} onAction={handlePlugAction} />
-                ))}
-              </ul>
-            </section>
-          </div>
-        )}
-        <p className="extensions-plugin-rack-footnote">{t("extensions.rack.marketplaceLater")}</p>
+        ) : snapshot ? (
+          <>
+            <div className="extensions-plugin-rack-strip">
+              <div className="extensions-plugin-rack-bus" aria-hidden />
+              <section className="extensions-plugin-rack-bank is-live" aria-label={t("extensions.rack.liveBank")}>
+                <h3>{t("extensions.rack.liveBank")}</h3>
+                <ul className="extensions-plugin-rack-sockets">
+                  {banks.live.map((plug) => (
+                    <PlugSocket key={plug.pluginId} plug={plug} />
+                  ))}
+                </ul>
+              </section>
+              <section className="extensions-plugin-rack-bank is-later" aria-label={t("extensions.rack.laterBank")}>
+                <h3>{t("extensions.rack.laterBank")}</h3>
+                <ul className="extensions-plugin-rack-sockets">
+                  {banks.later.map((plug) => (
+                    <PlugSocket key={plug.pluginId} plug={plug} />
+                  ))}
+                </ul>
+              </section>
+            </div>
+            <PluginMarketplaceCatalog
+              live={banks.live}
+              later={banks.later}
+              pendingId={pendingId}
+              onAction={(next) => {
+                void handlePlugAction(next);
+              }}
+            />
+          </>
+        ) : null}
+        <p className="extensions-plugin-rack-footnote">{t("extensions.market.footnote")}</p>
       </div>
+      <ConfirmDialog
+        open={claudeUninstallOpen}
+        title={t("extensions.market.claudeUninstallTitle")}
+        body={t("extensions.market.claudeUninstallBody")}
+        confirmText={t("extensions.market.claudeUninstallConfirm")}
+        danger
+        onCancel={() => setClaudeUninstallOpen(false)}
+        onConfirm={handleConfirmClaudeUninstall}
+      />
     </section>
   );
 }

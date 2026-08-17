@@ -160,6 +160,12 @@ describe("ExtensionsView", () => {
       expect(Object.keys(locale.extensions.rack).sort()).toEqual(
         Object.keys(enSidebar.extensions.rack).sort(),
       );
+      expect(Object.keys(locale.extensions.market).sort()).toEqual(
+        Object.keys(enSidebar.extensions.market).sort(),
+      );
+      expect(Object.keys(locale.extensions.market.listings).sort()).toEqual(
+        Object.keys(enSidebar.extensions.market.listings).sort(),
+      );
     }
   });
 

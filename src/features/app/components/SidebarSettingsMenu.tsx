@@ -12,6 +12,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { usePluginPresence } from "../../../services/pluginPresence";
 import type { AppMode } from "../../../types";
 import {
   SIDEBAR_SETTINGS_PINNED_MAX,
@@ -75,6 +76,7 @@ export function SidebarSettingsMenu({
   onCollapseSidebar,
 }: SidebarSettingsMenuProps) {
   const { pinnedIds, togglePinned } = useSidebarSettingsPinnedActions();
+  const pluginPresence = usePluginPresence();
   const atPinLimit = pinnedIds.length >= SIDEBAR_SETTINGS_PINNED_MAX;
   const runtimeNoticeIcon = runtimeNoticeHasError ? (
     <CircleAlert
@@ -120,7 +122,7 @@ export function SidebarSettingsMenu({
         onClose();
         onOpenProjectMemory();
       },
-      visible: true,
+      visible: pluginPresence.projectMap,
     },
     {
       id: "git-history",

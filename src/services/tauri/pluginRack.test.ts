@@ -1,9 +1,20 @@
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { DECLARED_PLUGIN_RACK_SNAPSHOT } from "./pluginRack";
+vi.mock("@tauri-apps/api/core", () => ({
+  invoke: vi.fn(),
+  isTauri: () => false,
+}));
+
+import {
+  DECLARED_PLUGIN_RACK_SNAPSHOT,
+  getPluginRackSnapshot,
+  installPlugin,
+  resetPreviewPluginRackSnapshot,
+  uninstallPlugin,
+} from "./pluginRack";
 
 const currentDir = dirname(fileURLToPath(import.meta.url));
 const ownership = JSON.parse(
@@ -105,5 +116,50 @@ describe("DECLARED_PLUGIN_RACK_SNAPSHOT", () => {
     for (const pluginId of pluginIds) {
       expect(inventoried.has(pluginId)).toBe(true);
     }
+  });
+});
+
+describe("browser preview plugin rack", () => {
+  afterEach(() => {
+    resetPreviewPluginRackSnapshot();
+  });
+
+  it("toggles an allowlisted plug in memory and leaves later plugs sealed", async () => {
+    const uninstalled = await uninstallPlugin("com.mossx.notes");
+    expect(uninstalled.plugs.find((plug) => plug.pluginId === "com.mossx.notes")?.desiredState).toBe(
+      "uninstalled",
+    );
+    expect(uninstalled.plugs.find((plug) => plug.pluginId === "com.mossx.engine.claude")?.desiredState).toBe(
+      "installed",
+    );
+
+    const snapshot = await getPluginRackSnapshot();
+    expect(snapshot.plugs.find((plug) => plug.pluginId === "com.mossx.notes")?.desiredState).toBe(
+      "uninstalled",
+    );
+
+    const reinstalled = await installPlugin("com.mossx.notes");
+    expect(reinstalled.plugs.find((plug) => plug.pluginId === "com.mossx.notes")?.desiredState).toBe(
+      "installed",
+    );
+    expect(reinstalled.plugs.slice(3).every((plug) => plug.desiredState === "uninstalled")).toBe(true);
+  });
+
+  it("rejects a sealed later plugin without changing the snapshot", async () => {
+    await expect(installPlugin("com.mossx.browser")).rejects.toThrow("plugin-not-allowlisted");
+    const snapshot = await getPluginRackSnapshot();
+    expect(snapshot.plugs.find((plug) => plug.pluginId === "com.mossx.browser")?.desiredState).toBe(
+      "uninstalled",
+    );
+    expect(snapshot.plugs.find((plug) => plug.pluginId === "com.mossx.notes")?.desiredState).toBe("installed");
+  });
+
+  it("resets the preview snapshot back to the declared default", async () => {
+    await uninstallPlugin("com.mossx.project-map");
+    resetPreviewPluginRackSnapshot();
+    const snapshot = await getPluginRackSnapshot();
+    expect(snapshot.plugs.find((plug) => plug.pluginId === "com.mossx.project-map")?.desiredState).toBe(
+      "installed",
+    );
   });
 });

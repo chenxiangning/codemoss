@@ -116,6 +116,7 @@ flowchart TD
 - [ ] P3.5 Error Boundary、render budget、circuit breaker、safe reload。
 - [ ] P3.6 Extensions recovery UI 与 permission/error states。
 - [ ] P3.7 独立 HTML prototype 与用户验收后再实现 Marketplace UI。
+  - 2026-08-17：本地 curated catalog 壳已落地（D-055）。这不是 P3 contribution runtime，也不是远程 Marketplace。P3.7 远程商店仍未勾。
 
 验收：停用后无 DOM/listener/timer/subscription 残留；单插件 UI 崩溃不影响会话幕布。
 
@@ -161,6 +162,8 @@ flowchart TD
 ## 8. P6 · Registry 与 Marketplace
 
 **目标**：先建立 curated supply chain，再扩大来源。
+
+> 2026-08-17：本地 curated catalog UI 已落地（D-055 / `plugin-marketplace-local-catalog`）。仅三根 allowlist 走既有 install loop。P6.1–P6.13 远程 Registry / 签名 / 社区市场仍全部未勾。**不得把本 Phase 勾成完成。**
 
 任务：
 
