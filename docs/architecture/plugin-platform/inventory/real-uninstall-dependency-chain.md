@@ -51,7 +51,8 @@
   → 缺口 2：SlotState 补 Uninstalled（✅ 已补）+ atomic contribution registry（🔵 待做，P2.1）
   → 缺口 3：Notes owner 复核（✅ P4.7-19）
   → 缺口 3b：隔离 Notes CRUD（✅ P4.7-21）
-  → 缺口 3c：flag-on 走隔离 sqlite（✅ 本批：IsolatedNotes；默认仍 note_cards 文件；不迁存量）
+  → 缺口 3c：flag-on 走隔离 sqlite（✅ P4.7-22）
+  → 缺口 3d：隔离 rollback 恢复 note 行（✅ 本批：checkpoint 后 delete → restore 拿回原行）
   只有 1b 完成，「卸载」才等于停掉产品引擎
 ```
 

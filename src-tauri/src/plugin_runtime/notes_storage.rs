@@ -242,6 +242,18 @@ impl NotesNamespace {
         self.set_archived(note_id, workspace_id, None)
     }
 
+    pub fn checkpoint(&mut self) -> Result<String, String> {
+        self.storage
+            .checkpoint(NOTES_PLUGIN_ID, 2)
+            .map_err(|error| error.message)
+    }
+
+    pub fn restore(&mut self) -> Result<u32, String> {
+        self.storage
+            .restore(NOTES_PLUGIN_ID)
+            .map_err(|error| error.message)
+    }
+
     pub fn delete_note(&self, note_id: &str, workspace_id: &str) -> Result<(), String> {
         let connection = Connection::open(self.storage.data_file(NOTES_PLUGIN_ID))
             .map_err(|error| error.to_string())?;
@@ -422,6 +434,52 @@ mod tests {
             .data_file(NOTES_PLUGIN_ID)
             .to_string_lossy()
             .contains("note_cards"));
+        let registry = include_str!("../command_registry.rs");
+        for command in crate::plugin_runtime::notes_compat::NOTES_COMMAND_IDS {
+            assert!(
+                registry.contains(&format!("crate::note_cards::{command}")),
+                "{command}"
+            );
+        }
+        assert!(!crate::plugin_runtime::notes_compat::notes_compat_facade_enabled_from(None));
+        remove_path(Path::new(&root));
+    }
+
+    #[test]
+    fn isolated_namespace_restores_deleted_note_rows() {
+        use crate::note_cards::WorkspaceNoteCard;
+
+        let root = unique_temp_root("notes-rollback-rows");
+        let mut namespace = NotesNamespace::open(&root).expect("open namespace");
+        let note = WorkspaceNoteCard {
+            id: "n-rb".into(),
+            workspace_id: "ws-rb".into(),
+            workspace_name: Some("Workspace".into()),
+            workspace_path: None,
+            project_name: "Workspace".into(),
+            title: "keep-me".into(),
+            body_markdown: "# keep".into(),
+            plain_text_excerpt: "keep".into(),
+            attachments: Vec::new(),
+            source: None,
+            created_at: 1,
+            updated_at: 2,
+            archived_at: None,
+        };
+        namespace.create_note(&note).expect("create");
+        namespace.checkpoint().expect("checkpoint");
+        namespace.delete_note("n-rb", "ws-rb").expect("delete");
+        assert!(namespace.get_note("n-rb", "ws-rb").unwrap().is_none());
+        namespace.restore().expect("restore");
+        let restored = namespace
+            .get_note("n-rb", "ws-rb")
+            .expect("get")
+            .expect("row back");
+        assert_eq!(restored.title, "keep-me");
+        assert!(!namespace
+            .data_file()
+            .to_string_lossy()
+            .contains("note_card"));
         let registry = include_str!("../command_registry.rs");
         for command in crate::plugin_runtime::notes_compat::NOTES_COMMAND_IDS {
             assert!(
