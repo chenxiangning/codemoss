@@ -35,7 +35,8 @@
 - `MOSSX_NOTES_COMPAT_FACADE` 默认关 → 产品走 `note_card_*_core` 文件
 - flag 打开 → `NotesCompatAdapter::isolated_product()` → `~/.ccgui/plugin-runtime/data/com.mossx.notes/store.sqlite`
 - `MOSSX_CLAUDE_PROCESS_ENTRY` 默认关 → 产品走 `cmd.spawn()`
-- 同一时刻只有一个 Notes owner；flag-on 不双写、不迁存量 markdown
+- 同一时刻只有一个 Notes owner；flag-on 不双写
+- flag-on 首次打开会一次性导入存量 `note_card/**/*.json`（已存在 id 跳过，源文件保留）
 
 ## 拔插头下一步（另开 change）
 

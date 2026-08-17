@@ -158,10 +158,12 @@ pub fn claude_process_entry_enabled() -> bool {
 }
 
 pub fn claude_process_entry_enabled_from(value: Option<&std::ffi::OsStr>) -> bool {
-    matches!(
-        value.and_then(std::ffi::OsStr::to_str).map(str::trim),
-        Some("1" | "true" | "TRUE" | "yes")
-    )
+    match value.and_then(std::ffi::OsStr::to_str).map(str::trim) {
+        None | Some("") => true,
+        Some("0" | "false" | "FALSE" | "no" | "off") => false,
+        Some("1" | "true" | "TRUE" | "yes" | "on") => true,
+        _ => true,
+    }
 }
 
 pub fn spawn_plan_from_command(
@@ -872,7 +874,8 @@ mod tests {
         let boot = include_str!("boot.rs");
         assert!(!boot.contains("with_supervise"));
         assert!(!boot.contains("MOSSX_CLAUDE_PROCESS_ENTRY"));
-        assert!(!claude_process_entry_enabled_from(None));
+        assert!(claude_process_entry_enabled_from(None));
+        assert!(!claude_process_entry_enabled_from(Some(std::ffi::OsStr::new("0"))));
         assert_eq!(
             decide_claude_spawn_owner(false, None),
             ClaudeSpawnOwner::CoreCommand
@@ -1410,7 +1413,7 @@ mod tests {
         assert!(!production.contains("next_line_until"));
         let boot = include_str!("boot.rs");
         assert!(!boot.contains("decide_claude_line_source"));
-        assert!(!claude_process_entry_enabled_from(None));
+        assert!(claude_process_entry_enabled_from(None));
     }
 
     #[test]
@@ -1617,7 +1620,7 @@ mod tests {
         let boot = include_str!("boot.rs");
         assert!(boot.contains("missing_executable()"));
         assert!(!boot.contains("claude_plugin_package_root"));
-        assert!(!claude_process_entry_enabled_from(None));
+        assert!(claude_process_entry_enabled_from(None));
     }
 
     #[test]
@@ -1685,7 +1688,7 @@ mod tests {
         let boot = include_str!("boot.rs");
         assert!(boot.contains("missing_executable()"));
         assert!(!boot.contains("spawn_process_entry_turn"));
-        assert!(!claude_process_entry_enabled_from(None));
+        assert!(claude_process_entry_enabled_from(None));
     }
 
     #[test]
@@ -1741,7 +1744,7 @@ mod tests {
         assert!(!production.contains("run_supervised_stream_loop"));
         let boot = include_str!("boot.rs");
         assert!(boot.contains("missing_executable()"));
-        assert!(!claude_process_entry_enabled_from(None));
+        assert!(claude_process_entry_enabled_from(None));
     }
 
     #[test]
@@ -1800,12 +1803,13 @@ mod tests {
         assert!(production.contains("child_proc.wait()"));
         let boot = include_str!("boot.rs");
         assert!(boot.contains("missing_executable()"));
-        assert!(!claude_process_entry_enabled_from(None));
+        assert!(claude_process_entry_enabled_from(None));
     }
 
     #[test]
-    fn dual_run_defaults_to_core_and_selects_process_entry_only_when_flagged() {
-        assert!(!claude_process_entry_enabled_from(None));
+    fn dual_run_defaults_to_process_entry_and_explicit_off_keeps_core() {
+        assert!(claude_process_entry_enabled_from(None));
+        assert!(!claude_process_entry_enabled_from(Some(std::ffi::OsStr::new("0"))));
         assert!(!crate::plugin_runtime::claude_compat::claude_compat_facade_enabled_from(None));
         assert!(!crate::plugin_runtime::notes_compat::notes_compat_facade_enabled_from(None));
         let sleep = PathBuf::from("/bin/sleep");

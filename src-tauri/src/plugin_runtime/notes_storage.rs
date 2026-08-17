@@ -248,6 +248,37 @@ impl NotesNamespace {
             .map_err(|error| error.message)
     }
 
+    pub fn import_lock_file(&self) -> PathBuf {
+        self.data_file()
+            .parent()
+            .map(|parent| parent.join("imported.lock"))
+            .unwrap_or_else(|| self.data_file().with_extension("imported.lock"))
+    }
+
+    pub fn import_legacy_once(&self, source_dir: &Path) -> Result<usize, String> {
+        let lock = self.import_lock_file();
+        if lock.exists() {
+            return Ok(0);
+        }
+        let notes = crate::note_cards::collect_legacy_note_cards(source_dir)?;
+        let mut imported = 0usize;
+        for note in notes {
+            if self
+                .get_note(&note.id, &note.workspace_id)?
+                .is_some()
+            {
+                continue;
+            }
+            self.create_note(&note)?;
+            imported += 1;
+        }
+        if let Some(parent) = lock.parent() {
+            std::fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+        }
+        std::fs::write(&lock, b"imported\n").map_err(|error| error.to_string())?;
+        Ok(imported)
+    }
+
     pub fn restore(&mut self) -> Result<u32, String> {
         self.storage
             .restore(NOTES_PLUGIN_ID)
@@ -489,5 +520,50 @@ mod tests {
         }
         assert!(!crate::plugin_runtime::notes_compat::notes_compat_facade_enabled_from(None));
         remove_path(Path::new(&root));
+    }
+
+    #[test]
+    fn isolated_namespace_imports_legacy_json_once_and_keeps_source() {
+        use crate::note_cards::WorkspaceNoteCard;
+
+        let source = unique_temp_root("notes-legacy-src");
+        let dest = unique_temp_root("notes-legacy-dst");
+        let project = source.join("workspace").join("active");
+        std::fs::create_dir_all(&project).expect("mkdir");
+        let note = WorkspaceNoteCard {
+            id: "n-legacy".into(),
+            workspace_id: "ws-legacy".into(),
+            workspace_name: Some("Workspace".into()),
+            workspace_path: None,
+            project_name: "workspace".into(),
+            title: "legacy-title".into(),
+            body_markdown: "# legacy".into(),
+            plain_text_excerpt: "legacy".into(),
+            attachments: Vec::new(),
+            source: None,
+            created_at: 1,
+            updated_at: 2,
+            archived_at: None,
+        };
+        let source_file = project.join("n-legacy.json");
+        std::fs::write(
+            &source_file,
+            serde_json::to_string_pretty(&note).expect("json"),
+        )
+        .expect("write");
+        let namespace = NotesNamespace::open(&dest).expect("open");
+        assert_eq!(namespace.import_legacy_once(&source).expect("import"), 1);
+        let loaded = namespace
+            .get_note("n-legacy", "ws-legacy")
+            .expect("get")
+            .expect("exists");
+        assert_eq!(loaded.title, "legacy-title");
+        assert!(source_file.exists());
+        assert_eq!(namespace.import_legacy_once(&source).expect("second"), 0);
+        assert_eq!(namespace.count_notes("ws-legacy").unwrap(), 1);
+        assert!(!namespace.data_file().to_string_lossy().contains("note_card"));
+        assert!(!crate::plugin_runtime::notes_compat::notes_compat_facade_enabled_from(None));
+        remove_path(Path::new(&source));
+        remove_path(Path::new(&dest));
     }
 }

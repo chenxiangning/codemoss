@@ -47,7 +47,9 @@
   → 缺口 1p：真实 CLI first-interactive（✅ 本批：制品根读到 system/init 后杀组；缺 CLI 跳过）
   → 缺口 1q：真实 CLI result / 退出码（✅ 本批：制品根读到 result 且 wait=0；缺 CLI 跳过）
   → 缺口 1r：dual-run 默认 Core（✅ 本批：两旗默认关；flag-on 才走 PE；boot 仍 missing）
-  → 缺口 1s：产品默认路径未切 PE；storage / rollback / Slim 仍禁止
+  → 缺口 1s：产品默认走 Process Entry（✅ 本批：未设即 on；0 回 Core；boot 仍 missing）
+  → 缺口 1t：Notes 存量一次性导入（✅ 本批：flag-on 首次扫 note_card json；源文件保留）
+  → 缺口 1u：Host 独立进程 / Disable / Slim / Marketplace 仍禁止
   → 缺口 2：SlotState 补 Uninstalled（✅ 已补）+ atomic contribution registry（🔵 待做，P2.1）
   → 缺口 3：Notes owner 复核（✅ P4.7-19）
   → 缺口 3b：隔离 Notes CRUD（✅ P4.7-21）

@@ -94,7 +94,11 @@ impl NotesCompatAdapter {
     }
 
     pub fn isolated_product() -> Result<Self, String> {
-        Self::isolated(crate::app_paths::app_home_dir()?)
+        let adapter = Self::isolated(crate::app_paths::app_home_dir()?)?;
+        if let Some(namespace) = adapter.namespace.as_ref() {
+            let _ = namespace.import_legacy_once(&crate::app_paths::note_card_dir()?);
+        }
+        Ok(adapter)
     }
 
     pub fn data_file(&self) -> Option<PathBuf> {
@@ -358,9 +362,9 @@ mod tests {
     }
 
     #[test]
-    fn product_notes_and_claude_stay_core_owned_while_flags_default_off() {
+    fn product_notes_stay_core_while_claude_defaults_to_process_entry() {
         assert!(!notes_compat_facade_enabled_from(None));
-        assert!(!crate::plugin_runtime::claude_process::claude_process_entry_enabled_from(None));
+        assert!(crate::plugin_runtime::claude_process::claude_process_entry_enabled_from(None));
         let registry = include_str!("../command_registry.rs");
         for command in NOTES_COMMAND_IDS {
             assert!(

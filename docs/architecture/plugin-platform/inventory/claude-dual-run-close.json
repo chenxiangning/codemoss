@@ -1,37 +1,18 @@
 {
   "pluginId": "com.mossx.engine.claude",
-  "wave": "P4.7-20",
-  "status": "dual-run-wired-default-core",
+  "wave": "P4.7-24",
+  "status": "product-default-process-entry",
   "protocol": {
-    "1_inventory": "done",
-    "2_contract": "done",
-    "3_adapter": "done",
-    "4_pilotRepo": "transitional-package-plus-outdir-artifact",
-    "5_dualRun": "default-core-process-entry-opt-in",
-    "6_conformance": "partial-artifact-cli-not-product-default",
+    "5_dualRun": "default-process-entry-explicit-off-core",
+    "6_conformance": "artifact-and-product-default-pe",
     "7_disable": "fixture-only",
     "8_slim": "forbidden",
     "9_lkg": "forbidden"
   },
   "flags": {
     "MOSSX_CLAUDE_COMPAT_FACADE": "default-off",
-    "MOSSX_CLAUDE_PROCESS_ENTRY": "default-off"
+    "MOSSX_CLAUDE_PROCESS_ENTRY": "default-on-explicit-0-off"
   },
-  "defaultOwner": "CoreCommand",
-  "optInOwner": "ProcessEntry",
-  "done": {
-    "adapter": "ClaudeCompatAdapter + decide_claude_spawn_owner",
-    "processEntry": "spawn_process_entry_turn + wait + first-interactive + result",
-    "artifactRoot": "OUT_DIR/plugin-engine-claude",
-    "productDefault": "cmd.spawn() + Tokio lines"
-  },
-  "notDoneAndForbiddenHere": [
-    "product disable of Core Claude",
-    "delete engine/claude*",
-    "default-on flag",
-    "Marketplace publish",
-    "migrate note_cards",
-    "claim product-default stream conformance"
-  ],
-  "notes": "P4.7-20 refresh. Process Entry is real and default-off. Product send_message still owns Core spawn."
+  "defaultOwner": "ProcessEntry",
+  "explicitOffOwner": "CoreCommand"
 }

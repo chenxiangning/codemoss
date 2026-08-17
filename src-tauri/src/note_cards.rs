@@ -1139,6 +1139,39 @@ fn read_collection_summaries(
     Ok(items)
 }
 
+pub(crate) fn collect_legacy_note_cards(base: &Path) -> Result<Vec<WorkspaceNoteCard>, String> {
+    if !base.exists() {
+        return Ok(Vec::new());
+    }
+    let mut notes = Vec::new();
+    for project_dir in list_candidate_project_dirs(base, None, None, None)? {
+        for archived in [false, true] {
+            let collection_dir = if archived {
+                archive_collection_dir(&project_dir)
+            } else {
+                active_collection_dir(&project_dir)
+            };
+            if !collection_dir.exists() {
+                continue;
+            }
+            let entries = std::fs::read_dir(&collection_dir).map_err(|error| error.to_string())?;
+            for entry in entries {
+                let path = entry.map_err(|error| error.to_string())?.path();
+                if path.extension().and_then(OsStr::to_str) != Some("json") {
+                    continue;
+                }
+                match read_note_card(&path, &project_dir, archived) {
+                    Ok(note) => notes.push(note),
+                    Err(error) => {
+                        log::warn!("Failed to read legacy note {}: {}", path.display(), error);
+                    }
+                }
+            }
+        }
+    }
+    Ok(notes)
+}
+
 pub(crate) fn note_card_list_core(
     workspace_id: String,
     workspace_name: Option<String>,
