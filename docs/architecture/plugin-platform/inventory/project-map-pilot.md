@@ -1,7 +1,7 @@
 # Project Map Pilot Inventory（Wave 5A · P4.7-30）
 
 > pluginId：`com.mossx.project-map`  
-> 状态：**inventory-only**。产品 owner 仍是 Core。`@mossx/plugin-project-map` 只是 re-export，不是抽出。不 Slim。
+> 状态：**inventory-only**。产品 owner 仍是 Core。5B Pilot fixture 另文件；`@mossx/plugin-project-map` 只是 re-export，不是抽出。不 Slim。
 
 ## 必须留下的 Core
 
@@ -60,4 +60,4 @@ memory-pick 对话注入挂在 Messages / Composer：
 
 ## 拔插头下一步（另开 change）
 
-禁止从本刀跳到迁表、删 `src/features/project-map` 或 Slim Claude/Notes。下一刀只能是 5B Manifest / storage contract 盘点，不得激活 Host，不得开 Marketplace。
+5B Contract 已落到 `packages/plugin-contract/fixtures/valid/project-map-pilot.json`。5C Adapter 已落到 `src-tauri/src/plugin_runtime/project_map_compat.rs`，`MOSSX_PROJECT_MAP_COMPAT_FACADE` 默认 off。禁止从本刀跳到迁表、删 `src/features/project-map` 或 Slim Claude/Notes。下一刀只能是 Dual-run（仍默认 Core owner），不得假装装/卸，不得开另外 9 根 later-plugin。

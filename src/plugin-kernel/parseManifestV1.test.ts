@@ -8,6 +8,7 @@ import type { ManifestErrorCode, ParseManifestOptions } from "./types";
 import notesMinimal from "../../packages/plugin-contract/fixtures/valid/notes-minimal.json";
 import notesPilot from "../../packages/plugin-contract/fixtures/valid/notes-pilot.json";
 import claudeEngine from "../../packages/plugin-contract/fixtures/valid/claude-engine.json";
+import projectMapPilot from "../../packages/plugin-contract/fixtures/valid/project-map-pilot.json";
 import kanbanPlugin from "../../packages/plugin-kanban/.mossx-plugin/plugin.json";
 import notesPlugin from "../../packages/plugin-notes/.mossx-plugin/plugin.json";
 import projectMapPlugin from "../../packages/plugin-project-map/.mossx-plugin/plugin.json";
@@ -163,6 +164,81 @@ describe("parseManifestV1", () => {
     expect(
       parseManifestV1(templated, systemOpts).errors.some((error) => error.code === "template-type-forbidden"),
     ).toBe(true);
+  });
+
+  it("accepts the project-map pilot inventory manifest", () => {
+    const result = parseManifestV1(projectMapPilot, systemOpts);
+    expect(result.ok).toBe(true);
+    expect(result.manifest?.pluginId).toBe("com.mossx.project-map");
+    const commandIds = (result.manifest?.contributions ?? [])
+      .filter((item) => item.type === "mossx.command")
+      .map((item) => item.commandId);
+    expect(commandIds).toEqual([
+      "project_map_read",
+      "project_map_write_snapshot",
+      "project_map_relationship_scan",
+      "project_map_relationship_read",
+      "project_map_relationship_write_snapshot",
+      "project_map_relationship_clear",
+      "project_memory_get_settings",
+      "project_memory_update_settings",
+      "project_memory_list",
+      "project_memory_get",
+      "project_memory_create",
+      "project_memory_update",
+      "project_memory_delete",
+      "project_memory_diagnostics",
+      "project_memory_reconcile",
+      "project_memory_capture_auto",
+      "project_memory_embed_health",
+      "project_memory_embed_text",
+      "project_memory_embed_download",
+      "project_memory_embed_remove",
+      "project_memory_embed_index_list",
+      "project_memory_embed_index_upsert",
+      "project_memory_embed_index_delete",
+      "project_memory_embed_index_clear",
+    ]);
+    expect(result.manifest?.contributions.some((item) => item.id === "project-map.main" && item.type === "mossx.ui.view")).toBe(
+      true,
+    );
+    expect(
+      result.manifest?.contributions.some((item) => item.id === "project-map.memory" && item.type === "mossx.ui.panel"),
+    ).toBe(true);
+    expect(result.manifest?.contributions.some((item) => item.type === "mossx.engine.provider")).toBe(false);
+    expect(JSON.stringify(projectMapPilot)).not.toMatch(/onStartup|memoryPick|memory-pick/);
+  });
+
+  it("rejects templated project-map commands", () => {
+    const templated = clone(projectMapPilot) as Record<string, unknown>;
+    templated.contributionTemplates = [
+      {
+        id: "project-map-commands",
+        type: "mossx.command",
+        entryId: "project-map-worker",
+        keyPrefix: "com.mossx.project-map.extra.",
+        scopes: ["global"],
+        maxInstances: 2,
+      },
+    ];
+    expect(
+      parseManifestV1(templated, systemOpts).errors.some((error) => error.code === "template-type-forbidden"),
+    ).toBe(true);
+  });
+
+  it("keeps the project-map package facade as a one-view door", () => {
+    const facadeCommands = (projectMapPlugin.contributions ?? []).filter(
+      (item: { type?: string }) => item.type === "mossx.command",
+    );
+    expect(projectMapPlugin.contributions).toHaveLength(1);
+    expect(projectMapPlugin.contributions[0]).toMatchObject({
+      id: "project-map.main",
+      type: "mossx.ui.view",
+    });
+    expect(facadeCommands).toHaveLength(0);
+    expect(projectMapPlugin.contributions.some((item: { id?: string }) => item.id === "project-map.memory")).toBe(
+      false,
+    );
   });
 
   it("accepts the notes minimal manifest", () => {

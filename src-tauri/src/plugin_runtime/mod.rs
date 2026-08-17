@@ -24,6 +24,7 @@ pub mod named_pipe_driver;
 pub mod notes_compat;
 pub mod notes_pilot;
 pub mod notes_storage;
+pub mod project_map_compat;
 pub mod quickjs;
 pub mod runtime;
 pub mod spawn;

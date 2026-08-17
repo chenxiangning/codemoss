@@ -1,0 +1,273 @@
+{
+  "manifestVersion": 1,
+  "pluginId": "com.mossx.project-map",
+  "version": "1.0.0",
+  "displayName": "Project Map",
+  "description": "Workspace project map and memory persist aligned to the Wave 5A inventory",
+  "publisher": {
+    "id": "com.mossx",
+    "displayName": "Mossx",
+    "homepage": "https://mossx.dev"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mossx/mossx-plugin-project-map",
+    "commit": "0000000000000000000000000000000000000000"
+  },
+  "license": "MIT",
+  "channel": "stable",
+  "compatibility": {
+    "coreApi": ">=1.0.0 <2.0.0",
+    "platforms": [
+      "darwin-arm64",
+      "darwin-x64",
+      "windows-x64",
+      "windows-arm64",
+      "linux-x64",
+      "linux-arm64"
+    ]
+  },
+  "entries": [
+    {
+      "id": "project-map-worker",
+      "kind": "worker",
+      "path": "dist/worker.js",
+      "runtime": "quickjs",
+      "criticality": "required"
+    },
+    {
+      "id": "project-map-ui",
+      "kind": "ui",
+      "mode": "trusted-react",
+      "path": "dist/ui/project-map.js",
+      "slot": "workspace.main",
+      "trustedReact": true,
+      "dependsOn": [
+        {
+          "entryId": "project-map-worker",
+          "criticality": "required"
+        }
+      ]
+    },
+    {
+      "id": "project-map-memory-ui",
+      "kind": "ui",
+      "mode": "trusted-react",
+      "path": "dist/ui/project-memory.js",
+      "slot": "workspace.rightPanel",
+      "trustedReact": true,
+      "dependsOn": [
+        {
+          "entryId": "project-map-worker",
+          "criticality": "required"
+        }
+      ]
+    }
+  ],
+  "activationUnits": [
+    {
+      "id": "project-map-main",
+      "entries": ["project-map-worker", "project-map-ui", "project-map-memory-ui"],
+      "events": [
+        { "type": "onView", "viewId": "project-map.main" },
+        { "type": "onView", "viewId": "project-map.memory" },
+        { "type": "onCommand", "commandId": "project_map_write_snapshot" },
+        { "type": "onCommand", "commandId": "project_memory_create" }
+      ]
+    }
+  ],
+  "contributions": [
+    {
+      "id": "project-map.main",
+      "type": "mossx.ui.view",
+      "entryId": "project-map-ui",
+      "slot": "workspace.main",
+      "mode": "trusted-react"
+    },
+    {
+      "id": "project-map.memory",
+      "type": "mossx.ui.panel",
+      "entryId": "project-map-memory-ui",
+      "slot": "workspace.rightPanel",
+      "mode": "trusted-react"
+    },
+    {
+      "id": "project-map.read",
+      "type": "mossx.command",
+      "entryId": "project-map-worker",
+      "commandId": "project_map_read"
+    },
+    {
+      "id": "project-map.write-snapshot",
+      "type": "mossx.command",
+      "entryId": "project-map-worker",
+      "commandId": "project_map_write_snapshot"
+    },
+    {
+      "id": "project-map.relationship.scan",
+      "type": "mossx.command",
+      "entryId": "project-map-worker",
+      "commandId": "project_map_relationship_scan"
+    },
+    {
+      "id": "project-map.relationship.read",
+      "type": "mossx.command",
+      "entryId": "project-map-worker",
+      "commandId": "project_map_relationship_read"
+    },
+    {
+      "id": "project-map.relationship.write-snapshot",
+      "type": "mossx.command",
+      "entryId": "project-map-worker",
+      "commandId": "project_map_relationship_write_snapshot"
+    },
+    {
+      "id": "project-map.relationship.clear",
+      "type": "mossx.command",
+      "entryId": "project-map-worker",
+      "commandId": "project_map_relationship_clear"
+    },
+    {
+      "id": "project-map.memory.get-settings",
+      "type": "mossx.command",
+      "entryId": "project-map-worker",
+      "commandId": "project_memory_get_settings"
+    },
+    {
+      "id": "project-map.memory.update-settings",
+      "type": "mossx.command",
+      "entryId": "project-map-worker",
+      "commandId": "project_memory_update_settings"
+    },
+    {
+      "id": "project-map.memory.list",
+      "type": "mossx.command",
+      "entryId": "project-map-worker",
+      "commandId": "project_memory_list"
+    },
+    {
+      "id": "project-map.memory.get",
+      "type": "mossx.command",
+      "entryId": "project-map-worker",
+      "commandId": "project_memory_get"
+    },
+    {
+      "id": "project-map.memory.create",
+      "type": "mossx.command",
+      "entryId": "project-map-worker",
+      "commandId": "project_memory_create"
+    },
+    {
+      "id": "project-map.memory.update",
+      "type": "mossx.command",
+      "entryId": "project-map-worker",
+      "commandId": "project_memory_update"
+    },
+    {
+      "id": "project-map.memory.delete",
+      "type": "mossx.command",
+      "entryId": "project-map-worker",
+      "commandId": "project_memory_delete"
+    },
+    {
+      "id": "project-map.memory.diagnostics",
+      "type": "mossx.command",
+      "entryId": "project-map-worker",
+      "commandId": "project_memory_diagnostics"
+    },
+    {
+      "id": "project-map.memory.reconcile",
+      "type": "mossx.command",
+      "entryId": "project-map-worker",
+      "commandId": "project_memory_reconcile"
+    },
+    {
+      "id": "project-map.memory.capture-auto",
+      "type": "mossx.command",
+      "entryId": "project-map-worker",
+      "commandId": "project_memory_capture_auto"
+    },
+    {
+      "id": "project-map.memory.embed-health",
+      "type": "mossx.command",
+      "entryId": "project-map-worker",
+      "commandId": "project_memory_embed_health"
+    },
+    {
+      "id": "project-map.memory.embed-text",
+      "type": "mossx.command",
+      "entryId": "project-map-worker",
+      "commandId": "project_memory_embed_text"
+    },
+    {
+      "id": "project-map.memory.embed-download",
+      "type": "mossx.command",
+      "entryId": "project-map-worker",
+      "commandId": "project_memory_embed_download"
+    },
+    {
+      "id": "project-map.memory.embed-remove",
+      "type": "mossx.command",
+      "entryId": "project-map-worker",
+      "commandId": "project_memory_embed_remove"
+    },
+    {
+      "id": "project-map.memory.embed-index-list",
+      "type": "mossx.command",
+      "entryId": "project-map-worker",
+      "commandId": "project_memory_embed_index_list"
+    },
+    {
+      "id": "project-map.memory.embed-index-upsert",
+      "type": "mossx.command",
+      "entryId": "project-map-worker",
+      "commandId": "project_memory_embed_index_upsert"
+    },
+    {
+      "id": "project-map.memory.embed-index-delete",
+      "type": "mossx.command",
+      "entryId": "project-map-worker",
+      "commandId": "project_memory_embed_index_delete"
+    },
+    {
+      "id": "project-map.memory.embed-index-clear",
+      "type": "mossx.command",
+      "entryId": "project-map-worker",
+      "commandId": "project_memory_embed_index_clear"
+    }
+  ],
+  "capabilities": [
+    {
+      "id": "mossx.storage.readwrite",
+      "role": "consumer",
+      "scopes": ["namespace:self"]
+    },
+    {
+      "id": "mossx.ui.slot.workspace.main",
+      "role": "consumer"
+    },
+    {
+      "id": "mossx.ui.slot.workspace.rightPanel",
+      "role": "consumer"
+    },
+    {
+      "id": "mossx.workspace.read",
+      "role": "consumer"
+    },
+    {
+      "id": "mossx.network.fetch",
+      "role": "consumer"
+    }
+  ],
+  "storage": {
+    "schemaVersion": 1,
+    "format": "sqlite-v1",
+    "checkpoint": {
+      "required": true,
+      "retainPrevious": 2
+    }
+  },
+  "budgets": {
+    "activationDeadlineMs": 10000
+  }
+}

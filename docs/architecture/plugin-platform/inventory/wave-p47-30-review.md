@@ -10,6 +10,8 @@
 - `inventory/project-map-pilot.json` + md
 - 缺口链补 4a：知识地图已盘点
 
+后续：5B Contract、5C Adapter 已落地。inventory `status` 仍必须是 `inventory-only`。下一刀是 Dual-run，不是改本文件。
+
 ## 没做（有意）
 
 - 不改 `project_map*` / `project_memory*` 生产行为

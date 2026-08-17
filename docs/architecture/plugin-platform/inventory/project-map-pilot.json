@@ -123,5 +123,5 @@
     "~/.ccgui/project-memory"
   ],
   "storageNote": "Product still writes Core files. packages/plugin-project-map re-exports src/features/project-map. Do not Slim. Do not move project_canvas or Search.",
-  "notes": "P4.7-30 Wave 5A inventory-only. Memory persist/panel follow project-map. Memory-pick inject is booked, not moved. Marketplace stays closed."
+  "notes": "P4.7-30 Wave 5A inventory-only. Memory persist/panel follow project-map. Memory-pick inject is booked, not moved. Marketplace stays closed. Wave 5B contract lives in packages/plugin-contract/fixtures/valid/project-map-pilot.json. Wave 5C adapter lives in src-tauri/src/plugin_runtime/project_map_compat.rs and stays default-off. This file stays the inventory fact source."
 }

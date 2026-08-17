@@ -55,6 +55,11 @@
   → 缺口 1x：Disable-not-delete（✅ 本批：默认 Core owner disabled；源码与 0 回退保留）
   → 缺口 1y：Slim / Marketplace 仍禁止
   → 缺口 4a：第三根插头知识地图 Inventory（✅ 本批：`com.mossx.project-map` 只盘点；re-export ≠ 抽出）
+  → 缺口 4b：知识地图 Contract（✅ 本批：`project-map-pilot.json` exact 24 command + view/panel；不接 Host）
+  → 缺口 4c：知识地图 Adapter（✅ 本批：`ProjectMapCompatAdapter` exact 24 command；默认 off；不接 Host；不假装装/卸）
+  → 缺口 4d：知识地图 Dual-run（⬜ 下一刀：产品 command 经门面切流；默认仍 Core）
+  → 缺口 4e：知识地图 Conformance + Disable（⬜ Dual-run 之后）
+  → 缺口 4f：知识地图真实装/卸（⬜ D-052 allowlist；第三根可写后再做可视化）
   → 缺口 2：SlotState 补 Uninstalled（✅ 已补）+ atomic contribution registry（✅ Notes 集：`notes.main` + 7 `note_card_*`）
   → 缺口 2b：Notes allowlisted 真实装/卸（✅ 本批：lockfile + `activate_allowlisted` + restore + 闸门；D-050）
   → 缺口 2c：Claude allowlisted 真实装/卸（✅ 本批：worker-only lifecycle + spawn 闸门先于 decide；D-051）

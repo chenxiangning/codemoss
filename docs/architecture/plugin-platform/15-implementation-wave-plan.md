@@ -11,6 +11,7 @@ status: active
 > 进度快照：[16 · Progress Dashboard](16-progress-dashboard.md)
 > Base branch：`feature/plugin-mossx-0.8.9`
 > 日期：2026-08-16
+> 2026-08-17 校准：第三根插头改为知识地图，推到 Claude/Notes 同级再停；另外 9 根协议冻在 0/9；可视化必须做完（3 真 / 9 只读预期）。进度见 [`16`](16-progress-dashboard.md) §9。Slim / Marketplace 仍禁。
 
 ## 1. 能不能开工
 
@@ -127,6 +128,7 @@ Wave 5+ 其余插头按风险排序一根根拔
 |---|---|---|
 | Claude adapter + history | `engine/claude*`、`claude_history*`、`claude_commands*` | `com.mossx.engine.claude` |
 | Notes | `src/features/note-cards`、`note_cards.rs` | `com.mossx.notes` |
+| 项目知识地图 / memory | `src/features/project-map`、`project_map*.rs`、`project_memory` | `com.mossx.project-map` |
 
 ### 5.3 随后拔出（一根根，不提前删）
 
@@ -135,7 +137,6 @@ Wave 5+ 其余插头按风险排序一根根拔
 | Codex / Gemini / Grok / Kimi / OpenCode / Pi | `engine/{codex,gemini,grok,kimi,opencode,pi}*`、`src/features/{codex,opencode}` | `com.mossx.engine.<name>` |
 | 内置浏览器 | `src/features/browser-agent`、`browser_agent` | `com.mossx.browser` |
 | 意图画布 | `src/features/intent-canvas` | `com.mossx.intent-canvas` |
-| 项目知识地图 / memory | `src/features/project-map`、`project_map*.rs`、`project_memory` | `com.mossx.project-map` |
 | 高级 Git | `src/features/git-history`、PR / AI commit | 后续 plugin |
 | Kanban / Spec / Multi-agent / Collab | 对应 `src/features/*` | 后续 plugin |
 | Computer Use / Dictation / Email / Web Service | 对应 Rust + feature | 后续 plugin |
