@@ -11,11 +11,11 @@
 | 合同 P0 parser / fixtures | 齐 |
 | 插座 Host / IPC / 存储 / 默认 off boot | 齐，boot 不激活产品插头 |
 | 仓库内过渡仓 | 45 个 `packages/plugin-*`，实现仍在 `src/features/**` |
-| 市场入口 | 与拓展同级，**只读插排** |
-| 本地安装 / 卸载 | **已回退**（D-049）。不得再出现 stage/unstage 按钮 |
+| 市场入口 | 与拓展同级。11 根只读；**Notes 可写**（D-050） |
+| 本地安装 / 卸载 | 假市场 stage/unstage **已回退**（D-049）。Notes 走 Host lockfile，不是 localStorage |
 | 远程 Marketplace | 仍关 |
 | 产品 Claude / Notes 切流 | 仍禁 |
 
 ## 怎么看
 
-侧栏只显示 12 个已声明 Host 插头，默认 idle。没有本地过渡仓安装/卸载。
+侧栏显示 12 个已声明 Host 插头。只有 `com.mossx.notes` 有安装/卸载按钮。没有 12 插头 Marketplace，没有 localStorage 假安装。

@@ -6,7 +6,8 @@ status: active
 # Mossx Plugin Platform 主线设计
 
 > **状态**：Architecture baseline + V1 Contract Freeze（2026-08-16）
-> **最后更新**：2026-08-16
+> **最后更新**：2026-08-17
+> **进度快照**：[`16-progress-dashboard.md`](16-progress-dashboard.md)（2026-08-17；允许线 42% / 终态 14% / 真实卸载 20%）
 > **目标读者**：产品设计、平台架构、Core 开发、插件开发、Release 与安全治理
 > **一句话目标**：把 Mossx 从“持续增长的桌面应用”演进成“稳定 Core + 可隔离、可撤销、可回滚的独立插件生态”。
 > **实施入口**：字段级 Contract 以 [`14-v1-contract-freeze.md`](14-v1-contract-freeze.md) 为准；实现前仍按 Phase 拆小型 OpenSpec change。
@@ -108,6 +109,7 @@ Mossx 不使用一个模糊的“全部无重启热部署”承诺，而是区�
 | [13 · Core Shell Subtraction Implementation](13-core-shell-subtraction-implementation.md) | 0.8.9 减法阶段实际删除了什么、保留了什么，数据与冷启动如何保护？ |
 | [14 · V1 Contract Freeze](14-v1-contract-freeze.md) | 18 个 Decision Package 冻结后的可实施字段、数值、Catalog 与样例 |
 | [15 · Implementation Wave Plan](15-implementation-wave-plan.md) | 当前工作树怎么开工：先插排、再一根根拔、瘦身跟插头走 |
+| [16 · Progress Dashboard](16-progress-dashboard.md) | 允许线 / 终态 / 真实卸载三把尺子；插头九步与 08 Phase 对照 |
 | [Client Modernization 综合改善](../client-modernization/README.md) | 插件性能、冷启动、对话式安装、Developer Platform 与 W0-W12 如何协同？ |
 
 ## 6. 双写协议

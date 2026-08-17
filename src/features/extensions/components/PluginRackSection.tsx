@@ -3,6 +3,8 @@ import { useTranslation } from "react-i18next";
 
 import {
   getPluginRackSnapshot,
+  installPlugin,
+  uninstallPlugin,
   type PluginRackPlug,
   type PluginRackSnapshot,
 } from "@/services/tauri/pluginRack";
@@ -65,6 +67,23 @@ export function PluginRackSection() {
   const stylesReady = useFeatureStylesReady(loadExtensionsStyles);
   const [snapshot, setSnapshot] = useState<PluginRackSnapshot | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [pendingId, setPendingId] = useState<string | null>(null);
+
+  const handleNotesAction = async (plug: PluginRackPlug) => {
+    setPendingId(plug.pluginId);
+    try {
+      const next =
+        plug.desiredState === "uninstalled"
+          ? await installPlugin(plug.pluginId)
+          : await uninstallPlugin(plug.pluginId);
+      setSnapshot(next);
+      setError(null);
+    } catch (cause: unknown) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setPendingId(null);
+    }
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -181,6 +200,20 @@ export function PluginRackSection() {
                           <dd>{plug.generation}</dd>
                         </div>
                       </dl>
+                      {plug.installable ? (
+                        <button
+                          type="button"
+                          className="extensions-plugin-rack-stage"
+                          disabled={pendingId === plug.pluginId}
+                          onClick={() => {
+                            void handleNotesAction(plug);
+                          }}
+                        >
+                          {plug.desiredState === "uninstalled"
+                            ? t("extensions.rack.install")
+                            : t("extensions.rack.uninstall")}
+                        </button>
+                      ) : null}
                     </li>
                   ))}
                 </ul>

@@ -42,7 +42,16 @@ describe("DECLARED_PLUGIN_RACK_SNAPSHOT", () => {
       productPath: "isolated-sqlite",
       circuit: "live",
       coreOwner: "disabled",
+      installable: true,
+      desiredState: "installed",
+      contributionsLive: false,
+      allowlistedLive: false,
     });
+    expect(
+      DECLARED_PLUGIN_RACK_SNAPSHOT.plugs
+        .filter((plug) => plug.pluginId !== "com.mossx.notes")
+        .every((plug) => !plug.installable && plug.desiredState === "uninstalled"),
+    ).toBe(true);
     expect(
       DECLARED_PLUGIN_RACK_SNAPSHOT.plugs
         .slice(2)

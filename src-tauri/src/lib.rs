@@ -263,7 +263,16 @@ pub fn run() {
             let state = state::AppState::load(&app.handle());
             app.manage(state);
             match plugin_runtime::boot::boot_host() {
-                Ok(host) => {
+                Ok(mut host) => {
+                    if let Err(error) =
+                        plugin_runtime::install::restore_allowlisted(&mut *host)
+                    {
+                        log::warn!(
+                            "Plugin allowlist restore skipped: {} {}",
+                            error.code,
+                            error.message
+                        );
+                    }
                     app.manage(Mutex::new(host));
                 }
                 Err(error) => {

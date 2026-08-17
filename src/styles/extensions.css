@@ -494,3 +494,7 @@
   color: var(--text-primary);
   font-size: 12px;
 }
+
+.extensions-plugin-rack-stage:disabled {
+  opacity: 0.5;
+}

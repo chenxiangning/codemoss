@@ -35,6 +35,8 @@ const translations: Record<string, string> = {
   "extensions.rack.state": "Host slot",
   "extensions.rack.generation": "Generation",
   "extensions.rack.marketplaceLater": "Marketplace stays closed.",
+  "extensions.rack.install": "Install",
+  "extensions.rack.uninstall": "Uninstall",
   "extensions.rack.error": "Could not read the Host rack: {{message}}",
   "extensions.rack.kinds.engine": "Engines",
   "extensions.rack.kinds.feature": "Features",
@@ -63,7 +65,7 @@ vi.mock("@/services/tauri/pluginRack", async (importOriginal) => {
 });
 
 describe("PluginRackSection", () => {
-  it("renders declared idle plugs read-only, without any install/uninstall action", async () => {
+  it("renders declared idle plugs with exactly one Notes install/uninstall action", async () => {
     getPluginRackSnapshot.mockResolvedValue({
       ...DECLARED_PLUGIN_RACK_SNAPSHOT,
       hostAvailable: true,
@@ -91,8 +93,10 @@ describe("PluginRackSection", () => {
     expect(featureGroup.textContent).toContain("com.mossx.project-map");
     expect(featureGroup.textContent).toContain("com.mossx.kanban");
     expect(screen.getByText("Marketplace stays closed.")).toBeTruthy();
-    // 只读市场：不得出现任何安装/卸载/标记按钮
-    expect(screen.queryByRole("button")).toBeNull();
+    const actions = screen.getAllByRole("button");
+    expect(actions).toHaveLength(1);
+    expect(actions[0].textContent).toBe("Uninstall");
+    expect(featureGroup.contains(actions[0])).toBe(true);
     const notesPlug = featureGroup.textContent ?? "";
     expect(notesPlug).toContain("Idle");
     expect(engineGroup.textContent).toContain("Process Entry");

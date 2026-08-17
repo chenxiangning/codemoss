@@ -34,6 +34,21 @@ impl<D: EntryDriver> PluginRuntime<D> {
         })
     }
 
+    pub fn install_allowlisted(&mut self, request: ActivationRequest) -> Result<u64, HostError> {
+        self.host.prepare_install(&request.plugin_id)?;
+        let previous = self
+            .host
+            .slot(&request.plugin_id)
+            .map(|slot| (slot.generation, slot.state));
+        let generation = self.host.activate_allowlisted(request.clone())?;
+        if let Some((old_generation, state)) = previous {
+            if old_generation > 0 && state == SlotState::Ready {
+                self.plane.revoke(&request.plugin_id, old_generation);
+            }
+        }
+        Ok(generation)
+    }
+
     pub fn activate(&mut self, request: ActivationRequest) -> Result<u64, HostError> {
         let previous = self
             .host

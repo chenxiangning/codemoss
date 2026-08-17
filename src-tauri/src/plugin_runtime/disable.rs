@@ -73,7 +73,8 @@ mod tests {
         let registry = include_str!("../command_registry.rs");
         assert!(registry.contains("crate::note_cards::note_card_list"));
         assert!(!registry.contains("activate_plugin"));
-        assert!(!registry.contains("install_plugin"));
+        assert!(registry.contains("install_plugin"));
+        assert!(registry.contains("uninstall_plugin"));
     }
 
     #[test]

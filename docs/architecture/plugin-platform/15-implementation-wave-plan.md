@@ -8,6 +8,7 @@ status: active
 > 主线入口：[Mossx Plugin Platform](README.md)
 > Contract：[14 · V1 Contract Freeze](14-v1-contract-freeze.md)
 > 路线图：[08 · Migration Roadmap](08-migration-roadmap-and-tasks.md)
+> 进度快照：[16 · Progress Dashboard](16-progress-dashboard.md)
 > Base branch：`feature/plugin-mossx-0.8.9`
 > 日期：2026-08-16
 

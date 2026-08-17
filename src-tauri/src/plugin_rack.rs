@@ -1,5 +1,5 @@
-//! Read-only Host rack snapshot for the Market surface.
-//! Does not activate, disable, or install plugins.
+//! Host rack snapshot plus Notes-only install/uninstall.
+//! Other declared plugs stay read-only. No Marketplace.
 
 use serde::Serialize;
 use std::sync::Mutex;
@@ -7,6 +7,9 @@ use tauri::Manager;
 
 use crate::plugin_runtime::boot::BootHost;
 use crate::plugin_runtime::host::{Host, SlotState};
+use crate::plugin_runtime::install;
+use crate::plugin_runtime::lockfile::{self, DesiredState};
+use crate::plugin_runtime::notes_storage::NOTES_PLUGIN_ID;
 
 const DECLARED_PLUGS: &[DeclaredPlug] = &[
     DeclaredPlug {
@@ -104,6 +107,10 @@ pub struct PluginRackPlug {
     pub product_path: String,
     pub circuit: String,
     pub core_owner: String,
+    pub installable: bool,
+    pub desired_state: String,
+    pub contributions_live: bool,
+    pub allowlisted_live: bool,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -151,6 +158,12 @@ fn product_circuit_from(
 
 fn declared_plug(plug: &DeclaredPlug, state: &str, generation: u64, unit_id: Option<String>, live: bool) -> PluginRackPlug {
     let (product_path, circuit) = product_circuit(plug.plugin_id);
+    let installable = install::is_install_allowlisted(plug.plugin_id);
+    let desired = lockfile::product_desired(plug.plugin_id);
+    let contributions_live = plug.plugin_id == NOTES_PLUGIN_ID
+        && crate::plugin_runtime::contributions::notes_live();
+    let allowlisted_live =
+        installable && desired == DesiredState::Installed && contributions_live && live;
     PluginRackPlug {
         plugin_id: plug.plugin_id.to_string(),
         display_name: plug.display_name.to_string(),
@@ -165,6 +178,10 @@ fn declared_plug(plug: &DeclaredPlug, state: &str, generation: u64, unit_id: Opt
         core_owner: crate::plugin_runtime::disable::core_owner_for_plugin(plug.plugin_id)
             .as_str()
             .to_string(),
+        installable,
+        desired_state: desired.as_str().to_string(),
+        contributions_live,
+        allowlisted_live,
     }
 }
 
@@ -241,16 +258,71 @@ pub(crate) fn get_plugin_rack_snapshot(
     Ok(snapshot_boot_host(&guard))
 }
 
+fn with_boot_host(
+    app: &tauri::AppHandle,
+    run: impl FnOnce(&mut BootHost) -> Result<(), String>,
+) -> Result<PluginRackSnapshot, String> {
+    let Some(state) = app.try_state::<Mutex<BootHost>>() else {
+        return Err("plugin-host-unavailable".into());
+    };
+    let mut guard = state.lock().map_err(|_| "plugin-rack-lock".to_string())?;
+    run(&mut guard)?;
+    Ok(snapshot_boot_host(&guard))
+}
+
+fn map_host_error(error: crate::plugin_runtime::host::HostError) -> String {
+    format!("{}: {}", error.code, error.message)
+}
+
+#[tauri::command]
+pub(crate) fn install_plugin(
+    app: tauri::AppHandle,
+    plugin_id: String,
+) -> Result<PluginRackSnapshot, String> {
+    with_boot_host(&app, |host| {
+        install::install_plugin(&mut **host, &plugin_id).map_err(map_host_error)
+    })
+}
+
+#[tauri::command]
+pub(crate) fn uninstall_plugin(
+    app: tauri::AppHandle,
+    plugin_id: String,
+) -> Result<PluginRackSnapshot, String> {
+    with_boot_host(&app, |host| {
+        install::uninstall_plugin(&mut **host, &plugin_id).map_err(map_host_error)
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::plugin_runtime::boot::boot_host;
     use crate::plugin_runtime::claude_pilot::claude_activation_request;
+    use crate::plugin_runtime::contributions;
     use crate::plugin_runtime::host::{FakeDriver, HostConfig};
     use crate::plugin_runtime::notes_pilot::notes_activation_request;
 
+    fn with_temp_lockfile<T>(name: &str, run: impl FnOnce() -> T) -> T {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|duration| duration.as_nanos())
+            .unwrap_or(0);
+        let path = std::env::temp_dir().join(format!(
+            "mossx-rack-{name}-{}-{nanos}.json",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_file(&path);
+        contributions::reset_for_test();
+        let result = lockfile::with_lockfile_path(&path, run);
+        let _ = std::fs::remove_file(&path);
+        contributions::reset_for_test();
+        result
+    }
+
     #[test]
     fn default_off_boot_lists_declared_idle_plugs() {
+        with_temp_lockfile("idle", || {
         let host = boot_host().expect("boot");
         let snapshot = snapshot_boot_host(&host);
         assert!(snapshot.host_available);
@@ -290,10 +362,19 @@ mod tests {
         for plug in &snapshot.plugs {
             assert!(host.host.slot(&plug.plugin_id).is_none());
         }
+        assert!(snapshot.plugs[1].installable);
+        assert_eq!(snapshot.plugs[1].desired_state, "installed");
+        assert!(!snapshot.plugs[1].contributions_live);
+        assert!(!snapshot.plugs[1].allowlisted_live);
+        assert!(snapshot.plugs.iter().filter(|plug| plug.plugin_id != NOTES_PLUGIN_ID).all(|plug| {
+            !plug.installable && plug.desired_state == "uninstalled" && !plug.contributions_live
+        }));
+        });
     }
 
     #[test]
     fn snapshot_reads_live_slots_without_activating() {
+        with_temp_lockfile("live-slots", || {
         let mut host = Host::new(
             HostConfig {
                 enabled: true,
@@ -309,13 +390,18 @@ mod tests {
         assert!(snapshot.plugs[0].live);
         assert_eq!(snapshot.plugs[1].state, "idle");
         assert!(!snapshot.plugs[1].live);
+        assert!(snapshot.plugs[1].installable);
+        assert!(!snapshot.plugs[1].contributions_live);
         let _ = notes_activation_request();
+        });
     }
 
     #[test]
     fn command_registry_exposes_snapshot_not_activate() {
         let registry = include_str!("command_registry.rs");
         assert!(registry.contains("get_plugin_rack_snapshot"));
+        assert!(registry.contains("install_plugin"));
+        assert!(registry.contains("uninstall_plugin"));
         assert!(!registry.contains("activate_plugin"));
         assert!(!registry.contains("plugin_runtime"));
         assert!(std::path::Path::new("src/engine/claude.rs").exists());

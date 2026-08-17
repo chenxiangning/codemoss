@@ -2,7 +2,7 @@
 
 本页是 `mossx` OpenSpec proposal 的当前入口。它只维护 active change 的执行状态，并把 archived change 路由到完整历史索引；详细治理快照仍以 [`../project.md`](../project.md) 为准。
 
-- Updated At: `2026-08-16`
+- Updated At: `2026-08-17`
 - Active proposals: `5+`（以磁盘 `openspec/changes/*` 为准）
 - Archived proposals: `848+`
 - Main capability specs: `494`
@@ -11,6 +11,7 @@
 
 | Change | Progress | Current gate | Artifacts |
 | ------ | -------: | ------------ | --------- |
+| [`plugin-rack-real-install-loop`](plugin-rack-real-install-loop/proposal.md) | applying | D-050 Notes-only 真实装/卸；无 Slim / 无 Marketplace | [proposal](plugin-rack-real-install-loop/proposal.md) · [design](plugin-rack-real-install-loop/design.md) · [tasks](plugin-rack-real-install-loop/tasks.md) · [specs](plugin-rack-real-install-loop/specs/) |
 | [`plugin-kernel-ownership-inventory`](plugin-kernel-ownership-inventory/proposal.md) | implemented | Wave 0A 已落地：ownership 表 + fitness；不删产品 | [proposal](plugin-kernel-ownership-inventory/proposal.md) · [design](plugin-kernel-ownership-inventory/design.md) · [tasks](plugin-kernel-ownership-inventory/tasks.md) · [specs](plugin-kernel-ownership-inventory/specs/) |
 | [`plugin-manifest-v1-parser`](plugin-manifest-v1-parser/proposal.md) | implemented | Wave 0B 已落地：Manifest/Catalog/DAG parser，不接生产路径 | [proposal](plugin-manifest-v1-parser/proposal.md) · [design](plugin-manifest-v1-parser/design.md) · [tasks](plugin-manifest-v1-parser/tasks.md) · [specs](plugin-manifest-v1-parser/specs/) |
 | [`plugin-ipc-v1-framing`](plugin-ipc-v1-framing/proposal.md) | implemented | Wave 1A 已落地：MXPC/MXPD 纯编解码，不听端口 | [proposal](plugin-ipc-v1-framing/proposal.md) · [design](plugin-ipc-v1-framing/design.md) · [tasks](plugin-ipc-v1-framing/tasks.md) · [specs](plugin-ipc-v1-framing/specs/) |

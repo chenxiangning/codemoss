@@ -196,7 +196,7 @@ const sidebar = {
     },
     rack: {
       title: "Plugin rack",
-      subtitle: "Declared Host plugs. Read-only. Marketplace install stays closed.",
+      subtitle: "Declared Host plugs. Only Notes can be installed or uninstalled. Marketplace stays closed.",
       loading: "Reading Host snapshot…",
       hostUnavailable: "Host snapshot unavailable. Declared plugs stay idle.",
       hostDisabled: "Host is default-off. Plugs are declared, not live.",
@@ -234,7 +234,9 @@ const sidebar = {
       },
       state: "Host slot",
       generation: "Generation",
-      marketplaceLater: "Remote Marketplace stays closed. This page is a read-only meter. It does not install, uninstall, or activate the Host.",
+      marketplaceLater: "Remote Marketplace stays closed. Only Notes can be installed or uninstalled here. Uninstall stops the plug and keeps notes on disk.",
+      install: "Install",
+      uninstall: "Uninstall",
       catalogTitle: "Local packages",
       catalogSubtitle: "In-repo packages are inventory only. This page does not install or uninstall them.",
       catalogPath: "Path",
@@ -259,6 +261,7 @@ const sidebar = {
         failed: "Failed",
         fused: "Fused",
         disabled: "Disabled",
+        uninstalled: "Uninstalled",
       },
     },
     usage: {

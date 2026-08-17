@@ -12,6 +12,10 @@ export type PluginRackPlug = {
   productPath: string;
   circuit: string;
   coreOwner: string;
+  installable: boolean;
+  desiredState: string;
+  contributionsLive: boolean;
+  allowlistedLive: boolean;
 };
 
 export type PluginRackSnapshot = {
@@ -48,6 +52,10 @@ function declaredPlug(
     productPath: circuit.productPath,
     circuit: circuit.circuit,
     coreOwner: circuit.coreOwner,
+    installable: pluginId === "com.mossx.notes",
+    desiredState: pluginId === "com.mossx.notes" ? "installed" : "uninstalled",
+    contributionsLive: false,
+    allowlistedLive: false,
   };
 }
 
@@ -78,4 +86,18 @@ export async function getPluginRackSnapshot(): Promise<PluginRackSnapshot> {
     return DECLARED_PLUGIN_RACK_SNAPSHOT;
   }
   return invoke<PluginRackSnapshot>("get_plugin_rack_snapshot");
+}
+
+export async function installPlugin(pluginId: string): Promise<PluginRackSnapshot> {
+  if (!isTauri()) {
+    throw new Error("plugin-host-unavailable");
+  }
+  return invoke<PluginRackSnapshot>("install_plugin", { pluginId });
+}
+
+export async function uninstallPlugin(pluginId: string): Promise<PluginRackSnapshot> {
+  if (!isTauri()) {
+    throw new Error("plugin-host-unavailable");
+  }
+  return invoke<PluginRackSnapshot>("uninstall_plugin", { pluginId });
 }

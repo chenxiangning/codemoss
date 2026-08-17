@@ -214,7 +214,68 @@ impl<D: EntryDriver> Host<D> {
     }
 
     pub fn activate(&mut self, request: ActivationRequest) -> Result<u64, HostError> {
-        if !self.config.enabled {
+        self.activate_with(request, false)
+    }
+
+    pub fn activate_allowlisted(&mut self, request: ActivationRequest) -> Result<u64, HostError> {
+        self.activate_with(request, true)
+    }
+
+    pub fn prepare_install(&mut self, plugin_id: &str) -> Result<(), HostError> {
+        require_plugin_id(plugin_id)?;
+        let current = self
+            .slots
+            .entry(plugin_id.to_string())
+            .or_insert_with(PluginSlot::idle);
+        match current.state {
+            SlotState::Uninstalled | SlotState::Idle => {
+                current.state = SlotState::Idle;
+                current.started.clear();
+                current.unit_id = None;
+                Ok(())
+            }
+            SlotState::Ready => Ok(()),
+            SlotState::Activating => Err(err(
+                "activation-busy",
+                "cannot install while activating",
+            )),
+            SlotState::Failed => Err(err("failed", "plugin is failed until reset")),
+            SlotState::Fused => Err(err("fused", "plugin is fused until reset")),
+            SlotState::Disabled => Err(err("disabled", "plugin is disabled until reset")),
+        }
+    }
+
+    pub fn mark_uninstalled(&mut self, plugin_id: &str) -> Result<(), HostError> {
+        require_plugin_id(plugin_id)?;
+        if self
+            .slots
+            .get(plugin_id)
+            .is_some_and(|slot| slot.state == SlotState::Ready)
+        {
+            return self.uninstall(plugin_id);
+        }
+        let slot = self
+            .slots
+            .entry(plugin_id.to_string())
+            .or_insert_with(PluginSlot::idle);
+        if slot.state == SlotState::Activating {
+            return Err(err(
+                "activation-busy",
+                "cannot uninstall while activating",
+            ));
+        }
+        slot.started.clear();
+        slot.unit_id = None;
+        slot.state = SlotState::Uninstalled;
+        Ok(())
+    }
+
+    fn activate_with(
+        &mut self,
+        request: ActivationRequest,
+        allowlisted: bool,
+    ) -> Result<u64, HostError> {
+        if !self.config.enabled && !allowlisted {
             return Err(err("host-disabled", "host is not enabled"));
         }
         if request.required_entries.is_empty() {
@@ -254,7 +315,13 @@ impl<D: EntryDriver> Host<D> {
                 return Err(err("failed", "plugin is failed until reset"));
             }
             if current.state == SlotState::Uninstalled {
-                return Err(err("uninstalled", "plugin is uninstalled until install"));
+                if allowlisted {
+                    current.state = SlotState::Idle;
+                    current.started.clear();
+                    current.unit_id = None;
+                } else {
+                    return Err(err("uninstalled", "plugin is uninstalled until install"));
+                }
             }
             if current.state == SlotState::Activating {
                 return Err(err("activation-busy", "plugin is already activating"));
@@ -1067,5 +1134,40 @@ mod tests {
     #[test]
     fn slot_state_name_exposes_uninstalled() {
         assert_eq!(Host::<FakeDriver>::slot_state_name(SlotState::Uninstalled), "uninstalled");
+    }
+
+    #[test]
+    fn allowlisted_reinstall_recovers_uninstalled() {
+        let mut host = Host::new(HostConfig::default(), FakeDriver::default()).expect("config");
+        assert_eq!(
+            host.activate(notes_request()).unwrap_err().code,
+            "host-disabled"
+        );
+        host.mark_uninstalled("com.mossx.notes").expect("mark");
+        assert_eq!(
+            host.slot("com.mossx.notes").unwrap().state,
+            SlotState::Uninstalled
+        );
+        assert_eq!(
+            host.activate(notes_request()).unwrap_err().code,
+            "host-disabled"
+        );
+        host.prepare_install("com.mossx.notes").expect("prepare");
+        assert_eq!(
+            host.slot("com.mossx.notes").unwrap().state,
+            SlotState::Idle
+        );
+        let generation = host
+            .activate_allowlisted(notes_request())
+            .expect("reinstall");
+        assert_eq!(generation, 1);
+        assert_eq!(
+            host.slot("com.mossx.notes").unwrap().state,
+            SlotState::Ready
+        );
+        assert_eq!(
+            host.activate(notes_request()).unwrap_err().code,
+            "host-disabled"
+        );
     }
 }

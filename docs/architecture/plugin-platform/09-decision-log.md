@@ -61,6 +61,7 @@ status: active
 | D-047 | 2026-08-16 | DP-017：官方 SDK = TypeScript + Rust；Go 仅 generated types | 其他语言走 conformance |
 | D-048 | 2026-08-16 | DP-018：Engine pilot = Claude；Feature pilot = Notes；Git/Search 留 Core；Trusted React 仅 system | 不把已删 CLI 拷回 Core |
 | D-049 | 2026-08-16 | Marketplace UI 必须在「插头真实迁出（Slim 删 Core 实现）」之后才开放；本地过渡仓 staging 仅只读展示，不得伪装成可安装/卸载 | 回退 2026-08-16 误入的「假卸载」市场（45 假插件 catalog + localStorage 标记 + 总闸/激活/停用命令）；真实插件状态以 `claude_compat_facade_enabled` + claude_owner 分发为准 |
+| D-050 | 2026-08-17 | 在不开 Marketplace、不 Slim 的前提下，允许 **一根** 系统插头走真实 install/uninstall：`com.mossx.notes`。命令挂 `plugin_rack`，lockfile 在 `~/.ccgui/plugin-lockfile.json`，Host 保持 `enabled=false`，仅 `activate_allowlisted` 可恢复 Notes。其余 11 根仍只读 | 纠正 D-049 被读成「产品永远不能有安装按钮」。D-049 禁的是假市场 / localStorage / 12 插头可写。证据：OpenSpec `plugin-rack-real-install-loop`；`src-tauri/src/plugin_runtime/{lockfile,contributions,install}.rs`；`plugin_rack.rs` `install_plugin` / `uninstall_plugin` |
 
 ## 2. 已拒绝或纠正的方案
 
