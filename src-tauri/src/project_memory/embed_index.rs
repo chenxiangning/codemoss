@@ -91,6 +91,18 @@ fn write_index_file(path: &std::path::Path, file: &EmbedIndexFile) -> Result<(),
 pub(crate) async fn project_memory_embed_index_list(
     workspace_id: String,
 ) -> Result<Vec<EmbedIndexRecord>, String> {
+    crate::plugin_runtime::install::project_map_commands_allowed()?;
+    if crate::plugin_runtime::project_map_compat::project_map_compat_facade_enabled() {
+        return crate::plugin_runtime::project_map_compat::ProjectMapCompatAdapter::isolated_product()?
+            .embed_index_list(workspace_id)
+            .await;
+    }
+    project_memory_embed_index_list_core(workspace_id).await
+}
+
+pub(crate) async fn project_memory_embed_index_list_core(
+    workspace_id: String,
+) -> Result<Vec<EmbedIndexRecord>, String> {
     run_project_memory_io(move || {
         let ws_dir = match resolve_workspace_dir(&workspace_id)? {
             Some(dir) => dir,
@@ -104,6 +116,19 @@ pub(crate) async fn project_memory_embed_index_list(
 
 #[tauri::command]
 pub(crate) async fn project_memory_embed_index_upsert(
+    workspace_id: String,
+    records: Vec<EmbedIndexRecord>,
+) -> Result<(), String> {
+    crate::plugin_runtime::install::project_map_commands_allowed()?;
+    if crate::plugin_runtime::project_map_compat::project_map_compat_facade_enabled() {
+        return crate::plugin_runtime::project_map_compat::ProjectMapCompatAdapter::isolated_product()?
+            .embed_index_upsert(workspace_id, records)
+            .await;
+    }
+    project_memory_embed_index_upsert_core(workspace_id, records).await
+}
+
+pub(crate) async fn project_memory_embed_index_upsert_core(
     workspace_id: String,
     records: Vec<EmbedIndexRecord>,
 ) -> Result<(), String> {
@@ -136,6 +161,19 @@ pub(crate) async fn project_memory_embed_index_delete(
     workspace_id: String,
     memory_ids: Vec<String>,
 ) -> Result<(), String> {
+    crate::plugin_runtime::install::project_map_commands_allowed()?;
+    if crate::plugin_runtime::project_map_compat::project_map_compat_facade_enabled() {
+        return crate::plugin_runtime::project_map_compat::ProjectMapCompatAdapter::isolated_product()?
+            .embed_index_delete(workspace_id, memory_ids)
+            .await;
+    }
+    project_memory_embed_index_delete_core(workspace_id, memory_ids).await
+}
+
+pub(crate) async fn project_memory_embed_index_delete_core(
+    workspace_id: String,
+    memory_ids: Vec<String>,
+) -> Result<(), String> {
     run_project_memory_io(move || {
         let ws_dir = match resolve_workspace_dir(&workspace_id)? {
             Some(dir) => dir,
@@ -157,6 +195,18 @@ pub(crate) async fn project_memory_embed_index_delete(
 
 #[tauri::command]
 pub(crate) async fn project_memory_embed_index_clear(
+    workspace_id: String,
+) -> Result<(), String> {
+    crate::plugin_runtime::install::project_map_commands_allowed()?;
+    if crate::plugin_runtime::project_map_compat::project_map_compat_facade_enabled() {
+        return crate::plugin_runtime::project_map_compat::ProjectMapCompatAdapter::isolated_product()?
+            .embed_index_clear(workspace_id)
+            .await;
+    }
+    project_memory_embed_index_clear_core(workspace_id).await
+}
+
+pub(crate) async fn project_memory_embed_index_clear_core(
     workspace_id: String,
 ) -> Result<(), String> {
     run_project_memory_io(move || {

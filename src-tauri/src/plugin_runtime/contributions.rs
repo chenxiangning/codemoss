@@ -7,10 +7,13 @@ use std::sync::{Mutex, OnceLock};
 use super::claude_process::CLAUDE_PLUGIN_ID;
 use super::notes_compat::NOTES_COMMAND_IDS;
 use super::notes_storage::NOTES_PLUGIN_ID;
+use super::project_map_compat::PROJECT_MAP_COMMAND_IDS;
+use super::project_map_storage::PROJECT_MAP_PLUGIN_ID;
 
 const NOTES_VIEW_ID: &str = "notes.main";
 const CLAUDE_VIEW_ID: &str = "claude.engine";
 const CLAUDE_COMMAND_IDS: &[&str] = &["claude.spawn"];
+const PROJECT_MAP_VIEW_IDS: &[&str] = &["project-map.main", "project-map.memory"];
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct ContributionSet {
@@ -94,6 +97,23 @@ pub fn register_claude() -> Result<(), String> {
     register(CLAUDE_PLUGIN_ID, claude_contributions())
 }
 
+pub fn project_map_contributions() -> ContributionSet {
+    ContributionSet {
+        views: PROJECT_MAP_VIEW_IDS
+            .iter()
+            .map(|view_id| (*view_id).to_string())
+            .collect(),
+        commands: PROJECT_MAP_COMMAND_IDS
+            .iter()
+            .map(|command_id| (*command_id).to_string())
+            .collect(),
+    }
+}
+
+pub fn register_project_map() -> Result<(), String> {
+    register(PROJECT_MAP_PLUGIN_ID, project_map_contributions())
+}
+
 pub fn revoke(plugin_id: &str) {
     let _ = with_registry(|guard| {
         guard.remove(plugin_id);
@@ -119,6 +139,16 @@ pub fn claude_live() -> bool {
     let set = get(CLAUDE_PLUGIN_ID);
     set.contains_view(CLAUDE_VIEW_ID)
         && CLAUDE_COMMAND_IDS
+            .iter()
+            .all(|command_id| set.contains_command(command_id))
+}
+
+pub fn project_map_live() -> bool {
+    let set = get(PROJECT_MAP_PLUGIN_ID);
+    PROJECT_MAP_VIEW_IDS
+        .iter()
+        .all(|view_id| set.contains_view(view_id))
+        && PROJECT_MAP_COMMAND_IDS
             .iter()
             .all(|command_id| set.contains_command(command_id))
 }
@@ -158,5 +188,24 @@ mod tests {
         revoke(CLAUDE_PLUGIN_ID);
         assert!(!claude_live());
         assert!(get(CLAUDE_PLUGIN_ID).is_empty());
+    }
+
+    #[test]
+    fn project_map_register_is_atomic_and_revoke_clears_all() {
+        reset_for_test();
+        register_project_map().expect("register");
+        assert!(project_map_live());
+        let set = get(PROJECT_MAP_PLUGIN_ID);
+        assert_eq!(
+            set.views,
+            vec![
+                "project-map.main".to_string(),
+                "project-map.memory".to_string()
+            ]
+        );
+        assert_eq!(set.commands.len(), PROJECT_MAP_COMMAND_IDS.len());
+        revoke(PROJECT_MAP_PLUGIN_ID);
+        assert!(!project_map_live());
+        assert!(get(PROJECT_MAP_PLUGIN_ID).is_empty());
     }
 }

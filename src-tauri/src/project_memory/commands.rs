@@ -8,11 +8,33 @@ fn now_ms() -> i64 {
 
 #[tauri::command]
 pub(crate) async fn project_memory_get_settings() -> Result<ProjectMemorySettings, String> {
+    crate::plugin_runtime::install::project_map_commands_allowed()?;
+    if crate::plugin_runtime::project_map_compat::project_map_compat_facade_enabled() {
+        return crate::plugin_runtime::project_map_compat::ProjectMapCompatAdapter::isolated_product()?
+            .get_settings()
+            .await;
+    }
+    project_memory_get_settings_core().await
+}
+
+pub(crate) async fn project_memory_get_settings_core() -> Result<ProjectMemorySettings, String> {
     run_project_memory_io(read_settings).await
 }
 
 #[tauri::command]
 pub(crate) async fn project_memory_update_settings(
+    settings: ProjectMemorySettings,
+) -> Result<ProjectMemorySettings, String> {
+    crate::plugin_runtime::install::project_map_commands_allowed()?;
+    if crate::plugin_runtime::project_map_compat::project_map_compat_facade_enabled() {
+        return crate::plugin_runtime::project_map_compat::ProjectMapCompatAdapter::isolated_product()?
+            .update_settings(settings)
+            .await;
+    }
+    project_memory_update_settings_core(settings).await
+}
+
+pub(crate) async fn project_memory_update_settings_core(
     settings: ProjectMemorySettings,
 ) -> Result<ProjectMemorySettings, String> {
     run_project_memory_io(move || {
@@ -24,6 +46,41 @@ pub(crate) async fn project_memory_update_settings(
 
 #[tauri::command]
 pub(crate) async fn project_memory_list(
+    workspace_id: String,
+    query: Option<String>,
+    kind: Option<String>,
+    importance: Option<String>,
+    tag: Option<String>,
+    page: Option<usize>,
+    page_size: Option<usize>,
+) -> Result<ProjectMemoryListResult, String> {
+    crate::plugin_runtime::install::project_map_commands_allowed()?;
+    if crate::plugin_runtime::project_map_compat::project_map_compat_facade_enabled() {
+        return crate::plugin_runtime::project_map_compat::ProjectMapCompatAdapter::isolated_product()?
+            .list_memories(
+                workspace_id,
+                query,
+                kind,
+                importance,
+                tag,
+                page,
+                page_size,
+            )
+            .await;
+    }
+    project_memory_list_core(
+        workspace_id,
+        query,
+        kind,
+        importance,
+        tag,
+        page,
+        page_size,
+    )
+    .await
+}
+
+pub(crate) async fn project_memory_list_core(
     workspace_id: String,
     query: Option<String>,
     kind: Option<String>,
@@ -77,6 +134,19 @@ pub(crate) async fn project_memory_get(
     memory_id: String,
     workspace_id: String,
 ) -> Result<Option<ProjectMemoryItem>, String> {
+    crate::plugin_runtime::install::project_map_commands_allowed()?;
+    if crate::plugin_runtime::project_map_compat::project_map_compat_facade_enabled() {
+        return crate::plugin_runtime::project_map_compat::ProjectMapCompatAdapter::isolated_product()?
+            .get_memory(memory_id, workspace_id)
+            .await;
+    }
+    project_memory_get_core(memory_id, workspace_id).await
+}
+
+pub(crate) async fn project_memory_get_core(
+    memory_id: String,
+    workspace_id: String,
+) -> Result<Option<ProjectMemoryItem>, String> {
     run_project_memory_io(move || {
         ensure_migrated()?;
         let ws_dir = match resolve_workspace_dir(&workspace_id)? {
@@ -93,6 +163,18 @@ pub(crate) async fn project_memory_get(
 
 #[tauri::command]
 pub(crate) async fn project_memory_create(
+    input: CreateProjectMemoryInput,
+) -> Result<ProjectMemoryItem, String> {
+    crate::plugin_runtime::install::project_map_commands_allowed()?;
+    if crate::plugin_runtime::project_map_compat::project_map_compat_facade_enabled() {
+        return crate::plugin_runtime::project_map_compat::ProjectMapCompatAdapter::isolated_product()?
+            .create_memory(input)
+            .await;
+    }
+    project_memory_create_core(input).await
+}
+
+pub(crate) async fn project_memory_create_core(
     input: CreateProjectMemoryInput,
 ) -> Result<ProjectMemoryItem, String> {
     run_project_memory_io(move || {
@@ -275,6 +357,20 @@ pub(crate) async fn project_memory_update(
     workspace_id: String,
     patch: UpdateProjectMemoryInput,
 ) -> Result<ProjectMemoryItem, String> {
+    crate::plugin_runtime::install::project_map_commands_allowed()?;
+    if crate::plugin_runtime::project_map_compat::project_map_compat_facade_enabled() {
+        return crate::plugin_runtime::project_map_compat::ProjectMapCompatAdapter::isolated_product()?
+            .update_memory(memory_id, workspace_id, patch)
+            .await;
+    }
+    project_memory_update_core(memory_id, workspace_id, patch).await
+}
+
+pub(crate) async fn project_memory_update_core(
+    memory_id: String,
+    workspace_id: String,
+    patch: UpdateProjectMemoryInput,
+) -> Result<ProjectMemoryItem, String> {
     run_project_memory_io(move || {
         ensure_migrated()?;
         let ws_dir = resolve_workspace_dir(&workspace_id)?
@@ -374,6 +470,19 @@ pub(crate) async fn project_memory_delete(
     memory_id: String,
     workspace_id: String,
 ) -> Result<(), String> {
+    crate::plugin_runtime::install::project_map_commands_allowed()?;
+    if crate::plugin_runtime::project_map_compat::project_map_compat_facade_enabled() {
+        return crate::plugin_runtime::project_map_compat::ProjectMapCompatAdapter::isolated_product()?
+            .delete_memory(memory_id, workspace_id)
+            .await;
+    }
+    project_memory_delete_core(memory_id, workspace_id).await
+}
+
+pub(crate) async fn project_memory_delete_core(
+    memory_id: String,
+    workspace_id: String,
+) -> Result<(), String> {
     run_project_memory_io(move || {
         ensure_migrated()?;
         let ws_dir = resolve_workspace_dir(&workspace_id)?
@@ -390,6 +499,18 @@ pub(crate) async fn project_memory_delete(
 
 #[tauri::command]
 pub(crate) async fn project_memory_diagnostics(
+    workspace_id: String,
+) -> Result<ProjectMemoryDiagnosticsResult, String> {
+    crate::plugin_runtime::install::project_map_commands_allowed()?;
+    if crate::plugin_runtime::project_map_compat::project_map_compat_facade_enabled() {
+        return crate::plugin_runtime::project_map_compat::ProjectMapCompatAdapter::isolated_product()?
+            .diagnostics(workspace_id)
+            .await;
+    }
+    project_memory_diagnostics_core(workspace_id).await
+}
+
+pub(crate) async fn project_memory_diagnostics_core(
     workspace_id: String,
 ) -> Result<ProjectMemoryDiagnosticsResult, String> {
     run_project_memory_io(move || {
@@ -416,6 +537,19 @@ pub(crate) async fn project_memory_reconcile(
     workspace_id: String,
     dry_run: bool,
 ) -> Result<ProjectMemoryReconcileResult, String> {
+    crate::plugin_runtime::install::project_map_commands_allowed()?;
+    if crate::plugin_runtime::project_map_compat::project_map_compat_facade_enabled() {
+        return crate::plugin_runtime::project_map_compat::ProjectMapCompatAdapter::isolated_product()?
+            .reconcile(workspace_id, dry_run)
+            .await;
+    }
+    project_memory_reconcile_core(workspace_id, dry_run).await
+}
+
+pub(crate) async fn project_memory_reconcile_core(
+    workspace_id: String,
+    dry_run: bool,
+) -> Result<ProjectMemoryReconcileResult, String> {
     run_project_memory_io(move || {
         ensure_migrated()?;
         let ws_dir = match resolve_workspace_dir(&workspace_id)? {
@@ -439,6 +573,18 @@ pub(crate) async fn project_memory_reconcile(
 
 #[tauri::command]
 pub(crate) async fn project_memory_capture_auto(
+    input: AutoCaptureInput,
+) -> Result<Option<ProjectMemoryItem>, String> {
+    crate::plugin_runtime::install::project_map_commands_allowed()?;
+    if crate::plugin_runtime::project_map_compat::project_map_compat_facade_enabled() {
+        return crate::plugin_runtime::project_map_compat::ProjectMapCompatAdapter::isolated_product()?
+            .capture_auto(input)
+            .await;
+    }
+    project_memory_capture_auto_core(input).await
+}
+
+pub(crate) async fn project_memory_capture_auto_core(
     input: AutoCaptureInput,
 ) -> Result<Option<ProjectMemoryItem>, String> {
     run_project_memory_io(move || {

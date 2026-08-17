@@ -23,6 +23,7 @@ use projection::*;
 use search::*;
 use settings::*;
 use store::*;
+pub(crate) use store::read_date_file;
 
 #[cfg(test)]
 mod tests;

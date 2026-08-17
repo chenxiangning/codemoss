@@ -123,11 +123,36 @@ fn disabled_health(app: &tauri::AppHandle) -> ProjectMemoryEmbedHealth {
 pub(crate) async fn project_memory_embed_health(
     app: tauri::AppHandle,
 ) -> Result<ProjectMemoryEmbedHealth, String> {
+    crate::plugin_runtime::install::project_map_commands_allowed()?;
+    if crate::plugin_runtime::project_map_compat::project_map_compat_facade_enabled() {
+        return crate::plugin_runtime::project_map_compat::ProjectMapCompatAdapter::isolated_product()?
+            .embed_health(app)
+            .await;
+    }
+    project_memory_embed_health_core(app).await
+}
+
+pub(crate) async fn project_memory_embed_health_core(
+    app: tauri::AppHandle,
+) -> Result<ProjectMemoryEmbedHealth, String> {
     Ok(disabled_health(&app))
 }
 
 #[tauri::command]
 pub(crate) async fn project_memory_embed_text(
+    app: tauri::AppHandle,
+    text: String,
+) -> Result<ProjectMemoryEmbedResult, String> {
+    crate::plugin_runtime::install::project_map_commands_allowed()?;
+    if crate::plugin_runtime::project_map_compat::project_map_compat_facade_enabled() {
+        return crate::plugin_runtime::project_map_compat::ProjectMapCompatAdapter::isolated_product()?
+            .embed_text(app, text)
+            .await;
+    }
+    project_memory_embed_text_core(app, text).await
+}
+
+pub(crate) async fn project_memory_embed_text_core(
     _app: tauri::AppHandle,
     _text: String,
 ) -> Result<ProjectMemoryEmbedResult, String> {
@@ -136,6 +161,18 @@ pub(crate) async fn project_memory_embed_text(
 
 #[tauri::command]
 pub(crate) async fn project_memory_embed_download(
+    app: tauri::AppHandle,
+) -> Result<ProjectMemoryEmbedHealth, String> {
+    crate::plugin_runtime::install::project_map_commands_allowed()?;
+    if crate::plugin_runtime::project_map_compat::project_map_compat_facade_enabled() {
+        return crate::plugin_runtime::project_map_compat::ProjectMapCompatAdapter::isolated_product()?
+            .embed_download(app)
+            .await;
+    }
+    project_memory_embed_download_core(app).await
+}
+
+pub(crate) async fn project_memory_embed_download_core(
     app: tauri::AppHandle,
 ) -> Result<ProjectMemoryEmbedHealth, String> {
     log::info!(
@@ -147,6 +184,18 @@ pub(crate) async fn project_memory_embed_download(
 /// 清理历史模型残留（用户目录 / 旧 app_data），便于磁盘回收。
 #[tauri::command]
 pub(crate) async fn project_memory_embed_remove(
+    app: tauri::AppHandle,
+) -> Result<ProjectMemoryEmbedHealth, String> {
+    crate::plugin_runtime::install::project_map_commands_allowed()?;
+    if crate::plugin_runtime::project_map_compat::project_map_compat_facade_enabled() {
+        return crate::plugin_runtime::project_map_compat::ProjectMapCompatAdapter::isolated_product()?
+            .embed_remove(app)
+            .await;
+    }
+    project_memory_embed_remove_core(app).await
+}
+
+pub(crate) async fn project_memory_embed_remove_core(
     app: tauri::AppHandle,
 ) -> Result<ProjectMemoryEmbedHealth, String> {
     if let Some(model_dir) = embed_model_data_dir(&app) {

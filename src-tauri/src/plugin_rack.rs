@@ -1,4 +1,4 @@
-//! Host rack snapshot plus Notes and Claude install/uninstall.
+//! Host rack snapshot plus Notes, Claude and Project Map install/uninstall.
 //! Other declared plugs stay read-only. No Marketplace.
 
 use serde::Serialize;
@@ -11,6 +11,7 @@ use crate::plugin_runtime::install;
 use crate::plugin_runtime::lockfile::{self, DesiredState};
 use crate::plugin_runtime::claude_process::CLAUDE_PLUGIN_ID;
 use crate::plugin_runtime::notes_storage::NOTES_PLUGIN_ID;
+use crate::plugin_runtime::project_map_storage::PROJECT_MAP_PLUGIN_ID;
 
 const DECLARED_PLUGS: &[DeclaredPlug] = &[
     DeclaredPlug {
@@ -29,7 +30,7 @@ const DECLARED_PLUGS: &[DeclaredPlug] = &[
         plugin_id: "com.mossx.project-map",
         display_name: "Project Map",
         kind: "feature",
-        owner_class: "later-plugin",
+        owner_class: "pilot",
     },
     DeclaredPlug {
         plugin_id: "com.mossx.browser",
@@ -130,6 +131,7 @@ fn product_circuit(plugin_id: &str) -> (&'static str, &'static str) {
         plugin_id,
         crate::plugin_runtime::claude_process::claude_process_entry_enabled(),
         crate::plugin_runtime::notes_compat::notes_compat_facade_enabled(),
+        crate::plugin_runtime::project_map_compat::project_map_compat_facade_enabled(),
     )
 }
 
@@ -137,6 +139,7 @@ fn product_circuit_from(
     plugin_id: &str,
     claude_process_entry: bool,
     notes_isolated: bool,
+    project_map_isolated: bool,
 ) -> (&'static str, &'static str) {
     match plugin_id {
         "com.mossx.engine.claude" => {
@@ -153,6 +156,13 @@ fn product_circuit_from(
                 ("core-files", "fallback")
             }
         }
+        "com.mossx.project-map" => {
+            if project_map_isolated {
+                ("isolated-sqlite", "live")
+            } else {
+                ("core-files", "fallback")
+            }
+        }
         _ => ("undeclared", "idle"),
     }
 }
@@ -164,6 +174,7 @@ fn declared_plug(plug: &DeclaredPlug, state: &str, generation: u64, unit_id: Opt
     let contributions_live = match plug.plugin_id {
         NOTES_PLUGIN_ID => crate::plugin_runtime::contributions::notes_live(),
         CLAUDE_PLUGIN_ID => crate::plugin_runtime::contributions::claude_live(),
+        PROJECT_MAP_PLUGIN_ID => crate::plugin_runtime::contributions::project_map_live(),
         _ => false,
     };
     let allowlisted_live =
@@ -355,14 +366,18 @@ mod tests {
         assert_eq!(snapshot.plugs[1].product_path, "isolated-sqlite");
         assert_eq!(snapshot.plugs[1].circuit, "live");
         assert_eq!(snapshot.plugs[1].core_owner, "disabled");
-        assert!(snapshot.plugs[2..].iter().all(|plug| {
+        assert_eq!(snapshot.plugs[2].product_path, "isolated-sqlite");
+        assert_eq!(snapshot.plugs[2].circuit, "live");
+        assert_eq!(snapshot.plugs[2].core_owner, "disabled");
+        assert!(snapshot.plugs[3..].iter().all(|plug| {
             plug.product_path == "undeclared"
                 && plug.circuit == "idle"
                 && plug.core_owner == "active"
         }));
         assert_eq!(snapshot.plugs[0].owner_class, "pilot");
         assert_eq!(snapshot.plugs[1].owner_class, "pilot");
-        assert!(snapshot.plugs[2..].iter().all(|plug| plug.owner_class == "later-plugin"));
+        assert_eq!(snapshot.plugs[2].owner_class, "pilot");
+        assert!(snapshot.plugs[3..].iter().all(|plug| plug.owner_class == "later-plugin"));
         for plug in &snapshot.plugs {
             assert!(host.host.slot(&plug.plugin_id).is_none());
         }
@@ -374,7 +389,11 @@ mod tests {
         assert_eq!(snapshot.plugs[1].desired_state, "installed");
         assert!(!snapshot.plugs[1].contributions_live);
         assert!(!snapshot.plugs[1].allowlisted_live);
-        assert!(snapshot.plugs[2..].iter().all(|plug| {
+        assert!(snapshot.plugs[2].installable);
+        assert_eq!(snapshot.plugs[2].desired_state, "installed");
+        assert!(!snapshot.plugs[2].contributions_live);
+        assert!(!snapshot.plugs[2].allowlisted_live);
+        assert!(snapshot.plugs[3..].iter().all(|plug| {
             !plug.installable && plug.desired_state == "uninstalled" && !plug.contributions_live
         }));
         });
@@ -400,7 +419,9 @@ mod tests {
         assert!(!snapshot.plugs[1].live);
         assert!(snapshot.plugs[0].installable);
         assert!(snapshot.plugs[1].installable);
+        assert!(snapshot.plugs[2].installable);
         assert!(!snapshot.plugs[1].contributions_live);
+        assert!(!snapshot.plugs[2].contributions_live);
         let _ = notes_activation_request();
         });
     }
@@ -419,15 +440,19 @@ mod tests {
     #[test]
     fn explicit_off_maps_product_circuits_to_fallback() {
         assert_eq!(
-            product_circuit_from("com.mossx.engine.claude", false, true),
+            product_circuit_from("com.mossx.engine.claude", false, true, true),
             ("core-spawn", "fallback")
         );
         assert_eq!(
-            product_circuit_from("com.mossx.notes", true, false),
+            product_circuit_from("com.mossx.notes", true, false, true),
             ("core-files", "fallback")
         );
         assert_eq!(
-            product_circuit_from("com.mossx.engine.codex", true, true),
+            product_circuit_from("com.mossx.project-map", true, true, false),
+            ("core-files", "fallback")
+        );
+        assert_eq!(
+            product_circuit_from("com.mossx.engine.codex", true, true, true),
             ("undeclared", "idle")
         );
     }

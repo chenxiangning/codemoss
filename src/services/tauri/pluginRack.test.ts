@@ -14,7 +14,7 @@ const ownership = JSON.parse(
 ) as { owners: Array<{ targetPluginId?: string | null }> };
 
 describe("DECLARED_PLUGIN_RACK_SNAPSHOT", () => {
-  it("lists inventoried later feature and CLI plugs after the two pilots without inventing ids", () => {
+  it("lists inventoried later feature and CLI plugs after the three pilots without inventing ids", () => {
     const pluginIds = DECLARED_PLUGIN_RACK_SNAPSHOT.plugs.map((plug) => plug.pluginId);
     expect(pluginIds).toEqual([
       "com.mossx.engine.claude",
@@ -51,14 +51,24 @@ describe("DECLARED_PLUGIN_RACK_SNAPSHOT", () => {
       contributionsLive: false,
       allowlistedLive: false,
     });
+    expect(DECLARED_PLUGIN_RACK_SNAPSHOT.plugs[2]).toMatchObject({
+      productPath: "isolated-sqlite",
+      circuit: "live",
+      coreOwner: "disabled",
+      installable: true,
+      desiredState: "installed",
+      contributionsLive: false,
+      allowlistedLive: false,
+      ownerClass: "pilot",
+    });
     expect(
       DECLARED_PLUGIN_RACK_SNAPSHOT.plugs
-        .slice(2)
+        .slice(3)
         .every((plug) => !plug.installable && plug.desiredState === "uninstalled"),
     ).toBe(true);
     expect(
       DECLARED_PLUGIN_RACK_SNAPSHOT.plugs
-        .slice(2)
+        .slice(3)
         .every(
           (plug) =>
             plug.productPath === "undeclared" &&
@@ -68,12 +78,22 @@ describe("DECLARED_PLUGIN_RACK_SNAPSHOT", () => {
     ).toBe(true);
     expect(
       DECLARED_PLUGIN_RACK_SNAPSHOT.plugs
-        .filter((plug) => plug.pluginId === "com.mossx.engine.claude" || plug.pluginId === "com.mossx.notes")
+        .filter(
+          (plug) =>
+            plug.pluginId === "com.mossx.engine.claude"
+            || plug.pluginId === "com.mossx.notes"
+            || plug.pluginId === "com.mossx.project-map",
+        )
         .every((plug) => plug.ownerClass === "pilot"),
     ).toBe(true);
     expect(
       DECLARED_PLUGIN_RACK_SNAPSHOT.plugs
-        .filter((plug) => plug.pluginId !== "com.mossx.engine.claude" && plug.pluginId !== "com.mossx.notes")
+        .filter(
+          (plug) =>
+            plug.pluginId !== "com.mossx.engine.claude"
+            && plug.pluginId !== "com.mossx.notes"
+            && plug.pluginId !== "com.mossx.project-map",
+        )
         .every((plug) => plug.ownerClass === "later-plugin"),
     ).toBe(true);
 

@@ -30,6 +30,7 @@ export type PluginRackSnapshot = {
 export const DECLARED_PLUGIN_CIRCUITS = {
   claude: { productPath: "process-entry", circuit: "live", coreOwner: "disabled" },
   notes: { productPath: "isolated-sqlite", circuit: "live", coreOwner: "disabled" },
+  projectMap: { productPath: "isolated-sqlite", circuit: "live", coreOwner: "disabled" },
   later: { productPath: "undeclared", circuit: "idle", coreOwner: "active" },
 } as const;
 
@@ -52,9 +53,14 @@ function declaredPlug(
     productPath: circuit.productPath,
     circuit: circuit.circuit,
     coreOwner: circuit.coreOwner,
-    installable: pluginId === "com.mossx.notes" || pluginId === "com.mossx.engine.claude",
+    installable:
+      pluginId === "com.mossx.notes"
+      || pluginId === "com.mossx.engine.claude"
+      || pluginId === "com.mossx.project-map",
     desiredState:
-      pluginId === "com.mossx.notes" || pluginId === "com.mossx.engine.claude"
+      pluginId === "com.mossx.notes"
+      || pluginId === "com.mossx.engine.claude"
+      || pluginId === "com.mossx.project-map"
         ? "installed"
         : "uninstalled",
     contributionsLive: false,
@@ -71,7 +77,7 @@ export const DECLARED_PLUGIN_RACK_SNAPSHOT: PluginRackSnapshot = {
   plugs: [
     declaredPlug("com.mossx.engine.claude", "Claude Engine", "engine", "pilot", DECLARED_PLUGIN_CIRCUITS.claude),
     declaredPlug("com.mossx.notes", "Notes", "feature", "pilot", DECLARED_PLUGIN_CIRCUITS.notes),
-    declaredPlug("com.mossx.project-map", "Project Map", "feature", "later-plugin", DECLARED_PLUGIN_CIRCUITS.later),
+    declaredPlug("com.mossx.project-map", "Project Map", "feature", "pilot", DECLARED_PLUGIN_CIRCUITS.projectMap),
     declaredPlug("com.mossx.browser", "Browser", "feature", "later-plugin", DECLARED_PLUGIN_CIRCUITS.later),
     declaredPlug("com.mossx.intent-canvas", "Intent Canvas", "feature", "later-plugin", DECLARED_PLUGIN_CIRCUITS.later),
     declaredPlug("com.mossx.kanban", "Kanban", "feature", "later-plugin", DECLARED_PLUGIN_CIRCUITS.later),

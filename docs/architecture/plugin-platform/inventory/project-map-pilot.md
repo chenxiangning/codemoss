@@ -1,7 +1,7 @@
 # Project Map Pilot Inventory（Wave 5A · P4.7-30）
 
 > pluginId：`com.mossx.project-map`  
-> 状态：**inventory-only**。产品 owner 仍是 Core。5B Pilot fixture 另文件；`@mossx/plugin-project-map` 只是 re-export，不是抽出。不 Slim。
+> 状态：**7/9 + D-052 真实装/卸**。产品默认隔离 sqlite；Core owner Disabled；allowlist 第三根。`@mossx/plugin-project-map` 仍是 re-export，不是抽出。不 Slim。下文「必须留下的 Core / 当前事实」是 5A 盘点原文，owner 列保留当时口径。
 
 ## 必须留下的 Core
 
@@ -54,10 +54,11 @@ memory-pick 对话注入挂在 Messages / Composer：
 
 ## Dual-run / owner
 
-- 本插头 **没有** 产品 dual-run flag
-- `disable.rs` 对 later-plugin 仍报 `Active`
-- Claude / Notes 的 `0` 回退与本刀无关，不得改
+- 产品默认 `MOSSX_PROJECT_MAP_COMPAT_FACADE` 视为 on；persist 走隔离 sqlite
+- 显式 `0` 仍回 `*_core`；`project_map.rs` / `project_memory` 源码保留
+- `disable.rs`：Project Map Core owner 默认 Disabled；later-plugin 仍 Active
+- 卸载后 `project_map_commands_allowed()` 先于 24 条产品命令返回 `plugin-uninstalled`
 
 ## 拔插头下一步（另开 change）
 
-5B Contract 已落到 `packages/plugin-contract/fixtures/valid/project-map-pilot.json`。5C Adapter 已落到 `src-tauri/src/plugin_runtime/project_map_compat.rs`，`MOSSX_PROJECT_MAP_COMPAT_FACADE` 默认 off。禁止从本刀跳到迁表、删 `src/features/project-map` 或 Slim Claude/Notes。下一刀只能是 Dual-run（仍默认 Core owner），不得假装装/卸，不得开另外 9 根 later-plugin。
+5A–5G 已齐：7/9 + D-052 真实装/卸。禁止 Slim、禁止 Marketplace、禁止给另外 9 根 later-plugin 开协议或装假按钮。诚实下一刀：可视化插排（3 真 / 9 只读预期）。

@@ -1,5 +1,5 @@
 //! Restart-surviving desired state for allowlisted plugs.
-//! Missing file: Notes and Claude stay installed. Not localStorage.
+//! Missing file: Notes, Claude and Project Map stay installed. Not localStorage.
 
 use std::cell::RefCell;
 use std::collections::BTreeMap;
@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 
 use super::claude_process::CLAUDE_PLUGIN_ID;
 use super::notes_storage::NOTES_PLUGIN_ID;
+use super::project_map_storage::PROJECT_MAP_PLUGIN_ID;
 
 const LOCKFILE_VERSION: u32 = 1;
 
@@ -71,7 +72,10 @@ impl PluginLockfile {
 }
 
 fn default_desired(plugin_id: &str) -> DesiredState {
-    if plugin_id == NOTES_PLUGIN_ID || plugin_id == CLAUDE_PLUGIN_ID {
+    if plugin_id == NOTES_PLUGIN_ID
+        || plugin_id == CLAUDE_PLUGIN_ID
+        || plugin_id == PROJECT_MAP_PLUGIN_ID
+    {
         DesiredState::Installed
     } else {
         DesiredState::Uninstalled
@@ -159,7 +163,11 @@ mod tests {
             DesiredState::Installed
         );
         assert_eq!(
-            read_from(&path).desired("com.mossx.project-map"),
+            read_from(&path).desired(PROJECT_MAP_PLUGIN_ID),
+            DesiredState::Installed
+        );
+        assert_eq!(
+            read_from(&path).desired("com.mossx.browser"),
             DesiredState::Uninstalled
         );
     }

@@ -16,7 +16,7 @@ use file_classification::{
     classify_layer, classify_role, is_builtin_ignored_path, language_for_project_file,
     should_read_project_text_file,
 };
-use path_safety::validate_relative_relationship_path;
+pub(crate) use path_safety::validate_relative_relationship_path;
 use relation_resolution::{
     build_indexes, build_java_call_resolution_context, build_symbol_file_index,
     c_include_specifier, call_candidates_for_line, dedupe_relations, document_path_mentions,
@@ -44,65 +44,65 @@ use crate::types::WorkspaceEntry;
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct ProjectMapRelationshipReadResponse {
-    storage_key: String,
-    storage_dir: String,
-    exists: bool,
-    manifest: Option<Value>,
-    profile: Option<Value>,
-    run: Option<Value>,
-    scan: Option<Value>,
-    files_manifest: Option<Value>,
-    files: Option<Value>,
-    relations: Option<Value>,
-    relations_by_file: Option<Value>,
-    relations_by_type: Option<Value>,
-    symbols: Option<Value>,
-    modules: Option<Value>,
-    impact: Option<Value>,
-    context_pack: Option<Value>,
-    api_contracts: Option<Value>,
-    stale: Option<Value>,
-    repair: Option<Value>,
-    read_errors: Vec<ProjectMapRelationshipReadError>,
+    pub(crate) storage_key: String,
+    pub(crate) storage_dir: String,
+    pub(crate) exists: bool,
+    pub(crate) manifest: Option<Value>,
+    pub(crate) profile: Option<Value>,
+    pub(crate) run: Option<Value>,
+    pub(crate) scan: Option<Value>,
+    pub(crate) files_manifest: Option<Value>,
+    pub(crate) files: Option<Value>,
+    pub(crate) relations: Option<Value>,
+    pub(crate) relations_by_file: Option<Value>,
+    pub(crate) relations_by_type: Option<Value>,
+    pub(crate) symbols: Option<Value>,
+    pub(crate) modules: Option<Value>,
+    pub(crate) impact: Option<Value>,
+    pub(crate) context_pack: Option<Value>,
+    pub(crate) api_contracts: Option<Value>,
+    pub(crate) stale: Option<Value>,
+    pub(crate) repair: Option<Value>,
+    pub(crate) read_errors: Vec<ProjectMapRelationshipReadError>,
 }
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct ProjectMapRelationshipReadError {
-    path: String,
-    message: String,
+    pub(crate) path: String,
+    pub(crate) message: String,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct ProjectMapRelationshipWriteFile {
-    relative_path: String,
-    content: String,
+    pub(crate) relative_path: String,
+    pub(crate) content: String,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct ProjectMapRelationshipScanOptions {
-    max_files: Option<usize>,
-    include_ignored_hints: Option<bool>,
-    paths: Option<Vec<String>>,
-    changed_files: Option<Vec<String>>,
+    pub(crate) max_files: Option<usize>,
+    pub(crate) include_ignored_hints: Option<bool>,
+    pub(crate) paths: Option<Vec<String>>,
+    pub(crate) changed_files: Option<Vec<String>>,
 }
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct ProjectMapRelationshipScanResponse {
-    storage_key: String,
-    storage_dir: String,
-    scan_run_id: String,
-    generated_at: String,
-    scanned_root: String,
-    file_count: usize,
-    relation_count: usize,
-    api_endpoint_count: usize,
-    api_group_count: usize,
-    ignored_count: usize,
-    repair_issue_count: usize,
+    pub(crate) storage_key: String,
+    pub(crate) storage_dir: String,
+    pub(crate) scan_run_id: String,
+    pub(crate) generated_at: String,
+    pub(crate) scanned_root: String,
+    pub(crate) file_count: usize,
+    pub(crate) relation_count: usize,
+    pub(crate) api_endpoint_count: usize,
+    pub(crate) api_group_count: usize,
+    pub(crate) ignored_count: usize,
+    pub(crate) repair_issue_count: usize,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -196,7 +196,7 @@ fn relationship_storage_key(entry: &WorkspaceEntry) -> String {
     project_storage_key(entry)
 }
 
-async fn workspace_entry(state: &AppState, workspace_id: &str) -> Result<WorkspaceEntry, String> {
+pub(crate) async fn workspace_entry(state: &AppState, workspace_id: &str) -> Result<WorkspaceEntry, String> {
     let workspaces = state.workspaces.lock().await;
     workspaces
         .get(workspace_id)
@@ -603,7 +603,7 @@ fn read_json_with_errors(
     }
 }
 
-fn scan_workspace(
+pub(crate) fn scan_workspace(
     entry: &WorkspaceEntry,
     storage_key: &str,
     storage_root: &Path,
@@ -1416,6 +1416,21 @@ pub(crate) async fn project_map_relationship_scan(
     storage_mode: Option<String>,
     state: State<'_, AppState>,
 ) -> Result<ProjectMapRelationshipScanResponse, String> {
+    crate::plugin_runtime::install::project_map_commands_allowed()?;
+    if crate::plugin_runtime::project_map_compat::project_map_compat_facade_enabled() {
+        return crate::plugin_runtime::project_map_compat::ProjectMapCompatAdapter::isolated_product()?
+            .relationship_scan(workspace_id, options, storage_mode, state)
+            .await;
+    }
+    project_map_relationship_scan_core(workspace_id, options, storage_mode, state).await
+}
+
+pub(crate) async fn project_map_relationship_scan_core(
+    workspace_id: String,
+    options: Option<ProjectMapRelationshipScanOptions>,
+    storage_mode: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<ProjectMapRelationshipScanResponse, String> {
     let entry = workspace_entry(&state, &workspace_id).await?;
     let (key, root) = relationship_root_for_mode(&entry, storage_mode.as_deref())?;
     let options = options.unwrap_or(ProjectMapRelationshipScanOptions {
@@ -1432,6 +1447,20 @@ pub(crate) async fn project_map_relationship_scan(
 
 #[tauri::command]
 pub(crate) async fn project_map_relationship_read(
+    workspace_id: String,
+    storage_mode: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<ProjectMapRelationshipReadResponse, String> {
+    crate::plugin_runtime::install::project_map_commands_allowed()?;
+    if crate::plugin_runtime::project_map_compat::project_map_compat_facade_enabled() {
+        return crate::plugin_runtime::project_map_compat::ProjectMapCompatAdapter::isolated_product()?
+            .relationship_read(workspace_id, storage_mode, state)
+            .await;
+    }
+    project_map_relationship_read_core(workspace_id, storage_mode, state).await
+}
+
+pub(crate) async fn project_map_relationship_read_core(
     workspace_id: String,
     storage_mode: Option<String>,
     state: State<'_, AppState>,
@@ -1493,6 +1522,29 @@ pub(crate) async fn project_map_relationship_write_snapshot(
     storage_mode: Option<String>,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
+    crate::plugin_runtime::install::project_map_commands_allowed()?;
+    if crate::plugin_runtime::project_map_compat::project_map_compat_facade_enabled() {
+        return crate::plugin_runtime::project_map_compat::ProjectMapCompatAdapter::isolated_product()?
+            .relationship_write_snapshot(workspace_id, files, create_backup, storage_mode, state)
+            .await;
+    }
+    project_map_relationship_write_snapshot_core(
+        workspace_id,
+        files,
+        create_backup,
+        storage_mode,
+        state,
+    )
+    .await
+}
+
+pub(crate) async fn project_map_relationship_write_snapshot_core(
+    workspace_id: String,
+    files: Vec<ProjectMapRelationshipWriteFile>,
+    create_backup: Option<bool>,
+    storage_mode: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
     let entry = workspace_entry(&state, &workspace_id).await?;
     let (key, root) = relationship_root_for_mode(&entry, storage_mode.as_deref())?;
     write_relationship_snapshot_files(&root, &key, files, create_backup.unwrap_or(false))
@@ -1500,6 +1552,20 @@ pub(crate) async fn project_map_relationship_write_snapshot(
 
 #[tauri::command]
 pub(crate) async fn project_map_relationship_clear(
+    workspace_id: String,
+    storage_mode: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    crate::plugin_runtime::install::project_map_commands_allowed()?;
+    if crate::plugin_runtime::project_map_compat::project_map_compat_facade_enabled() {
+        return crate::plugin_runtime::project_map_compat::ProjectMapCompatAdapter::isolated_product()?
+            .relationship_clear(workspace_id, storage_mode, state)
+            .await;
+    }
+    project_map_relationship_clear_core(workspace_id, storage_mode, state).await
+}
+
+pub(crate) async fn project_map_relationship_clear_core(
     workspace_id: String,
     storage_mode: Option<String>,
     state: State<'_, AppState>,

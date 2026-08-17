@@ -15,29 +15,29 @@ use crate::types::WorkspaceEntry;
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct ProjectMapReadResponse {
-    storage_key: String,
-    storage_dir: String,
-    exists: bool,
-    manifest: Option<Value>,
-    profile: Option<Value>,
-    lenses: Option<Value>,
-    lens_nodes: HashMap<String, Value>,
-    view_state: Option<Value>,
-    settings: Option<Value>,
-    cursor: Option<Value>,
-    processed: Option<Value>,
-    candidates: HashMap<String, Value>,
-    evidence: HashMap<String, Value>,
-    runs: HashMap<String, Value>,
-    diagrams: Option<Value>,
-    relations: Option<Value>,
+    pub(crate) storage_key: String,
+    pub(crate) storage_dir: String,
+    pub(crate) exists: bool,
+    pub(crate) manifest: Option<Value>,
+    pub(crate) profile: Option<Value>,
+    pub(crate) lenses: Option<Value>,
+    pub(crate) lens_nodes: HashMap<String, Value>,
+    pub(crate) view_state: Option<Value>,
+    pub(crate) settings: Option<Value>,
+    pub(crate) cursor: Option<Value>,
+    pub(crate) processed: Option<Value>,
+    pub(crate) candidates: HashMap<String, Value>,
+    pub(crate) evidence: HashMap<String, Value>,
+    pub(crate) runs: HashMap<String, Value>,
+    pub(crate) diagrams: Option<Value>,
+    pub(crate) relations: Option<Value>,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct ProjectMapWriteFile {
-    relative_path: String,
-    content: String,
+    pub(crate) relative_path: String,
+    pub(crate) content: String,
 }
 
 fn storage_key(entry: &WorkspaceEntry) -> String {
@@ -125,7 +125,7 @@ fn is_safe_project_map_json_file(value: &str) -> bool {
     is_safe_project_map_segment(stem)
 }
 
-fn validate_relative_project_map_path(path: &str) -> Result<PathBuf, String> {
+pub(crate) fn validate_relative_project_map_path(path: &str) -> Result<PathBuf, String> {
     let normalized = path.trim().replace('\\', "/");
     if normalized.is_empty() {
         return Err("Project map relative path cannot be empty.".to_string());
@@ -333,6 +333,20 @@ pub(crate) async fn project_map_read(
     storage_mode: Option<String>,
     state: State<'_, AppState>,
 ) -> Result<ProjectMapReadResponse, String> {
+    crate::plugin_runtime::install::project_map_commands_allowed()?;
+    if crate::plugin_runtime::project_map_compat::project_map_compat_facade_enabled() {
+        return crate::plugin_runtime::project_map_compat::ProjectMapCompatAdapter::isolated_product()?
+            .read_map(workspace_id, storage_mode, state)
+            .await;
+    }
+    project_map_read_core(workspace_id, storage_mode, state).await
+}
+
+pub(crate) async fn project_map_read_core(
+    workspace_id: String,
+    storage_mode: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<ProjectMapReadResponse, String> {
     let entry = workspace_entry(&state, &workspace_id).await?;
     let (key, root) = project_map_root_for_mode(&entry, storage_mode.as_deref())?;
     let exists = root.join("manifest.json").is_file();
@@ -359,6 +373,22 @@ pub(crate) async fn project_map_read(
 
 #[tauri::command]
 pub(crate) async fn project_map_write_snapshot(
+    workspace_id: String,
+    files: Vec<ProjectMapWriteFile>,
+    create_backup: Option<bool>,
+    storage_mode: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    crate::plugin_runtime::install::project_map_commands_allowed()?;
+    if crate::plugin_runtime::project_map_compat::project_map_compat_facade_enabled() {
+        return crate::plugin_runtime::project_map_compat::ProjectMapCompatAdapter::isolated_product()?
+            .write_snapshot(workspace_id, files, create_backup, storage_mode, state)
+            .await;
+    }
+    project_map_write_snapshot_core(workspace_id, files, create_backup, storage_mode, state).await
+}
+
+pub(crate) async fn project_map_write_snapshot_core(
     workspace_id: String,
     files: Vec<ProjectMapWriteFile>,
     create_backup: Option<bool>,

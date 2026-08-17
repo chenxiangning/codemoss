@@ -5,6 +5,7 @@ use std::ffi::OsStr;
 
 use super::claude_process::claude_process_entry_enabled_from;
 use super::notes_compat::notes_compat_facade_enabled_from;
+use super::project_map_compat::project_map_compat_facade_enabled_from;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CoreOwnerStatus {
@@ -31,6 +32,10 @@ pub fn notes_core_owner() -> CoreOwnerStatus {
     notes_core_owner_from(std::env::var_os("MOSSX_NOTES_COMPAT_FACADE").as_deref())
 }
 
+pub fn project_map_core_owner() -> CoreOwnerStatus {
+    project_map_core_owner_from(std::env::var_os("MOSSX_PROJECT_MAP_COMPAT_FACADE").as_deref())
+}
+
 pub fn claude_core_owner_from(value: Option<&OsStr>) -> CoreOwnerStatus {
     if claude_process_entry_enabled_from(value) {
         CoreOwnerStatus::Disabled
@@ -47,10 +52,19 @@ pub fn notes_core_owner_from(value: Option<&OsStr>) -> CoreOwnerStatus {
     }
 }
 
+pub fn project_map_core_owner_from(value: Option<&OsStr>) -> CoreOwnerStatus {
+    if project_map_compat_facade_enabled_from(value) {
+        CoreOwnerStatus::Disabled
+    } else {
+        CoreOwnerStatus::Fallback
+    }
+}
+
 pub fn core_owner_for_plugin(plugin_id: &str) -> CoreOwnerStatus {
     match plugin_id {
         "com.mossx.engine.claude" => claude_core_owner(),
         "com.mossx.notes" => notes_core_owner(),
+        "com.mossx.project-map" => project_map_core_owner(),
         _ => CoreOwnerStatus::Active,
     }
 }
@@ -63,8 +77,11 @@ mod tests {
     fn product_default_disables_core_owners_without_deleting_them() {
         assert_eq!(claude_core_owner_from(None), CoreOwnerStatus::Disabled);
         assert_eq!(notes_core_owner_from(None), CoreOwnerStatus::Disabled);
+        assert_eq!(project_map_core_owner_from(None), CoreOwnerStatus::Disabled);
         assert!(std::path::Path::new("src/engine/claude.rs").exists());
         assert!(std::path::Path::new("src/note_cards.rs").exists());
+        assert!(std::path::Path::new("src/project_map.rs").exists());
+        assert!(std::path::Path::new("src/project_memory").exists());
         let claude = include_str!("../engine/claude.rs");
         assert!(claude.contains("cmd.spawn()"));
         let notes = include_str!("../note_cards.rs");
@@ -85,6 +102,10 @@ mod tests {
         );
         assert_eq!(
             notes_core_owner_from(Some(OsStr::new("0"))),
+            CoreOwnerStatus::Fallback
+        );
+        assert_eq!(
+            project_map_core_owner_from(Some(OsStr::new("0"))),
             CoreOwnerStatus::Fallback
         );
         assert_eq!(

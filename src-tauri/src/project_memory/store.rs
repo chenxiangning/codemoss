@@ -205,7 +205,7 @@ pub(super) fn date_str_from_ms(timestamp_ms: i64) -> String {
 // ── S3: 日期文件读写 ──────────────────────────────────────────
 
 /// 读取单个日期文件，不存在时返回空 Vec
-pub(super) fn read_date_file(path: &std::path::Path) -> Result<Vec<ProjectMemoryItem>, String> {
+pub(crate) fn read_date_file(path: &std::path::Path) -> Result<Vec<ProjectMemoryItem>, String> {
     if !path.exists() {
         return Ok(Vec::new());
     }

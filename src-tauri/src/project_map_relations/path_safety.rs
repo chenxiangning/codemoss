@@ -60,7 +60,7 @@ fn is_chunk_json_file(value: &str) -> bool {
     stem.starts_with("chunks-") && is_safe_relationship_segment(stem)
 }
 
-pub(super) fn validate_relative_relationship_path(path: &str) -> Result<PathBuf, String> {
+pub(crate) fn validate_relative_relationship_path(path: &str) -> Result<PathBuf, String> {
     let normalized = path.trim().replace('\\', "/");
     if normalized.is_empty() {
         return Err("Project map relationship relative path cannot be empty.".to_string());
