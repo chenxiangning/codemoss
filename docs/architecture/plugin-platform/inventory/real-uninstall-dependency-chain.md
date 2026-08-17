@@ -11,8 +11,8 @@
 
 | 层 | 现状 | 证据 |
 |---|---|---|
-| 市场 UI | 12 declared plugs；**仅 Notes** 有安装/卸载按钮。远程 Marketplace 仍关 | `PluginRackSection.tsx`；D-050 |
-| 后端命令 | `get_plugin_rack_snapshot` + Notes-only `install_plugin` / `uninstall_plugin` | `plugin_rack.rs` |
+| 市场 UI | 12 declared plugs；**Notes + Claude** 有安装/卸载按钮。远程 Marketplace 仍关 | `PluginRackSection.tsx`；D-051 |
+| 后端命令 | `get_plugin_rack_snapshot` + Notes/Claude `install_plugin` / `uninstall_plugin` | `plugin_rack.rs` |
 | **Extension Host** | **真实实现**（in-memory，无 socket/spawn；含 `interrupt` 非终态中断） | `host.rs` "In-memory Extension Host supervisor" |
 | **Restricted Process** | **真实实现**（`Command::spawn` + handshake + env 注入 + memory limit + cwd 校验；含 `process_group(0)` + 进程组 `SIGKILL`） | `spawn.rs` `spawn_child` / `kill_child` |
 | **QuickJS Worker** | **真实实现**（`rquickjs::Runtime` 真 C 引擎） | `quickjs.rs` "Real C engine" |
@@ -57,6 +57,7 @@
   → 缺口 4a：第三根插头知识地图 Inventory（✅ 本批：`com.mossx.project-map` 只盘点；re-export ≠ 抽出）
   → 缺口 2：SlotState 补 Uninstalled（✅ 已补）+ atomic contribution registry（✅ Notes 集：`notes.main` + 7 `note_card_*`）
   → 缺口 2b：Notes allowlisted 真实装/卸（✅ 本批：lockfile + `activate_allowlisted` + restore + 闸门；D-050）
+  → 缺口 2c：Claude allowlisted 真实装/卸（✅ 本批：worker-only lifecycle + spawn 闸门先于 decide；D-051）
   → 缺口 3：Notes owner 复核（✅ P4.7-19）
   → 缺口 3b：隔离 Notes CRUD（✅ P4.7-21）
   → 缺口 3c：flag-on 走隔离 sqlite（✅ P4.7-22）

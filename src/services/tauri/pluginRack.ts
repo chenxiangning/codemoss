@@ -52,8 +52,11 @@ function declaredPlug(
     productPath: circuit.productPath,
     circuit: circuit.circuit,
     coreOwner: circuit.coreOwner,
-    installable: pluginId === "com.mossx.notes",
-    desiredState: pluginId === "com.mossx.notes" ? "installed" : "uninstalled",
+    installable: pluginId === "com.mossx.notes" || pluginId === "com.mossx.engine.claude",
+    desiredState:
+      pluginId === "com.mossx.notes" || pluginId === "com.mossx.engine.claude"
+        ? "installed"
+        : "uninstalled",
     contributionsLive: false,
     allowlistedLive: false,
   };

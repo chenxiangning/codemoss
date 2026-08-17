@@ -65,7 +65,7 @@ vi.mock("@/services/tauri/pluginRack", async (importOriginal) => {
 });
 
 describe("PluginRackSection", () => {
-  it("renders declared idle plugs with exactly one Notes install/uninstall action", async () => {
+  it("renders declared idle plugs with Notes and Claude install/uninstall actions", async () => {
     getPluginRackSnapshot.mockResolvedValue({
       ...DECLARED_PLUGIN_RACK_SNAPSHOT,
       hostAvailable: true,
@@ -94,9 +94,11 @@ describe("PluginRackSection", () => {
     expect(featureGroup.textContent).toContain("com.mossx.kanban");
     expect(screen.getByText("Marketplace stays closed.")).toBeTruthy();
     const actions = screen.getAllByRole("button");
-    expect(actions).toHaveLength(1);
+    expect(actions).toHaveLength(2);
     expect(actions[0].textContent).toBe("Uninstall");
-    expect(featureGroup.contains(actions[0])).toBe(true);
+    expect(actions[1].textContent).toBe("Uninstall");
+    expect(engineGroup.contains(actions[0])).toBe(true);
+    expect(featureGroup.contains(actions[1])).toBe(true);
     const notesPlug = featureGroup.textContent ?? "";
     expect(notesPlug).toContain("Idle");
     expect(engineGroup.textContent).toContain("Process Entry");

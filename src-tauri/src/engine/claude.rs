@@ -1056,6 +1056,7 @@ impl ClaudeSession {
         if !crate::plugin_runtime::claude_process::claude_process_entry_enabled() {
             return Ok(false);
         }
+        crate::plugin_runtime::install::claude_commands_allowed()?;
         if let Some(mut handle) = self.active_process_entries.lock().await.remove(turn_id) {
             let _ = handle.interrupt();
         }
@@ -1692,6 +1693,19 @@ impl ClaudeSession {
                 .collect::<Vec<_>>(),
             cmd.as_std().get_current_dir(),
         );
+        if let Err(error) = crate::plugin_runtime::install::claude_commands_allowed() {
+            let error_msg = format!("Failed to spawn claude: {error}");
+            self.emit_turn_event(
+                turn_id,
+                EngineEvent::TurnError {
+                    workspace_id: self.workspace_id.clone(),
+                    error: error_msg.clone(),
+                    code: Some(error),
+                },
+            );
+            self.clear_turn_ephemeral_state(turn_id);
+            return Err(error_msg);
+        }
         let spawn_owner = crate::plugin_runtime::claude_process::decide_claude_spawn_owner(
             process_entry_enabled,
             spawn_plan.as_ref(),

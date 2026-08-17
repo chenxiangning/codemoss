@@ -69,7 +69,7 @@ export function PluginRackSection() {
   const [error, setError] = useState<string | null>(null);
   const [pendingId, setPendingId] = useState<string | null>(null);
 
-  const handleNotesAction = async (plug: PluginRackPlug) => {
+  const handlePlugAction = async (plug: PluginRackPlug) => {
     setPendingId(plug.pluginId);
     try {
       const next =
@@ -206,7 +206,7 @@ export function PluginRackSection() {
                           className="extensions-plugin-rack-stage"
                           disabled={pendingId === plug.pluginId}
                           onClick={() => {
-                            void handleNotesAction(plug);
+                            void handlePlugAction(plug);
                           }}
                         >
                           {plug.desiredState === "uninstalled"

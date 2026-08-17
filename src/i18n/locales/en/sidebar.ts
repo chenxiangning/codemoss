@@ -196,7 +196,7 @@ const sidebar = {
     },
     rack: {
       title: "Plugin rack",
-      subtitle: "Declared Host plugs. Only Notes can be installed or uninstalled. Marketplace stays closed.",
+      subtitle: "Declared Host plugs. Notes and Claude can be installed or uninstalled. Marketplace stays closed.",
       loading: "Reading Host snapshot…",
       hostUnavailable: "Host snapshot unavailable. Declared plugs stay idle.",
       hostDisabled: "Host is default-off. Plugs are declared, not live.",
@@ -234,7 +234,7 @@ const sidebar = {
       },
       state: "Host slot",
       generation: "Generation",
-      marketplaceLater: "Remote Marketplace stays closed. Only Notes can be installed or uninstalled here. Uninstall stops the plug and keeps notes on disk.",
+      marketplaceLater: "Remote Marketplace stays closed. Only Notes and Claude can be installed or uninstalled here. Uninstall stops the plug and keeps notes and Claude history on disk.",
       install: "Install",
       uninstall: "Uninstall",
       catalogTitle: "Local packages",

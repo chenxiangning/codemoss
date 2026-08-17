@@ -189,7 +189,7 @@ const sidebar = {
     },
     rack: {
       title: "插件插排",
-      subtitle: "已声明的 Host 插头。仅 Notes 可安装或卸载。远程市场仍关闭。",
+      subtitle: "已声明的 Host 插头。Notes 与 Claude 可安装或卸载。远程市场仍关闭。",
       loading: "正在读取 Host 快照…",
       hostUnavailable: "Host 快照不可用。已声明插头保持空闲。",
       hostDisabled: "Host 默认关闭。插头已声明，但未通电。",
@@ -227,7 +227,7 @@ const sidebar = {
       },
       state: "Host 槽位",
       generation: "代数",
-      marketplaceLater: "远程 Marketplace 仍关闭。本页仅 Notes 可安装或卸载。卸载停用插头，笔记数据保留。",
+      marketplaceLater: "远程 Marketplace 仍关闭。本页仅 Notes 与 Claude 可安装或卸载。卸载停用插头，笔记与 Claude history 保留。",
       install: "安装",
       uninstall: "卸载",
       catalogTitle: "本地过渡仓",

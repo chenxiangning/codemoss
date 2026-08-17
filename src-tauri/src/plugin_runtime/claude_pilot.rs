@@ -40,6 +40,15 @@ pub fn claude_activation_request() -> ActivationRequest {
     }
 }
 
+/// Product install/restore lifecycle. Worker isolate only; per-turn CLI stays Process Entry.
+pub fn claude_lifecycle_activation_request() -> ActivationRequest {
+    ActivationRequest {
+        plugin_id: super::claude_process::CLAUDE_PLUGIN_ID.to_string(),
+        unit_id: "claude-engine".to_string(),
+        required_entries: vec!["claude-worker".to_string()],
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -64,6 +73,18 @@ mod tests {
             SlotState::Ready
         );
         host.dispatch("com.mossx.engine.claude", 1).expect("current");
+    }
+
+    #[test]
+    fn product_lifecycle_request_is_worker_only() {
+        let request = claude_lifecycle_activation_request();
+        assert_eq!(request.plugin_id, "com.mossx.engine.claude");
+        assert_eq!(request.unit_id, "claude-engine");
+        assert_eq!(request.required_entries, vec!["claude-worker"]);
+        assert_ne!(
+            request.required_entries,
+            claude_activation_request().required_entries
+        );
     }
 
     #[test]

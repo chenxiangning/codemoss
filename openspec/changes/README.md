@@ -300,8 +300,11 @@
 | [`add-linux-native-menu-localization`](add-linux-native-menu-localization/proposal.md) | 4/5 | NOT READY archive — Linux non-default language native menu smoke（原 GTK 缺陷边界，未在本机验证） | [proposal](add-linux-native-menu-localization/proposal.md) · [design](add-linux-native-menu-localization/design.md) · [tasks](add-linux-native-menu-localization/tasks.md) · [specs](add-linux-native-menu-localization/specs/) · [verification](add-linux-native-menu-localization/verification.md) |
 | [`open-with-cross-platform-ux`](open-with-cross-platform-ux/proposal.md) | implemented / user accepted | 打开方式跨平台 UX：预设/Browse、懒探测、系统图标、顶栏开当前文件、底栏下拉修复；用户验收通过 | [proposal](open-with-cross-platform-ux/proposal.md) · [design](open-with-cross-platform-ux/design.md) · [tasks](open-with-cross-platform-ux/tasks.md) · [specs](open-with-cross-platform-ux/specs/) · [原型](../../docs/prototypes/open-with-redesign-v1.html) |
 
+| [`plugin-rack-claude-install-loop`](plugin-rack-claude-install-loop/proposal.md) | implemented | D-051：Notes 模板已套到 Claude；worker-only lifecycle + spawn 闸门先于 decide；无 Slim / 无 Marketplace | [proposal](plugin-rack-claude-install-loop/proposal.md) · [design](plugin-rack-claude-install-loop/design.md) · [tasks](plugin-rack-claude-install-loop/tasks.md) · [specs](plugin-rack-claude-install-loop/specs/) |
+
 ## Active backlog notes（2026-08-08）
 
+- **已落地** `plugin-rack-claude-install-loop`：D-051 Notes+Claude allowlist；产品 Claude 生命周期只 start `claude-worker`；卸载后 `claude_commands_allowed()` 先于 `decide_claude_spawn_owner`。later-plugin 仍只读。待归档。
 - **已归档** `plugin-rack-real-install-loop` → `archive/2026-08-17-plugin-rack-real-install-loop`：D-050 Notes-only 真实装/卸（lockfile + activate_allowlisted + 原子 contribution + note_card 闸门）；主 specs 已同步 `plugin-rack-real-install-loop-v1` / `plugin-pilot-disable-not-delete-v1` / `plugin-runtime-uninstall-v1`。无 Slim / 无 Marketplace。
 - **已归档** `fix-pi-at-reference-transport` → `archive/2026-08-14-fix-pi-at-reference-transport`：pi prompt 内 `@文件` 引用提取为 `@file` argv + folder/missing 降级纯文本 + leading-`@` guard；主 specs 已同步 `pi-file-reference-transport`；用户 2026-08-14 验收通过。
 - **新增并落地** `fix-deferred-feature-style-surfaces`（2026-08-13）：延迟 CSS 入口漏接 + Git Diff 弹窗单栏/双栏滚动合同；用户手测通过，待 commit。

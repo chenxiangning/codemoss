@@ -10,8 +10,8 @@ status: active
 > 阶段图：[08 · Migration Roadmap](08-migration-roadmap-and-tasks.md)
 > 卸载链：[inventory/real-uninstall-dependency-chain.md](inventory/real-uninstall-dependency-chain.md)
 > 快照日期：**2026-08-17**
-> 证据 change：`plugin-rack-real-install-loop`（Notes-only 真实安装/卸载）
-> 验收：focused rust 55 passed + vitest 3 passed + `openspec validate --strict`
+> 证据 change：`plugin-rack-claude-install-loop`（Notes + Claude 真实安装/卸载）
+> 验收：focused rust 19/19 + vitest 3/3 + `openspec validate plugin-rack-claude-install-loop --strict` green。`claude_process` 27/28，唯一失败是既有 `artifact_root_reaps_a_real_claude_result_when_cli_exists` 真实 CLI 探测 flake，不计入本刀回归。
 > 工作树：`feature/plugin-mossx-0.8.9`
 
 本文是**带日期的进度总视图**，不是产品行为 SoT。行为以当前代码和 OpenSpec 为准。百分比是人工校准的工程判断，用来防止把「200+ OpenSpec change」误读成「产品已经插件化」。
@@ -24,20 +24,20 @@ status: active
 
 | 尺子 | 当前 | 缺口 | 分母是什么 |
 |---|---:|---:|---|
-| **允许线（Allowed line）** | **42%** | **58%** | `15` §3 走到 Disable（第 7 步）+ Notes-only 真实 install/uninstall。Slim / LKG / Marketplace 不计入。 |
+| **允许线（Allowed line）** | **46%** | **54%** | `15` §3 走到 Disable（第 7 步）+ Notes/Claude 真实 install/uninstall。Slim / LKG / Marketplace 不计入。 |
 | **终态插件化（End-state）** | **14%** | **86%** | 独立仓库 + Slim + LKG + Marketplace + 其余插头全部迁出。这是架构终态。 |
-| **真实卸载（Real uninstall）** | **20%** | **80%** | Notes 一根诚实闭环：lockfile + Host Ready/Uninstalled + contribution + `note_card_*` 闸门。Claude 与 later-plugin 仍卸不掉。 |
+| **真实卸载（Real uninstall）** | **40%** | **60%** | Notes + Claude 两根诚实闭环。later-plugin 仍卸不掉。Claude 生命周期是 worker isolate，per-turn CLI 仍 Process Entry。 |
 
 读法：
 
-- 问「这波还能干什么」→ 看允许线 42%。
+- 问「这波还能干什么」→ 看允许线 46%。
 - 问「离可安装/可卸载的插件生态还有多远」→ 看终态 14%。
-- 问「现在能不能从产品里拔掉 Claude / Notes / 知识地图」→ 看真实卸载 20%（只有 Notes）。
+- 问「现在能不能从产品里拔掉 Claude / Notes / 知识地图」→ 看真实卸载 40%（Notes + Claude；地图还不行）。
 
 ```text
-允许线 ████████░░░░░░░░░░░░  42%
+允许线 █████████░░░░░░░░░░░  46%
 终态   ███░░░░░░░░░░░░░░░░░  14%
-卸载   ████░░░░░░░░░░░░░░░░  20%
+卸载   ████████░░░░░░░░░░░░  40%
 ```
 
 ## 2. 平台层（插排，不是插头）
@@ -47,16 +47,16 @@ status: active
 | Wave 0 插排图纸 | **100%** | 0% | inventory + Manifest parser + fitness。图纸在，产品没减。 |
 | Wave 1 Extension Host | **90%** | 10% | Host / Worker / Process / Composite **真实实现**，标注 *not in product path / not in boot*。 |
 | Wave 2 Storage / checkpoint / lifecycle | **92%** | 8% | namespace + checkpoint + **atomic contribution registry** 已落地。破坏性 migration、LKG 未收口。 |
-| Host 产品通电路 | **20%** | 80% | Host 仍 `enabled=false`。产品 setup `restore_allowlisted` 只给 Notes 通电；一般 `activate` 仍 host-disabled。 |
-| Rack UI | **70%** | 30% | Notes 有真实安装/卸载按钮。其余 11 根只读。远程 Marketplace 仍关。 |
+| Host 产品通电路 | **25%** | 75% | Host 仍 `enabled=false`。产品 setup `restore_allowlisted` 给 Notes + Claude 通电；Claude 只 start `claude-worker`。一般 `activate` 仍 host-disabled。 |
+| Rack UI | **75%** | 25% | Notes 与 Claude 有真实安装/卸载按钮。其余 10 根只读。远程 Marketplace 仍关。 |
 | Marketplace / Registry | **0%** | 100% | 缺口 1y。当前约束禁止开。 |
 
 ```text
 Wave 0     ████████████████████  100%
 Wave 1     ██████████████████░░   90%
 Wave 2     ██████████████████░░   92%
-Host 通电  ████░░░░░░░░░░░░░░░░   20%
-Rack UI    ██████████████░░░░░░   70%
+Host 通电  █████░░░░░░░░░░░░░░░   25%
+Rack UI    ███████████████░░░░░   75%
 Marketplace ░░░░░░░░░░░░░░░░░░░░    0%
 ```
 
@@ -76,7 +76,7 @@ Wave 1 / Wave 2 的高完成度只证明「插座能在测试里转」。它不�
 
 | 插头 | 协议步 | 允许线 | 抽出 / Slim | 产品 owner |
 |---|---:|---:|---:|---|
-| Claude `com.mossx.engine.claude` | 7 / 9 | **78%** | **0%** | Core；默认 `disabled`，`0` 回 `cmd.spawn` |
+| Claude `com.mossx.engine.claude` | 7 / 9 | **82%** | **0%** | Core 源码仍在；产品可真实装/卸；`0` 回 `cmd.spawn` |
 | Notes `com.mossx.notes` | 7 / 9 | **82%** | **0%** | Core 源码仍在；产品可真实装/卸；`0` 回 `note_card_*_core` |
 | 知识地图 `com.mossx.project-map` | 1 / 9 | **11%** | **0%** | Core Active。`@mossx/plugin-project-map` 是 re-export，不是抽出 |
 | 浏览器 | 0 / 9 | **0%** | 0% | Core |
@@ -84,7 +84,7 @@ Wave 1 / Wave 2 的高完成度只证明「插座能在测试里转」。它不�
 | 其余 6 个 CLI | 0 / 9 | **0%** | 0% | Core |
 | 后续 feature（Kanban / Git 高级流 / …） | 0 / 9 | **0%** | 0% | Core |
 
-Claude / Notes 的 78% 读作：**协议走到 Disable，源码和回退都还在。** 不是 78% 已经迁出。知识地图刚做完 Inventory，下一步才是 Contract。
+Claude / Notes 的 82% 读作：**协议走到 Disable，并且产品能真实装/卸。** 源码和回退都还在，不是已经迁出。知识地图刚做完 Inventory，下一步才是 Contract。
 
 ## 4. `08` Phase 对照
 
@@ -96,13 +96,13 @@ Claude / Notes 的 78% 读作：**协议走到 Disable，源码和回退都还�
 | P1 Host + Broker | **90%** | 10% | 控制面齐，默认不进 boot。 |
 | P2 Lifecycle + Storage | **92%** | 8% | P2.1 atomic registry 已随 Notes 闭环落地；P2.4–P2.6 LKG / 破坏性 migration 未收口。 |
 | P3 UI Contribution Runtime | **30%** | 70% | slot / trusted-react 合同有，生产 UI 仍 Core 直挂。Marketplace UI 禁止。 |
-| P4 Engine Pilot | **70%** | 30% | Claude 走到 Disable-not-delete。独立仓库、签名 artifact、删 Core 执行面未做。 |
+| P4 Engine Pilot | **75%** | 25% | Claude 走到 Disable + 真实装/卸。独立仓库、签名 artifact、删 Core 执行面未做。 |
 | P5 Feature Pilot | **45%** | 55% | Notes 走到 Disable + 真实装/卸。知识地图只完成 Inventory。浏览器 / 画布未开。 |
 | P6 Registry + Marketplace | **0%** | 100% | 冻结。 |
 | P7 Migration Waves | **8%** | 92% | 只动了 Claude / Notes / 地图盘点。其余 owner 未迁。 |
 | P8 Core Slimming | **0%** | 100% | 禁止。Core 仍是完整单体。 |
 
-P4 70% 容易误导：那是「pilot 协议走完 Disable」，不是「Claude 已经是独立插件」。P8 0% 才是「Core 瘦身」的诚实数字。
+P4 75% 容易误导：那是「pilot 协议走完 Disable 且能拔插头」，不是「Claude 已经是独立插件」。P8 0% 才是「Core 瘦身」的诚实数字。
 
 ## 5. 缺的进度按优先级
 
@@ -110,13 +110,13 @@ P4 70% 容易误导：那是「pilot 协议走完 Disable」，不是「Claude �
 
 | 优先级 | 缺口 | 约占允许线 | 状态 |
 |---|---|---:|---|
-| **刚落地** | Notes-only 真实 install/uninstall | ~4% | `plugin-rack-real-install-loop`。D-050 豁口。 |
-| P0 下一刀 | 用 Notes 当模板改下一根插头，或知识地图 5B | ~4% | project-map Wave 5B **暂停**。先复用 Notes 闭环。 |
+| **刚落地** | Notes + Claude 真实 install/uninstall | ~8% | `plugin-rack-real-install-loop` + `plugin-rack-claude-install-loop`。D-051 豁口。 |
+| P0 下一刀 | 知识地图 5B（Contract），或 Wave 2 LKG | ~4% | later-plugin 仍 0/9，禁止假装装/卸。5B 仍暂停，除非另开刀。 |
 | P0 | 知识地图 5C–5G（Adapter → Disable） | ~21% | 5B 之后一根根走。 |
-| P1 | Wave 2 收口：破坏性 migration、LKG 骨架 | ~6% | atomic registry 已随本刀落地。 |
+| P1 | Wave 2 收口：破坏性 migration、LKG 骨架 | ~6% | atomic registry 已随 Notes/Claude 闭环落地。 |
 | P1 | Host 全局通电（真 boot，不再 `missing_executable()`） | 单列 | **高风险，另开 change。** 不是本刀。 |
 | 冻结 | Slim Claude / Notes / 任何 Core 实现 | 终态 | **禁止。** 缺口 1y。 |
-| 冻结 | Marketplace / 12 插头可写 / 独立仓库发布 | 终态 | **禁止。** D-049 仍有效；D-050 只豁 Notes 一根。 |
+| 冻结 | Marketplace / 12 插头可写 / 独立仓库发布 | 终态 | **禁止。** D-049 仍有效；D-051 只豁 Notes + Claude。 |
 
 ## 6. 我们站在哪
 
@@ -128,12 +128,12 @@ P4 70% 容易误导：那是「pilot 协议走完 Disable」，不是「Claude �
 └── 知识地图 Inventory（P4.7-30）：24 条 command，memory 跟 map，intent-canvas / search 不跟
 
 当前刀尖
-└── `plugin-rack-real-install-loop`：Notes 真实装/卸已接线。下一根插头照抄此模板。知识地图 5B 暂停。
+└── Claude 闭环已接线待提交。诚实下一刀是知识地图 5B Contract，或 Wave 2 LKG；later-plugin 仍 0/9，禁止套装/卸模板。知识地图 5B 仍暂停，除非另开刀。
 
 刻意不做
 ├── Slim / 删 Core
 ├── Marketplace / 12 插头可写
-├── Claude 第一根闭环
+├── 给 0/9 的浏览器 / 画布装上假卸载
 └── 把 re-export 门面说成已经抽出
 ```
 
@@ -151,9 +151,10 @@ P4 70% 容易误导：那是「pilot 协议走完 Disable」，不是「Claude �
 | Slim / Marketplace 禁止 | [`inventory/real-uninstall-dependency-chain.md`](inventory/real-uninstall-dependency-chain.md) 缺口 1y |
 | 假市场回退 | [`09` D-049](09-decision-log.md) |
 | Notes-only 真实装/卸 | [`09` D-050](09-decision-log.md)；OpenSpec `plugin-rack-real-install-loop` |
+| Notes + Claude 真实装/卸 | [`09` D-051](09-decision-log.md)；OpenSpec `plugin-rack-claude-install-loop` |
 
 ## 8. 下一刀预告
 
-本刀 `plugin-rack-real-install-loop` 已立项并实施。知识地图 5B **暂停**。
+本刀 `plugin-rack-claude-install-loop` 已立项并实施。知识地图 5B **暂停**。
 
-下一根插头照抄 Notes 模板：lockfile desired + `activate_allowlisted` + atomic contribution + 产品命令闸门 + 插排单按钮。不要开 Marketplace，不要 Slim。
+两根 Disable 插头都已套上 Notes 模板。下一刀不要给 0/9 插头装假按钮；诚实选项是知识地图 Contract（5B）或 Wave 2 LKG。不要开 Marketplace，不要 Slim。

@@ -37,6 +37,10 @@ describe("DECLARED_PLUGIN_RACK_SNAPSHOT", () => {
       productPath: "process-entry",
       circuit: "live",
       coreOwner: "disabled",
+      installable: true,
+      desiredState: "installed",
+      contributionsLive: false,
+      allowlistedLive: false,
     });
     expect(DECLARED_PLUGIN_RACK_SNAPSHOT.plugs[1]).toMatchObject({
       productPath: "isolated-sqlite",
@@ -49,7 +53,7 @@ describe("DECLARED_PLUGIN_RACK_SNAPSHOT", () => {
     });
     expect(
       DECLARED_PLUGIN_RACK_SNAPSHOT.plugs
-        .filter((plug) => plug.pluginId !== "com.mossx.notes")
+        .slice(2)
         .every((plug) => !plug.installable && plug.desiredState === "uninstalled"),
     ).toBe(true);
     expect(

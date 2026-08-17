@@ -1,5 +1,5 @@
 //! Restart-surviving desired state for allowlisted plugs.
-//! Missing file: Notes stays installed. Not localStorage.
+//! Missing file: Notes and Claude stay installed. Not localStorage.
 
 use std::cell::RefCell;
 use std::collections::BTreeMap;
@@ -7,6 +7,7 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
+use super::claude_process::CLAUDE_PLUGIN_ID;
 use super::notes_storage::NOTES_PLUGIN_ID;
 
 const LOCKFILE_VERSION: u32 = 1;
@@ -70,7 +71,7 @@ impl PluginLockfile {
 }
 
 fn default_desired(plugin_id: &str) -> DesiredState {
-    if plugin_id == NOTES_PLUGIN_ID {
+    if plugin_id == NOTES_PLUGIN_ID || plugin_id == CLAUDE_PLUGIN_ID {
         DesiredState::Installed
     } else {
         DesiredState::Uninstalled
@@ -154,7 +155,11 @@ mod tests {
             DesiredState::Installed
         );
         assert_eq!(
-            read_from(&path).desired("com.mossx.engine.claude"),
+            read_from(&path).desired(CLAUDE_PLUGIN_ID),
+            DesiredState::Installed
+        );
+        assert_eq!(
+            read_from(&path).desired("com.mossx.project-map"),
             DesiredState::Uninstalled
         );
     }
@@ -165,13 +170,22 @@ mod tests {
         let _ = std::fs::remove_file(&path);
         with_lockfile_path(&path, || {
             product_set(NOTES_PLUGIN_ID, DesiredState::Uninstalled).expect("write");
+            product_set(CLAUDE_PLUGIN_ID, DesiredState::Uninstalled).expect("write");
             assert_eq!(
                 product_desired(NOTES_PLUGIN_ID),
+                DesiredState::Uninstalled
+            );
+            assert_eq!(
+                product_desired(CLAUDE_PLUGIN_ID),
                 DesiredState::Uninstalled
             );
         });
         assert_eq!(
             read_from(&path).desired(NOTES_PLUGIN_ID),
+            DesiredState::Uninstalled
+        );
+        assert_eq!(
+            read_from(&path).desired(CLAUDE_PLUGIN_ID),
             DesiredState::Uninstalled
         );
         let _ = std::fs::remove_file(&path);

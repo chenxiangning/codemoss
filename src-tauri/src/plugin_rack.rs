@@ -1,4 +1,4 @@
-//! Host rack snapshot plus Notes-only install/uninstall.
+//! Host rack snapshot plus Notes and Claude install/uninstall.
 //! Other declared plugs stay read-only. No Marketplace.
 
 use serde::Serialize;
@@ -9,6 +9,7 @@ use crate::plugin_runtime::boot::BootHost;
 use crate::plugin_runtime::host::{Host, SlotState};
 use crate::plugin_runtime::install;
 use crate::plugin_runtime::lockfile::{self, DesiredState};
+use crate::plugin_runtime::claude_process::CLAUDE_PLUGIN_ID;
 use crate::plugin_runtime::notes_storage::NOTES_PLUGIN_ID;
 
 const DECLARED_PLUGS: &[DeclaredPlug] = &[
@@ -160,8 +161,11 @@ fn declared_plug(plug: &DeclaredPlug, state: &str, generation: u64, unit_id: Opt
     let (product_path, circuit) = product_circuit(plug.plugin_id);
     let installable = install::is_install_allowlisted(plug.plugin_id);
     let desired = lockfile::product_desired(plug.plugin_id);
-    let contributions_live = plug.plugin_id == NOTES_PLUGIN_ID
-        && crate::plugin_runtime::contributions::notes_live();
+    let contributions_live = match plug.plugin_id {
+        NOTES_PLUGIN_ID => crate::plugin_runtime::contributions::notes_live(),
+        CLAUDE_PLUGIN_ID => crate::plugin_runtime::contributions::claude_live(),
+        _ => false,
+    };
     let allowlisted_live =
         installable && desired == DesiredState::Installed && contributions_live && live;
     PluginRackPlug {
@@ -362,11 +366,15 @@ mod tests {
         for plug in &snapshot.plugs {
             assert!(host.host.slot(&plug.plugin_id).is_none());
         }
+        assert!(snapshot.plugs[0].installable);
+        assert_eq!(snapshot.plugs[0].desired_state, "installed");
+        assert!(!snapshot.plugs[0].contributions_live);
+        assert!(!snapshot.plugs[0].allowlisted_live);
         assert!(snapshot.plugs[1].installable);
         assert_eq!(snapshot.plugs[1].desired_state, "installed");
         assert!(!snapshot.plugs[1].contributions_live);
         assert!(!snapshot.plugs[1].allowlisted_live);
-        assert!(snapshot.plugs.iter().filter(|plug| plug.plugin_id != NOTES_PLUGIN_ID).all(|plug| {
+        assert!(snapshot.plugs[2..].iter().all(|plug| {
             !plug.installable && plug.desired_state == "uninstalled" && !plug.contributions_live
         }));
         });
@@ -390,6 +398,7 @@ mod tests {
         assert!(snapshot.plugs[0].live);
         assert_eq!(snapshot.plugs[1].state, "idle");
         assert!(!snapshot.plugs[1].live);
+        assert!(snapshot.plugs[0].installable);
         assert!(snapshot.plugs[1].installable);
         assert!(!snapshot.plugs[1].contributions_live);
         let _ = notes_activation_request();

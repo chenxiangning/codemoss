@@ -7,7 +7,7 @@ status: active
 
 > **状态**：Architecture baseline + V1 Contract Freeze（2026-08-16）
 > **最后更新**：2026-08-17
-> **进度快照**：[`16-progress-dashboard.md`](16-progress-dashboard.md)（2026-08-17；允许线 42% / 终态 14% / 真实卸载 20%）
+> **进度快照**：[`16-progress-dashboard.md`](16-progress-dashboard.md)（2026-08-17；允许线 46% / 终态 14% / 真实卸载 40%）
 > **目标读者**：产品设计、平台架构、Core 开发、插件开发、Release 与安全治理
 > **一句话目标**：把 Mossx 从“持续增长的桌面应用”演进成“稳定 Core + 可隔离、可撤销、可回滚的独立插件生态”。
 > **实施入口**：字段级 Contract 以 [`14-v1-contract-freeze.md`](14-v1-contract-freeze.md) 为准；实现前仍按 Phase 拆小型 OpenSpec change。

@@ -931,6 +931,13 @@ mod tests {
         assert!(production.contains("decide_claude_spawn_owner"));
         assert!(production.contains("cmd.spawn()"));
         assert!(!production.contains("claude_process_driver_for_bin"));
+        let gate = production
+            .find("claude_commands_allowed")
+            .expect("uninstall gate");
+        let decide = production
+            .find("decide_claude_spawn_owner")
+            .expect("spawn owner");
+        assert!(gate < decide, "uninstall gate must precede decide");
         let _ = std::fs::remove_dir_all(root);
     }
 
