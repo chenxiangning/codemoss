@@ -1,0 +1,127 @@
+{
+  "pluginId": "com.mossx.project-map",
+  "wave": "5A",
+  "status": "inventory-only",
+  "deleteGate": "after-pilot-disable",
+  "productOwner": "core",
+  "coreOwner": "active",
+  "packageRole": "re-export-facade",
+  "package": "packages/plugin-project-map",
+  "surfaces": {
+    "backend": [
+      "src-tauri/src/project_map.rs",
+      "src-tauri/src/project_map_api_contracts.rs",
+      "src-tauri/src/project_map_api_contracts_identity.rs",
+      "src-tauri/src/project_map_api_contracts_schema_sources.rs",
+      "src-tauri/src/project_map_api_contracts_tests.rs",
+      "src-tauri/src/project_map_api_contracts_types.rs",
+      "src-tauri/src/project_map_relations.rs",
+      "src-tauri/src/project_map_relations/",
+      "src-tauri/src/project_memory/"
+    ],
+    "commands": [
+      "project_map_read",
+      "project_map_write_snapshot",
+      "project_map_relationship_scan",
+      "project_map_relationship_read",
+      "project_map_relationship_write_snapshot",
+      "project_map_relationship_clear",
+      "project_memory_get_settings",
+      "project_memory_update_settings",
+      "project_memory_list",
+      "project_memory_get",
+      "project_memory_create",
+      "project_memory_update",
+      "project_memory_delete",
+      "project_memory_diagnostics",
+      "project_memory_reconcile",
+      "project_memory_capture_auto",
+      "project_memory_embed_health",
+      "project_memory_embed_text",
+      "project_memory_embed_download",
+      "project_memory_embed_remove",
+      "project_memory_embed_index_list",
+      "project_memory_embed_index_upsert",
+      "project_memory_embed_index_delete",
+      "project_memory_embed_index_clear"
+    ],
+    "frontend": [
+      "src/features/project-map/",
+      "src/features/project-memory/components/ProjectMemoryPanel.tsx",
+      "src/features/project-memory/hooks/useProjectMemory.ts",
+      "src/features/project-memory/hooks/useProjectMemoryEmbedModel.ts",
+      "src/features/project-memory/services/projectMemoryFacade.ts",
+      "src/features/project-memory/utils/",
+      "src/services/tauri/projectMemory.ts",
+      "packages/plugin-project-map/"
+    ],
+    "i18n": [
+      "src/i18n/locales/*/projectMap.ts",
+      "src/i18n/locales/*/settings.ts"
+    ],
+    "css": [
+      "src/styles/project-map.css",
+      "src/styles/project-map.api-contract.css",
+      "src/styles/project-map.controls.css",
+      "src/styles/project-map.evidence-files.css",
+      "src/styles/project-map.graph-canvas.css",
+      "src/styles/project-map.inspector.css",
+      "src/styles/project-map.overlays.css",
+      "src/styles/project-map.relationship-chrome.css",
+      "src/styles/project-map.relationship-file-read.css",
+      "src/styles/project-map.relationship-graph.css",
+      "src/styles/project-map.relationship-inspector.css",
+      "src/styles/project-map.relationship-workspace.css",
+      "src/styles/project-map.relationship.css",
+      "src/styles/project-memory.css"
+    ]
+  },
+  "bookedNotMoved": {
+    "reason": "memory-pick conversation inject stays on Messages/Composer until a dedicated change",
+    "frontend": [
+      "src/features/project-memory/memoryPick/",
+      "src/features/project-memory/components/MemoryPickGate.tsx",
+      "src/features/project-memory/components/MemoryPickGateHost.tsx",
+      "src/features/messages/components/MessagesCore.tsx",
+      "src/features/messages/utils/context/messagesMemoryContext.ts",
+      "src/conversation-presentation/normalizeConversationPresentation.ts"
+    ],
+    "i18n": [
+      "src/i18n/locales/*/memory.ts",
+      "src/i18n/locales/*/messages.ts"
+    ],
+    "css": [
+      "src/styles/composer.memory-picker.css",
+      "src/styles/memory-pick-gate.css"
+    ]
+  },
+  "stayInCore": [
+    "src-tauri/src/app_paths.rs",
+    "src-tauri/src/project_identity.rs",
+    "src-tauri/src/command_registry.rs",
+    "src/app-shell/",
+    "src/features/search",
+    "src/features/workspaces"
+  ],
+  "mustNotMoveWithProjectMap": [
+    "src/features/intent-canvas",
+    "src-tauri/src/project_canvas.rs",
+    "src/features/search",
+    "src/app-shell/",
+    "src-tauri/src/command_registry.rs",
+    "src-tauri/src/engine/claude*",
+    "src-tauri/src/note_cards.rs",
+    "src-tauri/src/plugin_runtime/host.rs",
+    "src-tauri/src/plugin_runtime/boot.rs",
+    "src/features/extensions/components/PluginRackSection.tsx"
+  ],
+  "dataPaths": [
+    "~/.ccgui/project-map/<storage-key>",
+    "<project>/.ccgui/project-map/<storage-key>",
+    "~/.ccgui/project-map-relations/<storage-key>",
+    "<project>/.ccgui/project-map-relations/<storage-key>",
+    "~/.ccgui/project-memory"
+  ],
+  "storageNote": "Product still writes Core files. packages/plugin-project-map re-exports src/features/project-map. Do not Slim. Do not move project_canvas or Search.",
+  "notes": "P4.7-30 Wave 5A inventory-only. Memory persist/panel follow project-map. Memory-pick inject is booked, not moved. Marketplace stays closed."
+}

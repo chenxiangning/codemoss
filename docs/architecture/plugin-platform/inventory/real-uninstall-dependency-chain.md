@@ -54,6 +54,7 @@
   → 缺口 1w：插排只读报产品通电（✅ 本批：circuit/productPath + supervisor pid；Host slot 仍 idle）
   → 缺口 1x：Disable-not-delete（✅ 本批：默认 Core owner disabled；源码与 0 回退保留）
   → 缺口 1y：Slim / Marketplace 仍禁止
+  → 缺口 4a：第三根插头知识地图 Inventory（✅ 本批：`com.mossx.project-map` 只盘点；re-export ≠ 抽出）
   → 缺口 2：SlotState 补 Uninstalled（✅ 已补）+ atomic contribution registry（🔵 待做，P2.1）
   → 缺口 3：Notes owner 复核（✅ P4.7-19）
   → 缺口 3b：隔离 Notes CRUD（✅ P4.7-21）
