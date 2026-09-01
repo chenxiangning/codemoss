@@ -28,6 +28,7 @@ const ENGINE_VARIANTS = {
   pi: "Pi",
   dsh: "Dsh",
   qoder: "Qoder",
+  omp: "Omp",
 };
 const VALID_STATE = new Set(["supported", "compat-input", "unsupported", "unknown"]);
 const VALID_DOMAIN = new Set([

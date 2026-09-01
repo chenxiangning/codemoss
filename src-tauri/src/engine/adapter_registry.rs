@@ -170,7 +170,7 @@ impl EngineProtocol for BuiltinEngineProtocol {
         match self.engine {
             EngineType::Codex => EngineProtocolFamily::AppServerJsonRpc,
             EngineType::Dsh => EngineProtocolFamily::DshHostRpc,
-            EngineType::Qoder => EngineProtocolFamily::AcpStdio,
+            EngineType::Qoder | EngineType::Omp => EngineProtocolFamily::AcpStdio,
             EngineType::Pi => EngineProtocolFamily::PiRpc,
             _ => EngineProtocolFamily::StreamJsonCli,
         }
@@ -178,7 +178,7 @@ impl EngineProtocol for BuiltinEngineProtocol {
 
     fn execution_model(&self) -> EngineExecutionModel {
         match self.engine {
-            EngineType::Codex | EngineType::Dsh | EngineType::Pi => {
+            EngineType::Codex | EngineType::Dsh | EngineType::Pi | EngineType::Omp => {
                 EngineExecutionModel::Persistent
             }
             _ => EngineExecutionModel::OneShot,
@@ -222,6 +222,7 @@ impl EngineAdapterRegistry {
             EngineType::Pi,
             EngineType::Dsh,
             EngineType::Qoder,
+            EngineType::Omp,
         ] {
             let protocol = BuiltinEngineProtocol::new(engine);
             let adapter = BuiltinEngineAdapter::new(engine);
@@ -299,6 +300,7 @@ pub fn engine_id(engine: EngineType) -> &'static str {
         EngineType::Pi => "pi",
         EngineType::Dsh => "dsh",
         EngineType::Qoder => "qoder",
+        EngineType::Omp => "omp",
     }
 }
 
@@ -309,7 +311,7 @@ mod tests {
     #[test]
     fn builtins_cover_one_shot_and_persistent_protocol_models() {
         let registry = EngineAdapterRegistry::with_builtins();
-        assert_eq!(registry.len(), 9);
+        assert_eq!(registry.len(), 10);
         assert_eq!(
             registry
                 .get(&EngineId::builtin(EngineType::Kimi))
@@ -347,6 +349,11 @@ mod tests {
         // pi 主传输是 `pi --mode rpc` 长驻 resident；print-json 只是降级路径。
         assert_eq!(pi.execution_model, EngineExecutionModel::Persistent);
         assert_eq!(pi.protocol_family, EngineProtocolFamily::PiRpc);
+        let omp = registry
+            .get(&EngineId::builtin(EngineType::Omp))
+            .expect("omp");
+        assert_eq!(omp.execution_model, EngineExecutionModel::Persistent);
+        assert_eq!(omp.protocol_family, EngineProtocolFamily::AcpStdio);
         assert_eq!(
             BuiltinEngineProtocol::new(EngineType::Qoder).executable_name(),
             "qodercli"

@@ -72,6 +72,7 @@ describe("sessionLifecycleController", () => {
     "__local_pi__",
     "__dsh_host_catalog__",
     "__local_qoder__",
+    "__omp_local__",
   ])("keeps local profile %s for sidebar labels", (profileId) => {
     expect(
       providerBindingFromSelectedProfile({
@@ -86,7 +87,7 @@ describe("sessionLifecycleController", () => {
     });
   });
 
-  it("defaults PI / DSH / Grok locally and Qoder to its explicit Global binding", () => {
+  it("defaults PI / DSH / Grok / OMP locally and Qoder to its explicit Global binding", () => {
     expect(localProviderBindingForEngine("pi")).toMatchObject({
       providerProfileId: "__local_pi__",
     });
@@ -96,6 +97,9 @@ describe("sessionLifecycleController", () => {
     expect(localProviderBindingForEngine("grok")).toMatchObject({
       providerProfileId: "__local_config_toml__",
     });
+    expect(localProviderBindingForEngine("omp")).toMatchObject({
+      providerProfileId: "__omp_local__",
+    });
     expect(localProviderBindingForEngine("qoder")).toMatchObject({
       providerProfileId: "__qoder_global__",
       providerProfileName: "Qoder Global",
@@ -103,6 +107,7 @@ describe("sessionLifecycleController", () => {
     });
     expect(isManagedEngineProviderProfileId("__local_pi__")).toBe(false);
     expect(isManagedEngineProviderProfileId("__local_qoder__")).toBe(false);
+    expect(isManagedEngineProviderProfileId("__omp_local__")).toBe(false);
     expect(isManagedEngineProviderProfileId("grok-managed")).toBe(true);
   });
 

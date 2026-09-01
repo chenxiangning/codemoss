@@ -7,7 +7,7 @@ import { useEngineAvailabilityProjection } from "./useEngineAvailabilityProjecti
 import {
   AppShellHostBusProvider,
   usePublishHostSlice,
-} from "../../../../../app-shell/hosts/appShellHostBus";
+} from "../../../../../app-shell-parts/appShellHostBus";
 import {
   PROVIDER_TARGET_CATALOG_INVALIDATED_EVENT,
   notifyProviderTargetCatalogChanged,

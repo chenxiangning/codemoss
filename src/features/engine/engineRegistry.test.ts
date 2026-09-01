@@ -20,6 +20,7 @@ describe("engineRegistry", () => {
       "pi",
       "dsh",
       "qoder",
+      "omp",
     ]);
     expect(getEngineRegistryEntry("codex")).toMatchObject({
       protocolFamily: "app-server-json-rpc",
@@ -43,9 +44,17 @@ describe("engineRegistry", () => {
       protocolFamily: "acp-stdio",
       executionModel: "one-shot",
     });
+    expect(getEngineRegistryEntry("omp")).toMatchObject({
+      displayName: "OMP CLI",
+      protocolFamily: "acp-stdio",
+      protocolFamilies: ["acp-stdio", "native-rpc"],
+      executionModel: "persistent",
+      capabilityProfile: "omp",
+    });
     expect(isSupportedEngineType("grok")).toBe(true);
     expect(isSupportedEngineType("kimi")).toBe(true);
     expect(isSupportedEngineType("qoder")).toBe(true);
+    expect(isSupportedEngineType("omp")).toBe(true);
     expect(isSupportedEngineType("other")).toBe(false);
   });
 

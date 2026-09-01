@@ -13,6 +13,7 @@ status: active
 - [Harness Governance Layer — mossx 战略架构文档](harness-governance-strategy.md) — accepted 战略；2026-05 正文保留，文首含 2026-08-03 / 0.7.16 六引擎、AppShell 与 gate audit 校准
 - [多引擎协作编排设计（Multi-Engine Collaboration）](multi-engine-collaboration-orchestration-design.md) — Shared 内分环节绑定不同 CLI·供应商的编排产品与控制面设计
 - [Composer 会话文件变更账本设计（Session File-Edit Ledger）](composer-session-file-edit-ledger-design.md) — Shared/协作「已编辑」Strip 的 durable 数据面（**UI 零改**；draft 2026-08-08）
+- [OMP CLI 独立引擎接入分析与任务拆分](omp-cli-engine-onboarding-analysis.md) — OMP 独立 Engine、ACP/native RPC、Provider/Profile/Session 边界与分阶段实施任务
 - [Large File Governance Playbook](large-file-governance-playbook.md)
 
 最近记录的 Harness gate 快照（运行于 2026-08-01，代码边界于 2026-08-03 复核）：engine registry、capability matrix、evidence bridge、domain-event schema 通过；domain-event adoption checker 仍未跟随 type extraction。Policy-router 的 3,101 files / 458 findings 仅是 2026-08-01 advisory inventory，exit 0 不代表零 debt。**在 adoption gate 重新转绿并重新生成 evidence 前，不声明 governance evidence-complete。**

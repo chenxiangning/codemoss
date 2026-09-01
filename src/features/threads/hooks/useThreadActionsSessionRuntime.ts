@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useRef } from "react";
 import type { Dispatch, MutableRefObject } from "react";
 
-import type { DebugEntry, ThreadSummary } from "../../../types";
+import type { DebugEntry, EngineType, ThreadSummary } from "../../../types";
 import type { AutoSessionMetadata } from "../../../services/tauri";
 import {
   CODEX_DISK_PROVIDER_PROFILE_ID,
@@ -374,7 +374,7 @@ export function useThreadActionsSessionRuntime({
       workspaceId: string,
       options?: {
         activate?: boolean;
-        engine?: "claude" | "codex" | "gemini" | "grok" | "kimi" | "opencode" | "pi" | "dsh" | "qoder";
+        engine?: EngineType;
         folderId?: string | null;
         autoSession?: AutoSessionMetadata | null;
         providerProfileId?: string | null;
@@ -436,7 +436,8 @@ export function useThreadActionsSessionRuntime({
         engine === "opencode" ||
         engine === "pi" ||
         engine === "qoder" ||
-        engine === "dsh"
+        engine === "dsh" ||
+        engine === "omp"
       ) {
         const prefix = engine;
         const threadId = `${prefix}-pending-${Date.now()}-${Math.random()

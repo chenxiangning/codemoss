@@ -751,6 +751,44 @@ describe("useThreadTurnEvents", () => {
     });
   });
 
+  it("clears OMP processing even while its terminal turn remains in flight registry", () => {
+    const isTurnInFlightForThread = vi.fn(() => true);
+    const { result, markProcessing, setActiveTurnId } = makeOptions({
+      activeTurnIdByThread: { "omp:session-1": "omp-turn-1" },
+      isTurnInFlightForThread,
+    });
+
+    act(() => {
+      result.current.onTurnCompleted("ws-1", "omp:session-1", "omp-turn-1");
+    });
+
+    expect(markProcessing).toHaveBeenCalledWith("omp:session-1", false);
+    expect(setActiveTurnId).toHaveBeenCalledWith("omp:session-1", null);
+  });
+
+  it("settles an OMP canonical completion onto its pending thread", () => {
+    const {
+      result,
+      markProcessing,
+      setActiveTurnId,
+      resolvePendingThreadForSession,
+    } = makeOptions({
+      activeTurnIdByThread: { "omp-pending-turn-1": "omp-turn-1" },
+    });
+    resolvePendingThreadForSession.mockImplementation(
+      (_workspaceId: string, engine: string) =>
+        engine === "omp" ? "omp-pending-turn-1" : null,
+    );
+
+    act(() => {
+      result.current.onTurnCompleted("ws-1", "omp:session-1", "omp-turn-1");
+    });
+
+    expect(resolvePendingThreadForSession).toHaveBeenCalledWith("ws-1", "omp");
+    expect(markProcessing).toHaveBeenCalledWith("omp-pending-turn-1", false);
+    expect(setActiveTurnId).toHaveBeenCalledWith("omp-pending-turn-1", null);
+  });
+
   it("still rejects turn-completed for turns that are neither active nor in flight", () => {
     // 防过度放松：旧 turn 的迟到完成稿不在在途集合内 ⇒ 维持原拒绝语义，
     // 不复燃已结算线程。
@@ -770,6 +808,45 @@ describe("useThreadTurnEvents", () => {
 
     expect(markProcessing).not.toHaveBeenCalledWith("pi:s1", false);
     expect(setActiveTurnId).not.toHaveBeenCalled();
+  });
+  it("settles the renamed OMP thread when turn/completed still anchors the pending id", () => {
+    // 2026-09-01 dev 复现：thread/started 改名 pending → omp:<native> 后，
+    // turn/completed 仍带旧 pending id；只结算 phantom pending 会让真线程
+    // 的 isProcessing 永远不清（「响应中」卡死，完成音照响）。
+    const {
+      result,
+      dispatch,
+      markProcessing,
+      setActiveTurnId,
+    } = makeOptions({
+      activeTurnIdByThread: {
+        "omp-pending-1": "omp-turn-1",
+        "omp:session-1": "omp-turn-1",
+      },
+    });
+
+    act(() => {
+      result.current.onThreadSessionIdUpdated(
+        "ws-1",
+        "omp-pending-1",
+        "session-1",
+        "omp",
+        "omp-turn-1",
+      );
+    });
+    expect(dispatch).toHaveBeenCalledWith({
+      type: "renameThreadId",
+      workspaceId: "ws-1",
+      oldThreadId: "omp-pending-1",
+      newThreadId: "omp:session-1",
+    });
+
+    act(() => {
+      result.current.onTurnCompleted("ws-1", "omp-pending-1", "omp-turn-1");
+    });
+
+    expect(markProcessing).toHaveBeenCalledWith("omp:session-1", false);
+    expect(setActiveTurnId).toHaveBeenCalledWith("omp:session-1", null);
   });
 
   it("clears pending interrupt and active turn on turn completed", () => {
@@ -1438,6 +1515,26 @@ describe("useThreadTurnEvents", () => {
       "opencode-pending-abc",
       "opencode:session-xyz",
     );
+  });
+
+  it("renames an OMP pending thread to its native session identity", () => {
+    const { result, dispatch } = makeOptions();
+
+    act(() => {
+      result.current.onThreadSessionIdUpdated(
+        "ws-1",
+        "omp-pending-abc",
+        "native-session-xyz",
+        "omp",
+      );
+    });
+
+    expect(dispatch).toHaveBeenCalledWith({
+      type: "renameThreadId",
+      workspaceId: "ws-1",
+      oldThreadId: "omp-pending-abc",
+      newThreadId: "omp:native-session-xyz",
+    });
   });
 
   it("migrates pending interrupt guards when opencode pending thread gets real session id", () => {

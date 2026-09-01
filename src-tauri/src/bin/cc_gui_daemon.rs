@@ -167,7 +167,7 @@ mod session_index {
         }
 
         pub(crate) const INDEX_LIST_ENGINES: &[&str] = &[
-            "claude", "codex", "gemini", "grok", "kimi", "opencode", "pi", "dsh", "qoder",
+            "claude", "codex", "gemini", "grok", "kimi", "opencode", "pi", "dsh", "qoder", "omp",
         ];
 
         #[derive(Debug, Clone)]
@@ -825,6 +825,7 @@ struct DaemonState {
     codex_runtime_reload_lock: Mutex<()>,
     web_service_runtime: Mutex<WebServiceRuntime>,
     event_sink: DaemonEventSink,
+    omp_acp_interrupts: Arc<Mutex<HashMap<String, (String, oneshot::Sender<()>)>>>,
     codex_login_cancels: Mutex<HashMap<String, oneshot::Sender<()>>>,
     engine_manager: Arc<crate::engine::EngineManager>,
     active_engine: Mutex<engine::EngineType>,
@@ -1215,6 +1216,7 @@ fn parse_engine_type_string(value: Option<&str>) -> Option<engine::EngineType> {
         "grok" => Some(engine::EngineType::Grok),
         "dsh" => Some(engine::EngineType::Dsh),
         "qoder" => Some(engine::EngineType::Qoder),
+        "omp" => Some(engine::EngineType::Omp),
         _ => None,
     }
 }

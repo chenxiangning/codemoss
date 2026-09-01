@@ -182,5 +182,23 @@ pub fn spec_capability_state(engine_type: EngineType, capability: &str) -> &'sta
             "rpc.server" => "unsupported",
             _ => "unknown",
         },
+        EngineType::Omp => match capability {
+            "streaming.text" => "unknown",
+            "streaming.reasoning" => "unknown",
+            "streaming.tool-output" => "unknown",
+            "tool.use" => "unknown",
+            "tool.mcp" => "unknown",
+            "reasoning.effort" => "unknown",
+            "collaboration.mode" => "unknown",
+            "session.continuation" => "unknown",
+            "image.input" => "unknown",
+            "input.mid-turn" => "unknown",
+            "session.resume" => "unknown",
+            "session.fork" => "unknown",
+            "session.switch" => "unknown",
+            "session.tree" => "unknown",
+            "rpc.server" => "unknown",
+            _ => "unknown",
+        },
     }
 }

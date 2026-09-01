@@ -79,7 +79,11 @@ export function useMessagesPresentationState({
     lastItemId: presentationRenderedItems.at(-1)?.id ?? null,
   });
   const claudeRenderableEntryCount = useMemo(
-    () => countRenderableCollapsedEntries(timelineItems, activeEngine),
+    () =>
+      countRenderableCollapsedEntries(
+        timelineItems,
+        activeEngine === "omp" ? "codex" : activeEngine,
+      ),
     [activeEngine, timelineItems],
   );
   const claudeHistoryTranscriptFallbackActive = useMemo(() => {

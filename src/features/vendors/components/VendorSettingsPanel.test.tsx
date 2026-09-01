@@ -254,7 +254,7 @@ function renderPanel(
     codexReloadStatus?: "idle" | "reloading" | "applied" | "failed";
     codexReloadMessage?: string | null;
     onUpdateAppSettings?: (next: AppSettings) => Promise<void>;
-    initialCli?: "qoder";
+    initialCli?: "qoder" | "omp";
     initialQoderDistribution?: "global" | "cn";
   } = {},
 ) {
@@ -417,7 +417,7 @@ describe("VendorSettingsPanel", () => {
           button.querySelector(".min-w-0")?.textContent?.trim() ?? "",
       )
       .filter((label) => label.endsWith("CLI") || label === "DeepSeek Harness");
-    expect(navLabels.slice(0, 10)).toEqual([
+    expect(navLabels.slice(0, 11)).toEqual([
       "Claude Code CLI",
       "Codex CLI",
       "Kimi CLI",
@@ -426,6 +426,7 @@ describe("VendorSettingsPanel", () => {
       "PI CLI",
       "DeepSeek Harness",
       "Qoder CLI",
+      "OMP CLI",
       "Gemini CLI",
       "GLM CLI",
     ]);
@@ -630,6 +631,20 @@ describe("VendorSettingsPanel", () => {
     ).toHaveLength(1);
     expect(screen.getByPlaceholderText("~/.qoder")).toBeTruthy();
     expect(screen.queryByPlaceholderText("~/.qoder-cn")).toBeNull();
+  });
+
+  it("shows OMP provider configuration as visible but fail-closed", async () => {
+    renderPanel({ initialCli: "omp" });
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: "OMP CLI" })).toBeTruthy();
+    });
+    expect(screen.getByTestId("omp-provider-config-entry")).toBeTruthy();
+    expect(
+      screen.getByTestId("omp-catalog-status").textContent?.length,
+    ).toBeGreaterThan(0);
+    expect(screen.queryByRole("button", { name: /^使用$/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^编辑$/ })).toBeNull();
   });
 
   it("opens the Qoder CN tab from a Qoder settings deep link", async () => {
@@ -1424,7 +1439,17 @@ describe("VendorSettingsPanel", () => {
   it("shows the empty hint when every supported CLI is disabled", async () => {
     renderPanel({
       appSettings: {
-        disabledCliEngines: ["claude", "codex", "kimi", "grok", "opencode", "pi", "dsh", "qoder"],
+        disabledCliEngines: [
+          "claude",
+          "codex",
+          "kimi",
+          "grok",
+          "opencode",
+          "pi",
+          "dsh",
+          "qoder",
+          "omp",
+        ],
       },
     });
 

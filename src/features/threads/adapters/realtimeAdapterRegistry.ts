@@ -8,6 +8,7 @@ import { dshRealtimeAdapter } from "./dshRealtimeAdapter";
 import { opencodeRealtimeAdapter } from "./opencodeRealtimeAdapter";
 import { piRealtimeAdapter } from "./piRealtimeAdapter";
 import { qoderRealtimeAdapter } from "./qoderRealtimeAdapter";
+import { ompRealtimeAdapter } from "./ompRealtimeAdapter";
 import { inferEngineFromThreadId } from "./sharedRealtimeAdapter";
 
 const ADAPTERS: Record<ConversationEngine, RealtimeAdapter> = {
@@ -20,6 +21,7 @@ const ADAPTERS: Record<ConversationEngine, RealtimeAdapter> = {
   opencode: opencodeRealtimeAdapter,
   pi: piRealtimeAdapter,
   qoder: qoderRealtimeAdapter,
+  omp: ompRealtimeAdapter,
 };
 
 export function getRealtimeAdapterByEngine(engine: ConversationEngine): RealtimeAdapter {

@@ -14,8 +14,8 @@ export type ConversationEngine =
   | "opencode"
   | "pi"
   | "dsh"
-  | "qoder";
-
+  | "qoder"
+  | "omp";
 export const NORMALIZED_ITEM_KINDS = [
   "message",
   "reasoning",

@@ -67,7 +67,7 @@ export const readCommitMessageMenuPreferences = (
 /** 生成按钮初始图标：优先上次成功选择的可见引擎，否则 claude。 */
 export const readInitialCommitMessageMenuEngine = (
   disabledEngineIds: ReadonlySet<string> = EMPTY_DISABLED_COMMIT_MESSAGE_ENGINES,
-): LastCommitMessageConfig["engine"] => {
+): CommitMessageEngine => {
   const preferences = readCommitMessageMenuPreferences(disabledEngineIds);
-  return preferences.lastConfig?.engine ?? preferences.engines[0] ?? "claude";
+  return (preferences.lastConfig?.engine ?? preferences.engines[0] ?? "claude") as CommitMessageEngine;
 };

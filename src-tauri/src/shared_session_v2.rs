@@ -6290,6 +6290,7 @@ mod shared_interrupt_owner_tests {
                 EngineType::OpenCode => "ccgui/opencode-model".to_string(),
                 EngineType::Pi => "auto".to_string(),
                 EngineType::Qoder => "qmodel_38max".to_string(),
+                EngineType::Omp => "omp-model".to_string(),
                 EngineType::Gemini | EngineType::Dsh => "unsupported".to_string(),
             }),
             reasoning_effort: Some("medium".to_string()),
@@ -6360,7 +6361,8 @@ mod shared_interrupt_owner_tests {
             | EngineType::Kimi
             | EngineType::Pi
             | EngineType::Grok
-            | EngineType::OpenCode => {
+            | EngineType::OpenCode
+            | EngineType::Omp => {
                 format!("{}:native-{provider}", engine.icon())
             }
             EngineType::Qoder => format!("qoder:{provider}:native-{provider}"),

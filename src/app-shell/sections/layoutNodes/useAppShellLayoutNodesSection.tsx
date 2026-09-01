@@ -35,6 +35,7 @@ import type {
   QueuedMessage,
   GitHubPullRequest,
   GitLogEntry,
+  EngineType,
 } from "../../../types";
 import type { QuickSwitcherNavigationId } from "../../../features/quick-switcher/types";
 import {
@@ -781,18 +782,7 @@ export function useAppShellLayoutNodesSection(
   );
 
   const handleSelectConversationEngine = useCallback(
-    async (
-      engine:
-        | "claude"
-        | "codex"
-        | "gemini"
-        | "grok"
-        | "kimi"
-        | "opencode"
-        | "pi"
-        | "dsh"
-        | "qoder",
-    ) => {
+    async (engine: EngineType) => {
       const thread =
         activeWorkspaceId && activeThreadId
           ? (threadsByWorkspace[activeWorkspaceId] ?? []).find(

@@ -376,7 +376,7 @@ type HandleFusionStalledOptions = {
 type RunWithCreateSessionLoading = <T>(
   params: {
     workspace: WorkspaceInfo;
-    engine: "claude" | "codex" | "gemini" | "grok" | "kimi" | "opencode" | "pi" | "dsh" | "qoder";
+    engine: "claude" | "codex" | "gemini" | "grok" | "kimi" | "opencode" | "pi" | "dsh" | "qoder" | "omp";
   },
   action: () => Promise<T>,
 ) => Promise<T>;
@@ -418,7 +418,7 @@ type UseThreadMessagingOptions = {
   claudeThinkingVisible?: boolean;
   steerEnabled: boolean;
   customPrompts: CustomPromptOption[];
-  activeEngine?: "claude" | "codex" | "gemini" | "grok" | "kimi" | "opencode" | "pi" | "dsh" | "qoder";
+  activeEngine?: "claude" | "codex" | "gemini" | "grok" | "kimi" | "opencode" | "pi" | "dsh" | "qoder" | "omp";
   threadStatusById: ThreadState["threadStatusById"];
   itemsByThread: ThreadState["itemsByThread"];
   activeTurnIdByThread: ThreadState["activeTurnIdByThread"];
@@ -430,12 +430,12 @@ type UseThreadMessagingOptions = {
   >;
   pendingInterruptsRef: MutableRefObject<WorkspaceScopedMap<true>>;
   interruptedThreadsRef: MutableRefObject<WorkspaceScopedMap<true>>;
-  dispatch: Dispatch<ThreadAction>;
   getCustomName: (workspaceId: string, threadId: string) => string | undefined;
+  dispatch: Dispatch<ThreadAction>;
   getThreadEngine: (
     workspaceId: string,
     threadId: string,
-  ) => "claude" | "codex" | "gemini" | "grok" | "kimi" | "opencode" | "pi" | "dsh" | "qoder" | undefined;
+  ) => "claude" | "codex" | "gemini" | "grok" | "kimi" | "opencode" | "pi" | "dsh" | "qoder" | "omp" | undefined;
   getThreadKind?: (
     workspaceId: string,
     threadId: string,
@@ -479,8 +479,7 @@ type UseThreadMessagingOptions = {
     workspaceId: string,
     options?: {
       activate?: boolean;
-      engine?: "claude" | "codex" | "gemini" | "grok" | "kimi" | "opencode" | "pi" | "dsh" | "qoder";
-      folderId?: string | null;
+      engine?: "claude" | "codex" | "gemini" | "grok" | "kimi" | "opencode" | "pi" | "dsh" | "qoder" | "omp";
       autoSession?: AutoSessionMetadata | null;
       providerProfileId?: string | null;
     },
@@ -2744,7 +2743,10 @@ export function useThreadMessaging({
                                       : resolvedEngine === "opencode" &&
                                           isOpenCodeSession
                                         ? threadId.slice("opencode:".length)
-                                        : null;
+                                        : resolvedEngine === "omp" &&
+                                            threadId.startsWith("omp:")
+                                          ? threadId.slice("omp:".length)
+                                          : null;
           const shouldAttachCliSpecRootHint =
             realSessionId === null && Boolean(customSpecRoot);
 

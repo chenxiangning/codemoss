@@ -631,6 +631,31 @@ describe("useThreadActions start/fork", () => {
     expect(threadId ? loadedThreadsRef.current[threadId] : false).toBe(true);
     expect(startThread).not.toHaveBeenCalled();
   });
+  it("creates an optimistic OMP pending thread instead of falling back to Codex", async () => {
+    const { result, dispatch, loadedThreadsRef } = renderActions();
+
+    let threadId: string | null = null;
+    await act(async () => {
+      threadId = await result.current.startThreadForWorkspace("ws-1", {
+        engine: "omp",
+        providerProfileId: "__omp_local__",
+      });
+    });
+
+    expect(threadId).toMatch(/^omp-pending-/);
+    expect(dispatch).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "ensureThread",
+        workspaceId: "ws-1",
+        threadId,
+        engine: "omp",
+        providerProfileId: "__omp_local__",
+        providerProfileSource: "disk",
+      }),
+    );
+    expect(threadId ? loadedThreadsRef.current[threadId] : false).toBe(true);
+    expect(startThread).not.toHaveBeenCalled();
+  });
 
   it("allows opencode thread creation past the execution policy gate", async () => {
     const { result, dispatch, loadedThreadsRef } = renderActions();
@@ -665,12 +690,14 @@ describe("useThreadActions start/fork", () => {
 
     expect(threadId).toMatch(/^pi-pending-/);
     expect(startThread).not.toHaveBeenCalled();
-    expect(dispatch).toHaveBeenCalledWith({
-      type: "ensureThread",
-      workspaceId: "ws-1",
-      threadId,
-      engine: "pi",
-    });
+    expect(dispatch).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "ensureThread",
+        workspaceId: "ws-1",
+        threadId,
+        engine: "pi",
+      }),
+    );
     expect(dispatch).toHaveBeenCalledWith({
       type: "setActiveThreadId",
       workspaceId: "ws-1",

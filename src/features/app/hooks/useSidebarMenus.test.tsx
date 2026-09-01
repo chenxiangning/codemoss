@@ -2949,9 +2949,86 @@ describe("useSidebarMenus", () => {
       "new-session-pi",
       "new-session-qoder-global",
       "new-session-qoder-cn",
+      "new-session-omp",
       "new-session-grok",
       "new-session-dsh",
     ]);
+  });
+  it("creates an OMP session with the persisted provider binding", async () => {
+    const handlers = createHandlers();
+    const { result } = renderHook(() => useSidebarMenus(handlers));
+
+    await act(async () => {
+      const event = {
+        clientX: 120,
+        clientY: 80,
+        preventDefault: vi.fn(),
+        stopPropagation: vi.fn(),
+      } as unknown as Parameters<typeof result.current.showWorkspaceSessionMenu>[0];
+      await result.current.showWorkspaceSessionMenu(event, workspace);
+    });
+
+    const ompAction = result.current.workspaceMenuState?.groups
+      .find((group) => group.id === "new-session")
+      ?.actions.find((action) => action.id === "new-session-omp");
+    expect(ompAction).toBeTruthy();
+    await act(async () => {
+      await ompAction?.onSelect?.();
+    });
+    expect(handlers.onAddAgent).toHaveBeenCalledWith(
+      workspace,
+      "omp",
+      expect.objectContaining({
+        providerProfileId: "__omp_local__",
+        providerProfile: expect.objectContaining({
+          source: "disk",
+        }),
+      }),
+    );
+  });
+
+  it("keeps the OMP session on the local sentinel id even when a profile was saved", async () => {
+    // 设置页保存过自定义 profileId 时，绝不能把它带进创建链路：
+    // 它会被 `omp models` 当位置参数查询并静默返回空目录。
+    clientStoreMock.data.app = {
+      ...clientStoreMock.data.app,
+      ompProviderProfile: {
+        binaryPath: null,
+        profileId: "team.local",
+        profileName: "Team local",
+      },
+    };
+    const handlers = createHandlers();
+    const { result } = renderHook(() => useSidebarMenus(handlers));
+
+    await act(async () => {
+      const event = {
+        clientX: 120,
+        clientY: 80,
+        preventDefault: vi.fn(),
+        stopPropagation: vi.fn(),
+      } as unknown as Parameters<typeof result.current.showWorkspaceSessionMenu>[0];
+      await result.current.showWorkspaceSessionMenu(event, workspace);
+    });
+
+    const ompAction = result.current.workspaceMenuState?.groups
+      .find((group) => group.id === "new-session")
+      ?.actions.find((action) => action.id === "new-session-omp");
+    await act(async () => {
+      await ompAction?.onSelect?.();
+    });
+    expect(handlers.onAddAgent).toHaveBeenCalledWith(
+      workspace,
+      "omp",
+      expect.objectContaining({
+        providerProfileId: "__omp_local__",
+        providerProfile: expect.objectContaining({
+          id: "__omp_local__",
+          name: "Team local",
+          source: "disk",
+        }),
+      }),
+    );
   });
 });
 

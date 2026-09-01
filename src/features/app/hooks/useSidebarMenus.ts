@@ -18,6 +18,7 @@ import {
   prepareNativeProviderContinuation,
   type NativeProviderContinuationInput,
 } from "../../../services/tauri";
+import { readOmpProviderProfile } from "../../engine/omp/ompProviderProfile";
 import {
   subscribeNativeProviderContinuationProgress,
   type NativeProviderContinuationProgressPhase,
@@ -55,6 +56,7 @@ import {
   GROK_LOCAL_PROVIDER_PROFILE_ID,
   KIMI_LOCAL_PROVIDER_PROFILE_ID,
   LOCAL_PROVIDER_PROFILE_DISPLAY_NAME,
+  OMP_LOCAL_PROVIDER_PROFILE_ID,
   OPENCODE_LOCAL_PROVIDER_PROFILE_ID,
   QODER_CN_PROVIDER_PROFILE_ID,
   QODER_CN_PROVIDER_PROFILE_NAME,
@@ -93,6 +95,7 @@ const NEW_SESSION_ENGINE_ACTION_IDS: Readonly<Record<string, EngineType>> = {
   "new-session-dsh": "dsh",
   "new-session-qoder-global": "qoder",
   "new-session-qoder-cn": "qoder",
+  "new-session-omp": "omp",
 };
 
 type ProviderEngine = LastProviderEngine;
@@ -211,6 +214,7 @@ export type WorkspaceMenuIconKind =
   | "engine-pi"
   | "engine-dsh"
   | "engine-qoder"
+  | "engine-omp"
   | "new-shared"
   | "alias"
   | "assign-group"
@@ -1623,6 +1627,20 @@ export function useSidebarMenus({
       const opencodeSelectedProfile =
         opencodeProfiles.find((profile) => profile.id === opencodeSelectedProfileId) ??
         opencodeProfiles[0];
+      const ompProviderProfile = readOmpProviderProfile();
+      // OMP 是本地单渠道引擎（同 PI）：providerProfileId 恒为 __omp_local__，
+      // 用户在设置页保存的 profileId 只是显示名快照。绝不能把自定义 id 带进
+      // 创建链路——它会被 omp models 当位置参数查询，静默返回空目录，
+      // 导致新会话 composer 带不出模型。
+      const ompSelectedProfile: EngineProviderProfileOption = {
+        id: OMP_LOCAL_PROVIDER_PROFILE_ID,
+        name:
+          ompProviderProfile?.profileName ??
+          t("providers.localConfig", {
+            defaultValue: LOCAL_PROVIDER_PROFILE_DISPLAY_NAME,
+          }),
+        source: "disk",
+      };
       const sharedEngineLabels: Record<SharedSessionSupportedEngine, string> = {
         claude: t("workspace.engineClaudeCode"),
         codex: t("workspace.engineCodex"),
@@ -1941,6 +1959,49 @@ export function useSidebarMenus({
             await handleCreatedSession(threadId);
           },
         })),
+        {
+          id: "new-session-omp",
+          label: t("workspace.engineOmp", { defaultValue: "OMP CLI" }),
+          iconKind: "engine-omp",
+          submenuTitle: t("sidebar.ompProviderChoiceTitle", {
+            defaultValue: "OMP CLI provider",
+          }),
+          submenuHelpTip: t("sidebar.providerChoiceHelp", {
+            defaultValue:
+              "选择 OMP provider 后新建会话；认证与模型配置可在 CLI 配置管理中维护。",
+          }),
+          selectionHint: t("sidebar.ompProviderSelectedTip", {
+            defaultValue: "当前 OMP provider",
+          }),
+          selectedChildLabel: ompSelectedProfile.name,
+          ...resolveEngineActionMeta(workspace, "omp"),
+          onSelect: async () => {
+            const threadId = await runAddAgent(
+              "omp",
+              creationProviderSelection(ompSelectedProfile),
+            );
+            await handleCreatedSession(threadId);
+          },
+          children: [
+            {
+              id: `new-session-omp-provider-${ompSelectedProfile.id}`,
+              label: ompSelectedProfile.name,
+              iconKind: "engine-omp" as const,
+              ...resolveEngineActionMeta(workspace, "omp"),
+              selected: true,
+              keepMenuOpen: true,
+              onSelect: () => {
+                pushGlobalRuntimeNotice({
+                  severity: "info",
+                  category: "runtime",
+                  messageKey: "runtimeNotice.omp.providerSelected",
+                  messageParams: { name: ompSelectedProfile.name },
+                  dedupeKey: `omp-provider-selected-${ompSelectedProfile.id}`,
+                });
+              },
+            },
+          ],
+        },
         {
           id: "new-session-grok",
           label: t("workspace.engineGrok"),

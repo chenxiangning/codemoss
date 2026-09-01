@@ -72,6 +72,7 @@ const workspace = {
     engineGrok: "Grok CLI",
     engineOpenCode: "OpenCode",
     engineDsh: "DeepSeek Harness",
+    engineOmp: "OMP CLI",
     engineStatusLoading: "检测中...",
 
     engineStatusFailed: "检测失败，点击重试",

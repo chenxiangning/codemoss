@@ -7,7 +7,7 @@ export function isFirstRunEngineInstalled(
   engineStatuses: EngineStatus[],
   cardStateByEngine: Partial<Record<CliInstallEngine, FirstRunEngineCardState>>,
 ): engine is CliInstallEngine {
-  if (!engine || engine === "gemini") {
+  if (!engine || engine === "gemini" || engine === "omp") {
     return false;
   }
   return (
@@ -30,11 +30,14 @@ export function resolveFirstRunSelectedEngineAfterDetect(options: {
   if (
     primaryEngine &&
     primaryEngine !== "gemini" &&
+    primaryEngine !== "omp" &&
     installedEngines.some((engine) => engine === primaryEngine)
   ) {
     return primaryEngine;
   }
-  const firstInstalled = installedEngines.find((engine) => engine !== "gemini");
+  const firstInstalled = installedEngines.find(
+    (engine) => engine !== "gemini" && engine !== "omp",
+  );
   return (firstInstalled as CliInstallEngine | undefined) ?? selectedEngine;
 }
 
@@ -66,9 +69,16 @@ export function resolveFirstRunPrimaryEngine(options: {
     return fromValidated;
   }
   const fromStatus = engineStatuses.find(
-    (status) => status.installed && status.engineType !== "gemini",
+    (status) =>
+      status.installed &&
+      status.engineType !== "gemini" &&
+      status.engineType !== "omp",
   );
-  if (fromStatus && fromStatus.engineType !== "gemini") {
+  if (
+    fromStatus &&
+    fromStatus.engineType !== "gemini" &&
+    fromStatus.engineType !== "omp"
+  ) {
     return fromStatus.engineType;
   }
   const fromCard = Object.entries(cardStateByEngine).find(

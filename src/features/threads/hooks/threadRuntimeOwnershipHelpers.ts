@@ -53,7 +53,11 @@ export function isCodexOwnershipFallbackCandidate(
     normalizedId.startsWith("opencode:") ||
     normalizedId.startsWith("opencode-pending-") ||
     normalizedId.startsWith("dsh:") ||
-    normalizedId.startsWith("dsh-pending-")
+    normalizedId.startsWith("dsh-pending-") ||
+    // OMP 会话缺 engineSource 时若落到默认 true，会被记进 codex processing
+    // 所有权集合，幕布/停止按钮投影跟着串台成 Codex。
+    normalizedId.startsWith("omp:") ||
+    normalizedId.startsWith("omp-pending-")
   );
 }
 

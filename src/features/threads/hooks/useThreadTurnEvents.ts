@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useRef } from "react";
 import type { Dispatch, MutableRefObject } from "react";
 import {
   workspaceScopedDelete,
@@ -66,7 +66,9 @@ import {
  * Infer engine type from thread ID.
  * Claude/Gemini/Kimi/OpenCode threads use "<engine>:" or "<engine>-pending-" prefixes.
  */
-const inferEngineFromThreadId = inferEngineFromLegacyThreadId;
+const inferEngineFromThreadId = (threadId: string): EngineType => {
+  return inferEngineFromLegacyThreadId(threadId);
+};
 
 function resolveQoderProviderProfileIdForThread(
   getThreadProviderProfileId: UseThreadTurnEventsOptions["getThreadProviderProfileId"],
@@ -221,7 +223,7 @@ function extractThreadProviderMetadata(thread: Record<string, unknown>) {
   };
 }
 
-type PendingNativeEngine = "claude" | "gemini" | "grok" | "kimi" | "opencode" | "pi" | "dsh" | "qoder";
+type PendingNativeEngine = "claude" | "gemini" | "grok" | "kimi" | "opencode" | "pi" | "dsh" | "qoder" | "omp";
 
 function uniquePendingEngine(
   pendingByEngine: Record<PendingNativeEngine, string | null>,
@@ -283,11 +285,11 @@ type UseThreadTurnEventsOptions = {
   ) => Promise<void>;
   resolvePendingThreadForSession?: (
     workspaceId: string,
-    engine: "claude" | "gemini" | "grok" | "kimi" | "opencode" | "pi" | "dsh" | "qoder",
+    engine: "claude" | "gemini" | "grok" | "kimi" | "opencode" | "pi" | "dsh" | "qoder" | "omp",
   ) => string | null;
   resolvePendingThreadForTurn?: (
     workspaceId: string,
-    engine: "claude" | "gemini" | "grok" | "kimi" | "opencode" | "pi" | "dsh" | "qoder",
+    engine: "claude" | "gemini" | "grok" | "kimi" | "opencode" | "pi" | "dsh" | "qoder" | "omp",
     turnId: string | null | undefined,
   ) => string | null;
   getActiveTurnIdForThread?: (threadId: string) => string | null;
@@ -414,6 +416,10 @@ export function useThreadTurnEvents({
     },
     [interruptedThreadsRef, pendingInterruptsRef],
   );
+
+  // OMP pending → omp:<native> 改名账本（turnId → 改名后 threadId）：
+  // 改名在 onThreadSessionIdUpdated 记录，onTurnCompleted 消费后即删。
+  const ompRenamedTurnThreadRef = useRef(new Map<string, string>());
   const resolvePendingAliasThread = useCallback(
     (
       workspaceId: string,
@@ -430,6 +436,8 @@ export function useThreadTurnEvents({
           ? "dsh"
         : threadId.startsWith("qoder:")
           ? "qoder"
+        : threadId.startsWith("omp:") || threadId.startsWith("omp-pending-")
+          ? "omp"
           : null;
       if (!engine) {
         return null;
@@ -611,12 +619,29 @@ export function useThreadTurnEvents({
   const onTurnCompleted = useCallback(
     (workspaceId: string, threadId: string, turnId: string) => {
       const aliasThreadId = resolvePendingAliasThread(workspaceId, threadId, turnId);
+      // OMP 改名账本：pending → omp:<native> 改名后，turn/completed 仍锚定
+      // 旧 pending id；pending-only 的 alias 解析器找不到已改名线程。
+      const ompRenamedThreadId = turnId
+        ? (ompRenamedTurnThreadRef.current.get(turnId) ?? null)
+        : null;
+      if (ompRenamedThreadId) {
+        ompRenamedTurnThreadRef.current.delete(turnId);
+      }
       const activeTurnId = getActiveTurnIdForThread?.(threadId) ?? null;
       const activeAliasTurnId = aliasThreadId
         ? (getActiveTurnIdForThread?.(aliasThreadId) ?? null)
         : null;
+      // OMP 是 per-turn spawn 进程：turn/completed（turnId 恒 `omp-turn-*`）
+      // 是后端权威终结信号，一次只有一个在途 turn，不存在跨 turn 错配。
+      // TurnStarted/前端 activeTurn 的时序差会把正常终结拒成 turn-mismatch，
+      // spinner 卡「响应中」而完成音照响（2026-08-31 实测）。
+      const isOmpAuthoritativeCompletion =
+        turnId.startsWith("omp-turn-") &&
+        (threadId.startsWith("omp:") || threadId.startsWith("omp-pending-"));
       const targetThreadIds = Array.from(
-        new Set(aliasThreadId ? [threadId, aliasThreadId] : [threadId]),
+        new Set([threadId, aliasThreadId, ompRenamedThreadId].filter(
+          (candidate): candidate is string => Boolean(candidate),
+        )),
       );
       const targetSnapshots = targetThreadIds.map((targetThreadId) => ({
         threadId: targetThreadId,
@@ -629,6 +654,7 @@ export function useThreadTurnEvents({
       }));
       const safeTargets = targetSnapshots.filter(
         (target) =>
+          isOmpAuthoritativeCompletion ||
           !turnId ||
           target.activeTurnId === null ||
           target.activeTurnId === turnId ||
@@ -658,7 +684,9 @@ export function useThreadTurnEvents({
       }
       safeTargets.forEach(({ threadId: targetThreadId }) => {
         const hasRemainingInFlight =
-          isTurnInFlightForThread?.(targetThreadId, null) ?? false;
+          isOmpAuthoritativeCompletion
+            ? false
+            : (isTurnInFlightForThread?.(targetThreadId, null) ?? false);
         // A4 live-text 外部化：terminal settlement 必须把通道内「全文」一次写入
         // durable item。只 append shell 后尾段时，若 shell 首 delta 未进 reducer
         // 或 shellTextLength 失真，isStreaming 关闭后 UI 会只剩「已」「**」这类
@@ -1336,7 +1364,7 @@ export function useThreadTurnEvents({
       workspaceId: string,
       threadId: string,
       sessionId: string,
-      engineHint?: "claude" | "opencode" | "codex" | "gemini" | "grok" | "kimi" | "pi" | "dsh" | "qoder" | null,
+      engineHint?: "claude" | "opencode" | "codex" | "gemini" | "grok" | "kimi" | "pi" | "dsh" | "qoder" | "omp" | null,
       turnId?: string | null,
     ) => {
       const explicitEnginePrefix = threadId.startsWith("claude:")
@@ -1364,9 +1392,12 @@ export function useThreadTurnEvents({
         : threadId.startsWith("dsh:")
           || threadId.startsWith("dsh-pending-")
           ? "dsh"
-          : null;
+        : threadId.startsWith("omp:")
+          || threadId.startsWith("omp-pending-")
+          ? "omp"
+        : null;
       const hintedEngine =
-        engineHint === "claude" || engineHint === "gemini" || engineHint === "grok" || engineHint === "kimi" || engineHint === "pi" || engineHint === "qoder" || engineHint === "opencode" || engineHint === "dsh"
+        engineHint === "claude" || engineHint === "gemini" || engineHint === "grok" || engineHint === "kimi" || engineHint === "pi" || engineHint === "qoder" || engineHint === "opencode" || engineHint === "dsh" || engineHint === "omp"
           ? engineHint
           : null;
       const pendingByEngine: Record<PendingNativeEngine, string | null> = {
@@ -1378,6 +1409,7 @@ export function useThreadTurnEvents({
         pi: resolvePendingThreadForSession?.(workspaceId, "pi") ?? null,
         qoder: resolvePendingThreadForSession?.(workspaceId, "qoder") ?? null,
         dsh: resolvePendingThreadForSession?.(workspaceId, "dsh") ?? null,
+        omp: resolvePendingThreadForSession?.(workspaceId, "omp") ?? null,
       };
       const pendingOpenCode = pendingByEngine.opencode;
       const pendingGemini = pendingByEngine.gemini;
@@ -1498,6 +1530,8 @@ export function useThreadTurnEvents({
         || threadId.startsWith("opencode:")
         || threadId.startsWith("opencode-pending-")
         || threadId.startsWith("dsh:")
+        || threadId.startsWith("omp:")
+        || threadId.startsWith("omp-pending-")
         || threadId.startsWith("dsh-pending-");
       const hasForeignEnginePrefix = (
         (enginePrefix !== "claude" && (threadId.startsWith("claude:") || threadId.startsWith("claude-pending-")))
@@ -1634,6 +1668,13 @@ export function useThreadTurnEvents({
         turnBoundPendingThreadId,
         turnId: turnId ?? null,
       });
+      // OMP per-turn spawn：turn 事件锚定在发送时的 pending id 上，改名后
+      // turn/completed 仍带旧 pending id。记录 turnId → 改名后线程，结算时
+      // 把真实线程纳入目标，否则 phantom pending 被结算、真线程「响应中」
+      // 卡死（2026-09-01 dev 复现实测）。
+      if (enginePrefix === "omp" && turnId) {
+        ompRenamedTurnThreadRef.current.set(turnId, newThreadId);
+      }
       const { movedPendingInterrupt } = migrateThreadInterruptGuards(
         sourceThreadId,
         newThreadId,

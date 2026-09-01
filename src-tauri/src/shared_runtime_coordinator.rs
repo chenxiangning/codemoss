@@ -2601,7 +2601,8 @@ fn normalize_native_session_identity(
         | EngineType::Kimi
         | EngineType::Pi
         | EngineType::Grok
-        | EngineType::OpenCode => {
+        | EngineType::OpenCode
+        | EngineType::Omp => {
             let token = engine_token(engine);
             let prefix = format!("{token}:");
             if crate::shared_sessions::is_pending_shared_binding_thread_id(engine, normalized) {
@@ -2661,6 +2662,7 @@ fn engine_token(engine: EngineType) -> &'static str {
         EngineType::Grok => "grok",
         EngineType::Dsh => "dsh",
         EngineType::Qoder => "qoder",
+        EngineType::Omp => "omp",
     }
 }
 

@@ -519,6 +519,7 @@ pub(crate) fn is_pending_shared_binding_thread_id(engine: EngineType, thread_id:
         EngineType::Grok => normalized.starts_with("grok-pending-shared-"),
         EngineType::OpenCode => normalized.starts_with("opencode-pending-shared-"),
         EngineType::Qoder => normalized.starts_with("qoder-pending-shared-"),
+        EngineType::Omp => normalized.starts_with("omp-pending-shared-"),
         EngineType::Gemini | EngineType::Dsh => false,
     }
 }
@@ -536,7 +537,8 @@ pub(crate) fn binding_uses_established_native_thread(engine: EngineType, thread_
         | EngineType::Grok
         | EngineType::OpenCode
         | EngineType::Dsh
-        | EngineType::Qoder => {
+        | EngineType::Qoder
+        | EngineType::Omp => {
             let prefix = format!("{}:", engine.icon());
             normalized
                 .strip_prefix(prefix.as_str())
@@ -555,7 +557,8 @@ pub(crate) fn binding_uses_established_native_thread(engine: EngineType, thread_
         | EngineType::Pi
         | EngineType::Grok
         | EngineType::OpenCode
-        | EngineType::Qoder => true,
+        | EngineType::Qoder
+        | EngineType::Omp => true,
         EngineType::Gemini | EngineType::Dsh => false,
     }
 }
@@ -573,6 +576,7 @@ pub(crate) fn engine_binding_thread_id(engine: EngineType, seed: &str) -> String
         // Qoder Shared bindings retain their distribution identity; this id is only provisional
         // until the corresponding native session is established.
         EngineType::Qoder => format!("qoder-pending-shared-{seed}"),
+        EngineType::Omp => format!("omp-pending-shared-{seed}"),
     }
 }
 
@@ -2002,7 +2006,8 @@ pub async fn send_shared_session_message(
         | EngineType::Kimi
         | EngineType::Pi
         | EngineType::Dsh
-        | EngineType::Qoder => {
+        | EngineType::Qoder
+        | EngineType::Omp => {
             return Err(format!(
                 "Unsupported shared session engine: {}",
                 engine.icon()

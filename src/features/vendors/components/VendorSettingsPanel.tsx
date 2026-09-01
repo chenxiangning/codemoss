@@ -57,6 +57,9 @@ import { KimiProviderDialog } from "./KimiProviderDialog";
 import { GrokProviderDialog } from "./GrokProviderDialog";
 import { OpenCodeProviderDialog } from "./OpenCodeProviderDialog";
 import { PiProviderAuthSection } from "./PiProviderAuthSection";
+import { OmpAuthSection } from "./OmpAuthSection";
+import { OmpProviderProfileSection } from "./OmpProviderProfileSection";
+import { readOmpProviderProfile } from "../../engine/omp/ompProviderProfile";
 import { QoderAuthSection } from "./QoderAuthSection";
 import { QoderDoctorSection } from "./QoderDoctorSection";
 import { DeleteConfirmDialog } from "./DeleteConfirmDialog";
@@ -135,7 +138,7 @@ type VendorSettingsPanelProps = {
   codexReloadMessage: string | null;
   handleReloadCodexRuntimeConfig: () => Promise<void>;
   onUpdateAppSettings: (next: AppSettings) => Promise<void>;
-  initialCli?: "qoder";
+  initialCli?: VendorTab;
   initialQoderDistribution?: "global" | "cn";
 };
 
@@ -1120,6 +1123,8 @@ export function VendorSettingsPanel({
             appSettings.qoderConfigDir?.trim() ||
             appSettings.qoderCnConfigDir?.trim(),
         ),
+        ompHasConfig: Boolean(appSettings.ompBin?.trim()) ||
+          Boolean(readOmpProviderProfile()),
       }),
     [
       appSettings.piBin,
@@ -1128,6 +1133,7 @@ export function VendorSettingsPanel({
       appSettings.qoderCnBin,
       appSettings.qoderConfigDir,
       appSettings.qoderCnConfigDir,
+      appSettings.ompBin,
       claudeHasConfig,
       codexGlobalConfigExists,
       kimiHasConfig,
@@ -1919,6 +1925,39 @@ export function VendorSettingsPanel({
             </VendorSettingsSection>
           </div>
           </CliLifecycleProvider>
+        ) : activeCli === "omp" ? (
+          <div className="vendor-tab-content vendor-tab-content-dense">
+            <CliBrandHeader
+              id="omp"
+              title="OMP CLI"
+              description={t("settings.ompDescription", {
+                defaultValue:
+                  "通过本机安装的 OMP CLI（oh-my-pi）驱动会话。在这里登录供应商、确认模型目录，之后即可在输入框的模型选择器中直接选用。",
+              })}
+              helpLabel={t("settings.vendor.openCliDocs", {
+                defaultValue: "Official docs",
+              })}
+              href={CLI_DOCS_HREF_BY_ID.omp}
+            />
+            <VendorSettingsSection
+              label={t("settings.vendor.omp.providerConfiguration", {
+                defaultValue: "OMP provider configuration",
+              })}
+            >
+              <div data-testid="omp-provider-config-entry">
+                <OmpProviderProfileSection
+                  initialBinaryPath={appSettings.ompBin ?? null}
+                />
+              </div>
+            </VendorSettingsSection>
+            <VendorSettingsSection
+              label={t("settings.vendor.omp.authentication", {
+                defaultValue: "Authentication",
+              })}
+            >
+              <OmpAuthSection ompBin={appSettings.ompBin ?? null} />
+            </VendorSettingsSection>
+          </div>
         ) : activeCli === "dsh" ? (
           <CliLifecycleProvider key="dsh" engine="dsh" active>
           <div className="vendor-tab-content vendor-tab-content-dense">

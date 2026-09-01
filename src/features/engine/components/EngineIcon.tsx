@@ -111,6 +111,40 @@ function OpenAIGlyph({ size, className, style }: SvgGlyphProps) {
   );
 }
 
+/**
+ * OMP（oh-my-pi）品牌 π 字形：顶部横杠 + 左短竖 + 右长竖。
+ * 品牌渐变（粉紫→蓝）取自上游 hero 标志，inline <svg> 渲染，
+ * 深浅色主题下品牌色均清晰（不依赖 currentColor）。
+ */
+const OMP_ICON_PATH =
+  "M2.5 3h19v4h-19zM5.5 7h4.3v10H5.5zM13.2 7h4.3v14h-4.3z" as const;
+
+function OmpGlyph({ size, className, style }: SvgGlyphProps) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className={className}
+      style={{ width: size, height: size, flexShrink: 0, ...style }}
+      aria-hidden
+    >
+      <defs>
+        <linearGradient
+          id="omp-engine-icon-gradient"
+          x1="2.5"
+          y1="3"
+          x2="21.5"
+          y2="21"
+          gradientUnits="userSpaceOnUse"
+        >
+          <stop offset="0" stopColor="#E36BD4" />
+          <stop offset="1" stopColor="#5B8BE8" />
+        </linearGradient>
+      </defs>
+      <path fill="url(#omp-engine-icon-gradient)" d={OMP_ICON_PATH} />
+    </svg>
+  );
+}
+
 export function EngineIcon({
   engine,
   size = 14,
@@ -167,6 +201,8 @@ export function EngineIcon({
       );
     case "opencode":
       return <OpenCodeGlyph size={size} className={className} style={style} />;
+    case "omp":
+      return <OmpGlyph size={size} className={className} style={style} />;
     case "pi":
       return (
         <MonochromeGlyph

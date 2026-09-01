@@ -50,7 +50,8 @@ export type MessagesEngine =
   | "opencode"
   | "pi"
   | "dsh"
-  | "qoder";
+  | "qoder"
+  | "omp";
 
 export function isSelectionInsideNode(selection: Selection | null, node: HTMLElement | null) {
   if (!selection || selection.rangeCount === 0 || selection.isCollapsed || !node) {
@@ -164,9 +165,18 @@ export function resolveAgentTaskDisplaySummary(summary: string | null | undefine
     subtitle: title === normalized ? null : normalized,
   };
 }
-
 export function toConversationEngine(engine: MessagesEngine): ConversationEngine {
-  if (engine === "claude" || engine === "gemini" || engine === "grok" || engine === "kimi" || engine === "opencode" || engine === "pi" || engine === "dsh" || engine === "qoder") {
+  if (
+    engine === "claude" ||
+    engine === "gemini" ||
+    engine === "grok" ||
+    engine === "kimi" ||
+    engine === "opencode" ||
+    engine === "pi" ||
+    engine === "dsh" ||
+    engine === "qoder" ||
+    engine === "omp"
+  ) {
     return engine;
   }
   return "codex";

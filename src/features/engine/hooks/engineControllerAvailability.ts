@@ -27,22 +27,33 @@ export const ENABLED_ENGINE_TYPES: readonly EngineType[] = Object.freeze(
   ),
 );
 
+/** All registered engines stay visible; execution policy is enforced separately. */
+export const DISPLAY_ENGINE_TYPES: readonly EngineType[] = Object.freeze(
+  [...BUILTIN_ENGINE_TYPES],
+);
+
 export function buildAvailableEngines(
   engineStatuses: readonly EngineStatus[],
   isInitialized: boolean,
   detectFailed = false,
 ): EngineDisplayInfo[] {
-  return ENABLED_ENGINE_TYPES.map((engineType) => {
+  return DISPLAY_ENGINE_TYPES.map((engineType) => {
     const status =
       engineStatuses.find((entry) => entry.engineType === engineType) ?? null;
     const registryEntry = getEngineRegistryEntry(engineType);
     let availabilityState: EngineDisplayInfo["availabilityState"] =
       "unavailable";
     let availabilityLabelKey: string | null = "sidebar.cliNotInstalled";
+    const executionEnabled = isEngineExecutionEnabled(engineType);
 
     if (!isInitialized) {
       availabilityState = "loading";
       availabilityLabelKey = "workspace.engineStatusLoading";
+    } else if (!executionEnabled) {
+      // Registry visibility must not imply runtime permission. Gemini remains
+      // policy-disabled; OMP is executable through its ACP/native path.
+      availabilityState = "unavailable";
+      availabilityLabelKey = "workspace.engineComingSoon";
     } else if (detectFailed) {
       // B5：检测失败/超时 MUST 落 failed 态（「检测中」不得永久停留），
       // 重试成功后由 controller 清除 detectFailed 恢复 ready。
@@ -61,8 +72,11 @@ export function buildAvailableEngines(
       type: engineType,
       displayName: registryEntry?.displayName ?? engineType,
       shortName: registryEntry?.shortName ?? engineType,
-      installed: status?.installed ?? false,
-      version: availabilityState === "loading" ? null : (status?.version ?? null),
+      installed: executionEnabled && (status?.installed ?? false),
+      version:
+        !executionEnabled || availabilityState === "loading"
+          ? null
+          : (status?.version ?? null),
       error: status?.error ?? null,
       availabilityState,
       availabilityLabelKey,

@@ -286,6 +286,10 @@ export function resolveEngineLabel(engine: EngineType): string {
       return "DeepSeek Harness";
     case "qoder":
       return "Qoder CLI";
+    case "omp":
+      return "OMP CLI";
+    default:
+      return "Unknown engine";
   }
 }
 

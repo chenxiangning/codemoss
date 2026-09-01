@@ -45,6 +45,7 @@ const DEFAULT_ENGINE_LABEL_BY_TYPE: Record<EngineType, string> = {
   pi: "PI CLI",
   dsh: "DSH",
   qoder: "Qoder CLI",
+  omp: "OMP CLI",
 };
 
 export function createEmptyTopbarSessionWindows(): TopbarSessionWindows {
@@ -102,7 +103,8 @@ export function resolveEngineType(
     engineSource === "opencode" ||
     engineSource === "dsh" ||
     engineSource === "pi" ||
-    engineSource === "qoder"
+    engineSource === "qoder" ||
+    engineSource === "omp"
   ) {
     return engineSource;
   }
@@ -130,6 +132,9 @@ export function resolveEngineType(
   }
   if (id.startsWith("dsh:")) {
     return "dsh";
+  }
+  if (id.startsWith("omp:") || id.startsWith("omp-pending-")) {
+    return "omp";
   }
   return "codex";
 }

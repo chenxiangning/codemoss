@@ -626,15 +626,19 @@ export {
   getEngineActiveProcessDiagnostics,
   getEngineModels,
   getEngineStatus,
+  ompRpcDiscoverCommands,
+  ompRpcGetState,
+  setEngineConfig,
   switchEngine,
 } from "./tauri/appServer";
-export type { WebAssetsStatus } from "./tauri/appServer";
 export type {
   DaemonStatus,
   EngineActiveProcessDiagnostics,
   EngineOsChildLivenessEvidence,
   EngineStaleChildCandidate,
   EngineWorkspaceActiveProcessDiagnostics,
+  OmpRpcIdentity,
+  WebAssetsStatus,
   WebServerStatus,
 } from "./tauri/appServer";
 export {

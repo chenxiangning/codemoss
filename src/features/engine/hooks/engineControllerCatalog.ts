@@ -278,6 +278,7 @@ export const DETACHED_CATALOG_ENGINES: ReadonlySet<EngineType> = new Set([
   "pi",
   "qoder",
   "opencode",
+  "omp",
 ]);
 
 export type EngineCatalogLoadPhase = "idle-prewarm" | "on-demand";
@@ -307,7 +308,7 @@ export function projectEngineModelCatalogs(
   engineStatuses: readonly EngineStatus[],
   activeEngine: EngineType,
   activeModels: readonly EngineModelInfo[],
-  /** B-fix：解耦引擎（pi/qoder/opencode）的响应式 per-engine 目录表——
+  /** B-fix：解耦引擎（pi/qoder/opencode/omp）的响应式 per-engine 目录表——
    *  非激活态 status.models 恒空，任何一次真实加载落地后写入此处，
    *  供 Composer 思考档联动 / 分组模型列表等非激活消费方取数。 */
   catalogsByEngine: Partial<Record<EngineType, readonly EngineModelInfo[]>> = {},

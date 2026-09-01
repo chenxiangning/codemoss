@@ -37,6 +37,7 @@ const ENGINE_LABELS: Record<EngineType, string> = {
   pi: "PI CLI",
   dsh: "DeepSeek Harness",
   qoder: "Qoder CLI",
+  omp: "OMP CLI",
 };
 
 const KNOWN_ENGINES: EngineType[] = ["codex", "claude", "grok", "kimi", "opencode"];

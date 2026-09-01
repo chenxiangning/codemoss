@@ -249,6 +249,7 @@ const defaultSettings: AppSettings = {
   qoderCnConfigDir: null,
   grokBin: null,
   opencodeBin: null,
+  ompBin: null,
   dshBin: null,
   dshHost: "127.0.0.1",
   dshPort: 3080,
@@ -454,6 +455,7 @@ function normalizeAppSettings(
     opencodeBin: settings.opencodeBin?.trim()
       ? settings.opencodeBin.trim()
       : null,
+    ompBin: settings.ompBin?.trim() ? settings.ompBin.trim() : null,
     dshBin: settings.dshBin?.trim() ? settings.dshBin.trim() : null,
     dshHost: normalizeDshHost(settings.dshHost),
     dshPort: normalizeDshPort(settings.dshPort),

@@ -16,6 +16,7 @@ import { copyTextToClipboard } from "../../../utils/clipboard";
 import { resolveWorkspaceRelativePath } from "../../../utils/workspacePaths";
 import { UnsavedChangesDialog } from "../../../components/ui/UnsavedChangesDialog";
 import type { GitFileStatus } from "../../../types";
+import type { CommitMessageEngine } from "../../../services/tauri/commitMessage";
 import type {
   CheckpointAction,
   CheckpointMessageToken,
@@ -47,7 +48,7 @@ interface CheckpointPanelProps extends CodeAnnotationBridgeProps {
   onCommitMessageChange?: (value: string) => void;
   onGenerateCommitMessage?: (
     language?: "zh" | "en",
-    engine?: "codex" | "claude" | "gemini" | "grok" | "kimi" | "opencode" | "pi",
+    engine?: CommitMessageEngine,
     selectedPaths?: string[],
   ) => void | Promise<void>;
   onCommit?: (selectedPaths?: string[]) => void | Promise<void>;

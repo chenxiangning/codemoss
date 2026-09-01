@@ -16,7 +16,10 @@ export function isEngineExecutionEnabled(
     engine === "opencode" ||
     engine === "pi" ||
     engine === "dsh" ||
-    engine === "qoder"
+    engine === "qoder" ||
+    // OMP uses the implemented ACP/native send path. Its unsupported
+    // capabilities remain gated independently by the capability matrix.
+    engine === "omp"
   );
 }
 

@@ -57,6 +57,9 @@ const ENGINE_NATIVE_BRAND_SRC: Partial<Record<string, string>> = {
   kimi: PROVIDER_BRAND_ICON_SRC.kimi,
   opencode: PROVIDER_BRAND_ICON_SRC.opencode,
   dsh: PROVIDER_BRAND_ICON_SRC.deepseek,
+  // OMP 是多上游聚合 CLI：模型行按真实上游品牌（MiniMax/OpenAI/Claude…）
+  // 显示 brand icon，引擎行（provider trigger）保持 OMP π 字形，故不设 native src。
+  omp: undefined,
 };
 
 function renderBrandIcon(src: string, size: number) {
@@ -138,6 +141,8 @@ export const ModelIcon = ({
       return <EngineIcon engine="pi" size={size} style={imgStyle} />;
     case "qoder":
       return <EngineIcon engine="qoder" size={size} style={imgStyle} />;
+    case "omp":
+      return <EngineIcon engine="omp" size={size} style={imgStyle} />;
     case "claude":
     default:
       return <EngineIcon engine="claude" size={size} style={imgStyle} />;

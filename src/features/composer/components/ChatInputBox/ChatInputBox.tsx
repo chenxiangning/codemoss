@@ -431,7 +431,9 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
       const engine = executionTarget?.engine;
       if (
         !engine ||
-        !["claude", "codex", "grok", "kimi", "opencode", "pi", "dsh", "qoder"].includes(engine)
+        !["claude", "codex", "grok", "kimi", "opencode", "pi", "dsh", "qoder", "omp"].includes(
+          engine,
+        )
       ) {
         return;
       }
@@ -480,7 +482,9 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
       }
       const engine = currentProvider as EngineType;
       if (
-        !["claude", "codex", "grok", "kimi", "opencode", "pi", "dsh", "qoder"].includes(engine)
+        !["claude", "codex", "grok", "kimi", "opencode", "pi", "dsh", "qoder", "omp"].includes(
+          engine,
+        )
       ) {
         return;
       }

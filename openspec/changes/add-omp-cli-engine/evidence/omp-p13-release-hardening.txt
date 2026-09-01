@@ -1,0 +1,24 @@
+OMP P13 release-hardening contract evidence
+Captured: 2026-08-31
+
+Source:
+- src-tauri/src/engine/omp_release.rs
+- src-tauri/src/engine/omp_protocol.rs
+- src-tauri/src/engine/omp_settlement.rs
+- src-tauri/src/engine/capability_matrix.rs
+
+Release contract:
+- OMP Native and ACP release flags default enabled; RPC flag defaults enabled in the pure resolver contract. No environment or runtime hook is wired yet.
+- Shared Session is hard-disabled by the release flag resolver; setting CCGUI_OMP_SHARED_SESSION_ENABLED cannot opt in before P14 qualification.
+- Invalid OMP flag values fail closed in the resolver contract.
+- Resident build identity requires exact binary path, binary mtime, and binary-mtime <= resident process start evidence. Mismatch yields ResidentBuildMismatch rollback reason.
+- App/daemon launch wiring is intentionally not claimed: the shared evaluate_launch guard is available for a future ancestry-aware hook, while no stable resident identity hook exists in the current OMP spawn path.
+
+Metric status (explicit, not synthetic telemetry):
+- contract-only: omp.startup, omp.ack, omp.first-delta, omp.terminal, omp.recovery, omp.frame-size
+- unknown/unqualified: omp.tool-latency, omp.job-latency
+- hooked metrics: none; no stable OMP metrics sink currently exists.
+
+Verification:
+- rustfmt --edition 2021 --check src/engine/omp_release.rs: passed.
+- cargo test --lib engine::omp_release: attempted; currently blocked by unrelated in-flight compile error in src-tauri/src/engine/omp_lifecycle.rs:310 (format string has five placeholders for six arguments). No OMP release test result is claimed until that baseline compile error is repaired.

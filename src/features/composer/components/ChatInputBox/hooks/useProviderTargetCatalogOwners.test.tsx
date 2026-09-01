@@ -12,6 +12,7 @@ import { buildProviderExecutionTarget } from "../selectors/model-select/executio
 import { seedCliEngineVisibility } from "../../../hooks/cliEngineVisibilityStore";
 import { isResolvedExecutionTarget } from "../../../../shared-session/target/types";
 import {
+  OMP_LOCAL_PROVIDER_PROFILE_ID,
   QODER_CN_PROVIDER_PROFILE_ID,
   QODER_GLOBAL_PROVIDER_PROFILE_ID,
 } from "../../../../threads/constants/codexProviderProfiles";
@@ -24,6 +25,7 @@ import {
   getKimiProviders,
   getOpenCodeProviders,
 } from "../../../../../services/tauri";
+import { ompAuthBrokerListProviders } from "../../../../../services/tauri/ompAuth";
 
 vi.mock("../../../../../services/tauri", () => ({
   discoverCodexModels: vi.fn(),
@@ -34,6 +36,9 @@ vi.mock("../../../../../services/tauri", () => ({
   getOpenCodeProviders: vi.fn(),
   getEngineModels: vi.fn(),
 }));
+vi.mock("../../../../../services/tauri/ompAuth", () => ({
+  ompAuthBrokerListProviders: vi.fn(),
+}));
 
 const getClaudeProvidersMock = vi.mocked(getClaudeProviders);
 const getCodexProvidersMock = vi.mocked(getCodexProviders);
@@ -41,6 +46,7 @@ const getKimiProvidersMock = vi.mocked(getKimiProviders);
 const getGrokProvidersMock = vi.mocked(getGrokProviders);
 const getOpenCodeProvidersMock = vi.mocked(getOpenCodeProviders);
 const getEngineModelsMock = vi.mocked(getEngineModels);
+const ompAuthBrokerListProvidersMock = vi.mocked(ompAuthBrokerListProviders);
 const discoverCodexModelsMock = vi.mocked(discoverCodexModels);
 
 describe("Provider target catalog owners", () => {
@@ -81,6 +87,10 @@ describe("Provider target catalog owners", () => {
         models: [],
       },
     ]);
+    ompAuthBrokerListProvidersMock.mockResolvedValue([
+      { id: "anthropic", name: "Anthropic" },
+      { id: "openai", name: "OpenAI" },
+    ]);
     getEngineModelsMock.mockResolvedValue([
       {
         id: "same-model",
@@ -114,6 +124,28 @@ describe("Provider target catalog owners", () => {
     expect(isProviderProfileEngine("qoder")).toBe(true);
   });
 
+  it("does not fetch models while the catalog owner is disabled", async () => {
+    // 守卫回归：ensureModels 在 enabled=false（只读 composer / 关闭的弹层）
+    // 时必须短路，禁止后台 IPC 拉目录。
+    const { result } = renderHook(() =>
+      useAtomicProviderTargetCatalog({
+        enabled: false,
+        mode: "shared",
+        currentProvider: "codex",
+        currentProviderProfileId: "codex-b",
+        resolveProviderLabel: (provider) => provider,
+        kimiDisabledReason: "source only",
+      }),
+    );
+
+    let models: unknown = ["sentinel"];
+    await act(async () => {
+      models = await result.current.ensureModels("codex", "codex-b");
+    });
+    expect(models).toEqual([]);
+    expect(getEngineModelsMock).not.toHaveBeenCalled();
+  });
+
   it("loads profiles once and models only for the opened binding", async () => {
     const { result } = renderHook(() =>
       useAtomicProviderTargetCatalog({
@@ -140,10 +172,11 @@ describe("Provider target catalog owners", () => {
       "opencode",
       "pi",
       "qoder",
+      "omp",
     ]);
     expect(
       result.current.groups.filter((group) => group.enabled),
-    ).toHaveLength(7);
+    ).toHaveLength(8);
     expect(
       result.current.groups.flatMap((group) => group.profiles).every(
         (profile) => profile.enabled !== false,
@@ -238,6 +271,7 @@ describe("Provider target catalog owners", () => {
       "opencode",
       "pi",
       "qoder",
+      "omp",
     ]);
     expect(
       result.current.groups.some((group) => group.providerId === "dsh"),
@@ -268,6 +302,7 @@ describe("Provider target catalog owners", () => {
       "opencode",
       "pi",
       "qoder",
+      "omp",
       "dsh",
     ]);
     expect(result.current.groups.every((group) => group.enabled)).toBe(true);
@@ -374,6 +409,97 @@ describe("Provider target catalog owners", () => {
           providerProfileId: QODER_CN_PROVIDER_PROFILE_ID,
         }),
       ]);
+  });
+
+  it("loads the OMP local profile and its catalog for an OMP session", async () => {
+    // auth-broker list 是「可登录供应商目录」，不是已配置渠道；OMP 的
+    // picker profile 恒为本地配置，`omp models --json` 一次返回全部上游模型。
+    getEngineModelsMock.mockResolvedValue([
+      {
+        id: "anthropic/claude-sonnet",
+        model: "anthropic/claude-sonnet",
+        displayName: "Claude Sonnet",
+        description: "",
+        isDefault: true,
+      },
+    ]);
+    const { result } = renderHook(() =>
+      useAtomicProviderTargetCatalog({
+        enabled: true,
+        mode: "shared",
+        currentProvider: "omp",
+        currentProviderProfileId: OMP_LOCAL_PROVIDER_PROFILE_ID,
+        resolveProviderLabel: (provider) => provider,
+        kimiDisabledReason: "native only",
+      }),
+    );
+
+    await act(async () => {
+      await result.current.ensureProfiles();
+      await result.current.ensureModels("omp", OMP_LOCAL_PROVIDER_PROFILE_ID);
+    });
+
+    expect(ompAuthBrokerListProvidersMock).not.toHaveBeenCalled();
+    expect(getEngineModelsMock).toHaveBeenCalledWith("omp", {
+      providerProfileId: OMP_LOCAL_PROVIDER_PROFILE_ID,
+      forceRefresh: true,
+    });
+    expect(
+      result.current.groups.find((group) => group.providerId === "omp")
+        ?.profiles,
+    ).toEqual([
+      expect.objectContaining({
+        id: OMP_LOCAL_PROVIDER_PROFILE_ID,
+        source: "disk",
+        models: [
+          expect.objectContaining({
+            id: "anthropic/claude-sonnet",
+          }),
+        ],
+      }),
+    ]);
+  });
+
+  it("retries an empty OMP catalog instead of reusing it from module cache", async () => {
+    getEngineModelsMock
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([
+        {
+          id: "anthropic/claude-sonnet",
+          model: "anthropic/claude-sonnet",
+          displayName: "Claude Sonnet",
+          description: "",
+          isDefault: true,
+        },
+      ]);
+    const { result } = renderHook(() =>
+      useAtomicProviderTargetCatalog({
+        enabled: true,
+        mode: "shared",
+        currentProvider: "omp",
+        currentProviderProfileId: OMP_LOCAL_PROVIDER_PROFILE_ID,
+        resolveProviderLabel: (provider) => provider,
+        kimiDisabledReason: "native only",
+      }),
+    );
+
+    await act(async () => {
+      await result.current.ensureProfiles();
+      await result.current.ensureModels("omp", OMP_LOCAL_PROVIDER_PROFILE_ID);
+      await result.current.ensureModels("omp", OMP_LOCAL_PROVIDER_PROFILE_ID);
+    });
+
+    expect(getEngineModelsMock).toHaveBeenCalledTimes(2);
+    expect(
+      result.current.groups
+        .find((group) => group.providerId === "omp")
+        ?.profiles.find((profile) => profile.id === OMP_LOCAL_PROVIDER_PROFILE_ID)
+        ?.models,
+    ).toEqual([
+      expect.objectContaining({
+        id: "anthropic/claude-sonnet",
+      }),
+    ]);
   });
 
   it("loads DSH models from the host catalog without a provider profile", async () => {
@@ -1225,6 +1351,7 @@ describe("Provider target catalog owners", () => {
         "opencode",
         "pi",
         "qoder",
+        "omp",
       ]);
     });
 
@@ -1249,6 +1376,7 @@ describe("Provider target catalog owners", () => {
         "kimi",
         "opencode",
         "pi",
+        "omp",
         "dsh",
       ]);
     });
@@ -1273,6 +1401,7 @@ describe("Provider target catalog owners", () => {
         "kimi",
         "pi",
         "qoder",
+        "omp",
       ]);
     });
 
@@ -1298,6 +1427,7 @@ describe("Provider target catalog owners", () => {
         "opencode",
         "pi",
         "qoder",
+        "omp",
       ]);
     });
 
@@ -1313,7 +1443,7 @@ describe("Provider target catalog owners", () => {
         }),
       );
 
-      expect(result.current.groups).toHaveLength(7);
+      expect(result.current.groups).toHaveLength(8);
 
       act(() => {
         seedCliEngineVisibility(["opencode"]);
@@ -1326,6 +1456,7 @@ describe("Provider target catalog owners", () => {
         "kimi",
         "pi",
         "qoder",
+        "omp",
       ]);
     });
   });

@@ -5,7 +5,7 @@
  */
 import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import type { ConversationItem } from '../../../../types';
+import type { ConversationItem, EngineType } from '../../../../types';
 import {
   getToolDisplayName,
   isMcpTool,
@@ -55,7 +55,7 @@ interface GenericToolBlockProps {
   isExpanded: boolean;
   onToggle: (id: string) => void;
   activeCollaborationModeId?: string | null;
-  activeEngine?: "claude" | "codex" | "gemini" | "grok" | "kimi" | "opencode" | "pi" | "dsh" | "qoder";
+  activeEngine?: EngineType;
   hasPendingUserInputRequest?: boolean;
   onOpenFilePath?: (path: string) => void;
   onOpenDiffPath?: (path: string) => void;

@@ -24,6 +24,8 @@ export const QODER_GLOBAL_PROVIDER_PROFILE_ID = "__qoder_global__";
 export const QODER_GLOBAL_PROVIDER_PROFILE_NAME = "Qoder Global";
 export const QODER_CN_PROVIDER_PROFILE_ID = "__qoder_cn__";
 export const QODER_CN_PROVIDER_PROFILE_NAME = "Qoder CN";
+export const OMP_LOCAL_PROVIDER_PROFILE_ID = "__omp_local__";
+export const OMP_LOCAL_PROVIDER_PROFILE_NAME = LOCAL_PROVIDER_PROFILE_DISPLAY_NAME;
 
 export type EngineProviderProfileOption = {
   id: string;

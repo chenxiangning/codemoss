@@ -79,6 +79,7 @@ import type { QueuedHandoffBubble } from "../../threads/utils/queuedHandoffBubbl
 import type { SessionRadarEntry } from "../../session-activity/hooks/useSessionRadarFeed";
 import type { CodexProviderProfileSelection } from "../../threads/constants/codexProviderProfiles";
 import type { RepositoryGitStatus } from "../../git/hooks/useMultiRepositoryGitStatus";
+import type { CommitMessageEngine } from "../../../services/tauri/commitMessage";
 import type { RepositoryCommitSelection } from "../../git/components/GitMultiRepositoryChanges";
 import type {
   GitRepositoryBatchResult,
@@ -578,7 +579,7 @@ export type LayoutNodesFlatOptions = {
   onCommitMessageChange: (value: string) => void;
   onGenerateCommitMessage: (
     language?: "zh" | "en",
-    engine?: "codex" | "claude" | "gemini" | "grok" | "kimi" | "opencode" | "pi",
+    engine?: CommitMessageEngine,
     selectedPaths?: string[],
     repositorySelections?: RepositoryCommitSelection[],
   ) => void | Promise<void>;

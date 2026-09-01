@@ -52,6 +52,19 @@ pub mod pi;
 pub mod pi_auth;
 pub mod pi_models_config;
 pub mod pi_rpc;
+pub mod omp_auth;
+pub(crate) mod omp_env;
+pub(crate) mod omp_protocol;
+pub(crate) mod omp_registry;
+pub(crate) mod omp_runtime;
+pub(crate) mod omp_acp;
+pub(crate) mod omp_process;
+pub(crate) mod omp_rpc;
+pub(crate) mod omp_rpc_process;
+pub(crate) mod omp_settlement;
+pub(crate) mod omp_history;
+pub(crate) mod omp_release;
+pub(crate) mod omp_lifecycle;
 pub(crate) mod pi_history;
 pub(crate) mod pi_provider_profile;
 pub mod qoder;
@@ -98,6 +111,8 @@ pub enum EngineType {
     Dsh,
     /// Qoder CLI (ACP over stdio)
     Qoder,
+    /// OMP CLI (ACP and native RPC)
+    Omp,
 }
 
 impl Default for EngineType {
@@ -119,6 +134,7 @@ impl EngineType {
             EngineType::Pi => "PI CLI",
             EngineType::Dsh => "DeepSeek Harness",
             EngineType::Qoder => "Qoder CLI",
+            EngineType::Omp => "OMP CLI",
         }
     }
 
@@ -134,6 +150,7 @@ impl EngineType {
             EngineType::Pi => "pi",
             EngineType::Dsh => "dsh",
             EngineType::Qoder => "qoder",
+            EngineType::Omp => "omp",
         }
     }
 }
@@ -144,6 +161,9 @@ pub(crate) fn engine_enabled_in_settings(
 ) -> bool {
     match engine_type {
         EngineType::Gemini => crate::engine_policy::GEMINI_RUNTIME_ENABLED,
+        // OMP Native/ACP execution is implemented; capability gates below still
+        // keep unsupported tool, image, and approval features disabled.
+        EngineType::Omp => true,
         EngineType::OpenCode
         | EngineType::Claude
         | EngineType::Codex
@@ -169,6 +189,7 @@ pub(crate) fn detection_disabled_engines(settings: &crate::types::AppSettings) -
         EngineType::Pi,
         EngineType::Dsh,
         EngineType::Qoder,
+        EngineType::Omp,
     ]
     .into_iter()
     .filter(|engine_type| {
@@ -183,7 +204,8 @@ pub(crate) fn detection_disabled_engines(settings: &crate::types::AppSettings) -
 pub(crate) fn engine_disabled_diagnostic(engine_type: EngineType) -> Option<&'static str> {
     match engine_type {
         EngineType::Gemini => Some(crate::engine_policy::GEMINI_DISABLED_DIAGNOSTIC),
-        EngineType::OpenCode
+        EngineType::Omp
+        | EngineType::OpenCode
         | EngineType::Claude
         | EngineType::Codex
         | EngineType::Grok
@@ -205,6 +227,7 @@ pub(crate) fn disabled_engine_status(engine_type: EngineType) -> EngineStatus {
         EngineType::Pi => EngineFeatures::pi(),
         EngineType::Dsh => EngineFeatures::dsh(),
         EngineType::Qoder => EngineFeatures::qoder(),
+        EngineType::Omp => EngineFeatures::omp(),
     };
     EngineStatus {
         engine_type,
@@ -551,6 +574,18 @@ impl EngineFeatures {
             mcp: true,
         }
     }
+    /// Features for OMP; capability verification remains fail-closed.
+    pub fn omp() -> Self {
+        Self {
+            reasoning_effort: false,
+            collaboration_mode: false,
+            image_input: false,
+            session_resume: true,
+            tools_control: false,
+            streaming: true,
+            mcp: false,
+        }
+    }
 }
 
 /// Parameters for sending a message to an engine
@@ -689,6 +724,20 @@ mod tests {
             engine_disabled_diagnostic(EngineType::Gemini),
             Some(crate::engine_policy::GEMINI_DISABLED_DIAGNOSTIC)
         );
+    }
+
+    #[test]
+    fn omp_native_execution_is_enabled_without_disabled_diagnostic() {
+        let settings = crate::types::AppSettings::default();
+
+        assert!(engine_enabled_in_settings(&settings, EngineType::Omp));
+        assert_eq!(engine_disabled_diagnostic(EngineType::Omp), None);
+        let features = EngineFeatures::omp();
+        assert!(features.session_resume);
+        assert!(features.streaming);
+        assert!(!features.image_input);
+        assert!(!features.tools_control);
+        assert!(!features.mcp);
     }
 
     #[test]

@@ -92,6 +92,7 @@ import {
   type MessageActionTargets,
 } from "../orchestration/presentation/messagesViewModel";
 import { OLDER_HISTORY_REVEAL_PAGE_SIZE } from "../../threads/utils/dispatchThreadItemsProgressively";
+import { inferEngineFromThreadId } from "../../threads/adapters/sharedRealtimeAdapter";
 import {
   getPendingOlderHistoryRemainingCount,
   hasPendingOlderHistory,
@@ -255,7 +256,8 @@ export const MessagesCore = memo(function MessagesCore({
   const items = conversationState.items;
   const userInputRequests = conversationState.userInputQueue;
   const workspaceId = conversationState.meta.workspaceId || null;
-  const threadId = conversationState.meta.threadId || null;
+  const rawThreadId = conversationState.meta.threadId;
+  const threadId = rawThreadId?.trim() ? rawThreadId : null;
   const {
     runningCount: backgroundTaskRunningCount,
     earliestRunningStartTime: backgroundTaskEarliestStartTime,
@@ -509,9 +511,14 @@ export const MessagesCore = memo(function MessagesCore({
         activeEngine === "grok" ||
         activeEngine === "kimi" ||
         activeEngine === "dsh" ||
-        activeEngine === "qoder"),
+        activeEngine === "qoder" ||
+        activeEngine === "omp"),
     items: renderSourceItems,
   });
+  // 幕布「已启动」标签的引擎源：threadId 前缀推导（engineIds.json 数据驱动）
+  const curtainEngine = threadId
+    ? inferEngineFromThreadId(threadId)
+    : activeEngine;
   const {
     blankingRecoveryActive,
     enableClaudeRenderSafeMode,
@@ -548,37 +555,47 @@ export const MessagesCore = memo(function MessagesCore({
       approvalResumingAfterApproval: t("approval.resumingAfterApproval"),
       codexSilentSuspected: t("messages.codexSilentSuspected"),
       waitingForFirstText: t("messages.waitingForFirstText", {
+        // 幕布「已启动」标签按会话本体引擎显示：meta.engine 在 pending→canonical
+        // 迁移窗口可能短暂串台（omp 会话显示 Codex 实测），threadId 前缀推导
+        // 由 engineIds.json 数据驱动，是更可靠的引擎源。
         engine: t(
-          activeEngine === "claude"
-            ? "workspace.engineClaudeCode"
-            : activeEngine === "codex"
-              ? "workspace.engineCodex"
-              : activeEngine === "gemini"
-                ? "workspace.engineGemini"
-                : activeEngine === "grok"
-                  ? "workspace.engineGrok"
-                  : activeEngine === "kimi"
-                    ? "workspace.engineKimi"
-                    : activeEngine === "opencode"
-                      ? "workspace.engineOpenCode"
-                      : activeEngine === "pi"
-                        ? "workspace.enginePi"
-                        : activeEngine === "dsh"
-                          ? "workspace.engineDsh"
-                          : activeEngine === "qoder"
-                            ? "workspace.engineQoder"
-                            : "workspace.engineCodex",
+          (() => {
+            switch (curtainEngine) {
+              case "claude":
+                return "workspace.engineClaudeCode";
+              case "gemini":
+                return "workspace.engineGemini";
+              case "grok":
+                return "workspace.engineGrok";
+              case "kimi":
+                return "workspace.engineKimi";
+              case "opencode":
+                return "workspace.engineOpenCode";
+              case "pi":
+                return "workspace.enginePi";
+              case "dsh":
+                return "workspace.engineDsh";
+              case "qoder":
+                return "workspace.engineQoder";
+              case "omp":
+                return "workspace.engineOmp";
+              default:
+                return "workspace.engineCodex";
+            }
+          })(),
           {
             defaultValue:
-              activeEngine === "qoder"
+              curtainEngine === "qoder"
                 ? "Qoder CLI"
-                : activeEngine === "dsh"
+                : curtainEngine === "dsh"
                   ? "DeepSeek Harness"
-                  : activeEngine === "opencode"
+                  : curtainEngine === "opencode"
                     ? "OpenCode"
-                    : activeEngine === "codex"
-                      ? "Codex"
-                      : activeEngine,
+                    : curtainEngine === "omp"
+                      ? "OMP CLI"
+                      : curtainEngine === "codex"
+                        ? "Codex"
+                        : curtainEngine,
           },
         ),
       }),

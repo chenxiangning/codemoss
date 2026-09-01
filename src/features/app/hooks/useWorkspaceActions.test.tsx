@@ -158,6 +158,30 @@ describe("useWorkspaceActions", () => {
     });
   });
 
+  it("creates an OMP session without entering the engine switch path", async () => {
+    let resolveEngineSwitch: (() => void) | undefined;
+    const engineSwitch = new Promise<void>((resolve) => {
+      resolveEngineSwitch = resolve;
+    });
+    const options = makeOptions({
+      activeEngine: "claude",
+      setActiveEngine: vi.fn(() => engineSwitch),
+    });
+    const { result } = renderHook(() => useWorkspaceActions(options));
+
+    await act(async () => {
+      await expect(result.current.handleAddAgent(baseWorkspace, "omp")).resolves.toBe(
+        "thread-1",
+      );
+    });
+
+    expect(options.setActiveEngine).not.toHaveBeenCalled();
+    expect(options.startThreadForWorkspace).toHaveBeenCalledWith("ws-1", {
+      engine: "omp",
+    });
+    resolveEngineSwitch?.();
+  });
+
   it("rejects Gemini session creation before switching or starting a thread", async () => {
     const options = makeOptions({ activeEngine: "claude" });
     const { result } = renderHook(() => useWorkspaceActions(options));

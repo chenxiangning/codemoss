@@ -174,6 +174,27 @@ describe("ButtonArea custom model storage refresh", () => {
     );
     expect(screen.queryByTestId("reasoning-select")).toBeNull();
   });
+  it("renders the OMP thinking-strength selector only when the model exposes reasoning efforts", () => {
+    const onReasoningChange = vi.fn();
+    render(
+      <ButtonArea
+        currentProvider="omp"
+        models={[]}
+        selectedModel=""
+        reasoningEffort="medium"
+        reasoningOptions={["low", "medium", "high"]}
+        hasInputContent
+        onSubmit={vi.fn()}
+        onReasoningChange={onReasoningChange}
+        shortcutActions={[]}
+      />,
+    );
+
+    expect(screen.getByTestId("reasoning-select")).toBeTruthy();
+    expect(screen.getByTestId("reasoning-options").textContent).toBe("low,medium,high");
+    fireEvent.click(screen.getByTestId("reasoning-pick-high"));
+    expect(onReasoningChange).toHaveBeenCalledWith("high");
+  });
 
   it("does not render permission ModeSelect for PI", () => {
     render(

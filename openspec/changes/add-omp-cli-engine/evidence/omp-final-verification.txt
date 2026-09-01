@@ -1,0 +1,47 @@
+OMP Final Verification Evidence
+
+Change: add-omp-cli-engine
+Date: 2026-08-30
+
+Passing checks:
+- openspec validate add-omp-cli-engine --strict --no-interactive
+- cargo check --manifest-path src-tauri/Cargo.toml
+- cargo check --manifest-path src-tauri/Cargo.toml --bin cc_gui_daemon
+- cargo test --manifest-path src-tauri/Cargo.toml omp --lib (295 passed)
+- npx tsc --noEmit --pretty false
+- npx vitest run src/features/engine/omp (7 files, 34 tests passed)
+- npm run check:engine-capability-matrix (15 capabilities)
+- npm run check:engine-adapter-registry (10 built-ins)
+- npm run check:capability-aware-policy-router (completed with repository-wide existing findings; exit 0)
+- OMP ACP process smoke: `omp acp` initialize returned oh-my-pi 18.0.11 and ACP capabilities.
+
+Known repository baseline findings:
+- openspec validate --all --strict --no-interactive reports 7 unrelated pre-existing change failures.
+- npm run check:engine-controller-facade fails its pre-existing 600-line governance threshold because useEngineController.ts is 948 lines.
+- rustfmt --check for daemon_state.rs reports two pre-existing out-of-scope formatting locations (lines 36 and 4235); the changed OMP loop compiles successfully and was not whole-file reformatted under repository format discipline.
+
+Qualification decision:
+- OMP remains Native-only; Shared Session is explicitly disabled because cross-CLI context handoff, provider binding, and recovery evidence are not proven.
+- OMP Native RPC control frames are separated from timeline events; unknown ACP frames are not rendered as raw frontend timeline events.
+- OMP Native ACP interrupt sends session/cancel in both app and daemon paths; daemon cancellation is performed after the pending frame future is dropped to preserve Rust borrow safety.
+- OpenSpec `verify` is unavailable in the installed CLI (`unknown command verify`), so archive/closure remains pending until an available verification workflow is provided.
+- OMP session-entry regression: `npx vitest run src/features/threads/hooks/sessionLifecycleController.test.ts src/features/threads/hooks/useThreadActions.start-fork.test.tsx src/features/app/hooks/useSidebarMenus.test.tsx src/features/vendors/components/OmpAuthSection.test.tsx` passed (4 files, 102 tests).
+- OMP local provider identity `__omp_local__` is now registered in frontend lifecycle binding and OMP is routed through its native pending-session path instead of Codex.
+- `npx tsc --noEmit --pretty false` passed after the provider-routing fix.
+- `openspec validate add-omp-cli-engine --strict --no-interactive` passed after the provider-routing fix.
+- OMP current-session model picker now loads auth-broker providers and scoped `get_engine_models("omp", providerProfileId)` catalogs; focused catalog/vendor checks passed (4 files, 85 tests).
+- OMP provider settings now load the settings stylesheet and render provider entries as responsive cards with status, identity, empty-state, and action affordances.
+- User-facing engine labels are standardized to `OMP CLI`; internal engine id `omp` and observed protocol payloads remain unchanged.
+- Latest picker/icon/settings focused verification passed: 4 files, 92 tests; TypeScript, cargo check, and OpenSpec strict validation also passed.
+- OMP new-session freeze fix: `runCreateSessionFlow` schedules `setActiveEngine("omp")` without awaiting the engine-switch IPC, then creates the native OMP pending thread immediately; focused regression passed (25 tests).
+- OMP thread identity/event resolution now preserves `omp` instead of coercing it to `codex`; TypeScript check passed.
+- Final focused verification: 5 files, 81 tests passed; `cargo check --manifest-path src-tauri/Cargo.toml` passed with existing warnings; OpenSpec strict validation passed.
+- OMP finalized session ids now remain `omp:<nativeSessionId>` through thread resolution and `sessionIndex` engine inference, preventing Codex UUID parsing of OMP ids; session-index regression coverage passed.
+- OMP waiting-for-first-text state now uses the OMP label, stream activity treats OMP as processing, and sidebar rows expose the `OMP CLI` title with the existing OMP EngineIcon.
+- Latest focused verification: 5 files, 164 tests passed; TypeScript check passed; `cargo check --manifest-path src-tauri/Cargo.toml` passed with existing warnings; OpenSpec strict validation passed.
+- Cold-start full engine detection now includes OMP binary configuration, isolated probe, status event, join result, and final status list; Rust engine status suite passed (56 tests).
+- `set_active_engine(omp)` now updates the active engine without a cold-start status probe, so OMP pending-session creation cannot be held by engine switching; frontend creation regression passed (25 tests).
+- Final TypeScript check passed; Rust `cargo check --manifest-path src-tauri/Cargo.toml` passed with existing warnings.
+- OpenSpec strict validation passed after the cold-start and create-session fixes.
+- P0 click-path hardening: OMP new-session creation now skips `setActiveEngine`/`switch_engine` entirely because the create request already carries `engine: "omp"`; this removes the remaining menu-click runtime race.
+- OMP menu and creation focused verification passed: 2 files, 81 tests; final TypeScript check passed.

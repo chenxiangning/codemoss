@@ -45,7 +45,7 @@ export function extractClaudeCandidateSessionId(response: Record<string, unknown
 }
 
 export function normalizeEngineScopedEffort(
-  engine: "claude" | "codex" | "gemini" | "grok" | "kimi" | "opencode" | "pi" | "dsh" | "qoder",
+  engine: "claude" | "codex" | "gemini" | "grok" | "kimi" | "opencode" | "pi" | "dsh" | "qoder" | "omp",
   effort: string | null | undefined,
 ): string | null {
   if (typeof effort !== "string") {

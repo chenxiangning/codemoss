@@ -20,7 +20,7 @@ import {
 } from "../contracts/realtimeEventBatcher";
 import { isSalvageableTerminalAssistantComplete } from "../contracts/realtimeEventContract";
 import { asString } from "../utils/threadNormalize";
-import type { ConversationItem, DebugEntry } from "../../../types";
+import type { ConversationItem, DebugEntry, EngineType } from "../../../types";
 import type { ThreadAction } from "./useThreadsReducer";
 import {
   isRealtimeBatchingEnabled,
@@ -88,7 +88,9 @@ const LIVE_DELTA_EXTERNALIZATION_ENABLED = isLiveDeltaExternalizationEnabled();
  * Infer engine type from thread ID.
  * Claude/Gemini/Kimi/OpenCode threads use "<engine>:" or "<engine>-pending-" prefixes.
  */
-const inferEngineFromThreadId = inferEngineFromLegacyThreadId;
+const inferEngineFromThreadId = (threadId: string): EngineType => {
+  return inferEngineFromLegacyThreadId(threadId);
+};
 
 export function canProgressEventStartProcessing(
   engine:
@@ -100,7 +102,8 @@ export function canProgressEventStartProcessing(
     | "opencode"
     | "pi"
     | "dsh"
-    | "qoder",
+    | "qoder"
+    | "omp",
 ) {
   return engine !== "codex";
 }
@@ -192,7 +195,8 @@ function inferItemEngineSource(
   | "opencode"
   | "pi"
   | "dsh"
-  | "qoder" {
+  | "qoder"
+  | "omp" {
   const rawEngineSource = asString(
     item.engineSource ?? item.engine_source ?? "",
   )
@@ -207,7 +211,8 @@ function inferItemEngineSource(
     rawEngineSource === "opencode" ||
     rawEngineSource === "pi" ||
     rawEngineSource === "dsh" ||
-    rawEngineSource === "qoder"
+    rawEngineSource === "qoder" ||
+    rawEngineSource === "omp"
   ) {
     return rawEngineSource;
   }
@@ -1874,7 +1879,8 @@ export function useThreadItemEvents({
                   | "opencode"
                   | "pi"
                   | "dsh"
-                  | "qoder",
+                  | "qoder"
+                  | "omp",
               }
             : converted;
         const threadEngine = inferEngineFromThreadId(threadId);

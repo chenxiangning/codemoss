@@ -121,7 +121,7 @@ export type AppServerEventHandlers = {
     workspaceId: string,
     threadId: string,
     sessionId: string,
-    engine?: "claude" | "opencode" | "codex" | "gemini" | "grok" | "kimi" | "pi" | "dsh" | "qoder" | null,
+    engine?: "claude" | "opencode" | "codex" | "gemini" | "grok" | "kimi" | "pi" | "dsh" | "qoder" | "omp" | null,
     turnId?: string | null,
   ) => void;
   onBackgroundThreadAction?: (
@@ -2380,7 +2380,8 @@ export function dispatchAppServerEvent(
       rawEngine === "gemini" ||
       rawEngine === "pi" ||
       rawEngine === "dsh" ||
-      rawEngine === "qoder"
+      rawEngine === "qoder" ||
+      rawEngine === "omp"
         ? rawEngine
         : null;
 
@@ -2448,6 +2449,7 @@ export function dispatchAppServerEvent(
         sessionId !== "pending" &&
         eventEngine &&
         eventEngine !== "dsh" &&
+        isSharedSessionSupportedEngine(eventEngine) &&
         shouldRebindSharedNativeThreadOnStartedEvent(eventEngine)
       ) {
         const finalizedNativeThreadId = resolveFinalizedSharedNativeThreadId(

@@ -3,6 +3,7 @@ import type {
   ApprovalRequest,
   AutoSessionMetadata,
   ConversationItem,
+  EngineType,
   ExecutionTargetSnapshot,
   RateLimitSnapshot,
   RequestUserInputRequest,
@@ -85,7 +86,7 @@ export type ThreadAction =
       type: "ensureThread";
       workspaceId: string;
       threadId: string;
-      engine?: "codex" | "claude" | "codex" | "gemini" | "grok" | "kimi" | "opencode" | "pi" | "dsh" | "qoder";
+      engine?: EngineType;
       name?: string | null;
       dshAgentPreset?: string | null;
       parentThreadId?: string | null;
@@ -187,7 +188,7 @@ export type ThreadAction =
       type: "setThreadEngine";
       workspaceId: string;
       threadId: string;
-      engine: "codex" | "claude" | "codex" | "gemini" | "grok" | "kimi" | "opencode" | "pi" | "dsh" | "qoder";
+      engine: EngineType;
     }
   | {
       type: "setThreadDshAgentPreset";
@@ -345,16 +346,7 @@ export type ThreadAction =
       type: "hydrateThreadHistorySnapshot";
       workspaceId: string;
       threadId: string;
-      engine?:
-        | "codex"
-        | "claude"
-        | "gemini"
-        | "grok"
-        | "kimi"
-        | "opencode"
-        | "pi"
-        | "dsh"
-        | "qoder";
+      engine?: EngineType;
       plan?: TurnPlan | null;
       historyRestoredAtMs: number | null;
       historyHasMore: boolean;

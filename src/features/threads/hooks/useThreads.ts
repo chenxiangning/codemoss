@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useReducer, useRef } from "react";
 import type {
   CustomPromptOption,
   DebugEntry,
+  EngineType,
   ThreadSummary,
   WorkspaceInfo,
   WorkspaceSessionAttributionMode,
@@ -189,7 +190,7 @@ type UseThreadsOptions = {
   steerEnabled?: boolean;
   customPrompts?: CustomPromptOption[];
   onMessageActivity?: () => void;
-  activeEngine?: "claude" | "codex" | "gemini" | "grok" | "kimi" | "opencode" | "pi" | "dsh" | "qoder";
+  activeEngine?: EngineType;
   useNormalizedRealtimeAdapters?: boolean;
   useUnifiedHistoryLoader?: boolean;
   sessionAttributionMode?: WorkspaceSessionAttributionMode;
@@ -211,7 +212,7 @@ type UseThreadsOptions = {
   runWithCreateSessionLoading?: <T>(
     params: {
       workspace: WorkspaceInfo;
-      engine: "claude" | "codex" | "gemini" | "grok" | "kimi" | "opencode" | "pi" | "dsh" | "qoder";
+      engine: EngineType;
     },
     action: () => Promise<T>,
   ) => Promise<T>;
@@ -764,10 +765,12 @@ export function useThreads({
   );
 
   const getThreadEngine = useCallback(
-    (workspaceId: string, threadId: string): "claude" | "codex" | "gemini" | "grok" | "kimi" | "opencode" | "pi" | "dsh" | "qoder" | undefined => {
+    (
+      workspaceId: string,
+      threadId: string,
+    ): EngineType | undefined => {
       const threads = state.threadsByWorkspace[workspaceId] ?? [];
-      const thread = threads.find((t) => t.id === threadId);
-      return thread?.engineSource;
+      return threads.find((t) => t.id === threadId)?.engineSource;
     },
     [state.threadsByWorkspace],
   );
@@ -807,7 +810,7 @@ export function useThreads({
   const resolvePendingThreadForSession = useCallback(
     (
       workspaceId: string,
-      engine: "claude" | "gemini" | "grok" | "kimi" | "opencode" | "pi" | "dsh" | "qoder",
+      engine: "claude" | "gemini" | "grok" | "kimi" | "opencode" | "pi" | "dsh" | "qoder" | "omp",
     ): string | null => {
       const resolved = resolvePendingThreadIdForSession({
         workspaceId,
@@ -858,7 +861,7 @@ export function useThreads({
   const resolvePendingThreadForTurn = useCallback(
     (
       workspaceId: string,
-      engine: "claude" | "gemini" | "grok" | "kimi" | "opencode" | "pi" | "dsh" | "qoder",
+      engine: "claude" | "gemini" | "grok" | "kimi" | "opencode" | "pi" | "dsh" | "qoder" | "omp",
       turnId: string | null | undefined,
     ): string | null =>
       resolvePendingThreadIdForTurn({
@@ -3205,7 +3208,8 @@ export function useThreads({
               thread.engineSource === "opencode" ||
               thread.engineSource === "pi" ||
               thread.engineSource === "dsh" ||
-              thread.engineSource === "qoder"
+              thread.engineSource === "qoder" ||
+              thread.engineSource === "omp"
                 ? thread.engineSource
                 : undefined,
             selectedEngine:
@@ -3217,7 +3221,8 @@ export function useThreads({
               thread.selectedEngine === "opencode" ||
               thread.selectedEngine === "pi" ||
               thread.selectedEngine === "dsh" ||
-              thread.selectedEngine === "qoder"
+              thread.selectedEngine === "qoder" ||
+              thread.selectedEngine === "omp"
                 ? thread.selectedEngine
                 : undefined,
             threadKind:
@@ -3251,7 +3256,7 @@ export function useThreads({
           message: string;
           willRetry: boolean;
           suppressMessage?: boolean;
-          engine?: "claude" | "codex" | "gemini" | "grok" | "kimi" | "opencode" | "pi" | "dsh" | "qoder" | null;
+          engine?: EngineType | null;
           executionTargetSnapshot?: TurnExecutionSnapshot;
         },
       ) => {
@@ -3268,7 +3273,7 @@ export function useThreads({
           source: string;
           startedAtMs: number | null;
           timeoutMs: number | null;
-          engine?: "claude" | "codex" | "gemini" | "grok" | "kimi" | "opencode" | "pi" | "dsh" | "qoder" | null;
+          engine?: EngineType | null;
         },
       ) => {
         handlers.onTurnStalled?.(workspaceId, threadId, turnId, payload);

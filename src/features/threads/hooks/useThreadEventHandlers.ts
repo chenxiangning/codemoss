@@ -13,6 +13,7 @@ import type {
   AppServerEvent,
   CollaborationModeBlockedRequest,
   CollaborationModeResolvedRequest,
+  EngineType,
   RequestUserInputRequest,
 } from "../../../types";
 import { useThreadApprovalEvents } from "./useThreadApprovalEvents";
@@ -742,7 +743,7 @@ export function useThreadEventHandlers({
 
   const shouldSkipCodexTurnEvent = useCallback(
     (input: {
-      engine: "claude" | "codex" | "gemini" | "grok" | "kimi" | "opencode" | "pi" | "dsh" | "qoder";
+      engine: EngineType;
       workspaceId: string;
       threadId: string;
       turnId: string;
@@ -2524,7 +2525,7 @@ export function useThreadEventHandlers({
         message: string;
         willRetry: boolean;
         suppressMessage?: boolean;
-        engine?: ConversationEngine | null;
+        engine?: EngineType | null;
         executionTargetSnapshot?: TurnExecutionSnapshot;
       },
     ) => {
@@ -2590,7 +2591,7 @@ export function useThreadEventHandlers({
         source: string;
         startedAtMs: number | null;
         timeoutMs: number | null;
-        engine?: ConversationEngine | null;
+        engine?: EngineType | null;
       },
     ) => {
       const normalizedTurnId = resolveTerminalSettlementTurnId(threadId, turnId);

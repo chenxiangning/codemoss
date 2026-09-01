@@ -526,6 +526,7 @@ pub fn engine_event_to_app_server_event_with_turn_context(
                     EngineType::Pi => "pi",
                     EngineType::Dsh => "dsh",
                     EngineType::Qoder => "qoder",
+                    EngineType::Omp => "omp",
                 },
             }
         }),
@@ -901,6 +902,9 @@ pub fn engine_event_to_app_server_event_with_turn_context(
             })
         }
         EngineEvent::Raw { data, engine, .. } => {
+            if matches!(engine, EngineType::Omp) {
+                return None;
+            }
             if matches!(engine, EngineType::Claude) {
                 if let Some(signal) = detect_claude_permission_signal(data) {
                     match signal {

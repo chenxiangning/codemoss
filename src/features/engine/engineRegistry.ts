@@ -7,6 +7,7 @@ export type EngineProtocolFamily =
   | "app-server-json-rpc"
   | "dsh-host-rpc"
   | "acp-stdio"
+  | "native-rpc"
   | "pi-rpc";
 export type EngineExecutionModel = "one-shot" | "persistent";
 export type EngineRegistrySource =
@@ -29,6 +30,7 @@ export type EngineRegistryEntry = Readonly<{
   shortName?: string;
   adapterId: string;
   protocolFamily: EngineProtocolFamily;
+  protocolFamilies?: readonly EngineProtocolFamily[];
   executionModel: EngineExecutionModel;
   capabilityProfile: string;
   source: EngineRegistrySource;
@@ -58,6 +60,9 @@ function createBuiltinEntry(
     ...input,
     id: asEngineId(input.id),
     protocolFamily: input.protocolFamily as EngineProtocolFamily,
+    protocolFamilies: input.protocolFamilies?.map(
+      (family) => family as EngineProtocolFamily,
+    ) as readonly EngineProtocolFamily[] | undefined,
     executionModel: input.executionModel as EngineExecutionModel,
     source: Object.freeze({
       kind: "builtin" as const,
@@ -65,9 +70,8 @@ function createBuiltinEntry(
       version: "host" as const,
       trustOrigin: "mossx-host" as const,
     }),
-  });
+  }) as EngineRegistryEntry;
 }
-
 export const BUILTIN_ENGINE_REGISTRY = Object.freeze(
   Object.fromEntries(
     registryData.engines.map((entry) => [entry.id, createBuiltinEntry(entry)]),
@@ -92,8 +96,10 @@ export function getEngineRegistryEntry(engineId: string): EngineRegistryEntry | 
 export function registerExternalEngine(input: {
   id: string;
   displayName: string;
+  shortName?: string;
   adapterId: string;
   protocolFamily: EngineProtocolFamily;
+  protocolFamilies?: readonly EngineProtocolFamily[];
   executionModel: EngineExecutionModel;
   capabilityProfile: string;
   source: Extract<EngineRegistrySource, { kind: "plugin" }>;

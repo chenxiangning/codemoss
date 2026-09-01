@@ -344,6 +344,54 @@ describe("topbarSessionTabs", () => {
     expect(items[0]?.engineType).toBe("pi");
   });
 
+  it("resolves OMP from engineSource and falls back to thread id prefix", () => {
+    // engineSource 缺失时若 fallback 回 codex，topbar tab 会串台成
+    // Codex 图标/标签（omp 会话实测事故）。
+    const fromEngineSource = buildTopbarSessionTabItems(
+      "w1",
+      "omp:native-1",
+      {
+        w1: [
+          {
+            id: "omp:native-1",
+            name: "aa",
+            updatedAt: Date.now(),
+            engineSource: "omp",
+          },
+        ],
+      },
+      {
+        tabs: [{ workspaceId: "w1", threadId: "omp:native-1" }],
+        activationOrdinalByTabKey: { "w1::omp:native-1": 1 },
+        nextActivationOrdinal: 1,
+      },
+      "Untitled",
+    );
+    expect(fromEngineSource[0]?.engineType).toBe("omp");
+    expect(fromEngineSource[0]?.engineLabel).toBe("OMP CLI");
+
+    const fromPendingPrefix = buildTopbarSessionTabItems(
+      "w1",
+      "omp-pending-turn-1",
+      {
+        w1: [
+          {
+            id: "omp-pending-turn-1",
+            name: "aa",
+            updatedAt: Date.now(),
+          },
+        ],
+      },
+      {
+        tabs: [{ workspaceId: "w1", threadId: "omp-pending-turn-1" }],
+        activationOrdinalByTabKey: { "w1::omp-pending-turn-1": 1 },
+        nextActivationOrdinal: 1,
+      },
+      "Untitled",
+    );
+    expect(fromPendingPrefix[0]?.engineType).toBe("omp");
+  });
+
   it("marks shared: tabs as shared even when threadKind projection is lost or native", () => {
     const items = buildTopbarSessionTabItems(
       "w1",

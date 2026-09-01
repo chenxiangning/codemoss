@@ -180,6 +180,8 @@ export function useWorkspaceActions({
           return t("workspace.enginePi");
         case "qoder":
           return t("workspace.engineQoder");
+        case "omp":
+          return t("workspace.engineOmp", { defaultValue: "OMP CLI" });
         case "dsh":
           return t("workspace.engineDsh");
         case "claude":
@@ -277,20 +279,26 @@ export function useWorkspaceActions({
             selectWorkspace(workspace.id);
             if (!workspace.connected) {
               await connectWorkspace(workspace);
-              traceStage("workspace-connected");
             }
             if (targetEngine !== activeEngine) {
-              try {
-                await setActiveEngine?.(targetEngine);
-                traceStage("engine-switched");
-              } catch (error) {
-                onDebug({
-                  id: `${Date.now()}-client-switch-engine-before-new-thread-error`,
-                  timestamp: Date.now(),
-                  source: "error",
-                  label: "workspace/switch engine before new thread error",
-                  payload: error instanceof Error ? error.message : String(error),
-                });
+              if (targetEngine === "omp") {
+                // OMP 创建请求显式携带 engine；不能在菜单点击路径触发
+                // setActiveEngine/switch_engine。切换会争用冷启动检测与 ACP
+                // runtime，导致新建会话菜单表现为卡死。
+                traceStage("engine-switch-skipped");
+              } else {
+                try {
+                  await setActiveEngine?.(targetEngine);
+                  traceStage("engine-switched");
+                } catch (error) {
+                  onDebug({
+                    id: `${Date.now()}-client-switch-engine-before-new-thread-error`,
+                    timestamp: Date.now(),
+                    source: "error",
+                    label: "workspace/switch engine before new thread error",
+                    payload: error instanceof Error ? error.message : String(error),
+                  });
+                }
               }
             }
             const creationOptions = {

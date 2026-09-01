@@ -1,0 +1,39 @@
+OMP capability evidence (local probe)
+Captured: 2026-08-30
+Binary: /opt/homebrew/bin/omp
+Version command: omp --version
+Version output: omp/18.0.11
+
+Command: omp acp --help
+Observed: Run Oh My Pi as an ACP (Agent Client Protocol) server over stdio
+
+Command: omp --mode rpc --no-session --no-extensions --no-skills --no-rules
+Observed ready frame:
+{"type":"ready","protocolVersion":1,"supportedProtocolVersions":[1,2],"maxFrameBytes":1048576,"maxReassembledFrameBytes":67108864}
+
+Observed RPC probe:
+request: {"id":"1","type":"get_state"}
+response: {"type":"response","id":"1","command":"get_state","success":true}
+additional control frames observed: available_commands_update, extension_ui_request
+
+Scope note: this evidence proves the local binary entry points and initial RPC handshake only. It does not prove the complete ACP/RPC schema, provider/profile storage, terminal semantics, or all OMP capabilities.
+ACP process smoke:
+command: omp acp
+request: {"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":1,"clientInfo":{"name":"mossx","version":"0.9.5"},"clientCapabilities":{"fs":{"read":true,"write":true}}}}
+response: {"jsonrpc":"2.0","id":1,"result":{"protocolVersion":1,"agentInfo":{"name":"oh-my-pi","title":"Oh My Pi","version":"18.0.11"},"agentCapabilities":{"loadSession":true,"promptCapabilities":{"embeddedContext":true,"image":true},"sessionCapabilities":{"list":{},"fork":{},"resume":{},"close":{}}}}}
+ACP session smoke:
+request: {"jsonrpc":"2.0","id":2,"method":"session/new","params":{"cwd":"/Users/chenxiangning/code/AI/github/codemoss","mcpServers":[]}}
+response: sessionId returned; configOptions included mode/model/thinking selections and session capabilities list/fork/resume/close.
+Verification:
+`openspec validate add-omp-cli-engine --strict --no-interactive` passed.
+`cargo check --manifest-path src-tauri/Cargo.toml` passed with existing warning-only diagnostics.
+`cargo test --manifest-path src-tauri/Cargo.toml omp --lib` passed: 278 tests.
+`cargo test --manifest-path src-tauri/Cargo.toml engine::commands::omp_projection_tests --lib` passed: 2 tests.
+`npm run typecheck` passed.
+`npx vitest run src/features/engine/omp/ompCapabilities.test.ts src/features/engine/omp/ompProjection.test.ts` passed: 6 tests.
+
+P11 Memory/Advisor/Security/Usage/Admin boundary (2026-08-31):
+- Native evidence observed for `get_state`, `available_commands_update` and `extension_ui_request` only; no native Memory, Mental Models, Advisor, Security, Usage/Stats, HTML export, encrypted share or admin rollback contract was verified.
+- Therefore all P11 capabilities project as `unsupported` by default (`native-support-not-proven`); a discovered command without verified output is `compat-input`, never enabled.
+- Focused behavior proof: `npm exec vitest run src/features/engine/omp/ompAdminBoundary.test.ts` passed (11 tests).
+- Supported projection scope is limited to feature-local, redacted, strict-owner records. Security findings, usage attribution and export/share payloads are never projected as Conversation content; owner mismatch/unattributed data is withheld.

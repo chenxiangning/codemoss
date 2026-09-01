@@ -46,6 +46,26 @@ pub mod kimi_history;
 #[path = "../../engine/kimi_provider_profile.rs"]
 pub(crate) mod kimi_provider_profile;
 #[allow(dead_code)]
+#[path = "../../engine/omp_env.rs"]
+pub(crate) mod omp_env;
+#[allow(dead_code)]
+#[path = "../../engine/omp_history.rs"]
+pub(crate) mod omp_history;
+#[path = "../../engine/omp_protocol.rs"]
+pub(crate) mod omp_protocol;
+#[allow(dead_code)]
+#[path = "../../engine/omp_release.rs"]
+pub(crate) mod omp_release;
+#[path = "../../engine/omp_rpc.rs"]
+pub(crate) mod omp_rpc;
+#[path = "../../engine/omp_process.rs"]
+pub(crate) mod omp_process;
+#[path = "../../engine/omp_rpc_process.rs"]
+pub(crate) mod omp_rpc_process;
+#[path = "../../engine/omp_runtime.rs"]
+pub(crate) mod omp_runtime;
+
+#[allow(dead_code)]
 #[path = "../../engine/manager.rs"]
 pub mod manager;
 #[path = "../../engine/opencode.rs"]
@@ -533,6 +553,7 @@ pub enum EngineType {
     Pi,
     Dsh,
     Qoder,
+    Omp,
 }
 
 impl EngineType {
@@ -547,6 +568,7 @@ impl EngineType {
             EngineType::Pi => "PI CLI",
             EngineType::Dsh => "DeepSeek Harness",
             EngineType::Qoder => "Qoder CLI",
+            EngineType::Omp => "OMP CLI",
         }
     }
 
@@ -561,6 +583,7 @@ impl EngineType {
             EngineType::Pi => "pi",
             EngineType::Dsh => "dsh",
             EngineType::Qoder => "qoder",
+            EngineType::Omp => "omp",
         }
     }
 }
@@ -576,7 +599,10 @@ pub(crate) fn engine_enabled_in_settings(
     engine_type: EngineType,
 ) -> bool {
     match engine_type {
+        // OMP Native/ACP execution is implemented; unsupported capabilities
+        // remain fail-closed in the shared capability matrix.
         EngineType::Gemini => crate::engine_policy::GEMINI_RUNTIME_ENABLED,
+        EngineType::Omp => true,
         EngineType::OpenCode
         | EngineType::Claude
         | EngineType::Codex
@@ -602,6 +628,7 @@ pub(crate) fn detection_disabled_engines(settings: &crate::types::AppSettings) -
         EngineType::Pi,
         EngineType::Dsh,
         EngineType::Qoder,
+        EngineType::Omp,
     ]
     .into_iter()
     .filter(|engine_type| {
@@ -612,11 +639,11 @@ pub(crate) fn detection_disabled_engines(settings: &crate::types::AppSettings) -
     })
     .collect()
 }
-
 pub(crate) fn engine_disabled_diagnostic(engine_type: EngineType) -> Option<&'static str> {
     match engine_type {
         EngineType::Gemini => Some(crate::engine_policy::GEMINI_DISABLED_DIAGNOSTIC),
-        EngineType::OpenCode
+        EngineType::Omp
+        | EngineType::OpenCode
         | EngineType::Claude
         | EngineType::Codex
         | EngineType::Grok
@@ -916,6 +943,17 @@ impl EngineFeatures {
             mcp: true,
         }
     }
+    pub fn omp() -> Self {
+        Self {
+            reasoning_effort: false,
+            collaboration_mode: false,
+            image_input: false,
+            session_resume: true,
+            tools_control: false,
+            streaming: true,
+            mcp: false,
+        }
+    }
 }
 
 pub(crate) fn disabled_engine_status(engine_type: EngineType) -> EngineStatus {
@@ -929,6 +967,7 @@ pub(crate) fn disabled_engine_status(engine_type: EngineType) -> EngineStatus {
         EngineType::Pi => EngineFeatures::pi(),
         EngineType::Dsh => EngineFeatures::dsh(),
         EngineType::Qoder => EngineFeatures::qoder(),
+        EngineType::Omp => EngineFeatures::omp(),
     };
     EngineStatus {
         engine_type,
@@ -995,15 +1034,11 @@ mod runtime_policy_tests {
     }
 
     #[test]
-    fn daemon_opencode_is_always_enabled_regardless_of_legacy_setting() {
-        let mut settings = crate::types::AppSettings::default();
-        settings.opencode_enabled = false;
+    fn daemon_omp_native_execution_is_enabled_without_diagnostic() {
+        let settings = crate::types::AppSettings::default();
 
-        assert!(engine_enabled_in_settings(&settings, EngineType::OpenCode));
-        assert_eq!(
-            ensure_engine_enabled(&settings, EngineType::OpenCode),
-            Ok(())
-        );
-        assert_eq!(engine_disabled_diagnostic(EngineType::OpenCode), None);
+        assert!(engine_enabled_in_settings(&settings, EngineType::Omp));
+        assert_eq!(ensure_engine_enabled(&settings, EngineType::Omp), Ok(()));
+        assert_eq!(engine_disabled_diagnostic(EngineType::Omp), None);
     }
 }

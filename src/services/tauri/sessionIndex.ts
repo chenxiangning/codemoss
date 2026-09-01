@@ -128,6 +128,7 @@ function inferEngineFromThreadId(threadId: string): string {
   if (raw.startsWith("pi:") || raw.startsWith("pi-pending-")) return "pi";
   if (raw.startsWith("dsh:") || raw.startsWith("dsh-pending-")) return "dsh";
   if (raw.startsWith("qoder:") || raw.startsWith("qoder-pending-")) return "qoder";
+  if (raw.startsWith("omp:") || raw.startsWith("omp-pending-")) return "omp";
   return "codex";
 }
 

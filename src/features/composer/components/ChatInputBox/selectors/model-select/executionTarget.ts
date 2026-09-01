@@ -11,6 +11,7 @@ import {
   DSH_LOCAL_PROVIDER_PROFILE_ID,
   GROK_LOCAL_PROVIDER_PROFILE_ID,
   KIMI_LOCAL_PROVIDER_PROFILE_ID,
+  OMP_LOCAL_PROVIDER_PROFILE_ID,
   OPENCODE_LOCAL_PROVIDER_PROFILE_ID,
   PI_LOCAL_PROVIDER_PROFILE_ID,
   QODER_GLOBAL_PROVIDER_PROFILE_ID,
@@ -28,12 +29,19 @@ const LOCAL_PROVIDER_PROFILE_IDS: Partial<Record<ProviderId, string>> = {
   pi: PI_LOCAL_PROVIDER_PROFILE_ID,
   dsh: DSH_LOCAL_PROVIDER_PROFILE_ID,
   qoder: QODER_LOCAL_PROVIDER_PROFILE_ID,
+  omp: OMP_LOCAL_PROVIDER_PROFILE_ID,
 };
 
 export function normalizeExecutionProviderProfileId(
   providerId: ProviderId,
   providerProfileId: string | null | undefined,
 ): string | null {
+  // OMP 是本地单渠道引擎：无论存储/快照里带着什么 profile id（含设置页
+  // 保存过的自定义 id），统一归一到本地默认。自定义 id 不是 OMP 的 provider，
+  // 传给 `omp models` 会静默返回空目录，模型选择器因此带不出模型。
+  if (providerId === "omp") {
+    return null;
+  }
   const normalizedProviderProfileId = providerProfileId?.trim();
   // Qoder Global/CN are fixed distribution identities, not ordinary local
   // provider profiles. Preserve them through target selection and dispatch.

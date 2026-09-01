@@ -23,6 +23,8 @@ use crate::backend::app_server_cli::resolve_safe_opencode_binary;
 const DETECTION_TIMEOUT: Duration = Duration::from_secs(10);
 /// OpenCode model listing can be significantly slower than version probes.
 const OPENCODE_MODELS_TIMEOUT: Duration = Duration::from_secs(30);
+/// OMP may refresh its provider catalog on the first model listing.
+const OMP_MODELS_TIMEOUT: Duration = Duration::from_secs(30);
 const GENERATED_MODEL_CATALOG_JSON: &str =
     include_str!("../../../src/features/models/generatedModelCatalog.json");
 static OPENCODE_RUNTIME_MODEL_CATALOG: OnceLock<RwLock<Vec<ModelInfo>>> = OnceLock::new();
@@ -115,8 +117,8 @@ fn public_models_for_engine(engine_type: EngineType) -> Vec<ModelInfo> {
             get_generated_fallback_models(engine_type)
         }
         EngineType::Pi => get_generated_fallback_models(engine_type),
-        // Qoder catalog is ACP runtime-only (no static fallback roster).
-        EngineType::Gemini | EngineType::Dsh | EngineType::Qoder => Vec::new(),
+        // Qoder/OMP catalogs are ACP runtime-only (no static fallback roster).
+        EngineType::Gemini | EngineType::Dsh | EngineType::Qoder | EngineType::Omp => Vec::new(),
     }
 }
 
@@ -208,8 +210,8 @@ pub(crate) fn get_local_engine_models_for_validation(
             cached_opencode_runtime_models(),
             public_models_for_engine(EngineType::OpenCode),
         )),
-        // Qoder models come from the live ACP handshake, not a local store.
-        EngineType::Gemini | EngineType::Dsh | EngineType::Qoder => None,
+        // Qoder/OMP models come from live runtime handshakes, not a local store.
+        EngineType::Gemini | EngineType::Dsh | EngineType::Qoder | EngineType::Omp => None,
     }
 }
 
@@ -498,9 +500,11 @@ pub(crate) fn get_provider_scoped_engine_models(
                 &provider,
             )));
         }
-        EngineType::Gemini | EngineType::Pi | EngineType::Dsh | EngineType::Qoder => {
-            return Ok(None)
-        }
+        EngineType::Gemini
+        | EngineType::Pi
+        | EngineType::Dsh
+        | EngineType::Qoder
+        | EngineType::Omp => return Ok(None),
     };
     Ok(Some(finalize_provider_scoped_catalog(
         engine_type,
@@ -678,6 +682,34 @@ fn not_installed_status(engine_type: EngineType, error: Option<String>) -> Engin
         error,
     }
 }
+/// Detect OMP CLI installation for the ACP/native execution path.
+///
+/// Keep startup detection lightweight: the ACP handshake is performed only
+/// when a session is created, while `--version` establishes availability.
+pub async fn detect_omp_status(custom_bin: Option<&str>) -> EngineStatus {
+    let bin_path = resolve_bin_path("omp", custom_bin);
+    let bin = bin_path
+        .as_ref()
+        .map(|path| path.to_string_lossy().to_string())
+        .unwrap_or_else(|| "omp".to_string());
+    let path_env = build_codex_path_env(custom_bin);
+    let (installed, version, error) = probe_cli_version(&bin, "omp", path_env.as_ref()).await;
+    if !installed {
+        return not_installed_status(EngineType::Omp, error);
+    }
+    EngineStatus {
+        engine_type: EngineType::Omp,
+        auth_state: crate::engine::AuthState::Unknown,
+        installed: true,
+        version,
+        bin_path: Some(bin),
+        home_dir: None,
+        models: Vec::new(),
+        default_model: None,
+        features: EngineFeatures::omp(),
+        error: None,
+    }
+}
 
 /// Detect Claude Code CLI installation status
 pub async fn detect_claude_status(custom_bin: Option<&str>) -> EngineStatus {
@@ -843,6 +875,103 @@ pub async fn load_opencode_models(custom_bin: Option<&str>) -> Result<Vec<ModelI
     let models = get_opencode_models(&bin, path_env.as_ref()).await?;
     remember_opencode_runtime_models(&models);
     Ok(models)
+}
+
+/// Query OMP's native provider/model catalog on demand.
+pub async fn load_omp_models(
+    custom_bin: Option<&str>,
+    provider_profile_id: Option<&str>,
+) -> Result<Vec<ModelInfo>, String> {
+    let bin_path = resolve_bin_path("omp", custom_bin)
+        .ok_or_else(|| "OMP CLI is not installed".to_string())?;
+    let bin = bin_path.to_string_lossy().to_string();
+    let path_env = build_codex_path_env(custom_bin);
+    let provider = provider_profile_id
+        .map(str::trim)
+        .filter(|value| !value.is_empty() && *value != "__omp_local__");
+    let output = timeout(OMP_MODELS_TIMEOUT, async {
+        let mut command = build_async_command(&bin);
+        if let Some(path) = path_env.as_ref() {
+            command.env("PATH", path);
+        }
+        command.arg("models");
+        if let Some(provider) = provider {
+            if provider.starts_with('-') {
+                return Err("invalid OMP provider profile id".to_string());
+            }
+            command.arg(provider);
+        }
+        command
+            .arg("--json")
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .output()
+            .await
+            .map_err(|error| error.to_string())
+    })
+    .await
+    .map_err(|_| "Timeout listing OMP models".to_string())?
+    .map_err(|error| format!("Failed to execute omp models: {error}"))?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        return Err(format!("omp models failed: {stderr}"));
+    }
+    let envelope: OmpModelsEnvelope = serde_json::from_slice(&output.stdout)
+        .map_err(|error| format!("invalid OMP models JSON: {error}"))?;
+    Ok(envelope
+        .models
+        .into_iter()
+        .filter_map(|model| {
+            let id = model
+                .selector
+                .filter(|value| !value.trim().is_empty())
+                .or_else(|| {
+                    (!model.provider.trim().is_empty() && !model.id.trim().is_empty())
+                        .then(|| format!("{}/{}", model.provider.trim(), model.id.trim()))
+                })?;
+            let mut info = ModelInfo::new(
+                id,
+                if model.name.is_empty() {
+                    model.id
+                } else {
+                    model.name
+                },
+            )
+            .with_provider(model.provider);
+            if let Some(thinking) = model.thinking {
+                if !thinking.is_empty() {
+                    info = info.with_reasoning(thinking, None);
+                }
+            }
+            if let Some(profile_id) = provider_profile_id
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+            {
+                info = info.with_provider_profile_id(profile_id);
+            }
+            Some(info)
+        })
+        .collect())
+}
+
+#[derive(Debug, Deserialize)]
+struct OmpModelsEnvelope {
+    #[serde(default)]
+    models: Vec<OmpModelEntry>,
+}
+
+#[derive(Debug, Deserialize)]
+struct OmpModelEntry {
+    #[serde(default)]
+    provider: String,
+    #[serde(default)]
+    id: String,
+    #[serde(default)]
+    selector: Option<String>,
+    #[serde(default)]
+    name: String,
+    #[serde(default)]
+    thinking: Option<Vec<String>>,
 }
 
 /// Detect Gemini CLI installation status
@@ -2503,6 +2632,7 @@ pub async fn detect_all_engines(
     grok_bin: Option<&str>,
     pi_bin: Option<&str>,
     qoder_bin: Option<&str>,
+    omp_bin: Option<&str>,
     dsh_settings: &crate::engine::dsh::supervisor::DshRuntimeSettings,
     gemini_enabled: bool,
 ) -> Vec<EngineStatus> {
@@ -2515,6 +2645,7 @@ pub async fn detect_all_engines(
         grok_bin,
         pi_bin,
         qoder_bin,
+        omp_bin,
         dsh_settings,
         gemini_enabled,
         &[],
@@ -2536,6 +2667,7 @@ pub async fn detect_all_engines_scoped(
     grok_bin: Option<&str>,
     pi_bin: Option<&str>,
     qoder_bin: Option<&str>,
+    omp_bin: Option<&str>,
     dsh_settings: &crate::engine::dsh::supervisor::DshRuntimeSettings,
     gemini_enabled: bool,
     disabled_engines: &[EngineType],
@@ -2551,6 +2683,7 @@ pub async fn detect_all_engines_scoped(
     let grok_bin = grok_bin.map(str::to_string);
     let pi_bin = pi_bin.map(str::to_string);
     let qoder_bin = qoder_bin.map(str::to_string);
+    let omp_bin = omp_bin.map(str::to_string);
     let dsh_settings = dsh_settings.clone();
 
     let is_enabled = |engine_type: EngineType| !disabled_engines.contains(&engine_type);
@@ -2657,6 +2790,18 @@ pub async fn detect_all_engines_scoped(
                 EngineType::Qoder,
             )))
         };
+    let omp_status: std::pin::Pin<Box<dyn std::future::Future<Output = EngineStatus> + Send>> =
+        if is_enabled(EngineType::Omp) {
+            Box::pin(run_engine_detection_isolated(
+                EngineType::Omp,
+                move || async move { detect_omp_status(omp_bin.as_deref()).await },
+                detect_run_id,
+                on_status.clone(),
+            ))
+        } else {
+            Box::pin(std::future::ready(disabled_engine_status(EngineType::Omp)))
+        };
+
     let dsh_status: std::pin::Pin<Box<dyn std::future::Future<Output = EngineStatus> + Send>> =
         if is_enabled(EngineType::Dsh) {
             Box::pin(run_engine_detection_isolated(
@@ -2678,6 +2823,7 @@ pub async fn detect_all_engines_scoped(
         grok_status,
         pi_status,
         qoder_status,
+        omp_status,
         dsh_status,
     ) = tokio::join!(
         claude_status,
@@ -2688,6 +2834,7 @@ pub async fn detect_all_engines_scoped(
         grok_status,
         pi_status,
         qoder_status,
+        omp_status,
         dsh_status,
     );
 
@@ -2700,6 +2847,7 @@ pub async fn detect_all_engines_scoped(
         grok_status,
         pi_status,
         qoder_status,
+        omp_status,
         dsh_status,
     ];
     // D4 失效条件：开启引擎全部 not_installed 时清环境解析缓存（npm prefix /
@@ -3027,6 +3175,22 @@ mod tests {
     #[cfg(unix)]
     use std::os::unix::fs::PermissionsExt;
 
+    #[test]
+    fn omp_catalog_accepts_null_thinking_metadata() {
+        let envelope: OmpModelsEnvelope = serde_json::from_value(json!({
+            "models": [{
+                "provider": "minimax-code-cn",
+                "id": "MiniMax-M2",
+                "selector": "minimax-code-cn/MiniMax-M2",
+                "name": "MiniMax-M2",
+                "thinking": null
+            }]
+        }))
+        .expect("OMP catalog with null thinking should deserialize");
+
+        assert_eq!(envelope.models.len(), 1);
+        assert!(envelope.models[0].thinking.is_none());
+    }
     #[test]
     fn qoder_catalog_rows_keep_the_requested_distribution_profile() {
         let models = vec![ModelInfo::new("qoder-model", "Qoder model")];
@@ -4056,6 +4220,7 @@ opencode/gpt-5-nano
             None,
             None,
             None,
+            None,
             &crate::engine::dsh::supervisor::DshRuntimeSettings::default(),
             false,
         )
@@ -4102,6 +4267,7 @@ opencode/gpt-5-nano
             None,
             Some(&pi_bin),
             None,
+            None,
             &crate::engine::dsh::supervisor::DshRuntimeSettings::default(),
             false,
         )
@@ -4140,6 +4306,7 @@ opencode/gpt-5-nano
         let qoder_bin = script_path.to_string_lossy().to_string();
 
         let statuses = detect_all_engines(
+            None,
             None,
             None,
             None,
@@ -4195,6 +4362,7 @@ opencode/gpt-5-nano
             None,
             None,
             Some(&kimi_bin),
+            None,
             None,
             None,
             None,
@@ -4293,6 +4461,7 @@ opencode/gpt-5-nano
             None,
             None,
             None,
+            None,
             Some(&qoder_bin),
             &crate::engine::dsh::supervisor::DshRuntimeSettings::default(),
             false,
@@ -4381,6 +4550,7 @@ opencode/gpt-5-nano
             None,
             None,
             None,
+            None,
             &crate::engine::dsh::supervisor::DshRuntimeSettings::default(),
             false,
             &[
@@ -4390,6 +4560,7 @@ opencode/gpt-5-nano
                 EngineType::Grok,
                 EngineType::Pi,
                 EngineType::Qoder,
+                EngineType::Omp,
                 EngineType::Dsh,
             ],
             7,

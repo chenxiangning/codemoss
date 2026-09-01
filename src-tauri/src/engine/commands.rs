@@ -13,11 +13,12 @@ use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
-use std::sync::{Mutex, OnceLock};
+use std::sync::{LazyLock, Mutex, OnceLock};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Manager, State};
 use tokio::io::AsyncWriteExt;
+use tokio::sync::oneshot;
 use tokio::time::timeout;
 
 use crate::backend::events::AppServerEvent;
@@ -27,6 +28,7 @@ use crate::state::AppState;
 use crate::types::WorkspaceEntry;
 
 use super::codex_prompt_service::{normalize_custom_spec_root, run_codex_prompt_sync};
+use super::omp_process::OmpAcpProcess;
 use super::events::{engine_event_to_app_server_event_with_turn_context, EngineEvent};
 use super::grok::resolve_grok_session_id_for_engine_send;
 use super::kimi::resolve_kimi_session_id_for_engine_send;
@@ -34,11 +36,17 @@ use super::pi::{
     is_pi_agent_settled_marker, is_pi_external_wakeup_allowed, is_pi_forwardable_send_turn,
     resolve_pi_session_id_for_engine_send,
 };
+use super::omp_history::{
+    canonical_logical_thread_id, normalize_native_session_id, omp_turn_event_anchors,
+};
+use super::omp_runtime::OmpRuntimeKey;
 use super::remote_bridge::{
     call_remote_typed, remote_detect_engines_request, remote_engine_interrupt_request,
     remote_engine_send_message_sync_request,
 };
-use super::status::{detect_grok_status, detect_kimi_status, detect_pi_status, load_opencode_models};
+use super::status::{
+    detect_grok_status, detect_kimi_status, detect_pi_status, load_omp_models, load_opencode_models,
+};
 use super::{
     engine_disabled_diagnostic, engine_enabled_in_settings, EngineConfig, EngineStatus, EngineType,
 };
@@ -155,6 +163,7 @@ fn features_for_engine(engine: EngineType) -> super::EngineFeatures {
         EngineType::Pi => super::EngineFeatures::pi(),
         EngineType::Dsh => super::EngineFeatures::dsh(),
         EngineType::Qoder => super::EngineFeatures::qoder(),
+        EngineType::Omp => super::EngineFeatures::omp(),
     }
 }
 
@@ -227,7 +236,8 @@ fn collect_stale_child_candidates(
                 | EngineType::Kimi
                 | EngineType::Pi
                 | EngineType::Qoder
-                | EngineType::Dsh => "unsupported",
+                | EngineType::Dsh
+                | EngineType::Omp => "unsupported",
                 // Codex is intentionally not part of this child-process parity
                 // path (it has its own wrapper runtime).
                 EngineType::Codex => "unsupported",
@@ -257,6 +267,7 @@ fn engine_type_label(engine: EngineType) -> &'static str {
         EngineType::Pi => "pi",
         EngineType::Dsh => "dsh",
         EngineType::Qoder => "qoder",
+        EngineType::Omp => "omp",
     }
 }
 
@@ -567,6 +578,17 @@ static OPENCODE_AGENTS_CACHE: OnceLock<Mutex<Option<(Instant, Vec<OpenCodeAgentE
 static OPENCODE_MCP_TOGGLE_STATE: OnceLock<Mutex<HashMap<String, OpenCodeMcpToggleState>>> =
     OnceLock::new();
 
+static OMP_TURN_INTERRUPTS: LazyLock<Mutex<HashMap<String, oneshot::Sender<()>>>> =
+    LazyLock::new(|| Mutex::new(HashMap::<String, oneshot::Sender<()>>::new()));
+struct OmpTurnInterruptCleanup(String);
+
+impl Drop for OmpTurnInterruptCleanup {
+    fn drop(&mut self) {
+        if let Ok(mut interrupts) = OMP_TURN_INTERRUPTS.lock() {
+            interrupts.remove(&self.0);
+        }
+    }
+}
 fn strip_ansi_codes(input: &str) -> String {
     let mut out = String::with_capacity(input.len());
     let mut chars = input.chars().peekable();
@@ -1649,6 +1671,11 @@ pub async fn get_engine_models(
                 .await;
             Ok(status.models)
         }
+        EngineType::Omp => {
+            let config = manager.get_engine_config(EngineType::Omp).await;
+            let custom_bin = config.as_ref().and_then(|cfg| cfg.bin_path.clone());
+            load_omp_models(custom_bin.as_deref(), provider_profile_id.as_deref()).await
+        }
         EngineType::Dsh => {
             let runtime = crate::engine::dsh::runtime_settings_from_app(&settings);
             match crate::engine::dsh::load_dsh_models(&runtime).await {
@@ -1782,6 +1809,497 @@ fn fan_out_provider_engine_event(
             );
         }
         let _ = app.emit("app-server-event", payload);
+    }
+}
+/// control-plane 路由名唯一来源是 OmpRpcControlKind::as_str（含
+/// model/provider 域）；timeline events 不经过这条路由。
+fn omp_rpc_control_kind_name(frame: &Value) -> &'static str {
+    super::omp_rpc::OmpRpcClient::classify_control(frame).as_str()
+}
+
+async fn omp_rpc_control_request(
+    app: &AppHandle,
+    state: &State<'_, AppState>,
+    workspace_id: &str,
+    runtime_profile_id: Option<&str>,
+    provider_profile_id: Option<&str>,
+    native_session_id: Option<&str>,
+    command: &str,
+) -> Result<(Value, Vec<Value>), String> {
+    let workspace_root = {
+        let workspaces = state.workspaces.lock().await;
+        workspaces
+            .get(workspace_id)
+            .map(|workspace| PathBuf::from(&workspace.path))
+            .ok_or_else(|| "Workspace not found".to_string())?
+    };
+    let key = OmpRuntimeKey::new(
+        workspace_id,
+        runtime_profile_id.unwrap_or("default"),
+        provider_profile_id.unwrap_or("default"),
+        native_session_id.unwrap_or("control"),
+    );
+    let (response, controls) = state
+        .engine_manager
+        .omp_rpc_request(&key, &workspace_root, command)
+        .await?;
+    for frame in &controls {
+        let _ = app.emit(
+            "omp-control",
+            json!({
+                "workspaceId": workspace_id,
+                "runtimeProfileId": &key.runtime_profile_id,
+                "providerProfileId": &key.provider_profile_id,
+                "nativeSessionId": &key.native_session_id,
+                "kind": omp_rpc_control_kind_name(frame),
+                "frame": frame,
+            }),
+        );
+    }
+    Ok((response, controls))
+}
+
+/// Read OMP state through the manager-owned Native RPC control plane.
+#[tauri::command]
+pub async fn omp_rpc_get_state(
+    workspace_id: String,
+    runtime_profile_id: Option<String>,
+    provider_profile_id: Option<String>,
+    native_session_id: Option<String>,
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<Value, String> {
+    let (response, _) = omp_rpc_control_request(
+        &app,
+        &state,
+        &workspace_id,
+        runtime_profile_id.as_deref(),
+        provider_profile_id.as_deref(),
+        native_session_id.as_deref(),
+        "get_state",
+    )
+    .await?;
+    Ok(response)
+}
+
+/// Discover OMP commands from control-plane updates without entering the timeline.
+#[tauri::command]
+pub async fn omp_rpc_discover_commands(
+    workspace_id: String,
+    runtime_profile_id: Option<String>,
+    provider_profile_id: Option<String>,
+    native_session_id: Option<String>,
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<Vec<Value>, String> {
+    let (_, controls) = omp_rpc_control_request(
+        &app,
+        &state,
+        &workspace_id,
+        runtime_profile_id.as_deref(),
+        provider_profile_id.as_deref(),
+        native_session_id.as_deref(),
+        "get_state",
+    )
+    .await?;
+    Ok(controls
+        .into_iter()
+        .filter(|frame| omp_rpc_control_kind_name(frame) == "available_commands")
+        .collect())
+}
+
+/// OMP event normalization lives in the process module so app and daemon paths
+/// share one protocol-to-canonical boundary. Unknown notifications remain raw.
+fn omp_frame_to_engine_event(workspace_id: &str, turn_id: &str, frame: &Value) -> EngineEvent {
+    super::omp_process::frame_to_engine_event(workspace_id, turn_id, frame)
+}
+
+fn emit_omp_engine_event(
+    app: &AppHandle,
+    workspace_id: &str,
+    thread_id: &str,
+    turn_id: &str,
+    item_id: &str,
+    native_session_id: Option<&str>,
+    event: EngineEvent,
+) {
+    let app_server_events = engine_event_to_app_server_event_with_turn_context(
+        &event,
+        thread_id,
+        item_id,
+        Some(turn_id),
+    )
+    .into_iter()
+    .collect();
+    fan_out_provider_engine_event(
+        app,
+        &format!("omp:{workspace_id}"),
+        EngineType::Omp,
+        turn_id,
+        native_session_id,
+        &event,
+        app_server_events,
+    );
+}
+
+async fn run_omp_turn(
+    app: AppHandle,
+    binary: Option<std::path::PathBuf>,
+    workspace_id: String,
+    workspace_root: std::path::PathBuf,
+    text: String,
+    thread_id: String,
+    turn_id: String,
+    requested_session_id: Option<String>,
+    auto_session: Option<AutoSessionMetadata>,
+    bind_thread_to_native: bool,
+    model: Option<String>,
+    effort: Option<String>,
+    images: Option<Vec<String>>,
+    mut interrupt: oneshot::Receiver<()>,
+) {
+    let thread_id = if thread_id.trim().is_empty() {
+        format!("omp-pending-{turn_id}")
+    } else {
+        thread_id
+    };
+    let _interrupt_cleanup = OmpTurnInterruptCleanup(format!("{workspace_id}:{turn_id}"));
+    let item_id = format!("omp-item-{}", uuid::Uuid::new_v4());
+    let mut process = match OmpAcpProcess::spawn(binary.as_deref(), &workspace_root, None).await {
+        Ok(process) => process,
+        Err(error) => {
+            emit_omp_engine_event(
+                &app,
+                &workspace_id,
+                &thread_id,
+                &turn_id,
+                &item_id,
+                None,
+                EngineEvent::TurnError {
+                    workspace_id: workspace_id.clone(),
+                    error,
+                    code: Some("omp_spawn_failed".to_string()),
+                },
+            );
+            return;
+        }
+    };
+    if let Err(error) = process.initialize().await {
+        emit_omp_engine_event(
+            &app,
+            &workspace_id,
+            &thread_id,
+            &turn_id,
+            &item_id,
+            None,
+            EngineEvent::TurnError {
+                workspace_id: workspace_id.clone(),
+                error,
+                code: Some("omp_initialize_failed".to_string()),
+            },
+        );
+        return;
+    }
+    let native_session_id = match requested_session_id {
+        Some(session_id) => {
+            let session_id = match normalize_native_session_id(&session_id) {
+                Ok(session_id) => session_id,
+                Err(error) => {
+                    emit_omp_engine_event(
+                        &app,
+                        &workspace_id,
+                        &thread_id,
+                        &turn_id,
+                        &item_id,
+                        None,
+                        EngineEvent::TurnError {
+                            workspace_id: workspace_id.clone(),
+                            error,
+                            code: Some("omp_session_failed".to_string()),
+                        },
+                    );
+                    return;
+                }
+            };
+            let result = process.load_session(&session_id).await;
+            process.clear_pending_frames();
+            result
+        }
+        None => process.new_session().await,
+    };
+    let native_session_id =
+        match native_session_id.and_then(|session_id| normalize_native_session_id(&session_id)) {
+            Ok(session_id) => session_id,
+            Err(error) => {
+                emit_omp_engine_event(
+                    &app,
+                    &workspace_id,
+                    &thread_id,
+                    &turn_id,
+                    &item_id,
+                    None,
+                    EngineEvent::TurnError {
+                        workspace_id: workspace_id.clone(),
+                        error,
+                        code: Some("omp_session_failed".to_string()),
+                    },
+                );
+                return;
+            }
+        };
+    // 模型/推理档位设置失败不得终止 turn：配置只影响会话偏好，prompt 仍可
+    // 以 OMP 当前默认模型执行。此前 set_model 失败直接发 TurnError 并 return，
+    // 前端 turn 已按失败结算但 OMP 侧偏好永远设置不上，还伴随幕布结算竞态。
+    // 降级为调试日志 + 继续执行。
+    if let Some(selector) = model
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        if let Some((provider, model_id)) = selector.split_once('/') {
+            if let Err(error) = process
+                .set_model(&native_session_id, provider, model_id)
+                .await
+            {
+                eprintln!(
+                    "[omp] non-fatal session model selection failed ({provider}/{model_id}): {error}"
+                );
+            }
+        }
+    }
+    if let Some(effort) = effort
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        if let Err(error) = process
+            .set_reasoning_effort(&native_session_id, effort)
+            .await
+        {
+            eprintln!("[omp] non-fatal thinking level selection failed ({effort}): {error}");
+        }
+    }
+    // 事件锚定（app/daemon 共享 omp_turn_event_anchors）：SessionStarted 锚定
+    // 调用方 thread_id（首轮 pending 触发前端 pending→omp:<native> 改名）；
+    // 其后全部事件锚定 canonical，否则改名后写入已删除的 phantom pending，
+    // 首轮后续内容被吞（2026-09-01 实测）。
+    let anchors = omp_turn_event_anchors(&thread_id, &native_session_id, bind_thread_to_native);
+    let logical_thread_id = anchors.stream.clone();
+    let state = app.state::<AppState>();
+    record_auto_session_metadata_if_present(
+        &state,
+        &workspace_id,
+        Some(&native_session_id),
+        auto_session,
+        "omp",
+    )
+    .await;
+    emit_omp_engine_event(
+        &app,
+        &workspace_id,
+        &anchors.session_started,
+        &turn_id,
+        &item_id,
+        Some(&native_session_id),
+        EngineEvent::SessionStarted {
+            workspace_id: workspace_id.clone(),
+            session_id: native_session_id.clone(),
+            engine: EngineType::Omp,
+            turn_id: Some(turn_id.clone()),
+        },
+    );
+    emit_omp_engine_event(
+        &app,
+        &workspace_id,
+        &logical_thread_id,
+        &turn_id,
+        &item_id,
+        Some(&native_session_id),
+        EngineEvent::TurnStarted {
+            workspace_id: workspace_id.clone(),
+            turn_id: turn_id.clone(),
+        },
+    );
+    // attachment 归一化（omp_acp::normalize_prompt_attachments）：image/file →
+    // canonical content block；全部失败 fail-closed 终止 turn，部分失败显式
+    // warn（不静默丢弃）。
+    let prompt_blocks = match super::omp_acp::normalize_prompt_attachments(
+        &text,
+        images.as_deref(),
+        &workspace_root,
+    ) {
+        Ok(normalized) => {
+            for degraded in &normalized.degraded {
+                log::warn!(
+                    "[omp] attachment degraded: {} ({})",
+                    degraded.source,
+                    degraded.reason
+                );
+            }
+            normalized.blocks
+        }
+        Err(error) => {
+            emit_omp_engine_event(
+                &app,
+                &workspace_id,
+                &logical_thread_id,
+                &turn_id,
+                &item_id,
+                Some(&native_session_id),
+                EngineEvent::TurnError {
+                    workspace_id: workspace_id.clone(),
+                    error,
+                    code: Some("omp_attachment_failed".to_string()),
+                },
+            );
+            return;
+        }
+    };
+    let mut turn_metrics = super::omp_release::OmpTurnMetrics::start();
+    let prompt_result = process
+        .prompt_streaming_blocks(&native_session_id, prompt_blocks, &mut interrupt, |frame| {
+            // 通知帧（思考/回复/工具流）即时转发：幕布流式渲染依赖这里，
+            // 缓冲到 turn 结束才 flush 会让 spinner 与内容错位。
+            let event = omp_frame_to_engine_event(&workspace_id, &turn_id, &frame);
+            let terminal = event.is_terminal();
+            // FirstDelta metric：首个 canonical TextDelta/ReasoningDelta。
+            turn_metrics.observe_event(&event);
+            emit_omp_engine_event(
+                &app,
+                &workspace_id,
+                &logical_thread_id,
+                &turn_id,
+                &item_id,
+                Some(&native_session_id),
+                event,
+            );
+            if terminal {
+                eprintln!("[omp] terminal frame arrived before prompt response");
+            }
+        })
+        .await;
+    match prompt_result {
+        Ok(result) => {
+            turn_metrics.finish_completed();
+            emit_omp_engine_event(
+                &app,
+                &workspace_id,
+                &logical_thread_id,
+                &turn_id,
+                &item_id,
+                Some(&native_session_id),
+                EngineEvent::TurnCompleted {
+                    workspace_id: workspace_id.clone(),
+                    result: Some(result),
+                },
+            );
+            return;
+        }
+        Err(error) if error.contains("interrupted") => {
+            turn_metrics.finish_cancelled();
+            let cancel_result = process.cancel(&native_session_id).await;
+            emit_omp_engine_event(
+                &app,
+                &workspace_id,
+                &logical_thread_id,
+                &turn_id,
+                &item_id,
+                Some(&native_session_id),
+                EngineEvent::TurnError {
+                    workspace_id: workspace_id.clone(),
+                    error: cancel_result
+                        .err()
+                        .unwrap_or_else(|| "OMP turn interrupted".to_string()),
+                    code: Some("omp_interrupted".to_string()),
+                },
+            );
+            return;
+        }
+        Err(error) => {
+            // Recovery metric：EOF/malformed/timeout 等非 interrupt 失败是
+            // 显式 recovery 转换（typed terminal 缺席时的恢复路径）。
+            super::omp_release::OMP_METRICS.record_recovery();
+            turn_metrics.finish_failed();
+            let code = if error.contains("exited before returning a frame") {
+                Some("omp_stream_eof_before_terminal".to_string())
+            } else {
+                Some("omp_prompt_failed".to_string())
+            };
+            emit_omp_engine_event(
+                &app,
+                &workspace_id,
+                &logical_thread_id,
+                &turn_id,
+                &item_id,
+                Some(&native_session_id),
+                EngineEvent::TurnError {
+                    workspace_id: workspace_id.clone(),
+                    error,
+                    code,
+                },
+            );
+            return;
+        }
+    };
+}
+
+#[cfg(test)]
+mod omp_projection_tests {
+    use super::{omp_frame_to_engine_event, EngineEvent, EngineType};
+    use serde_json::json;
+
+    #[test]
+    fn maps_acp_message_and_thought_chunks() {
+        let text = omp_frame_to_engine_event(
+            "workspace-1",
+            "turn-1",
+            &json!({
+                "method": "session/update",
+                "params": {"update": {
+                    "sessionUpdate": "agent_message_chunk",
+                    "content": {"type": "text", "text": "hello"}
+                }}
+            }),
+        );
+        assert!(matches!(text, EngineEvent::TextDelta { text, .. } if text == "hello"));
+
+        let thought = omp_frame_to_engine_event(
+            "workspace-1",
+            "turn-1",
+            &json!({
+                "method": "session/update",
+                "params": {"update": {
+                    "sessionUpdate": "agent_thought_chunk",
+                    "content": {"type": "text", "text": "thinking"}
+                }}
+            }),
+        );
+        assert!(matches!(thought, EngineEvent::ReasoningDelta { text, .. } if text == "thinking"));
+    }
+
+    #[test]
+    fn maps_terminal_and_retains_unknown_frames() {
+        let terminal = omp_frame_to_engine_event(
+            "workspace-1",
+            "turn-1",
+            &json!({"method": "session/finished"}),
+        );
+        assert!(matches!(terminal, EngineEvent::TurnCompleted { .. }));
+
+        let unknown = omp_frame_to_engine_event(
+            "workspace-1",
+            "turn-1",
+            &json!({"method": "session/update", "params": {"update": {
+                "sessionUpdate": "future_update"
+            }}}),
+        );
+        assert!(matches!(
+            unknown,
+            EngineEvent::Raw {
+                engine: EngineType::Omp,
+                ..
+            }
+        ));
     }
 }
 
@@ -4115,6 +4633,78 @@ pub async fn engine_send_message(
                 }
             }))
         }
+        EngineType::Omp => {
+            let workspace_root = {
+                let workspaces = state.workspaces.lock().await;
+                workspaces
+                    .get(&workspace_id)
+                    .map(|workspace| std::path::PathBuf::from(&workspace.path))
+                    .ok_or_else(|| "Workspace not found".to_string())?
+            };
+            let binary = manager
+                .get_engine_config(EngineType::Omp)
+                .await
+                .and_then(|config| config.bin_path.map(std::path::PathBuf::from));
+            let turn_id = format!("omp-turn-{}", uuid::Uuid::new_v4());
+            let explicit_thread_id =
+                thread_id.and_then(|value| (!value.trim().is_empty()).then_some(value));
+            let has_explicit_thread_id = explicit_thread_id.is_some();
+            let thread_id = explicit_thread_id
+                .or_else(|| {
+                    session_id
+                        .as_deref()
+                        .and_then(|session| canonical_logical_thread_id(session).ok())
+                })
+                .unwrap_or_else(|| format!("omp-pending-{turn_id}"));
+            let dispatch_receipt = build_provider_engine_dispatch_receipt(
+                EngineType::Omp,
+                provider_profile_id.as_deref(),
+                &format!("omp:{workspace_id}"),
+                model.as_deref(),
+                effort.as_deref(),
+            );
+            let app_clone = app.clone();
+            let workspace_id_for_task = workspace_id.clone();
+            let thread_id_for_task = thread_id.clone();
+            let turn_id_for_task = turn_id.clone();
+            let (interrupt_tx, interrupt_rx) = oneshot::channel::<()>();
+            let task = tokio::spawn(run_omp_turn(
+                app_clone,
+                binary,
+                workspace_id_for_task,
+                workspace_root,
+                text,
+                thread_id_for_task,
+                turn_id_for_task.clone(),
+                session_id.clone(),
+                auto_session,
+                !has_explicit_thread_id,
+                model.clone(),
+                effort.clone(),
+                images,
+                interrupt_rx,
+            ));
+            let _ = task;
+            OMP_TURN_INTERRUPTS
+                .lock()
+                .expect("OMP turn interrupt registry poisoned")
+                .insert(format!("{workspace_id}:{turn_id}"), interrupt_tx);
+            Ok(json!({
+                "engine": "omp",
+                "sessionId": session_id,
+                "result": {
+                    "turn": {
+                        "id": turn_id,
+                        "status": "started"
+                    },
+                },
+                "mossxDispatchReceipt": dispatch_receipt,
+                "turn": {
+                    "id": turn_id,
+                    "status": "started"
+                }
+            }))
+        }
     }
 }
 
@@ -4950,6 +5540,7 @@ pub async fn engine_send_message_sync(
                 "text": response
             }))
         }
+        EngineType::Omp => Err("OMP CLI integration is not enabled yet".to_string()),
     }
 }
 
@@ -4999,6 +5590,27 @@ pub async fn engine_interrupt(
         EngineType::Pi => manager.interrupt_pi_sessions(&workspace_id, None).await,
         EngineType::Qoder => manager.interrupt_qoder_sessions(&workspace_id, None).await,
         EngineType::Grok => manager.interrupt_grok_sessions(&workspace_id, None).await,
+        EngineType::Omp => {
+            let senders = {
+                let mut interrupts = OMP_TURN_INTERRUPTS
+                    .lock()
+                    .expect("OMP turn interrupt registry poisoned");
+                let keys = interrupts
+                    .keys()
+                    .filter(|key| key.starts_with(&format!("{workspace_id}:")))
+                    .cloned()
+                    .collect::<Vec<_>>();
+                keys.into_iter()
+                    .filter_map(|key| interrupts.remove(&key))
+                    .collect::<Vec<_>>()
+            };
+            for sender in senders {
+                let _ = sender.send(());
+            }
+            manager
+                .remove_omp_rpc_runtimes_for_workspace(&workspace_id)
+                .await
+        }
         EngineType::Dsh => {
             let settings = read_app_settings_snapshot(&state).await;
             let runtime = crate::engine::dsh::runtime_settings_from_app(&settings);
@@ -5095,6 +5707,16 @@ pub async fn engine_interrupt_turn(
                     Some(&turn_id),
                 )
                 .await
+        }
+        EngineType::Omp => {
+            let sender = OMP_TURN_INTERRUPTS
+                .lock()
+                .expect("OMP turn interrupt registry poisoned")
+                .remove(&format!("{workspace_id}:{turn_id}"));
+            if let Some(sender) = sender {
+                let _ = sender.send(());
+            }
+            Ok(())
         }
         EngineType::Grok => {
             manager

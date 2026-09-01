@@ -71,6 +71,21 @@ describe("resolveFirstRunPrimaryEngine", () => {
       }),
     ).toBe("dsh");
   });
+
+  it("never picks OMP as the first-run primary engine", () => {
+    // OMP 尚处接入早期（capability matrix 全 unknown），首跑主引擎不得落到它。
+    expect(
+      resolveFirstRunPrimaryEngine({
+        selectedEngine: null,
+        profile: {
+          primaryEngine: "omp",
+          validatedEngines: ["omp"],
+        },
+        engineStatuses: [status("omp", true), status("claude", true)],
+        cardStateByEngine: installedCards,
+      }),
+    ).toBe("claude");
+  });
 });
 
 describe("resolveFirstRunSelectedEngineAfterDetect", () => {
@@ -92,5 +107,23 @@ describe("resolveFirstRunSelectedEngineAfterDetect", () => {
         installedEngines: ["claude", "dsh"],
       }),
     ).toBe("dsh");
+  });
+
+  it("skips OMP when resolving the post-detect selection", () => {
+    expect(
+      resolveFirstRunSelectedEngineAfterDetect({
+        selectedEngine: null,
+        primaryEngine: "omp",
+        installedEngines: ["omp", "claude"],
+      }),
+    ).toBe("claude");
+
+    expect(
+      resolveFirstRunSelectedEngineAfterDetect({
+        selectedEngine: null,
+        primaryEngine: null,
+        installedEngines: ["omp"],
+      }),
+    ).toBeNull();
   });
 });

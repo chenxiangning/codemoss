@@ -21,6 +21,9 @@ pub const CAPABILITY_KEYS: [&str; 15] = [
 ];
 
 pub fn capability_state(engine_type: EngineType, capability: &str) -> &'static str {
+    if matches!(engine_type, EngineType::Omp) {
+        return spec_capability_state(engine_type, capability);
+    }
     let features = match engine_type {
         EngineType::Claude => EngineFeatures::claude(),
         EngineType::Codex => EngineFeatures::codex(),
@@ -31,6 +34,7 @@ pub fn capability_state(engine_type: EngineType, capability: &str) -> &'static s
         EngineType::Pi => EngineFeatures::pi(),
         EngineType::Dsh => EngineFeatures::dsh(),
         EngineType::Qoder => EngineFeatures::qoder(),
+        EngineType::Omp => EngineFeatures::omp(),
     };
 
     match capability {

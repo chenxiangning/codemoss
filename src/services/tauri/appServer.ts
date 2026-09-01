@@ -301,14 +301,70 @@ export async function getEngineActiveProcessDiagnostics(): Promise<EngineActiveP
   );
 }
 
-/**
- * Get available models for a specific engine
- */
+export type OmpRpcIdentity = {
+  runtimeProfileId?: string | null;
+  providerProfileId?: string | null;
+  sessionId?: string | null;
+};
+
+export async function ompRpcGetState(
+  workspaceId: string,
+  identity: OmpRpcIdentity = {},
+): Promise<unknown> {
+  return invoke("omp_rpc_get_state", {
+    workspaceId,
+    runtimeProfileId: identity.runtimeProfileId ?? null,
+    providerProfileId: identity.providerProfileId ?? null,
+    sessionId: identity.sessionId ?? null,
+  });
+}
+
+export async function ompRpcDiscoverCommands(
+  workspaceId: string,
+  identity: OmpRpcIdentity = {},
+): Promise<unknown[]> {
+  return invoke<unknown[]>("omp_rpc_discover_commands", {
+    workspaceId,
+    runtimeProfileId: identity.runtimeProfileId ?? null,
+    providerProfileId: identity.providerProfileId ?? null,
+    sessionId: identity.sessionId ?? null,
+  });
+}
+
+export type EngineConfigPayload = {
+  binPath?: string | null;
+  homeDir?: string | null;
+  customArgs?: string | null;
+  defaultModel?: string | null;
+};
+
+/** Apply an engine configuration to the current native runtime. */
+export async function setEngineConfig(
+  engineType: EngineType,
+  config: EngineConfigPayload,
+): Promise<void> {
+  await invoke("set_engine_config", {
+    engineType,
+    config: {
+      binPath: config.binPath ?? null,
+      homeDir: config.homeDir ?? null,
+      customArgs: config.customArgs ?? null,
+      defaultModel: config.defaultModel ?? null,
+    },
+  });
+}
+
+/** Get available models for a specific engine. */
 export async function getEngineModels(
   engineType: EngineType,
   options: { forceRefresh?: boolean; providerProfileId?: string | null } = {},
 ): Promise<EngineModelInfo[]> {
-  assertEngineExecutionEnabled(engineType);
+  // Catalog reads are safe for OMP even while execution remains gated. The
+  // native command returns an explicit empty catalog; send/switch still assert
+  // the backend execution policy and cannot be enabled by this read path.
+  if (engineType !== "omp") {
+    assertEngineExecutionEnabled(engineType);
+  }
   if (isEngineRpcFallbackMode() && engineType !== "codex") {
     return [];
   }

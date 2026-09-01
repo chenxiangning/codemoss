@@ -72,7 +72,7 @@ fn is_legacy_local_provider(engine: EngineType, provider_profile_id: &str) -> bo
                 == crate::engine::qoder_provider_profile::QODER_LOCAL_PROVIDER_PROFILE_ID
         }
         // Native-only engines are never Shared local providers.
-        EngineType::Gemini | EngineType::Dsh => false,
+        EngineType::Gemini | EngineType::Dsh | EngineType::Omp => false,
     }
 }
 

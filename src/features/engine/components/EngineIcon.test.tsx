@@ -25,6 +25,15 @@ describe("EngineIcon", () => {
     expect(markup).toContain("M16 6H8v12h8V6zm4 16H4V2h16v20z");
     expect(markup).not.toContain("<img");
   });
+  it("renders OMP with its independent brand glyph", () => {
+    const markup = renderToStaticMarkup(<EngineIcon engine="omp" size={16} />);
+
+    expect(markup).toContain("<svg");
+    expect(markup).toContain('fill="url(#omp-engine-icon-gradient)"');
+    expect(markup).toContain("M2.5 3h19v4h-19zM5.5 7h4.3v10H5.5zM13.2 7h4.3v14h-4.3z");
+    expect(markup).not.toContain("M9.205 8.658");
+    expect(markup).not.toContain("<img");
+  });
 
   it.each(["kimi", "grok", "pi"] as const)(
     "renders the %s icon as a theme-aware monochrome svg glyph",

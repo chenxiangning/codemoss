@@ -5,7 +5,7 @@
 
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
-import { useHostFieldsSafe } from "../../../../../app-shell/hosts/appShellHostBus";
+import { useHostFieldsSafe } from "../../../../../app-shell-parts/appShellHostBus";
 import type { EngineType } from "../../../../../types";
 
 export type EngineAvailabilityUiState =

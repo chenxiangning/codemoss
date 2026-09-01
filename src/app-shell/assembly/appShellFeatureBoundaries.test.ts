@@ -16,6 +16,9 @@ const FEATURE_SHELL_BRIDGE_ALLOWLIST = new Set([
   // DSH 切会话回写 composer 选择（c181f935d / ea8fd49ed 引入的既有桥）
   "features/threads/hooks/useThreadActionsResumeThread.ts",
   "features/threads/loaders/dshHistoryLoader.ts",
+  // B7 可用性投影经 host bus 字段级订阅 catalog.availableEngines（1a7463e01 引入的既有桥）
+  "features/composer/components/ChatInputBox/hooks/useEngineAvailabilityProjection.ts",
+  "features/composer/components/ChatInputBox/hooks/useEngineAvailabilityProjection.test.tsx",
 ]);
 
 describe("appShellFeatureBoundaries (T3.5/T3.6/T3.7)", () => {

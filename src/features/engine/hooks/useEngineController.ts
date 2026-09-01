@@ -385,17 +385,19 @@ export function useEngineController({
             phase: resolveEngineCatalogLoadPhase(nextActiveEngine),
           });
         }
-        // 后台预热其余解耦引擎的目录（仅 pi/opencode：静态/低危害探测；
+        // 后台预热其余解耦引擎的目录（仅 pi/opencode/omp：静态/低危害探测；
         // qoder 为 ACP 重探测 + runtime-only，明确排除——其目录由切换/
         // picker 显式路径按需加载）。非激活消费方（Shared 思考档联动/
         // 分组模型列表）依赖响应式目录表非空。idle-prewarm 后台预算，
-        // 失败无副作用：后续切换/翻转路径会以 on-demand 重试。
+        // 失败无副作用：后续切换/翻转/选择器路径会以 on-demand 重试。
         statuses
           .filter(
             (status) =>
               status.installed &&
               status.engineType !== nextActiveEngine &&
-              (status.engineType === "pi" || status.engineType === "opencode"),
+              (status.engineType === "pi" ||
+                status.engineType === "opencode" ||
+                status.engineType === "omp"),
           )
           .forEach((status) => {
             void loadModelsForEngine(status.engineType, [], {

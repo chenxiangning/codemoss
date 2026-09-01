@@ -13,7 +13,7 @@ import { loadClaudeSession as loadClaudeSessionService } from "../../../services
 import { parseClaudeHistoryMessagesWithShadowRecovery } from "../loaders/claudeHistoryLoader";
 import type { ThreadAction } from "./useThreadsReducer";
 
-type ThreadEngine = "claude" | "codex" | "gemini" | "grok" | "kimi" | "opencode" | "pi" | "dsh" | "qoder";
+type ThreadEngine = "claude" | "codex" | "gemini" | "grok" | "kimi" | "opencode" | "pi" | "dsh" | "qoder" | "omp";
 
 type RunWithCreateSessionLoading = <T>(
   params: {
@@ -113,13 +113,13 @@ export function useThreadMessagingThreadResolution({
   const normalizeEngineSelection = useCallback(
     (engine: ThreadEngine | undefined): ThreadEngine =>
       engine === "claude" ||
-      engine === "opencode" ||
       engine === "gemini" ||
       engine === "grok" ||
       engine === "kimi" ||
       engine === "pi" ||
       engine === "dsh" ||
-      engine === "qoder"
+      engine === "qoder" ||
+      engine === "omp"
         ? engine
         : "codex",
     [],
@@ -239,7 +239,9 @@ export function useThreadMessagingThreadResolution({
         !threadId.startsWith("opencode:") &&
         !threadId.startsWith("opencode-pending-") &&
         !threadId.startsWith("dsh:") &&
-        !threadId.startsWith("dsh-pending-")
+        !threadId.startsWith("dsh-pending-") &&
+        !threadId.startsWith("omp:") &&
+        !threadId.startsWith("omp-pending-")
       );
     },
     [],

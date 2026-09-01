@@ -1,3 +1,4 @@
+import type { EngineType } from "../../../../types";
 import { CollapsibleReveal } from "../../../../components/common/CollapsibleReveal";
 import { copyTextToClipboard } from "../../../../utils/clipboard";
 import { Markdown } from "../Markdown";
@@ -32,7 +33,7 @@ type ExitPlanToolContentProps = {
   copiedPlanMarkdown: boolean;
   onToggle: () => void;
   onCopiedPlanMarkdownChange: (copied: boolean) => void;
-  activeEngine?: "claude" | "codex" | "gemini" | "grok" | "kimi" | "opencode" | "pi" | "dsh" | "qoder";
+  activeEngine?: EngineType;
   selectedExecutionMode?: ExitPlanExecutionMode | null;
   onExecute?: (itemId: string, mode: ExitPlanExecutionMode) => Promise<void> | void;
   shouldShowRawOutput: boolean;

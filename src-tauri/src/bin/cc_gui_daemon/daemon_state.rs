@@ -18,6 +18,279 @@ const DELETE_ARCHIVE_TIMEOUT_MS: u64 = 2_000;
 const LIST_THREADS_LIVE_TIMEOUT_MS: u64 = 1_500;
 const CLAUDE_POST_COMPLETION_USAGE_GRACE_MS: u64 = 35_000;
 
+fn emit_daemon_omp_event(
+    event_sink: &DaemonEventSink,
+    agent_event_bus: &engine::agent_event_bus::AgentEventBus,
+    workspace_id: &str,
+    thread_id: &str,
+    turn_id: &str,
+    item_id: &str,
+    native_session_id: Option<&str>,
+    event: engine::events::EngineEvent,
+) {
+    agent_event_bus.publish_engine_event(
+        engine::EngineType::Omp,
+        thread_id,
+        native_session_id,
+        turn_id,
+        Some(turn_id),
+        &event,
+    );
+    if let Some(message) = engine::events::engine_event_to_app_server_event_with_turn_context(
+        &event,
+        thread_id,
+        item_id,
+        Some(turn_id),
+    ) {
+        event_sink.emit_app_server_event(message);
+    }
+}
+
+async fn run_daemon_omp_turn(
+    event_sink: DaemonEventSink,
+    agent_event_bus: engine::agent_event_bus::AgentEventBus,
+    binary: Option<PathBuf>,
+    workspace_id: String,
+    workspace_root: PathBuf,
+    text: String,
+    thread_id: String,
+    turn_id: String,
+    requested_session_id: Option<String>,
+    mut interrupt: oneshot::Receiver<()>,
+) {
+    let thread_id = if thread_id.trim().is_empty() {
+        format!("omp-pending-{turn_id}")
+    } else {
+        thread_id
+    };
+    let item_id = format!("omp-item-{turn_id}");
+    let mut process =
+        match engine::omp_process::OmpAcpProcess::spawn(binary.as_deref(), &workspace_root, None)
+            .await
+        {
+            Ok(process) => process,
+            Err(error) => {
+                emit_daemon_omp_event(
+                    &event_sink,
+                    &agent_event_bus,
+                    &workspace_id,
+                    &thread_id,
+                    &turn_id,
+                    &item_id,
+                    None,
+                    engine::events::EngineEvent::TurnError {
+                        workspace_id: workspace_id.clone(),
+                        error,
+                        code: Some("omp_spawn_failed".to_string()),
+                    },
+                );
+                return;
+            }
+        };
+    if let Err(error) = process.initialize().await {
+        emit_daemon_omp_event(
+            &event_sink,
+            &agent_event_bus,
+            &workspace_id,
+            &thread_id,
+            &turn_id,
+            &item_id,
+            None,
+            engine::events::EngineEvent::TurnError {
+                workspace_id: workspace_id.clone(),
+                error,
+                code: Some("omp_initialize_failed".to_string()),
+            },
+        );
+        return;
+    }
+    let native_session_id = match requested_session_id {
+        Some(session_id) => {
+            let result = process.load_session(&session_id).await;
+            process.clear_pending_frames();
+            result
+        }
+        None => process.new_session().await,
+    };
+    let native_session_id = match native_session_id {
+        Ok(session_id) => session_id,
+        Err(error) => {
+            emit_daemon_omp_event(
+                &event_sink,
+                &agent_event_bus,
+                &workspace_id,
+                &thread_id,
+                &turn_id,
+                &item_id,
+                None,
+                engine::events::EngineEvent::TurnError {
+                    workspace_id: workspace_id.clone(),
+                    error,
+                    code: Some("omp_session_failed".to_string()),
+                },
+            );
+            return;
+        }
+    };
+    // 事件锚定（app/daemon 共享 omp_turn_event_anchors）：SessionStarted 锚定
+    // 调用方 thread_id（首轮 pending 触发前端改名）；其后全部事件锚定
+    // canonical，否则改名后写入已删除的 phantom pending，首轮后续内容被吞。
+    let anchors =
+        engine::omp_history::omp_turn_event_anchors(&thread_id, &native_session_id, false);
+    let stream_thread_id = anchors.stream.clone();
+    emit_daemon_omp_event(
+        &event_sink,
+        &agent_event_bus,
+        &workspace_id,
+        &anchors.session_started,
+        &turn_id,
+        &item_id,
+        Some(&native_session_id),
+        engine::events::EngineEvent::SessionStarted {
+            workspace_id: workspace_id.clone(),
+            session_id: native_session_id.clone(),
+            engine: engine::EngineType::Omp,
+            turn_id: Some(turn_id.clone()),
+        },
+    );
+    // 流式泵：通知帧即时转发（与 app 进程内 run_omp_turn 同一共享实现），
+    // prompt response（stopReason）即 turn 终结。旧的缓冲循环把全部内容
+    // 攒到 turn 结束才 flush，且受 30s 请求超时硬上限。
+    let mut turn_metrics = engine::omp_release::OmpTurnMetrics::start();
+    let prompt_result = process
+        .prompt_streaming(&native_session_id, &text, &mut interrupt, |frame| {
+            let event = engine::omp_process::frame_to_engine_event(&workspace_id, &turn_id, &frame);
+            // FirstDelta metric：首个 canonical TextDelta/ReasoningDelta。
+            turn_metrics.observe_event(&event);
+            emit_daemon_omp_event(
+                &event_sink,
+                &agent_event_bus,
+                &workspace_id,
+                &stream_thread_id,
+                &turn_id,
+                &item_id,
+                Some(&native_session_id),
+                event,
+            );
+        })
+        .await;
+    match prompt_result {
+        Ok(result) => {
+            turn_metrics.finish_completed();
+            emit_daemon_omp_event(
+                &event_sink,
+                &agent_event_bus,
+                &workspace_id,
+                &stream_thread_id,
+                &turn_id,
+                &item_id,
+                Some(&native_session_id),
+                engine::events::EngineEvent::TurnCompleted {
+                    workspace_id: workspace_id.clone(),
+                    result: Some(result),
+                },
+            );
+        }
+        Err(error) if error.contains("interrupted") => {
+            turn_metrics.finish_cancelled();
+            let cancel_result = process.cancel(&native_session_id).await;
+            emit_daemon_omp_event(
+                &event_sink,
+                &agent_event_bus,
+                &workspace_id,
+                &stream_thread_id,
+                &turn_id,
+                &item_id,
+                Some(&native_session_id),
+                engine::events::EngineEvent::TurnError {
+                    workspace_id: workspace_id.clone(),
+                    error: cancel_result
+                        .err()
+                        .unwrap_or_else(|| "OMP turn interrupted".to_string()),
+                    code: Some("omp_interrupted".to_string()),
+                },
+            );
+        }
+        Err(error) => {
+            // Recovery metric：非 interrupt 失败是显式 recovery 转换。
+            engine::omp_release::OMP_METRICS.record_recovery();
+            turn_metrics.finish_failed();
+            let code = if error.contains("exited before returning a frame") {
+                Some("omp_stream_eof_before_terminal".to_string())
+            } else {
+                Some("omp_prompt_failed".to_string())
+            };
+            emit_daemon_omp_event(
+                &event_sink,
+                &agent_event_bus,
+                &workspace_id,
+                &stream_thread_id,
+                &turn_id,
+                &item_id,
+                Some(&native_session_id),
+                engine::events::EngineEvent::TurnError {
+                    workspace_id: workspace_id.clone(),
+                    error,
+                    code,
+                },
+            );
+        }
+    }
+}
+
+async fn run_daemon_omp_turn_sync(
+    binary: Option<PathBuf>,
+    workspace_root: PathBuf,
+    text: &str,
+    requested_session_id: Option<&str>,
+    mut interrupt: oneshot::Receiver<()>,
+) -> Result<(String, String), String> {
+    let mut process =
+        engine::omp_process::OmpAcpProcess::spawn(binary.as_deref(), &workspace_root, None).await?;
+    process.initialize().await?;
+    let native_session_id = match requested_session_id {
+        Some(session_id) => {
+            let result = process.load_session(session_id).await;
+            process.clear_pending_frames();
+            result?
+        }
+        None => process.new_session().await?,
+    };
+    let mut response_text = String::new();
+    let mut turn_metrics = engine::omp_release::OmpTurnMetrics::start();
+    let prompt_result = process
+        .prompt_streaming(&native_session_id, text, &mut interrupt, |frame| {
+            let event = engine::omp_process::frame_to_engine_event(
+                "daemon-sync",
+                "daemon-sync-turn",
+                &frame,
+            );
+            turn_metrics.observe_event(&event);
+            if let engine::events::EngineEvent::TextDelta { text, .. } = event {
+                response_text.push_str(&text);
+            }
+        })
+        .await;
+    match prompt_result {
+        Ok(result) => {
+            turn_metrics.finish_completed();
+            if response_text.trim().is_empty() {
+                response_text = extract_turn_result_text(Some(&result)).unwrap_or_default();
+            }
+            Ok((native_session_id, response_text))
+        }
+        Err(error) => {
+            if error.contains("interrupted") {
+                turn_metrics.finish_cancelled();
+            } else {
+                engine::omp_release::OMP_METRICS.record_recovery();
+                turn_metrics.finish_failed();
+            }
+            Err(error)
+        }
+    }
+}
+
 fn codex_turn_developer_instructions(settings: &crate::types::AppSettings) -> Option<String> {
     crate::backend::app_server_cli::codex_generated_developer_instructions_for_turn(settings)
 }
@@ -205,6 +478,7 @@ impl DaemonState {
             codex_runtime_reload_lock: Mutex::new(()),
             web_service_runtime: Mutex::new(web_service_runtime),
             event_sink,
+            omp_acp_interrupts: Arc::new(Mutex::new(HashMap::new())),
             codex_login_cancels: Mutex::new(HashMap::new()),
             engine_manager: Arc::new(engine::EngineManager::new()),
             active_engine: Mutex::new(active_engine),
@@ -978,6 +1252,17 @@ impl DaemonState {
             .await;
         self.engine_manager
             .set_engine_config(
+                engine::EngineType::Omp,
+                engine::EngineConfig {
+                    bin_path: settings.omp_bin.clone(),
+                    home_dir: None,
+                    custom_args: None,
+                    default_model: None,
+                },
+            )
+            .await;
+        self.engine_manager
+            .set_engine_config(
                 engine::EngineType::Dsh,
                 engine::EngineConfig {
                     bin_path: settings.dsh_bin.clone(),
@@ -1531,6 +1816,7 @@ impl DaemonState {
                                         );
                                     }
                                     engine::EngineType::Codex => {}
+                                    engine::EngineType::Omp => {}
                                 }
                             }
                         }
@@ -3195,6 +3481,50 @@ impl DaemonState {
                     }
                 }))
             }
+            engine::EngineType::Omp => {
+                let workspace_root = self.workspace_path_for_engine(&workspace_id).await?;
+                let binary = self
+                    .engine_manager
+                    .get_engine_config(engine::EngineType::Omp)
+                    .await
+                    .and_then(|config| config.bin_path.map(PathBuf::from));
+                let turn_id = format!("omp-turn-{}", uuid::Uuid::new_v4());
+                let thread_id = thread_id.unwrap_or_else(|| turn_id.clone());
+                let requested_session_id = session_id.clone();
+                let (interrupt_tx, interrupt_rx) = oneshot::channel();
+                self.omp_acp_interrupts
+                    .lock()
+                    .await
+                    .insert(turn_id.clone(), (workspace_id.clone(), interrupt_tx));
+                let event_sink = self.event_sink.clone();
+                let agent_event_bus = self.engine_manager.agent_event_bus();
+                let interrupts = self.omp_acp_interrupts.clone();
+                let workspace_id_for_task = workspace_id.clone();
+                let turn_id_for_task = turn_id.clone();
+                let thread_id_for_task = thread_id.clone();
+                tokio::spawn(async move {
+                    run_daemon_omp_turn(
+                        event_sink,
+                        agent_event_bus,
+                        binary,
+                        workspace_id_for_task,
+                        workspace_root,
+                        text,
+                        thread_id_for_task,
+                        turn_id_for_task.clone(),
+                        requested_session_id,
+                        interrupt_rx,
+                    )
+                    .await;
+                    interrupts.lock().await.remove(&turn_id_for_task);
+                });
+                Ok(json!({
+                    "engine": "omp",
+                    "sessionId": session_id,
+                    "result": {"turn": {"id": turn_id, "status": "started"}},
+                    "turn": {"id": turn_id, "status": "started"}
+                }))
+            }
             engine::EngineType::Dsh => {
                 let workspace_path = self.workspace_path_for_engine(&workspace_id).await?;
                 let runtime = engine::dsh::runtime_settings_from_app(&settings);
@@ -3759,6 +4089,42 @@ impl DaemonState {
                     "text": response,
                 }))
             }
+            engine::EngineType::Omp => {
+                let workspace_root = self.workspace_path_for_engine(&workspace_id).await?;
+                let binary = self
+                    .engine_manager
+                    .get_engine_config(engine::EngineType::Omp)
+                    .await
+                    .and_then(|config| config.bin_path.map(PathBuf::from));
+                let turn_id = format!("omp-sync-{}", uuid::Uuid::new_v4());
+                let (interrupt_tx, interrupt_rx) = oneshot::channel();
+                self.omp_acp_interrupts
+                    .lock()
+                    .await
+                    .insert(turn_id.clone(), (workspace_id.clone(), interrupt_tx));
+                let response = run_daemon_omp_turn_sync(
+                    binary,
+                    workspace_root,
+                    &text,
+                    session_id.as_deref(),
+                    interrupt_rx,
+                )
+                .await;
+                self.omp_acp_interrupts.lock().await.remove(&turn_id);
+                let (native_session_id, response) = response?;
+                self.record_auto_session_metadata_if_present(
+                    &workspace_id,
+                    Some(&native_session_id),
+                    auto_session,
+                    "omp",
+                )
+                .await;
+                Ok(json!({
+                    "engine": "omp",
+                    "sessionId": native_session_id,
+                    "text": response,
+                }))
+            }
             engine::EngineType::Dsh => {
                 let workspace_path = self.workspace_path_for_engine(&workspace_id).await?;
                 let runtime = engine::dsh::runtime_settings_from_app(&settings);
@@ -3852,6 +4218,23 @@ impl DaemonState {
                 )
                 .await
             }
+            engine::EngineType::Omp => {
+                let turn_ids = {
+                    let interrupts = self.omp_acp_interrupts.lock().await;
+                    interrupts
+                        .iter()
+                        .filter(|(_, (workspace, _))| workspace == &workspace_id)
+                        .map(|(turn_id, _)| turn_id.clone())
+                        .collect::<Vec<_>>()
+                };
+                for turn_id in turn_ids {
+                    if let Some((_, sender)) = self.omp_acp_interrupts.lock().await.remove(&turn_id)
+                    {
+                        let _ = sender.send(());
+                    }
+                }
+                Ok(())
+            }
         }
     }
 
@@ -3935,6 +4318,23 @@ impl DaemonState {
                     &turn_id,
                 )
                 .await
+            }
+            engine::EngineType::Omp => {
+                let sender = {
+                    let mut interrupts = self.omp_acp_interrupts.lock().await;
+                    if interrupts
+                        .get(&turn_id)
+                        .is_some_and(|(owner_workspace, _)| owner_workspace == &workspace_id)
+                    {
+                        interrupts.remove(&turn_id)
+                    } else {
+                        None
+                    }
+                };
+                if let Some((_, sender)) = sender {
+                    let _ = sender.send(());
+                }
+                Ok(())
             }
         }
     }

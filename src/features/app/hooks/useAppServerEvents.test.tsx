@@ -835,6 +835,42 @@ describe("useAppServerEvents", () => {
     });
   });
 
+  it("passes omp engine hint when a native session starts", async () => {
+    const handlers: Handlers = {
+      onThreadSessionIdUpdated: vi.fn(),
+    };
+    const { root } = await mount(handlers);
+
+    await act(async () => {
+      listener?.({
+        workspace_id: "ws-omp",
+        message: {
+          method: "thread/started",
+          params: {
+            threadId: "omp-pending-1",
+            sessionId: "omp-session-1",
+            turnId: "omp-turn-1",
+            engine: "omp",
+          },
+        },
+      });
+
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    expect(handlers.onThreadSessionIdUpdated).toHaveBeenCalledWith(
+      "ws-omp",
+      "omp-pending-1",
+      "omp-session-1",
+      "omp",
+      "omp-turn-1",
+    );
+
+    await act(async () => {
+      root.unmount();
+    });
+  });
+
   it("keeps codex shared-session native binding unchanged on thread/started", async () => {
     const handlers: Handlers = {
       onTurnCompleted: vi.fn(),

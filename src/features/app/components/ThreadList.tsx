@@ -895,6 +895,8 @@ export function ThreadList({
               ? "DSH"
             : engineSource === "qoder"
               ? "Qoder CLI"
+            : engineSource === "omp"
+              ? "OMP CLI"
             : "Codex";
     const engineTitle = isSharedThread
       ? `Shared Session · ${baseEngineTitle}`

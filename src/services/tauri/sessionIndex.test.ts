@@ -88,6 +88,26 @@ describe("sessionIndex pending drafts", () => {
       ],
     });
   });
+  it("writes OMP native ids with an explicit OMP engine", async () => {
+    writeClientCreatedSessionIndex({
+      engine: "omp",
+      sessionId: "omp:native-session-1",
+      workspacePath: "/tmp/ws",
+      title: "OMP session",
+    });
+    await flushIndexWrite();
+
+    expect(invoke).toHaveBeenCalledWith("upsert_session_index_rows", {
+      rows: [
+        expect.objectContaining({
+          engine: "omp",
+          sessionId: "native-session-1",
+          title: "OMP session",
+        }),
+      ],
+    });
+  });
+
 
   it("tombstones a remapped pending Index row and ignores non-pending ids", async () => {
     scheduleTombstoneLocalPendingDraftIndexRow(

@@ -564,11 +564,12 @@ export const ButtonArea = ({
           {(currentProvider === 'codex' ||
             currentProvider === 'claude' ||
             currentProvider === 'grok' ||
-            // dsh / qoder / pi：仅当选中模型在 catalog 声明了 reasoning efforts
+            // dsh / qoder / pi / omp：仅当选中模型在 catalog 声明了 reasoning efforts
             // 时才显示思考强度；切到无档位模型时隐藏。
             (currentProvider === 'dsh' && (reasoningOptions?.length ?? 0) > 0) ||
             (currentProvider === 'qoder' && (reasoningOptions?.length ?? 0) > 0) ||
-            (currentProvider === 'pi' && (reasoningOptions?.length ?? 0) > 0)) && (
+            (currentProvider === 'pi' && (reasoningOptions?.length ?? 0) > 0) ||
+            (currentProvider === 'omp' && (reasoningOptions?.length ?? 0) > 0)) && (
             <ReasoningSelect
               value={reasoningEffort}
               onChange={onReasoningChange ?? NOOP_REASONING}
@@ -578,7 +579,8 @@ export const ButtonArea = ({
                 currentProvider === 'grok' ||
                 currentProvider === 'dsh' ||
                 currentProvider === 'qoder' ||
-                currentProvider === 'pi'
+                currentProvider === 'pi' ||
+                currentProvider === 'omp'
               }
               defaultLabel={
                 currentProvider === 'claude'
@@ -587,7 +589,8 @@ export const ButtonArea = ({
                     ? t('reasoning.grokDefault', { defaultValue: 'Default' })
                     : currentProvider === 'dsh' ||
                         currentProvider === 'qoder' ||
-                        currentProvider === 'pi'
+                        currentProvider === 'pi' ||
+                        currentProvider === 'omp'
                       ? t('reasoning.default', { defaultValue: 'Default' })
                       : undefined
               }

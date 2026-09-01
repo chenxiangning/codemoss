@@ -21,6 +21,7 @@ import type {
   RateLimitSnapshot,
   ThreadTokenUsage,
 } from "../../../types";
+import type { CommitMessageEngine } from "../../../services/tauri/commitMessage";
 import { isEngineCapabilityAvailable } from "../../engine/engineCapabilityMatrix";
 import { useStatusPanelData } from "../hooks/useStatusPanelData";
 import { loadStatusPanelStyles } from "../../../styles/featureStyleLoaders";
@@ -116,7 +117,7 @@ interface StatusPanelProps extends CodeAnnotationBridgeProps {
   onCommitMessageChange?: (value: string) => void;
   onGenerateCommitMessage?: (
     language?: "zh" | "en",
-    engine?: "codex" | "claude" | "gemini" | "grok" | "kimi" | "opencode" | "pi",
+    engine?: CommitMessageEngine,
     selectedPaths?: string[],
   ) => void | Promise<void>;
   onCommit?: (selectedPaths?: string[]) => void | Promise<void>;

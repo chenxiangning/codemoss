@@ -10,6 +10,7 @@ import {
   GROK_LOCAL_PROVIDER_PROFILE_ID,
   KIMI_LOCAL_PROVIDER_PROFILE_ID,
   LOCAL_PROVIDER_PROFILE_DISPLAY_NAME,
+  OMP_LOCAL_PROVIDER_PROFILE_ID,
   OPENCODE_LOCAL_PROVIDER_PROFILE_ID,
   PI_LOCAL_PROVIDER_PROFILE_ID,
   QODER_GLOBAL_PROVIDER_PROFILE_ID,
@@ -184,6 +185,7 @@ const LOCAL_PROVIDER_PROFILE_IDS = new Set([
   PI_LOCAL_PROVIDER_PROFILE_ID,
   DSH_LOCAL_PROVIDER_PROFILE_ID,
   QODER_LOCAL_PROVIDER_PROFILE_ID,
+  OMP_LOCAL_PROVIDER_PROFILE_ID,
 ]);
 
 export function isManagedEngineProviderProfileId(
@@ -211,9 +213,11 @@ export function localProviderBindingForEngine(
                 ? PI_LOCAL_PROVIDER_PROFILE_ID
                 : engine === "dsh"
                   ? DSH_LOCAL_PROVIDER_PROFILE_ID
-                  : engine === "qoder"
-                    ? QODER_GLOBAL_PROVIDER_PROFILE_ID
-                    : null;
+                  : engine === "omp"
+                    ? OMP_LOCAL_PROVIDER_PROFILE_ID
+                    : engine === "qoder"
+                      ? QODER_GLOBAL_PROVIDER_PROFILE_ID
+                      : null;
   if (!localId) {
     return {};
   }

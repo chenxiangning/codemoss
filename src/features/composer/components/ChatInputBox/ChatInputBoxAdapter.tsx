@@ -875,7 +875,7 @@ function attachmentToGeminiImageInput(attachment: Attachment): string | null {
 
 function attachmentsToImageInputs(
   attachments: Attachment[] | undefined,
-  provider: 'claude' | 'codex' | 'gemini' | 'grok' | 'kimi' | 'opencode' | 'pi' | 'dsh' | 'qoder' = 'claude',
+  provider: 'claude' | 'codex' | 'gemini' | 'grok' | 'kimi' | 'opencode' | 'pi' | 'dsh' | 'qoder' | 'omp' = 'claude',
 ): string[] | undefined {
   if (!attachments || attachments.length === 0) {
     return undefined;
@@ -895,7 +895,7 @@ function attachmentsToImageInputs(
 /**
  * Maps Composer engine types to ChatInputBox provider IDs
  */
-type ChatInputProvider = 'claude' | 'codex' | 'gemini' | 'grok' | 'kimi' | 'opencode' | 'pi' | 'dsh' | 'qoder';
+type ChatInputProvider = 'claude' | 'codex' | 'gemini' | 'grok' | 'kimi' | 'opencode' | 'pi' | 'dsh' | 'qoder' | 'omp';
 
 function engineToProvider(engine?: EngineType): ChatInputProvider {
   switch (engine) {
@@ -915,6 +915,8 @@ function engineToProvider(engine?: EngineType): ChatInputProvider {
       return 'dsh';
     case 'qoder':
       return 'qoder';
+    case 'omp':
+      return 'omp';
     case 'claude':
     default:
       return 'claude';
@@ -2044,6 +2046,7 @@ export const ChatInputBoxAdapter = memo(forwardRef<ChatInputBoxHandle, ChatInput
         pi: resolveStatusLabel('pi'),
         dsh: isSharedSession ? sharedUnsupported : resolveStatusLabel('dsh'),
         qoder: resolveStatusLabel('qoder'),
+        omp: resolveStatusLabel('omp'),
       } as const;
     }, [engines, isSharedSession, t]);
 
@@ -2051,7 +2054,6 @@ export const ChatInputBoxAdapter = memo(forwardRef<ChatInputBoxHandle, ChatInput
       if (!engines || engines.length === 0) {
         return undefined;
       }
-
       const engineDisplayName: Record<EngineType, string> = {
         claude: 'Claude Code',
         codex: 'Codex CLI',
@@ -2062,6 +2064,7 @@ export const ChatInputBoxAdapter = memo(forwardRef<ChatInputBoxHandle, ChatInput
         pi: 'PI CLI',
         dsh: 'DeepSeek Harness',
         qoder: 'Qoder CLI',
+        omp: 'OMP CLI',
       };
 
       const byEngine = new Map(engines.map((entry) => [entry.type, entry]));

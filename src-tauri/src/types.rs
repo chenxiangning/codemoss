@@ -910,6 +910,9 @@ pub(crate) struct AppSettings {
     pub(crate) dsh_bin: Option<String>,
     #[serde(default, rename = "qoderBin")]
     pub(crate) qoder_bin: Option<String>,
+    /// OMP binary path, persisted with the rest of the engine launch settings.
+    #[serde(default, rename = "ompBin")]
+    pub(crate) omp_bin: Option<String>,
     /// Qoder Global configuration directory. `qoderBin` remains the Global
     /// binary for backward compatibility.
     #[serde(default, rename = "qoderConfigDir")]
@@ -2039,6 +2042,7 @@ impl Default for AppSettings {
             pi_bin: None,
             dsh_bin: None,
             qoder_bin: None,
+            omp_bin: None,
             qoder_config_dir: None,
             qoder_cn_bin: None,
             qoder_cn_config_dir: None,
@@ -2431,6 +2435,18 @@ mod tests {
             reparsed.last_composer_prefs_by_engine,
             settings.last_composer_prefs_by_engine
         );
+    }
+
+    #[test]
+    fn app_settings_round_trips_omp_binary_path() {
+        let raw = r#"{"ompBin":"/opt/omp/bin/omp"}"#;
+        let settings: AppSettings = serde_json::from_str(raw).expect("settings deserialize");
+        assert_eq!(settings.omp_bin.as_deref(), Some("/opt/omp/bin/omp"));
+
+        let echoed = serde_json::to_string(&settings).expect("settings serialize");
+        assert!(echoed.contains(r#""ompBin":"/opt/omp/bin/omp""#));
+        let reparsed: AppSettings = serde_json::from_str(&echoed).expect("echo deserialize");
+        assert_eq!(reparsed.omp_bin, settings.omp_bin);
     }
 
     #[test]

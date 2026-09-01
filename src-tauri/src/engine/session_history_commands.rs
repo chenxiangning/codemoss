@@ -896,6 +896,22 @@ pub async fn cancel_dsh_host(state: State<'_, AppState>, app: AppHandle) -> Resu
     Ok(json!({ "ok": true }))
 }
 
+/// Return the OMP native history boundary for a session.
+///
+/// OMP 18.0.11 verifies ACP `session/load`, but no transcript/history payload
+/// schema has been established. Keep this command reachable without inventing
+/// messages: callers receive the canonical binding and `availability: unknown`.
+#[tauri::command]
+pub async fn load_omp_session_history(
+    workspace_path: String,
+    session_id: String,
+) -> Result<Value, String> {
+    let _ = workspace_path;
+    let result =
+        crate::engine::omp_history::load_omp_history_without_verified_endpoint(&session_id)?;
+    serde_json::to_value(result).map_err(|error| error.to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::{

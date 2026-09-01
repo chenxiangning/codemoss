@@ -2,10 +2,15 @@ import { describe, expect, it } from "vitest";
 import type { EngineFeatures, EngineStatus } from "../../../types";
 import {
   buildAvailableEngines,
+  DISPLAY_ENGINE_TYPES,
   ENABLED_ENGINE_TYPES,
 } from "./engineControllerAvailability";
-
 describe("engineControllerAvailability", () => {
+  it("projects all registered engines into execution when policy allows them", () => {
+    expect(DISPLAY_ENGINE_TYPES).toContain("omp");
+    expect(ENABLED_ENGINE_TYPES).toContain("omp");
+  });
+
   it("projects labels from the canonical registry and excludes retired engines", () => {
     expect(ENABLED_ENGINE_TYPES).toEqual([
       "claude",
@@ -16,6 +21,7 @@ describe("engineControllerAvailability", () => {
       "pi",
       "dsh",
       "qoder",
+      "omp",
     ]);
     expect(buildAvailableEngines([], false)).toEqual([
       expect.objectContaining({
@@ -28,6 +34,12 @@ describe("engineControllerAvailability", () => {
         type: "codex",
         displayName: "Codex CLI",
         shortName: "Codex",
+      }),
+      expect.objectContaining({
+        type: "gemini",
+        displayName: "Gemini CLI",
+        shortName: "Gemini",
+        availabilityState: "loading",
       }),
       expect.objectContaining({
         type: "grok",
@@ -59,7 +71,36 @@ describe("engineControllerAvailability", () => {
         displayName: "Qoder CLI",
         shortName: "Qoder",
       }),
+      expect.objectContaining({
+        type: "omp",
+        displayName: "OMP CLI",
+        shortName: "OMP",
+        availabilityState: "loading",
+      }),
     ]);
+  });
+  it("projects OMP as ready when backend detection reports it installed", () => {
+    const omp = buildAvailableEngines(
+      [
+        {
+          engineType: "omp",
+          features: {} as EngineFeatures,
+          installed: true,
+          version: "18.0.11",
+          binPath: "/opt/homebrew/bin/omp",
+          models: [],
+          error: null,
+        },
+      ],
+      true,
+    ).find((engine) => engine.type === "omp");
+
+    expect(omp).toMatchObject({
+      installed: true,
+      version: "18.0.11",
+      availabilityState: "ready",
+      availabilityLabelKey: null,
+    });
   });
 });
 

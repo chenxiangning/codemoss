@@ -20,6 +20,8 @@ import piCliMonoIcon from "@lobehub/icons-static-svg/icons/pi.svg";
 import qoderCliMonoIcon from "@lobehub/icons-static-svg/icons/qoder.svg";
 import qwenCliMonoIcon from "@lobehub/icons-static-svg/icons/qwen.svg";
 import traeCliMonoIcon from "@lobehub/icons-static-svg/icons/trae.svg";
+import ompCliIcon from "../../../assets/engine-icons/omp.svg";
+import ompCliMonoIcon from "../../../assets/engine-icons/omp-mono.svg";
 import ChevronDown from "lucide-react/dist/esm/icons/chevron-down";
 import Ellipsis from "lucide-react/dist/esm/icons/ellipsis";
 import { cn } from "@/lib/utils";
@@ -109,6 +111,7 @@ export const CLI_DOCS_HREF_BY_ID: Record<CliEngineId, string> = {
   pi: "https://pi.dev/docs/latest/usage",
   iflow: "https://github.com/iflow-ai/iflow-cli",
   qoder: "https://docs.qoder.com/en/cli/using-cli",
+  omp: "https://github.com/can1357/oh-my-pi",
   qwen: "https://qwenlm.github.io/qwen-code-docs/en/users/overview/",
   codebuddy: "https://www.codebuddy.ai/docs/cli/quickstart",
   copilot: "https://docs.github.com/en/copilot/how-tos/copilot-cli",
@@ -132,6 +135,7 @@ const CLI_ICON_BY_ID: Record<CliEngineId, string | null> = {
   pi: piCliIcon,
   iflow: null,
   qoder: qoderCliMonoIcon,
+  omp: ompCliIcon,
   qwen: qwenCliMonoIcon,
   codebuddy: codeBuddyCliMonoIcon,
   copilot: copilotCliMonoIcon,
@@ -155,6 +159,7 @@ const CLI_MONO_ICON_BY_ID: Record<CliEngineId, string | null> = {
   pi: piCliMonoIcon,
   iflow: null,
   qoder: qoderCliMonoIcon,
+  omp: ompCliMonoIcon,
   qwen: qwenCliMonoIcon,
   codebuddy: codeBuddyCliMonoIcon,
   copilot: copilotCliMonoIcon,
@@ -162,7 +167,7 @@ const CLI_MONO_ICON_BY_ID: Record<CliEngineId, string | null> = {
   kiro: null,
 };
 
-const COLOR_CLI_ICON_IDS = new Set<CliEngineId>(["claude", "codex", "dsh"]);
+const COLOR_CLI_ICON_IDS = new Set<CliEngineId>(["claude", "codex", "dsh", "omp"]);
 
 export function buildCliEngineNavItems(options: {
   claudeHasConfig: boolean;
@@ -173,6 +178,7 @@ export function buildCliEngineNavItems(options: {
   piHasConfig: boolean;
   dshHasConfig: boolean;
   qoderHasConfig: boolean;
+  ompHasConfig: boolean;
 }): CliEngineNavItem[] {
   return [
     { key: "claude", label: "Claude Code CLI", hasConfig: options.claudeHasConfig, supported: true, docsUrl: CLI_DOCS_HREF_BY_ID.claude },
@@ -184,6 +190,13 @@ export function buildCliEngineNavItems(options: {
     { key: "pi", label: "PI CLI", hasConfig: options.piHasConfig, supported: true, docsUrl: CLI_DOCS_HREF_BY_ID.pi },
     { key: "dsh", label: "DeepSeek Harness", hasConfig: options.dshHasConfig, supported: true, docsUrl: CLI_DOCS_HREF_BY_ID.dsh },
     { key: "qoder", label: "Qoder CLI", hasConfig: options.qoderHasConfig, supported: true, docsUrl: CLI_DOCS_HREF_BY_ID.qoder },
+    {
+      key: "omp",
+      label: "OMP CLI",
+      hasConfig: options.ompHasConfig,
+      supported: true,
+      docsUrl: CLI_DOCS_HREF_BY_ID.omp,
+    },
     { key: "glm", label: "GLM CLI", supported: false, docsUrl: CLI_DOCS_HREF_BY_ID.glm },
     { key: "trae", label: "Trae CLI", supported: false, docsUrl: CLI_DOCS_HREF_BY_ID.trae },
     { key: "cursor", label: "Cursor CLI", supported: false, docsUrl: CLI_DOCS_HREF_BY_ID.cursor },

@@ -2,7 +2,7 @@ import { isClaudeSessionBootstrapThreadId } from "./claudeForkThread";
 
 export type PendingResolutionInput = {
   workspaceId: string;
-  engine: "claude" | "gemini" | "grok" | "kimi" | "opencode" | "pi" | "dsh" | "qoder";
+  engine: "claude" | "gemini" | "grok" | "kimi" | "opencode" | "pi" | "dsh" | "qoder" | "omp";
   threadsByWorkspace: Record<string, Array<{ id: string }>>;
   activeThreadIdByWorkspace: Record<string, string | null>;
   threadStatusById: Record<string, { isProcessing?: boolean } | undefined>;
@@ -22,7 +22,7 @@ function normalizeTurnId(value: string | null | undefined): string {
 }
 
 function isPendingThreadForEngine(
-  engine: "claude" | "gemini" | "grok" | "kimi" | "opencode" | "pi" | "dsh" | "qoder",
+  engine: "claude" | "gemini" | "grok" | "kimi" | "opencode" | "pi" | "dsh" | "qoder" | "omp",
   threadId: string,
 ): boolean {
   if (engine === "claude") {

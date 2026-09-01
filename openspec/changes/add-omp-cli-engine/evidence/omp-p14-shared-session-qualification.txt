@@ -1,0 +1,33 @@
+OMP P14 Shared Session qualification matrix
+Captured: 2026-08-31
+Decision: OMP remains Native-only; Shared Session remains disabled.
+
+Status vocabulary:
+- supported = process-level cross-client evidence covers the contract
+- unknown = a local protocol/unit contract or advertised capability exists, but cross-client process evidence is absent
+- unsupported = the current product boundary explicitly excludes OMP from Shared Session
+
+| Area | Status | Evidence | Qualification conclusion |
+|---|---|---|---|
+| terminal | unknown | `omp-cli-surface.txt`: real ACP `initialize` and `session/new` smoke; no prompt terminal event captured | ACP entry point is proven, Shared terminal settlement is not |
+| handoff | unsupported | `src/features/shared-session/utils/sharedSessionEngines.ts`: OMP absent from supported-engine set | No Shared cross-client context handoff path exists |
+| provider binding | unsupported | `src-tauri/src/shared_projection/commands.rs`: OMP is Native-only and not a Shared local provider | Shared provider/profile ownership is not available |
+| resume | unknown | ACP initialize advertises `resume`; session smoke did not execute a resume process | Advertisement is not resume evidence |
+| cancel | unknown | `omp-acp-transport/spec.md` defines cancellation contract; no real ACP cancel trace | Request/ack/terminal cancellation parity is unqualified |
+| tool exchange | unknown | `omp-cli-surface.txt` observed ready/get_state/control frames only | No Shared tool exchange ordering/ownership trace |
+| recovery | unknown | `omp-p13-release-hardening.txt` covers typed local release guards only | Local launch rollback is not Shared recovery evidence |
+
+Qualification gate:
+- All seven areas must be `supported` before Shared Session can be evaluated.
+- Current matrix has two explicitly `unsupported` areas and five `unknown` areas.
+- Any non-supported area requires `shared-session-unqualified` rollback/no-support handling.
+- Even an all-green future matrix only reaches `qualification-passed-review-required`; this artifact never enables Shared Session.
+
+Process evidence boundary:
+- Real OMP evidence is limited to local binary `omp/18.0.11`, ACP initialize/session-new, and RPC ready/get_state smoke.
+- Existing focused Rust/TypeScript/Vitest tests prove local transport/projection/release contracts only.
+- No second client/process has joined an OMP session, exchanged context/tools, resumed, cancelled, or recovered a shared turn.
+- Therefore P14.2 is intentionally not claimed.
+
+Focused verification:
+`npm exec vitest run src/features/engine/omp/ompSharedSessionQualification.test.ts` passed (3 tests).

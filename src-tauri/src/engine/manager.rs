@@ -16,14 +16,16 @@ use super::claude::{ClaudeSession, ClaudeSessionManager};
 use super::gemini::GeminiSession;
 use super::grok::GrokSession;
 use super::kimi::KimiSession;
+use super::omp_rpc_process::OmpRpcProcess;
+use super::omp_runtime::{OmpRuntimeKey, OmpRuntimeOwner, OmpRuntimeState};
 use super::opencode::OpenCodeSession;
 use super::pi::PiSession;
 use super::qoder::QoderSession;
 use super::qoder_provider_profile::{QoderDistributionSettings, QoderProviderLaunchProfile};
 use super::status::{
     detect_all_engines_scoped, detect_claude_status, detect_codex_status, detect_grok_status,
-    detect_kimi_status, detect_opencode_status_with_options, detect_pi_status_with_options,
-    detect_qoder_status_with_options,
+    detect_kimi_status, detect_omp_status, detect_opencode_status_with_options,
+    detect_pi_status_with_options, detect_qoder_status_with_options,
 };
 use super::status::EngineStatusEventSink;
 use super::{disabled_engine_status, AuthState, EngineConfig, EngineStatus, EngineType};
@@ -38,6 +40,11 @@ pub struct EngineManager {
 
     /// Cached engine statuses
     engine_statuses: RwLock<HashMap<EngineType, EngineStatus>>,
+
+    /// OMP Native RPC runtimes are owned by the manager and keyed by the full
+    /// workspace/profile/provider/session identity. ACP processes remain separate.
+    omp_rpc_runtimes: Mutex<HashMap<OmpRuntimeKey, Arc<Mutex<OmpRpcProcess>>>>,
+    omp_runtime_owner: Mutex<OmpRuntimeOwner>,
 
     /// 检测簿记（refactor-engine-detection-pipeline B3）：上次全量检测时间、
     /// 检测上下文（gemini gate + 黑名单集合，变化即缓存失效）、per-engine
@@ -259,6 +266,8 @@ impl EngineManager {
             adapter_registry: EngineAdapterRegistry::with_builtins(),
             active_engine: RwLock::new(EngineType::default()),
             engine_statuses: RwLock::new(HashMap::new()),
+            omp_rpc_runtimes: Mutex::new(HashMap::new()),
+            omp_runtime_owner: Mutex::new(OmpRuntimeOwner::default()),
             detect_bookkeeping: StdMutex::new(DetectBookkeeping::default()),
             detect_revalidate_inflight: Arc::new(AtomicBool::new(false)),
             detect_run_counter: Arc::new(AtomicU64::new(1)),
@@ -274,6 +283,138 @@ impl EngineManager {
         }
     }
 
+    /// Get or create the manager-owned OMP Native RPC runtime for an identity.
+    pub(crate) async fn get_or_create_omp_rpc_runtime(
+        &self,
+        key: OmpRuntimeKey,
+        workspace_root: &Path,
+    ) -> Result<Arc<Mutex<OmpRpcProcess>>, String> {
+        let mut runtimes = self.omp_rpc_runtimes.lock().await;
+        if let Some(process) = runtimes.get(&key) {
+            return Ok(process.clone());
+        }
+
+        let generation = self.omp_runtime_owner.lock().await.start(key.clone());
+        let binary = self
+            .get_engine_config(EngineType::Omp)
+            .await
+            .and_then(|config| config.bin_path.map(PathBuf::from));
+        let mut process = match OmpRpcProcess::spawn(binary.as_deref(), workspace_root, None).await
+        {
+            Ok(process) => process,
+            Err(error) => {
+                let _ = self.omp_runtime_owner.lock().await.transition(
+                    &key,
+                    generation,
+                    OmpRuntimeState::Stopped,
+                );
+                return Err(error);
+            }
+        };
+        if let Err(error) = process.read_ready().await {
+            let _ = process.shutdown().await;
+            let _ = self.omp_runtime_owner.lock().await.transition(
+                &key,
+                generation,
+                OmpRuntimeState::Stopped,
+            );
+            return Err(error);
+        }
+
+        let process = Arc::new(Mutex::new(process));
+        runtimes.insert(key.clone(), process.clone());
+        let _ = self.omp_runtime_owner.lock().await.transition(
+            &key,
+            generation,
+            OmpRuntimeState::Ready,
+        );
+        Ok(process)
+    }
+
+    /// Issue a Native RPC request through an owned runtime.
+    pub(crate) async fn omp_rpc_request(
+        &self,
+        key: &OmpRuntimeKey,
+        workspace_root: &Path,
+        command: &str,
+    ) -> Result<(serde_json::Value, Vec<serde_json::Value>), String> {
+        let process = self
+            .get_or_create_omp_rpc_runtime(key.clone(), workspace_root)
+            .await?;
+        let mut process_guard = process.lock().await;
+        let response = process_guard.request(command).await;
+        let controls = process_guard.take_control_events();
+        match response {
+            Ok(response) => Ok((response, controls)),
+            Err(error) => {
+                if process_guard.is_stopped() {
+                    let mut runtimes = self.omp_rpc_runtimes.lock().await;
+                    if runtimes
+                        .get(key)
+                        .is_some_and(|candidate| Arc::ptr_eq(candidate, &process))
+                    {
+                        runtimes.remove(key);
+                    }
+                }
+                Err(error)
+            }
+        }
+    }
+
+    pub(crate) async fn remove_omp_rpc_runtime(&self, key: &OmpRuntimeKey) -> Result<(), String> {
+        let process = self.omp_rpc_runtimes.lock().await.remove(key);
+        let Some(process) = process else {
+            return Ok(());
+        };
+        let result = match Arc::try_unwrap(process) {
+            Ok(process) => process.into_inner().shutdown().await,
+            Err(_) => Err("OMP RPC runtime is still in use".to_string()),
+        };
+        if result.is_ok() {
+            let mut owner = self.omp_runtime_owner.lock().await;
+            if let Some(record) = owner.get(key).cloned() {
+                let _ = owner.transition(key, record.generation, OmpRuntimeState::Stopping);
+                let _ = owner.transition(key, record.generation, OmpRuntimeState::Stopped);
+            }
+        }
+        result
+    }
+
+    pub(crate) async fn omp_rpc_runtime_state(
+        &self,
+        key: &OmpRuntimeKey,
+    ) -> Option<OmpRuntimeState> {
+        self.omp_runtime_owner
+            .lock()
+            .await
+            .get(key)
+            .map(|record| record.state)
+    }
+    pub(crate) async fn remove_omp_rpc_runtimes_for_workspace(
+        &self,
+        workspace_id: &str,
+    ) -> Result<(), String> {
+        let keys = self
+            .omp_rpc_runtimes
+            .lock()
+            .await
+            .keys()
+            .filter(|key| key.workspace_id == workspace_id)
+            .cloned()
+            .collect::<Vec<_>>();
+        let mut errors = Vec::new();
+        for key in keys {
+            if let Err(error) = self.remove_omp_rpc_runtime(&key).await {
+                errors.push(error);
+            }
+        }
+        if errors.is_empty() {
+            Ok(())
+        } else {
+            Err(errors.join("; "))
+        }
+    }
+
     pub(crate) fn agent_event_bus(&self) -> AgentEventBus {
         self.agent_event_bus.clone()
     }
@@ -283,8 +424,15 @@ impl EngineManager {
         *self.active_engine.read().await
     }
 
-    /// Set the active engine type
     pub async fn set_active_engine(&self, engine_type: EngineType) -> Result<(), String> {
+        // OMP session creation is keyed by the explicit engine/thread contract.
+        // Do not force a cold-start status probe through this setter: that probe
+        // can block the create-session UI while the OMP pending thread is ready.
+        if engine_type == EngineType::Omp {
+            *self.active_engine.write().await = engine_type;
+            return Ok(());
+        }
+
         // Verify engine is installed
         let statuses = self.engine_statuses.read().await;
         if let Some(status) = statuses.get(&engine_type) {
@@ -351,17 +499,18 @@ impl EngineManager {
             EngineType::Claude => detect_claude_status(bin).await,
             EngineType::Codex => detect_codex_status(bin).await,
             EngineType::Gemini => disabled_engine_status(engine_type),
-            EngineType::OpenCode => detect_opencode_status_with_options(bin, false).await,
-            EngineType::Kimi => detect_kimi_status(bin).await,
-            EngineType::Grok => detect_grok_status(bin).await,
-            EngineType::Pi => detect_pi_status_with_options(bin, false).await,
             EngineType::Qoder => detect_qoder_status_with_options(bin, false).await,
+            EngineType::Omp => detect_omp_status(bin).await,
             EngineType::Dsh => {
                 crate::engine::dsh::detect_dsh_status(
                     &crate::engine::dsh::runtime_settings_from_engine_config(config),
                 )
                 .await
             }
+            EngineType::Grok => detect_grok_status(bin).await,
+            EngineType::OpenCode => detect_opencode_status_with_options(bin, false).await,
+            EngineType::Kimi => detect_kimi_status(bin).await,
+            EngineType::Pi => detect_pi_status_with_options(bin, false).await,
         };
 
         // Cache the result
@@ -398,6 +547,7 @@ impl EngineManager {
             grok_bin,
             pi_bin,
             qoder_bin,
+            omp_bin,
             dsh_settings,
         ) = {
             let configs = self.engine_configs.read().await;
@@ -426,6 +576,9 @@ impl EngineManager {
                 configs
                     .get(&EngineType::Qoder)
                     .and_then(|c| c.bin_path.clone()),
+                configs
+                    .get(&EngineType::Omp)
+                    .and_then(|c| c.bin_path.clone()),
                 crate::engine::dsh::runtime_settings_from_engine_config(
                     configs.get(&EngineType::Dsh),
                 ),
@@ -441,6 +594,7 @@ impl EngineManager {
             grok_bin.as_deref(),
             pi_bin.as_deref(),
             qoder_bin.as_deref(),
+            omp_bin.as_deref(),
             &dsh_settings,
             gemini_enabled,
             disabled_engines,
@@ -448,7 +602,6 @@ impl EngineManager {
             on_status,
         )
         .await;
-
         let statuses = statuses
             .into_iter()
             .map(|status| match status.engine_type {

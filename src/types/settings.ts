@@ -155,6 +155,8 @@ export type AppSettings = {
   qoderCnConfigDir: string | null;
   grokBin: string | null;
   opencodeBin: string | null;
+  /** Optional OMP executable override; native provider metadata is separate. */
+  ompBin?: string | null;
   dshBin: string | null;
   dshHost: string;
   dshPort: number;

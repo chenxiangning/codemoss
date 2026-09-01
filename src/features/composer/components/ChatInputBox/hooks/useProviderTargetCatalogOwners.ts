@@ -24,6 +24,8 @@ import {
   GROK_LOCAL_PROVIDER_PROFILE_NAME,
   KIMI_LOCAL_PROVIDER_PROFILE_ID,
   KIMI_LOCAL_PROVIDER_PROFILE_NAME,
+  OMP_LOCAL_PROVIDER_PROFILE_ID,
+  OMP_LOCAL_PROVIDER_PROFILE_NAME,
   OPENCODE_LOCAL_PROVIDER_PROFILE_ID,
   OPENCODE_LOCAL_PROVIDER_PROFILE_NAME,
   PI_LOCAL_PROVIDER_PROFILE_ID,
@@ -64,7 +66,7 @@ export type ProviderTargetGroup = {
 
 type ProfileCatalog = Partial<
   Record<
-    "claude" | "codex" | "kimi" | "grok" | "opencode" | "pi" | "qoder",
+    "claude" | "codex" | "kimi" | "grok" | "opencode" | "pi" | "qoder" | "omp",
     EngineProviderProfileOption[]
   >
 >;
@@ -79,6 +81,7 @@ const PROVIDER_PROFILE_ENGINES: readonly ProviderProfileEngine[] = [
   "opencode",
   "pi",
   "qoder",
+  "omp",
 ];
 
 export function isProviderProfileEngine(
@@ -142,6 +145,13 @@ const DEFAULT_PROFILES: ProfileCatalog = {
       source: "managed",
     },
   ],
+  omp: [
+    {
+      id: OMP_LOCAL_PROVIDER_PROFILE_ID,
+      name: OMP_LOCAL_PROVIDER_PROFILE_NAME,
+      source: "disk",
+    },
+  ],
 };
 
 let profileCatalogCache: ProfileCatalog | null = null;
@@ -167,7 +177,6 @@ type ProviderTargetCatalogCommonOptions = {
 export type PluginCustomModelsByEngine = Partial<
   Record<"claude" | "codex" | "gemini", ModelInfo[]>
 >;
-
 type AtomicProviderTargetCatalogOptions =
   ProviderTargetCatalogCommonOptions & {
     mode: AtomicProviderTargetCatalogMode;
@@ -176,7 +185,15 @@ type AtomicProviderTargetCatalogOptions =
   };
 
 function normalizeProfiles(
-  engine: "claude" | "codex" | "kimi" | "grok" | "opencode" | "pi" | "qoder",
+  engine:
+    | "claude"
+    | "codex"
+    | "kimi"
+    | "grok"
+    | "opencode"
+    | "pi"
+    | "qoder"
+    | "omp",
   providers: Array<{
     id: string;
     name: string;
@@ -187,7 +204,7 @@ function normalizeProfiles(
   const defaultNameById = new Map(
     defaults.map((profile) => [profile.id, profile.name]),
   );
-  const normalized = providers
+  const normalized = (Array.isArray(providers) ? providers : [])
     .map((provider) => {
       const id = provider.id.trim();
       const isLocal =
@@ -219,6 +236,9 @@ async function loadProfileCatalog(): Promise<ProfileCatalog> {
     return profileCatalogCache;
   }
   if (!profileCatalogRequest) {
+    // OMP 刻意不走 ompAuthBrokerListProviders：auth-broker list 是「可登录
+    // 供应商目录」（60+ 行），不是已配置渠道；`omp models --json` 会一次性
+    // 返回全部已登录上游的模型，本地 profile 一个就够。
     profileCatalogRequest = Promise.allSettled([
       getClaudeProviders(),
       getCodexProviders(),
@@ -257,6 +277,7 @@ async function loadProfileCatalog(): Promise<ProfileCatalog> {
             opencode.status === "fulfilled"
               ? normalizeProfiles("opencode", opencode.value)
               : DEFAULT_PROFILES.opencode,
+          omp: DEFAULT_PROFILES.omp,
           // PI has no multi-provider store; always surface native ~/.pi profile.
           pi: DEFAULT_PROFILES.pi,
           // Qoder is one engine with two fixed distributions. These bindings
@@ -297,6 +318,8 @@ function isLocalProviderProfile(
       return providerProfileId === DSH_LOCAL_PROVIDER_PROFILE_ID;
     case "qoder":
       return providerProfileId === QODER_LOCAL_PROVIDER_PROFILE_ID;
+    case "omp":
+      return providerProfileId === OMP_LOCAL_PROVIDER_PROFILE_ID;
     default:
       return false;
   }
@@ -336,6 +359,13 @@ function toModelInfo(
     description: model.description,
     source: model.source,
     provider: model.provider?.trim() || undefined,
+    supportedReasoningEfforts: model.supportedReasoningEfforts?.map(
+      (reasoningEffort) => ({
+        reasoningEffort,
+        description: "",
+      }),
+    ),
+    defaultReasoningEffort: model.defaultReasoningEffort,
     // ACP live Qoder catalogs do not universally echo a profile id. The
     // request binding is authoritative, so stamp it before profile filtering
     // rather than treating a Global/CN row as a public fallback model.
@@ -575,7 +605,17 @@ function useProviderTargetCatalogOwner({
     ): Promise<ModelInfo[]> => {
       if (
         !enabled ||
-        !["claude", "codex", "kimi", "grok", "opencode", "pi", "dsh", "qoder"].includes(
+        ![
+          "claude",
+          "codex",
+          "kimi",
+          "grok",
+          "opencode",
+          "pi",
+          "dsh",
+          "qoder",
+          "omp",
+        ].includes(
           engine,
         )
       ) {
@@ -587,7 +627,11 @@ function useProviderTargetCatalogOwner({
         isLocalProviderProfile(engine, providerProfileId) &&
         !authoritativeRefreshCompletedBindingsRef.current.has(key);
       const cachedModels = modelCatalogCache.get(key);
-      if (!requiresAuthoritativeRefresh && cachedModels) {
+      const canReuseCachedModels =
+        !requiresAuthoritativeRefresh &&
+        cachedModels !== undefined &&
+        !(engine === "omp" && cachedModels.length === 0);
+      if (canReuseCachedModels) {
         setLoadedModels((current) =>
           current[key] ? current : { ...current, [key]: cachedModels },
         );
@@ -644,7 +688,11 @@ function useProviderTargetCatalogOwner({
             models = [configuredDefault];
           }
         }
-        if (!isFallbackDefault) {
+        if (engine === "omp" && models.length === 0) {
+          // OMP 的空目录可能来自 CLI 冷启动/瞬时超时，禁止把空结果钉死在
+          // module cache；下一次打开选择器必须允许重新执行 omp models。
+          modelCatalogCache.delete(key);
+        } else if (!isFallbackDefault) {
           modelCatalogCache.set(key, models);
         }
         if (requiresAuthoritativeRefresh) {
