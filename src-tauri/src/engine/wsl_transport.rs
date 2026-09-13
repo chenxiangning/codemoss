@@ -171,20 +171,29 @@ fn resolve_remote_program(program: &str, transport: &WslTransport) -> String {
     format!("__RESOLVE__{base}")
 }
 
-/// 生成发行版内执行的脚本文本。
+/// 生成发行版内执行的脚本文本。workspace 路径来自插件登记(插件侧白名单
+/// `[A-Za-z0-9_./~-]` 校验),**不加引号**直排 —— bash 对行首 `~` 原生
+/// tilde 展开(tmd 2026-09-13 真机验证形态;引号内 `~` 不展开,手动
+/// `$HOME` 拼接是 Fragile 的)。
 fn build_script(program: &str, args: &[String], transport: &WslTransport) -> String {
     let mut script = String::new();
     script.push_str("set -e\n");
     if let Some(ws) = &transport.workspace {
-        // `~/…` 登记形态(插件目录浏览从 ~ 起步)在 bash 引号内不展开 —— 手动展开。
-        script.push_str(&format!(
-            "p={}; case \"$p\" in \"~\"*) p=\"$HOME${{p#~}}\";; esac; cd \"$p\" || exit 61\n",
-            sh_quote(ws)
-        ));
+        if ws.is_empty()
+            || ws.chars().any(|c| !(c.is_ascii_alphanumeric() || matches!(c, '/' | '_' | '.' | '-' | '~')))
+        {
+            return format!("echo 'workspace 路径含不支持的字符' >&2; exit 60\n");
+        }
+        script.push_str(&format!("cd {ws} || exit 61\n"));
     }
     let resolved = resolve_remote_program(program, transport);
     if let Some(base) = resolved.strip_prefix("__RESOLVE__") {
-        script.push_str(&format!("bin=$(command -v {base}) || exit 62\n"));
+        // 登录 shell 解析(~/.profile 后的 PATH):非登录 `command -v`
+        // 探不到 ~/.local/bin(tmd 2026-09-12 实测),引擎常装在那。
+        script.push_str(&format!(
+            "bin=$(bash -lc {}) || exit 62\n",
+            sh_quote(&format!("command -v {base}"))
+        ));
         script.push_str("exec \"$bin\"");
     } else {
         script.push_str("exec ");
@@ -339,8 +348,7 @@ mod tests {
             &tp(),
         );
         assert!(script.starts_with("set -e\n"));
-        assert!(script.contains("cd \"$p\" || exit 61"));
-        assert!(script.contains("p='/home/dev/proj'"));
+        assert!(script.contains("cd /home/dev/proj || exit 61"));
         // argv[0] basename "omp" 命中 enginePaths → 发行版内路径
         assert!(script.contains("exec '/home/dev/.local/bin/omp'"));
         assert!(script.contains("'hello world'"));
@@ -349,18 +357,27 @@ mod tests {
     }
 
     #[test]
-    fn script_expands_tilde_workspace() {
+    fn script_keeps_tilde_unquoted_for_native_expansion() {
         let mut t = tp();
         t.workspace = Some("~/code/proj".into());
         let script = build_script("omp", &[], &t);
-        assert!(script.contains("p='~/code/proj'"));
-        assert!(script.contains("case \"$p\" in \"~\"*) p=\"$HOME${p#~}\";; esac"));
+        assert!(script.contains("cd ~/code/proj || exit 61"));
+        // 引号包裹会杀死 bash 的 tilde 展开 —— 绝不能出现
+        assert!(!script.contains("\"~/"));
+    }
+
+    #[test]
+    fn script_rejects_space_paths() {
+        let mut t = tp();
+        t.workspace = Some("/home/dev/my proj".into());
+        let script = build_script("omp", &[], &t);
+        assert!(script.contains("exit 60"));
     }
 
     #[test]
     fn script_falls_back_to_command_v() {
         let script = build_script("kimi", &[], &tp());
-        assert!(script.contains("bin=$(command -v kimi) || exit 62"));
+        assert!(script.contains("bin=$(bash -lc 'command -v kimi') || exit 62"));
         assert!(script.contains("exec \"$bin\""));
     }
 
