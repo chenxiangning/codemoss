@@ -85,6 +85,7 @@ function useConversationMenus({
   setCodexServiceTier,
   refreshModels,
   loadingEngines,
+  allowedEngines,
 }: {
   engines: EngineInfo[];
   engineInfo: EngineInfo | undefined;
@@ -106,6 +107,8 @@ function useConversationMenus({
   setCodexServiceTier: (tier: OmpServiceTier) => Promise<void>;
   refreshModels: () => Promise<void>;
   loadingEngines: readonly string[];
+  /** WSL 工作区上下文:仅列发行版内探到的引擎(null = 不过滤)。 */
+  allowedEngines: string[] | null;
 }) {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -115,6 +118,7 @@ function useConversationMenus({
     () =>
       engines.flatMap((e) => {
         if (!e.enabled) return [];
+        if (allowedEngines && !allowedEngines.includes(e.id)) return [];
         return [
           {
             id: e.id,
@@ -125,7 +129,7 @@ function useConversationMenus({
           },
         ];
       }),
-    [engines, t],
+    [engines, t, allowedEngines],
   );
   // Every CLI is switched off in settings: swap the picker for a placeholder
   // that deep-links to the CLI config page.
@@ -362,11 +366,25 @@ export const ChatConversation = memo(function ChatConversation({
     supportsImages,
     composerInputRef,
   });
+  // WSL 工作区:composer 引擎菜单只列发行版内探到的 CLI(meta.wsl.enginePaths
+  // 由 wsl 插件登记时写入;非 WSL 工作区为 null,不过滤)。
+  const allowedEngines = useMemo(() => {
+    const ws = workspaces.find((w) => active && w.path === active.workspacePath);
+    const meta = ws?.meta as Record<string, unknown> | undefined;
+    const wsl = meta?.wsl as Record<string, unknown> | undefined;
+    const paths = wsl?.enginePaths;
+    if (typeof paths !== "object" || paths === null) return null;
+    const ids = Object.entries(paths as Record<string, unknown>)
+      .filter(([, v]) => typeof v === "string" && v.length > 0)
+      .map(([k]) => k);
+    return ids.length > 0 ? ids : null;
+  }, [active, workspaces]);
   const { addMenu, cliMenu, permissionMenu, noEnabledEngines } =
     useConversationMenus({
       engines,
       engineInfo,
       activeEngine,
+      allowedEngines,
       modelsByEngine,
       onPickFiles: handleAddAttachments,
       onPickSkills: handlePickSkills,
