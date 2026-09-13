@@ -1410,7 +1410,7 @@ async fn dispatch(app: &tauri::AppHandle, cmd: &str, raw: Value) -> Result<Value
         "list_workspaces" => ser(crate::history::reader::list_workspaces(app.state())),
         "add_workspace" => {
             let a: PathArgs = parse_args(&raw)?;
-            ser(crate::history::reader::add_workspace(app.state(), a.path))
+            ser(crate::history::reader::add_workspace(app.state(), a.path, None))
         }
         "reorder_workspaces" => {
             let a: IdsArgs = parse_args(&raw)?;

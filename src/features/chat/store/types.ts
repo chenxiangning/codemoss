@@ -70,7 +70,7 @@ export interface ChatStore {
    * history list, migrating the engine pref off a disabled CLI. */
   refreshEngines: () => Promise<void>;
   refreshWorkspaces: () => Promise<void>;
-  addWorkspace: (path: string) => Promise<void>;
+  addWorkspace: (path: string, meta?: Record<string, unknown>) => Promise<void>;
   reorderWorkspaces: (ids: string[]) => Promise<void>;
   removeWorkspace: (id: string) => Promise<void>;
   selectSession: (

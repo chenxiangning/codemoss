@@ -577,9 +577,9 @@ export const useChatStore = create<ChatStore>((set, get) => {
       if (workspaces) set({ workspaces });
     },
 
-    addWorkspace: async (path) => {
+    addWorkspace: async (path, meta) => {
       try {
-        await ipc.addWorkspace(path);
+        await ipc.addWorkspace(path, meta);
         await get().refreshWorkspaces();
         set({ actionError: null });
       } catch (error) {

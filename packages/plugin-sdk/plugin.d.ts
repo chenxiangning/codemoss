@@ -6,7 +6,7 @@
  * 插件仓用法（包未发布 npm 前的过渡方案）：复制本文件为插件仓的
  * `src/ccgui-plugin.d.ts`，首行版本戳必须与所用宿主 SDK 一致。
  *
- * @ccgui/plugin-sdk v0.3.2
+ * @ccgui/plugin-sdk v0.3.3
  */
 
 /** 宿主实现的 SDK 契约版本。 */
@@ -158,10 +158,17 @@ export interface PluginContext {
     on(topic: string, cb: (data: unknown) => void): Disposer;
     emit(topic: string, data: unknown): void;
   };
-  /** 聊天输入框（composer）草稿写入（权限 composer:draft，0.3.2 起）。
-   *  写入即替换当前活动会话的草稿；不触发发送——发送永远是用户动作。 */
+  /** 聊天输入框(composer)草稿写入(权限 composer:draft,0.3.2 起)。
+   *  写入即替换当前活动会话的草稿;不触发发送——发送永远是用户动作。 */
   composer: {
     setDraft(text: string): void;
+  };
+  /** 工作区登记(权限 host:workspace,0.3.3 起)。把任意路径登记为侧栏
+   *  工作区——不要求本机存在该目录(如经 ssh 管理的远程机/WSL 发行版内
+   *  路径)。meta 透传存储在宿主工作区行上(如 { wsl: { hostId, distro } }),
+   *  会话/文件等宿主能力按需消费;形状由写入方与消费方约定。 */
+  workspaces: {
+    add(path: string, meta?: Record<string, unknown>): Promise<void>;
   };
   bridge: {
     /** 通用能力出口（0.3.0 起；旧的 `cmd:<command>` 逐命令授权机制已删除）。

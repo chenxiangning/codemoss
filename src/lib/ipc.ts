@@ -88,6 +88,10 @@ export interface Workspace {
   sortOrder: number | null;
   /** Sidebar group id (工作区分组); null = ungrouped. */
   groupId: string | null;
+  /** Opaque per-workspace metadata written by host-capability callers
+   *  (e.g. { wsl: { hostId, distro } } from the wsl plugin); absent for
+   *  ordinary directories. */
+  meta?: Record<string, unknown>;
 }
 
 export interface EngineInfo {
@@ -664,7 +668,8 @@ export const ipc = {
     invoke<void>("remember_session_effort", { engine, sessionId, effort }),
   rescanSessions: () => invoke<void>("rescan_sessions"),
   listWorkspaces: () => invoke<Workspace[]>("list_workspaces"),
-  addWorkspace: (path: string) => invoke<Workspace>("add_workspace", { path }),
+  addWorkspace: (path: string, meta?: Record<string, unknown>) =>
+    invoke<Workspace>("add_workspace", { path, meta: meta ?? null }),
   reorderWorkspaces: (ids: string[]) => invoke<void>("reorder_workspaces", { ids }),
   removeWorkspace: (id: string) => invoke<void>("remove_workspace", { id }),
   setWorkspaceGroup: (id: string, groupId: string | null) =>

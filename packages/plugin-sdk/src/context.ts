@@ -111,6 +111,12 @@ export interface PluginContext {
   composer: {
     setDraft(text: string): void;
   };
+  /** 工作区登记（权限 `host:workspace`，0.3.3 起）。把任意路径登记为侧栏
+   *  工作区——不要求本机存在该目录（如经 ssh 管理的远程机/WSL 发行版内
+   *  路径）。`meta` 透传存储在宿主工作区行上，形状由写入方与消费方约定。 */
+  workspaces: {
+    add(path: string, meta?: Record<string, unknown>): Promise<void>;
+  };
   /** 通用能力出口（0.3.0 起；旧的 `cmd:<command>` 逐命令授权机制已删除）。
    *  仅四条命令，`pluginId` 由宿主自动注入（插件无需也不能传）：
    *

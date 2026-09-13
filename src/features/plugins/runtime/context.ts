@@ -24,6 +24,7 @@ import type {
 } from "@ccgui/plugin-sdk";
 import { assertPluginEmitTopic, pluginBus } from "./events";
 import { setActiveComposerDraft } from "./composer-draft";
+import { addPluginWorkspace } from "./workspace-bridge";
 import { runAsPlugin } from "./hardening";
 
 /** Storage transport the context talks to; the loader binds the IPC-backed
@@ -285,6 +286,12 @@ export function createPluginContext(
       setDraft(text) {
         requirePermission("composer:draft");
         setActiveComposerDraft(id, text);
+      },
+    },
+    workspaces: {
+      add(path, meta) {
+        requirePermission("host:workspace");
+        return addPluginWorkspace(id, path, meta);
       },
     },
     bridge: {

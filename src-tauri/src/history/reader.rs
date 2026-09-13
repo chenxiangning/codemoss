@@ -531,15 +531,21 @@ pub struct Workspace {
     pub sort_order: Option<i64>,
     /// Sidebar group (工作区分组) this workspace belongs to; None = ungrouped.
     pub group_id: Option<String>,
+    /// Opaque metadata written via host-capability callers (plugin
+    /// `workspaces.add`); absent for ordinary directories. The backend never
+    /// interprets it — consumers (spawn transport, plugin panels) own the shape.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub meta: Option<serde_json::Value>,
 }
 
 #[tauri::command]
 pub fn list_workspaces(state: tauri::State<'_, crate::AppState>) -> Result<Vec<Workspace>, String> {
     query_rows(
         &state,
-        "SELECT id, path, name, last_opened_at, sort_order, group_id FROM workspaces
+        "SELECT id, path, name, last_opened_at, sort_order, group_id, meta FROM workspaces
          ORDER BY sort_order IS NULL, sort_order, COALESCE(last_opened_at, 0) DESC",
         |r| {
+            let meta_json: Option<String> = r.get(6)?;
             Ok(Workspace {
                 id: r.get(0)?,
                 path: r.get(1)?,
@@ -547,6 +553,7 @@ pub fn list_workspaces(state: tauri::State<'_, crate::AppState>) -> Result<Vec<W
                 last_opened_at: r.get(3)?,
                 sort_order: r.get(4)?,
                 group_id: r.get(5)?,
+                meta: meta_json.and_then(|s| serde_json::from_str(&s).ok()),
             })
         },
     )
@@ -556,31 +563,44 @@ pub fn list_workspaces(state: tauri::State<'_, crate::AppState>) -> Result<Vec<W
 pub fn add_workspace(
     state: tauri::State<'_, crate::AppState>,
     path: String,
+    meta: Option<serde_json::Value>,
 ) -> Result<Workspace, String> {
     let trimmed = path.trim();
     if trimmed.is_empty() {
         return Err("empty path".to_string());
     }
-    let dir = std::path::PathBuf::from(trimmed);
-    if !dir.is_dir() {
-        return Err(format!("not a directory: {trimmed}"));
+    // Host-capability callers (plugin workspaces.add) may register paths that
+    // do not exist on this machine (remote host / WSL distro) — meta presence
+    // is the opt-in that skips the local is_dir check.
+    if meta.is_none() {
+        let dir = std::path::PathBuf::from(trimmed);
+        if !dir.is_dir() {
+            return Err(format!("not a directory: {trimmed}"));
+        }
     }
-    let name = dir
+    if let Some(m) = &meta {
+        if m.as_object().is_none_or(|o| o.is_empty()) {
+            return Err("meta must be a non-empty object when provided".to_string());
+        }
+    }
+    let name = std::path::Path::new(trimmed)
         .file_name()
         .and_then(|n| n.to_str())
-        .unwrap_or(trimmed)
-        .to_string();
+        .map(str::to_string)
+        .unwrap_or_else(|| trimmed.trim_end_matches(['/', '\\']).to_string());
     let id = uuid::Uuid::new_v4().to_string();
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_millis() as i64)
         .unwrap_or(0);
+    let meta_json = meta.as_ref().map(|m| m.to_string());
     {
         let conn = state.db.0.lock();
         conn.execute(
-            "INSERT INTO workspaces(id, path, name, last_opened_at) VALUES(?1,?2,?3,?4)
-             ON CONFLICT(path) DO UPDATE SET last_opened_at=excluded.last_opened_at",
-            rusqlite::params![id, trimmed, name, now],
+            "INSERT INTO workspaces(id, path, name, last_opened_at, meta) VALUES(?1,?2,?3,?4,?5)
+             ON CONFLICT(path) DO UPDATE SET last_opened_at=excluded.last_opened_at,
+                meta=COALESCE(excluded.meta, workspaces.meta)",
+            rusqlite::params![id, trimmed, name, now, meta_json],
         )
         .map_err(|e| e.to_string())?;
     }
@@ -592,9 +612,9 @@ pub fn add_workspace(
         last_opened_at: Some(now),
         sort_order: None,
         group_id: None,
+        meta,
     })
 }
-
 /// Assign a workspace to a sidebar group (None = ungrouped). The group must
 /// exist in app settings so a deleted group never lingers on a row.
 #[tauri::command]
