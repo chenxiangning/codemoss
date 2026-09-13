@@ -63,6 +63,31 @@ const SessionTimeline = memo(function SessionTimeline({
 });
 
 
+/** composer CLI 菜单选项过滤(纯函数便于单测):
+ *  - 关闭的引擎不出现;
+ *  - WSL 工作区(allowedEngines 非 null)只留发行版内探到的 CLI,
+ *    且可用态按探针结果(在列表内 = 发行版里有),不按本机 `command -v`。 */
+export function filterEngineOptions(
+  engines: EngineInfo[],
+  allowedEngines: string[] | null,
+  t: (key: string) => string,
+): { id: string; label: string; available: boolean; disabled: boolean; disabledReason: string }[] {
+  return engines.flatMap((e) => {
+    if (!e.enabled) return [];
+    if (allowedEngines && !allowedEngines.includes(e.id)) return [];
+    const wslAvailable = allowedEngines !== null;
+    return [
+      {
+        id: e.id,
+        label: t(`settings.engines.${e.id}`),
+        available: wslAvailable || e.available,
+        disabled: !wslAvailable && !e.available,
+        disabledReason: t("chat.engineNotInstalled"),
+      },
+    ];
+  });
+}
+
 /** Composer menu slots (add / CLI / permission) plus the all-engines-disabled
  * state, memoized so per-keystroke draft updates don't rebuild the menus. */
 function useConversationMenus({
@@ -112,24 +137,13 @@ function useConversationMenus({
 }) {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  // Disabled-in-settings CLIs leave the picker entirely; the greyed-out
-  // state stays reserved for CLIs whose binary is not installed.
+  // Disabled-in-settings CLIs leave the picker entirely. WSL 工作区
+  // (allowedEngines 非 null)下:列表只留发行版内探到的 CLI,可用态也按
+  // 探针结果(在列表内 = 发行版里有)而不是本机 `command -v` —— 否则
+  // 本机没装的 CLI 在 WSL 工作区里永远灰点。
   const cliOptions = useMemo(
-    () =>
-      engines.flatMap((e) => {
-        if (!e.enabled) return [];
-        if (allowedEngines && !allowedEngines.includes(e.id)) return [];
-        return [
-          {
-            id: e.id,
-            label: t(`settings.engines.${e.id}`),
-            available: e.available,
-            disabled: !e.available,
-            disabledReason: t("chat.engineNotInstalled"),
-          },
-        ];
-      }),
-    [engines, t, allowedEngines],
+    () => filterEngineOptions(engines, allowedEngines, t),
+    [engines, allowedEngines, t],
   );
   // Every CLI is switched off in settings: swap the picker for a placeholder
   // that deep-links to the CLI config page.
