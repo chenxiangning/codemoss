@@ -170,6 +170,12 @@ export interface PluginContext {
   workspaces: {
     add(path: string, meta?: Record<string, unknown>): Promise<void>;
   };
+  /** 会话打开(权限 host:session,0.3.3 起)。按引擎与会话 id 打开(或恢复)
+   *  一个既有会话;workspacePath 须已登记。会话数据在远端时,历史加载由
+   *  宿主既有通道自理(插件侧来源需另行扩展)。 */
+  sessions: {
+    selectSession(engine: string, sessionId: string, workspacePath: string): Promise<void>;
+  };
   bridge: {
     /** 通用能力出口（0.3.0 起；旧的 `cmd:<command>` 逐命令授权机制已删除）。
      *  仅四条命令，`pluginId` 由宿主自动注入（插件无需也不能传）：

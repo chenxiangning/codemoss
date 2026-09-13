@@ -53,6 +53,7 @@ type _StorageKeys = Assert<KeyParity<PluginContext["storage"], Pub.PluginContext
 type _EventsKeys = Assert<KeyParity<PluginContext["events"], Pub.PluginContext["events"]>>;
 type _ComposerKeys = Assert<KeyParity<PluginContext["composer"], Pub.PluginContext["composer"]>>;
 type _WorkspacesKeys = Assert<KeyParity<PluginContext["workspaces"], Pub.PluginContext["workspaces"]>>;
+type _SessionsKeys = Assert<KeyParity<PluginContext["sessions"], Pub.PluginContext["sessions"]>>;
 type _HostKeys = Assert<KeyParity<PluginContext["host"], Pub.PluginContext["host"]>>;
 
 // --- 无组件字段的能力组：进一步要求双向可赋值 --------------------------------
@@ -63,4 +64,5 @@ type _StorageShape = Assert<Mutual<PluginContext["storage"], Pub.PluginContext["
 type _EventsShape = Assert<Mutual<PluginContext["events"], Pub.PluginContext["events"]>>;
 type _ComposerShape = Assert<Mutual<PluginContext["composer"], Pub.PluginContext["composer"]>>;
 type _WorkspacesShape = Assert<Mutual<PluginContext["workspaces"], Pub.PluginContext["workspaces"]>>;
+type _SessionsShape = Assert<Mutual<PluginContext["sessions"], Pub.PluginContext["sessions"]>>;
 type _HostShape = Assert<Mutual<PluginContext["host"], Pub.PluginContext["host"]>>;

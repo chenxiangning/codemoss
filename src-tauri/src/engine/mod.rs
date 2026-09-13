@@ -10,6 +10,7 @@ pub mod images;
 pub mod kimi;
 pub mod models;
 pub mod pi_family;
+pub mod wsl_transport;
 pub mod pi_family_auth;
 pub mod resolve;
 
@@ -1568,8 +1569,18 @@ pub async fn send_message_inner(
     if launch.engine_impl.drives_own_transport() {
         return send_host_stream(state, launch, engine).await;
     }
-
-    let mut command = launch.built.command;
+    // WSL 远程工作区:引擎进程经 ssh 在发行版内执行(见 wsl_transport)。
+    let wsl_transport_meta = wsl_transport::workspace_meta_json(&state.db, &workspace_path);
+    let wsl_tp = wsl_transport::transport_from_meta_json(wsl_transport_meta.as_deref());
+    let (mut command, extra_cleanup, skip_local_cwd) = match &wsl_tp {
+        Some(tp) => {
+            let wrapped = wsl_transport::wrap(launch.built.command, tp).await?;
+            (wrapped.command, wrapped.cleanup_files, wrapped.skip_local_cwd)
+        }
+        None => (launch.built.command, Vec::new(), false),
+    };
+    let mut cleanup_files = launch.built.cleanup_files;
+    cleanup_files.extend(extra_cleanup);
     if engine == "codex" {
         codex_provider_env::apply(&mut command).await;
     }
@@ -1580,8 +1591,13 @@ pub async fn send_message_inner(
             std::process::Stdio::null()
         })
         .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .current_dir(&launch.req.workspace);
+        .stderr(std::process::Stdio::piped());
+    // 远程工作区路径在本机不存在 → cwd 落本地当前目录(wsl.exe/ssh 不关心)。
+    if skip_local_cwd {
+        command.current_dir(wsl_transport::fallback_cwd());
+    } else {
+        command.current_dir(&launch.req.workspace);
+    }
     // Own process group so interrupt can kill the whole tree (grandchildren
     // inherit the stdout pipe and would otherwise block EOF forever).
     #[cfg(unix)]
@@ -1592,8 +1608,9 @@ pub async fn send_message_inner(
     let mut child = match command.spawn() {
         Ok(child) => child,
         Err(error) => {
-            // Never strand the staging files build_command wrote (grok).
-            for path in &launch.built.cleanup_files {
+            // Never strand the staging files build_command wrote (grok) or
+            // the remote-run script marker (wsl transport).
+            for path in &cleanup_files {
                 let _ = std::fs::remove_file(path);
             }
             return Err(format!("failed to spawn {}: {error}", launch.bin));
@@ -1613,7 +1630,7 @@ pub async fn send_message_inner(
             Some(pair) => pair,
             None => {
                 let _ = child.start_kill();
-                for path in &launch.built.cleanup_files {
+                for path in &cleanup_files {
                     let _ = std::fs::remove_file(path);
                 }
                 return Err("missing stdout/stderr pipe after spawn".to_string());
@@ -1671,7 +1688,7 @@ pub async fn send_message_inner(
         initial_model,
         child,
         killed,
-        cleanup_files: launch.built.cleanup_files,
+        cleanup_files,
         stderr_buf,
     };
     let reader = tokio::spawn(run_reader(stdout, ctx));

@@ -16,3 +16,24 @@ export async function addPluginWorkspace(pluginId: string, path: string, meta?: 
   }
   await useChatStore.getState().addWorkspace(trimmed, meta);
 }
+
+/** ctx.sessions.selectSession 的宿主实现：按引擎 + 会话 id 打开（或恢复）
+ *  一个既有会话。会话必须已存在于宿主会话表（远程来源的登记由插件侧扩展）；
+ *  未知的 engine/sessionId 组合抛错，不静默。 */
+export function openPluginSession(
+  pluginId: string,
+  engine: string,
+  sessionId: string,
+  workspacePath: string,
+): void {
+  const store = useChatStore.getState();
+  const known = store.sessions.some(
+    (s) => s.engine === engine && s.sessionId === sessionId && s.workspacePath === workspacePath,
+  );
+  if (!known) {
+    throw new Error(
+      `[plugins] "${pluginId}" sessions.selectSession: unknown session ${engine}/${sessionId}`,
+    );
+  }
+  store.selectSession(engine, sessionId, workspacePath);
+}

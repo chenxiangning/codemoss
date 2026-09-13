@@ -117,6 +117,10 @@ export interface PluginContext {
   workspaces: {
     add(path: string, meta?: Record<string, unknown>): Promise<void>;
   };
+  /** 会话打开（权限 `host:session`，0.3.3 起）。 */
+  sessions: {
+    selectSession(engine: string, sessionId: string, workspacePath: string): Promise<void>;
+  };
   /** 通用能力出口（0.3.0 起；旧的 `cmd:<command>` 逐命令授权机制已删除）。
    *  仅四条命令，`pluginId` 由宿主自动注入（插件无需也不能传）：
    *

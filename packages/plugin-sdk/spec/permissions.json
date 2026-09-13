@@ -15,6 +15,7 @@
     "i18n",
     "network:none",
     "composer:draft",
+    "host:session",
     "host:workspace"
   ],
   "networkGrantShapes": {
