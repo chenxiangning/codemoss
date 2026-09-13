@@ -74,7 +74,7 @@ export function useChatSidebar({
       const alias = workspaceAliases[w.id]?.trim();
       return {
         id: w.id,
-        label: alias || w.name,
+        label: alias || (w.meta?.wsl ? `${w.name} · WSL` : w.name),
         originalLabel: alias ? w.name : undefined,
         defaultOpen: index === 0,
         threadLimit,
