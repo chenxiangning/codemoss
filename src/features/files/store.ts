@@ -8,6 +8,7 @@ import {
 } from "@/lib/ipc";
 import { errorText } from "@/lib/errors";
 import { writeStored } from "@/lib/storage";
+import { installFilesBridge, readRemoteAware } from "./remote-files";
 
 export const FILES_ROOT_KEY = "ccgui-next.filesRoot";
 
@@ -294,7 +295,7 @@ export const useFilesStore = create<FilesStore>((set, get) => ({
       };
     });
     try {
-      const content = await ipc.readFile(path);
+      const content = await readRemoteAware(path, (p) => ipc.readFile(p));
       set((s) => {
         const st = s.fileStates[path];
         if (!st) return s; // tab closed mid-load
@@ -428,3 +429,7 @@ export const useFilesStore = create<FilesStore>((set, get) => ({
       return { dirtyPaths };
     }),
 }));
+
+// WSL 插件(独立 bundle)经 window.__ccguiFiles 拿到中央编辑器的打开入口,
+// 并注册远程读取器 —— 见 remote-files.ts。
+installFilesBridge((path) => useFilesStore.getState().openFile(path));
