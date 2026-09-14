@@ -341,7 +341,7 @@ export const ChatConversation = memo(function ChatConversation({
     modelsByEngine,
     refresh: refreshModels,
     pendingEngines,
-  } = useEngineModels(engines, models, pinModels);
+  } = useEngineModels(engines, models, pinModels, active?.workspacePath);
   const loadingEngines = useMemo(
     () => Object.keys(pendingEngines),
     [pendingEngines],

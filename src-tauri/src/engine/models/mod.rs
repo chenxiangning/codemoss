@@ -38,6 +38,7 @@ mod codex;
 mod grok;
 mod kimi;
 mod pi;
+mod wsl;
 
 /// Claude launch-time model resolution: picker alias → the custom id its
 /// ANTHROPIC_DEFAULT_<FAMILY>_MODEL override maps to (pass-through when
@@ -112,7 +113,27 @@ impl EngineCatalog {
 }
 
 #[tauri::command]
-pub async fn list_engine_models(engine: String) -> Result<EngineCatalog, String> {
+pub async fn list_engine_models(
+    state: tauri::State<'_, crate::AppState>,
+    engine: String,
+    workspace: Option<String>,
+) -> Result<EngineCatalog, String> {
+    // WSL 工作区:模型目录必须来自发行版内的 CLI(探针 bin),不是本机。
+    if let Some(ws) = workspace.as_deref() {
+        let meta = crate::engine::wsl_transport::workspace_meta_json(&state.db, ws);
+        if let Some(transport) =
+            crate::engine::wsl_transport::transport_from_meta_json(meta.as_deref())
+        {
+            match engine.as_str() {
+                "pi" | "omp" => {
+                    return Ok(wsl::pi_family_catalog_remote(engine.as_str(), &transport).await);
+                }
+                // 其余引擎的远程 catalog 形态未对齐(各 CLI 的模型命令不同),
+                // 返回空目录,前端回退 provider 配置 —— 不读本机数据。
+                _ => return Ok(EngineCatalog::authoritative(Vec::new())),
+            }
+        }
+    }
     match engine.as_str() {
         "codex" => Ok(codex_catalog().await),
         "kimi" => Ok(kimi_catalog().await),
@@ -126,8 +147,6 @@ pub async fn list_engine_models(engine: String) -> Result<EngineCatalog, String>
         _ => Ok(EngineCatalog::authoritative(Vec::new())),
     }
 }
-
-/// DSH has no CLI-side catalog: the model list lives on the running host
 /// (`session/modelCatalog` RPC — 0.1.2 removed `llm.models`), grouped by
 /// provider with `default` carrying the host's current model. Never spawns
 /// the host — a down host is an error so the frontend keeps whatever catalog
@@ -351,6 +370,7 @@ pub(super) fn config_toml_model(
         context_window: None,
     })
 }
+
 
 /// Which entry keys feed each EngineModel field — the alias-table skeleton
 /// is shared by grok and kimi, only these key names differ.

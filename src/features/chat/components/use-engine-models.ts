@@ -15,6 +15,7 @@ export function useEngineModels(
   engines: EngineInfo[],
   models: Record<string, string>,
   pinModels: (updates: Record<string, string>) => Promise<void>,
+  workspacePath?: string,
 ) {
   const [cliConfig, setCliConfig] = useState<CliConfig | null>(null);
   const [catalogs, setCatalogs] = useState<Record<string, EngineCatalog>>({});
@@ -53,7 +54,7 @@ export function useEngineModels(
       if (engine.id in catalogs) continue;
       setPending((prev) => (prev[engine.id] ? prev : { ...prev, [engine.id]: true }));
       ipc
-        .listEngineModels(engine.id)
+        .listEngineModels(engine.id, workspacePath)
         .then((list) => {
           if (!cancelled) setCatalogs((prev) => ({ ...prev, [engine.id]: list }));
         })
@@ -72,7 +73,7 @@ export function useEngineModels(
     return () => {
       cancelled = true;
     };
-  }, [engines, catalogs]);
+  }, [engines, catalogs, workspacePath]);
 
   // Per-engine model lists for the CLI menu flyouts: the backend catalog
   // plus, for channel-driven engines, the current provider channel's
@@ -179,7 +180,7 @@ export function useEngineModels(
     await Promise.all(
       engines.map(async (engine) => {
         try {
-          const list = await ipc.listEngineModels(engine.id);
+          const list = await ipc.listEngineModels(engine.id, workspacePath);
           setCatalogs((prev) => ({ ...prev, [engine.id]: list }));
         } catch {
           // A failed probe keeps the stale catalog rather than blanking the
@@ -187,7 +188,7 @@ export function useEngineModels(
         }
       }),
     );
-  }, [engines]);
+  }, [engines, workspacePath]);
 
   return { catalogs, modelsByEngine, refresh, pendingEngines: pending };
 }

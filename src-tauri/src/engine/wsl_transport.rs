@@ -303,6 +303,37 @@ pub fn fallback_cwd() -> &'static std::path::Path {
     std::path::Path::new(".")
 }
 
+/// 远程跑一段脚本并取 stdout(模型列表等短命令;上传 + 运行两步,
+/// 复用 send 路径同一套 ssh/wsl 串 —— ControlMaster/key 认证同源)。
+pub async fn run_script_output(
+    transport: &WslTransport,
+    script_body: &str,
+) -> Result<String, String> {
+    let script_id = uuid::Uuid::new_v4().simple().to_string();
+    let remote_path = format!("/tmp/ccgui-wsl-{script_id}.sh");
+    upload_script(transport, script_body, &remote_path).await?;
+    let mut command = Command::new("ssh");
+    for opt in ssh_options(transport) {
+        command.arg(opt);
+    }
+    command.arg(ssh_target(transport));
+    command.arg(wsl_command_string(transport, &["bash", &remote_path]));
+    command.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
+    let output = command
+        .output()
+        .await
+        .map_err(|e| format!("远程命令执行失败: {e}"))?;
+    let text = String::from_utf8_lossy(&output.stdout).to_string();
+    if !output.status.success() {
+        return Err(format!(
+            "远程命令退出码 {:?}: {}",
+            output.status.code(),
+            String::from_utf8_lossy(&output.stderr).trim()
+        ));
+    }
+    Ok(text)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -1318,7 +1318,7 @@ async fn dispatch(app: &tauri::AppHandle, cmd: &str, raw: Value) -> Result<Value
         "list_engines" => ser(Ok(crate::engine::list_engines())),
         "list_engine_models" => {
             let a: EngineArgs = parse_args(&raw)?;
-            ser(crate::engine::models::list_engine_models(a.engine).await)
+            ser(crate::engine::models::list_engine_models(app.state(), a.engine, None).await)
         }
         "save_pasted_image" => {
             let a: SavePastedImageArgs = parse_args(&raw)?;

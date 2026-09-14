@@ -641,8 +641,10 @@ export const ipc = {
    * new paths (same order). Picked paths live outside the sandbox, so the
    * engines' path-based image pipeline cannot read them in place. */
   importAttachments: (paths: string[]) => invoke<string[]>("import_attachments", { paths }),
-  listEngineModels: (engine: string) =>
-    invoke<EngineCatalog>("list_engine_models", { engine }),
+  listEngineModels: (engine: string, workspace?: string) =>
+    withGrantRetry(() =>
+      invoke<EngineCatalog>("list_engine_models", { engine, workspace: workspace ?? null }),
+    ),
   // history
   listSessions: () => invoke<SessionMeta[]>("list_sessions"),
   loadSessionPage: (
